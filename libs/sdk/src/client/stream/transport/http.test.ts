@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { AsyncCaller } from "../../../utils/async_caller.js";
 import { ProtocolSseTransportAdapter } from "./http.js";
 import {
   LANGGRAPH_PROXY_API_URL,
   PROXIED_API_URL,
   THREAD_ID,
   createFetchRecorder,
+  protocolSuccessResponse,
 } from "./test-helpers.js";
 
 describe("ProtocolSseTransportAdapter URL resolution", () => {
@@ -122,5 +124,61 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
     });
 
     await expect(transport.getState()).resolves.toBeNull();
+  });
+});
+
+describe("ProtocolSseTransportAdapter AsyncCaller", () => {
+  it("retries transient command failures when asyncCaller is provided", async () => {
+    let attempts = 0;
+    const fetchImpl = vi.fn(() => {
+      attempts += 1;
+      if (attempts < 3) {
+        return Promise.resolve(
+          new Response("unavailable", { status: 503, statusText: "Unavailable" })
+        );
+      }
+      return Promise.resolve(protocolSuccessResponse());
+    }) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
+    });
+
+    await transport.send({
+      id: 1,
+      method: "state.get",
+      params: { namespace: [] },
+    });
+
+    expect(attempts).toBe(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry non-retryable status codes when asyncCaller is provided", async () => {
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response("not found", { status: 404, statusText: "Not Found" })
+      )
+    ) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
+    });
+
+    await expect(
+      transport.send({
+        id: 1,
+        method: "state.get",
+        params: { namespace: [] },
+      })
+    ).rejects.toThrow(/HTTP 404/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

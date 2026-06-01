@@ -7,6 +7,7 @@ import type {
   ErrorResponse,
 } from "@langchain/protocol";
 
+import type { AsyncCaller } from "../../../utils/async_caller.js";
 import type {
   HeaderValue,
   ProtocolRequestHook,
@@ -22,6 +23,7 @@ import {
 } from "./utils.js";
 import { BytesLineDecoder, SSEDecoder } from "../../../utils/sse.js";
 import { IterableReadableStream } from "../../../utils/stream.js";
+import { webSocketReconnectDelayMs } from "./websocket.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
@@ -44,6 +46,14 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
 
+  private readonly asyncCaller?: AsyncCaller;
+
+  private readonly maxReconnectAttempts: number;
+
+  private readonly onReconnect?: ProtocolSseTransportOptions["onReconnect"];
+
+  private readonly reconnectDelayMs: (attempt: number) => number;
+
   private readonly commandsUrl: string;
 
   private readonly streamUrl: string;
@@ -62,6 +72,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.defaultHeaders = options.defaultHeaders ?? {};
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
+    this.asyncCaller = options.asyncCaller;
+    // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
+    this.maxReconnectAttempts =
+      options.fetch != null
+        ? 0
+        : (options.maxReconnectAttempts ?? 5);
+    this.onReconnect = options.onReconnect;
+    this.reconnectDelayMs =
+      options.reconnectDelayMs ?? webSocketReconnectDelayMs;
     this.threadId = options.threadId;
     this.commandsUrl =
       options.paths?.commands ?? `/threads/${this.threadId}/commands`;
@@ -189,60 +208,102 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
-    const since = (params as SubscribeParams & { since?: unknown }).since;
+    let resumeAfterSeq =
+      typeof (params as SubscribeParams & { since?: unknown }).since ===
+      "number"
+        ? (params as SubscribeParams & { since: number }).since
+        : undefined;
+
+    let readySettled = false;
 
     const startStream = async () => {
-      try {
-        const response = await this.request(streamUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            accept: "text/event-stream",
-          },
-          body: JSON.stringify({
-            channels: params.channels,
-            ...(params.namespaces ? { namespaces: params.namespaces } : {}),
-            ...(params.depth != null ? { depth: params.depth } : {}),
-            ...(typeof since === "number" ? { since } : {}),
-          }),
-          signal: ac.signal,
-        });
+      let attempt = 0;
+      let lastError: unknown;
 
-        resolveReady();
-
-        const readable =
-          response.body ??
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.close();
+      while (!ac.signal.aborted && !this.closed) {
+        try {
+          const response = await this.request(streamUrl, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              accept: "text/event-stream",
             },
+            body: JSON.stringify({
+              channels: params.channels,
+              ...(params.namespaces ? { namespaces: params.namespaces } : {}),
+              ...(params.depth != null ? { depth: params.depth } : {}),
+              ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
+            }),
+            signal: ac.signal,
           });
 
-        const stream = readable
-          .pipeThrough(BytesLineDecoder())
-          .pipeThrough(SSEDecoder());
-        const iterable = IterableReadableStream.fromReadableStream(stream);
+          if (!readySettled) {
+            readySettled = true;
+            resolveReady();
+          }
 
-        for await (const event of iterable) {
-          if (ac.signal.aborted || this.closed) {
-            break;
+          const readable =
+            response.body ??
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close();
+              },
+            });
+
+          const stream = readable
+            .pipeThrough(BytesLineDecoder())
+            .pipeThrough(SSEDecoder());
+          const iterable = IterableReadableStream.fromReadableStream(stream);
+
+          for await (const event of iterable) {
+            if (ac.signal.aborted || this.closed) {
+              break;
+            }
+            if (isRecord(event.data)) {
+              const msg = event.data as Message & {
+                seq?: number;
+                method?: string;
+              };
+              if (typeof msg.seq === "number") {
+                resumeAfterSeq = msg.seq;
+              }
+              streamQueue.push(msg);
+            }
           }
-          if (isRecord(event.data)) {
-            const msg = event.data as Message & {
-              seq?: number;
-              method?: string;
-            };
-            streamQueue.push(msg);
-          }
-        }
-        streamQueue.close();
-      } catch (error) {
-        rejectReady(error);
-        if (ac.signal.aborted || this.closed) {
           streamQueue.close();
           return;
+        } catch (error) {
+          lastError = error;
+          if (ac.signal.aborted || this.closed) {
+            if (!readySettled) {
+              rejectReady(error);
+            }
+            streamQueue.close();
+            return;
+          }
+          if (this.maxReconnectAttempts <= 0) {
+            if (!readySettled) {
+              rejectReady(error);
+            }
+            streamQueue.close(toError(error));
+            return;
+          }
+          attempt += 1;
+          if (attempt > this.maxReconnectAttempts) {
+            if (!readySettled) {
+              rejectReady(error);
+            }
+            streamQueue.close(toError(error));
+            return;
+          }
+          this.onReconnect?.({ attempt, cause: error });
+          const delay = this.reconnectDelayMs(attempt);
+          if (delay > 0) {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, delay);
+            });
+          }
         }
-        streamQueue.close(error);
       }
     };
 
@@ -291,10 +352,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       requestInit = await this.onRequest(url, requestInit);
     }
 
-    try {
+    const execute = async (): Promise<Response> => {
       const fetchImpl = await this.resolveFetch();
       const response = await fetchImpl(url.toString(), requestInit);
       if (!response.ok) {
+        // Reject with the Response so AsyncCaller maps it to HTTPError and
+        // applies STATUS_NO_RETRY / retry policy consistently with REST.
+        if (this.asyncCaller) {
+          throw response;
+        }
         let detail = "";
         try {
           const body = await response.text();
@@ -315,6 +381,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         throw new Error(message);
       }
       return response;
+    };
+
+    try {
+      return this.asyncCaller
+        ? await this.asyncCaller.call(execute)
+        : await execute();
     } catch (error) {
       throw toError(error);
     }

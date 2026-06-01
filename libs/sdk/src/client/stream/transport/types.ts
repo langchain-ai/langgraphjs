@@ -1,4 +1,5 @@
 import type { CommandResponse, ErrorResponse } from "@langchain/protocol";
+import type { AsyncCaller } from "../../../utils/async_caller.js";
 
 export type ProtocolRequestHook = (
   url: URL,
@@ -19,7 +20,25 @@ export interface ProtocolSseTransportOptions {
   onRequest?: ProtocolRequestHook;
   fetch?: typeof fetch;
   fetchFactory?: () => typeof fetch | Promise<typeof fetch>;
+  /**
+   * When set, command and SSE subscription HTTP requests are executed
+   * through {@link AsyncCaller} (retries, concurrency). Typically wired
+   * from {@link BaseClient} via `client.threads.stream()`.
+   */
+  asyncCaller?: AsyncCaller;
   paths?: ProtocolTransportPaths;
+  /**
+   * Maximum reconnect attempts after an unexpected SSE disconnect.
+   * Defaults to 5. Set to 0 to disable automatic reconnection.
+   */
+  maxReconnectAttempts?: number;
+  /** Called before each SSE reconnect attempt (after backoff delay). */
+  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /**
+   * Backoff before each SSE reconnect attempt. Defaults to
+   * {@link webSocketReconnectDelayMs} from `./websocket.js`.
+   */
+  reconnectDelayMs?: (attempt: number) => number;
 }
 
 export interface ProtocolWebSocketTransportOptions {
@@ -29,6 +48,25 @@ export interface ProtocolWebSocketTransportOptions {
   onRequest?: ProtocolRequestHook;
   webSocketFactory?: (url: string) => WebSocket;
   paths?: Pick<ProtocolTransportPaths, "stream">;
+  /**
+   * Maximum reconnect attempts after an unexpected socket close.
+   * Defaults to 5. Set to 0 to disable automatic reconnection.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Called before each reconnect attempt (after backoff delay).
+   */
+  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /**
+   * Invoked after the socket has been re-established. Use to restore
+   * server-side subscription state (see `ThreadStream`).
+   */
+  onReconnected?: () => void | Promise<void>;
+  /**
+   * Backoff before each reconnect attempt. Defaults to
+   * {@link webSocketReconnectDelayMs}.
+   */
+  reconnectDelayMs?: (attempt: number) => number;
 }
 
 export type HeaderValue = string | undefined | null;

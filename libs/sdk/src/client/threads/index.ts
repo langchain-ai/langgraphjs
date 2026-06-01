@@ -474,9 +474,9 @@ export class ThreadsClient<
     const { threadId, options } =
       typeof threadIdOrOptions === "string"
         ? {
-            threadId: threadIdOrOptions,
-            options: maybeOptions as ThreadStreamOptions,
-          }
+          threadId: threadIdOrOptions,
+          options: maybeOptions as ThreadStreamOptions,
+        }
         : { threadId: uuidv7(), options: threadIdOrOptions };
 
     // `transport` accepts either a preset string (`"sse"` / `"websocket"`)
@@ -484,6 +484,12 @@ export class ThreadsClient<
     // the built-in factories entirely — this is the seam that lets users
     // point `useStream` at any agent server (including the thin wrappers
     // produced by `HttpAgentServerAdapter`).
+    // When callers supply `fetch`, use it verbatim (tests, auth shims). Otherwise
+    // route protocol HTTP and media URL fetches through AsyncCaller like REST.
+    const userFetch = options.fetch;
+    const protocolFetch =
+      userFetch ?? this.asyncCaller.fetch.bind(this.asyncCaller);
+
     let transport: TransportAdapter;
     if (options.transport != null && typeof options.transport !== "string") {
       transport = options.transport;
@@ -491,24 +497,37 @@ export class ThreadsClient<
       const transportKind: ThreadStreamTransportKind =
         options.transport ??
         (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
+      const maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+
+      /**
+       * Common options for both transports.
+       */
+      const commonOpts = {
+        apiUrl: this.apiUrl,
+        threadId,
+        defaultHeaders: this.defaultHeaders,
+        onRequest: this.onRequest,
+        maxReconnectAttempts,
+        reconnectDelayMs: options.reconnectDelayMs,
+        onReconnect: options.onReconnect,
+      }
+
       transport =
         transportKind === "websocket"
           ? new ProtocolWebSocketTransportAdapter({
-              apiUrl: this.apiUrl,
-              threadId,
-              defaultHeaders: this.defaultHeaders,
-              onRequest: this.onRequest,
-              webSocketFactory: options.webSocketFactory,
-            })
+            ...commonOpts,
+            webSocketFactory: options.webSocketFactory,
+          })
           : new ProtocolSseTransportAdapter({
-              apiUrl: this.apiUrl,
-              threadId,
-              defaultHeaders: this.defaultHeaders,
-              onRequest: this.onRequest,
-              fetch: options.fetch,
-            });
+            ...commonOpts,
+            fetch: userFetch,
+            asyncCaller: userFetch ? undefined : this.asyncCaller,
+          });
     }
 
-    return new ThreadStream<TExtensions>(transport, options);
+    return new ThreadStream<TExtensions>(transport, {
+      ...options,
+      fetch: protocolFetch,
+    });
   }
 }

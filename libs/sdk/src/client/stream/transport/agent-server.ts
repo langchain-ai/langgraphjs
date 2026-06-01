@@ -27,6 +27,7 @@ import type {
   Message,
   SubscribeParams,
 } from "@langchain/protocol";
+import type { AsyncCaller } from "../../../utils/async_caller.js";
 import { ProtocolSseTransportAdapter } from "./http.js";
 import { ProtocolWebSocketTransportAdapter } from "./websocket.js";
 import type {
@@ -50,6 +51,12 @@ export interface HttpAgentServerAdapterOptions {
    * mocks. Ignored when `webSocketFactory` is also supplied.
    */
   fetch?: typeof fetch;
+  /**
+   * Retries and concurrency for SSE/command HTTP. When omitted, requests
+   * use raw `fetch` with no automatic retries (same as constructing
+   * {@link ProtocolSseTransportAdapter} without this option).
+   */
+  asyncCaller?: AsyncCaller;
   /**
    * Optional WebSocket factory. Supplying it flips the adapter into
    * WebSocket mode — SSE is bypassed entirely.
@@ -89,6 +96,7 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
             defaultHeaders: options.defaultHeaders,
             onRequest: options.onRequest,
             fetch: options.fetch,
+            asyncCaller: options.asyncCaller,
             paths: options.paths,
           });
 

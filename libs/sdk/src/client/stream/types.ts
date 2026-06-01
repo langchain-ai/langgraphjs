@@ -126,6 +126,20 @@ export interface ThreadStreamOptions {
    * for the SSE transport and for custom {@link AgentServerAdapter}s.
    */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in `"sse"` / `"websocket"` transports only: max reconnect
+   * attempts after an unexpected disconnect. Defaults to 5.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in transports only: delay before each reconnect attempt.
+   * Defaults to exponential backoff with jitter.
+   */
+  reconnectDelayMs?: (attempt: number) => number;
+  /**
+   * Built-in transports only: invoked before each reconnect attempt.
+   */
+  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
 }
 
 export interface SessionOrderingState {

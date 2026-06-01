@@ -761,6 +761,12 @@ export class ThreadStream<
     // SSE transports deliver events via openEventStream — the events()
     // iterable is inert. Skip the consumer loop in that case.
     if (this.#transportAdapter.openEventStream == null) {
+      const wsTransport = this.#transportAdapter as {
+        setOnReconnected?: (handler: () => void | Promise<void>) => void;
+      };
+      wsTransport.setOnReconnected?.(() =>
+        this.#resubscribeWebSocketSubscriptions()
+      );
       void this.#consumeEvents();
     }
   }
@@ -2186,6 +2192,46 @@ export class ThreadStream<
     return handle as SubscriptionHandle<Event>;
   }
 
+  /**
+   * Re-issue `subscription.subscribe` for every active WS subscription
+   * after the transport reconnects. The server replays buffered events on
+   * the new socket; client-side `event_id` dedup suppresses duplicates.
+   */
+  async #resubscribeWebSocketSubscriptions(): Promise<void> {
+    if (this.#transportAdapter.openEventStream != null || this.#closed) {
+      return;
+    }
+
+    const entries = [...this.#subscriptions.entries()];
+    await Promise.all(
+      entries.map(async ([id, subscription]) => {
+        if (id.startsWith("pending:")) {
+          return;
+        }
+        try {
+          const result = await this.#send(
+            "subscription.subscribe",
+            subscription.filter
+          );
+          const nextId = result.subscription_id;
+          if (nextId === id) {
+            return;
+          }
+          this.#subscriptions.delete(id);
+          (
+            subscription as unknown as SubscriptionHandle<Event>
+          ).subscriptionId = nextId;
+          this.#subscriptions.set(nextId, subscription);
+          if (this.#lifecycleSubId === id) {
+            this.#lifecycleSubId = nextId;
+          }
+        } catch {
+          // Best-effort; the content pump may still receive replayed events.
+        }
+      })
+    );
+  }
+
   async #consumeEvents(): Promise<void> {
     try {
       for await (const message of this.#transportAdapter.events()) {
@@ -2435,7 +2481,10 @@ export type {
 export { inferChannel, matchesSubscription } from "./subscription.js";
 export type { TransportAdapter, AgentServerAdapter } from "./transport.js";
 export type * from "./types.js";
-export { ProtocolError } from "./error.js";
+export {
+  ProtocolError,
+  MaxWebSocketReconnectAttemptsError,
+} from "./error.js";
 export { MediaAssembler, MediaAssemblyError } from "./media.js";
 export type {
   AnyMediaHandle,
