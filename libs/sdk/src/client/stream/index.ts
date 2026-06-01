@@ -2481,10 +2481,7 @@ export type {
 export { inferChannel, matchesSubscription } from "./subscription.js";
 export type { TransportAdapter, AgentServerAdapter } from "./transport.js";
 export type * from "./types.js";
-export {
-  ProtocolError,
-  MaxWebSocketReconnectAttemptsError,
-} from "./error.js";
+export { ProtocolError, MaxWebSocketReconnectAttemptsError } from "./error.js";
 export { MediaAssembler, MediaAssemblyError } from "./media.js";
 export type {
   AnyMediaHandle,

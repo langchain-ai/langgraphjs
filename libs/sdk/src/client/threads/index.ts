@@ -474,9 +474,9 @@ export class ThreadsClient<
     const { threadId, options } =
       typeof threadIdOrOptions === "string"
         ? {
-          threadId: threadIdOrOptions,
-          options: maybeOptions as ThreadStreamOptions,
-        }
+            threadId: threadIdOrOptions,
+            options: maybeOptions as ThreadStreamOptions,
+          }
         : { threadId: uuidv7(), options: threadIdOrOptions };
 
     // `transport` accepts either a preset string (`"sse"` / `"websocket"`)
@@ -510,19 +510,19 @@ export class ThreadsClient<
         maxReconnectAttempts,
         reconnectDelayMs: options.reconnectDelayMs,
         onReconnect: options.onReconnect,
-      }
+      };
 
       transport =
         transportKind === "websocket"
           ? new ProtocolWebSocketTransportAdapter({
-            ...commonOpts,
-            webSocketFactory: options.webSocketFactory,
-          })
+              ...commonOpts,
+              webSocketFactory: options.webSocketFactory,
+            })
           : new ProtocolSseTransportAdapter({
-            ...commonOpts,
-            fetch: userFetch,
-            asyncCaller: userFetch ? undefined : this.asyncCaller,
-          });
+              ...commonOpts,
+              fetch: userFetch,
+              asyncCaller: userFetch ? undefined : this.asyncCaller,
+            });
     }
 
     return new ThreadStream<TExtensions>(transport, {

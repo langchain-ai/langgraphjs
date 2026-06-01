@@ -149,6 +149,51 @@ describe("ProtocolWebSocketTransportAdapter reconnection", () => {
     vi.useRealTimers();
   });
 
+  it("onReconnected can send commands without deadlocking on reconnectInFlight", async () => {
+    let connections = 0;
+    let resubscribed = false;
+
+    const transport = new ProtocolWebSocketTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: "thread-1",
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      webSocketFactory: (url) => {
+        connections += 1;
+        const socket = new FakeWebSocket(url);
+        socket.send = (data: string) => {
+          const command = JSON.parse(data) as { id: number; method: string };
+          queueMicrotask(() => {
+            socket.simulateMessage({
+              type: "success",
+              id: command.id,
+              result: { subscription_id: `sub_${command.id}` },
+            });
+          });
+        };
+        if (connections === 1) {
+          queueMicrotask(() => socket.simulateUnexpectedClose());
+        }
+        return socket as unknown as WebSocket;
+      },
+      onReconnected: async () => {
+        await transport.send({
+          id: 42,
+          method: "subscription.subscribe",
+          params: { channels: ["values"] },
+        });
+        resubscribed = true;
+      },
+    });
+
+    await transport.open();
+    await vi.runAllTimersAsync();
+
+    expect(connections).toBe(2);
+    expect(resubscribed).toBe(true);
+    await transport.close();
+  });
+
   it("reconnects after an unexpected close and keeps the events iterator alive", async () => {
     let connections = 0;
     const reconnected = vi.fn();

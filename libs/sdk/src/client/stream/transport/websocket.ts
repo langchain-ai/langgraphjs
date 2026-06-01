@@ -235,11 +235,19 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   private async sendCommand(
     command: Command
   ): Promise<CommandResponse | ErrorResponse> {
-    if (this.reconnectInFlight != null) {
+    // Wait for an in-flight reconnect only when the socket is not usable.
+    // After `open()` succeeds, `#runReconnectLoop` may still be awaiting
+    // `onReconnected` (e.g. ThreadStream resubscribe). Those callbacks call
+    // `sendCommand` and must not await the same `reconnectInFlight` promise.
+    let socket = this.socket;
+    if (
+      this.reconnectInFlight != null &&
+      (socket == null || socket.readyState !== WebSocket.OPEN)
+    ) {
       await this.reconnectInFlight.catch(() => undefined);
+      socket = this.socket;
     }
 
-    const socket = this.socket;
     if (socket == null || socket.readyState !== WebSocket.OPEN) {
       throw new Error("Protocol WebSocket is not open.");
     }

@@ -75,9 +75,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.asyncCaller = options.asyncCaller;
     // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
     this.maxReconnectAttempts =
-      options.fetch != null
-        ? 0
-        : (options.maxReconnectAttempts ?? 5);
+      options.fetch != null ? 0 : (options.maxReconnectAttempts ?? 5);
     this.onReconnect = options.onReconnect;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;

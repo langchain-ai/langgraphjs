@@ -72,8 +72,7 @@ function filterEvents(
 ): MockProtocolEvent[] {
   return events.filter(
     (event) =>
-      matchesChannels(event, channels) &&
-      (since == null || event.seq > since)
+      matchesChannels(event, channels) && (since == null || event.seq > since)
   );
 }
 
@@ -215,7 +214,10 @@ export async function startMockProtocolServer(
       } catch {
         return;
       }
-      if (typeof command.id !== "number" || typeof command.method !== "string") {
+      if (
+        typeof command.id !== "number" ||
+        typeof command.method !== "string"
+      ) {
         return;
       }
       if (ws.readyState === ws.OPEN) {
@@ -308,10 +310,7 @@ export async function startMockProtocolServer(
         }
         delivered += 1;
 
-        if (
-          failAfterDelivered != null &&
-          delivered >= failAfterDelivered
-        ) {
+        if (failAfterDelivered != null && delivered >= failAfterDelivered) {
           await new Promise<void>((resolve) => {
             setTimeout(resolve, 50);
           });
