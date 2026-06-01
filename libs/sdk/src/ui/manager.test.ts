@@ -1495,4 +1495,132 @@ describe("StreamManager", () => {
       expect(mgr.getSubagentsByMessage(streamingId)).toHaveLength(0);
     });
   });
+
+  describe("fetchSubagentHistory namespace resolution", () => {
+    it("prefers a completed task's direct mapping over a newer pending checkpoint's positional guess", async () => {
+      /**
+       * Regression test: the most recent checkpoint is a still-pending (e.g.
+       * interrupted) PUSH task. That head checkpoint has no task result, so it
+       * cannot produce a direct tool_call_id mapping — but its accumulated
+       * `values.messages` still contains the AI message whose subagent tool
+       * call already completed in an OLDER checkpoint.
+       *
+       * The positional fallback, run against the head checkpoint, would align
+       * that stale AI tool call to the head's unrelated pending push task and
+       * stop — never reaching the older checkpoint whose task result holds the
+       * correct namespace. Direct mappings must take precedence across the
+       * whole history, not just the first checkpoint that yields any mapping.
+       */
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+
+      // AI message whose subagent tool call ("call-real") completed in an
+      // OLDER checkpoint. Registers a pending subagent with empty messages.
+      const aiMessage = {
+        type: "ai",
+        id: "ai-completed",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-real",
+            name: "task",
+            args: {
+              subagent_type: "researcher",
+              description: "Research the real topic",
+            },
+          },
+        ],
+      };
+
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+      expect(sm.getSubagent("call-real")?.messages).toHaveLength(0);
+
+      // Main history is newest-first:
+      //   [0] head    — pending push task, no result; stale AI message in values
+      //   [1] older   — completed push task; result maps call-real -> task:uuid-real
+      const mainHistory = [
+        {
+          values: { messages: [aiMessage] },
+          tasks: [
+            {
+              id: "uuid-pending",
+              name: "task",
+              path: ["__pregel_push", 0],
+              checkpoint: null,
+            },
+          ],
+        },
+        {
+          values: { messages: [aiMessage] },
+          tasks: [
+            {
+              id: "uuid-real",
+              name: "task",
+              path: ["__pregel_push", 0],
+              checkpoint: null,
+              result: {
+                messages: [
+                  {
+                    type: "tool",
+                    tool_call_id: "call-real",
+                    content: "ok",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ];
+
+      const byNamespace: Record<string, Array<{ values: unknown }>> = {
+        // Correct namespace, derived from the completed task result.
+        "task:uuid-real": [
+          {
+            values: {
+              messages: [
+                { type: "human", id: "h-real", content: "Research the real topic" },
+                { type: "ai", id: "ai-real", content: "Correct research result" },
+              ],
+            },
+          },
+        ],
+        // Wrong namespace, returned only if the positional fallback mis-maps.
+        "task:uuid-pending": [
+          {
+            values: {
+              messages: [{ type: "ai", id: "ai-stale", content: "Stale pending result" }],
+            },
+          },
+        ],
+      };
+
+      const getHistory = vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          const ns = opts?.checkpoint?.checkpoint_ns;
+          if (ns) return byNamespace[ns] ?? [];
+          return mainHistory;
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as Parameters<
+          typeof sm.fetchSubagentHistory
+        >[0],
+        "thread-1"
+      );
+
+      const contents = (sm.getSubagent("call-real")?.messages ?? []).map(
+        (m) => (m as { content?: unknown }).content
+      );
+      expect(contents).toContain("Correct research result");
+      expect(contents).not.toContain("Stale pending result");
+    });
+  });
 });

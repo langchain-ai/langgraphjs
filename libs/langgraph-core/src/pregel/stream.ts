@@ -162,7 +162,17 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   }
 
   push(chunk: StreamChunk) {
+    // Prevent pushing to a closed stream to avoid race condition errors
+    if (this._closed || !this.controller) {
+      // Silently drop chunks when stream is closed - this is expected behavior
+      // when async operations try to push after stream termination
+      return;
+    }
+
+    // Forward chunk to passthrough function if provided
     this.passthroughFn?.(chunk);
+
+    // Attempt to enqueue the chunk to the underlying stream
     this.controller.enqueue(chunk);
   }
 
@@ -178,7 +188,13 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
-    this.controller.error(e);
+    try {
+      this.controller?.error(e);
+    } finally {
+      // Mark the stream as closed so any late `push()` calls from in-flight
+      // parallel tasks are dropped instead of throwing on an errored controller.
+      this._closed = true;
+    }
   }
 }
 
