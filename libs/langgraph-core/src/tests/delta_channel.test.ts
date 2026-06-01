@@ -292,6 +292,57 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     expect(hist.messages.writes.map((w) => w[2])).toEqual([[1], [2]]);
   });
 
+  it("replays on-path writes when the seed is a plain (migration) value", async () => {
+    // A thread migrated from a pre-delta channel has a plain
+    // value blob at the migration-boundary checkpoint. Writes stored on that
+    // checkpoint are the deltas that produce its child and must be replayed on
+    // top of the plain seed — a guard that skipped writes for non-DeltaSnapshot
+    // seeds dropped them, losing post-migration state on reload.
+    const saver = new MemorySaver();
+    const threadId = "t-migration";
+    const baseConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+    const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
+
+    // cp0: plain migration blob [0, 1], with a post-migration write [2].
+    const cp0: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: "00000000-0000-0000-0000-0000000000b0",
+      channel_values: { messages: [0, 1] },
+      channel_versions: { messages: 1 },
+    };
+    const c0 = await saver.put(baseConfig, cp0, meta);
+    await saver.putWrites(c0, [["messages", [2]]], "task0");
+
+    // cp1: delta child (no value), target reconstructed via the plain seed.
+    const cp1: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: "00000000-0000-0000-0000-0000000000b1",
+      channel_values: {},
+      channel_versions: { messages: 2 },
+    };
+    const c1 = await saver.put(c0, cp1, meta);
+
+    const hist = await saver.getDeltaChannelHistory({
+      config: c1,
+      channels: ["messages"],
+    });
+    // Plain seed retained as-is, and the migration-boundary write is replayed.
+    expect(isDeltaSnapshot(hist.messages.seed)).toBe(false);
+    expect(hist.messages.seed).toEqual([0, 1]);
+    expect(hist.messages.writes.map((w) => w[2])).toEqual([[2]]);
+
+    // The optimized override must agree with the base implementation.
+    const base = await Object.getPrototypeOf(
+      Object.getPrototypeOf(saver)
+    ).getDeltaChannelHistory.call(saver, { config: c1, channels: ["messages"] });
+    expect(base.messages.seed).toEqual(hist.messages.seed);
+    expect(base.messages.writes.map((w: [string, string, unknown]) => w[2])).toEqual(
+      hist.messages.writes.map((w) => w[2])
+    );
+  });
+
   it("base default implementation agrees with the override for snapshots", async () => {
     // The base implementation walks getTuple()+parentConfig.
     const saver = new MemorySaver();
