@@ -45,4 +45,5 @@ tsconfig.vitest-temp.json
 agent-os/
 __screenshots__
 *_*.md
+!libs/checkpoint-oracledb/REVIEW_SETUP.md
 oracle-notes/
