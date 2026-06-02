@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.3.4
+
+### Patch Changes
+
+- [#2035](https://github.com/langchain-ai/langgraphjs/pull/2035) [`7c3a98b`](https://github.com/langchain-ai/langgraphjs/commit/7c3a98b23af29fee0d9f064942abb71044ed0e51) Thanks [@JadenKim-dev](https://github.com/JadenKim-dev)! - fix(core): prevent Zod schema defaults from overwriting checkpoint state in Command.update
+
+- Updated dependencies [[`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36)]:
+  - @langchain/langgraph-sdk@1.9.12
+
 ## 1.3.3
 
 ### Patch Changes
