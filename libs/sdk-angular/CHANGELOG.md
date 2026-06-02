@@ -1,5 +1,20 @@
 # @langchain/angular
 
+## 1.0.12
+
+### Patch Changes
+
+- [#2467](https://github.com/langchain-ai/langgraphjs/pull/2467) [`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): route headless tool resumes through respond on v1 stream
+
+  `useStream` was calling `submit(null, { command })` for headless-tool resumes,
+  which dispatches `run.start` without delivering the tool result. Add
+  `applyHeadlessToolResumeCommand` to route payloads through `respond` /
+  `respondAll`, and tighten headless-tool browser tests to assert end-to-end
+  resume and graph completion.
+
+- Updated dependencies [[`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36)]:
+  - @langchain/langgraph-sdk@1.9.12
+
 ## 1.0.11
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.3
+
+### Patch Changes
+
+- [#2260](https://github.com/langchain-ai/langgraphjs/pull/2260) [`4d03dcb`](https://github.com/langchain-ai/langgraphjs/commit/4d03dcbc28bbfdf4c0f0ac065b9853652836d2f9) Thanks [@venkat22022202](https://github.com/venkat22022202)! - fix(mongodb): include pendingWrites in list() results
+
 ## 1.3.2
 
 ### Patch Changes
