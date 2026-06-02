@@ -78,7 +78,11 @@ export function normalizeHitlInterruptPayload(value: unknown): unknown {
 }
 
 function normalizeDecisionForServer(decision: unknown): unknown {
-  if (decision === null || typeof decision !== "object" || Array.isArray(decision)) {
+  if (
+    decision === null ||
+    typeof decision !== "object" ||
+    Array.isArray(decision)
+  ) {
     return decision;
   }
   const obj = decision as Record<string, unknown>;
