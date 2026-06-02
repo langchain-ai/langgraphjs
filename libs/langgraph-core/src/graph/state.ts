@@ -141,16 +141,18 @@ export type NodePolicyOptions = {
  *
  * @internal
  */
-export type ResolvedNodePolicies = {
+export type NodePolicies = {
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy;
+  /** Set when `addNode(..., { cachePolicy: false })` opts out of graph defaults. */
+  cachePolicyOptOut?: true;
 };
 
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   RunInput,
   RunOutput
 > &
-  ResolvedNodePolicies & {
+  NodePolicies & {
     input?: StateDefinition;
   };
 
@@ -404,7 +406,7 @@ export class StateGraph<
    * Graph-wide default node policies, resolved at `compile()` time.
    * @internal
    */
-  _nodeDefaults: ResolvedNodePolicies = {};
+  _nodeDefaults: NodePolicies = {};
 
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
@@ -1002,14 +1004,21 @@ export class StateGraph<
       }
 
       let cachePolicy = options?.cachePolicy;
+      let cachePolicyOptOut: true | undefined;
       if (typeof cachePolicy === "boolean") {
-        cachePolicy = cachePolicy ? {} : undefined;
+        if (cachePolicy) {
+          cachePolicy = {};
+        } else {
+          cachePolicy = undefined;
+          cachePolicyOptOut = true;
+        }
       }
 
       const nodeSpec: StateGraphNodeSpec<S, U> = {
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
         cachePolicy,
+        cachePolicyOptOut,
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -1281,7 +1290,9 @@ export class StateGraph<
         ? {
             ...node,
             retryPolicy: node.retryPolicy ?? nodeDefaults.retryPolicy,
-            cachePolicy: node.cachePolicy ?? nodeDefaults.cachePolicy,
+            cachePolicy: node.cachePolicyOptOut
+              ? undefined
+              : (node.cachePolicy ?? nodeDefaults.cachePolicy),
           }
         : node;
       compiled.attachNode(key as N, resolvedNode);

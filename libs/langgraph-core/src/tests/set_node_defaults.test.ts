@@ -124,6 +124,27 @@ describe("StateGraph.setNodeDefaults", () => {
     expect(graph.nodes.b.cachePolicy).toEqual({ ttl: 60 });
   });
 
+  it("lets a per-node cachePolicy: false opt out of the default", async () => {
+    const cache = new InMemoryCache();
+    const cachedSpy = vi.fn(() => ({ foo: "cached" }));
+    const uncachedSpy = vi.fn(() => ({ foo: "uncached" }));
+    const graph = new StateGraph(State)
+      .setNodeDefaults({ cachePolicy: true })
+      .addNode("cached", cachedSpy)
+      .addNode("uncached", uncachedSpy, { cachePolicy: false })
+      .addEdge(START, "cached")
+      .addEdge("cached", "uncached")
+      .compile({ cache });
+
+    expect(graph.nodes.cached.cachePolicy).toEqual({});
+    expect(graph.nodes.uncached.cachePolicy).toBeUndefined();
+
+    await graph.invoke({ foo: "" });
+    await graph.invoke({ foo: "" });
+    expect(cachedSpy).toHaveBeenCalledTimes(1);
+    expect(uncachedSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("is chainable and order-independent (called after addNode)", () => {
     const graph = new StateGraph(State)
       .addNode("a", () => ({ foo: "a" }))
