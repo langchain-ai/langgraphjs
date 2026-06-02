@@ -22,8 +22,8 @@ export function putTests<T extends BaseCheckpointSaver>(
     let checkpoint_id1: string;
 
     beforeEach(async () => {
-      thread_id = uuid6(-3);
-      checkpoint_id1 = uuid6(-3);
+      thread_id = uuid6(3);
+      checkpoint_id1 = uuid6(3);
       checkpointer = await initializer.createCheckpointer();
     });
 
@@ -222,7 +222,7 @@ export function putTests<T extends BaseCheckpointSaver>(
         const generatedPuts = newVersions.map((newVersions) => ({
           tuple: initialCheckpointTuple({
             thread_id,
-            checkpoint_id: uuid6(-3),
+            checkpoint_id: uuid6(3),
             checkpoint_ns: "",
             channel_values: {
               foo: "bar",

@@ -108,7 +108,7 @@ export class AsyncCaller {
 
   protected maxRetries: AsyncCallerParams["maxRetries"];
 
-  private queue: typeof import("p-queue")["default"]["prototype"];
+  private queue: (typeof import("p-queue"))["default"]["prototype"];
 
   private onFailedResponseHook?: ResponseCallback;
 
@@ -154,7 +154,7 @@ export class AsyncCaller {
               }
             }),
           {
-            async onFailedAttempt({ error }) {
+            async onFailedAttempt({ error, retriesLeft }) {
               const errorMessage = error.message ?? "";
               if (
                 errorMessage.startsWith("Cancel") ||
@@ -175,6 +175,7 @@ export class AsyncCaller {
                 errorMessage.includes("Failed to fetch") ||
                 errorMessage.includes("NetworkError")
               ) {
+                if (retriesLeft > 0) return;
                 const connectionError = new Error(
                   `Unable to connect to LangGraph server. Please ensure the server is running and accessible. Original error: ${errorMessage}`
                 );

@@ -15,6 +15,7 @@ export {
   type StateDefinition,
   type SingleReducer,
   type CompiledGraph,
+  type CompiledGraphType,
   type GraphNode,
   type GraphNodeTypes,
   type GraphNodeReturnValue,
@@ -22,10 +23,17 @@ export {
   type ConditionalEdgeRouterTypes,
   type ExtractStateType,
   type ExtractUpdateType,
+  type ToStateDefinition,
   type StateDefinitionInit,
   type ContextSchemaInit,
   type StateGraphInit,
   type StateGraphOptions,
+  type NodeSpec,
+  type AddNodeOptions,
+  type StateGraphNodeSpec,
+  type StateGraphAddNodeOptions,
+  type StateGraphArgsWithStateSchema,
+  type StateGraphArgsWithInputOutputSchemas,
 } from "./graph/index.js";
 export type {
   StateSnapshot,
@@ -39,6 +47,49 @@ export type {
 } from "./pregel/types.js";
 export type { PregelNode } from "./pregel/read.js";
 export type { Pregel } from "./pregel/index.js";
+export {
+  ChatModelStreamImpl,
+  EventLog,
+  StreamChannel,
+  GraphRunStream,
+  SubgraphRunStream,
+  STREAM_EVENTS_V3_MODES,
+  convertToProtocolEvent,
+  isNativeTransformer,
+  createGraphRunStream,
+  createMessagesTransformer,
+  createValuesTransformer,
+  createLifecycleTransformer,
+  createSubgraphDiscoveryTransformer,
+  filterLifecycleEntries,
+  filterSubgraphHandles,
+} from "./stream/index.js";
+export type {
+  ProtocolEvent,
+  Namespace,
+  UsageInfo,
+  MessagesEventData,
+  ToolsEventData,
+  UpdatesEventData,
+  StreamTransformer,
+  StreamEmitter,
+  NativeStreamTransformer,
+  ChatModelStream,
+  ToolCallStatus,
+  ToolCallStream,
+  InterruptPayload,
+  InferExtensions,
+  AgentStatus,
+  LifecycleData,
+  LifecycleCause,
+  LifecycleEntry,
+  LifecycleProjection,
+  LifecycleTransformerOptions,
+  SubgraphDiscoveryProjection,
+  SubgraphDiscoveryTransformerOptions,
+  CreateGraphRunStreamOptions,
+  ConvertToProtocolEventOptions,
+} from "./stream/index.js";
 export * from "./errors.js";
 export {
   BaseChannel,
@@ -54,7 +105,7 @@ export {
 export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { UntrackedValueChannel } from "./channels/untracked_value.js";
 export { type AnnotationRoot } from "./graph/index.js";
-export { type RetryPolicy } from "./pregel/utils/index.js";
+export { type RetryPolicy, type CachePolicy } from "./pregel/utils/index.js";
 export {
   Send,
   Command,
@@ -106,8 +157,22 @@ export {
   MessagesZodMeta,
 } from "./graph/messages_annotation.js";
 export {
+  type ExecutionInfo,
   type LangGraphRunnableConfig,
   type Runtime,
+  type ServerInfo,
 } from "./pregel/runnable_types.js";
 
 export * from "./state/index.js";
+
+export { interrupt } from "./interrupt.js";
+export type {
+  InferInterruptInputType,
+  InferInterruptResumeType,
+} from "./interrupt.js";
+export { writer } from "./writer.js";
+export type { InferWriterType } from "./writer.js";
+export { pushMessage } from "./graph/message.js";
+export { getStore, getWriter, getConfig } from "./pregel/utils/config.js";
+export { getPreviousState } from "./func/index.js";
+export { getCurrentTaskInput } from "./pregel/utils/config.js";

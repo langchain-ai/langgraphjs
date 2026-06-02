@@ -25,7 +25,7 @@ const SwarmState = Annotation.Root({
  */
 const addActiveAgentRouter = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState
+  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState,
 >(
   /** The graph builder (StateGraph) to add the router to. */
   builder: StateGraph<
@@ -74,7 +74,7 @@ export type CreateSwarmParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AgentAnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation
+  AgentAnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation,
 > = {
   /** List of agents to add to the swarm */
   agents: CompiledStateGraph<
@@ -100,7 +100,7 @@ export type CreateSwarmParams<
  */
 const createSwarm = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState
+  AnnotationRootT extends AnnotationRoot<any> = typeof SwarmState,
 >({
   agents,
   defaultActiveAgent,

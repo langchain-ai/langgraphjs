@@ -133,7 +133,7 @@ function mapTaskResultWrites(writes: PendingWrite<unknown>[]) {
 
 export function* mapDebugTaskResults<
   N extends PropertyKey,
-  C extends PropertyKey
+  C extends PropertyKey,
 >(
   tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
   streamChannels: PropertyKey | Array<PropertyKey>
@@ -159,7 +159,7 @@ type ChannelKey = string | number | symbol;
 
 export function* mapDebugCheckpoint<
   N extends PropertyKey,
-  C extends PropertyKey
+  C extends PropertyKey,
 >(
   config: RunnableConfig,
   channels: Record<string, BaseChannel>,
@@ -174,7 +174,7 @@ export function* mapDebugCheckpoint<
     // https://stackoverflow.com/a/78298178
     type CamelToSnake<
       T extends string,
-      A extends string = ""
+      A extends string = "",
     > = T extends `${infer F}${infer R}`
       ? CamelToSnake<
           R,

@@ -106,7 +106,7 @@ export const COMMAND_SYMBOL = Symbol.for("langgraph.command");
 export class CommandInstance<
   Resume = unknown,
   Update = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > {
   [COMMAND_SYMBOL]: CommandParams<Resume, Update, Nodes>;
 
@@ -178,9 +178,10 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class Send<Node extends string = string, Args = any>
-  implements SendInterface<Node, Args>
-{
+export class Send<
+  Node extends string = string,
+  Args = any,
+> implements SendInterface<Node, Args> {
   lg_name = "Send";
 
   public node: Node;
@@ -341,7 +342,7 @@ export function isInterrupted<Value = unknown>(
 export type CommandParams<
   Resume = unknown,
   Update = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
@@ -446,7 +447,7 @@ export type CommandParams<
 export class Command<
   Resume = unknown,
   Update extends Record<string, unknown> = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > extends CommandInstance<Resume, Update, Nodes> {
   readonly lg_name = "Command";
 
@@ -569,6 +570,11 @@ export function isCommand(x: unknown): x is Command {
   return false;
 }
 
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
  * matching their interfaces.
@@ -608,15 +614,15 @@ export function _deserializeCommandSendObjectGraph(
         );
       });
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (isCommand(x) && !(x instanceof Command)) {
+    } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
+      result = x;
+      seen.set(x, result);
+    } else if (isCommand(x)) {
       result = new Command(x);
       seen.set(x, result);
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (_isSendInterface(x) && !(x instanceof Send)) {
+    } else if (_isSendInterface(x)) {
       result = new Send(x.node, x.args);
-      seen.set(x, result);
-    } else if (isCommand(x) || _isSend(x)) {
-      result = x;
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;

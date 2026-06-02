@@ -1,4 +1,4 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
+import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
 
@@ -7,6 +7,7 @@ export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocol = "legacy" | "v2" | "v2-websocket";
 export type StreamEvent =
   | "events"
   | "metadata"
@@ -168,7 +169,7 @@ export interface RunsInvokePayload {
 
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
-  TSubgraphs extends boolean = false
+  TSubgraphs extends boolean = false,
 > extends RunsInvokePayload {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
@@ -209,13 +210,26 @@ export interface RunsCreatePayload extends RunsInvokePayload {
    * If true, the stream can be resumed and replayed in its entirety even after disconnection.
    */
   streamResumable?: boolean;
+
+  /**
+   * Pass one or more feedbackKeys if you want to request short-lived signed URLs
+   * for submitting feedback to LangSmith with this key for this run.
+   */
+  feedbackKeys?: string[];
 }
 
 export interface CronsCreatePayload extends RunsCreatePayload {
   /**
-   * Schedule for running the Cron Job. Schedules are interpreted in UTC.
+   * Schedule for running the Cron Job. Schedules are interpreted in UTC unless
+   * a timezone is specified.
    */
   schedule: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   * If not provided, the schedule is interpreted in UTC.
+   */
+  timezone?: string;
 
   /**
    * What to do with the thread after the run completes.
@@ -229,11 +243,37 @@ export interface CronsCreatePayload extends RunsCreatePayload {
    * Whether the cron is enabled.
    */
   enabled?: boolean;
+
+  /**
+   * The end date to stop running the cron job (ISO 8601 datetime string).
+   */
+  endTime?: string;
 }
 
 export interface CronsUpdatePayload extends RunsInvokePayload {
   schedule?: string;
   endTime?: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   */
+  timezone?: string;
+
+  /**
+   * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
+   */
+  streamMode?: StreamMode | Array<StreamMode>;
+
+  /**
+   * Stream output from subgraphs. By default, streams only the top graph.
+   */
+  streamSubgraphs?: boolean;
+
+  /**
+   * Whether the stream is considered resumable.
+   */
+  streamResumable?: boolean;
+
   /**
    * What to do with the thread after the run completes.
    * - "delete" (default): Automatically deletes the thread after the run completes.

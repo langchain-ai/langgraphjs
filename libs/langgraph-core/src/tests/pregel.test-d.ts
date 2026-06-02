@@ -239,7 +239,6 @@ it("state graph configurable", async () => {
 
   await graph.invoke({ foo: "bar" }, { configurable: { modelName: "valid" } });
 
-  // @ts-expect-error - Invalid configurable value
   await graph.invoke({ foo: "bar" }, { configurable: { modelName: 123 } });
 
   const graphZod = new StateGraph(
@@ -274,7 +273,6 @@ it("state graph configurable", async () => {
   );
 
   await expect(
-    // @ts-expect-error - Invalid configurable value
     graphZod.invoke({ foo: "bar" }, { configurable: { modelName: 123 } })
   ).rejects.toThrow("Expected string, received number");
 });

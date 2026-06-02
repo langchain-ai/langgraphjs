@@ -119,10 +119,12 @@ export type CreateSupervisorParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 > = {
   /**
-   * List of agents to manage
+   * List of agents to manage.
+   * Accepts compiled graphs from both `createReactAgent` (`@langchain/langgraph`)
+   * and `createAgent` (`langchain`) via `.graph`.
    */
   agents: (
     | CompiledStateGraph<
@@ -132,6 +134,8 @@ export type CreateSupervisorParams<
         AnnotationRootT["spec"],
         AnnotationRootT["spec"]
       >
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | CompiledStateGraph<any, any, string, any, any>
     | RemoteGraph
   )[];
 
@@ -266,7 +270,7 @@ const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 >({
   agents,
   llm,

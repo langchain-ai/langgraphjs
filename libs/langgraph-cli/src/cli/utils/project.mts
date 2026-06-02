@@ -7,12 +7,9 @@ export async function getProjectPath(key: string) {
     ? url.fileURLToPath(key)
     : path.resolve(process.cwd(), key);
 
-  let configPath: string | undefined = undefined;
-  if ((await fs.stat(configPathOrFile)).isDirectory()) {
-    configPath = path.join(configPathOrFile, "langgraph.json");
-  } else if (path.basename(configPathOrFile) === "langgraph.json") {
-    configPath = configPathOrFile;
+  const stat = await fs.stat(configPathOrFile);
+  if (stat.isDirectory()) {
+    return path.join(configPathOrFile, "langgraph.json");
   }
-  if (!configPath) throw new Error("Invalid path");
-  return configPath;
+  return configPathOrFile;
 }

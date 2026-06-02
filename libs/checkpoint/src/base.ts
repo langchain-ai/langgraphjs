@@ -16,7 +16,7 @@ export type ChannelVersions = Record<string, ChannelVersion>;
 
 export interface Checkpoint<
   N extends string = string,
-  C extends string = string
+  C extends string = string,
 > {
   /**
    * The version of the checkpoint format. Currently 4
@@ -74,7 +74,7 @@ export function deepCopy<T>(obj: T): T {
 export function emptyCheckpoint(): Checkpoint {
   return {
     v: 4,
-    id: uuid6(-2),
+    id: uuid6(0),
     ts: new Date().toISOString(),
     channel_values: {},
     channel_versions: {},

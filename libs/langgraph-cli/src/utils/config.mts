@@ -1,6 +1,9 @@
 import { z } from "zod/v3";
 import { extname } from "node:path";
 
+const API_VERSION_PATTERN =
+  /^\d+(?:\.\d+){0,2}(?:(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)|(?:[A-Za-z][0-9A-Za-z.-]*))?$/;
+
 const GraphPathSchema = z.string().refine((i) => i.includes(":"), {
   message: "Import string must be in format '<file>:<export>'",
 });
@@ -22,18 +25,10 @@ const BaseConfigSchema = z.object({
   _INTERNAL_docker_tag: z.string().optional(),
   api_version: z
     .string()
-    .refine(
-      (v) => {
-        const base = v.split("-")[0];
-        const parts = base.split(".");
-        if (parts.length === 0 || parts.length > 3) return false;
-        return parts.every((p) => /^\d+$/.test(p));
-      },
-      {
-        message:
-          "api_version must be in format major, major.minor, or major.minor.patch",
-      }
-    )
+    .refine((v) => API_VERSION_PATTERN.test(v), {
+      message:
+        "api_version must be in format major, major.minor, or major.minor.patch with optional prerelease suffix",
+    })
     .optional(),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])

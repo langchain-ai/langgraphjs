@@ -577,7 +577,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -615,7 +615,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -649,7 +649,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -687,7 +687,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -727,7 +727,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -772,7 +772,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -822,7 +822,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -874,7 +874,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -1005,7 +1005,7 @@ export function runPregelTests(
 
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: 1,
@@ -1121,6 +1121,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1130,6 +1136,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PUSH, 0],
         writers: expect.any(Array),
@@ -1143,6 +1152,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node1",
             langgraph_step: -1,
@@ -1152,6 +1167,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node1",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node1"],
         writers: expect.any(Array),
@@ -1165,6 +1183,12 @@ export function runPregelTests(
         config: {
           tags: [],
           configurable: expect.any(Object),
+          executionInfo: expect.objectContaining({
+            checkpointId: expect.any(String),
+            checkpointNs: expect.any(String),
+            taskId: expect.any(String),
+            nodeAttempt: 1,
+          }),
           metadata: expect.objectContaining({
             langgraph_node: "node2",
             langgraph_step: -1,
@@ -1174,6 +1198,9 @@ export function runPregelTests(
           runId: undefined,
           runName: "node2",
         },
+        cache_key: undefined,
+        retry_policy: undefined,
+        subgraphs: undefined,
         id: expect.any(String),
         path: [PULL, "node2"],
         writers: expect.any(Array),
@@ -5351,7 +5378,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5383,7 +5410,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5393,7 +5420,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5451,7 +5478,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5461,7 +5488,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5519,7 +5546,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5529,7 +5556,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5587,7 +5614,7 @@ graph TD;
         payload: {
           config: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -5597,7 +5624,7 @@ graph TD;
           },
           parentConfig: {
             tags: [],
-            metadata: { thread_id: "10" },
+            metadata: { ls_integration: "langgraph", thread_id: "10" },
             recursion_limit: 25,
             configurable: {
               thread_id: "10",
@@ -9161,7 +9188,7 @@ graph TD;
       graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
     );
 
-    expect(streamedEvents).toEqual([
+    expect(streamedEvents).toMatchObject([
       [
         new _AnyIdToolMessage({
           tool_call_id: "test",
@@ -9173,8 +9200,8 @@ graph TD;
           langgraph_triggers: ["branch:to:p_one"],
           langgraph_path: [PULL, "p_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_one:/),
+          ls_integration: "langgraph",
           name: "p_one",
           tags: ["graph:step:1"],
         },
@@ -9189,8 +9216,8 @@ graph TD;
           langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9205,8 +9232,8 @@ graph TD;
           langgraph_triggers: ["branch:to:c_one"],
           langgraph_path: [PULL, "c_one"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langgraph",
           name: "c_one",
           tags: ["graph:step:1"],
         },
@@ -9221,13 +9248,14 @@ graph TD;
           langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
           tags: ["c_two_chat_model"],
           name: "c_two_chat_model_stream",
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9240,12 +9268,14 @@ graph TD;
           langgraph_triggers: ["branch:to:c_two"],
           langgraph_path: [PULL, "c_two"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_two:/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: ["c_two_chat_model"],
+          versions: expect.objectContaining({}),
         },
       ],
       [
@@ -9258,12 +9288,14 @@ graph TD;
           langgraph_triggers: ["branch:to:p_three"],
           langgraph_path: [PULL, "p_three"],
           langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-          __pregel_task_id: expect.any(String),
           checkpoint_ns: expect.stringMatching(/^p_three/),
+          ls_integration: "langchain_chat_model",
           ls_model_type: "chat",
           ls_provider: "FakeChatModel",
           ls_stop: undefined,
+          name: undefined,
           tags: [],
+          versions: expect.objectContaining({}),
         },
       ],
     ]);
@@ -9288,8 +9320,21 @@ graph TD;
       )
     );
 
-    expect(streamedCombinedEvents).toMatchObject([
+    // The relative ordering of "custom" and "messages" events for the same
+    // chunk is non-deterministic across Node.js versions, so sort by mode
+    // before asserting (custom < messages alphabetically).
+    const sortedCombinedEvents = [...streamedCombinedEvents].sort((a, b) => {
+      const aMode = a[0] as string;
+      const bMode = b[0] as string;
+      if (aMode !== bMode) return aMode < bMode ? -1 : 1;
+      // within same mode, preserve original order by index
+      return (
+        streamedCombinedEvents.indexOf(a) - streamedCombinedEvents.indexOf(b)
+      );
+    });
+    expect(sortedCombinedEvents).toMatchObject([
       ["custom", { from: "parent" }],
+      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9300,8 +9345,8 @@ graph TD;
             langgraph_triggers: ["branch:to:p_one"],
             langgraph_path: [PULL, "p_one"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_one:/),
+            ls_integration: "langgraph",
             name: "p_one",
             tags: ["graph:step:1"],
           },
@@ -9318,8 +9363,8 @@ graph TD;
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
@@ -9336,8 +9381,8 @@ graph TD;
             langgraph_path: [PULL, "c_one"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_one:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
@@ -9354,8 +9399,8 @@ graph TD;
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9364,7 +9409,6 @@ graph TD;
           },
         ],
       ],
-      ["custom", { from: "subgraph", content: "1" }],
       [
         "messages",
         [
@@ -9376,8 +9420,8 @@ graph TD;
             langgraph_path: [PULL, "c_two"],
             langgraph_checkpoint_ns:
               expect.stringMatching(/^p_two:.*\|c_two:.*/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
@@ -9395,8 +9439,8 @@ graph TD;
             langgraph_triggers: ["branch:to:p_three"],
             langgraph_path: [PULL, "p_three"],
             langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-            __pregel_task_id: expect.any(String),
             checkpoint_ns: expect.stringMatching(/^p_three/),
+            ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,

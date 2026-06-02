@@ -48,7 +48,7 @@ it("stream events for a multi-node graph", async () => {
       name: "LangGraph",
       tags: [],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
     {
       event: "on_chain_start",
@@ -260,7 +260,7 @@ it("stream events for a multi-node graph", async () => {
       run_id: expect.any(String),
       name: "LangGraph",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
       data: {
         chunk: {
           testnode: {
@@ -279,7 +279,7 @@ it("stream events for a multi-node graph", async () => {
       run_id: expect.any(String),
       name: "LangGraph",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
   ]);
 });
@@ -391,7 +391,7 @@ it("Should respect .withConfig", async () => {
       name: "OVERRIDDEN_NAME",
       tags: [],
       run_id: expect.any(String),
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
     {
       event: "on_chain_start",
@@ -603,7 +603,7 @@ it("Should respect .withConfig", async () => {
       run_id: expect.any(String),
       name: "OVERRIDDEN_NAME",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
       data: {
         chunk: {
           testnode: {
@@ -622,7 +622,7 @@ it("Should respect .withConfig", async () => {
       run_id: expect.any(String),
       name: "OVERRIDDEN_NAME",
       tags: [],
-      metadata: {},
+      metadata: { ls_integration: "langgraph" },
     },
   ]);
 });
