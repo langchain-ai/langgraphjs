@@ -15,6 +15,7 @@ import type {
   ValuesStreamEvent,
 } from "../types.stream.js";
 import { MessageTupleManager, toMessageDict } from "./messages.js";
+import { normalizePlainAIMessageFields } from "../utils/normalize-tool-calls.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
@@ -601,23 +602,10 @@ export class StreamManager<
           const messages = latestState.values[messagesKey];
           if (!Array.isArray(messages) || messages.length === 0) return;
 
-          /**
-           * Normalize messages: promote tool_calls from additional_kwargs to top
-           * level when the checkpointer serialized them in the legacy format.
-           */
           const normalizedMessages = messages.map((msg) => {
             const m = msg as Record<string, unknown>;
-            if (
-              m.type === "ai" &&
-              (!m.tool_calls || (m.tool_calls as unknown[]).length === 0)
-            ) {
-              const ak = m.additional_kwargs as
-                | Record<string, unknown>
-                | undefined;
-              const legacy = ak?.tool_calls;
-              if (Array.isArray(legacy) && legacy.length > 0) {
-                return { ...m, tool_calls: legacy };
-              }
+            if (m.type === "ai" || m.type === "assistant") {
+              return normalizePlainAIMessageFields(m);
             }
             return m;
           });

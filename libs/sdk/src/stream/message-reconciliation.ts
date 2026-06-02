@@ -1,4 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { extractToolCallsFromBlocks } from "../utils/normalize-tool-calls.js";
 
 export interface ReconcileMessagesFromValuesOptions {
   /**
@@ -229,12 +230,27 @@ function normalizedMessageId(message: BaseMessage): string | undefined {
 function getMessageToolCalls(
   message: BaseMessage
 ): Array<{ id?: string; name?: string; args?: unknown }> {
-  const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (toolCall): toolCall is { id?: string; name?: string; args?: unknown } =>
-      toolCall != null && typeof toolCall === "object"
-  );
+  const record = message as unknown as {
+    tool_calls?: unknown;
+    content?: unknown;
+    response_metadata?: { output?: unknown };
+  };
+  const raw = record.tool_calls;
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw.filter(
+      (toolCall): toolCall is { id?: string; name?: string; args?: unknown } =>
+        toolCall != null && typeof toolCall === "object"
+    );
+  }
+
+  const fromContent = extractToolCallsFromBlocks(record.content);
+  if (fromContent.length > 0) return fromContent;
+
+  if (Array.isArray(record.response_metadata?.output)) {
+    return extractToolCallsFromBlocks(record.response_metadata.output);
+  }
+
+  return [];
 }
 
 function jsonishEqual(previous: unknown, next: unknown): boolean {

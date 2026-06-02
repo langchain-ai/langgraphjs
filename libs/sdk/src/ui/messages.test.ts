@@ -12,6 +12,7 @@ import type { Message } from "../types.messages.js";
 import {
   ensureMessageInstances,
   ensureHistoryMessageInstances,
+  MessageTupleManager,
 } from "./messages.js";
 import { getBranchContext } from "./branching.js";
 
@@ -112,6 +113,68 @@ describe("ensureMessageInstances", () => {
         id: "toolu_123",
         name: "fact_card",
         args: { worker: "worker-001", attempt: 0 },
+        type: "tool_call",
+      },
+    ]);
+  });
+
+  it("promotes OpenAI Responses function_call content blocks to AIMessage.tool_calls", () => {
+    const [result] = ensureMessageInstances([
+      {
+        type: "ai",
+        id: "msg_function_call",
+        content: [
+          {
+            type: "function_call",
+            name: "get_weather",
+            call_id: "call_demo_123",
+            arguments: JSON.stringify({ city: "San Francisco" }),
+          },
+        ],
+        tool_calls: [],
+        invalid_tool_calls: [],
+        response_metadata: { model_provider: "openai" },
+      } as unknown as Message,
+    ]);
+
+    expect(result).toBeInstanceOf(AIMessage);
+    expect((result as AIMessage).tool_calls).toEqual([
+      {
+        id: "call_demo_123",
+        name: "get_weather",
+        args: { city: "San Francisco" },
+        type: "tool_call",
+      },
+    ]);
+    expect(result.content).toEqual([]);
+  });
+
+  it("promotes function_call blocks via MessageTupleManager", () => {
+    const manager = new MessageTupleManager();
+    const message = {
+      type: "ai",
+      id: "msg_function_call",
+      content: [
+        {
+          type: "function_call",
+          name: "get_weather",
+          call_id: "call_demo_123",
+          arguments: JSON.stringify({ city: "San Francisco" }),
+        },
+      ],
+      tool_calls: [],
+      invalid_tool_calls: [],
+    } as unknown as Message;
+
+    manager.add(message, undefined);
+    const assembled = manager.get("msg_function_call")?.chunk;
+
+    expect(assembled).toBeInstanceOf(AIMessageChunk);
+    expect((assembled as AIMessage).tool_calls).toEqual([
+      {
+        id: "call_demo_123",
+        name: "get_weather",
+        args: { city: "San Francisco" },
         type: "tool_call",
       },
     ]);

@@ -26,6 +26,10 @@ import {
 } from "@langchain/core/messages";
 import type { ContentBlock, MessageRole, UsageInfo } from "@langchain/protocol";
 import type { AssembledMessage } from "../client/stream/messages.js";
+import {
+  extractToolCallsFromBlocks,
+  stripProviderToolCallBlocks,
+} from "../utils/normalize-tool-calls.js";
 
 export type ExtendedMessageRole = MessageRole | "tool";
 
@@ -91,9 +95,10 @@ export function assembledToBaseMessage(
       // `content-block-finish` finally promotes the chunks to
       // finalized `tool_calls`). The chunk class is assignment-compatible
       // with `BaseMessage` and round-trips through the merge logic.
+      const contentBlocks = cloneContentBlocks(blocks);
       const payload = {
         ...(id != null ? { id } : {}),
-        content: cloneContentBlocks(blocks),
+        content: stripProviderToolCallBlocks(contentBlocks) as ContentBlock[],
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
         ...(toolCallChunks.length > 0
           ? { tool_call_chunks: toolCallChunks }
@@ -149,33 +154,8 @@ function cloneContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.map((block) => structuredClone(block));
 }
 
-interface LooseToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  type: "tool_call";
-}
-
-function extractToolCalls(blocks: ContentBlock[]): LooseToolCall[] {
-  const out: LooseToolCall[] = [];
-  for (const block of blocks) {
-    if (block.type !== "tool_call" && block.type !== "tool_use") continue;
-    const tc = block as ToolCallLikeBlock;
-    out.push({
-      id: tc.id ?? "",
-      name: tc.name ?? "",
-      args: normalizeToolCallArgs(tc.args ?? tc.input),
-      type: "tool_call",
-    });
-  }
-  return out;
-}
-
-interface ToolCallLikeBlock {
-  id?: string;
-  name?: string;
-  args?: unknown;
-  input?: unknown;
+function extractToolCalls(blocks: ContentBlock[]) {
+  return extractToolCallsFromBlocks(blocks);
 }
 
 interface LooseToolCallChunk {
@@ -205,25 +185,4 @@ function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
     });
   }
   return out;
-}
-
-function normalizeToolCallArgs(value: unknown): Record<string, unknown> {
-  if (value != null && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  if (typeof value === "string" && value.length > 0) {
-    try {
-      const parsed = JSON.parse(value);
-      if (
-        parsed != null &&
-        typeof parsed === "object" &&
-        !Array.isArray(parsed)
-      ) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      // Partial streaming input is represented via tool_call_chunks.
-    }
-  }
-  return {};
 }
