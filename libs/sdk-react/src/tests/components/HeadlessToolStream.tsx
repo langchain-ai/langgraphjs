@@ -22,7 +22,7 @@ export function HeadlessToolStream({ apiUrl, execute }: Props) {
       })),
   );
 
-  const { messages, isLoading, submit } = useStream<{
+  const { messages, isLoading, interrupts, submit } = useStream<{
     messages: BaseMessage[];
   }>({
     assistantId: "headless_tool_graph",
@@ -56,11 +56,15 @@ export function HeadlessToolStream({ apiUrl, execute }: Props) {
       </div>
 
       <div data-testid="loading">{isLoading ? "loading" : "idle"}</div>
+      <div data-testid="interrupt-count">{interrupts.length}</div>
 
       <div data-testid="tool-events">
         {toolEvents.map((event, i) => (
           <div key={i} data-testid={`tool-event-${i}`}>
             {`${event.phase}:${event.name}`}
+            {event.phase === "success" &&
+              event.result != null &&
+              `:${JSON.stringify(event.result)}`}
             {event.phase === "error" && `:${event.error?.message}`}
           </div>
         ))}

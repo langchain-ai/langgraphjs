@@ -12,6 +12,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
   scheduleCoalescedHeadlessToolFlush,
@@ -626,9 +627,7 @@ export function useStream<
                 void Promise.resolve().then(run);
               },
               resumeSubmit: (command) =>
-                controller.submit(null, {
-                  command,
-                } as StreamSubmitOptions<StateType, ConfigurableType>),
+                applyHeadlessToolResumeCommand(controller, command),
             }
           );
         });

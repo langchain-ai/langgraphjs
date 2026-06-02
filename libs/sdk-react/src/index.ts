@@ -122,5 +122,6 @@ export {
   executeHeadlessTool,
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
+  applyHeadlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
 } from "@langchain/langgraph-sdk";

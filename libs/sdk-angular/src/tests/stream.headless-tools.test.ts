@@ -6,12 +6,15 @@ import {
   setHeadlessToolExecute,
 } from "./components/HeadlessToolStream.js";
 
+const LOCATION_RESULT =
+  '{"latitude":37.7749,"longitude":-122.4194}' as const;
+
 afterEach(() => {
   setHeadlessToolExecute(null);
 });
 
 it(
-  "invokes onTool with start + success phases on happy path",
+  "executes headless tool, resumes with result, and completes the run",
   { timeout: 20_000 },
   async () => {
     const screen = await render(HeadlessToolStreamComponent);
@@ -24,7 +27,15 @@ it(
 
     await expect
       .element(screen.getByTestId("tool-event-1"), { timeout: 5_000 })
-      .toHaveTextContent("success:get_location");
+      .toHaveTextContent(`success:get_location:${LOCATION_RESULT}`);
+
+    await expect
+      .element(screen.getByTestId("message-last"), { timeout: 5_000 })
+      .toHaveTextContent("Location received!");
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 5_000 })
+      .toHaveTextContent("idle");
 
     await expect
       .element(screen.getByTestId("interrupt-count"))
@@ -47,5 +58,9 @@ it(
     await expect
       .element(screen.getByTestId("tool-event-1"), { timeout: 5_000 })
       .toHaveTextContent("error:get_location:GPS unavailable");
+
+    await expect
+      .element(screen.getByTestId("message-last"), { timeout: 5_000 })
+      .toHaveTextContent("Location received!");
   },
 );

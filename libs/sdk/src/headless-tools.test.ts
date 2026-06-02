@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyHeadlessToolResumeCommand,
   buildResumeRunInput,
   flushPendingHeadlessToolInterrupts,
   headlessToolsBatchResumeCommand,
@@ -150,6 +151,40 @@ describe("headless tool resume helpers", () => {
       "4b704fd4b473bfd68df40c9979bffe1b": { toolu_01A: { success: true } },
       "c485a7b6c996d3ace440d2afd6f292a3": { toolu_01B: { success: true } },
     });
+  });
+
+  it("routes interrupt-id keyed resumes through respondAll on v1 stream", async () => {
+    const respond = vi.fn().mockResolvedValue(undefined);
+    const respondAll = vi.fn().mockResolvedValue(undefined);
+    const command = headlessToolsBatchResumeCommand([
+      {
+        interruptId: "4b704fd4b473bfd68df40c9979bffe1b",
+        toolCallId: "toolu_01A",
+        value: { success: true },
+      },
+    ]);
+
+    await applyHeadlessToolResumeCommand({ respond, respondAll }, command);
+
+    expect(respondAll).toHaveBeenCalledWith({
+      "4b704fd4b473bfd68df40c9979bffe1b": {
+        toolu_01A: { success: true },
+      },
+    });
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("routes tool-call keyed resumes through respond on v1 stream", async () => {
+    const respond = vi.fn().mockResolvedValue(undefined);
+    const respondAll = vi.fn().mockResolvedValue(undefined);
+
+    await applyHeadlessToolResumeCommand(
+      { respond, respondAll },
+      { resume: { toolu_01A: { success: true } } }
+    );
+
+    expect(respond).toHaveBeenCalledWith({ toolu_01A: { success: true } });
+    expect(respondAll).not.toHaveBeenCalled();
   });
 
   it("flushes all pending headless tools in one batch resume", async () => {

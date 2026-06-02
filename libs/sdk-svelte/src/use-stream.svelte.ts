@@ -2,6 +2,7 @@ import { onDestroy } from "svelte";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
   scheduleCoalescedHeadlessToolFlush,
   type AnyHeadlessToolImplementation,
@@ -570,9 +571,7 @@ export function useStream<
               void Promise.resolve().then(run);
             },
             resumeSubmit: (command) =>
-              controller.submit(null, {
-                command,
-              } as StreamSubmitOptions<StateType, ConfigurableType>),
+              applyHeadlessToolResumeCommand(controller, command),
           }
         );
       });

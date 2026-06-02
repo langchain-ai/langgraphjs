@@ -249,6 +249,42 @@ export function headlessToolsBatchResumeCommand(
 }
 
 /**
+ * Minimal controller surface for servicing a headless-tool resume on the
+ * v1 stream protocol (`input.respond`).
+ */
+export interface HeadlessToolResumeController {
+  respond: (
+    response: unknown,
+    options?: { interruptId?: string }
+  ) => Promise<void>;
+  respondAll: (responsesById: Record<string, unknown>) => Promise<void>;
+}
+
+/**
+ * Resume a headless-tool batch on the v1 commands transport.
+ *
+ * {@link headlessToolsBatchResumeCommand} still returns a legacy
+ * `{ resume }` command shape for callers on the old runs/stream API.
+ * On v1 `StreamController`, that payload must be sent through
+ * {@link HeadlessToolResumeController.respond} /
+ * {@link HeadlessToolResumeController.respondAll} — not `submit(null,
+ * { command })`, which dispatches `run.start` without a resume value.
+ */
+export function applyHeadlessToolResumeCommand(
+  controller: HeadlessToolResumeController,
+  command: { resume: unknown }
+): Promise<void> {
+  const { resume } = command;
+  if (resume == null) return Promise.resolve();
+
+  if (isInterruptIdKeyedResume(resume)) {
+    return controller.respondAll(resume as Record<string, unknown>);
+  }
+
+  return controller.respond(resume);
+}
+
+/**
  * True when every top-level resume key is a graph task interrupt id
  * (32-char hex from `values.__interrupt__`).
  */
