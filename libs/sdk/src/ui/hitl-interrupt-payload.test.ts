@@ -201,6 +201,7 @@ describe("headless tool interrupt helpers", () => {
       resume: {
         "call-1": { latitude: 1, longitude: 2 },
       },
+      keyedByInterruptId: false,
     });
   });
 
@@ -251,6 +252,7 @@ describe("headless tool interrupt helpers", () => {
           "call-1": { latitude: 1, longitude: 2 },
         },
       },
+      keyedByInterruptId: true,
     });
 
     expect(handled.has("headless-1")).toBe(true);
@@ -328,6 +330,7 @@ describe("headless tool interrupt helpers", () => {
           "call-1": { latitude: 1, longitude: 2 },
         },
       },
+      keyedByInterruptId: true,
     });
     expect(handled.has("py-headless")).toBe(true);
     expect(onTool).toHaveBeenCalledTimes(2);
@@ -394,6 +397,7 @@ describe("headless tool interrupt helpers", () => {
           },
         },
       },
+      keyedByInterruptId: true,
     });
     expect(onTool).toHaveBeenCalledTimes(2);
   });
