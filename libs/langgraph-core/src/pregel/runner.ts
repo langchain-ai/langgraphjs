@@ -118,10 +118,8 @@ export class PregelRunner {
       ? AbortSignal.timeout(timeout)
       : undefined;
 
-    // Start task execution
-    const pendingTasks = Object.values(this.loop.tasks).filter(
-      (t) => t.writes.length === 0
-    );
+    const allTasks = Object.values(this.loop.tasks);
+    const pendingTasks = allTasks.filter((t) => t.writes.length === 0);
 
     const { signals, disposeCombinedSignal } = this._initializeAbortSignals({
       exceptionSignal,
@@ -165,9 +163,7 @@ export class PregelRunner {
 
     onStepWrite?.(
       this.loop.step,
-      Object.values(this.loop.tasks)
-        .map((task) => task.writes)
-        .flat()
+      allTasks.map((task) => task.writes).flat()
     );
 
     if (nodeErrors.size === 1) {
