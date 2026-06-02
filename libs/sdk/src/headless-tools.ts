@@ -199,14 +199,28 @@ export async function handleHeadlessToolInterrupt(
   };
 }
 
+/**
+ * Resume command produced by {@link headlessToolResumeCommand} /
+ * {@link headlessToolsBatchResumeCommand}.
+ */
+export interface HeadlessToolResumeCommand {
+  resume: unknown;
+  /**
+   * When true, top-level {@link resume} keys are protocol interrupt ids and
+   * must be sent through {@link HeadlessToolResumeController.respondAll}.
+   */
+  keyedByInterruptId?: boolean;
+}
+
 export function headlessToolResumeCommand(result: {
   toolCallId: string | undefined;
   value: unknown;
-}): { resume: unknown } {
+}): HeadlessToolResumeCommand {
   return {
     resume: result.toolCallId
       ? { [result.toolCallId]: result.value }
       : result.value,
+    keyedByInterruptId: false,
   };
 }
 
@@ -221,9 +235,9 @@ export function headlessToolsBatchResumeCommand(
     toolCallId: string | undefined;
     value: unknown;
   }>
-): { resume: unknown } {
+): HeadlessToolResumeCommand {
   if (entries.length === 0) {
-    return { resume: {} };
+    return { resume: {}, keyedByInterruptId: false };
   }
 
   const hasInterruptIds = entries.every(
@@ -245,7 +259,7 @@ export function headlessToolsBatchResumeCommand(
         ? { [entry.toolCallId]: entry.value }
         : entry.value;
   }
-  return { resume };
+  return { resume, keyedByInterruptId: true };
 }
 
 /**
@@ -272,12 +286,16 @@ export interface HeadlessToolResumeController {
  */
 export function applyHeadlessToolResumeCommand(
   controller: HeadlessToolResumeController,
-  command: { resume: unknown }
+  command: HeadlessToolResumeCommand
 ): Promise<void> {
-  const { resume } = command;
+  const { resume, keyedByInterruptId } = command;
   if (resume == null) return Promise.resolve();
 
-  if (isInterruptIdKeyedResume(resume)) {
+  const useRespondAll =
+    keyedByInterruptId === true ||
+    (keyedByInterruptId !== false && isInterruptIdKeyedResume(resume));
+
+  if (useRespondAll) {
     return controller.respondAll(resume as Record<string, unknown>);
   }
 
@@ -285,16 +303,36 @@ export function applyHeadlessToolResumeCommand(
 }
 
 /**
- * True when every top-level resume key is a graph task interrupt id
- * (32-char hex from `values.__interrupt__`).
+ * True when a resume payload is keyed by protocol interrupt id at the top
+ * level (for {@link HeadlessToolResumeController.respondAll}).
+ *
+ * Prefer {@link HeadlessToolResumeCommand.keyedByInterruptId} from
+ * {@link headlessToolsBatchResumeCommand} when ids are not inferable
+ * (for example `{ "int-1": result }` without a nested tool-call map).
+ *
+ * When `interrupts` is provided, a single top-level key that matches a
+ * known protocol interrupt id is treated as interrupt-keyed.
  */
-export function isInterruptIdKeyedResume(resume: unknown): boolean {
+export function isInterruptIdKeyedResume(
+  resume: unknown,
+  interrupts?: readonly ProtocolInterruptEntry[]
+): boolean {
   if (resume == null || typeof resume !== "object" || Array.isArray(resume)) {
     return false;
   }
-  const keys = Object.keys(resume as Record<string, unknown>);
+  const record = resume as Record<string, unknown>;
+  const keys = Object.keys(record);
   if (keys.length === 0) return false;
-  return keys.every((key) => /^[0-9a-f]{32}$/i.test(key));
+  if (keys.length > 1) return true;
+
+  const [key] = keys;
+  if (interrupts?.length) {
+    const knownIds = new Set(interrupts.map((entry) => entry.interruptId));
+    if (knownIds.has(key!)) return true;
+  }
+
+  // Legacy graph task ids from `values.__interrupt__`.
+  return /^[0-9a-f]{32}$/i.test(key!);
 }
 
 /**
@@ -309,7 +347,7 @@ export function buildResumeRunInput(
   resolvedInterruptIds: ReadonlySet<string>
 ): Record<string, unknown> | null {
   if (resume == null) return null;
-  if (isInterruptIdKeyedResume(resume)) {
+  if (isInterruptIdKeyedResume(resume, interrupts)) {
     return resume as Record<string, unknown>;
   }
 
@@ -390,7 +428,7 @@ export function resolveInterruptTargetForHeadlessResume(
 
 export interface FlushPendingHeadlessToolInterruptsOptions {
   onTool?: OnToolCallback;
-  resumeSubmit: (command: { resume: unknown }) => void | Promise<void>;
+  resumeSubmit: (command: HeadlessToolResumeCommand) => void | Promise<void>;
   defer?: (run: () => void) => void;
 }
 

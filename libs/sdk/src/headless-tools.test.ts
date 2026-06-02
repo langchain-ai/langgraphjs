@@ -82,6 +82,7 @@ describe("headless tool resume helpers", () => {
           toolu_01A: { key: "user_name" },
         },
       },
+      keyedByInterruptId: true,
     });
 
     expect(
@@ -102,6 +103,7 @@ describe("headless tool resume helpers", () => {
         "4b704fd4b473bfd68df40c9979bffe1b": { toolu_01A: { key: "user_name" } },
         "c485a7b6c996d3ace440d2afd6f292a3": { toolu_01B: { key: "user_role" } },
       },
+      keyedByInterruptId: true,
     });
 
     expect(isInterruptIdKeyedResume({})).toBe(false);
@@ -110,6 +112,22 @@ describe("headless tool resume helpers", () => {
         "4b704fd4b473bfd68df40c9979bffe1b": { toolu_01A: {} },
       })
     ).toBe(true);
+    expect(
+      isInterruptIdKeyedResume({
+        "int-1": { toolu_01A: { success: true } },
+      })
+    ).toBe(false);
+    expect(
+      isInterruptIdKeyedResume(
+        { "int-1": { toolu_01A: { success: true } } },
+        [{ interruptId: "int-1", namespace: [], payload: {} }]
+      )
+    ).toBe(true);
+    expect(
+      isInterruptIdKeyedResume({
+        toolu_01A: { latitude: 1, longitude: 2 },
+      })
+    ).toBe(false);
   });
 
   it("wraps tool-call keyed resume input under the matching interrupt id", () => {
@@ -151,6 +169,37 @@ describe("headless tool resume helpers", () => {
       "4b704fd4b473bfd68df40c9979bffe1b": { toolu_01A: { success: true } },
       "c485a7b6c996d3ace440d2afd6f292a3": { toolu_01B: { success: true } },
     });
+
+    expect(
+      buildResumeRunInput(
+        {
+          "int-1": { toolu_01A: { success: true } },
+          "int-2": { toolu_01B: { success: true } },
+        },
+        [
+          {
+            interruptId: "int-1",
+            namespace: [] as string[],
+            payload: {
+              type: "tool",
+              toolCall: { id: "toolu_01A", name: "memory_put", args: {} },
+            },
+          },
+          {
+            interruptId: "int-2",
+            namespace: [] as string[],
+            payload: {
+              type: "tool",
+              toolCall: { id: "toolu_01B", name: "memory_put", args: {} },
+            },
+          },
+        ],
+        new Set()
+      )
+    ).toEqual({
+      "int-1": { toolu_01A: { success: true } },
+      "int-2": { toolu_01B: { success: true } },
+    });
   });
 
   it("routes interrupt-id keyed resumes through respondAll on v1 stream", async () => {
@@ -174,13 +223,51 @@ describe("headless tool resume helpers", () => {
     expect(respond).not.toHaveBeenCalled();
   });
 
+  it("routes non-hex interrupt-id keyed resumes through respondAll on v1 stream", async () => {
+    const respond = vi.fn().mockResolvedValue(undefined);
+    const respondAll = vi.fn().mockResolvedValue(undefined);
+    const command = headlessToolsBatchResumeCommand([
+      {
+        interruptId: "int-1",
+        toolCallId: "toolu_01A",
+        value: { success: true },
+      },
+    ]);
+
+    await applyHeadlessToolResumeCommand({ respond, respondAll }, command);
+
+    expect(respondAll).toHaveBeenCalledWith({
+      "int-1": { toolu_01A: { success: true } },
+    });
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("routes direct-value interrupt resumes through respondAll when keyedByInterruptId is set", async () => {
+    const respond = vi.fn().mockResolvedValue(undefined);
+    const respondAll = vi.fn().mockResolvedValue(undefined);
+    const command = headlessToolsBatchResumeCommand([
+      {
+        interruptId: "int-1",
+        toolCallId: "",
+        value: { latitude: 1, longitude: 2 },
+      },
+    ]);
+
+    await applyHeadlessToolResumeCommand({ respond, respondAll }, command);
+
+    expect(respondAll).toHaveBeenCalledWith({
+      "int-1": { latitude: 1, longitude: 2 },
+    });
+    expect(respond).not.toHaveBeenCalled();
+  });
+
   it("routes tool-call keyed resumes through respond on v1 stream", async () => {
     const respond = vi.fn().mockResolvedValue(undefined);
     const respondAll = vi.fn().mockResolvedValue(undefined);
 
     await applyHeadlessToolResumeCommand(
       { respond, respondAll },
-      { resume: { toolu_01A: { success: true } } }
+      { resume: { toolu_01A: { success: true } }, keyedByInterruptId: false }
     );
 
     expect(respond).toHaveBeenCalledWith({ toolu_01A: { success: true } });
@@ -240,6 +327,7 @@ describe("headless tool resume helpers", () => {
           toolu_01B: { success: true },
         },
       },
+      keyedByInterruptId: true,
     });
   });
 
@@ -323,6 +411,7 @@ describe("headless tool resume helpers", () => {
           toolu_01B: { success: true },
         },
       },
+      keyedByInterruptId: true,
     });
   });
 });

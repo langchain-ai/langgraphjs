@@ -119,6 +119,7 @@ export type {
   OnToolCallback,
   FlushPendingHeadlessToolInterruptsOptions,
   HeadlessToolResumeController,
+  HeadlessToolResumeCommand,
 } from "./headless-tools.js";
 export {
   isHeadlessToolInterrupt,
