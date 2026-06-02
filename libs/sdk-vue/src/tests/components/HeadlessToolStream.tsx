@@ -51,7 +51,16 @@ export const HeadlessToolStream = defineComponent({
         const err = event.error as { message?: string } | undefined;
         return err?.message ? `:${err.message}` : "";
       }
+      if (event.phase === "success" && event.result != null) {
+        return `:${JSON.stringify(event.result)}`;
+      }
       return "";
+    };
+
+    const lastMessage = (): string => {
+      const msgs = stream.messages.value;
+      if (msgs.length === 0) return "";
+      return formatContent(msgs[msgs.length - 1]);
     };
 
     return () => (
@@ -76,6 +85,9 @@ export const HeadlessToolStream = defineComponent({
               {formatContent(msg)}
             </div>
           ))}
+          {stream.messages.value.length > 0 && (
+            <div data-testid="message-last">{lastMessage()}</div>
+          )}
         </div>
 
         <button

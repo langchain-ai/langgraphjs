@@ -118,6 +118,8 @@ export type {
   HeadlessToolInterrupt,
   OnToolCallback,
   FlushPendingHeadlessToolInterruptsOptions,
+  HeadlessToolResumeController,
+  HeadlessToolResumeCommand,
 } from "./headless-tools.js";
 export {
   isHeadlessToolInterrupt,
@@ -127,6 +129,7 @@ export {
   executeHeadlessTool,
   handleHeadlessToolInterrupt,
   headlessToolResumeCommand,
+  applyHeadlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
   scheduleCoalescedHeadlessToolFlush,
 } from "./headless-tools.js";

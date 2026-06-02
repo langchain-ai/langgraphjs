@@ -52,11 +52,14 @@
   </div>
 
   <div data-testid="loading">{stream.isLoading ? "loading" : "idle"}</div>
+  <div data-testid="interrupt-count">{stream.interrupts.length}</div>
 
   <div data-testid="tool-events">
     {#each toolEvents as event, i}
       <div data-testid={`tool-event-${i}`}>
-        {event.phase}:{event.name}{event.phase === "error" && event.error
+        {event.phase}:{event.name}{event.phase === "success" && event.result != null
+          ? `:${JSON.stringify(event.result)}`
+          : ""}{event.phase === "error" && event.error
           ? `:${event.error.message}`
           : ""}
       </div>

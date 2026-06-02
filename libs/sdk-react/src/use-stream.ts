@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
 } from "@langchain/langgraph-sdk";
@@ -600,9 +601,7 @@ export function useStream<
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) =>
-          controller.submit(null, {
-            command,
-          } as StreamSubmitOptions<StateType, ConfigurableType>),
+          applyHeadlessToolResumeCommand(controller, command),
       }
     );
   }, [controller, tools, onTool, rootValuesForTools, rootInterruptsForTools]);
