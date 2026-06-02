@@ -34,6 +34,7 @@ import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
 import { ensureMessageInstances } from "../ui/messages.js";
+import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import type { Message } from "../types.messages.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
@@ -481,10 +482,12 @@ export class StreamController<
             const id = typed?.id;
             if (typeof id !== "string" || activeIds.has(id)) continue;
             activeIds.add(id);
-            activeInterrupts.push({
-              id,
-              value: typed?.value as InterruptType,
-            });
+            activeInterrupts.push(
+              normalizeInterruptForClient({
+                id,
+                value: typed?.value as InterruptType,
+              })
+            );
           }
         }
         this.rootStore.setState((s) => ({
@@ -1543,10 +1546,10 @@ export class StreamController<
     ) {
       return;
     }
-    const interrupt: Interrupt<InterruptType> = {
+    const interrupt: Interrupt<InterruptType> = normalizeInterruptForClient({
       id: interruptId,
       value: data.payload as InterruptType,
-    };
+    });
     this.rootStore.setState((s) => {
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];

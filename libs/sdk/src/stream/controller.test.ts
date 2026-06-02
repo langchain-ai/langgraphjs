@@ -207,17 +207,82 @@ describe("StreamController", () => {
 
     onEvent?.(inputRequestedEvent());
 
-    expect(controller.rootStore.getSnapshot().interrupt).toEqual({
-      id: "interrupt-1",
-      value: {
-        actionRequests: [
+    const interrupt = controller.rootStore.getSnapshot().interrupt;
+    expect(interrupt?.id).toBe("interrupt-1");
+    expect(
+      (interrupt?.value as { actionRequests?: unknown[] }).actionRequests
+    ).toEqual([
+      expect.objectContaining({
+        name: "send_release_update_email",
+        args: { to: "qa@example.com" },
+      }),
+    ]);
+
+    await controller.dispose();
+  });
+
+  it("normalizes Python snake_case HITL interrupt payloads in root state", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    onEvent?.(
+      inputRequestedEvent("interrupt-py", {
+        action_requests: [
           {
-            name: "send_release_update_email",
-            args: { to: "qa@example.com" },
+            name: "send_email",
+            args: { to: "team@acme.com" },
+            description: "Review email before sending",
           },
         ],
-      },
-    });
+        review_configs: [
+          {
+            action_name: "send_email",
+            allowed_decisions: ["approve", "edit", "reject"],
+          },
+        ],
+      })
+    );
+
+    const value = controller.rootStore.getSnapshot().interrupt?.value as Record<
+      string,
+      unknown
+    >;
+    expect(value.actionRequests).toEqual([
+      expect.objectContaining({
+        name: "send_email",
+        args: { to: "team@acme.com" },
+        description: "Review email before sending",
+      }),
+    ]);
+    expect(value.reviewConfigs).toEqual([
+      expect.objectContaining({
+        allowedDecisions: ["approve", "edit", "reject"],
+      }),
+    ]);
 
     await controller.dispose();
   });
