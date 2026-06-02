@@ -792,7 +792,9 @@ export class PregelLoop {
       await this._putCheckpoint({ source: "loop" });
       this._emitValuesWithCheckpointMeta(valuesOutput);
       // after execution, check if we should interrupt
-      if (shouldInterrupt(this.checkpoint, this.interruptAfter, finishTaskList)) {
+      if (
+        shouldInterrupt(this.checkpoint, this.interruptAfter, finishTaskList)
+      ) {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
       }

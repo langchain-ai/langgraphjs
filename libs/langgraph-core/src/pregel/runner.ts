@@ -161,10 +161,7 @@ export class PregelRunner {
 
     disposeCombinedSignal?.();
 
-    onStepWrite?.(
-      this.loop.step,
-      allTasks.map((task) => task.writes).flat()
-    );
+    onStepWrite?.(this.loop.step, allTasks.map((task) => task.writes).flat());
 
     if (nodeErrors.size === 1) {
       throw Array.from(nodeErrors)[0];
