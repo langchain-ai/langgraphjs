@@ -876,6 +876,71 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("respond() normalizes camelCase HITL edit decisions for Python servers", async () => {
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-hitl",
+          payload: { action_requests: [] },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respond({
+      decisions: [
+        {
+          type: "edit",
+          editedAction: {
+            name: "send_email",
+            args: { to: "team@acme.com" },
+          },
+        },
+      ],
+    });
+
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-hitl",
+      response: {
+        decisions: [
+          {
+            type: "edit",
+            editedAction: {
+              name: "send_email",
+              args: { to: "team@acme.com" },
+            },
+            edited_action: {
+              name: "send_email",
+              args: { to: "team@acme.com" },
+            },
+          },
+        ],
+      },
+    });
+
+    await controller.dispose();
+  });
+
   it("respond() removes only the targeted interrupt when several are pending", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);

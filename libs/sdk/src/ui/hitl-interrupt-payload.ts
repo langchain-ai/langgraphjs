@@ -76,3 +76,45 @@ export function normalizeHitlInterruptPayload(value: unknown): unknown {
   }
   return next;
 }
+
+function normalizeDecisionForServer(decision: unknown): unknown {
+  if (
+    decision === null ||
+    typeof decision !== "object" ||
+    Array.isArray(decision)
+  ) {
+    return decision;
+  }
+  const obj = decision as Record<string, unknown>;
+  if (obj.type !== "edit") {
+    return decision;
+  }
+  const edited = obj.editedAction ?? obj.edited_action;
+  if (edited === undefined) {
+    return decision;
+  }
+  return {
+    ...obj,
+    editedAction: edited,
+    edited_action: edited,
+  };
+}
+
+/**
+ * If `value` looks like a HITL resume payload from a JS client, expose both
+ * camelCase and snake_case decision fields so Python and JS runtimes accept it.
+ */
+export function normalizeHitlResponseForServer(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const obj = value as Record<string, unknown>;
+  const decisions = obj.decisions;
+  if (!Array.isArray(decisions)) {
+    return value;
+  }
+  return {
+    ...obj,
+    decisions: decisions.map(normalizeDecisionForServer),
+  };
+}
