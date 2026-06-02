@@ -35,6 +35,7 @@ import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
 import { ensureMessageInstances } from "../ui/messages.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
+import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
@@ -759,7 +760,7 @@ export class StreamController<
       await this.#thread.respondInput({
         namespace: resolved.namespace,
         interrupt_id: resolved.interruptId,
-        response,
+        response: normalizeHitlResponseForServer(response),
         config: options?.config,
         metadata: options?.metadata,
       });
@@ -827,7 +828,7 @@ export class StreamController<
     const pending = this.#thread.interrupts;
     const responses = entries.map(([interruptId, response]) => ({
       interrupt_id: interruptId,
-      response,
+      response: normalizeHitlResponseForServer(response),
       namespace: pending.find((entry) => entry.interruptId === interruptId)
         ?.namespace ?? [...ROOT_NAMESPACE],
     }));
