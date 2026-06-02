@@ -199,7 +199,7 @@ Below is an example of a graph state annotation that uses `messagesStateReducer`
 
 ```ts
 import type { BaseMessage } from "@langchain/core/messages";
-import { Annotation, type Messages } from "@langchain/langgraph";
+import { Annotation, messagesStateReducer, type Messages } from "@langchain/langgraph";
 
 const StateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[], Messages>({
