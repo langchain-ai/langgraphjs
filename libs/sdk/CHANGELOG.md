@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.13
+
+### Patch Changes
+
+- [#2469](https://github.com/langchain-ai/langgraphjs/pull/2469) [`0bbe66e`](https://github.com/langchain-ai/langgraphjs/commit/0bbe66e31de3abe7526c7810755a40c31bc60e0d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): normalize HITL edit decisions for Python servers
+
+  `StreamController.respond()` now mirrors camelCase and snake_case on edit
+  decisions (`editedAction` / `edited_action`) so JS clients can resume
+  human-in-the-loop interrupts against Python LangGraph servers.
+
 ## 1.9.12
 
 ### Patch Changes

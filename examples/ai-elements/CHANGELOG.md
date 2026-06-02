@@ -1,5 +1,12 @@
 # @example/ai-elements
 
+## 0.1.28
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/react@1.0.13
+
 ## 0.1.27
 
 ### Patch Changes
