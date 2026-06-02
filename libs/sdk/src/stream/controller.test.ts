@@ -210,7 +210,8 @@ describe("StreamController", () => {
     const interrupt = controller.rootStore.getSnapshot().interrupt;
     expect(interrupt?.id).toBe("interrupt-1");
     expect(
-      (interrupt?.value as { actionRequests?: unknown[] }).actionRequests
+      (interrupt?.value as { actionRequests?: unknown[] } | undefined)
+        ?.actionRequests
     ).toEqual([
       expect.objectContaining({
         name: "send_release_update_email",
