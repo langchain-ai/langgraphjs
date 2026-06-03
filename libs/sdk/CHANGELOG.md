@@ -1,5 +1,17 @@
 # @langchain/langgraph-sdk
 
+## 1.9.14
+
+### Patch Changes
+
+- [#2482](https://github.com/langchain-ai/langgraphjs/pull/2482) [`ba583b6`](https://github.com/langchain-ai/langgraphjs/commit/ba583b601d284c689bbfc15397686f1aa7481fba) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep subgraph status complete when values arrives late
+
+  `SubgraphDiscovery` no longer downgrades a terminal subgraph back to
+  `running` when a host-namespace `values` snapshot is observed after its
+  `completed` or `failed` lifecycle event. The content pump and lifecycle
+  watcher are independent streams, so this reordering could strand nodes as
+  perpetually running in `useStream` subgraph UIs.
+
 ## 1.9.13
 
 ### Patch Changes
