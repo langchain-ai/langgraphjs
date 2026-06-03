@@ -1,5 +1,12 @@
 # @examples/ui-multimodal
 
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/react@1.0.15
+
 ## 0.0.15
 
 ### Patch Changes
