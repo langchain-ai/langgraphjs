@@ -479,6 +479,24 @@ describe("SubmitCoordinator", () => {
       await first;
     });
 
+    it("enqueues a follow-up fired in the same tick as dispatch", async () => {
+      const h = makeHarness();
+      const first = h.coordinator.submit({ count: 1 });
+      void h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      await flush();
+
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.submitRun.mock.calls[0]?.[0]?.input).toEqual({ count: 1 });
+
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
     it("drains the queue after the active run terminates", async () => {
       const h = makeHarness();
       const first = h.coordinator.submit({ count: 1 });
