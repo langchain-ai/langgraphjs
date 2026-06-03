@@ -803,7 +803,13 @@ export function _prepareSingleTask<
 
     const packet =
       _isSendInterface(sends[index]) && !_isSend(sends[index])
-        ? new Send(sends[index].node, sends[index].args, sends[index].timeout)
+        ? new Send(
+            sends[index].node,
+            sends[index].args,
+            sends[index].timeout !== undefined
+              ? { timeout: sends[index].timeout }
+              : undefined
+          )
         : sends[index];
 
     if (!_isSendInterface(packet)) {
@@ -937,7 +943,7 @@ export function _prepareSingleTask<
           path: taskPath,
           writers: proc.getWriters(),
           // a per-Send timeout overrides the target node's configured timeout
-          timeout: (packet as Send).timeout ?? proc.timeout,
+          timeout: packet.timeout ?? proc.timeout,
         } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
       }
     } else {

@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { it, expect, describe, beforeAll } from "vitest";
 import { type PendingWrite } from "@langchain/langgraph-checkpoint";
-import { Annotation, StateGraph } from "../graph/index.js";
+import { z } from "zod";
+import { StateGraph } from "../graph/index.js";
+import { StateSchema } from "../state/schema.js";
 import { START, END, Send, CONFIG_KEY_SEND } from "../constants.js";
 import { NodeTimeoutError, isNodeTimeoutError } from "../errors.js";
 import { entrypoint, task } from "../func/index.js";
@@ -236,6 +238,40 @@ describe("_runWithRetry timeout enforcement", () => {
     expect(sawAbort).toBe(true);
   });
 
+  it("does not surface an unhandled rejection when the abandoned attempt rejects after timeout", async () => {
+    const unhandledRejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    let postTimeoutRejection = false;
+    try {
+      const taskObj = makeTask(
+        async (_input, config) => {
+          try {
+            await sleep(1000, config.signal);
+          } catch {
+            // Timeout already fired; the invoke promise still rejects here.
+            postTimeoutRejection = true;
+            await sleep(0);
+            throw new Error("post-timeout rejection");
+          }
+          return "late";
+        },
+        { timeout: 50, name: "late-reject" }
+      );
+      const { error } = await _runWithRetry(taskObj);
+      expect(isNodeTimeoutError(error)).toBe(true);
+      expect((error as NodeTimeoutError).node).toBe("late-reject");
+      // Let the abandoned background invoke settle (reject).
+      await sleep(50);
+      expect(postTimeoutRejection).toBe(true);
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("drops buffered writes from the timed-out attempt", async () => {
     const taskObj = makeTask(
       async (_input, config) => {
@@ -276,8 +312,8 @@ describe("_runWithRetry timeout enforcement", () => {
   });
 });
 
-const TimeoutState = Annotation.Root({
-  x: Annotation<number>,
+const TimeoutState = new StateSchema({
+  x: z.number(),
 });
 
 describe("addNode timeout (end-to-end)", () => {
@@ -350,7 +386,7 @@ describe("Send timeout (end-to-end)", () => {
       )
       .addConditionalEdges(
         START,
-        (state) => [new Send("slow", state, { idleTimeout: 50 })],
+        (state) => [new Send("slow", state, { timeout: { idleTimeout: 50 } })],
         ["slow"]
       )
       .addEdge("slow", END)

@@ -114,6 +114,7 @@ export {
 } from "./pregel/utils/index.js";
 export {
   Send,
+  type SendOptions,
   Command,
   CommandInstance,
   type CommandParams,

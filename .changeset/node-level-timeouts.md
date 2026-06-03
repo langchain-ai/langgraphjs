@@ -25,7 +25,7 @@ builder.addNode("agent", agentFn, {
 });
 
 // per-task override
-new Send("agent", state, { idleTimeout: 5_000 });
+new Send("agent", state, { timeout: { idleTimeout: 5_000 } });
 ```
 
 When a timeout fires, a `NodeTimeoutError` (carrying `node`, `kind`

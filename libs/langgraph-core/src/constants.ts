@@ -130,6 +130,15 @@ export interface SendInterface<Node extends string = string, Args = any> {
   timeout?: TimeoutPolicy;
 }
 
+/** Keyword options for {@link Send}. */
+export type SendOptions = {
+  /**
+   * Per-task timeout policy overriding the target node's timeout for this
+   * pushed task. A bare number is treated as `runTimeout` (milliseconds).
+   */
+  timeout?: number | TimeoutPolicy;
+};
+
 export function _isSendInterface(x: unknown): x is SendInterface {
   const operation = x as SendInterface;
   return (
@@ -172,11 +181,11 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * };
  *
  * @remarks
- * A per-task timeout can be supplied as the third argument to override the
- * target node's configured timeout for this specific pushed task:
+ * A per-task timeout can be supplied via the third argument's `timeout` option
+ * to override the target node's configured timeout for this specific pushed task:
  *
  * ```typescript
- * new Send("generate_joke", { subjects: [subject] }, { idleTimeout: 5000 });
+ * new Send("generate_joke", { subjects: [subject] }, { timeout: { idleTimeout: 5000 } });
  * ```
  *
  * const graph = new StateGraph(ChainState)
@@ -212,10 +221,10 @@ export class Send<
    */
   public timeout?: TimeoutPolicy;
 
-  constructor(node: Node, args: Args, timeout?: number | TimeoutPolicy) {
+  constructor(node: Node, args: Args, options?: SendOptions) {
     this.node = node;
     this.args = _deserializeCommandSendObjectGraph(args) as Args;
-    this.timeout = coerceTimeoutPolicy(timeout);
+    this.timeout = coerceTimeoutPolicy(options?.timeout);
   }
 
   toJSON() {
@@ -407,9 +416,9 @@ export type CommandParams<
    *   - sequence of `Send` objects
    */
   goto?:
-  | Nodes
-  | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
-  | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    | Nodes
+    | SendInterface<Nodes> // eslint-disable-line @typescript-eslint/no-explicit-any
+    | (Nodes | SendInterface<Nodes>)[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 };
 
 /**
@@ -651,7 +660,11 @@ export function _deserializeCommandSendObjectGraph(
       result = new Command(x);
       seen.set(x, result);
     } else if (_isSendInterface(x)) {
-      result = new Send(x.node, x.args, x.timeout);
+      result = new Send(
+        x.node,
+        x.args,
+        x.timeout !== undefined ? { timeout: x.timeout } : undefined
+      );
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;
