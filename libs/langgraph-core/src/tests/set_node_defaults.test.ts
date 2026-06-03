@@ -128,10 +128,14 @@ describe("StateGraph.setNodeDefaults", () => {
     const cache = new InMemoryCache();
     const cachedSpy = vi.fn(() => ({ foo: "cached" }));
     const uncachedSpy = vi.fn(() => ({ foo: "uncached" }));
-    const graph = new StateGraph(State)
+    const builder = new StateGraph(State)
       .setNodeDefaults({ cachePolicy: true })
       .addNode("cached", cachedSpy)
-      .addNode("uncached", uncachedSpy, { cachePolicy: false })
+      .addNode("uncached", uncachedSpy, { cachePolicy: false });
+
+    expect(builder.nodes.uncached.cachePolicy).toBe(false);
+
+    const graph = builder
       .addEdge(START, "cached")
       .addEdge("cached", "uncached")
       .compile({ cache });
@@ -145,15 +149,24 @@ describe("StateGraph.setNodeDefaults", () => {
     expect(uncachedSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("is chainable and order-independent (called after addNode)", () => {
+  it("applies defaults when setNodeDefaults is called after all addNode calls", () => {
+    const perNode: RetryPolicy = { maxAttempts: 7, logWarning: false };
     const graph = new StateGraph(State)
       .addNode("a", () => ({ foo: "a" }))
+      .addNode("b", () => ({ foo: "b" }), { retryPolicy: perNode })
+      .addNode("c", () => ({ foo: "c" }))
       .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", "c")
       .setNodeDefaults({ retryPolicy: fastRetry, cachePolicy: { ttl: 60 } })
       .compile({ cache: new InMemoryCache() });
 
     expect(graph.nodes.a.retryPolicy).toEqual(fastRetry);
     expect(graph.nodes.a.cachePolicy).toEqual({ ttl: 60 });
+    expect(graph.nodes.b.retryPolicy).toEqual(perNode);
+    expect(graph.nodes.b.cachePolicy).toEqual({ ttl: 60 });
+    expect(graph.nodes.c.retryPolicy).toEqual(fastRetry);
+    expect(graph.nodes.c.cachePolicy).toEqual({ ttl: 60 });
   });
 
   it("merges fields across multiple calls, later wins per-field", () => {
