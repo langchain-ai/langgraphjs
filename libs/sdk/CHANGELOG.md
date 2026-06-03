@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.15
+
+### Patch Changes
+
+- [#2484](https://github.com/langchain-ai/langgraphjs/pull/2484) [`9861f42`](https://github.com/langchain-ai/langgraphjs/commit/9861f42cc4fa23d9e80ae45a76d511d7618cda07) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): claim in-flight slot before root pump wait for enqueue
+
+  Move `#runAbort` and `isLoading` setup ahead of `waitForRootPumpReady()` so
+  `multitaskStrategy: "enqueue"` submits in the same tick land in `queueStore`
+  instead of bypassing the client queue.
+
 ## 1.9.14
 
 ### Patch Changes
