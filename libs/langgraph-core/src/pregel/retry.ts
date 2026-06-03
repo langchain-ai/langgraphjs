@@ -10,6 +10,7 @@ export const DEFAULT_INITIAL_INTERVAL = 500;
 export const DEFAULT_BACKOFF_FACTOR = 2;
 export const DEFAULT_MAX_INTERVAL = 128000;
 export const DEFAULT_MAX_RETRIES = 3;
+export const DEFAULT_JITTER = true;
 
 const DEFAULT_STATUS_NO_RETRY = [
   400, // Bad Request
@@ -169,9 +170,10 @@ export async function _runWithRetry<
         resolvedRetryPolicy.maxInterval ?? DEFAULT_MAX_INTERVAL,
         interval * (resolvedRetryPolicy.backoffFactor ?? DEFAULT_BACKOFF_FACTOR)
       );
-      const intervalWithJitter = resolvedRetryPolicy.jitter
-        ? Math.floor(interval + Math.random() * 1000)
-        : interval;
+      const intervalWithJitter =
+        (resolvedRetryPolicy.jitter ?? DEFAULT_JITTER)
+          ? Math.floor(interval + Math.random() * 1000)
+          : interval;
       // sleep before retrying
       // eslint-disable-next-line no-promise-executor-return
       await new Promise((resolve) => setTimeout(resolve, intervalWithJitter));
