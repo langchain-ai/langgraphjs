@@ -181,12 +181,16 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
  *
  * @template Nodes - Node name constraints
  * @template InputSchema - Per-node input schema type (inferred from options.input)
+ * @template HandlerState - State type passed to the node-level error handler
  */
 export type StateGraphAddNodeOptions<
   Nodes extends string = string,
   InputSchema extends StateDefinitionInit | undefined =
     | StateDefinitionInit
     | undefined,
+  HandlerState = InputSchema extends StateDefinitionInit
+    ? ExtractStateType<InputSchema>
+    : unknown,
 > = {
   input?: InputSchema;
   /**
@@ -194,9 +198,18 @@ export type StateGraphAddNodeOptions<
    * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
    * failed node name and error, and may return a state update or `Command`.
    */
-  errorHandler?: NodeErrorHandler;
+  errorHandler?: NodeErrorHandler<HandlerState>;
 } & NodePolicyOptions &
   AddNodeOptions<Nodes>;
+
+type StateGraphAddNodeOptionsWithNodeInput<
+  Nodes extends string,
+  NodeInput,
+> = StateGraphAddNodeOptions<
+  Nodes,
+  StateDefinitionInit | undefined,
+  NodeInput
+>;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
@@ -851,7 +864,7 @@ export class StateGraph<
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptions,
+      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>,
     ][]
   ): StateGraph<
     SD,
@@ -917,7 +930,7 @@ export class StateGraph<
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     key: K,
     action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptions
+    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>
   ): StateGraph<
     SD,
     S,
@@ -932,7 +945,7 @@ export class StateGraph<
   override addNode<K extends string, NodeInput = S>(
     key: K,
     action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptions
+    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
@@ -946,7 +959,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions,
+          options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>,
         ]
       | [
           nodes:
@@ -954,7 +967,10 @@ export class StateGraph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-                options?: StateGraphAddNodeOptions,
+                options?: StateGraphAddNodeOptionsWithNodeInput<
+                  N | K,
+                  NodeInput
+                >,
               ][],
         ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
@@ -966,7 +982,7 @@ export class StateGraph<
         | [
             key: K,
             action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-            options?: StateGraphAddNodeOptions,
+            options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>,
           ][],
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -981,7 +997,7 @@ export class StateGraph<
     ) as [
       K,
       NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-      StateGraphAddNodeOptions | undefined,
+      StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput> | undefined,
     ][];
 
     if (nodes.length === 0) {
@@ -1064,7 +1080,11 @@ export class StateGraph<
             const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
               | NodeError
               | undefined;
-            return userHandler(state, nodeError as NodeError, config);
+            return userHandler(
+              state as NodeInput,
+              nodeError as NodeError,
+              config
+            );
           },
           name: errorHandlerNode,
           trace: false,
@@ -1141,7 +1161,7 @@ export class StateGraph<
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptions,
+      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>,
     ][]
   ): StateGraph<
     SD,
@@ -1194,7 +1214,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions,
+          options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput>,
         ][]
       | Record<
           K,
@@ -1226,8 +1246,14 @@ export class StateGraph<
 
       const validKey = key as unknown as N;
       this.addNode(
-        validKey,
-        action as NodeAction<S, U, C, InterruptType, WriterType>,
+        key as K,
+        action as NodeAction<
+          NodeInput,
+          NodeOutput,
+          C,
+          InterruptType,
+          WriterType
+        >,
         options
       );
       if (previousNode != null) {

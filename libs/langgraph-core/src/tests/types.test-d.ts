@@ -13,6 +13,7 @@ import {
   type OverwriteValue,
 } from "../constants.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import type { NodeError } from "../errors.js";
 import type {
   GraphNode,
   ConditionalEdgeRouter,
@@ -603,6 +604,54 @@ describe("GraphNode", () => {
         expect(node).toBeDefined();
       });
     });
+  });
+});
+
+describe("StateGraph.addNode errorHandler", () => {
+  it("accepts handlers with the typed graph state", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    const typedHandler = (state: typeof State.State, _error: NodeError) => {
+      expectTypeOf(state.count).toEqualTypeOf<number>();
+      expectTypeOf(state.name).toEqualTypeOf<string>();
+      return { count: state.count + 1 };
+    };
+
+    const graph = new StateGraph(State).addNode(
+      "fails",
+      (_state: typeof State.State) => {
+        throw new Error("boom");
+      },
+      { errorHandler: typedHandler }
+    );
+
+    expect(graph).toBeDefined();
+  });
+
+  it("accepts handlers with typed per-node input state", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+    const InputState = new StateSchema({
+      query: z.string(),
+    });
+
+    const typedHandler = (state: typeof InputState.State) => {
+      expectTypeOf(state.query).toEqualTypeOf<string>();
+      return { name: state.query };
+    };
+
+    const graph = new StateGraph(State).addNode(
+      "usesInput",
+      (state: typeof InputState.State) => ({ count: state.query.length }),
+      { input: InputState, errorHandler: typedHandler }
+    );
+
+    expect(graph).toBeDefined();
   });
 });
 
