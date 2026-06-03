@@ -112,7 +112,7 @@
     "langchain": "^1.2.30",
     "postgres": "^3.4.5",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.0",
     "wait-port": "^1.1.0"
   }
 }
