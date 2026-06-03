@@ -1088,7 +1088,9 @@ export class StateGraph<
         errorHandlerNode = `__error_handler__${key}`;
         if (errorHandlerNode in this.nodes) {
           throw new Error(
-            `Auto-generated error handler node \`${errorHandlerNode}\` already exists.`
+            `Cannot add error handler to node \`${key}\`: the reserved name \`${errorHandlerNode}\` is already in use. ` +
+              `StateGraph registers \`__error_handler__<nodeName>\` when you pass \`errorHandler\` in addNode options. ` +
+              `Remove or rename the existing node with that name (for example, you may have added it manually).`
           );
         }
         const userHandler = options.errorHandler;

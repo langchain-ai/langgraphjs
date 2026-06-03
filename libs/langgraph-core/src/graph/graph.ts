@@ -79,16 +79,16 @@ type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
   streamTransformers: infer Transformers;
 }
   ? Transformers extends ReadonlyArray<
-      () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-    >
-    ? Transformers
-    : Transformers extends ReadonlyArray<
-          StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-        >
-      ? { readonly [K in keyof Transformers]: () => Transformers[K] }
-      : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-        ? readonly [() => Transformers]
-        : []
+    () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? Transformers
+  : Transformers extends ReadonlyArray<
+    StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+  : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  ? readonly [() => Transformers]
+  : []
   : [];
 
 /**
@@ -144,12 +144,12 @@ export class Branch<
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce(
-          (acc, n) => {
-            acc[n] = n;
-            return acc;
-          },
-          {} as Record<string, N | typeof END>
-        )
+        (acc, n) => {
+          acc[n] = n;
+          return acc;
+        },
+        {} as Record<string, N | typeof END>
+      )
       : options.pathMap;
   }
 
@@ -173,7 +173,7 @@ export class Branch<
             if (e.name === NodeInterrupt.unminifiable_name) {
               console.warn(
                 "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
-                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+                "NodeInterrupt should only be thrown inside a node, not in edge conditions."
               );
             }
             throw e;
@@ -313,10 +313,10 @@ export class Graph<
     nodes:
       | Record<K, NodeAction<NodeInput, NodeOutput, C>>
       | [
-          key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions,
-        ][]
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
@@ -328,30 +328,30 @@ export class Graph<
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     ...args:
       | [
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ]
+      | [
+        nodes:
+        | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+        | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions,
-        ]
-      | [
-          nodes:
-            | Record<K, NodeAction<NodeInput, NodeOutput, C>>
-            | [
-                key: K,
-                action: NodeAction<NodeInput, NodeOutput, C>,
-                options?: AddNodeOptions,
-              ][],
-        ]
+        ][],
+      ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
       args: unknown[]
     ): args is [
       nodes:
-        | Record<K, NodeAction<NodeInput, RunOutput, C>>
-        | [
-            key: K,
-            action: NodeAction<NodeInput, RunOutput, C>,
-            options?: AddNodeOptions,
-          ][],
+      | Record<K, NodeAction<NodeInput, RunOutput, C>>
+      | [
+        key: K,
+        action: NodeAction<NodeInput, RunOutput, C>,
+        options?: AddNodeOptions,
+      ][],
       options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -521,7 +521,7 @@ export class Graph<
   compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
-      [],
+    [],
   >({
     checkpointer,
     interruptBefore,
@@ -733,7 +733,7 @@ export class CompiledGraph<
 
   override withConfig<
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
-      [],
+    [],
   >(
     config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
       streamTransformers: TTransformers;
@@ -873,6 +873,8 @@ export class CompiledGraph<
       );
     }
 
+    const discoveredEdges: DiscoveredGraphEdge[] = [];
+
     function addEdge(
       start: string,
       end: string,
@@ -888,6 +890,7 @@ export class CompiledGraph<
       if (endNodes[end] === undefined) {
         throw new Error(`End node ${end} not found!`);
       }
+      discoveredEdges.push({ src: start, dest: end, conditional });
       return graph.addEdge(
         startNodes[start],
         endNodes[end],
@@ -918,9 +921,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? await subgraphs[key].getGraphAsync({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
 
         drawableSubgraph.trimFirstNode();
@@ -1044,6 +1047,11 @@ export class CompiledGraph<
         }
       }
     }
+    addImplicitTerminalEndEdges(
+      this.builder.nodes,
+      discoveredEdges,
+      addEdge
+    );
     return graph;
   }
 
@@ -1077,6 +1085,8 @@ export class CompiledGraph<
       );
     }
 
+    const discoveredEdges: DiscoveredGraphEdge[] = [];
+
     function addEdge(
       start: string,
       end: string,
@@ -1086,6 +1096,13 @@ export class CompiledGraph<
       if (end === END && endNodes[END] === undefined) {
         endNodes[END] = graph.addNode({ schema: z.any() }, END);
       }
+      if (startNodes[start] === undefined) {
+        return;
+      }
+      if (endNodes[end] === undefined) {
+        throw new Error(`End node ${end} not found!`);
+      }
+      discoveredEdges.push({ src: start, dest: end, conditional });
       return graph.addEdge(
         startNodes[start],
         endNodes[end],
@@ -1116,9 +1133,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? subgraphs[key].getGraph({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();
@@ -1225,6 +1242,26 @@ export class CompiledGraph<
         }
       }
     }
+    for (const [key, node] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>,
+    ][]) {
+      if (node.ends !== undefined) {
+        for (const end of node.ends) {
+          addEdge(
+            _escapeMermaidKeywords(key),
+            _escapeMermaidKeywords(end),
+            undefined,
+            true
+          );
+        }
+      }
+    }
+    addImplicitTerminalEndEdges(
+      this.builder.nodes,
+      discoveredEdges,
+      addEdge
+    );
     return graph;
   }
 }
@@ -1244,4 +1281,61 @@ function _escapeMermaidKeywords(key: string) {
     return `"${key}"`;
   }
   return key;
+}
+
+/**
+ * An edge collected while building a {@link DrawableGraph} from a compiled
+ * {@link StateGraph}.
+ *
+ * Used by {@link addImplicitTerminalEndEdges} to detect nodes that should
+ * receive an implicit edge to {@link END} (terminal nodes with no outgoing
+ * edges in the drawable view).
+ *
+ * @internal
+ */
+type DiscoveredGraphEdge = {
+  /** Display name of the source node (Mermaid-escaped). */
+  src: string;
+  /** Display name of the target node (Mermaid-escaped), or {@link END}. */
+  dest: string;
+  /**
+   * Whether the edge comes from a conditional branch or `node.ends` declaration.
+   * Non-conditional edges alone determine implicit terminal `→ END` links.
+   */
+  conditional: boolean;
+};
+
+/**
+ * Add implicit edges to END for terminal nodes (targets with no outgoing edges).
+ *
+ * Only nodes reached by a non-conditional edge are considered, so
+ * conditional-branch targets are not treated as implicit sinks.
+ */
+function addImplicitTerminalEndEdges<N extends string>(
+  nodes: Record<N, NodeSpec<unknown, unknown>>,
+  discovered: DiscoveredGraphEdge[],
+  addEdge: (
+    start: string,
+    end: string,
+    label?: string,
+    conditional?: boolean
+  ) => void
+): void {
+  const sources = new Set(discovered.map((e) => e.src));
+  const nonConditionalDestinations = [
+    ...new Set(
+      discovered
+        .filter((e) => !e.conditional && e.dest !== END)
+        .map((e) => e.dest)
+    ),
+  ].sort();
+
+  for (const displayDest of nonConditionalDestinations) {
+    if (sources.has(displayDest)) continue;
+    const rawKey = (Object.keys(nodes) as N[]).find(
+      (k) => _escapeMermaidKeywords(k) === displayDest
+    );
+    if (rawKey !== undefined && nodes[rawKey]?.isErrorHandler) continue;
+    addEdge(displayDest, END);
+  }
 }
