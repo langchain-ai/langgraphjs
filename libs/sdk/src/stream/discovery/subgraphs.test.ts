@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { Event, LifecycleEvent } from "@langchain/protocol";
+import type { Event, LifecycleEvent, ValuesEvent } from "@langchain/protocol";
 
 import { SubgraphDiscovery } from "./subgraphs.js";
 
 function lifecycleEvent(
   namespace: readonly string[],
-  event: "started" | "completed",
+  event: "started" | "completed" | "failed",
   seq = 1
 ): Event {
   return {
@@ -20,6 +20,23 @@ function lifecycleEvent(
   } as LifecycleEvent & Event;
 }
 
+function valuesEvent(
+  namespace: readonly string[],
+  data: Record<string, unknown> = {},
+  seq = 1
+): Event {
+  return {
+    type: "event",
+    method: "values",
+    seq,
+    params: {
+      namespace,
+      timestamp: Date.now(),
+      data,
+    },
+  } as ValuesEvent & Event;
+}
+
 describe("SubgraphDiscovery", () => {
   it("promotes a host namespace when a deeper namespace is observed", () => {
     const discovery = new SubgraphDiscovery();
@@ -31,6 +48,42 @@ describe("SubgraphDiscovery", () => {
 
     expect([...discovery.snapshot.values()]).toMatchObject([
       { nodeName: "classify", status: "running" },
+    ]);
+  });
+
+  it("does not resurrect a completed subgraph from a late values snapshot", () => {
+    // The content pump (values) and lifecycle watcher (lifecycle) are
+    // independent streams, so a host namespace's final values snapshot
+    // can be delivered AFTER its terminal lifecycle event. A late values
+    // event must not downgrade the node back to "running".
+    const discovery = new SubgraphDiscovery();
+    const host = ["classify:u1"] as const;
+    const inner = ["classify:u1", "run:u2"] as const;
+
+    discovery.push(lifecycleEvent(host, "started", 1));
+    discovery.push(valuesEvent(host, {}, 2));
+    discovery.push(lifecycleEvent(inner, "started", 3));
+    discovery.push(lifecycleEvent(host, "completed", 4));
+    // Reordered: the host's final values snapshot lands after completed.
+    discovery.push(valuesEvent(host, {}, 5));
+
+    expect([...discovery.snapshot.values()]).toMatchObject([
+      { nodeName: "classify", status: "complete" },
+    ]);
+  });
+
+  it("does not resurrect a failed subgraph from a late values snapshot", () => {
+    const discovery = new SubgraphDiscovery();
+    const host = ["classify:u1"] as const;
+    const inner = ["classify:u1", "run:u2"] as const;
+
+    discovery.push(lifecycleEvent(host, "started", 1));
+    discovery.push(lifecycleEvent(inner, "started", 2));
+    discovery.push(lifecycleEvent(host, "failed", 3));
+    discovery.push(valuesEvent(host, {}, 4));
+
+    expect([...discovery.snapshot.values()]).toMatchObject([
+      { nodeName: "classify", status: "error" },
     ]);
   });
 
