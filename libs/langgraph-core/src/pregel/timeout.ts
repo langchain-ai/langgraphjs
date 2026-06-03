@@ -229,31 +229,30 @@ export async function runAttemptWithTimeout<T>(
   const start = Date.now();
   const bg = invoke(scopedConfig);
 
-  const outcome = await new Promise<AttemptOutcome<T>>((resolve) => {
-    let settled = false;
-    let runTimer: ReturnType<typeof setTimeout> | undefined;
-    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  // Normalize the node result into an outcome. Catching the rejection here
+  // (rather than via a separate `bg.catch`) keeps `bg` handled even when a
+  // watchdog wins the race below, so its late settlement can never surface as
+  // an unhandled rejection.
+  const nodeOutcome: Promise<AttemptOutcome<T>> = bg.then(
+    (value) => ({ type: "ok", value }),
+    (error) => ({ type: "err", error })
+  );
 
-    const cleanup = () => {
-      if (runTimer !== undefined) clearTimeout(runTimer);
-      if (idleTimer !== undefined) clearTimeout(idleTimer);
-    };
+  let runTimer: ReturnType<typeof setTimeout> | undefined;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const clearTimers = () => {
+    if (runTimer !== undefined) clearTimeout(runTimer);
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+  };
 
-    const finish = (result: AttemptOutcome<T>) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(result);
-    };
-
-    bg.then(
-      (value) => finish({ type: "ok", value }),
-      (error) => finish({ type: "err", error })
-    );
-
+  // The watchdog never rejects: it either resolves with a timeout outcome or
+  // stays pending forever (and is dropped) when the node wins the race. The
+  // idle timer re-arms itself off `scope.lastProgress`, so it can't be a single
+  // fixed `setTimeout`.
+  const watchdog = new Promise<AttemptOutcome<T>>((resolve) => {
     if (policy.runTimeout !== undefined) {
       runTimer = setTimeout(
-        () => finish({ type: "timeout", kind: "run" }),
+        () => resolve({ type: "timeout", kind: "run" }),
         policy.runTimeout
       );
     }
@@ -261,10 +260,9 @@ export async function runAttemptWithTimeout<T>(
     if (policy.idleTimeout !== undefined) {
       const idleMs = policy.idleTimeout;
       const checkIdle = () => {
-        if (settled) return;
         const remaining = scope.lastProgress + idleMs - Date.now();
         if (remaining <= 0) {
-          finish({ type: "timeout", kind: "idle" });
+          resolve({ type: "timeout", kind: "idle" });
         } else {
           idleTimer = setTimeout(checkIdle, remaining);
         }
@@ -272,6 +270,13 @@ export async function runAttemptWithTimeout<T>(
       idleTimer = setTimeout(checkIdle, idleMs);
     }
   });
+
+  let outcome: AttemptOutcome<T>;
+  try {
+    outcome = await Promise.race([nodeOutcome, watchdog]);
+  } finally {
+    clearTimers();
+  }
 
   if (outcome.type === "ok") {
     dispose?.();
@@ -290,8 +295,6 @@ export async function runAttemptWithTimeout<T>(
   // Abort BEFORE disposing the combined signal so the abort actually
   // propagates to the node's signal (dispose removes the relay listeners).
   timeoutController.abort();
-  // Prevent an unhandled rejection from the abandoned background task.
-  bg.catch(() => undefined);
   dispose?.();
 
   throw new NodeTimeoutError({
