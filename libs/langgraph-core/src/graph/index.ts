@@ -13,6 +13,8 @@ export {
   type CompiledGraphType,
   type NodeSpec,
   type AddNodeOptions,
+  type NodeErrorHandler,
+  type NodeErrorHandlerReturnValue,
 } from "./graph.js";
 export {
   type StateGraphArgs,

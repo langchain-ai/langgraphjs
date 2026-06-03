@@ -47,6 +47,7 @@ import {
 import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import type { StreamTransformer } from "../stream/types.js";
+import type { GraphNodeReturnValue } from "./types.js";
 
 export interface BranchOptions<
   IO,
@@ -231,6 +232,19 @@ export type NodeSpec<RunInput, RunOutput> = {
 };
 
 /**
+ * Return value type for node-level error handlers.
+ *
+ * Handlers may return a partial state update, a `Command`, or a Promise of either.
+ *
+ * @template Update - The update type (what fields can be returned)
+ * @template Nodes - Union of valid node names for Command.goto
+ */
+export type NodeErrorHandlerReturnValue<
+  Update,
+  Nodes extends string = string,
+> = GraphNodeReturnValue<Update, Nodes>;
+
+/**
  * A node-level error handler callable.
  *
  * Invoked with the node input state, a {@link NodeError} describing the failed
@@ -238,11 +252,15 @@ export type NodeSpec<RunInput, RunOutput> = {
  * the failing node's {@link RetryPolicy} is exhausted. It may return a state
  * update or a `Command` (to route via `goto`).
  */
-export type NodeErrorHandler<TState = unknown> = (
+export type NodeErrorHandler<
+  TState = unknown,
+  TUpdate = Partial<TState>,
+  Nodes extends string = string,
+> = (
   state: TState,
   error: NodeError,
   config?: LangGraphRunnableConfig
-) => unknown;
+) => NodeErrorHandlerReturnValue<TUpdate, Nodes>;
 
 export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;

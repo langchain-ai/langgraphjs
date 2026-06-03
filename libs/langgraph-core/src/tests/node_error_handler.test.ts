@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { it, expect, describe, beforeAll, afterAll, vi } from "vitest";
+import {
+  it,
+  expect,
+  describe,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import { z } from "zod/v4";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/index.js";
@@ -17,16 +25,12 @@ beforeAll(() => {
 });
 
 describe("Node-level error handlers", () => {
-  // Speed up retry backoff sleeps.
-  beforeAll(() => {
-    vi.spyOn(global, "setTimeout").mockImplementation(((fn: () => void) => {
-      fn();
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout);
+  beforeEach(() => {
+    vi.useFakeTimers();
   });
 
-  afterAll(() => {
-    vi.restoreAllMocks();
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("runs the error handler only after the retry policy is exhausted", async () => {
@@ -65,7 +69,9 @@ describe("Node-level error handlers", () => {
       .addEdge(START, "alwaysFailing")
       .compile();
 
-    const result = await graph.invoke({ foo: "" });
+    const resultPromise = graph.invoke({ foo: "" });
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
 
     expect(attempts).toBe(2);
     expect(result.foo).toBe("handled_after");
@@ -308,7 +314,9 @@ describe("Node-level error handlers", () => {
       .addEdge(START, "alwaysFailing")
       .compile();
 
-    const result = await graph.invoke({ foo: "" });
+    const resultPromise = graph.invoke({ foo: "" });
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
     expect(attempts).toBe(2);
     expect(result.foo).toBe("handled_async");
     expect(captured.node).toBe("alwaysFailing");

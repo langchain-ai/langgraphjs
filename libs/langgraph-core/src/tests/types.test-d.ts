@@ -653,6 +653,29 @@ describe("StateGraph.addNode errorHandler", () => {
 
     expect(graph).toBeDefined();
   });
+
+  it("accepts handlers that return Command with typed goto and update", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    const graph = new StateGraph(State)
+      .addNode("recovery", (_state: typeof State.State) => ({ count: 0 }))
+      .addNode(
+        "fails",
+        (_state: typeof State.State) => {
+          throw new Error("boom");
+        },
+        {
+          ends: ["recovery"],
+          errorHandler: (_state, _error) =>
+            new Command({ update: { count: 1 }, goto: "recovery" }),
+        }
+      );
+
+    expect(graph).toBeDefined();
+  });
 });
 
 describe("ConditionalEdgeRouter", () => {
