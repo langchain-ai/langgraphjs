@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
-    "@types/react": "^19.0.8",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-vue": "^6.0.7",
     "tsx": "^4.19.3",

@@ -18,14 +18,14 @@
     "@langchain/protocol": "^0.0.16",
     "@langchain/react": "workspace:*",
     "hono": "^4.12.18",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/react": "^19.0.8",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^6.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
     "vite": "^8.0.5"
