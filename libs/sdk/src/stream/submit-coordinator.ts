@@ -302,10 +302,6 @@ export class SubmitCoordinator<
     // returns (see `#startDeferredRootPump` calls below).
     const thread = this.#ensureThread(currentThreadId, wasSelfCreated);
     const activeThreadId = currentThreadId;
-    // Wait for the root subscription to be live; otherwise the
-    // dispatch could resolve before we're listening for events and
-    // we'd miss the terminal that ends the run.
-    await this.#waitForRootPumpReady();
 
     const strategy = options?.multitaskStrategy ?? "rollback";
     // `wasSelfCreated` short-circuit: when this submit just minted a
@@ -336,9 +332,9 @@ export class SubmitCoordinator<
     const abort = new AbortController();
     this.#runAbort = abort;
 
-    // Optimistically clear interrupts/error and flip loading. The
-    // root pump's lifecycle listener will re-flip these as the run
-    // terminates.
+    // Claim the in-flight slot before awaiting the root pump so
+    // concurrent `enqueue` submits in the same tick observe
+    // `hasActiveRun` and land in {@link queueStore}.
     this.#rootStore.setState((s) => ({
       ...s,
       interrupts: [],
@@ -346,6 +342,11 @@ export class SubmitCoordinator<
       error: undefined,
       isLoading: true,
     }));
+
+    // Wait for the root subscription to be live; otherwise the
+    // dispatch could resolve before we're listening for events and
+    // we'd miss the terminal that ends the run.
+    await this.#waitForRootPumpReady();
 
     const boundConfig = bindThreadConfig(options?.config, currentThreadId);
     // Subscribe to the next terminal *before* dispatching so a fast
