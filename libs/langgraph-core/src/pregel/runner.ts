@@ -88,6 +88,12 @@ export class PregelRunner {
   private loop: PregelLoop;
 
   /**
+   * Exceptions already routed to a node-level error handler. Consulted when
+   * deciding whether a failed task should abort the run.
+   */
+  private handledExceptions = new WeakSet<Error>();
+
+  /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
    */
@@ -135,16 +141,11 @@ export class PregelRunner {
       maxConcurrency,
     });
 
-    for await (const {
-      task,
-      error,
-      signalAborted,
-      errorHandled,
-    } of taskStream) {
-      this._commit(task, error, errorHandled);
-      if (errorHandled) {
-        // Error was routed to a node-level error handler (scheduled within this
-        // same tick). Provenance has been checkpointed; the error is not fatal.
+    for await (const { task, error, signalAborted } of taskStream) {
+      this._commit(task, error);
+      if (error !== undefined && this.handledExceptions.has(error)) {
+        // Routed to a node-level error handler in this tick; provenance is
+        // checkpointed and the error must not abort the run.
         continue;
       }
       if (isGraphInterrupt(error)) {
@@ -361,7 +362,6 @@ export class PregelRunner {
           settledError
         );
         if (handlerTask !== undefined) {
-          settled.errorHandled = true;
           executingTasksMap[handlerTask.id] = _runWithRetry(
             handlerTask,
             retryPolicy,
@@ -390,6 +390,19 @@ export class PregelRunner {
   }
 
   /**
+   * Whether a failed task should record {@link ERROR_SOURCE_NODE} provenance.
+   */
+  private _shouldRouteToErrorHandler(
+    task: PregelExecutableTask<string, string>
+  ): boolean {
+    const name = String(task.name);
+    if (this.loop.isErrorHandlerNode(name)) {
+      return false;
+    }
+    return this.loop.getErrorHandlerNode(name) !== undefined;
+  }
+
+  /**
    * Determines what writes to apply based on whether the task completed successfully, and what type of error occurred.
    *
    * Throws an error if the error is a {@link GraphBubbleUp} error and {@link PregelLoop}#isNested is true.
@@ -397,11 +410,7 @@ export class PregelRunner {
    * @param task - The task to commit.
    * @param error - The error that occurred, if any.
    */
-  private _commit(
-    task: PregelExecutableTask<string, string>,
-    error?: Error,
-    errorHandled = false
-  ) {
+  private _commit(task: PregelExecutableTask<string, string>, error?: Error) {
     if (error !== undefined) {
       if (isGraphInterrupt(error)) {
         if (error.interrupts.length) {
@@ -416,22 +425,13 @@ export class PregelRunner {
         }
       } else if (isGraphBubbleUp(error) && task.writes.length) {
         this.loop.putWrites(task.id, task.writes);
-      } else if (errorHandled) {
-        // The error was routed to a node-level error handler. Record failure
-        // provenance (ERROR + ERROR_SOURCE_NODE) so the originating task counts
-        // as "done" for this superstep and handlers see the same context after
-        // a checkpoint resume. The handler task (scheduled separately) carries
-        // the recovery state update / routing.
-        task.writes.splice(0, task.writes.length);
-        task.writes.push(
-          [ERROR, { message: error.message, name: error.name }],
-          [ERROR_SOURCE_NODE, String(task.name)]
-        );
-        this.loop.putWrites(task.id, task.writes);
       } else {
-        this.loop.putWrites(task.id, [
-          [ERROR, { message: error.message, name: error.name }],
-        ]);
+        task.writes.push([ERROR, { message: error.message, name: error.name }]);
+        if (this._shouldRouteToErrorHandler(task)) {
+          task.writes.push([ERROR_SOURCE_NODE, String(task.name)]);
+          this.handledExceptions.add(error);
+        }
+        this.loop.putWrites(task.id, task.writes);
       }
     } else {
       if (

@@ -619,7 +619,7 @@ export class Graph<
     // (saga / compensation flows), so treat them like an open-ended branch:
     // any node may be a recovery target reachable from a handler.
     const hasErrorHandler = Object.values<NodeSpecType>(this.nodes).some(
-      (node) => (node as NodeSpec<unknown, unknown>).isErrorHandler
+      (node) => node.isErrorHandler
     );
     if (hasErrorHandler) {
       for (const node of Object.keys(this.nodes)) {
@@ -630,9 +630,7 @@ export class Graph<
     for (const node of Object.keys(this.nodes)) {
       // auto-generated error handler nodes are reachable only on failure of
       // their source node, so they are exempt from the reachability check.
-      if (
-        (this.nodes[node as N] as NodeSpec<unknown, unknown>).isErrorHandler
-      ) {
+      if (this.nodes[node as N].isErrorHandler) {
         continue;
       }
       if (!allTargets.has(node)) {

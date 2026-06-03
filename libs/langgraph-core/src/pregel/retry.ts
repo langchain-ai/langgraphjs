@@ -61,12 +61,6 @@ export type SettledPregelTask = {
   task: PregelExecutableTask<any, any>;
   error: Error;
   signalAborted?: boolean;
-  /**
-   * Set when this task's error was routed to a node-level error handler. When
-   * true, the runner records failure provenance but does not treat the error
-   * as fatal to the run.
-   */
-  errorHandled?: boolean;
 };
 
 export async function _runWithRetry<

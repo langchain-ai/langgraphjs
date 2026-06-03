@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { it, expect, describe, beforeAll, afterAll, vi } from "vitest";
+import { z } from "zod/v4";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { Annotation, StateGraph } from "../graph/index.js";
+import { StateGraph } from "../graph/index.js";
+import { StateSchema } from "../state/schema.js";
+import { ReducedValue } from "../state/values/reduced.js";
 import { START } from "../constants.js";
 import { Command } from "../constants.js";
 import { NodeError } from "../errors.js";
@@ -27,7 +30,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("runs the error handler only after the retry policy is exhausted", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     let attempts = 0;
     const captured: { node?: string; error?: Error } = {};
@@ -72,7 +75,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("lets the handler route to a recovery branch via Command(goto)", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     let attempts = 0;
     const graph = new StateGraph(State)
@@ -100,7 +103,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("fails the run when the error handler itself throws", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     const graph = new StateGraph(State)
       .addNode(
@@ -121,8 +124,8 @@ describe("Node-level error handlers", () => {
   });
 
   it("handles a failure that occurs inside a subgraph node", async () => {
-    const SubState = Annotation.Root({ foo: Annotation<string> });
-    const ParentState = Annotation.Root({ foo: Annotation<string> });
+    const SubState = new StateSchema({ foo: z.string() });
+    const ParentState = new StateSchema({ foo: z.string() });
 
     const captured: { node?: string; error?: Error } = {};
 
@@ -151,7 +154,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("preserves the failure context across a checkpoint resume", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
     const captured: { node?: string; error?: Error } = {};
 
     const checkpointer = new MemorySaver();
@@ -186,7 +189,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("does not swallow a concurrent interrupt()", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     const checkpointer = new MemorySaver();
     const graph = new StateGraph(State)
@@ -216,11 +219,10 @@ describe("Node-level error handlers", () => {
   });
 
   it("routes a failure to the matching node's handler", async () => {
-    const State = Annotation.Root({
-      route: Annotation<string>,
-      foo: Annotation<string[]>({
-        reducer: (a, b) => a.concat(b),
-        default: () => [],
+    const State = new StateSchema({
+      route: z.string(),
+      foo: new ReducedValue(z.array(z.string()).default(() => []), {
+        reducer: (a: string[], b: string[]) => a.concat(b),
       }),
     });
 
@@ -264,7 +266,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("still fails the run for a node without an error handler", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     const graph = new StateGraph(State)
       .addNode("failWithoutHandler", () => {
@@ -277,7 +279,7 @@ describe("Node-level error handlers", () => {
   });
 
   it("exposes the NodeError to handlers registered as plain functions", async () => {
-    const State = Annotation.Root({ foo: Annotation<string> });
+    const State = new StateSchema({ foo: z.string() });
 
     let attempts = 0;
     const captured: { node?: string; error?: Error } = {};
