@@ -200,7 +200,20 @@ export class SubgraphDiscovery {
     const lastSegment = namespace[namespace.length - 1] ?? "";
     const nodeName = parseNodeName(lastSegment);
     const entry = this.#ensureShadow(id, namespace, nodeName);
-    entry.status = "running";
+    // A `values` snapshot is a discovery/promotion signal, not a status
+    // transition — terminal status is owned by `lifecycle` events. The
+    // content pump (which carries `values`) and the lifecycle watcher
+    // (which carries `lifecycle`) are independent streams deduped through
+    // `onEvent`, so a host namespace's final `values` snapshot can be
+    // observed AFTER its terminal `completed`/`failed` lifecycle event.
+    // Unconditionally writing "running" here would resurrect a finished
+    // subgraph and strand it as perpetually running in the UI. New
+    // entries are already created as "running" by `#ensureShadow`, so we
+    // only need to avoid downgrading an entry that already reached a
+    // terminal state.
+    if (entry.status !== "complete" && entry.status !== "error") {
+      entry.status = "running";
+    }
 
     if (!this.#promoted.has(id)) {
       this.#promoted.add(id);
