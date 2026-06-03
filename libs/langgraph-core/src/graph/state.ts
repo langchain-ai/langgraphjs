@@ -205,11 +205,7 @@ export type StateGraphAddNodeOptions<
 type StateGraphAddNodeOptionsWithNodeInput<
   Nodes extends string,
   NodeInput,
-> = StateGraphAddNodeOptions<
-  Nodes,
-  StateDefinitionInit | undefined,
-  NodeInput
->;
+> = StateGraphAddNodeOptions<Nodes, StateDefinitionInit | undefined, NodeInput>;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
