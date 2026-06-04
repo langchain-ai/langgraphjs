@@ -2223,6 +2223,11 @@ export class Pregel<
         ? undefined
         : (options?.encoding ?? undefined);
     const streamSubgraphs = options?.subgraphs;
+    // Only the native v3 protocol stream consumes the 4th
+    // ``StreamChunkMeta`` element; every other consumer expects Python's
+    // 3-tuple stream shape (see the yield below).
+    const isV3 =
+      (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -2285,8 +2290,7 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const useProtocolMessagesStream =
-        (options as { version?: unknown } | undefined)?.version === "v3";
+      const useProtocolMessagesStream = isV3;
       const messageStreamer = useProtocolMessagesStream
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
         : new StreamMessagesHandler((chunk) => stream.push(chunk));
@@ -2459,10 +2463,17 @@ export class Pregel<
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            // Preserve chunk meta (e.g. the checkpoint envelope on `values`
-            // events) so `streamEvents(..., { version: "v3" })` / `pump()`
-            // can surface it on the protocol stream.
-            yield meta !== undefined
+            // Preserve the chunk meta (e.g. the checkpoint envelope on
+            // `values` events) ONLY for the native v3 protocol stream
+            // (`streamEvents(..., { version: "v3" })` / `pump()`), which
+            // surfaces it as a companion `checkpoints` event. All other
+            // consumers — plain `stream()` and the legacy
+            // `streamEvents(..., { version: "v2" })` path that backs
+            // `on_chain_stream` — expect the Python-aligned 3-tuple
+            // `[namespace, mode, payload]`; emitting a 4th element breaks
+            // them (e.g. `too many values to unpack` in the Python runtime
+            // consuming a JS graph's `on_chain_stream` chunks).
+            yield isV3 && meta !== undefined
               ? [namespace, mode, payload, meta]
               : [namespace, mode, payload];
           } else if (!streamModeSingle) {

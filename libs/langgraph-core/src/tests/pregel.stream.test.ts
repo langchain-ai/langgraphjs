@@ -7,6 +7,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/index.js";
 import { Command, END, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
+import { gatherIterator } from "../utils.js";
 import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
@@ -805,5 +806,64 @@ describe("streamEvents version v3", () => {
         message: "test error",
       });
     });
+  });
+});
+
+describe("stream() shape parity with Python", () => {
+  // The 4th `StreamChunkMeta` element (the checkpoint envelope attached to
+  // `values` chunks) is consumed only by the native v3 protocol stream. It
+  // must NOT leak onto the plain `stream()` / legacy
+  // `streamEvents(..., { version: "v2" })` output, which downstream
+  // consumers — notably the Python runtime unpacking a JS graph's
+  // `on_chain_stream` chunks — expect to be the 3-tuple
+  // `[namespace, mode, payload]`. A 4-element tuple there raises
+  // `ValueError: too many values to unpack (expected 3)`.
+  it("yields 3-tuples for subgraphs + multi-mode runs with a checkpointer", async () => {
+    const graph = new StateGraph(CounterState)
+      .addNode("add_one", () => ({ count: 1 }))
+      .addEdge(START, "add_one")
+      .addEdge("add_one", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { count: 0 },
+        {
+          subgraphs: true,
+          streamMode: ["values", "updates"],
+          configurable: { thread_id: "py-parity" },
+        }
+      )
+    );
+
+    expect(chunks.length).toBeGreaterThan(0);
+    // A `values` chunk is produced — the case that carries meta on the v3
+    // path — so this would have been a 4-tuple before the fix.
+    expect(
+      chunks.some((c) => Array.isArray(c) && c[1] === "values")
+    ).toBe(true);
+    for (const chunk of chunks) {
+      expect(Array.isArray(chunk)).toBe(true);
+      expect((chunk as unknown[]).length).toBe(3);
+    }
+  });
+
+  it("still surfaces the checkpoint envelope on the v3 protocol stream", async () => {
+    const graph = new StateGraph(CounterState)
+      .addNode("add_one", () => ({ count: 1 }))
+      .addEdge(START, "add_one")
+      .addEdge("add_one", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const run = await graph.streamEvents(
+      { count: 0 },
+      { version: "v3", configurable: { thread_id: "py-parity-v3" } }
+    );
+    const events = await collectEvents(run);
+
+    const checkpoints = byMethod(events, "checkpoints");
+    const values = byMethod(events, "values");
+    expect(values.length).toBeGreaterThan(0);
+    expect(checkpoints.length).toBe(values.length);
   });
 });
