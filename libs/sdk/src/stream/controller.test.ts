@@ -1100,4 +1100,162 @@ describe("StreamController", () => {
 
     await controller.dispose();
   });
+
+  it("respond() surfaces a failed resumed run on rootStore.error", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond({ approved: true });
+
+    // The resumed run later fails (e.g. a missing model key surfaced after
+    // the user approved the interrupt). respond() dispatches the resume
+    // directly rather than via submit(), so without the background terminal
+    // watch this `failed` lifecycle would only flip isLoading and never
+    // populate the reactive rootStore.error slot.
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-2",
+      seq: 2,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { event: "failed", error: "missing OPENAI_API_KEY" },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(
+        (controller.rootStore.getSnapshot().error as Error | undefined)?.message
+      ).toBe("missing OPENAI_API_KEY");
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() surfaces an input.respond dispatch failure on rootStore.error", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const dispatchError = new Error("network down");
+    const respondInput = vi.fn(async () => {
+      throw dispatchError;
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await expect(controller.respond({ approved: true })).rejects.toThrow(
+      "network down"
+    );
+    expect(controller.rootStore.getSnapshot().error).toBe(dispatchError);
+
+    await controller.dispose();
+  });
+
+  it("respondAll() surfaces a failed batched resume on rootStore.error", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: {}, namespace: [] },
+        { interruptId: "int-2", payload: {}, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respondAll({
+      "int-1": { approved: true },
+      "int-2": { approved: false },
+    });
+
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-2",
+      seq: 2,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { event: "failed", error: "tool authorization rejected" },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(
+        (controller.rootStore.getSnapshot().error as Error | undefined)?.message
+      ).toBe("tool authorization rejected");
+    });
+
+    await controller.dispose();
+  });
 });
