@@ -2290,8 +2290,7 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const useProtocolMessagesStream = isV3;
-      const messageStreamer = useProtocolMessagesStream
+      const messageStreamer = isV3
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
         : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
