@@ -1,8 +1,8 @@
 # Migrating to `@langchain/vue` v1
 
 This guide walks Vue application authors through the jump from the
-pre-v1 `useStream` composable to the v2-native `useStream` that ships
-with `@langchain/vue` **v1**.
+pre-v1 `useStream` composable to the `useStream` composable built for
+**new event-based streaming**, which ships with `@langchain/vue` **v1**.
 
 Short version: **the `useStream` import name does not change, but the
 return shape, option bag, and protocol semantics do.** Most chat apps
@@ -57,14 +57,14 @@ refs instead of React hooks).
 
 ## 1. Why the breaking change?
 
-The legacy `useStream` was built against the v1 streaming protocol and
+The legacy `useStream` was built against the legacy streaming protocol and
 accreted a large surface of opt-in callbacks (`onUpdateEvent`,
 `onCustomEvent`, `onMetadataEvent`, `onCheckpointEvent`, `onTaskEvent`,
 `onToolEvent`, `onStop`, …) plus derived state (`branch`,
 `experimental_branchTree`, `getMessagesMetadata`, `joinStream`,
 `switchThread`) that had to be recomputed on every render.
 
-The v1 composable targets protocol v2. In practice that means:
+The v1 package composable uses new event-based streaming. In practice that means:
 
 - **Selector-based subscriptions.** Namespaced data (subagent messages,
   subgraph tool calls, media) is opened *only* when a component
@@ -94,12 +94,18 @@ covers every scenario the legacy composable supported.
 For the typical app this is the whole migration. Deeper changes are
 flagged in the later sections.
 
-- [ ] **Upgrade** `@langchain/vue` to `^1.0.0` and `vue` to `^3.4`.
+- [ ] **Upgrade** `@langchain/vue` to `^1.0.0`, `vue` to `^3.4`, and
+      `@langchain/langgraph-sdk` to the matching new event-based streaming
+      runtime.
 - [ ] **Imports stay the same** — `import { useStream } from "@langchain/vue"`
-      now resolves to the v2-native composable.
+      now resolves to the composable built for new event-based streaming.
+      `useStreamExperimental` is
+      not exported from this package.
 - [ ] **Read reactive state via `.value`** (or directly in templates
-      where Vue auto-unwraps). `messages`, `values`, `toolCalls`,
-      `interrupts`, `isLoading`, `error`, `threadId` are all refs now.
+      where Vue auto-unwraps). Root fields are Vue refs:
+      `messages` / `values` / `toolCalls` / `interrupts` are
+      `ShallowRef`s; `isLoading`, `isThreadLoading`, `error`,
+      `threadId`, and `interrupt` are `ComputedRef`s.
 - [ ] **Remove these option-bag fields** (they are gone; see §3):
       `onError`, `onFinish`, `onUpdateEvent`, `onCustomEvent`,
       `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`,
@@ -166,14 +172,14 @@ These keep working without changes:
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `onError`                                                                                                                                  | Read `stream.error.value` directly, or pass a per-submit `onError` via `submit(input, { onError })` for a one-off side effect.                                          |
 | `onFinish`                                                                                                                                 | Derive from `isLoading` transitioning `true → false`, or observe the thread via `useValues(stream)`.                                                                    |
-| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. The v2 protocol delivers these as structured store updates; read them via selector composables (`useChannel`, `useExtension`) when you genuinely need raw events. |
+| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. New event-based streaming delivers these as structured store updates; read them via selector composables (`useChannel`, `useExtension`) when you genuinely need raw events. |
 | `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` for join/rejoin. See §5.3.                                                            |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                               |
 | `reconnectOnMount`                                                                                                                         | Drop. Re-attach is automatic: remounting the composable with the same `threadId` attaches to the in-flight run.                                                         |
 | `throttle`                                                                                                                                 | Drop. The composable batches state updates natively; call sites that need render throttling can memoize at the selector site.                                           |
 | `thread`                                                                                                                                   | Drop. External thread managers should drive the composable by controlling `threadId` and `initialValues`.                                                               |
 | `filterSubagentMessages`                                                                                                                   | Drop. Subagent messages are already absent from `stream.messages`; they live on per-subagent selector composables (§7).                                                 |
-| `subagentToolNames`                                                                                                                        | Drop. Subagent classification is driven by protocol-v2 lifecycle events, not by a client-side tool-name list.                                                           |
+| `subagentToolNames`                                                                                                                        | Drop. Subagent classification is driven by new event-based streaming lifecycle events, not by a client-side tool-name list.                                                           |
 
 Migrate silent callback side effects into `watch()` / `watchEffect()`:
 
@@ -316,11 +322,11 @@ await submit({ messages: new HumanMessage("hi") });
 | `context`                                                                                                                                           | Drop — fold into `config.configurable`.                                                                                                                  |
 | `checkpoint: { checkpoint_id }`                                                                                                                     | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed.                     |
 | `command: { resume }`                                                                                                                               | Use `stream.respond()` instead.                                                                                                                          |
-| `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported in v2.                                                                                                                              |
+| `interruptBefore`, `interruptAfter`                                                                                                                 | Drop — not supported with new event-based streaming.                                                                                                                              |
 | `metadata`                                                                                                                                          | Unchanged.                                                                                                                                               |
 | `multitaskStrategy`                                                                                                                                 | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
 | `onCompletion`                                                                                                                                     | Use the composable-level `onCompleted` option for run-completion side effects.                                                                            |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Most other fields map to protocol-v2 defaults.                                                                                                                  |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring`                 | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Most other fields map to new event-based streaming defaults.                                                                                                                  |
 | **(new submit option)** `onError`                                                                                                                   | Per-submit fire-and-forget error callback. There is no composable-level `onError` option; transport-level `stream.error` updates still happen in parallel. |
 | **(new)** `threadId`                                                                                                                                | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the reactive `threadId` option changes again. |
 
@@ -656,11 +662,12 @@ fallback until hydration completes.
 
 ## 12. Type helpers
 
-| Legacy         | v1                                             |
-| -------------- | ---------------------------------------------- |
-| `UseStream<T>` | `UseStreamReturn<T>`                           |
-| `StateOf<T>`   | `InferStateType<T>`                            |
-| —              | `AnyStream` — erased handle for prop-drilling. |
+| Legacy                         | v1                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `UseStream<T>`                 | `UseStreamReturn<T>`                                                                    |
+| `UseStreamOptions<State, Bag>` | `UseStreamOptions<State>` (or let the composable infer).                                |
+| `StateOf<T>`                   | `InferStateType<T>`                                                                     |
+| —                              | `AnyStream` — type-erased handle (`UseStreamReturn<any, any, any>`) for prop-drilling. |
 
 ```ts
 import type { UseStreamReturn, AnyStream } from "@langchain/vue";
@@ -678,16 +685,16 @@ function renderMessages(stream: AnyStream) {
   honoured client-side. `"interrupt"` currently falls back to
   `"rollback"` until server-side interrupt semantics land.
 - `forkFrom` + `submit()` requires a server release that supports
-  protocol v2 checkpoints.
+  new event-based streaming checkpoints.
 
 ---
 
 ## 14. FAQ
 
 **Q: Can I use the v1 binding with a LangGraph server that still
-speaks protocol v1?**
-No. v1 is strictly v2-native. Stay on `@langchain/vue@0.x` until your
-server is upgraded.
+uses the legacy streaming protocol?**
+No. The v1 package requires new event-based streaming. Stay on
+`@langchain/vue@0.x` until your server is upgraded.
 
 **Q: Why does `stream.values` show stale data during a run?**
 It doesn't — `values` reflects the server's authoritative state
