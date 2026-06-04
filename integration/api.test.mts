@@ -208,7 +208,7 @@ describe("assistants", () => {
   });
 
   it("config from env", async () => {
-    let search = await client.assistants.search({
+    const search = await client.assistants.search({
       graphId: "agent",
       metadata: { created_by: "system" },
     });
@@ -1305,7 +1305,7 @@ describe("subgraphs", () => {
 
       // run until the interrupt
       let lastMessageBeforeInterrupt: { content?: string } | null = null;
-      let chunks = await gatherIterator(
+      const chunks = await gatherIterator(
         client.runs.stream(thread.thread_id, assistant.assistant_id, {
           input: {
             messages: [{ role: "human", content: "SF", id: "initial-message" }],
@@ -1363,7 +1363,7 @@ describe("subgraphs", () => {
         },
       ]);
 
-      let state = await client.threads.getState(thread.thread_id);
+      const state = await client.threads.getState(thread.thread_id);
       expect(state.next).toEqual(["weather_graph"]);
       expect(state.tasks).toEqual([
         {
@@ -1927,7 +1927,7 @@ describe("command update state", () => {
 
   it("goto skip start + map-reduce", async () => {
       const assistant = await client.assistants.create({ graphId: "command" });
-      let thread = await client.threads.create();
+      const thread = await client.threads.create();
 
       await client.runs.wait(thread.thread_id, assistant.assistant_id, {
         command: { goto: "map" },
@@ -1968,7 +1968,7 @@ describe("command update state", () => {
 
   it("goto interrupt", async () => {
     const assistant = await client.assistants.create({ graphId: "command" });
-    let thread = await client.threads.create({ graphId: "command" });
+    const thread = await client.threads.create({ graphId: "command" });
 
     let stream = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {

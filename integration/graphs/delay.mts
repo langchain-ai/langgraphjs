@@ -12,7 +12,7 @@ const StateSchema = Annotation.Root({
 });
 
 const longRunning = async (
-  state: typeof StateSchema.State,
+  state: typeof StateSchema.State
 ): Promise<typeof StateSchema.Update> => {
   if (state.delay === -1) {
     while (true) {

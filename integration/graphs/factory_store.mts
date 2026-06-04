@@ -29,13 +29,16 @@ export async function graph(config: FactoryConfig) {
   await config.store.put(FACTORY_NAMESPACE, userId, { userId });
 
   return new StateGraph(State)
-    .addNode("read_factory_seed", async (_, nodeConfig: LangGraphRunnableConfig) => {
-      const seeded = await nodeConfig.store?.get(FACTORY_NAMESPACE, userId);
-      return {
-        seededUserId: (seeded?.value?.userId as string | null) ?? null,
-        hasFactoryCheckpointer,
-      };
-    })
+    .addNode(
+      "read_factory_seed",
+      async (_, nodeConfig: LangGraphRunnableConfig) => {
+        const seeded = await nodeConfig.store?.get(FACTORY_NAMESPACE, userId);
+        return {
+          seededUserId: (seeded?.value?.userId as string | null) ?? null,
+          hasFactoryCheckpointer,
+        };
+      }
+    )
     .addEdge(START, "read_factory_seed")
     .addEdge("read_factory_seed", "__end__")
     .compile();

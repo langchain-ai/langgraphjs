@@ -38,7 +38,7 @@ export const graph = new StateGraph(StateSchema)
           new Send("task", { value: 3 }),
         ],
       }),
-    { ends: ["task"] },
+    { ends: ["task"] }
   )
   .addNode("task", (arg: { value: number }) => ({
     messages: [`task: ${arg.value}`],

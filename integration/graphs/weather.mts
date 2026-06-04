@@ -48,7 +48,7 @@ async function assertStoreOps(store: BaseStore) {
 }
 
 const isAsyncBatchedStore = (
-  store: BaseStore,
+  store: BaseStore
 ): store is AsyncBatchedStore & { store: BaseStore } => {
   return "store" in store && store.store != null;
 };
@@ -96,7 +96,7 @@ const router = new StateGraph(routerState)
       if (route === "weather") return "weather_graph";
       return "normal_llm_node";
     },
-    ["weather_graph", "normal_llm_node"],
+    ["weather_graph", "normal_llm_node"]
   )
   .addEdge("weather_graph", END)
   .addEdge("normal_llm_node", END);

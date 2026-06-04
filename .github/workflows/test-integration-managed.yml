@@ -8,9 +8,8 @@ name: Integration (managed langgraph-api)
 # field before the wire.
 #
 # Path-gated to streaming/runtime-relevant code so it does not run on every PR,
-# and skipped on fork PRs (repo secrets are not exposed to forks). The fast
-# in-process arity guard in libs/langgraph-core/src/tests/pregel.stream.test.ts
-# runs on every PR via the normal Unit Tests job.
+# and gated on the managed-server license secret (absent on forks and until a
+# maintainer configures it) so it skips green rather than failing on infra.
 
 on:
   push:
@@ -54,29 +53,51 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # The managed server needs a license. When no secret is configured
+      # (forks, or before a maintainer adds it) skip the run so the check stays
+      # green rather than failing on infrastructure. All steps below are gated.
+      - name: Check for managed-server license secret
+        id: guard
+        run: |
+          if [ -n "$LANGSMITH_API_KEY" ] || [ -n "$LANGGRAPH_CLOUD_LICENSE_KEY" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No LANGSMITH_API_KEY / LANGGRAPH_CLOUD_LICENSE_KEY secret configured; skipping the managed integration run."
+          fi
+
       - name: Install pnpm
+        if: steps.guard.outputs.run == 'true'
         uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
 
-      - name: Use Node.js 20
+      # Node 22: the pinned pnpm requires node:sqlite, which is unavailable on
+      # Node 20. The deployment graph still targets node_version 20 via the
+      # managed base image, independent of this runner's Node version.
+      - name: Use Node.js 22.14.0
+        if: steps.guard.outputs.run == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: "20"
+          node-version: "22.14.0"
           cache: "pnpm"
 
       - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       # --- Inject the in-repo @langchain/langgraph (test THIS PR's code, not npm) ---
       - name: Build @langchain/langgraph
+        if: steps.guard.outputs.run == 'true'
         run: pnpm --filter @langchain/langgraph build:internal
 
       - name: Pack in-repo @langchain/langgraph into the graphs deployment
+        if: steps.guard.outputs.run == 'true'
         run: |
           mkdir -p integration/graphs/vendor
           pnpm --filter @langchain/langgraph pack \
             --pack-destination "$GITHUB_WORKSPACE/integration/graphs/vendor"
 
       - name: Point graphs at the packed tarball
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration/graphs
         run: |
           tgz="vendor/$(ls vendor | grep '^langchain-langgraph-.*\.tgz$' | head -1)"
@@ -85,37 +106,44 @@ jobs:
 
       # --- Build the deployment image on the published managed base & run ---
       - name: Install langgraph CLI
+        if: steps.guard.outputs.run == 'true'
         run: pipx install langgraph-cli
 
       - name: Configure langgraph.json
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration
         run: python3 graphs/configure-langgraph.py --node-version 20 --output graphs/langgraph.json
 
       - name: Write non-secret server env
+        if: steps.guard.outputs.run == 'true'
         run: printf 'LANGGRAPH_WEBHOOKS={"url":{"disable_loopback":false,"require_https":false}}\n' > integration/graphs/.env
 
       - name: Build deployment image (pulls langchain/langgraphjs-api:20)
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration/graphs
         run: langgraph build -c langgraph.json --tag langgraphjs-tests-api
 
       - name: Start managed server + Postgres + Redis
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration
         run: docker compose -f compose-postgres.yml up -V --force-recreate --wait
 
       - name: Install test-runner deps
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration
         run: npm install --no-save --no-package-lock
 
       - name: Run integration tests
+        if: steps.guard.outputs.run == 'true'
         working-directory: integration
         run: npx vitest run
 
       - name: Dump server logs on failure
-        if: failure()
+        if: failure() && steps.guard.outputs.run == 'true'
         working-directory: integration
         run: docker compose -f compose-postgres.yml logs --no-color api | tail -n 200
 
       - name: Tear down
-        if: always()
+        if: always() && steps.guard.outputs.run == 'true'
         working-directory: integration
-        run: docker compose -f compose-postgres.yml down -v
+        run: docker compose -f compose-postgres.yml down -v || true
