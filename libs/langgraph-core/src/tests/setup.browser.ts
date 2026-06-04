@@ -1,3 +1,3 @@
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.browser.js";
+import { initializeAsyncLocalStorageSingleton } from "./browser.js";
 
 initializeAsyncLocalStorageSingleton();
