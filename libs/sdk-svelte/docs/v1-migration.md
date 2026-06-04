@@ -1,10 +1,10 @@
 # Migrating from `@langchain/svelte` v0 to v1
 
-`@langchain/svelte` **v1** targets the v2 streaming protocol. The `useStream` import stays the same, but the option bag, return shape, and how you subscribe to scoped data all change. Most chat apps migrate in well under an hour.
+`@langchain/svelte` **v1** targets **new event-based streaming**. The `useStream` import stays the same, but the option bag, return shape, and how you subscribe to scoped data all change. Most chat apps migrate in well under an hour.
 
 ## Why the breaking change
 
-The v0 binding was built on the v1 protocol and accreted a large surface of opt-in callbacks (`onUpdateEvent`, `onCustomEvent`, `onDebugEvent`, `onCheckpointEvent`, …) and derived state (`history`, `branch`, `experimental_branchTree`, `activeSubagents`, `subagents`) that had to be recomputed on every update — whether or not any component was rendering it.
+The v0 binding was built on the legacy streaming protocol and accreted a large surface of opt-in callbacks (`onUpdateEvent`, `onCustomEvent`, `onDebugEvent`, `onCheckpointEvent`, …) and derived state (`history`, `branch`, `experimental_branchTree`, `activeSubagents`, `subagents`) that had to be recomputed on every update — whether or not any component was rendering it.
 
 v1 flips that around:
 
@@ -16,7 +16,10 @@ v1 flips that around:
 
 ## TL;DR checklist
 
-- [ ] Upgrade `@langchain/svelte` to `^1.0.0`.
+- [ ] Upgrade `@langchain/svelte` to `^1.0.0` and
+      `@langchain/langgraph-sdk` to the matching new event-based streaming
+      runtime.
+- [ ] Import `useStream` only — `useStreamExperimental` is not exported from this package.
 - [ ] Remove the following options — they are gone: `onFinish`, `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onStop`, `onError`, `fetchStateHistory`, `throttle`, `filterSubagentMessages`, `subagentToolNames`.
 - [ ] Replace `transport: new FetchStreamTransport(…)` with `transport: new HttpAgentServerAdapter(…)` from `@langchain/svelte` (or `@langchain/langgraph-sdk`). The adapter is bound to a concrete `threadId`.
 - [ ] Stop destructuring and reading the following from the return — they moved or were dropped: `branch`, `setBranch`, `history`, `experimental_branchTree`, `getMessagesMetadata`, `joinStream`, `switchThread`, `queue`, `activeSubagents`, `getSubagent`, `getSubagentsByType`, `getSubagentsByMessage`.
@@ -65,7 +68,7 @@ v1 flips that around:
 | `subagents`, `subgraphs`, `subgraphsByNode`                                     | **new** — discovery snapshots (namespaces). Use them as the `target` argument to selector composables                                                                 |
 | `respond(response, options?)` / `respondAll(responsesById, options?)`           | **new** — resume the agent after an interrupt (`respondAll` resumes several at the same checkpoint)                                                                    |
 | `getThread()`                                                                   | **new** — returns the bound `ThreadStream` for low-level protocol access                                                                                              |
-| `branch`, `setBranch`                                                           | removed — there is no global branch pointer in v2. Fork flows use `submit(input, { forkFrom })` and `parentCheckpointId` from `useMessageMetadata`. |
+| `branch`, `setBranch`                                                           | removed — there is no global branch pointer with new event-based streaming. Fork flows use `submit(input, { forkFrom })` and `parentCheckpointId` from `useMessageMetadata`. |
 | `history`, `experimental_branchTree`                                            | removed — pull history via the `Client` directly when needed                                                                                                          |
 | `getMessagesMetadata(msg)`                                                      | `useMessageMetadata(stream, () => msg.id)` → `{ parentCheckpointId }`                                                                                                 |
 | `joinStream(...)`                                                               | removed — `useStream` attaches automatically on mount                                                                                                                 |
@@ -194,3 +197,13 @@ until server-side interrupt semantics land.
 ```
 
 Each mounted `useMessages(stream, sub)` opens a ref-counted namespace subscription on demand and releases it on unmount.
+
+## Type helpers
+
+| Helper              | Use                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `UseStreamReturn<T>` | Fully-resolved return type of `useStream<T>`.                                                                                    |
+| `AnyStream`         | Type-erased handle (`UseStreamReturn<any, any, any>`) for components that only forward the stream to selector hooks.             |
+| `UseStreamOptions`  | Discriminated options union (LGP branch vs custom `AgentServerAdapter`); rarely needed at call sites.                            |
+| `InferStateType<T>` | Unwraps a compiled graph / agent brand into its state shape.                                                                     |
+| `UseSubmissionQueueReturn` | Return shape of `useSubmissionQueue(stream)` (`entries`, `size`, `cancel`, `clear`).                                      |
