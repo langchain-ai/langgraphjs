@@ -1616,7 +1616,9 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
-    return this.#awaitRootTerminal(signal, { skipInterruptedUntilRunning: false });
+    return this.#awaitRootTerminal(signal, {
+      skipInterruptedUntilRunning: false,
+    });
   }
 
   /**
@@ -1680,10 +1682,7 @@ export class StreamController<
             0
           );
         } else if (lifecycle?.event === "interrupted") {
-          if (
-            options.skipInterruptedUntilRunning &&
-            !sawRunning
-          ) {
+          if (options.skipInterruptedUntilRunning && !sawRunning) {
             return;
           }
           setTimeout(() => finish({ event: "interrupted" }), 0);
