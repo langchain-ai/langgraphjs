@@ -9,16 +9,14 @@ import type {
 } from "@langchain/langgraph";
 import {
   convertToProtocolEvent,
+  isCheckpointEnvelope,
   STREAM_EVENTS_V3_MODES,
 } from "@langchain/langgraph/web";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
-import type {
-  Checkpoint as ProtocolCheckpoint,
-  SourceStreamEvent,
-} from "./protocol/types.mjs";
+import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -272,18 +270,12 @@ export async function* streamState(
       event.event === "on_chain_stream" &&
       (kwargs.subgraphs || event.run_id === run.run_id)
     ) {
-      // Pregel's stream tuple is `[ns, mode, payload, meta?]` (4th element
-      // is the optional `StreamChunkMeta`, preserved when streaming with
-      // `subgraphs: true`). The meta carries the lightweight checkpoint
-      // envelope attached by `_emitValuesWithCheckpointMeta`, which we
-      // forward as a companion `checkpoints` source event below.
+      // Pregel stream chunks are `[ns, mode, payload]`. Lightweight checkpoint
+      // envelopes arrive as a separate `checkpoints` chunk before `values`.
       const rawTuple = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
-      ) as [string[] | null, LangGraphStreamMode, unknown, unknown?];
+      ) as [string[] | null, LangGraphStreamMode, unknown];
       const [ns, mode, chunk] = rawTuple;
-      const chunkMeta = rawTuple[3] as
-        | { checkpoint?: ProtocolCheckpoint }
-        | undefined;
 
       let data: unknown = chunk;
       if (mode === "debug") {
@@ -299,33 +291,33 @@ export async function* streamState(
           data = { ...debugChunk, payload: debugResult };
         }
       } else if (mode === "checkpoints") {
-        const debugCheckpoint = preprocessDebugCheckpoint(
-          chunk as DebugCheckpoint
-        );
+        if (isCheckpointEnvelope(chunk)) {
+          // Lightweight envelopes pair with `values` on the v3 path.
+          // Legacy `checkpoints` stream mode consumers expect full debug
+          // snapshots (`values` / `metadata` / `next`) from `mapDebugCheckpoint`.
+          if (!userStreamMode.includes("checkpoints")) {
+            const sseEvent =
+              kwargs.subgraphs && ns?.length
+                ? `checkpoints|${ns.join("|")}`
+                : "checkpoints";
+            yield { event: sseEvent, data: chunk };
+          }
+          continue;
+        }
+        const debugPayload = chunk as DebugCheckpoint;
+        const debugCheckpoint = preprocessDebugCheckpoint(debugPayload);
         options?.onCheckpoint?.(debugCheckpoint);
-        data = debugCheckpoint;
+        data = {
+          values: debugPayload.values,
+          metadata: debugPayload.metadata,
+          next: debugPayload.next,
+        };
       } else if (mode === "tasks") {
         const debugTask = preprocessDebugCheckpointTask(chunk as DebugTask);
         if ("result" in debugTask || "error" in debugTask) {
           options?.onTaskResult?.(debugTask);
         }
         data = debugTask;
-      }
-
-      // Emit the lightweight checkpoint envelope as a dedicated
-      // `checkpoints` source event immediately BEFORE the companion
-      // `values` event so clients subscribed to both channels have the
-      // envelope buffered by the time the values payload arrives
-      // (`useMessageMetadata(msg.id).parentCheckpointId` for fork /
-      // edit flows). Clients that only want fork / time-travel metadata
-      // subscribe to `checkpoints` alone and avoid the full-state
-      // payload.
-      if (mode === "values" && chunkMeta?.checkpoint != null) {
-        const sseEvent =
-          kwargs.subgraphs && ns?.length
-            ? `checkpoints|${ns.join("|")}`
-            : "checkpoints";
-        yield { event: sseEvent, data: chunkMeta.checkpoint };
       }
 
       if (mode === "messages") {
@@ -444,15 +436,14 @@ async function* fallbackProtocolStreamFromGraphStream(
   let seq = 0;
   const stream = await graph.stream(input, options);
   for await (const tuple of stream as AsyncIterable<
-    [string[] | [], LangGraphStreamMode, unknown, unknown?]
+    [string[] | [], LangGraphStreamMode, unknown]
   >) {
-    const [namespace, mode, payload, meta] = tuple;
+    const [namespace, mode, payload] = tuple;
     const events = convertToProtocolEvent({
       namespace: namespace ?? [],
       mode,
       payload,
       seq,
-      meta: meta as never,
     });
     seq += events.length;
     for (const event of events) {

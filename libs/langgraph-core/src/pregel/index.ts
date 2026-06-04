@@ -93,6 +93,7 @@ import {
 import {
   createGraphRunStream,
   GraphRunStream,
+  isCheckpointEnvelope,
   STREAM_EVENTS_V3_MODES,
 } from "../stream/index.js";
 import type {
@@ -2223,6 +2224,8 @@ export class Pregel<
         ? undefined
         : (options?.encoding ?? undefined);
     const streamSubgraphs = options?.subgraphs;
+    const isV3 =
+      (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -2285,9 +2288,7 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const useProtocolMessagesStream =
-        (options as { version?: unknown } | undefined)?.version === "v3";
-      const messageStreamer = useProtocolMessagesStream
+      const messageStreamer = isV3
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
         : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
@@ -2428,6 +2429,12 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
+          // LangChain invokes `handleToolError` via an async callback; yield one
+          // microtask so tool stream chunks are enqueued before the writable
+          // stream is sealed.
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
           // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
@@ -2448,8 +2455,17 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload, meta] = chunk;
-        if (streamMode.includes(mode)) {
+        const [namespace, mode, payload] = chunk;
+        const isStreamEvents = "version" in (options ?? {});
+        const includeChunk =
+          streamMode.includes(mode) ||
+          (mode === "checkpoints" &&
+            isCheckpointEnvelope(payload) &&
+            (isV3 ||
+              (isStreamEvents &&
+                streamSubgraphs &&
+                streamMode.includes("values"))));
+        if (includeChunk) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
               yield [namespace, mode, payload];
@@ -2459,12 +2475,7 @@ export class Pregel<
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            // Preserve chunk meta (e.g. the checkpoint envelope on `values`
-            // events) so `streamEvents(..., { version: "v3" })` / `pump()`
-            // can surface it on the protocol stream.
-            yield meta !== undefined
-              ? [namespace, mode, payload, meta]
-              : [namespace, mode, payload];
+            yield [namespace, mode, payload];
           } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {
