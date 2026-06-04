@@ -335,8 +335,9 @@ export async function* streamState(
         mode === "values" &&
         chunkMeta?.checkpoint != null
       ) {
-        const sseEvent =
-          ns?.length ? `checkpoints|${ns.join("|")}` : "checkpoints";
+        const sseEvent = ns?.length
+          ? `checkpoints|${ns.join("|")}`
+          : "checkpoints";
         yield { event: sseEvent, data: chunkMeta.checkpoint };
       }
 
