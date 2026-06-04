@@ -2,10 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Client } from "../../client.js";
 import { overrideFetchImplementation } from "../../singletons/fetch.js";
 
-type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
-
-const createMockFetch = () => vi.fn() as MockFetch;
-
 function cronPayload() {
   return {
     cron_id: "cron_123",
@@ -23,10 +19,10 @@ function cronPayload() {
 }
 
 describe("crons.update", () => {
-  let fetchMock: MockFetch;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = createMockFetch();
+    fetchMock = vi.fn();
     overrideFetchImplementation(fetchMock);
     (globalThis as any).fetch = fetchMock;
   });
@@ -169,10 +165,10 @@ describe("crons.update", () => {
 });
 
 describe("crons.search", () => {
-  let fetchMock: MockFetch;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = createMockFetch();
+    fetchMock = vi.fn();
     overrideFetchImplementation(fetchMock);
     (globalThis as any).fetch = fetchMock;
   });
@@ -229,10 +225,10 @@ describe("crons.search", () => {
 });
 
 describe("crons.count", () => {
-  let fetchMock: MockFetch;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = createMockFetch();
+    fetchMock = vi.fn();
     overrideFetchImplementation(fetchMock);
     (globalThis as any).fetch = fetchMock;
   });

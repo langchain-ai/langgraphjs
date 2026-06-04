@@ -1,8 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Client } from "../../client.js";
 
-type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
-
 const textEncoder = new TextEncoder();
 
 /**
@@ -81,12 +79,12 @@ const gatherStream = async <T>(stream: AsyncGenerator<T>): Promise<T[]> => {
 };
 
 describe("Client streaming with retry", () => {
-  let mockFetch: MockFetch;
+  let mockFetch: ReturnType<typeof vi.fn>;
   let client: Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    mockFetch = vi.fn() as MockFetch;
+    mockFetch = vi.fn();
 
     client = new Client({
       apiUrl: "http://localhost:8000",

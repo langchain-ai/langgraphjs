@@ -2,15 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Client } from "../../client.js";
 import { overrideFetchImplementation } from "../../singletons/fetch.js";
 
-type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
-
-const createMockFetch = () => vi.fn() as MockFetch;
-
 describe("runs.cancelMany", () => {
-  let fetchMock: MockFetch;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = createMockFetch();
+    fetchMock = vi.fn();
     overrideFetchImplementation(fetchMock);
     (globalThis as any).fetch = fetchMock;
   });
