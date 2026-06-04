@@ -77,8 +77,9 @@ function shouldContinue(
   state: typeof AgentState.State
 ): typeof END | Send | Send[] {
   const lastMessage = state.messages.at(-1);
-  if ((lastMessage?.content as string).startsWith("end")) return END;
-  if ((lastMessage?.content as string).includes("map-reduce")) {
+  const content = (lastMessage?.content as string) ?? "";
+  if (content.startsWith("end")) return END;
+  if (content.includes("map-reduce")) {
     return [
       new Send("map-reduce", { messages: [new AIMessage("first")] }),
       new Send("map-reduce", { messages: [new AIMessage("second")] }),

@@ -1,7 +1,7 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
-import { gatherIterator, findLast } from "./utils.mts";
+import { gatherIterator, findLast } from "./utils.ts";
 
 const sql = postgres(
   process.env.POSTGRES_URI ??

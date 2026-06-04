@@ -36,20 +36,20 @@ def main():
         "node_version": args.node_version,
         "dependencies": ["."],
         "graphs": {
-            "agent": {"path": "./agent.mts:graph", "description": "agent"},
-            "nested": "./nested.mts:graph",
-            "weather": "./weather.mts:graph",
-            "error": "./error.mts:graph",
-            "delay": "./delay.mts:graph",
-            "dynamic": "./dynamic.mts:graph",
-            "command": "./command.mts:graph",
-            "agent_simple": "./agent_simple.mts:graph",
-            "agent_simple_factory": "./agent_simple.mts:graphFactory",
-            "factory_store": "./factory_store.mts:graph",
+            "agent": {"path": "./agent.ts:graph", "description": "agent"},
+            "nested": "./nested.ts:graph",
+            "weather": "./weather.ts:graph",
+            "error": "./error.ts:graph",
+            "delay": "./delay.ts:graph",
+            "dynamic": "./dynamic.ts:graph",
+            "command": "./command.ts:graph",
+            "agent_simple": "./agent_simple.ts:graph",
+            "agent_simple_factory": "./agent_simple.ts:graphFactory",
+            "factory_store": "./factory_store.ts:graph",
         },
         "env": ".env",
         "http": {
-            "app": "./http.mts:app",
+            "app": "./http.ts:app",
             "configurable_headers": {"includes": ["x-configurable-header"]},
         },
         "ui": {"agent-alias": "./agent.ui.tsx"},
@@ -61,7 +61,7 @@ def main():
 
     # Add auth configuration if requested
     if args.auth:
-        config["auth"] = {"path": "./auth.mts:auth"}
+        config["auth"] = {"path": "./auth.ts:auth"}
 
     # Write the configuration
     output_path = Path(args.output)

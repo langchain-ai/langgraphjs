@@ -17,12 +17,12 @@ only this managed-runtime path surfaces the regression.
 integration/
 ├── compose-postgres.yml   # Postgres (5433) + Redis (6380) + the built server image (9123)
 ├── graphs/                # the JS graph deployment under test
-│   ├── *.mts              # agent, weather, nested, agent_simple, ... fixtures
+│   ├── *.ts               # agent, weather, nested, agent_simple, ... fixtures
 │   ├── package.json       # deps; @langchain/langgraph tracks `latest` (see "Which JS code")
 │   ├── configure-langgraph.py  # writes langgraph.json (generated, gitignored)
 │   └── .env               # LANGGRAPH_CLOUD_LICENSE_KEY etc. (gitignored, never committed)
-├── *.test.mts             # the suite: streaming, api, crons, background, multitasking
-└── utils.mts
+├── *.test.ts              # the suite: streaming, api, crons, background, multitasking
+└── utils.ts
 ```
 
 ## Run

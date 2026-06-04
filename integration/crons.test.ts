@@ -272,7 +272,7 @@ describe("crons - cascade", () => {
     const input = { messages: [{ type: "human", content: "foo" }] };
     const cronSchedule = "* * * * *";
 
-    const cron1 = await client.crons.create(assistant1.assistant_id, {
+    await client.crons.create(assistant1.assistant_id, {
       schedule: cronSchedule,
       input,
       config: globalConfig,

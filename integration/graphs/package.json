@@ -1,5 +1,6 @@
 {
   "private": true,
+  "type": "module",
   "dependencies": {
     "@langchain/core": "^1.1.41",
     "@langchain/langgraph": "latest",

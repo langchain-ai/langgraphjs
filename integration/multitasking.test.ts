@@ -1,7 +1,7 @@
 import { Client } from "@langchain/langgraph-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
-import { gatherIterator, pollRun } from "./utils.mts";
+import { pollRun } from "./utils.ts";
 
 const sql = postgres(
   process.env.POSTGRES_URI ??
@@ -266,7 +266,7 @@ describe("multitasking", () => {
                 config: globalConfig,
               },
             );
-          } catch (err: any) {
+          } catch {
             rejectedWith409 = true;
           }
         }

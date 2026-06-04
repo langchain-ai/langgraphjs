@@ -8,7 +8,7 @@ import {
 } from "@langchain/core/messages";
 import { randomUUID } from "crypto";
 import postgres from "postgres";
-import { findLast, gatherIterator } from "./utils.mts";
+import { findLast, gatherIterator } from "./utils.ts";
 
 const sql = postgres(
   process.env.POSTGRES_URI ??
@@ -1877,7 +1877,7 @@ describe("command update state", () => {
       input,
       config: globalConfig,
     });
-    let stream = await gatherIterator(
+    await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
         config: globalConfig,
@@ -1900,7 +1900,7 @@ describe("command update state", () => {
       input,
       config: globalConfig,
     });
-    stream = await gatherIterator(
+    await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: {
           update: [
@@ -1970,7 +1970,7 @@ describe("command update state", () => {
     const assistant = await client.assistants.create({ graphId: "command" });
     const thread = await client.threads.create({ graphId: "command" });
 
-    let stream = await gatherIterator(
+    await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         // TODO: figure out why we cannot go to the interrupt node directly
         command: { goto: "before_interrupt" },
@@ -1986,7 +1986,7 @@ describe("command update state", () => {
       },
     ]);
 
-    stream = await gatherIterator(
+    await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: { resume: "resume" },
         streamMode: ["updates"],
