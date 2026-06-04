@@ -179,6 +179,7 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
+    awaitResumedRunTerminal: awaitNextTerminal,
     onRunStart,
     onRunCreated,
     onRunCompleted,

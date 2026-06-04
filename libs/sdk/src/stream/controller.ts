@@ -293,6 +293,8 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
+      awaitResumedRunTerminal: (signal) =>
+        this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run aren't filtered. Bump
@@ -756,15 +758,24 @@ export class StreamController<
     if (resolved == null) {
       throw new Error("No pending interrupt to respond to.");
     }
+    const thread = this.#thread;
     try {
-      await this.#thread.respondInput({
-        namespace: resolved.namespace,
-        interrupt_id: resolved.interruptId,
-        response: normalizeHitlResponseForServer(response),
-        config: options?.config,
-        metadata: options?.metadata,
+      // Route through the coordinator so a resumed run that fails (e.g. a
+      // missing model key surfaced after the user answers) lands in the
+      // reactive `rootStore.error` slot, exactly like a `submit()` failure.
+      // The dispatch (`respondInput` + interrupt-resolved bookkeeping) is
+      // what's awaited; the resumed run's terminal is watched in the
+      // background (see {@link SubmitCoordinator.dispatchResume}).
+      await this.#submitter.dispatchResume(async () => {
+        await thread.respondInput({
+          namespace: resolved.namespace,
+          interrupt_id: resolved.interruptId,
+          response: normalizeHitlResponseForServer(response),
+          config: options?.config,
+          metadata: options?.metadata,
+        });
+        this.#markInterruptResolvedInRootStore(resolved.interruptId);
       });
-      this.#markInterruptResolvedInRootStore(resolved.interruptId);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -825,7 +836,8 @@ export class StreamController<
     if (entries.length === 0) {
       throw new Error("respondAll() requires at least one response.");
     }
-    const pending = this.#thread.interrupts;
+    const thread = this.#thread;
+    const pending = thread.interrupts;
     const responses = entries.map(([interruptId, response]) => ({
       interrupt_id: interruptId,
       response: normalizeHitlResponseForServer(response),
@@ -833,14 +845,19 @@ export class StreamController<
         ?.namespace ?? [...ROOT_NAMESPACE],
     }));
     try {
-      await this.#thread.respondInput({
-        responses,
-        config: options?.config,
-        metadata: options?.metadata,
+      // See `respond()` — route through the coordinator so the single run
+      // that services the batched resume surfaces failures on the reactive
+      // `rootStore.error` slot.
+      await this.#submitter.dispatchResume(async () => {
+        await thread.respondInput({
+          responses,
+          config: options?.config,
+          metadata: options?.metadata,
+        });
+        for (const { interrupt_id: interruptId } of responses) {
+          this.#markInterruptResolvedInRootStore(interruptId);
+        }
       });
-      for (const { interrupt_id: interruptId } of responses) {
-        this.#markInterruptResolvedInRootStore(interruptId);
-      }
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1599,8 +1616,40 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
+    return this.#awaitRootTerminal(signal, {
+      skipInterruptedUntilRunning: false,
+    });
+  }
+
+  /**
+   * Resolve on the resumed run's root terminal lifecycle.
+   *
+   * Unlike {@link #awaitNextTerminal}, ignores `interrupted` events until a
+   * root `running` lifecycle has been observed. Headless-tool flows can emit
+   * a stale `interrupted` for the run being resumed after `input.requested`
+   * but before `respondInput` calls `#prepareForNextRun`; accepting that
+   * terminal would unsubscribe the watcher before the resumed run's `failed`
+   * terminal arrives.
+   */
+  #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
+    event: "completed" | "failed" | "interrupted" | "aborted";
+    error?: string;
+  }> {
+    return this.#awaitRootTerminal(signal, {
+      skipInterruptedUntilRunning: true,
+    });
+  }
+
+  #awaitRootTerminal(
+    signal: AbortSignal,
+    options: { skipInterruptedUntilRunning: boolean }
+  ): Promise<{
+    event: "completed" | "failed" | "interrupted" | "aborted";
+    error?: string;
+  }> {
     return new Promise((resolve) => {
       let settled = false;
+      let sawRunning = false;
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
@@ -1621,6 +1670,10 @@ export class StreamController<
           event?: string;
           error?: string;
         };
+        if (lifecycle?.event === "running") {
+          sawRunning = true;
+          return;
+        }
         if (lifecycle?.event === "completed") {
           setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
@@ -1629,6 +1682,9 @@ export class StreamController<
             0
           );
         } else if (lifecycle?.event === "interrupted") {
+          if (options.skipInterruptedUntilRunning && !sawRunning) {
+            return;
+          }
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       };
