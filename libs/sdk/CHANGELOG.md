@@ -1,5 +1,17 @@
 # @langchain/langgraph-sdk
 
+## 1.9.16
+
+### Patch Changes
+
+- [#2486](https://github.com/langchain-ai/langgraphjs/pull/2486) [`244c24e`](https://github.com/langchain-ai/langgraphjs/commit/244c24eaccff4009df7d83e4320e51a4b310b15f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): surface resumed run failures on stream.error
+
+  Route `respond()` and `respondAll()` through a coordinator dispatch path that
+  writes the reactive `rootStore.error` slot when a resumed run reaches a failed
+  terminal or when `input.respond` dispatch fails, matching submit() behavior so
+  framework consumers (e.g. API-key retry UIs) observe resume failures via
+  `stream.error` instead of only `isLoading` transitions.
+
 ## 1.9.15
 
 ### Patch Changes

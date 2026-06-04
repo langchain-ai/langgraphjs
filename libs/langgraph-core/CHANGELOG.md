@@ -1,5 +1,19 @@
 # @langchain/langgraph
 
+## 1.3.5
+
+### Patch Changes
+
+- [#2489](https://github.com/langchain-ai/langgraphjs/pull/2489) [`e3a1933`](https://github.com/langchain-ai/langgraphjs/commit/e3a1933a8825a515d847b38b24a0743f4d418646) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(core): keep stream chunks as three-element tuples
+
+  Emit lightweight checkpoint envelopes as separate
+  `[namespace, "checkpoints", envelope]` chunks before paired `values` chunks.
+  Public `stream()` always yields `[namespace, mode, payload]`; the v3
+  protocol path surfaces envelopes via `convertToProtocolEvent`.
+
+- Updated dependencies [[`244c24e`](https://github.com/langchain-ai/langgraphjs/commit/244c24eaccff4009df7d83e4320e51a4b310b15f)]:
+  - @langchain/langgraph-sdk@1.9.16
+
 ## 1.3.4
 
 ### Patch Changes
