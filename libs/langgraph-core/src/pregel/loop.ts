@@ -1257,7 +1257,14 @@ export class PregelLoop {
   ): void {
     const meta = this._currentCheckpointMeta();
     for (const [mode, payload] of entries) {
-      if (mode === "values" && meta?.checkpoint != null) {
+      if (
+        mode === "values" &&
+        meta?.checkpoint != null &&
+        // Legacy `checkpoints` stream mode already emits full debug
+        // payloads via `mapDebugCheckpoint`; lightweight envelopes are
+        // only for the v3 protocol path (surfaced in `pregel/index.ts`).
+        !this.stream.modes.has("checkpoints")
+      ) {
         this.stream.push([
           this.checkpointNamespace,
           "checkpoints",

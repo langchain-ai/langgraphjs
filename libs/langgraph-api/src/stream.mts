@@ -293,18 +293,26 @@ export async function* streamState(
         }
       } else if (mode === "checkpoints") {
         if (isCheckpointEnvelope(chunk)) {
-          const sseEvent =
-            kwargs.subgraphs && ns?.length
-              ? `checkpoints|${ns.join("|")}`
-              : "checkpoints";
-          yield { event: sseEvent, data: chunk };
+          // Lightweight envelopes pair with `values` on the v3 path.
+          // Legacy `checkpoints` stream mode consumers expect full debug
+          // snapshots (`values` / `metadata` / `next`) from `mapDebugCheckpoint`.
+          if (!userStreamMode.includes("checkpoints")) {
+            const sseEvent =
+              kwargs.subgraphs && ns?.length
+                ? `checkpoints|${ns.join("|")}`
+                : "checkpoints";
+            yield { event: sseEvent, data: chunk };
+          }
           continue;
         }
-        const debugCheckpoint = preprocessDebugCheckpoint(
-          chunk as DebugCheckpoint
-        );
+        const debugPayload = chunk as DebugCheckpoint;
+        const debugCheckpoint = preprocessDebugCheckpoint(debugPayload);
         options?.onCheckpoint?.(debugCheckpoint);
-        data = debugCheckpoint;
+        data = {
+          values: debugPayload.values,
+          metadata: debugPayload.metadata,
+          next: debugPayload.next,
+        };
       } else if (mode === "tasks") {
         const debugTask = preprocessDebugCheckpointTask(chunk as DebugTask);
         if ("result" in debugTask || "error" in debugTask) {
