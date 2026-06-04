@@ -1,0 +1,52 @@
+services:
+  langgraph-postgres:
+    image: postgres:16.3
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: pg_isready -U postgres
+      start_period: 10s
+      timeout: 1s
+      retries: 5
+      interval: 60s
+      start_interval: 1s
+  langgraph-redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    restart: on-failure
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: redis-cli ping
+      start_period: 10s
+      timeout: 1s
+      retries: 5
+      interval: 60s
+      start_interval: 1s
+  api:
+    image: langgraphjs-tests-api
+    depends_on:
+      langgraph-postgres:
+        condition: service_healthy
+      langgraph-redis:
+        condition: service_healthy
+    ports:
+      - "9123:8000"
+    healthcheck:
+      test: python /api/healthcheck.py
+      interval: 60s
+      start_interval: 1s
+      start_period: 10s
+    env_file: ./graphs/.env
+    environment:
+      REDIS_URI: redis://langgraph-redis:6379
+      DATABASE_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
+      N_JOBS_PER_WORKER: "5"
+      LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY:-}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_TRACING: "false"
+      FF_JS_ZEROMQ_ENABLED: ${FF_JS_ZEROMQ_ENABLED:-}
+      LANGGRAPH_CONFIG: '{"agent": {"configurable": {"model_name": "openai"}}}'

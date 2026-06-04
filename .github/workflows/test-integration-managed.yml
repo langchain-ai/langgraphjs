@@ -1,0 +1,121 @@
+name: Integration (managed langgraph-api)
+
+# Runs the integration/ framework: in-repo @langchain/langgraph, built into a
+# deployment image on the published managed langgraph-api server, exercised over
+# HTTP by the SDK. Catches JS changes that break the *managed* runtime (e.g. the
+# raw StreamChunk arity contract the Python orchestrator unpacks at
+# stream.py:324) — which the in-repo JS server cannot catch, since it strips that
+# field before the wire.
+#
+# Path-gated to streaming/runtime-relevant code so it does not run on every PR,
+# and skipped on fork PRs (repo secrets are not exposed to forks). The fast
+# in-process arity guard in libs/langgraph-core/src/tests/pregel.stream.test.ts
+# runs on every PR via the normal Unit Tests job.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "libs/langgraph-core/**"
+      - "libs/langgraph-api/**"
+      - "libs/sdk/**"
+      - "integration/**"
+      - ".github/workflows/test-integration-managed.yml"
+  pull_request:
+    paths:
+      - "libs/langgraph-core/**"
+      - "libs/langgraph-api/**"
+      - "libs/sdk/**"
+      - "integration/**"
+      - ".github/workflows/test-integration-managed.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  managed-integration:
+    name: JS graphs on managed langgraph-api
+    runs-on: ubuntu-latest
+    # Skip on fork PRs: repo secrets (the managed-server license) are not
+    # exposed to pull_request runs from forks. Never switch this to
+    # pull_request_target — that would run untrusted PR code with secrets.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      # Referenced by name only; injected into the server via compose ${VAR}
+      # substitution. The managed image accepts LANGSMITH_API_KEY (enterprise
+      # SaaS path) or LANGGRAPH_CLOUD_LICENSE_KEY.
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGGRAPH_CLOUD_LICENSE_KEY: ${{ secrets.LANGGRAPH_CLOUD_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@26f6d4f2c533a43e6b5da0b4a5dd983f98f7b49a # v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --- Inject the in-repo @langchain/langgraph (test THIS PR's code, not npm) ---
+      - name: Build @langchain/langgraph
+        run: pnpm --filter @langchain/langgraph build:internal
+
+      - name: Pack in-repo @langchain/langgraph into the graphs deployment
+        run: |
+          mkdir -p integration/graphs/vendor
+          pnpm --filter @langchain/langgraph pack \
+            --pack-destination "$GITHUB_WORKSPACE/integration/graphs/vendor"
+
+      - name: Point graphs at the packed tarball
+        working-directory: integration/graphs
+        run: |
+          tgz="vendor/$(ls vendor | grep '^langchain-langgraph-.*\.tgz$' | head -1)"
+          node -e "const fs=require('fs');const p=require('./package.json');p.dependencies['@langchain/langgraph']='file:./'+process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tgz"
+          echo "Using @langchain/langgraph -> $tgz"
+
+      # --- Build the deployment image on the published managed base & run ---
+      - name: Install langgraph CLI
+        run: pipx install langgraph-cli
+
+      - name: Configure langgraph.json
+        working-directory: integration
+        run: python3 graphs/configure-langgraph.py --node-version 20 --output graphs/langgraph.json
+
+      - name: Write non-secret server env
+        run: printf 'LANGGRAPH_WEBHOOKS={"url":{"disable_loopback":false,"require_https":false}}\n' > integration/graphs/.env
+
+      - name: Build deployment image (pulls langchain/langgraphjs-api:20)
+        working-directory: integration/graphs
+        run: langgraph build -c langgraph.json --tag langgraphjs-tests-api
+
+      - name: Start managed server + Postgres + Redis
+        working-directory: integration
+        run: docker compose -f compose-postgres.yml up -V --force-recreate --wait
+
+      - name: Install test-runner deps
+        working-directory: integration
+        run: npm install --no-save --no-package-lock
+
+      - name: Run integration tests
+        working-directory: integration
+        run: npx vitest run
+
+      - name: Dump server logs on failure
+        if: failure()
+        working-directory: integration
+        run: docker compose -f compose-postgres.yml logs --no-color api | tail -n 200
+
+      - name: Tear down
+        if: always()
+        working-directory: integration
+        run: docker compose -f compose-postgres.yml down -v
