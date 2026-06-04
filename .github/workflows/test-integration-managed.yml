@@ -1,26 +1,22 @@
 name: Integration (managed langgraph-api)
 
-# Runs the integration/ framework: in-repo @langchain/langgraph, built into a
-# deployment image on the published managed langgraph-api server, exercised over
-# HTTP by the SDK. Catches JS changes that break the *managed* runtime (e.g. the
-# raw StreamChunk arity contract the Python orchestrator unpacks at
-# stream.py:324) — which the in-repo JS server cannot catch, since it strips that
-# field before the wire.
+# Runs the integration/ framework: the in-repo @langchain/langgraph AND
+# @langchain/langgraph-sdk, built into a deployment image on the published
+# managed langgraph-api server and exercised over HTTP by the SDK. Catches JS
+# changes that break the *managed* runtime (e.g. the raw StreamChunk arity the
+# Python orchestrator unpacks at stream.py:324) — which the in-repo JS server
+# cannot catch, since it strips that field before the wire.
 #
-# Path-gated to streaming/runtime-relevant code so it does not run on every PR,
-# and gated on the managed-server license secret (absent on forks and until a
-# maintainer configures it) so it skips green rather than failing on infra.
+# SECURITY: this job injects the managed-server license secret, so it must not
+# run on unreviewed pull_request code (a same-repo contributor could exfiltrate
+# the secret before review). It therefore runs only on push to main and on
+# manual workflow_dispatch, and is additionally bound to the protected
+# `managed-integration` Environment (configure it with required reviewers).
+# For pre-merge coverage, a maintainer dispatches it against the PR branch.
 
 on:
   push:
     branches: ["main"]
-    paths:
-      - "libs/langgraph-core/**"
-      - "libs/langgraph-api/**"
-      - "libs/sdk/**"
-      - "integration/**"
-      - ".github/workflows/test-integration-managed.yml"
-  pull_request:
     paths:
       - "libs/langgraph-core/**"
       - "libs/langgraph-api/**"
@@ -40,10 +36,9 @@ jobs:
   managed-integration:
     name: JS graphs on managed langgraph-api
     runs-on: ubuntu-latest
-    # Skip on fork PRs: repo secrets (the managed-server license) are not
-    # exposed to pull_request runs from forks. Never switch this to
-    # pull_request_target — that would run untrusted PR code with secrets.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # Protected environment: GitHub pauses for the configured required
+    # reviewers before the secrets below are injected.
+    environment: managed-integration
     env:
       # Referenced by name only; injected into the server via compose ${VAR}
       # substitution. The managed image accepts LANGSMITH_API_KEY (enterprise
@@ -53,9 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      # The managed server needs a license. When no secret is configured
-      # (forks, or before a maintainer adds it) skip the run so the check stays
-      # green rather than failing on infrastructure. All steps below are gated.
+      # The managed server needs a license. When no secret is configured skip
+      # the run so the job stays green rather than failing on infrastructure.
+      # All steps below are gated on this.
       - name: Check for managed-server license secret
         id: guard
         run: |
@@ -84,25 +79,41 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
-      # --- Inject the in-repo @langchain/langgraph (test THIS PR's code, not npm) ---
-      - name: Build @langchain/langgraph
-        if: steps.guard.outputs.run == 'true'
-        run: pnpm --filter @langchain/langgraph build:internal
-
-      - name: Pack in-repo @langchain/langgraph into the graphs deployment
+      # --- Inject the in-repo packages (test THIS code, not npm) ---
+      - name: Build in-repo @langchain/langgraph + sdk
         if: steps.guard.outputs.run == 'true'
         run: |
-          mkdir -p integration/graphs/vendor
+          pnpm --filter @langchain/langgraph build:internal
+          pnpm --filter @langchain/langgraph-sdk build:internal
+
+      - name: Pack in-repo packages
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          mkdir -p integration/graphs/vendor integration/vendor
           pnpm --filter @langchain/langgraph pack \
             --pack-destination "$GITHUB_WORKSPACE/integration/graphs/vendor"
+          pnpm --filter @langchain/langgraph-sdk pack \
+            --pack-destination "$GITHUB_WORKSPACE/integration/vendor"
 
-      - name: Point graphs at the packed tarball
+      # The deployment graph runs the in-repo langgraph core (where the raw
+      # StreamChunk lives).
+      - name: Point graphs at in-repo @langchain/langgraph
         if: steps.guard.outputs.run == 'true'
         working-directory: integration/graphs
         run: |
-          tgz="vendor/$(ls vendor | grep '^langchain-langgraph-.*\.tgz$' | head -1)"
+          tgz="vendor/$(ls vendor | grep '^langchain-langgraph-[0-9].*\.tgz$' | head -1)"
           node -e "const fs=require('fs');const p=require('./package.json');p.dependencies['@langchain/langgraph']='file:./'+process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tgz"
-          echo "Using @langchain/langgraph -> $tgz"
+          echo "graph @langchain/langgraph -> $tgz"
+
+      # The test runner (the SDK client driving the suite) runs the in-repo SDK,
+      # so SDK-only PRs are actually covered.
+      - name: Point test runner at in-repo @langchain/langgraph-sdk
+        if: steps.guard.outputs.run == 'true'
+        working-directory: integration
+        run: |
+          tgz="vendor/$(ls vendor | grep '^langchain-langgraph-sdk-.*\.tgz$' | head -1)"
+          node -e "const fs=require('fs');const p=require('./package.json');p.devDependencies['@langchain/langgraph-sdk']='file:./'+process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tgz"
+          echo "runner @langchain/langgraph-sdk -> $tgz"
 
       # --- Build the deployment image on the published managed base & run ---
       - name: Install langgraph CLI
@@ -136,7 +147,7 @@ jobs:
       - name: Run integration tests
         if: steps.guard.outputs.run == 'true'
         working-directory: integration
-        run: npx vitest run
+        run: npm test
 
       - name: Dump server logs on failure
         if: failure() && steps.guard.outputs.run == 'true'
