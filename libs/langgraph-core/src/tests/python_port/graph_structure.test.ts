@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { RunnableEach, RunnablePassthrough } from "@langchain/core/runnables";
 import { StateGraph } from "../../graph/state.js";
@@ -19,21 +19,15 @@ import {
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_CHECKPOINT_NS,
 } from "../../constants.js";
-import { task, entrypoint } from "../../func/index.js";
+import { task, entrypoint } from "../../web.js";
 import { interrupt } from "../../interrupt.js";
 import { gatherIterator } from "../../utils.js";
 import { FakeTracer } from "../utils.js";
-import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 import { Pregel, Channel } from "../../pregel/index.js";
 import { Topic } from "../../channels/topic.js";
 import { LastValue } from "../../channels/last_value.js";
 
 // NOTE: test_channel_enter_exit_timing doesn't apply to JavaScript as JS has no concept of context managers
-
-beforeAll(() => {
-  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-  initializeAsyncLocalStorageSingleton();
-});
 
 /**
  * Port of tests from test_pregel_async_graph_structure.py

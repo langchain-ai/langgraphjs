@@ -1,10 +1,9 @@
-import { it, expect, describe, beforeAll, afterAll } from "vitest";
+import { it, expect, describe, afterAll } from "vitest";
 import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { MemorySaverAssertImmutable } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { Annotation, StateGraph } from "../graph/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
-import { Command, entrypoint, getCurrentTaskInput, task } from "../index.js";
+import { Command, entrypoint, getCurrentTaskInput, task } from "../web.js";
 
 export function runUtilsTests(
   createCheckpointer: () => BaseCheckpointSaver | Promise<BaseCheckpointSaver>,
@@ -13,11 +12,6 @@ export function runUtilsTests(
   if (teardown !== undefined) {
     afterAll(teardown);
   }
-
-  beforeAll(() => {
-    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-    initializeAsyncLocalStorageSingleton();
-  });
 
   describe("getCurrentTaskInput", () => {
     const StateAnnotation = Annotation.Root({

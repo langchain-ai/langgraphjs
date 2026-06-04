@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
@@ -8,7 +8,6 @@ import { StateGraph } from "../graph/index.js";
 import { Command, END, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { gatherIterator } from "../utils.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
 import { StreamChannel } from "../stream/stream-channel.js";
@@ -19,10 +18,6 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "../prebuilt/tool_node.js";
 import type { ToolsEventData } from "../stream/types.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-
-beforeAll(() => {
-  initializeAsyncLocalStorageSingleton();
-});
 
 async function collectEvents(
   run: AsyncIterable<ProtocolEvent>
