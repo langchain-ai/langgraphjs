@@ -434,25 +434,22 @@ describe("streamEvents version v3", () => {
       expect(subgraphs[0].index).toBe(0);
 
       const events = allSubEvents[0];
-      expect(events).toHaveLength(9);
+      expect(events).toHaveLength(7);
 
       for (const event of events) {
         expect(event.params.namespace[0]).toMatch(/^sub:/);
       }
 
       const eventSequence = events.map((e) => e.method);
-      // Each `values` event is preceded by its companion `checkpoints`
-      // envelope event on the same namespace.  The subgraph is bracketed
-      // by the `LifecycleTransformer`'s synthesized started/completed
-      // events.
+      // SubgraphRunStream scopes protocol events to the child namespace.
+      // Companion `checkpoints` envelopes only appear when the graph uses a
+      // checkpointer; this fixture compiles without one.
       expect(eventSequence).toEqual([
         "lifecycle",
-        "checkpoints",
         "values",
         "tasks",
         "updates",
         "tasks",
-        "checkpoints",
         "values",
         "lifecycle",
       ]);
@@ -764,7 +761,7 @@ describe("streamEvents version v3", () => {
           {
             version: "v3",
             configurable: {
-              thread_id: `tool-error-${handleToolErrors}-${Date.now()}`,
+              thread_id: `tool-error-${handleToolErrors}`,
             },
           }
         );
@@ -838,7 +835,9 @@ describe("stream() chunk shape", () => {
     // Envelope chunks are not requested on plain `stream()` (checkpoints
     // mode is absent), so they must not appear on the public iterator.
     expect(
-      chunks.some((c) => Array.isArray(c) && c[1] === "checkpoints")
+      chunks.some(
+        (c) => Array.isArray(c) && (c as [unknown, string, unknown])[1] === "checkpoints"
+      )
     ).toBe(false);
     for (const chunk of chunks) {
       expect(Array.isArray(chunk)).toBe(true);
