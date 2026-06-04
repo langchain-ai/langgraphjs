@@ -170,6 +170,13 @@ export class SubmitCoordinator<
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
   readonly #awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
+  /**
+   * Resolves on the resumed run's terminal, skipping stale `interrupted`
+   * events from the run being resumed (see {@link dispatchResume}).
+   */
+  readonly #awaitResumedRunTerminal: (
+    signal: AbortSignal
+  ) => Promise<TerminalResult>;
   /** Called once at the start of every {@link submit} invocation. */
   readonly #onSubmitStart: () => void;
   /** Marks that a local run dispatch is now active. */
@@ -208,6 +215,7 @@ export class SubmitCoordinator<
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
+    awaitResumedRunTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     onSubmitStart?: () => void;
     onRunStart?: () => void;
     onRunCreated?: (runId: string) => void;
@@ -228,6 +236,7 @@ export class SubmitCoordinator<
     this.#abandonDeferredRootPump = params.abandonDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
+    this.#awaitResumedRunTerminal = params.awaitResumedRunTerminal;
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
     this.#onRunStart = params.onRunStart ?? (() => undefined);
     this.#onRunCreated = params.onRunCreated ?? (() => undefined);
@@ -506,6 +515,12 @@ export class SubmitCoordinator<
    * a rollback `submit()` all cancel the terminal watch (no spurious error
    * on user-initiated cancel) and treat the resumed run as the active run.
    *
+   * The terminal watch uses {@link #awaitResumedRunTerminal}, which skips
+   * stale `interrupted` terminals from the run being resumed (they can reach
+   * the pump after `input.requested` but before `respondInput` calls
+   * `#prepareForNextRun`) and only accepts a later `interrupted` once a
+   * root `running` lifecycle for the resumed run has been observed.
+   *
    * @param dispatch - Sends the `input.respond` command (and marks the
    *   targeted interrupt resolved). Invoked after the terminal watch is
    *   armed.
@@ -531,10 +546,12 @@ export class SubmitCoordinator<
       this.#rootStore.setState((s) => ({ ...s, error }));
     };
 
-    // Subscribe to the next terminal *before* dispatching so a fast run's
-    // `failed` event can't race us. Watched in the background — we never
-    // gate the returned promise on the resumed run's terminal.
-    const terminalPromise = this.#awaitNextTerminal(abort.signal);
+    // Subscribe to the resumed run's terminal *before* dispatching so a fast
+    // `failed` can't race us. Unlike `#awaitNextTerminal`, the resume watcher
+    // ignores stale `interrupted` events until root `running` is seen.
+    // Watched in the background — we never gate the returned promise on the
+    // resumed run's terminal.
+    const terminalPromise = this.#awaitResumedRunTerminal(abort.signal);
     void terminalPromise.then((terminal) => {
       if (this.#runAbort === abort) this.#runAbort = undefined;
       if (terminal.event === "failed" && !abort.signal.aborted) {

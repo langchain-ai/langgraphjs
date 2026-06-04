@@ -293,6 +293,8 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
+      awaitResumedRunTerminal: (signal) =>
+        this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run aren't filtered. Bump
@@ -1614,8 +1616,38 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
+    return this.#awaitRootTerminal(signal, { skipInterruptedUntilRunning: false });
+  }
+
+  /**
+   * Resolve on the resumed run's root terminal lifecycle.
+   *
+   * Unlike {@link #awaitNextTerminal}, ignores `interrupted` events until a
+   * root `running` lifecycle has been observed. Headless-tool flows can emit
+   * a stale `interrupted` for the run being resumed after `input.requested`
+   * but before `respondInput` calls `#prepareForNextRun`; accepting that
+   * terminal would unsubscribe the watcher before the resumed run's `failed`
+   * terminal arrives.
+   */
+  #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
+    event: "completed" | "failed" | "interrupted" | "aborted";
+    error?: string;
+  }> {
+    return this.#awaitRootTerminal(signal, {
+      skipInterruptedUntilRunning: true,
+    });
+  }
+
+  #awaitRootTerminal(
+    signal: AbortSignal,
+    options: { skipInterruptedUntilRunning: boolean }
+  ): Promise<{
+    event: "completed" | "failed" | "interrupted" | "aborted";
+    error?: string;
+  }> {
     return new Promise((resolve) => {
       let settled = false;
+      let sawRunning = false;
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
@@ -1636,6 +1668,10 @@ export class StreamController<
           event?: string;
           error?: string;
         };
+        if (lifecycle?.event === "running") {
+          sawRunning = true;
+          return;
+        }
         if (lifecycle?.event === "completed") {
           setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
@@ -1644,6 +1680,12 @@ export class StreamController<
             0
           );
         } else if (lifecycle?.event === "interrupted") {
+          if (
+            options.skipInterruptedUntilRunning &&
+            !sawRunning
+          ) {
+            return;
+          }
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       };

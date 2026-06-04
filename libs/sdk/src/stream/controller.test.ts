@@ -1101,6 +1101,86 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("respond() ignores stale interrupted before resumed run running", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    let releaseRespondInput!: () => void;
+    const respondInput = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseRespondInput = resolve;
+        })
+    );
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    const respondPromise = controller.respond({ approved: true });
+
+    // Stale `interrupted` from the run being resumed (can land after
+    // input.requested but before respondInput's #prepareForNextRun).
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-interrupted-stale",
+      seq: 2,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { event: "interrupted" },
+      },
+    } as Event);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controller.rootStore.getSnapshot().error).toBeUndefined();
+
+    releaseRespondInput();
+    await respondPromise;
+
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-3",
+      seq: 3,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { event: "failed", error: "missing OPENAI_API_KEY" },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(
+        (controller.rootStore.getSnapshot().error as Error | undefined)?.message
+      ).toBe("missing OPENAI_API_KEY");
+    });
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces a failed resumed run on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);
