@@ -2428,12 +2428,6 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
-          // LangChain invokes `handleToolError` via an async callback; yield one
-          // microtask so tool stream chunks are enqueued before the writable
-          // stream is sealed (see IterableReadableWritableStream.push).
-          await new Promise<void>((resolve) => {
-            queueMicrotask(resolve);
-          });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
           // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
