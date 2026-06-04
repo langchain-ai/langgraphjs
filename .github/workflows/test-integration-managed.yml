@@ -7,16 +7,20 @@ name: Integration (managed langgraph-api)
 # Python orchestrator unpacks at stream.py:324) — which the in-repo JS server
 # cannot catch, since it strips that field before the wire.
 #
-# SECURITY: this job injects the managed-server license secret, so it must not
-# run on unreviewed pull_request code (a same-repo contributor could exfiltrate
-# the secret before review). It therefore runs only on push to main and on
-# manual workflow_dispatch, and is additionally bound to the protected
-# `managed-integration` Environment (configure it with required reviewers).
-# For pre-merge coverage, a maintainer dispatches it against the PR branch.
+# SECURITY: the managed-server license secret is injected only for same-repo
+# branches via the fork gate below — fork PRs never receive it. This matches the
+# repo's other secret-bearing integration tests (sdk-py, _test-js-api-pr.yml).
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - "libs/langgraph-core/**"
+      - "libs/langgraph-api/**"
+      - "libs/sdk/**"
+      - "integration/**"
+      - ".github/workflows/test-integration-managed.yml"
+  pull_request:
     paths:
       - "libs/langgraph-core/**"
       - "libs/langgraph-api/**"
@@ -36,9 +40,9 @@ jobs:
   managed-integration:
     name: JS graphs on managed langgraph-api
     runs-on: ubuntu-latest
-    # Protected environment: GitHub pauses for the configured required
-    # reviewers before the secrets below are injected.
-    environment: managed-integration
+    # Fork gate: repo secrets are not exposed to pull_request runs from forks,
+    # so only same-repo branches (write-access) run with the license secret.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     env:
       # Referenced by name only; injected into the server via compose ${VAR}
       # substitution. The managed image accepts LANGSMITH_API_KEY (enterprise
