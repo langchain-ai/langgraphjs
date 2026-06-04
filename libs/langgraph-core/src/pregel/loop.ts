@@ -93,7 +93,6 @@ import { LangGraphRunnableConfig } from "./runnable_types.js";
 import {
   createDuplexStream,
   IterableReadableWritableStream,
-  StreamChunk,
   StreamChunkMeta,
 } from "./stream.js";
 import { isXXH3 } from "../hash.js";
@@ -343,7 +342,7 @@ export class PregelLoop {
       this.config.metadata?.run_id !== undefined &&
       (this.checkpointMetadata as { run_id?: unknown })?.run_id !== undefined &&
       this.config.metadata.run_id ===
-        (this.checkpointMetadata as { run_id?: unknown })?.run_id;
+      (this.checkpointMetadata as { run_id?: unknown })?.run_id;
 
     return (
       hasChannelVersions &&
@@ -441,13 +440,13 @@ export class PregelLoop {
     if (
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
-        config.configurable?.checkpoint_ns
+      config.configurable?.checkpoint_ns
       ]
     ) {
       checkpointConfig = patchConfigurable(config, {
         checkpoint_id:
           config.configurable[CONFIG_KEY_CHECKPOINT_MAP][
-            config.configurable?.checkpoint_ns
+          config.configurable?.checkpoint_ns
           ],
       });
     }
