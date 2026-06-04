@@ -2,6 +2,7 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { Serialized } from "@langchain/core/load/serializable";
+import { isCheckpointEnvelope } from "../stream/convert.js";
 import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
@@ -438,34 +439,16 @@ export function toEventStream(stream: AsyncGenerator) {
   });
 }
 
-function isLightweightCheckpointChunk(chunk: StreamChunk): boolean {
-  const [, mode, payload] = chunk;
-  if (mode !== "checkpoints" || payload == null || typeof payload !== "object") {
-    return false;
-  }
-  const p = payload as Record<string, unknown>;
-  return (
-    typeof p.id === "string" &&
-    ("source" in p || typeof p.step === "number") &&
-    !("values" in p) &&
-    !("config" in p)
-  );
-}
-
 /** Multiplex subgraph stream chunks into the parent pregel stream. */
 export function createDuplexStream(
   ...streams: IterableReadableWritableStream[]
 ) {
   return new IterableReadableWritableStream({
     passthroughFn: (value: StreamChunk) => {
-      const passthroughCheckpoints =
-        value[1] !== "checkpoints" || isLightweightCheckpointChunk(value);
+      const isEnvelope =
+        value[1] === "checkpoints" && isCheckpointEnvelope(value[2]);
       for (const stream of streams) {
-        if (
-          passthroughCheckpoints &&
-          (stream.modes.has(value[1]) ||
-            (value[1] === "checkpoints" && isLightweightCheckpointChunk(value)))
-        ) {
+        if (stream.modes.has(value[1]) || isEnvelope) {
           stream.push(value);
         }
       }
