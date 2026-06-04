@@ -3,14 +3,16 @@ import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
 import * as envUtils from "../utils/env.js";
 
+type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
+
 describe.each([["global"], ["mocked"]])(
   "Client uses %s fetch",
   (description: string) => {
-    let globalFetchMock: ReturnType<typeof vi.fn>;
-    let overriddenFetch: ReturnType<typeof vi.fn>;
+    let globalFetchMock: MockFetch;
+    let overriddenFetch: MockFetch;
 
-    let expectedFetchMock: ReturnType<typeof vi.fn>;
-    let unexpectedFetchMock: ReturnType<typeof vi.fn>;
+    let expectedFetchMock: MockFetch;
+    let unexpectedFetchMock: MockFetch;
 
     beforeEach(() => {
       globalFetchMock = vi.fn(() =>
@@ -25,7 +27,7 @@ describe.each([["global"], ["mocked"]])(
           text: () => Promise.resolve(""),
           headers: new Headers({}),
         })
-      );
+      ) as MockFetch;
       overriddenFetch = vi.fn(() =>
         Promise.resolve({
           ok: true,
@@ -38,7 +40,7 @@ describe.each([["global"], ["mocked"]])(
           text: () => Promise.resolve(""),
           headers: new Headers({}),
         })
-      );
+      ) as MockFetch;
       expectedFetchMock =
         description === "mocked" ? overriddenFetch : globalFetchMock;
       unexpectedFetchMock =
