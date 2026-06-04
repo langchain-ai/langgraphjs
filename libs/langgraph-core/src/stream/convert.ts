@@ -1,10 +1,9 @@
 /**
- * Protocol event conversion — maps raw `[ns, mode, payload, meta?]` stream
- * chunks from graph.stream() to CDDL-aligned ProtocolEvents.
+ * Protocol event conversion — maps raw `[ns, mode, payload]` stream chunks
+ * from graph.stream() to CDDL-aligned ProtocolEvents.
  */
 
 import type { StreamMode } from "../pregel/types.js";
-import type { StreamChunkMeta } from "../pregel/stream.js";
 import type {
   Namespace,
   ProtocolEvent,
@@ -22,12 +21,10 @@ import type {
  *
  * The `"checkpoints"` mode is likewise excluded from the stream-mode
  * request because the protocol's `checkpoints` channel carries only a
- * lightweight envelope (`id`, `parent_id`, `step`, `source`) derived from
- * {@link StreamChunkMeta.checkpoint} on the adjacent `values` chunk — not
- * the full-state shape that Pregel's `checkpoints` stream mode produces.
- * `convertToProtocolEvent` emits a companion `checkpoints` protocol event
- * next to each `values` event when meta is present, so clients can build
- * branching/time-travel UIs without a full-state `checkpoints` subscription.
+ * lightweight envelope (`id`, `parent_id`, `step`, `source`) emitted as
+ * a separate ``[namespace, "checkpoints", envelope]`` chunk before each
+ * paired `values` chunk — not the full-state shape that Pregel's
+ * `checkpoints` stream mode produces when subscribed via `debug`.
  */
 export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
   "values",
@@ -39,40 +36,31 @@ export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
 ];
 
 /**
- * Converts a raw `[ns, mode, payload, meta?]` stream chunk emitted by
+ * True when `payload` is the lightweight checkpoint envelope pushed before
+ * a paired `values` chunk (not a full-state Pregel `checkpoints` payload).
+ */
+export function isCheckpointEnvelope(payload: unknown): boolean {
+  if (payload == null || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    typeof p.id === "string" &&
+    ("source" in p || typeof p.step === "number") &&
+    !("values" in p) &&
+    !("config" in p)
+  );
+}
+
+/**
+ * Converts a raw `[ns, mode, payload]` stream chunk emitted by
  * `graph.stream()` into one or more CDDL-aligned {@link ProtocolEvent}s.
  *
- * Most modes produce a single event. `values` chunks carrying
- * {@link StreamChunkMeta.checkpoint} additionally produce a companion
- * `checkpoints` event immediately after the `values` event, so clients
- * that subscribe only to `checkpoints` can build a branching timeline
- * without also paying for full-state `values` payloads, and clients that
- * subscribe to both can correlate the pair by `(namespace, step)` or by
- * adjacent `seq` numbers.
- *
  * Returns an empty array for stream modes that have no protocol mapping.
- *
- * @param options - Conversion inputs for a single raw stream chunk.
- * @param options.namespace - Hierarchical namespace path identifying the
- *   source in the agent tree.
- * @param options.mode - The stream mode that produced this chunk (e.g.
- *   `"messages"`, `"tools"`).
- * @param options.payload - The raw payload emitted by the stream for this
- *   mode.
- * @param options.seq - Monotonically increasing sequence number assigned to
- *   the first returned event; the companion `checkpoints` event (when
- *   emitted) uses `seq + 1`.
- * @param options.meta - Optional chunk-level metadata (e.g. the checkpoint
- *   envelope paired with a `values` chunk).
- * @returns An ordered list of {@link ProtocolEvent}s ready for downstream
- *   reducers. Callers advance their `seq` counter by `result.length`.
  */
 export interface ConvertToProtocolEventOptions {
   namespace: Namespace;
   mode: StreamMode;
   payload: unknown;
   seq: number;
-  meta?: StreamChunkMeta;
 }
 
 function unwrapMessagesPayload(payload: unknown) {
@@ -104,7 +92,6 @@ export function convertToProtocolEvent({
   mode,
   payload,
   seq,
-  meta,
 }: ConvertToProtocolEventOptions): ProtocolEvent[] {
   const timestamp = Date.now();
   const base = { type: "event" as const };
@@ -136,28 +123,29 @@ export function convertToProtocolEvent({
         },
       ];
 
-    case "values": {
-      // Emit the `checkpoints` event immediately BEFORE its companion
-      // `values` event so clients subscribed to both channels have the
-      // envelope buffered by the time the values payload arrives. This
-      // lets the SDK attach `parentCheckpointId` to messages extracted
-      // from the values snapshot without waiting for a second pass.
-      const events: ProtocolEvent[] = [];
-      if (meta?.checkpoint != null) {
-        events.push({
+    case "checkpoints": {
+      if (!isCheckpointEnvelope(payload)) {
+        return [];
+      }
+      return [
+        {
           ...base,
           seq,
           method: "checkpoints",
-          params: { namespace: ns, timestamp, data: meta.checkpoint },
-        });
-      }
-      events.push({
-        ...base,
-        seq: meta?.checkpoint != null ? seq + 1 : seq,
-        method: "values",
-        params: { namespace: ns, timestamp, data: payload },
-      });
-      return events;
+          params: { namespace: ns, timestamp, data: payload },
+        },
+      ];
+    }
+
+    case "values": {
+      return [
+        {
+          ...base,
+          seq,
+          method: "values",
+          params: { namespace: ns, timestamp, data: payload },
+        },
+      ];
     }
 
     case "updates": {

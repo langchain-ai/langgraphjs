@@ -49,7 +49,10 @@ export type {
   SubgraphDiscoveryProjection,
   SubgraphDiscoveryTransformerOptions,
 } from "./transformers/index.js";
-export { convertToProtocolEvent } from "./convert.js";
+export {
+  convertToProtocolEvent,
+  isCheckpointEnvelope,
+} from "./convert.js";
 export type { ConvertToProtocolEventOptions } from "./convert.js";
 export { isNativeTransformer } from "./types.js";
 export type {
