@@ -91,6 +91,7 @@ import {
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import {
+  createDuplexStream,
   IterableReadableWritableStream,
   StreamChunk,
   StreamChunkMeta,
@@ -151,19 +152,6 @@ type PregelLoopParams = {
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
 };
-
-function createDuplexStream(...streams: IterableReadableWritableStream[]) {
-  return new IterableReadableWritableStream({
-    passthroughFn: (value: StreamChunk) => {
-      for (const stream of streams) {
-        if (stream.modes.has(value[1])) {
-          stream.push(value);
-        }
-      }
-    },
-    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
-  });
-}
 
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
   protected cache: BaseCache<PendingWrite<string>[]>;
@@ -1182,19 +1170,10 @@ export class PregelLoop {
     }
   }
 
-  protected _emit(
-    values: Array<
-      [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
-    >
-  ) {
-    for (const entry of values) {
-      const [mode, payload, meta] = entry as [
-        StreamMode,
-        unknown,
-        StreamChunkMeta | undefined,
-      ];
+  protected _emit(values: Array<[StreamMode, unknown]>) {
+    for (const [mode, payload] of values) {
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
+        this.stream.push([this.checkpointNamespace, mode, payload]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1230,13 +1209,9 @@ export class PregelLoop {
 
   /**
    * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
-   * Used to enrich `values` tuples with a lightweight fork pointer that
-   * `streamEvents(..., { version: "v3" })` promotes to a companion
-   * `checkpoints` event (emitted immediately before its paired `values`).
-   * This envelope backs branching / time-travel UIs
-   * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`
-   * if no checkpoint metadata is available yet (no checkpointer
-   * configured, or first superstep before the input checkpoint lands).
+   * Emitted as a separate ``[namespace, "checkpoints", envelope]`` chunk before
+   * the paired ``values`` chunk. Returns `undefined` if no checkpoint metadata
+   * is available yet.
    */
   protected _currentCheckpointMeta(): StreamChunkMeta | undefined {
     if (!this.checkpointMetadata || !this.checkpoint?.id) return undefined;
@@ -1254,25 +1229,29 @@ export class PregelLoop {
   }
 
   /**
-   * Emit the given stream entries, attaching the current checkpoint meta to
-   * every `"values"` entry. Callers MUST invoke this after the checkpoint
-   * corresponding to the emitted state has been created (typically via
-   * `_putCheckpoint`), so the attached `id` points at the fork target that
-   * captures the emitted state.
+   * Emit stream entries. When checkpoint meta is available, push a lightweight
+   * ``[namespace, "checkpoints", envelope]`` chunk before each ``values`` chunk.
    */
   protected _emitValuesWithCheckpointMeta(
     entries: [StreamMode, unknown][]
   ): void {
     const meta = this._currentCheckpointMeta();
-    if (!meta) {
-      this._emit(entries);
-      return;
+    for (const [mode, payload] of entries) {
+      if (
+        mode === "values" &&
+        meta?.checkpoint != null &&
+        !this.stream.modes.has("checkpoints")
+      ) {
+        this.stream.push([
+          this.checkpointNamespace,
+          "checkpoints",
+          meta.checkpoint,
+        ]);
+      }
+      if (this.stream.modes.has(mode)) {
+        this.stream.push([this.checkpointNamespace, mode, payload]);
+      }
     }
-    this._emit(
-      entries.map(([mode, payload]) =>
-        mode === "values" ? [mode, payload, meta] : [mode, payload]
-      )
-    );
   }
 
   protected _putCheckpoint(

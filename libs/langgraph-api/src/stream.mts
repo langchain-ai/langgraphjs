@@ -16,10 +16,7 @@ import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
-import type {
-  Checkpoint as ProtocolCheckpoint,
-  SourceStreamEvent,
-} from "./protocol/types.mjs";
+import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -273,17 +270,12 @@ export async function* streamState(
       event.event === "on_chain_stream" &&
       (kwargs.subgraphs || event.run_id === run.run_id)
     ) {
-      // Pregel stream tuples are `[ns, mode, payload, meta?]`. The optional
-      // meta carries the lightweight checkpoint envelope attached by
-      // `_emitValuesWithCheckpointMeta`, which we forward as a companion
-      // `checkpoints` source event before the paired `values` event.
+      // Pregel stream chunks are `[ns, mode, payload]`. Lightweight checkpoint
+      // envelopes arrive as a separate `checkpoints` chunk before `values`.
       const rawTuple = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
-      ) as [string[] | null, LangGraphStreamMode, unknown, unknown?];
+      ) as [string[] | null, LangGraphStreamMode, unknown];
       const [ns, mode, chunk] = rawTuple;
-      const chunkMeta = rawTuple[3] as
-        | { checkpoint?: ProtocolCheckpoint }
-        | undefined;
 
       let data: unknown = chunk;
       if (mode === "debug") {
@@ -326,19 +318,6 @@ export async function* streamState(
           options?.onTaskResult?.(debugTask);
         }
         data = debugTask;
-      }
-
-      // Promote inline checkpoint meta to companion `checkpoints` events only
-      // when the client opted into subgraph streaming (fork / time-travel UIs).
-      if (
-        kwargs.subgraphs &&
-        mode === "values" &&
-        chunkMeta?.checkpoint != null
-      ) {
-        const sseEvent = ns?.length
-          ? `checkpoints|${ns.join("|")}`
-          : "checkpoints";
-        yield { event: sseEvent, data: chunkMeta.checkpoint };
       }
 
       if (mode === "messages") {

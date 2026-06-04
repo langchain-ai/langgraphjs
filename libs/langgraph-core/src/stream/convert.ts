@@ -1,10 +1,9 @@
 /**
- * Protocol event conversion — maps raw `[ns, mode, payload, meta?]` stream
- * chunks from graph.stream() to CDDL-aligned ProtocolEvents.
+ * Protocol event conversion — maps raw `[ns, mode, payload]` stream chunks
+ * from graph.stream() to CDDL-aligned ProtocolEvents.
  */
 
 import type { StreamMode } from "../pregel/types.js";
-import type { StreamChunkMeta } from "../pregel/stream.js";
 import type {
   Namespace,
   ProtocolEvent,
@@ -22,11 +21,10 @@ import type {
  *
  * The `"checkpoints"` mode is likewise excluded from the stream-mode
  * request because the protocol's `checkpoints` channel carries only a
- * lightweight envelope (`id`, `parent_id`, `step`, `source`) derived from
- * {@link StreamChunkMeta.checkpoint} on the adjacent `values` chunk — not
- * the full-state shape that Pregel's `checkpoints` stream mode produces.
- * `convertToProtocolEvent` emits a companion `checkpoints` protocol event
- * before each `values` event when meta is present.
+ * lightweight envelope (`id`, `parent_id`, `step`, `source`) emitted as a
+ * separate ``[namespace, "checkpoints", envelope]`` chunk before each paired
+ * `values` chunk — not the full-state shape from Pregel's `checkpoints`
+ * stream mode when subscribed via `debug`.
  */
 export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
   "values",
@@ -57,7 +55,6 @@ export interface ConvertToProtocolEventOptions {
   mode: StreamMode;
   payload: unknown;
   seq: number;
-  meta?: StreamChunkMeta;
 }
 
 function unwrapMessagesPayload(payload: unknown) {
@@ -89,7 +86,6 @@ export function convertToProtocolEvent({
   mode,
   payload,
   seq,
-  meta,
 }: ConvertToProtocolEventOptions): ProtocolEvent[] {
   const timestamp = Date.now();
   const base = { type: "event" as const };
@@ -136,22 +132,14 @@ export function convertToProtocolEvent({
     }
 
     case "values": {
-      const events: ProtocolEvent[] = [];
-      if (meta?.checkpoint != null) {
-        events.push({
+      return [
+        {
           ...base,
           seq,
-          method: "checkpoints",
-          params: { namespace: ns, timestamp, data: meta.checkpoint },
-        });
-      }
-      events.push({
-        ...base,
-        seq: meta?.checkpoint != null ? seq + 1 : seq,
-        method: "values",
-        params: { namespace: ns, timestamp, data: payload },
-      });
-      return events;
+          method: "values",
+          params: { namespace: ns, timestamp, data: payload },
+        },
+      ];
     }
 
     case "updates": {

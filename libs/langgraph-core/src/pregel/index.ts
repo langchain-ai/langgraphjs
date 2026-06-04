@@ -93,6 +93,7 @@ import {
 import {
   createGraphRunStream,
   GraphRunStream,
+  isCheckpointEnvelope,
   STREAM_EVENTS_V3_MODES,
 } from "../stream/index.js";
 import type {
@@ -2428,6 +2429,12 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
+          // LangChain invokes `handleToolError` via an async callback; yield one
+          // microtask so tool stream chunks are enqueued before the writable
+          // stream is sealed.
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
           // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
@@ -2448,35 +2455,31 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload, meta] = chunk;
-        if (streamMode.includes(mode)) {
-          // `graph.stream()` exposes strict 3-tuples; streamEvents keeps the
-          // optional meta so the API layer can emit companion `checkpoints`.
-          const preserveMeta = "version" in (options ?? {});
-          const emitChunk =
-            preserveMeta && meta !== undefined
-              ? ([namespace, mode, payload, meta] as const)
-              : ([namespace, mode, payload] as const);
+        const [namespace, mode, payload] = chunk;
+        const isStreamEvents = "version" in (options ?? {});
+        const includeChunk =
+          streamMode.includes(mode) ||
+          (mode === "checkpoints" &&
+            isCheckpointEnvelope(payload) &&
+            (isV3 ||
+              (isStreamEvents &&
+                streamSubgraphs &&
+                streamMode.includes("values"))));
+        if (includeChunk) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
-              yield emitChunk;
+              yield [namespace, mode, payload];
             } else {
-              yield preserveMeta && meta !== undefined
-                ? [null, mode, payload, meta]
-                : [null, mode, payload];
+              yield [null, mode, payload];
             }
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            yield emitChunk;
+            yield [namespace, mode, payload];
           } else if (!streamModeSingle) {
-            yield preserveMeta && meta !== undefined
-              ? [mode, payload, meta]
-              : [mode, payload];
+            yield [mode, payload];
           } else if (streamSubgraphs) {
-            yield preserveMeta && meta !== undefined
-              ? [namespace, payload, meta]
-              : [namespace, payload];
+            yield [namespace, payload];
           } else {
             yield payload;
           }
