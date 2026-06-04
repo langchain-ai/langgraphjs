@@ -13,22 +13,23 @@ import { TAG_HIDDEN } from "../constants.js";
  * clients can build branching / time-travel UIs without subscribing to a
  * full-state `checkpoints` stream.
  *
- * Companion checkpoint envelopes are emitted as separate
- * ``[namespace, "checkpoints", envelope]`` chunks (see
- * ``PregelLoop._emitValuesWithCheckpointMeta``).
+ * v1 consumers that destructure `StreamChunk` as `[ns, mode, payload]`
+ * ignore the 4th element and are unaffected.
  */
 export interface StreamChunkMeta {
   /**
-   * Lightweight checkpoint envelope for the superstep that produced the
-   * paired `values` chunk. Shape matches the canonical {@link Checkpoint}
-   * generated from `protocol.cddl`. Surfaced on the v3 protocol stream as a
-   * `checkpoints` event immediately before the companion `values` event.
+   * Lightweight checkpoint envelope for the superstep that produced this
+   * `values` chunk. Shape matches the canonical {@link Checkpoint}
+   * generated from `protocol.cddl`. When present, `convertToProtocolEvent`
+   * emits a companion `checkpoints` event immediately before the `values`
+   * event so clients can correlate by `(namespace, step)` or adjacent
+   * `seq` numbers.
    */
   checkpoint?: Checkpoint;
 }
 
-// [namespace, streamMode, payload]
-export type StreamChunk = [string[], StreamMode, unknown];
+// [namespace, streamMode, payload, meta?]
+export type StreamChunk = [string[], StreamMode, unknown, StreamChunkMeta?];
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",

@@ -1182,10 +1182,19 @@ export class PregelLoop {
     }
   }
 
-  protected _emit(values: Array<[StreamMode, unknown]>) {
-    for (const [mode, payload] of values) {
+  protected _emit(
+    values: Array<
+      [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
+    >
+  ) {
+    for (const entry of values) {
+      const [mode, payload, meta] = entry as [
+        StreamMode,
+        unknown,
+        StreamChunkMeta | undefined,
+      ];
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload]);
+        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1221,10 +1230,10 @@ export class PregelLoop {
 
   /**
    * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
-   * Emitted as a separate ``[namespace, "checkpoints", envelope]`` stream
-   * chunk (before the paired ``values`` chunk) for
-   * `streamEvents(..., { version: "v3" })` to convert into a protocol
-   * `checkpoints` event. This envelope backs branching / time-travel UIs
+   * Used to enrich `values` tuples with a lightweight fork pointer that
+   * `streamEvents(..., { version: "v3" })` promotes to a companion
+   * `checkpoints` event (emitted immediately before its paired `values`).
+   * This envelope backs branching / time-travel UIs
    * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`
    * if no checkpoint metadata is available yet (no checkpointer
    * configured, or first superstep before the input checkpoint lands).
@@ -1245,36 +1254,25 @@ export class PregelLoop {
   }
 
   /**
-   * Emit the given stream entries. When checkpoint meta is available, push a
-   * lightweight ``[namespace, "checkpoints", envelope]`` chunk immediately
-   * before each ``values`` chunk; the v3 protocol path converts the envelope
-   * via {@link convertToProtocolEvent}.
-   * Callers MUST invoke this after the checkpoint corresponding to the
-   * emitted state has been created (typically via `_putCheckpoint`).
+   * Emit the given stream entries, attaching the current checkpoint meta to
+   * every `"values"` entry. Callers MUST invoke this after the checkpoint
+   * corresponding to the emitted state has been created (typically via
+   * `_putCheckpoint`), so the attached `id` points at the fork target that
+   * captures the emitted state.
    */
   protected _emitValuesWithCheckpointMeta(
     entries: [StreamMode, unknown][]
   ): void {
     const meta = this._currentCheckpointMeta();
-    for (const [mode, payload] of entries) {
-      if (
-        mode === "values" &&
-        meta?.checkpoint != null &&
-        // Legacy `checkpoints` stream mode already emits full debug
-        // payloads via `mapDebugCheckpoint`; lightweight envelopes are
-        // only for the v3 protocol path (surfaced in `pregel/index.ts`).
-        !this.stream.modes.has("checkpoints")
-      ) {
-        this.stream.push([
-          this.checkpointNamespace,
-          "checkpoints",
-          meta.checkpoint,
-        ]);
-      }
-      if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload]);
-      }
+    if (!meta) {
+      this._emit(entries);
+      return;
     }
+    this._emit(
+      entries.map(([mode, payload]) =>
+        mode === "values" ? [mode, payload, meta] : [mode, payload]
+      )
+    );
   }
 
   protected _putCheckpoint(

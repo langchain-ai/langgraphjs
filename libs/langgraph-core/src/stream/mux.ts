@@ -474,7 +474,7 @@ export async function pump(
   let seq = 0;
   try {
     for await (const chunk of source) {
-      const [ns, mode, payload] = chunk;
+      const [ns, mode, payload, meta] = chunk;
 
       // Detect interrupt payloads attached to values-mode chunks.
       if (mode === "values" && isInterrupted(payload)) {
@@ -492,6 +492,7 @@ export async function pump(
         mode,
         payload,
         seq,
+        meta,
       });
       seq += events.length;
       for (const event of events) {

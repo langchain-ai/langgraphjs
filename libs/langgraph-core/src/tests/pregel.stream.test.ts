@@ -434,7 +434,7 @@ describe("streamEvents version v3", () => {
       expect(subgraphs[0].index).toBe(0);
 
       const events = allSubEvents[0];
-      expect(events).toHaveLength(7);
+      expect(events).toHaveLength(9);
 
       for (const event of events) {
         expect(event.params.namespace[0]).toMatch(/^sub:/);
@@ -442,14 +442,15 @@ describe("streamEvents version v3", () => {
 
       const eventSequence = events.map((e) => e.method);
       // SubgraphRunStream scopes protocol events to the child namespace.
-      // Companion `checkpoints` envelopes only appear when the graph uses a
-      // checkpointer; this fixture compiles without one.
+      // In-memory checkpoints still produce companion `checkpoints` events.
       expect(eventSequence).toEqual([
         "lifecycle",
+        "checkpoints",
         "values",
         "tasks",
         "updates",
         "tasks",
+        "checkpoints",
         "values",
         "lifecycle",
       ]);
@@ -807,9 +808,9 @@ describe("streamEvents version v3", () => {
 });
 
 describe("stream() chunk shape", () => {
-  // Public stream chunks are always `[namespace, mode, payload]`.
-  // Lightweight checkpoint envelopes are separate `checkpoints` chunks
-  // before paired `values` chunks; only the v3 protocol path surfaces them.
+  // Public `graph.stream()` chunks are always `[namespace, mode, payload]`.
+  // Checkpoint envelopes stay on the optional 4th meta element internally and
+  // are promoted to protocol / SSE `checkpoints` events by the streaming layer.
   it("yields 3-tuples for subgraphs + multi-mode runs with a checkpointer", async () => {
     const graph = new StateGraph(CounterState)
       .addNode("add_one", () => ({ count: 1 }))

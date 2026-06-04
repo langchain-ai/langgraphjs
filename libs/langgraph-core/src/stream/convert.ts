@@ -1,9 +1,10 @@
 /**
- * Protocol event conversion — maps raw `[ns, mode, payload]` stream chunks
- * from graph.stream() to CDDL-aligned ProtocolEvents.
+ * Protocol event conversion — maps raw `[ns, mode, payload, meta?]` stream
+ * chunks from graph.stream() to CDDL-aligned ProtocolEvents.
  */
 
 import type { StreamMode } from "../pregel/types.js";
+import type { StreamChunkMeta } from "../pregel/stream.js";
 import type {
   Namespace,
   ProtocolEvent,
@@ -21,10 +22,11 @@ import type {
  *
  * The `"checkpoints"` mode is likewise excluded from the stream-mode
  * request because the protocol's `checkpoints` channel carries only a
- * lightweight envelope (`id`, `parent_id`, `step`, `source`) emitted as
- * a separate ``[namespace, "checkpoints", envelope]`` chunk before each
- * paired `values` chunk — not the full-state shape that Pregel's
- * `checkpoints` stream mode produces when subscribed via `debug`.
+ * lightweight envelope (`id`, `parent_id`, `step`, `source`) derived from
+ * {@link StreamChunkMeta.checkpoint} on the adjacent `values` chunk — not
+ * the full-state shape that Pregel's `checkpoints` stream mode produces.
+ * `convertToProtocolEvent` emits a companion `checkpoints` protocol event
+ * before each `values` event when meta is present.
  */
 export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
   "values",
@@ -36,8 +38,8 @@ export const STREAM_EVENTS_V3_MODES: StreamMode[] = [
 ];
 
 /**
- * True when `payload` is the lightweight checkpoint envelope pushed before
- * a paired `values` chunk (not a full-state Pregel `checkpoints` payload).
+ * True when `payload` is a lightweight checkpoint envelope (not a full-state
+ * Pregel `checkpoints` debug payload).
  */
 export function isCheckpointEnvelope(payload: unknown): boolean {
   if (payload == null || typeof payload !== "object") return false;
@@ -50,17 +52,12 @@ export function isCheckpointEnvelope(payload: unknown): boolean {
   );
 }
 
-/**
- * Converts a raw `[ns, mode, payload]` stream chunk emitted by
- * `graph.stream()` into one or more CDDL-aligned {@link ProtocolEvent}s.
- *
- * Returns an empty array for stream modes that have no protocol mapping.
- */
 export interface ConvertToProtocolEventOptions {
   namespace: Namespace;
   mode: StreamMode;
   payload: unknown;
   seq: number;
+  meta?: StreamChunkMeta;
 }
 
 function unwrapMessagesPayload(payload: unknown) {
@@ -92,6 +89,7 @@ export function convertToProtocolEvent({
   mode,
   payload,
   seq,
+  meta,
 }: ConvertToProtocolEventOptions): ProtocolEvent[] {
   const timestamp = Date.now();
   const base = { type: "event" as const };
@@ -138,14 +136,22 @@ export function convertToProtocolEvent({
     }
 
     case "values": {
-      return [
-        {
+      const events: ProtocolEvent[] = [];
+      if (meta?.checkpoint != null) {
+        events.push({
           ...base,
           seq,
-          method: "values",
-          params: { namespace: ns, timestamp, data: payload },
-        },
-      ];
+          method: "checkpoints",
+          params: { namespace: ns, timestamp, data: meta.checkpoint },
+        });
+      }
+      events.push({
+        ...base,
+        seq: meta?.checkpoint != null ? seq + 1 : seq,
+        method: "values",
+        params: { namespace: ns, timestamp, data: payload },
+      });
+      return events;
     }
 
     case "updates": {

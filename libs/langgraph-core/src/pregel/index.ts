@@ -93,7 +93,6 @@ import {
 import {
   createGraphRunStream,
   GraphRunStream,
-  isCheckpointEnvelope,
   STREAM_EVENTS_V3_MODES,
 } from "../stream/index.js";
 import type {
@@ -2455,25 +2454,35 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload] = chunk;
-        const includeChunk =
-          streamMode.includes(mode) ||
-          (isV3 && mode === "checkpoints" && isCheckpointEnvelope(payload));
-        if (includeChunk) {
+        const [namespace, mode, payload, meta] = chunk;
+        if (streamMode.includes(mode)) {
+          // `graph.stream()` exposes strict 3-tuples; streamEvents keeps the
+          // optional meta so the API layer can emit companion `checkpoints`.
+          const preserveMeta = "version" in (options ?? {});
+          const emitChunk =
+            preserveMeta && meta !== undefined
+              ? ([namespace, mode, payload, meta] as const)
+              : ([namespace, mode, payload] as const);
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
-              yield [namespace, mode, payload];
+              yield emitChunk;
             } else {
-              yield [null, mode, payload];
+              yield preserveMeta && meta !== undefined
+                ? [null, mode, payload, meta]
+                : [null, mode, payload];
             }
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            yield [namespace, mode, payload];
+            yield emitChunk;
           } else if (!streamModeSingle) {
-            yield [mode, payload];
+            yield preserveMeta && meta !== undefined
+              ? [mode, payload, meta]
+              : [mode, payload];
           } else if (streamSubgraphs) {
-            yield [namespace, payload];
+            yield preserveMeta && meta !== undefined
+              ? [namespace, payload, meta]
+              : [namespace, payload];
           } else {
             yield payload;
           }
