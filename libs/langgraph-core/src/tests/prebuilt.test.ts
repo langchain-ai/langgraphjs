@@ -52,7 +52,7 @@ import {
   Runtime,
   Send,
   StateGraph,
-} from "../index.js";
+} from "../web.js";
 import {
   MessagesAnnotation,
   MessagesZodMeta,

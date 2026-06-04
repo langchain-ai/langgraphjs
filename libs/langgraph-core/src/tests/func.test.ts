@@ -2,9 +2,8 @@ import {
   BaseCheckpointSaver,
   InMemoryCache,
 } from "@langchain/langgraph-checkpoint";
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
-import { task, entrypoint, getPreviousState } from "../func/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { task, entrypoint, getPreviousState } from "../web.js";
 import { Command, PREVIOUS, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { MemorySaverAssertImmutable, SlowInMemoryCache } from "./utils.js";
@@ -27,11 +26,6 @@ export function runFuncTests(
   if (teardown !== undefined) {
     afterAll(teardown);
   }
-
-  beforeAll(() => {
-    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-    initializeAsyncLocalStorageSingleton();
-  });
 
   describe("task and entrypoint decorators", () => {
     describe.each([true, false])(

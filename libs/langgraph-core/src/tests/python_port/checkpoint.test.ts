@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
@@ -36,7 +36,6 @@ import { BinaryOperatorAggregate } from "../../channels/binop.js";
 import { Channel, Pregel } from "../../pregel/index.js";
 import { MessagesAnnotation } from "../../graph/messages_annotation.js";
 import { ToolNode } from "../../prebuilt/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 import { FakeToolCallingChatModel } from "../utils.models.js";
 
 class LongPutCheckpointer extends MemorySaver {
@@ -134,11 +133,6 @@ class MemorySaverAssertCheckpointMetadata extends MemorySaver {
     };
   }
 }
-
-beforeAll(() => {
-  // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-  initializeAsyncLocalStorageSingleton();
-});
 
 describe("Checkpoint Tests (Python port)", () => {
   /**
