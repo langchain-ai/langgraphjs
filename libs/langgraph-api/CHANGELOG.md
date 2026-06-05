@@ -1,5 +1,16 @@
 # @langchain/langgraph-api
 
+## 1.2.5
+
+### Patch Changes
+
+- [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): forward named custom stream channels consistently
+
+  Forward remote `StreamChannel` emissions as `custom:<name>` protocol events and normalize them back to custom-channel payloads in the API session. This aligns JavaScript stream-channel forwarding with the protocol subscription shape used by remote clients, so `custom:<name>` subscriptions receive extension channel data consistently.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.5
+
 ## 1.2.4
 
 ### Patch Changes

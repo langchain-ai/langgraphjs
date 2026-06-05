@@ -1,5 +1,25 @@
 # @langchain/svelte
 
+## 1.0.17
+
+### Patch Changes
+
+- [#2494](https://github.com/langchain-ai/langgraphjs/pull/2494) [`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): revive automatic optimistic submit echo
+
+  Echo `submit()` input into `values` / `messages` immediately with client-side
+  id minting and id-based reconciliation as the server streams back. Expose
+  per-message `optimisticStatus` via message metadata (`pending` → `sent` /
+  `failed`), shallow-merge non-message keys with rollback when no `values`
+  arrive, and add an `optimistic: false` hook opt-out. Plumb through React,
+  Vue, Svelte, and Angular with browser e2e coverage.
+
+- [#2497](https://github.com/langchain-ai/langgraphjs/pull/2497) [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): reconcile subagents and subgraphs on thread reconnect
+
+  Seed deep-agent subagent cards from checkpoint messages and subgraph hosts from a single bounded `getHistory` read during `hydrate()`, so parallel fan-out discovery reappears immediately on refresh instead of waiting for SSE replay. Subagent execution namespaces are promoted through the existing guarded discovery state machine (bulk at hydrate, lazily per opened card via the selector layer). The getHistory cost is O(1) in requests regardless of fan-out width.
+
+- Updated dependencies [[`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e), [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f), [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31)]:
+  - @langchain/langgraph-sdk@1.9.17
+
 ## 1.0.16
 
 ### Patch Changes
