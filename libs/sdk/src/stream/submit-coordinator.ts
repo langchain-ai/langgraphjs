@@ -376,33 +376,11 @@ export class SubmitCoordinator<
       isLoading: true,
     }));
 
-    // Apply the input optimistically *before* the first await so the
-    // user's message (and any merged state) paints without waiting for
-    // the server round-trip. Runs only on the dispatched path — an
-    // `"enqueue"`d submission returns above and echoes when it drains,
-    // keeping one optimistic batch bound to exactly one run lifecycle.
-    // `dispatchInput` carries the minted ids the server must echo for
-    // reconciliation, so the run is dispatched with it (not raw input).
+    // Declared before the try so the catch/finally can settle the
+    // submit lifecycle (loading flag, abort slot, optimistic state)
+    // even if optimistic preparation or the pump wait throws.
     let optimisticHandle: OptimisticHandle | undefined;
     let dispatchInput: unknown = input;
-    const prepared = this.#beginOptimistic(input);
-    if (prepared != null) {
-      optimisticHandle = prepared.handle;
-      dispatchInput = prepared.dispatchInput;
-    }
-
-    // Wait for the root subscription to be live; otherwise the
-    // dispatch could resolve before we're listening for events and
-    // we'd miss the terminal that ends the run.
-    await this.#waitForRootPumpReady();
-
-    const boundConfig = bindThreadConfig(options?.config, currentThreadId);
-    // Subscribe to the next terminal *before* dispatching so a fast
-    // run's terminal can't race us.
-    const terminalPromise = this.#awaitNextTerminal(abort.signal);
-    this.#onRunStart();
-
-    let terminalSettled = false;
     let createdRunId: string | undefined;
     let pendingCompletionReason: RunExecutionReason | undefined;
     let completionNotified = false;
@@ -427,6 +405,37 @@ export class SubmitCoordinator<
     };
 
     try {
+      // Apply the input optimistically *before* the first await so the
+      // user's message (and any merged state) paints without waiting for
+      // the server round-trip. Kept as the first statement in the try so
+      // the synchronous paint still precedes the first `await`, while a
+      // synchronous coercion failure (e.g. a malformed message entry)
+      // settles the submit lifecycle through the catch/finally below —
+      // exactly like a dispatch failure — instead of wedging `isLoading`
+      // / `#runAbort` and stranding later enqueue/reject submits behind a
+      // phantom in-flight run. Runs only on the dispatched path — an
+      // `"enqueue"`d submission returns above and echoes when it drains,
+      // keeping one optimistic batch bound to exactly one run lifecycle.
+      // `dispatchInput` carries the minted ids the server must echo for
+      // reconciliation, so the run is dispatched with it (not raw input).
+      const prepared = this.#beginOptimistic(input);
+      if (prepared != null) {
+        optimisticHandle = prepared.handle;
+        dispatchInput = prepared.dispatchInput;
+      }
+
+      // Wait for the root subscription to be live; otherwise the
+      // dispatch could resolve before we're listening for events and
+      // we'd miss the terminal that ends the run.
+      await this.#waitForRootPumpReady();
+
+      const boundConfig = bindThreadConfig(options?.config, currentThreadId);
+      // Subscribe to the next terminal *before* dispatching so a fast
+      // run's terminal can't race us.
+      const terminalPromise = this.#awaitNextTerminal(abort.signal);
+      this.#onRunStart();
+
+      let terminalSettled = false;
       let terminal: TerminalResult | undefined;
 
       const commandPromise = thread.submitRun({
