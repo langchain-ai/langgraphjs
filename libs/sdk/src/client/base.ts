@@ -311,20 +311,36 @@ export class BaseClient {
     /**
      * Coalesce concurrent, identical idempotent reads onto a single
      * in-flight request. Only engaged when the caller opts in
-     * (`dedupe: true`), is not asking for the raw `Response`, and did
-     * not supply its own `AbortSignal` (sharing a request across
-     * consumers must never let one consumer's abort cancel another's).
+     * (`dedupe: true`), is not asking for the raw `Response`, did not
+     * supply its own `AbortSignal` (sharing a request across consumers
+     * must never let one consumer's abort cancel another's), and no
+     * `onRequest` hook is configured.
+     *
+     * `onRequest` is excluded because it can inject per-request headers
+     * (e.g. a freshly-minted `Authorization` bearer) that are not
+     * visible until *after* it runs — i.e. after the dedupe key is
+     * computed — so two requests that look identical here could be sent
+     * with different credentials. Coalescing them would let one
+     * consumer receive a response fetched with another's auth.
      */
     const canDedupe =
       options?.dedupe === true &&
       options?.withResponse !== true &&
-      options?.signal == null;
+      options?.signal == null &&
+      this.onRequest == null;
 
     if (canDedupe) {
-      const headers = init.headers as Record<string, string> | undefined;
-      const auth = headers?.["x-api-key"] ?? "";
       const body = typeof init.body === "string" ? init.body : "";
-      const key = `${init.method ?? "GET"} ${url.toString()} ${body} ${auth}`;
+      /**
+       * The key must capture the FULL request identity, including every
+       * prepared header. `inFlightReads` is module-scoped across all
+       * `Client` instances, so omitting headers would let two clients
+       * pointed at the same URL/thread but using different credentials
+       * (Authorization, custom auth headers, tenant-scoping defaults, …)
+       * share one in-flight promise — a cross-tenant data leak.
+       */
+      const headers = serializeHeaders(init.headers);
+      const key = `${init.method ?? "GET"} ${url.toString()} ${body} ${headers}`;
       const existing = inFlightReads.get(key);
       if (existing != null) return existing as Promise<T>;
 
@@ -482,3 +498,20 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
  * read).
  */
 const inFlightReads = new Map<string, Promise<unknown>>();
+
+/**
+ * Deterministically serialize a prepared request's headers into a
+ * stable string for use in the {@link inFlightReads} dedupe key. Header
+ * names are normalized and sorted so ordering differences never produce
+ * a different key, and every header (not just `x-api-key`) is included
+ * so requests carrying different credentials never collide.
+ */
+function serializeHeaders(headers: RequestInit["headers"]): string {
+  const normalized = mergeHeaders(
+    headers as Record<string, HeaderValue> | undefined
+  );
+  return Object.keys(normalized)
+    .sort()
+    .map((name) => `${name}:${normalized[name]}`)
+    .join("\n");
+}

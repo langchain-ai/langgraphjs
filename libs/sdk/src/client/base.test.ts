@@ -322,6 +322,46 @@ describe.each([["global"], ["mocked"]])(
         flush();
         await Promise.all([p1, p2]);
       });
+
+      it("does not coalesce across clients using different credentials", async () => {
+        // Same API URL + thread, different auth → must NOT share a
+        // promise (otherwise the second caller would receive a response
+        // fetched with the first caller's credentials).
+        const clientA = new Client({ apiKey: "tenant-a" });
+        const clientB = new Client({ apiKey: "tenant-b" });
+        const p1 = clientA.threads.getState("t-shared");
+        const p2 = clientB.threads.getState("t-shared");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("coalesces across clients only when credentials match", async () => {
+        const clientA = new Client({ apiKey: "same" });
+        const clientB = new Client({ apiKey: "same" });
+        const p1 = clientA.threads.getState("t-match");
+        const p2 = clientB.threads.getState("t-match");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce when an onRequest hook is configured", async () => {
+        // `onRequest` can inject per-request auth that is invisible at
+        // key-computation time, so dedupe must be disabled entirely.
+        const client = new Client({
+          apiKey: "k",
+          onRequest: (_url, requestInit) => requestInit,
+        });
+        const p1 = client.threads.getState("t-hook");
+        const p2 = client.threads.getState("t-hook");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
     });
 
     describe("API key auto-load", () => {
