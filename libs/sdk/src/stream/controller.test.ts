@@ -1338,4 +1338,240 @@ describe("StreamController", () => {
 
     await controller.dispose();
   });
+
+  // ---------- discovery reconciliation on reconnect ----------
+
+  function discoveryThread() {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    return { thread, getOnEvent: () => onEvent };
+  }
+
+  function checkpointState(ns: string, id: string) {
+    return {
+      thread_id: "thread-1",
+      checkpoint_ns: ns,
+      checkpoint_id: id,
+      checkpoint_map: null,
+    };
+  }
+
+  const taskMessages = [
+    {
+      type: "ai",
+      id: "orchestrator",
+      tool_calls: [
+        {
+          id: "task-1",
+          name: "task",
+          args: { description: "Do research", subagent_type: "researcher" },
+        },
+      ],
+    },
+    { type: "tool", id: "r1", tool_call_id: "task-1", content: "done" },
+  ];
+
+  it("hydrate seeds subagentStore from getState messages before any SSE event", async () => {
+    const { thread } = discoveryThread();
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: { messages: taskMessages } })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    expect(controller.subagentStore.getSnapshot().get("task-1")).toMatchObject({
+      name: "researcher",
+      namespace: ["tools:task-1"],
+      status: "complete",
+    });
+
+    await controller.dispose();
+  });
+
+  it("hydrate promotes subagent execution namespace from getHistory", async () => {
+    const { thread } = discoveryThread();
+    const getHistory = vi.fn(async () => [
+      {
+        values: { messages: taskMessages },
+        tasks: [
+          {
+            id: "exec-1",
+            name: "tools",
+            path: ["__pregel_push", 0],
+            result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
+          },
+        ],
+        checkpoint: checkpointState("", "cp-1"),
+      },
+    ]);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: { messages: taskMessages } })),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await waitForExpectation(() => {
+      expect(
+        controller.subagentStore.getSnapshot().get("task-1")?.namespace
+      ).toEqual(["tools:exec-1"]);
+    });
+    expect(getHistory).toHaveBeenCalledTimes(1);
+
+    await controller.dispose();
+  });
+
+  it("hydrate seeds subgraphStore from getHistory without any SSE event", async () => {
+    const { thread } = discoveryThread();
+    const getHistory = vi.fn(async () => [
+      {
+        values: {},
+        tasks: [],
+        checkpoint: checkpointState("research:u1", "cp-a"),
+      },
+      {
+        values: {},
+        tasks: [],
+        checkpoint: checkpointState("research:u1|inner:u2", "cp-b"),
+      },
+    ]);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {} })),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "subgraph_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    // Non-blocking: hydration resolves before the history fetch lands.
+    expect(controller.subgraphStore.getSnapshot().size).toBe(0);
+
+    await waitForExpectation(() => {
+      expect(controller.subgraphStore.getSnapshot().get("research:u1")).toMatchObject(
+        { nodeName: "research", status: "complete" }
+      );
+    });
+
+    await controller.dispose();
+  });
+
+  it("resolveSubagentNamespace promotes one subagent and de-dupes concurrent calls", async () => {
+    const { thread, getOnEvent } = discoveryThread();
+    const getHistory = vi.fn(async () => [
+      {
+        values: {},
+        tasks: [
+          {
+            id: "exec-9",
+            name: "tools",
+            path: ["__pregel_push", 0],
+            result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
+          },
+        ],
+        checkpoint: checkpointState("", "cp-1"),
+      },
+    ]);
+    const client = {
+      threads: {
+        // getState returns null → threadExists false → no hydrate-time
+        // history seed, so getHistory calls come only from resolve().
+        getState: vi.fn(async () => null),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    // Discover a default-only subagent via the root pump.
+    getOnEvent()?.(valuesEvent([taskMessages[0]], 1));
+    expect(
+      controller.subagentStore.getSnapshot().get("task-1")?.namespace
+    ).toEqual(["tools:task-1"]);
+
+    await Promise.all([
+      controller.resolveSubagentNamespace("task-1"),
+      controller.resolveSubagentNamespace("task-1"),
+    ]);
+
+    expect(
+      controller.subagentStore.getSnapshot().get("task-1")?.namespace
+    ).toEqual(["tools:exec-9"]);
+    expect(getHistory).toHaveBeenCalledTimes(1);
+
+    await controller.dispose();
+  });
+
+  it("resolveSubagentNamespace skips an already-promoted subagent", async () => {
+    const { thread, getOnEvent } = discoveryThread();
+    const getHistory = vi.fn(async () => []);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => null),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    getOnEvent()?.(valuesEvent([taskMessages[0]], 1));
+    // Promote via an execution-namespace values event (SSE replay).
+    getOnEvent()?.({
+      type: "event",
+      event_id: "values-exec",
+      seq: 2,
+      method: "values",
+      params: {
+        namespace: ["tools:exec-existing"],
+        timestamp: 0,
+        data: { messages: [{ type: "human", content: "Do research" }] },
+      },
+    } as Event);
+    expect(
+      controller.subagentStore.getSnapshot().get("task-1")?.namespace
+    ).toEqual(["tools:exec-existing"]);
+
+    await controller.resolveSubagentNamespace("task-1");
+    expect(getHistory).not.toHaveBeenCalled();
+
+    await controller.dispose();
+  });
 });

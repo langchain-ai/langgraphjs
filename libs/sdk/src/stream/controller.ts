@@ -48,6 +48,13 @@ import {
   type SubgraphByNodeMap,
 } from "./discovery/index.js";
 import {
+  collectSubgraphHostNamespaces,
+  mapSubagentNamespaces,
+  resolveSubagentNamespaces,
+  type HistoryClient,
+} from "./discovery/namespace-from-history.js";
+import type { SubagentDiscoverySnapshot } from "./types.js";
+import {
   isInternalWorkNamespace,
   isLegacySubagentNamespace,
   isRootNamespace,
@@ -208,6 +215,13 @@ export class StreamController<
    * request would 404 and surface a spurious error to the UI).
    */
   readonly #selfCreatedThreadIds = new Set<string>();
+  /**
+   * In-flight per-subagent namespace resolutions, keyed by tool-call
+   * id. De-dupes concurrent {@link resolveSubagentNamespace} calls so
+   * re-renders / multiple consumers of the same subagent don't issue
+   * parallel `getHistory` walks.
+   */
+  readonly #namespaceResolves = new Map<string, Promise<void>>();
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
@@ -475,6 +489,21 @@ export class StreamController<
               }
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
+
+        /**
+         * Seed subagent discovery from checkpoint messages so deep-agent
+         * cards render on refresh without waiting for SSE replay. Zero
+         * extra HTTP (reuses the `getState` payload); mirrors the
+         * interrupt-seeding below. `#subagents` was cleared in
+         * `#teardownThread`, and `seedFromCheckpointMessages` is
+         * idempotent, so this is safe on re-hydrate.
+         */
+        const seedMessages = (state.values as Record<string, unknown>)[
+          this.#messagesKey
+        ];
+        if (Array.isArray(seedMessages)) {
+          this.#subagents.seedFromCheckpointMessages(seedMessages);
+        }
       }
       /**
        * Converge to server truth: drop any optimistic messages the
@@ -581,7 +610,100 @@ export class StreamController<
      */
     if (threadExists) {
       thread.startLifecycleWatcher();
+      /**
+       * Seed subgraph discovery and promote subagent execution
+       * namespaces from a single bounded `getHistory` page. Subgraph
+       * structure is not present in the root checkpoint messages
+       * (unlike subagents), so it can only be reconstructed from
+       * history. Fire-and-forget — not awaited into the hydration
+       * promise, so Suspense / first paint stay unblocked; cards fill
+       * in progressively when it resolves.
+       */
+      void this.#seedDiscoveryFromHistory(this.#currentThreadId);
     }
+  }
+
+  /**
+   * One bounded, non-blocking `getHistory` read at hydrate that seeds
+   * subgraph hosts and bulk-promotes still-default subagent execution
+   * namespaces. O(1) in requests regardless of subagent/subgraph count.
+   */
+  async #seedDiscoveryFromHistory(threadId: string): Promise<void> {
+    try {
+      const history = await (
+        this.#options.client as unknown as HistoryClient
+      ).threads.getHistory(threadId, { limit: 20 });
+      // A thread swap (or dispose) during the fetch invalidates this seed.
+      if (this.#disposed || this.#currentThreadId !== threadId) return;
+
+      const hosts = collectSubgraphHostNamespaces(
+        history as Parameters<typeof collectSubgraphHostNamespaces>[0]
+      );
+      this.#subgraphs.seedFromHistory(hosts);
+
+      const defaultOnlyIds = [...this.#subagents.snapshot.values()]
+        .filter(namespaceIsDefaultOnly)
+        .map((entry) => entry.id);
+      if (defaultOnlyIds.length > 0) {
+        const map = mapSubagentNamespaces(
+          history as Parameters<typeof mapSubagentNamespaces>[0],
+          defaultOnlyIds,
+          this.#messagesKey
+        );
+        for (const [id, segment] of map) {
+          this.#subagents.applyExecutionNamespace(id, segment);
+        }
+      }
+    } catch {
+      /* non-fatal: SSE replay still reconciles discovery */
+    }
+  }
+
+  /**
+   * Lazily resolve a single subagent's execution namespace from
+   * checkpoint history. Intended call site: the first scoped
+   * `useMessages` / `useToolCalls` mount for a subagent whose namespace
+   * is still the default `tools:<toolCallId>`. A fallback for the
+   * hydrate-time bulk seed ({@link #seedDiscoveryFromHistory}) — most
+   * subagents are already promoted by the time a panel opens.
+   *
+   * Skips ids already promoted past default-only (SSE replay or a prior
+   * resolve). Concurrent calls for the same id share one `getHistory`
+   * walk via {@link #namespaceResolves}.
+   *
+   * @param toolCallId - Parent `task` tool-call id (the subagent's discovery key).
+   */
+  async resolveSubagentNamespace(toolCallId: string): Promise<void> {
+    if (this.#disposed) return;
+    const threadId = this.#currentThreadId;
+    if (threadId == null) return;
+    if (!namespaceIsDefaultOnly(this.#subagents.snapshot.get(toolCallId))) {
+      return;
+    }
+    const inflight = this.#namespaceResolves.get(toolCallId);
+    if (inflight != null) return inflight;
+
+    const run = (async () => {
+      try {
+        const map = await resolveSubagentNamespaces(
+          this.#options.client as unknown as HistoryClient,
+          threadId,
+          [toolCallId],
+          { messagesKey: this.#messagesKey }
+        );
+        if (this.#disposed || this.#currentThreadId !== threadId) return;
+        const segment = map.get(toolCallId);
+        if (segment != null) {
+          this.#subagents.applyExecutionNamespace(toolCallId, segment);
+        }
+      } catch {
+        /* non-fatal: SSE replay still reconciles the namespace */
+      } finally {
+        this.#namespaceResolves.delete(toolCallId);
+      }
+    })();
+    this.#namespaceResolves.set(toolCallId, run);
+    return run;
   }
 
   /**
@@ -1846,6 +1968,21 @@ export class StreamController<
 }
 
 // ---------- helpers ----------
+
+/**
+ * True when a subagent still sits on its default `tools:<toolCallId>`
+ * namespace — i.e. no execution namespace has been observed (via SSE
+ * replay) or resolved (via history) yet. Used to gate lazy namespace
+ * resolution so already-promoted subagents aren't re-fetched.
+ */
+function namespaceIsDefaultOnly(
+  entry: SubagentDiscoverySnapshot | undefined
+): boolean {
+  if (entry == null) return false;
+  return (
+    entry.namespace.length === 1 && entry.namespace[0] === `tools:${entry.id}`
+  );
+}
 
 /**
  * Extract and coerce the configured messages key from a values object.

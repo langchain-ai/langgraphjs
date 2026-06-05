@@ -4,6 +4,7 @@ import {
   readonly,
   shallowRef,
   toValue,
+  watchEffect,
   type ComputedRef,
   type MaybeRefOrGetter,
   type ShallowRef,
@@ -90,6 +91,38 @@ function isRoot(namespace: readonly string[]): boolean {
   return namespace.length === 0;
 }
 
+/**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Re-evaluates if `target` changes; the controller de-dupes and skips
+ * already-promoted ids so this is cheap to call from every consumer.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target?: MaybeRefOrGetter<SelectorTarget>
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  watchEffect(() => {
+    const id = subagentNeedingNamespace(toValue(target));
+    if (id != null) void controller.resolveSubagentNamespace(id);
+  });
+}
+
 function namespaceKey(namespace: readonly string[]): string {
   return namespace.join(NAMESPACE_SEPARATOR);
 }
@@ -113,6 +146,7 @@ export function useMessages(
   stream: AnyStream,
   target?: MaybeRefOrGetter<SelectorTarget>
 ): Readonly<ShallowRef<BaseMessage[]>> {
+  useResolveSubagentNamespace(stream, target);
   const namespace = computed(() => resolveNamespace(toValue(target)));
   if (isRoot(namespace.value)) return stream.messages;
   const key = computed(() => `messages|${namespaceKey(namespace.value)}`);
@@ -143,6 +177,7 @@ export function useToolCalls(
   stream: AnyStream,
   target?: MaybeRefOrGetter<SelectorTarget>
 ): Readonly<ShallowRef<AssembledToolCall[]>> {
+  useResolveSubagentNamespace(stream, target);
   const namespace = computed(() => resolveNamespace(toValue(target)));
   if (isRoot(namespace.value)) return stream.toolCalls;
   const key = computed(() => `toolCalls|${namespaceKey(namespace.value)}`);

@@ -87,6 +87,41 @@ describe("SubgraphDiscovery", () => {
     ]);
   });
 
+  it("seedFromHistory rebuilds store and byNodeStore", () => {
+    const discovery = new SubgraphDiscovery();
+    discovery.seedFromHistory([
+      { namespace: ["research:u1"], status: "complete" },
+      { namespace: ["research:u2"], status: "complete" },
+      { namespace: ["writer:u3"], status: "running" },
+    ]);
+
+    expect(discovery.snapshot.size).toBe(3);
+    expect(discovery.byNodeSnapshot.get("research")).toHaveLength(2);
+    expect(discovery.snapshot.get("research:u1")).toMatchObject({
+      nodeName: "research",
+      namespace: ["research:u1"],
+    });
+    expect([...discovery.snapshot.values()].map((s) => s.status).sort()).toEqual(
+      ["complete", "complete", "running"]
+    );
+  });
+
+  it("seedFromHistory does not downgrade a terminal entry", () => {
+    const discovery = new SubgraphDiscovery();
+    const host = ["classify:u1"] as const;
+    const inner = ["classify:u1", "inner:u2"] as const;
+    discovery.push(lifecycleEvent(host, "started", 1));
+    discovery.push(lifecycleEvent(inner, "started", 2));
+    discovery.push(lifecycleEvent(host, "completed", 3));
+    expect([...discovery.snapshot.values()][0].status).toBe("complete");
+
+    // A stale "running" from history must not resurrect it.
+    discovery.seedFromHistory([
+      { namespace: ["classify:u1"], status: "running" },
+    ]);
+    expect([...discovery.snapshot.values()][0].status).toBe("complete");
+  });
+
   it("reset clears committed subgraph maps", () => {
     const discovery = new SubgraphDiscovery();
     discovery.push(lifecycleEvent(["classify:u1"], "started", 1));
