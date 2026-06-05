@@ -241,7 +241,11 @@ export class SubgraphDiscovery {
       if (isRootNamespace(host.namespace)) continue;
       const id = namespaceKey(host.namespace);
       const lastSegment = host.namespace[host.namespace.length - 1] ?? "";
-      const entry = this.#ensureShadow(id, host.namespace, parseNodeName(lastSegment));
+      const entry = this.#ensureShadow(
+        id,
+        host.namespace,
+        parseNodeName(lastSegment)
+      );
       if (
         host.status !== "running" &&
         entry.status !== "complete" &&

@@ -49,9 +49,9 @@ import {
 } from "./discovery/index.js";
 import {
   collectSubgraphHostNamespaces,
+  getHistoryPage,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
-  type HistoryClient,
 } from "./discovery/namespace-from-history.js";
 import type { SubagentDiscoverySnapshot } from "./types.js";
 import {
@@ -630,15 +630,13 @@ export class StreamController<
    */
   async #seedDiscoveryFromHistory(threadId: string): Promise<void> {
     try {
-      const history = await (
-        this.#options.client as unknown as HistoryClient
-      ).threads.getHistory(threadId, { limit: 20 });
+      const history = await getHistoryPage(this.#options.client, threadId, {
+        limit: 20,
+      });
       // A thread swap (or dispose) during the fetch invalidates this seed.
       if (this.#disposed || this.#currentThreadId !== threadId) return;
 
-      const hosts = collectSubgraphHostNamespaces(
-        history as Parameters<typeof collectSubgraphHostNamespaces>[0]
-      );
+      const hosts = collectSubgraphHostNamespaces(history);
       this.#subgraphs.seedFromHistory(hosts);
 
       const defaultOnlyIds = [...this.#subagents.snapshot.values()]
@@ -646,7 +644,7 @@ export class StreamController<
         .map((entry) => entry.id);
       if (defaultOnlyIds.length > 0) {
         const map = mapSubagentNamespaces(
-          history as Parameters<typeof mapSubagentNamespaces>[0],
+          history,
           defaultOnlyIds,
           this.#messagesKey
         );
@@ -686,7 +684,7 @@ export class StreamController<
     const run = (async () => {
       try {
         const map = await resolveSubagentNamespaces(
-          this.#options.client as unknown as HistoryClient,
+          this.#options.client,
           threadId,
           [toolCallId],
           { messagesKey: this.#messagesKey }

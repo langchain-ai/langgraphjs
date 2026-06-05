@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Client } from "../../client/index.js";
 import type { ThreadState } from "../../schema.js";
 import {
   collectSubgraphHostNamespaces,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
-  type HistoryClient,
 } from "./namespace-from-history.js";
 
 function checkpoint(ns: string, id: string) {
@@ -113,7 +113,7 @@ describe("resolveSubagentNamespaces", () => {
     const getHistory = vi.fn(async () => [
       directMappingState("task-1", "tools", "uuid-1"),
     ]);
-    const client = { threads: { getHistory } } as unknown as HistoryClient;
+    const client = { threads: { getHistory } } as unknown as Client;
 
     const map = await resolveSubagentNamespaces(client, "t1", ["task-1"]);
 
@@ -127,7 +127,7 @@ describe("resolveSubagentNamespaces", () => {
       .fn()
       .mockResolvedValueOnce([positionalState([], [], [])]) // page 1: nothing
       .mockResolvedValueOnce([directMappingState("task-1", "tools", "uuid-1")]);
-    const client = { threads: { getHistory } } as unknown as HistoryClient;
+    const client = { threads: { getHistory } } as unknown as Client;
 
     const map = await resolveSubagentNamespaces(client, "t1", ["task-1"]);
 
@@ -141,7 +141,7 @@ describe("resolveSubagentNamespaces", () => {
 
   it("does not issue a third call (bounded)", async () => {
     const getHistory = vi.fn(async () => [positionalState([], [], [])]);
-    const client = { threads: { getHistory } } as unknown as HistoryClient;
+    const client = { threads: { getHistory } } as unknown as Client;
 
     await resolveSubagentNamespaces(client, "t1", ["never-resolves"]);
     expect(getHistory).toHaveBeenCalledTimes(2);
@@ -153,7 +153,7 @@ describe("resolveSubagentNamespaces", () => {
       directMappingState("task-2", "tools", "uuid-2"),
       directMappingState("task-3", "tools", "uuid-3"),
     ]);
-    const client = { threads: { getHistory } } as unknown as HistoryClient;
+    const client = { threads: { getHistory } } as unknown as Client;
 
     await resolveSubagentNamespaces(client, "t1", ["task-1", "task-2", "task-3"]);
     expect(getHistory).toHaveBeenCalledTimes(1);

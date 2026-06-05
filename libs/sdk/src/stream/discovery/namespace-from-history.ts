@@ -15,19 +15,10 @@
  *  - subgraph host detection ports the strict-prefix promotion rule in
  *    {@link ./subgraphs}.
  */
+import type { Client } from "../../client/index.js";
 import type { Config, ThreadState } from "../../schema.js";
 import { NAMESPACE_SEPARATOR } from "../constants.js";
 import { namespaceKey } from "../namespace.js";
-
-/** Minimal client surface this module needs. */
-export interface HistoryClient {
-  threads: {
-    getHistory<ValuesType = Record<string, unknown>>(
-      threadId: string,
-      options?: { limit?: number; before?: Config; signal?: AbortSignal }
-    ): Promise<ThreadState<ValuesType>[]>;
-  };
-}
 
 type AnyCheckpoint = ThreadState<Record<string, unknown>>;
 
@@ -207,8 +198,8 @@ export function mapSubagentNamespaces(
  * @returns Map of `toolCallId` → single execution namespace segment
  *   (e.g. `tools:<uuid>`). Unresolved ids are omitted.
  */
-export async function resolveSubagentNamespaces(
-  client: HistoryClient,
+export async function resolveSubagentNamespaces<TStateType>(
+  client: Client<TStateType>,
   threadId: string,
   toolCallIds: string[],
   opts?: { limit?: number; messagesKey?: string; signal?: AbortSignal }
@@ -221,14 +212,14 @@ export async function resolveSubagentNamespaces(
   const messagesKey = opts?.messagesKey ?? "messages";
   const signal = opts?.signal;
 
-  const page1 = await client.threads.getHistory(threadId, { limit, signal });
+  const page1 = await getHistoryPage(client, threadId, { limit, signal });
   applyCollectors(page1, targets, out, messagesKey);
 
   const unresolved = [...targets].filter((id) => !out.has(id));
   if (unresolved.length > 0 && page1.length > 0) {
     const before = beforeCursor(page1[page1.length - 1]);
     if (before != null) {
-      const page2 = await client.threads.getHistory(threadId, {
+      const page2 = await getHistoryPage(client, threadId, {
         limit,
         before,
         signal,
@@ -238,6 +229,19 @@ export async function resolveSubagentNamespaces(
   }
 
   return out;
+}
+
+/**
+ * Fetch one bounded history page typed as plain records, sidestepping
+ * the client's `TStateType` generic so the discovery collectors (which
+ * read raw `values`/`tasks`) get a stable {@link AnyCheckpoint} shape.
+ */
+export function getHistoryPage<TStateType>(
+  client: Client<TStateType>,
+  threadId: string,
+  options: { limit?: number; before?: Config; signal?: AbortSignal }
+): Promise<AnyCheckpoint[]> {
+  return client.threads.getHistory<Record<string, unknown>>(threadId, options);
 }
 
 export interface SubgraphHost {
@@ -298,7 +302,10 @@ export function collectSubgraphHostNamespaces(
     if (!isHost) continue;
     const running =
       pending.has(key) || [...pending].some((p) => p.startsWith(prefix));
-    hosts.push({ namespace: segments, status: running ? "running" : "complete" });
+    hosts.push({
+      namespace: segments,
+      status: running ? "running" : "complete",
+    });
   }
   return hosts;
 }
