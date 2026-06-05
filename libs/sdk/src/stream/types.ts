@@ -253,6 +253,8 @@ export interface RootEventBus {
   /**
    * Optional fast path for idle/stale threads: seed a scoped projection from
    * checkpoint history instead of opening a replaying `/events` subscription.
+   * This produces a snapshot for finished-thread reconnects; active and
+   * interrupted threads return `false` so projections subscribe normally.
    * Returns `false` when history cannot satisfy the projection and the caller
    * should fall back to its normal subscription.
    */

@@ -24,6 +24,7 @@ import {
   isToolNamespaceSegment,
   namespaceKey,
 } from "../namespace.js";
+import { normalizeAIMessageToolCalls } from "../message-coercion.js";
 
 export type SubagentMap = ReadonlyMap<string, SubagentDiscoverySnapshot>;
 
@@ -474,7 +475,9 @@ function getTaskToolCalls(message: unknown): Array<{
   ) {
     return [];
   }
-  const record = message as {
+  const record = normalizeAIMessageToolCalls(
+    message as Parameters<typeof normalizeAIMessageToolCalls>[0]
+  ) as {
     tool_calls?: unknown;
     kwargs?: { tool_calls?: unknown };
     lc_kwargs?: { tool_calls?: unknown };

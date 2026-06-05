@@ -6,9 +6,16 @@
     assistantId: string;
     kind: "subagent" | "subgraph";
     openAll?: boolean;
+    openAllAfterReconnect?: boolean;
   }
 
-  const { apiUrl, assistantId, kind, openAll = false }: Props = $props();
+  const {
+    apiUrl,
+    assistantId,
+    kind,
+    openAll = false,
+    openAllAfterReconnect = false,
+  }: Props = $props();
 
   let threadId = $state<string | undefined>(undefined);
   let gen = $state(0);
@@ -56,7 +63,7 @@
       {apiUrl}
       {assistantId}
       {kind}
-      {openAll}
+      openAll={openAll || (openAllAfterReconnect && gen > 0)}
       {threadId}
       {onThreadId}
       {wrappedFetch}

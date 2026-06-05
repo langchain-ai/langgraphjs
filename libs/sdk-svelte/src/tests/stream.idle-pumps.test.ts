@@ -54,6 +54,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
       apiUrl: serverUrl,
       assistantId: "parallel_fanout",
       kind: "subagent",
+      openAllAfterReconnect: true,
     });
 
     await screen.getByTestId("submit").click();
@@ -69,6 +70,9 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
 
     await expect
       .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
       .toHaveTextContent(String(WORKER_COUNT));
     await expect
       .element(screen.getByTestId("loading"), { timeout: 20_000 })
@@ -89,7 +93,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
   } finally {
     events.restore();
   }
-});
+}, 30_000);
 
 it("opens /events on hydrate of an interrupted thread (active → eager pumps)", async () => {
   const events = trackEventsRequests();

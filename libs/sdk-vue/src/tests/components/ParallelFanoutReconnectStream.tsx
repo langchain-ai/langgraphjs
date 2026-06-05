@@ -38,6 +38,7 @@ export const ParallelFanoutReconnectStream = defineComponent({
     assistantId: { type: String, required: true },
     kind: { type: String as PropType<Kind>, required: true },
     openAll: { type: Boolean, default: false },
+    openAllAfterReconnect: { type: Boolean, default: false },
   },
   setup(props) {
     const threadId = ref<string | undefined>(undefined);
@@ -78,7 +79,9 @@ export const ParallelFanoutReconnectStream = defineComponent({
           apiUrl={props.apiUrl}
           assistantId={props.assistantId}
           kind={props.kind}
-          openAll={props.openAll}
+          openAll={
+            props.openAll || (props.openAllAfterReconnect && gen.value > 0)
+          }
           threadId={threadId.value}
           onThreadId={(id: string) => {
             threadId.value = id;

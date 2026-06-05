@@ -8,7 +8,7 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
 
-import { ParallelFanoutSubagentHarnessComponent } from "./components/ParallelFanoutReconnectStream.js";
+import { ParallelFanoutSubagentOpenAllAfterReconnectHarnessComponent } from "./components/ParallelFanoutReconnectStream.js";
 import { InterruptReconnectHarnessComponent } from "./components/InterruptReconnectStream.js";
 
 const WORKER_COUNT = 6;
@@ -48,7 +48,9 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
   const events = trackEventsRequests();
 
   try {
-    const screen = await render(ParallelFanoutSubagentHarnessComponent);
+    const screen = await render(
+      ParallelFanoutSubagentOpenAllAfterReconnectHarnessComponent
+    );
 
     await screen.getByTestId("submit").click();
     await expect
@@ -63,6 +65,9 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
 
     await expect
       .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
       .toHaveTextContent(String(WORKER_COUNT));
     await expect
       .element(screen.getByTestId("loading"), { timeout: 20_000 })
@@ -83,7 +88,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
   } finally {
     events.restore();
   }
-});
+}, 30_000);
 
 it("opens /events on hydrate of an interrupted thread (active → eager pumps)", async () => {
   const events = trackEventsRequests();

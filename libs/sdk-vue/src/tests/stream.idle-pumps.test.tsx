@@ -44,48 +44,60 @@ function trackEventsRequests() {
   };
 }
 
-it("opens no idle /events on reconnect to a finished thread, then opens them on submit", async () => {
-  const events = trackEventsRequests();
-  const screen = await render(ParallelFanoutReconnectStream, {
-    props: { apiUrl, assistantId: "parallel_fanout", kind: "subagent" },
-  });
+it(
+  "opens no idle /events on reconnect to a finished thread, then opens them on submit",
+  async () => {
+    const events = trackEventsRequests();
+    const screen = await render(ParallelFanoutReconnectStream, {
+      props: {
+        apiUrl,
+        assistantId: "parallel_fanout",
+        kind: "subagent",
+        openAllAfterReconnect: true,
+      },
+    });
 
-  try {
-    await screen.getByTestId("submit").click();
-    await expect
-      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
-      .toHaveTextContent(String(WORKER_COUNT));
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 20_000 })
-      .toHaveTextContent("Not loading");
+    try {
+      await screen.getByTestId("submit").click();
+      await expect
+        .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+        .toHaveTextContent(String(WORKER_COUNT));
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 20_000 })
+        .toHaveTextContent("Not loading");
 
-    events.start();
-    await screen.getByTestId("reconnect").click();
+      events.start();
+      await screen.getByTestId("reconnect").click();
 
-    await expect
-      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
-      .toHaveTextContent(String(WORKER_COUNT));
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 20_000 })
-      .toHaveTextContent("Not loading");
-    await new Promise((resolve) => setTimeout(resolve, 400));
+      await expect
+        .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+        .toHaveTextContent(String(WORKER_COUNT));
+      await expect
+        .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
+        .toHaveTextContent(String(WORKER_COUNT));
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 20_000 })
+        .toHaveTextContent("Not loading");
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
-    expect(events.count).toBe(0);
+      expect(events.count).toBe(0);
 
-    await screen.getByTestId("submit").click();
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 20_000 })
-      .toHaveTextContent("Loading...");
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 20_000 })
-      .toHaveTextContent("Not loading");
+      await screen.getByTestId("submit").click();
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 20_000 })
+        .toHaveTextContent("Loading...");
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 20_000 })
+        .toHaveTextContent("Not loading");
 
-    expect(events.count).toBeGreaterThan(0);
-  } finally {
-    events.restore();
-    await screen.unmount();
-  }
-});
+      expect(events.count).toBeGreaterThan(0);
+    } finally {
+      events.restore();
+      await screen.unmount();
+    }
+  },
+  30_000
+);
 
 it("opens /events on hydrate of an interrupted thread (active → eager pumps)", async () => {
   const events = trackEventsRequests();

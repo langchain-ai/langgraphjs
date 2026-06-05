@@ -276,6 +276,29 @@ class FanoutSubagentOpenAllViewComponent extends BaseFanoutView {
 }
 
 @Component({
+  selector: "lg-fanout-subagent-openall-after-reconnect-view",
+  imports: [FanoutCardPanelComponent],
+  providers: [FanoutViewBridge],
+  template: VIEW_TEMPLATE,
+})
+class FanoutSubagentOpenAllAfterReconnectViewComponent extends BaseFanoutView {
+  constructor() {
+    const state = angularInject(FanoutHarnessState);
+    super(
+      injectStream<{ messages: BaseMessage[] }>({
+        assistantId: "parallel_fanout",
+        apiUrl: serverUrl,
+        threadId: state.threadId,
+        onThreadId: state.onThreadId,
+        fetch: state.wrappedFetch,
+      }),
+      "subagent",
+      state.gen() > 0
+    );
+  }
+}
+
+@Component({
   selector: "lg-fanout-subgraph-view",
   imports: [FanoutCardPanelComponent],
   providers: [FanoutViewBridge],
@@ -330,6 +353,18 @@ export class ParallelFanoutSubagentHarnessComponent {
   template: HARNESS_TEMPLATE("<lg-fanout-subagent-openall-view />"),
 })
 export class ParallelFanoutSubagentOpenAllHarnessComponent {
+  readonly state = angularInject(FanoutHarnessState);
+}
+
+@Component({
+  selector: "lg-parallel-fanout-subagent-openall-after-reconnect",
+  imports: [FanoutSubagentOpenAllAfterReconnectViewComponent],
+  providers: [FanoutHarnessState],
+  template: HARNESS_TEMPLATE(
+    "<lg-fanout-subagent-openall-after-reconnect-view />"
+  ),
+})
+export class ParallelFanoutSubagentOpenAllAfterReconnectHarnessComponent {
   readonly state = angularInject(FanoutHarnessState);
 }
 

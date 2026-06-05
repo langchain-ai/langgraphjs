@@ -112,6 +112,36 @@ describe("SubagentDiscovery", () => {
     });
   });
 
+  it("discovers task subagents from snake_case content_blocks", () => {
+    const discovery = new SubagentDiscovery();
+
+    discovery.seedFromCheckpointMessages([
+      {
+        type: "ai",
+        id: "orchestrator",
+        content: [],
+        content_blocks: [
+          {
+            type: "tool_call",
+            id: "task-1",
+            name: "task",
+            args: {
+              description: "Search from content blocks",
+              subagent_type: "researcher",
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(discovery.snapshot.get("task-1")).toMatchObject({
+      id: "task-1",
+      name: "researcher",
+      namespace: ["tools:task-1"],
+      taskInput: "Search from content blocks",
+    });
+  });
+
   it("marks discovered subagents complete from values tool-result messages", () => {
     const discovery = new SubagentDiscovery();
 
