@@ -192,7 +192,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -238,7 +238,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -299,7 +299,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -398,7 +398,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -600,7 +600,7 @@ describe("StreamController", () => {
         // must skip its setState and leave rootStore.interrupts
         // alone — and must not seed the allowlist (so future live
         // interrupts pass through).
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -634,7 +634,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -643,6 +643,114 @@ describe("StreamController", () => {
       assistantId: "deep-agent",
       client: client as never,
       threadId: "thread-existing",
+    });
+    await controller.hydrationPromise;
+
+    expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await controller.dispose();
+  });
+
+  it("does NOT open SSE pumps on hydrate of an idle (finished) thread", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const onEvent = vi.fn(() => vi.fn());
+    const thread = {
+      subscribe,
+      onEvent,
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        // next:[] and no pending interrupts → finished → idle.
+        getState: vi.fn(async () => ({ values: {}, next: [], tasks: [] })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-finished",
+    });
+    await controller.hydrationPromise;
+
+    // Cards are seeded from getState + getHistory; neither always-on
+    // SSE pump should open for a finished thread.
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(startLifecycleWatcher).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("brings up the content pump on first submit() for an idle thread", async () => {
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe,
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: [], tasks: [] })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-idle",
+    });
+    await controller.hydrationPromise;
+    // Deferred at hydrate.
+    expect(subscribe).not.toHaveBeenCalled();
+
+    void controller.submit({ messages: [] });
+
+    // The deferred content pump comes up once the dispatch lands.
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+      expect(subscribe).toHaveBeenCalled();
+    });
+    await controller.dispose();
+  });
+
+  it("opens the lifecycle watcher eagerly for an interrupted thread", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        // No next nodes, but a pending interrupt → active (a resume
+        // will start a run that must be observed).
+        getState: vi.fn(async () => ({
+          values: {},
+          next: [],
+          tasks: [{ interrupts: [{ id: "int-1", value: {} }] }],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-interrupted",
     });
     await controller.hydrationPromise;
 
@@ -664,7 +772,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -703,7 +811,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -740,7 +848,7 @@ describe("StreamController", () => {
     const cancel = vi.fn(async () => undefined);
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
       runs: { cancel },
@@ -790,7 +898,7 @@ describe("StreamController", () => {
     const cancel = vi.fn(async () => undefined);
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
       runs: { cancel },
@@ -844,7 +952,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -894,7 +1002,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -968,7 +1076,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1015,7 +1123,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1073,7 +1181,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1125,7 +1233,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1199,7 +1307,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1261,7 +1369,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1301,7 +1409,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         stream: vi.fn(() => thread),
       },
     };
@@ -1460,7 +1568,7 @@ describe("StreamController", () => {
     ]);
     const client = {
       threads: {
-        getState: vi.fn(async () => ({ values: {} })),
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
         getHistory,
         stream: vi.fn(() => thread),
       },

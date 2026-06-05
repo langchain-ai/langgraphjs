@@ -110,6 +110,44 @@ function lifecycleReason(event: string | undefined): RunExecutionReason | null {
   return null;
 }
 
+/**
+ * Decide whether a hydrated thread is *active* (a run is executing or
+ * paused awaiting resume) from the `getState()` snapshot alone — no
+ * extra request.
+ *
+ * Why this gate exists: a finished thread does not need either of the
+ * always-on SSE pumps. Subagent/subgraph cards are already seeded from
+ * the `getState()` messages and a single bounded `getHistory()` page, so
+ * opening the depth-1 content pump + the wildcard lifecycle watcher only
+ * to replay a completed run and then idle forever is pure waste. We open
+ * the pumps eagerly only when the thread is active; otherwise they come
+ * up on the first local `submit()` (the existing deferred-pump path) or
+ * a thread swap that lands on an active thread.
+ *
+ * Signals (either ⇒ active):
+ *  - `next.length > 0`: the checkpoint still has nodes to execute, i.e.
+ *    a run is mid-flight or paused at an interrupt. A completed run
+ *    leaves `next` empty.
+ *  - any `tasks[].interrupts` non-empty: the thread is interrupted and a
+ *    resume (which starts a run) must be observable.
+ *
+ * Unknown/missing state is treated as active so a transient `getState`
+ * shape never silently disables streaming.
+ */
+function isThreadStateActive(
+  state: { next?: unknown; tasks?: unknown } | null | undefined
+): boolean {
+  if (state == null) return true;
+  if (Array.isArray(state.next) && state.next.length > 0) return true;
+  if (Array.isArray(state.tasks)) {
+    for (const task of state.tasks) {
+      const interrupts = (task as { interrupts?: unknown } | null)?.interrupts;
+      if (Array.isArray(interrupts) && interrupts.length > 0) return true;
+    }
+  }
+  return false;
+}
+
 const ROOT_NAMESPACE: readonly string[] = [];
 
 /**
@@ -475,11 +513,16 @@ export class StreamController<
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
     let hydrationError: unknown;
     let threadExists = false;
+    // Default active so a getState error / non-404 failure never
+    // silently disables streaming — the pumps open eagerly as before.
+    // Flipped to the real signal once we have the state in hand.
+    let threadActive = true;
     try {
       const state = await this.#options.client.threads.getState<StateType>(
         this.#currentThreadId
       );
       threadExists = state != null;
+      threadActive = isThreadStateActive(state);
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
@@ -600,29 +643,39 @@ export class StreamController<
     }
 
     /**
-     * P0 fix: open the shared subscription on mount so in-flight
-     * server-side runs are observed even when no local `submit()` is
-     * active. The transport replays the run from `seq=0` on a rotating
-     * subscribe, so late-joining is free once the subscription exists.
-     * `isLoading` transitions are driven by the persistent root
-     * lifecycle listener registered in `#startRootPump`.
+     * Open the shared subscription on mount so in-flight server-side
+     * runs are observed even when no local `submit()` is active — BUT
+     * only when the thread is actually active (see
+     * {@link isThreadStateActive}). A finished thread's cards are seeded
+     * from `getState()` + the bounded `getHistory()` below, so opening
+     * the depth-1 content pump just to replay a completed run and idle
+     * forever is pure waste. When idle we take the deferred path: the
+     * pump (and watcher) come up on the first local `submit()` via
+     * {@link #startDeferredRootPump}, exactly like a self-created thread.
+     * The transport replays from `seq=0` on the deferred subscribe, so
+     * nothing is missed.
      */
-    const thread = this.#ensureThread(this.#currentThreadId);
+    const thread = this.#ensureThread(this.#currentThreadId, !threadActive);
 
     /**
-     * Start the wildcard lifecycle watcher up-front for existing
-     * threads. The root content pump runs at `depth: 1`, which covers
-     * root-namespace and one-deep events but not arbitrarily-nested
-     * subagent / subgraph lifecycle — the dedicated watcher handles
-     * those.
+     * Start the wildcard lifecycle watcher up-front for existing,
+     * active threads. The root content pump runs at `depth: 1`, which
+     * covers root-namespace and one-deep events but not arbitrarily-
+     * nested subagent / subgraph lifecycle — the dedicated watcher
+     * handles those.
      *
-     * For self-created (new) threads we skip — the watcher would 404
-     * against a not-yet-existent thread. `submitRun` / `respondInput`
-     * call `startLifecycleWatcher` on first submission to cover that
-     * case.
+     * Skipped when:
+     *  - the thread is idle/finished — there are no live events to
+     *    watch; discovery is seeded from history below, and the watcher
+     *    starts with the deferred pump on the first `submit()`.
+     *  - the thread is self-created (new) — the watcher would 404
+     *    against a not-yet-existent thread; `submitRun` / `respondInput`
+     *    call `startLifecycleWatcher` on first submission instead.
      */
-    if (threadExists) {
+    if (threadExists && threadActive) {
       thread.startLifecycleWatcher();
+    }
+    if (threadExists) {
       /**
        * Seed subgraph discovery and promote subagent execution
        * namespaces from a single bounded `getHistory` page. Subgraph
