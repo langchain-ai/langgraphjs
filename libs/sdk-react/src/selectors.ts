@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type {
   MessageMetadata,
@@ -82,6 +82,43 @@ function resolveNamespace(target: SelectorTarget): readonly string[] {
   return obj.namespace ?? EMPTY_NAMESPACE;
 }
 
+/**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id so the
+ * caller can trigger lazy execution-namespace resolution. Returns
+ * `null` for root targets, subgraph hosts, explicit namespaces, and
+ * already-promoted subagents.
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on the first scoped
+ * mount. Deep-agent subagents execute under a `tools:<uuid>` namespace
+ * distinct from their `tools:<toolCallId>` discovery key; until that is
+ * known a scoped `useMessages`/`useToolCalls` would target the wrong
+ * scope. The controller de-dupes and skips already-promoted ids, so
+ * this is safe to call from every consumer of the same subagent.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target: SelectorTarget
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  const toolCallId = subagentNeedingNamespace(target);
+  useEffect(() => {
+    if (toolCallId == null) return;
+    void controller.resolveSubagentNamespace(toolCallId);
+  }, [controller, toolCallId]);
+}
+
 const EMPTY_NAMESPACE: readonly string[] = [];
 
 function isRoot(namespace: readonly string[]): boolean {
@@ -133,6 +170,7 @@ export function useMessages(
   stream: AnyStream,
   target?: SelectorTarget
 ): BaseMessage[] {
+  useResolveSubagentNamespace(stream, target);
   const namespace = resolveNamespace(target);
   const key = `messages|${namespaceKey(namespace)}`;
   const registry = isRoot(namespace) ? null : getRegistry(stream);
@@ -174,6 +212,7 @@ export function useToolCalls(
   stream: AnyStream,
   target?: SelectorTarget
 ): AssembledToolCall[] {
+  useResolveSubagentNamespace(stream, target);
   const namespace = resolveNamespace(target);
   const key = `toolCalls|${namespaceKey(namespace)}`;
   const registry = isRoot(namespace) ? null : getRegistry(stream);

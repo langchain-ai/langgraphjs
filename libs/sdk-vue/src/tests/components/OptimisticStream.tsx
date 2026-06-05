@@ -21,16 +21,26 @@ const MessageRow = defineComponent({
   },
   setup(props) {
     const metadata = useMessageMetadata(props.stream, () => props.message.id);
-    return () => (
-      <div data-testid={`message-${props.index}`}>
-        <span data-testid={`message-${props.index}-content`}>
-          {formatMessage(props.message)}
-        </span>
-        <span data-testid={`message-${props.index}-status`}>
-          {metadata.value?.optimisticStatus ?? "none"}
-        </span>
-      </div>
-    );
+    // Latch: the server echoes the input message id almost immediately, so
+    // the live `pending` status is a sub-frame transient that a polling
+    // assertion can race under suite load. Recording that we *ever*
+    // rendered `pending` is sticky and race-free.
+    let everPending = false;
+    return () => {
+      const status = metadata.value?.optimisticStatus ?? "none";
+      if (status === "pending") everPending = true;
+      return (
+        <div data-testid={`message-${props.index}`}>
+          <span data-testid={`message-${props.index}-content`}>
+            {formatMessage(props.message)}
+          </span>
+          <span data-testid={`message-${props.index}-status`}>{status}</span>
+          <span data-testid={`message-${props.index}-ever-pending`}>
+            {everPending ? "true" : "false"}
+          </span>
+        </div>
+      );
+    };
   },
 });
 

@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  signal,
 } from "@angular/core";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
@@ -23,6 +25,7 @@ const TEMPLATE = `
         }}</span>
         @if ($index === 0) {
           <span data-testid="message-0-status">{{ firstStatus() }}</span>
+          <span data-testid="message-0-ever-pending">{{ everPending() }}</span>
         }
       </div>
     }
@@ -39,6 +42,21 @@ const TEMPLATE = `
 abstract class OptimisticBaseComponent {
   abstract readonly stream: StreamApi<StreamState>;
   abstract readonly firstMetadata: ReturnType<typeof injectMessageMetadata>;
+
+  // Latch: the server echoes the input message id almost immediately, so
+  // the live `pending` status is a sub-frame transient that a polling
+  // assertion can race under suite load. Recording that we *ever* observed
+  // `pending` is sticky and race-free. The effect body runs after subclass
+  // field init, so `firstMetadata` is defined by the time it first fires.
+  readonly everPending = signal(false);
+
+  constructor() {
+    effect(() => {
+      if ((this.firstMetadata()?.optimisticStatus ?? "none") === "pending") {
+        this.everPending.set(true);
+      }
+    });
+  }
 
   str(value: unknown): string {
     return typeof value === "string" ? value : JSON.stringify(value);

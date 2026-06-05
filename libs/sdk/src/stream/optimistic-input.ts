@@ -14,7 +14,8 @@
  */
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Message } from "../types.messages.js";
-import { ensureMessageInstances, toMessageDict } from "../ui/messages.js";
+import { toMessageDict } from "../ui/messages.js";
+import { ensureMessageInstances } from "./message-coercion.js";
 
 /**
  * Pre-submit snapshot of a single non-message `values` key, captured so

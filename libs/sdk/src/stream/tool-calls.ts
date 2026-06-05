@@ -59,3 +59,46 @@ export function reconcileToolCallsFromMessages(
   }
   return updated ?? (toolCalls as AssembledToolCall[]);
 }
+
+/**
+ * Build completed scoped tool-call handles from an authoritative
+ * `values.messages` snapshot. Used when an idle thread hydrates card panels
+ * from checkpoint history instead of replaying scoped `/events`.
+ */
+export function seedToolCallsFromMessages(
+  namespace: readonly string[],
+  messages: readonly BaseMessage[]
+): AssembledToolCall[] {
+  let toolCalls: AssembledToolCall[] = [];
+  for (const message of messages) {
+    const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
+    if (!Array.isArray(raw)) continue;
+    for (const toolCall of raw) {
+      if (toolCall == null || typeof toolCall !== "object") continue;
+      const record = toolCall as {
+        id?: unknown;
+        name?: unknown;
+        args?: unknown;
+      };
+      if (typeof record.id !== "string" || record.id.length === 0) continue;
+      if (typeof record.name !== "string" || record.name.length === 0) {
+        continue;
+      }
+      // Mirrors `shouldIgnoreScopedTaskToolEvent`: the wrapper `task` call
+      // is represented by the subagent card itself, not as an inner tool.
+      if (namespace.length > 0 && record.name === "task") continue;
+      toolCalls = upsertToolCall(toolCalls, {
+        id: record.id,
+        callId: record.id,
+        name: record.name,
+        namespace: [...namespace, `tools:${record.id}`],
+        input: record.args ?? {},
+        args: record.args ?? {},
+        output: null,
+        status: "running",
+        error: undefined,
+      });
+    }
+  }
+  return reconcileToolCallsFromMessages(toolCalls, messages);
+}

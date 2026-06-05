@@ -92,6 +92,39 @@ function isGetter<T>(input: ValueOrGetter<T> | undefined): input is () => T {
 }
 
 /**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Re-evaluates when a reactive `target` changes; the controller
+ * de-dupes and skips already-promoted ids.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target: ValueOrGetter<SelectorTarget> | undefined
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  $effect(() => {
+    const resolved = isGetter(target) ? target() : target;
+    const id = subagentNeedingNamespace(resolved);
+    if (id != null) void controller.resolveSubagentNamespace(id);
+  });
+}
+
+/**
  * Internal helper that wires a reactive-or-static target into
  * {@link useProjection}. Encapsulates the bookkeeping every selector
  * otherwise repeats.
@@ -165,6 +198,7 @@ export function useMessages(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<BaseMessage[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {
@@ -201,6 +235,7 @@ export function useToolCalls(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<AssembledToolCall[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {

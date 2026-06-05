@@ -640,7 +640,7 @@ describe("streamEvents version v3", () => {
       const events = await collectEvents(run);
 
       const stepEvents = events.filter(
-        (e) => e.method === ("steps" as any)
+        (e) => e.method === ("custom:steps" as any)
       );
       expect(stepEvents).toHaveLength(2);
       expect(stepEvents[0].params.data).toEqual({ node: "step1", count: 1 });

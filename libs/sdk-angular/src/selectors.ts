@@ -1,4 +1,4 @@
-import { computed, isSignal, type Signal } from "@angular/core";
+import { computed, effect, isSignal, type Signal } from "@angular/core";
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
@@ -26,6 +26,7 @@ import {
 } from "@langchain/langgraph-sdk/stream";
 import {
   getRegistry,
+  STREAM_CONTROLLER,
   type AnyStream,
   type UseStreamReturn,
 } from "./use-stream.js";
@@ -77,6 +78,45 @@ function resolveNamespace(target: SelectorTarget): readonly string[] {
 
 function isRoot(namespace: readonly string[]): boolean {
   return namespace.length === 0;
+}
+
+/**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Must be called from an injection context (as the selector primitives
+ * are). A `Signal` target re-evaluates via an `effect`; a static target
+ * resolves once. The controller de-dupes and skips already-promoted
+ * ids.
+ */
+function resolveSubagentNamespaceFor(
+  stream: AnyStream,
+  target: SelectorTarget | Signal<SelectorTarget>
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  if (isSignal(target)) {
+    effect(() => {
+      const id = subagentNeedingNamespace((target as Signal<SelectorTarget>)());
+      if (id != null) void controller.resolveSubagentNamespace(id);
+    });
+    return;
+  }
+  const id = subagentNeedingNamespace(target as SelectorTarget);
+  if (id != null) void controller.resolveSubagentNamespace(id);
 }
 
 function namespaceKey(namespace: readonly string[]): string {
@@ -132,6 +172,10 @@ export function injectMessages(
   stream: AnyStream,
   target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<BaseMessage[]> {
+  resolveSubagentNamespaceFor(
+    stream,
+    target as SelectorTarget | Signal<SelectorTarget>
+  );
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
     "messages"
@@ -167,6 +211,10 @@ export function injectToolCalls(
   stream: AnyStream,
   target?: SelectorTarget | Signal<SelectorTarget>
 ): Signal<AssembledToolCall[]> {
+  resolveSubagentNamespaceFor(
+    stream,
+    target as SelectorTarget | Signal<SelectorTarget>
+  );
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
     "toolCalls"

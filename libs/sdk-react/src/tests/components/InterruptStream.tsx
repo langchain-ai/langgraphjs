@@ -9,15 +9,21 @@ interface InterruptState {
 interface Props {
   apiUrl: string;
   assistantId?: string;
+  threadId?: string;
+  onThreadId?: (threadId: string) => void;
 }
 
 export function InterruptStream({
   apiUrl,
   assistantId = "interrupt_graph",
+  threadId,
+  onThreadId,
 }: Props) {
   const thread = useStream<InterruptState>({
     assistantId,
     apiUrl,
+    threadId,
+    onThreadId,
   });
 
   const promptValue = thread.interrupt?.value;
