@@ -222,4 +222,60 @@ describe("MessageMetadataTracker", () => {
       parentCheckpointId: "cp-0",
     });
   });
+
+  describe("optimistic status", () => {
+    it("marks ids pending", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a", "b"]);
+      expect(tracker.store.getSnapshot().get("a")?.optimisticStatus).toBe(
+        "pending"
+      );
+      expect(tracker.unpersistedOptimisticIds()).toEqual(new Set(["a", "b"]));
+    });
+
+    it("resolvePending only affects ids currently pending", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a"]);
+      // "server" message id "b" was never optimistic — must stay clean.
+      tracker.resolvePending(["a", "b"], "sent");
+      expect(tracker.store.getSnapshot().get("a")?.optimisticStatus).toBe(
+        "sent"
+      );
+      expect(tracker.store.getSnapshot().has("b")).toBe(false);
+      expect(tracker.unpersistedOptimisticIds().size).toBe(0);
+    });
+
+    it("treats failed ids as unpersisted", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a"]);
+      tracker.resolvePending(["a"], "failed");
+      expect(tracker.unpersistedOptimisticIds()).toEqual(new Set(["a"]));
+    });
+
+    it("forget removes status and metadata for ids", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a"]);
+      tracker.forget(["a"]);
+      expect(tracker.store.getSnapshot().has("a")).toBe(false);
+      expect(tracker.unpersistedOptimisticIds().size).toBe(0);
+    });
+
+    it("preserves parentCheckpointId when marking pending", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.recordMessages([{ id: "a" }], { parentCheckpointId: "cp-1" });
+      tracker.markPending(["a"]);
+      expect(tracker.store.getSnapshot().get("a")).toEqual({
+        parentCheckpointId: "cp-1",
+        optimisticStatus: "pending",
+      });
+    });
+
+    it("clears all optimistic state on reset", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a"]);
+      tracker.reset();
+      expect(tracker.unpersistedOptimisticIds().size).toBe(0);
+      expect(tracker.store.getSnapshot().size).toBe(0);
+    });
+  });
 });

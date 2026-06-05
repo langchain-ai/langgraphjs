@@ -20,6 +20,7 @@
  * one extra subscription per `(channels, namespace)` actually
  * rendered on screen.
  */
+import { v7 as uuidv7 } from "uuid";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type {
   Channel,
@@ -59,6 +60,10 @@ import {
 } from "./message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
+import {
+  prepareOptimisticInput,
+  type OptimisticHandle,
+} from "./optimistic-input.js";
 import {
   EMPTY_QUEUE,
   SubmitCoordinator,
@@ -207,6 +212,14 @@ export class StreamController<
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
   #localRunDepth = 0;
+  /**
+   * `true` once a root `values` event has been applied for the current
+   * optimistic run. Reset to `false` in {@link #beginOptimistic} and
+   * read in {@link #settleOptimistic}: when a run terminates without
+   * the server ever echoing a `values` snapshot, optimistically-merged
+   * non-message keys are rolled back to their pre-submit values.
+   */
+  #sawValuesForRun = false;
 
   /**
    * Single-shot hydration promise. Exposed via `hydrationPromise`
@@ -307,6 +320,9 @@ export class StreamController<
       onRunCreated: (runId) => this.#notifyCreated(runId),
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
       onRunEnd: () => this.#markLocalRunEnd(),
+      beginOptimistic: (input) => this.#beginOptimistic(input),
+      settleOptimistic: (handle, event) =>
+        this.#settleOptimistic(handle, event),
     });
     this.#hydrationPromise = this.#createHydrationPromise();
     /**
@@ -459,6 +475,18 @@ export class StreamController<
               }
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
+      }
+      /**
+       * Converge to server truth: drop any optimistic messages the
+       * server state does not contain (`pending` / `failed` that were
+       * never persisted — e.g. a failed run's user message). Echoed
+       * ids were flipped to `"sent"` by `#applyValues` above and so are
+       * excluded from `unpersistedOptimisticIds()`.
+       */
+      const unpersisted = this.#messageMetadata.unpersistedOptimisticIds();
+      if (unpersisted.size > 0) {
+        this.#rootMessages.dropOptimisticMessages(unpersisted);
+        this.#messageMetadata.forget(unpersisted);
       }
       /**
        * Sync the visible interrupt list to the server's authoritative
@@ -1482,11 +1510,98 @@ export class StreamController<
    * @param raw - Raw `values` channel payload.
    * @param checkpoint - Optional checkpoint envelope paired with the values event.
    */
+  /**
+   * Apply a submit input optimistically to the root projection before
+   * the server responds. Mints stable ids for id-less messages (so the
+   * server echo reconciles by id), appends them to the projection, and
+   * shallow-merges non-message input keys into `values`.
+   *
+   * Returns the dispatch payload (id-injected) for the coordinator to
+   * send, plus an {@link OptimisticHandle} for terminal reconciliation.
+   * Returns `undefined` when optimistic UI is disabled or there is
+   * nothing to echo, in which case the coordinator dispatches the raw
+   * input unchanged.
+   *
+   * @param input - Raw input passed to `submit()`.
+   */
+  #beginOptimistic(
+    input: unknown
+  ): { dispatchInput: unknown; handle: OptimisticHandle } | undefined {
+    if (this.#options.optimistic === false) return undefined;
+    if (input == null || typeof input !== "object" || Array.isArray(input)) {
+      return undefined;
+    }
+    const prepared = prepareOptimisticInput(
+      input as Record<string, unknown>,
+      this.#messagesKey,
+      () => uuidv7()
+    );
+    const extraKeys = Object.keys(prepared.extraValues);
+    if (prepared.echoedIds.length === 0 && extraKeys.length === 0) {
+      return undefined;
+    }
+
+    const currentValues = this.rootStore.getSnapshot().values as Record<
+      string,
+      unknown
+    >;
+    const restoreKeys = extraKeys.map((key) => ({
+      key,
+      hadKey: Object.prototype.hasOwnProperty.call(currentValues, key),
+      prevValue: currentValues[key],
+    }));
+
+    this.#sawValuesForRun = false;
+    this.#rootMessages.appendOptimistic(
+      prepared.optimisticMessages,
+      prepared.extraValues
+    );
+    if (prepared.echoedIds.length > 0) {
+      this.#messageMetadata.markPending(prepared.echoedIds);
+    }
+    return {
+      dispatchInput: prepared.dispatchInput,
+      handle: { echoedIds: prepared.echoedIds, restoreKeys },
+    };
+  }
+
+  /**
+   * Reconcile optimistic state when a run terminates.
+   *
+   *   - Messages: any echoed id still `"pending"` (never echoed by the
+   *     server) is flipped to `"sent"` on success/interrupt, or
+   *     `"failed"` on failure/abort. Ids the server already echoed were
+   *     flipped to `"sent"` in {@link #applyValues} and are untouched.
+   *   - Non-message keys: rolled back to their pre-submit values when no
+   *     server `values` event landed during the run (otherwise the
+   *     server snapshot already reconciled them). Skipped on abort,
+   *     where a superseding run (or `stop()`) owns subsequent state.
+   *
+   * @param handle - Handle returned by {@link #beginOptimistic}.
+   * @param event  - Terminal lifecycle event for the run.
+   */
+  #settleOptimistic(
+    handle: OptimisticHandle,
+    event: "completed" | "failed" | "interrupted" | "aborted"
+  ): void {
+    const failed = event === "failed" || event === "aborted";
+    this.#messageMetadata.resolvePending(
+      handle.echoedIds,
+      failed ? "failed" : "sent"
+    );
+    if (event !== "aborted" && !this.#sawValuesForRun) {
+      this.#rootMessages.restoreValueKeys(handle.restoreKeys);
+    }
+  }
+
   #applyValues(raw: unknown, checkpoint?: CheckpointEnvelope): void {
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
       return;
     }
     const state = raw as Record<string, unknown>;
+    // A root `values` snapshot landed: optimistic non-message keys are
+    // now reconciled against server truth (see #settleOptimistic).
+    this.#sawValuesForRun = true;
     /**
      * Surface parent_checkpoint per-message when the values event
      * carries the lightweight checkpoint envelope (populated by
@@ -1520,6 +1635,14 @@ export class StreamController<
     }
     this.#rootMessages.applyValues(nextValues, nextMessages);
     if (nextMessages.length > 0) {
+      // Any optimistic message the server just echoed is now
+      // server-authoritative: flip its status `pending` → `sent`.
+      this.#messageMetadata.resolvePending(
+        nextMessages
+          .map((m) => m.id)
+          .filter((id): id is string => typeof id === "string"),
+        "sent"
+      );
       this.rootStore.setState((s) => {
         const toolCalls = reconcileToolCallsFromMessages(
           s.toolCalls,

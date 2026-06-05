@@ -56,6 +56,7 @@
 import { v7 as uuidv7 } from "uuid";
 import type { ThreadStream } from "../client/stream/index.js";
 import { StreamStore } from "./store.js";
+import type { OptimisticHandle } from "./optimistic-input.js";
 import type {
   RootSnapshot,
   RunExecutionReason,
@@ -190,6 +191,20 @@ export class SubmitCoordinator<
   ) => void;
   /** Marks the local run dispatch lifecycle as settled. */
   readonly #onRunEnd: () => void;
+  /**
+   * Apply a submit input optimistically before dispatch. Returns the
+   * id-injected payload to dispatch plus a handle for terminal
+   * reconciliation, or `undefined` when optimistic UI is disabled / no
+   * echo applies (dispatch the raw input).
+   */
+  readonly #beginOptimistic: (
+    input: unknown
+  ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+  /** Reconcile optimistic state when a run terminates. */
+  readonly #settleOptimistic: (
+    handle: OptimisticHandle,
+    event: TerminalResult["event"]
+  ) => void;
 
   /**
    * Active submission's abort controller. `undefined` between submits.
@@ -221,6 +236,13 @@ export class SubmitCoordinator<
     onRunCreated?: (runId: string) => void;
     onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
     onRunEnd?: () => void;
+    beginOptimistic?: (
+      input: unknown
+    ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+    settleOptimistic?: (
+      handle: OptimisticHandle,
+      event: TerminalResult["event"]
+    ) => void;
   }) {
     this.#options = params.options;
     this.#rootStore = params.rootStore;
@@ -242,6 +264,8 @@ export class SubmitCoordinator<
     this.#onRunCreated = params.onRunCreated ?? (() => undefined);
     this.#onRunCompleted = params.onRunCompleted ?? (() => undefined);
     this.#onRunEnd = params.onRunEnd ?? (() => undefined);
+    this.#beginOptimistic = params.beginOptimistic ?? (() => undefined);
+    this.#settleOptimistic = params.settleOptimistic ?? (() => undefined);
   }
 
   /**
@@ -352,6 +376,21 @@ export class SubmitCoordinator<
       isLoading: true,
     }));
 
+    // Apply the input optimistically *before* the first await so the
+    // user's message (and any merged state) paints without waiting for
+    // the server round-trip. Runs only on the dispatched path — an
+    // `"enqueue"`d submission returns above and echoes when it drains,
+    // keeping one optimistic batch bound to exactly one run lifecycle.
+    // `dispatchInput` carries the minted ids the server must echo for
+    // reconciliation, so the run is dispatched with it (not raw input).
+    let optimisticHandle: OptimisticHandle | undefined;
+    let dispatchInput: unknown = input;
+    const prepared = this.#beginOptimistic(input);
+    if (prepared != null) {
+      optimisticHandle = prepared.handle;
+      dispatchInput = prepared.dispatchInput;
+    }
+
     // Wait for the root subscription to be live; otherwise the
     // dispatch could resolve before we're listening for events and
     // we'd miss the terminal that ends the run.
@@ -367,6 +406,7 @@ export class SubmitCoordinator<
     let createdRunId: string | undefined;
     let pendingCompletionReason: RunExecutionReason | undefined;
     let completionNotified = false;
+    let settleEvent: TerminalResult["event"] | undefined;
     const notifyCompletion = (reason: RunExecutionReason): void => {
       if (completionNotified) return;
       if (createdRunId == null) {
@@ -390,7 +430,7 @@ export class SubmitCoordinator<
       let terminal: TerminalResult | undefined;
 
       const commandPromise = thread.submitRun({
-        input: input ?? null,
+        input: dispatchInput ?? null,
         config: boundConfig,
         metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
         forkFrom: options?.forkFrom,
@@ -463,6 +503,7 @@ export class SubmitCoordinator<
 
       terminal ??= await terminalPromise;
       terminalSettled = true;
+      settleEvent = terminal.event;
       if (terminal.event === "failed" && !abort.signal.aborted) {
         const runError = new Error(
           terminal.error ?? "Run failed with no error message"
@@ -476,6 +517,7 @@ export class SubmitCoordinator<
       }
       notifyCompletion(terminalReason(terminal.event));
     } catch (error) {
+      if (!abort.signal.aborted) settleEvent = "failed";
       reportError(error);
     } finally {
       // Always settle loading and clear our slot of the abort
@@ -483,6 +525,15 @@ export class SubmitCoordinator<
       // late state updates from this run finish flushing first.
       this.#rootStore.setState((s) => ({ ...s, isLoading: false }));
       if (this.#runAbort === abort) this.#runAbort = undefined;
+      // Reconcile optimistic state: flip pending messages to sent/failed
+      // and roll back un-echoed non-message keys. `aborted` covers a
+      // rollback-resubmit or `stop()` cancelling this run.
+      if (optimisticHandle != null) {
+        this.#settleOptimistic(
+          optimisticHandle,
+          abort.signal.aborted ? "aborted" : (settleEvent ?? "failed")
+        );
+      }
       this.#onRunEnd();
       setTimeout(() => this.#drainQueue(), 0);
     }

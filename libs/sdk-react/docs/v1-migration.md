@@ -289,7 +289,7 @@ reach for it unless you're typing an intermediate variable.
 | `metadata`                                                                                                                          | Unchanged.                                                                                                                                                                |
 | `multitaskStrategy`                                                                                                                 | Unchanged. `"rollback"` (default), `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support (see §13). |
 | `onCompletion`                                                                                                                      | Use the hook-level `onCompleted` option for run-completion side effects.                                                                                                  |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). `optimisticValues` has no client-side analogue — reconcile via `values` after the run settles. |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). `optimisticValues` is **no longer needed**: v1 echoes the `submit()` input optimistically and reconciles it by id automatically — see §5.4. |
 | **(new submit option)** `onError`                                                                                                   | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error` updates still happen in parallel.                      |
 | **(new)** `threadId`                                                                                                                | Per-submit thread override — rebinds the controller to the given thread before dispatching, then keeps it bound until the hook's `threadId` prop changes again.           |
 
@@ -309,6 +309,62 @@ await submit(
   { messages: [new HumanMessage("retry")] },
   { forkFrom: "cp_123", multitaskStrategy: "rollback" },
 );
+```
+
+### 5.4 Optimistic updates (replaces `optimisticValues`)
+
+Legacy `optimisticValues` let you hand-merge state into the visible
+`values` before a run streamed back — most commonly to show the user's
+own message instantly. v1 makes this automatic: the input you pass to
+`submit()` is reflected in `values` / `messages` immediately and then
+reconciled against the authoritative server state as it streams in. No
+per-submit option, no callback.
+
+```tsx
+// Legacy: manually echo the user's message via a callback.
+await submit(
+  { messages: [new HumanMessage("hi")] },
+  { optimisticValues: (prev) => ({ messages: [...prev.messages, new HumanMessage("hi")] }) },
+);
+
+// v1: just submit. The human message appears at once.
+await submit({ messages: [new HumanMessage("hi")] });
+```
+
+How it works:
+
+- **Messages** in the input are appended right away. Any message
+  without an `id` gets a stable client id (sent to the server, which
+  `add_messages` preserves) so the server echo reconciles by id instead
+  of duplicating.
+- **Other input keys** are shallow-merged into `values` and converge to
+  server truth on the first `values` event (or are rolled back if the
+  run fails before any echo).
+- **Per-message status** is exposed via
+  `useMessageMetadata(stream, message.id).optimisticStatus`
+  (`"pending"` → `"sent"`, or `"failed"` if the run errors before the
+  message is echoed). Failed optimistic messages are kept (so you can
+  render a retry affordance) and dropped on the next `hydrate()` /
+  reload.
+
+```tsx
+function Bubble({ stream, message }: { stream: AnyStream; message: BaseMessage }) {
+  const { optimisticStatus } = useMessageMetadata(stream, message.id) ?? {};
+  return (
+    <div data-pending={optimisticStatus === "pending"}>
+      {message.text}
+      {optimisticStatus === "failed" && <RetryButton />}
+    </div>
+  );
+}
+```
+
+Opt out per hook with `optimistic: false` (dispatch input verbatim,
+server-authoritative only) — useful for non-chat state graphs or
+deterministic SSR/tests:
+
+```tsx
+const stream = useStream({ assistantId: "agent", optimistic: false });
 ```
 
 ### 5.3 Stop / disconnect

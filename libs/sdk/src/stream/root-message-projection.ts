@@ -373,6 +373,137 @@ export class RootMessageProjection<
   }
 
   /**
+   * Append messages applied optimistically by a local `submit()`,
+   * keyed by id so the eventual server echo reconciles cleanly.
+   *
+   * Unlike {@link applyValues}, the supplied messages are *not* treated
+   * as an authoritative ordered snapshot: they are appended to the end
+   * of the current projection (or replaced in place when the id already
+   * exists), preserving prior history ordering. When the server later
+   * emits a `values` snapshot containing the same ids,
+   * {@link applyValues} → {@link reconcileMessagesFromValues} takes over
+   * (server ordering wins, the echoed message replaces the optimistic
+   * one).
+   *
+   * Non-message input keys are shallow-merged into `values` via
+   * `extraValues`; they are dropped/overwritten automatically by the
+   * first server `values` event (which rebuilds `values` from the
+   * server snapshot), or rolled back via {@link restoreValueKeys} when
+   * the run fails before any echo.
+   *
+   * @param messages    - Optimistic messages (already coerced to
+   *   `BaseMessage` instances, each carrying a stable id).
+   * @param extraValues - Non-message input keys to shallow-merge into
+   *   `values`.
+   */
+  appendOptimistic(
+    messages: BaseMessage[],
+    extraValues?: Record<string, unknown>
+  ): void {
+    let working = this.#pendingMessages ?? this.#store.getSnapshot().messages;
+    let mutated = false;
+    for (const message of messages) {
+      const id = message.id;
+      if (id == null) continue;
+      const existingIdx = this.#indexById.get(id);
+      if (existingIdx == null) {
+        if (!mutated) {
+          working = working.slice();
+          mutated = true;
+        }
+        this.#indexById.set(id, working.length);
+        working.push(message);
+      } else if (!messagesEqual(working[existingIdx], message)) {
+        if (!mutated) {
+          working = working.slice();
+          mutated = true;
+        }
+        working[existingIdx] = message;
+      }
+    }
+
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    let values = baselineValues;
+    if (extraValues != null && Object.keys(extraValues).length > 0) {
+      values = { ...(baselineValues as object), ...extraValues } as StateType;
+    }
+    values = syncMessagesIntoValues(values, this.#messagesKey, working);
+    if (!mutated && values === baselineValues) return;
+    this.#pendingMessages = working;
+    if (values !== baselineValues) this.#pendingValues = values;
+    this.#scheduleFlush();
+  }
+
+  /**
+   * Drop optimistic messages by id without disturbing the rest of the
+   * projection. Used by {@link StreamController.hydrate} to remove
+   * never-persisted optimistic messages (`pending` / `failed`) so a
+   * reload converges to server truth.
+   *
+   * @param ids - Message ids to remove.
+   */
+  dropOptimisticMessages(ids: ReadonlySet<string>): void {
+    if (ids.size === 0) return;
+    const baselineMessages =
+      this.#pendingMessages ?? this.#store.getSnapshot().messages;
+    const next = baselineMessages.filter((m) => m.id == null || !ids.has(m.id));
+    if (next.length === baselineMessages.length) return;
+    this.#indexById.clear();
+    for (const [id, idx] of buildMessageIndex(next)) {
+      this.#indexById.set(id, idx);
+    }
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    this.#pendingMessages = next;
+    this.#pendingValues = syncMessagesIntoValues(
+      baselineValues,
+      this.#messagesKey,
+      next
+    );
+    this.#scheduleFlush();
+  }
+
+  /**
+   * Restore (or delete) `values` keys that were optimistically merged
+   * by {@link appendOptimistic} but never echoed by the server — i.e.
+   * roll back non-message optimistic state when the run fails before
+   * any `values` event lands. Messages are left untouched (kept on
+   * failure per the optimistic contract).
+   *
+   * @param restore - Per-key pre-submit snapshot: when `hadKey` is
+   *   false the key is deleted, otherwise it is reset to `prevValue`.
+   */
+  restoreValueKeys(
+    restore: ReadonlyArray<{
+      key: string;
+      hadKey: boolean;
+      prevValue: unknown;
+    }>
+  ): void {
+    if (restore.length === 0) return;
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    const next = { ...(baselineValues as Record<string, unknown>) };
+    let changed = false;
+    for (const { key, hadKey, prevValue } of restore) {
+      if (key === this.#messagesKey) continue;
+      if (hadKey) {
+        if (!Object.is(next[key], prevValue)) {
+          next[key] = prevValue;
+          changed = true;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(next, key)) {
+        delete next[key];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    this.#pendingValues = next as StateType;
+    this.#scheduleFlush();
+  }
+
+  /**
    * Schedule a coalesced flush on the next macrotask. Idempotent
    * within a tick — multiple `handleMessage` / `applyValues` calls
    * before the flush fires collapse into one store write.

@@ -434,6 +434,7 @@ export function useStream<
     messagesKey?: string;
     tools?: AnyHeadlessToolImplementation[];
     onTool?: OnToolCallback;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
 
@@ -502,6 +503,7 @@ export function useStream<
     onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
+    optimistic: asBag.optimistic,
   });
 
   // Deferred dispose: on the next microtask after the owning scope

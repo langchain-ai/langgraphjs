@@ -138,6 +138,31 @@ export interface UseStreamCommonOptions<
   tools?: AnyHeadlessToolImplementation[];
   /** Observe lifecycle events for registered {@link tools}. */
   onTool?: OnToolCallback;
+  /**
+   * Optimistic UI for `submit()`. When enabled (the default), the input
+   * passed to `submit()` is reflected in `values` / `messages`
+   * immediately — before the server responds — then reconciled against
+   * the authoritative server state as it streams in:
+   *
+   *   - Messages in the input are appended right away. Any message
+   *     without an `id` is assigned a stable client id (sent to the
+   *     server, which `add_messages` preserves) so the server echo
+   *     reconciles by id instead of duplicating. Per-message progress
+   *     is exposed via `useMessageMetadata(stream, id).optimisticStatus`
+   *     (`"pending"` → `"sent"`, or `"failed"` if the run errors before
+   *     the message is echoed; failed optimistic messages are kept for
+   *     retry UIs and dropped on the next `hydrate()`).
+   *   - Other input keys are shallow-merged into `values` and converge
+   *     to server truth on the first `values` event (or are rolled back
+   *     if the run fails before any echo).
+   *
+   * Set to `false` to dispatch input verbatim with no client-side echo
+   * or id minting (server-authoritative only) — useful for non-chat
+   * state graphs or deterministic SSR/tests.
+   *
+   * @default true
+   */
+  optimistic?: boolean;
 }
 
 /**
@@ -296,6 +321,11 @@ export interface StreamControllerOptions<
   initialValues?: StateType;
   /** Key inside `values` that holds the message array. Defaults to `"messages"`. */
   messagesKey?: string;
+  /**
+   * Optimistic UI for `submit()`. Defaults to `true`. See
+   * {@link UseStreamCommonOptions.optimistic} for the full contract.
+   */
+  optimistic?: boolean;
 }
 
 export interface StreamSubmitOptions<
