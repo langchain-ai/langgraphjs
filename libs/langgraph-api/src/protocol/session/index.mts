@@ -469,17 +469,22 @@ export class RunProtocolSession {
           )
         );
         return;
-      default:
-        // Route unknown methods as named custom events. This allows
-        // reducers to emit("a2a", data) and have it appear on the
-        // custom channel with name set for client-side filtering.
+      default: {
+        // Route unknown methods as named custom events. Extension
+        // StreamChannels emit `custom:<name>` on the wire (matching
+        // Python's mux); strip the prefix so `custom:<name>`
+        // subscriptions match on `data.name === <name>`.
+        const channelName = method.startsWith("custom:")
+          ? method.slice("custom:".length)
+          : method;
         await this.pushEvent(
           this.createEvent("custom", namespace, {
-            name: method,
+            name: channelName,
             payload: event.data,
           } satisfies CustomData)
         );
         return;
+      }
     }
   }
 
@@ -573,8 +578,23 @@ export class RunProtocolSession {
         );
         return true;
       }
-      default:
-        return false;
+      default: {
+        if (!method.startsWith("custom:")) {
+          return false;
+        }
+        const channelName = method.slice("custom:".length);
+        if (!channelName) {
+          return false;
+        }
+        await this.ensureNamespaces(namespace);
+        await this.pushEvent(
+          this.createEvent("custom", namespace, {
+            name: channelName,
+            payload: data,
+          } satisfies CustomData)
+        );
+        return true;
+      }
     }
   }
 

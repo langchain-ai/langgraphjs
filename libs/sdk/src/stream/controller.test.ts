@@ -135,7 +135,7 @@ function checkpointsEvent(step: number, seq: number, id = `cp-${step}`): Event {
       timestamp: 0,
       data: { id, step },
     },
-  } as Event;
+  } as unknown as Event;
 }
 
 function lifecycleEvent(event: string, seq: number): Event {

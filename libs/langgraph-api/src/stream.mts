@@ -608,6 +608,7 @@ export async function* streamStateV2(
       mode === "tools" ||
       mode === "updates" ||
       mode === "custom" ||
+      mode.startsWith("custom:") ||
       mode === "messages" ||
       mode === "checkpoints" ||
       mode === "lifecycle";
