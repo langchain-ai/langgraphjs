@@ -89,28 +89,36 @@ class FanoutViewBridge {
 @Component({
   selector: "lg-fanout-card-panel",
   template: `
-    <div [attr.data-testid]="'panel-' + idx()">
-      <div data-testid="panel-namespace">{{ card().namespace.join("/") }}</div>
+    <div [attr.data-testid]="'panel-' + (idx() ?? 0)">
+      <div data-testid="panel-namespace">
+        {{ card()?.namespace?.join("/") }}
+      </div>
       <div data-testid="panel-messages-count">{{ messages().length }}</div>
       <div data-testid="panel-toolcalls-count">{{ toolCalls().length }}</div>
     </div>
   `,
 })
 class FanoutCardPanelComponent {
-  readonly card = input.required<Card>();
-  readonly idx = input.required<number>();
+  // Optional (not `.required`): the selectors' internal computed is
+  // evaluated by Angular before the input binding lands, so the target
+  // must tolerate an undefined card on the first pass (NG0950).
+  readonly card = input<Card>();
+  readonly idx = input<number>();
   readonly messages: Signal<BaseMessage[]>;
   readonly toolCalls: Signal<{ name: string }[]>;
 
   constructor() {
     const bridge = angularInject(FanoutViewBridge);
-    const target = computed<SelectorTarget>(() => this.card());
+    const target = computed<SelectorTarget>(() => this.card() ?? null);
     this.messages = injectMessages(bridge.stream, target);
     this.toolCalls = injectToolCalls(bridge.stream, target) as Signal<
       { name: string }[]
     >;
     effect(() => {
-      bridge.markReady(cardKey(this.card()), this.messages().length > 0);
+      const card = this.card();
+      if (card != null) {
+        bridge.markReady(cardKey(card), this.messages().length > 0);
+      }
     });
   }
 }
