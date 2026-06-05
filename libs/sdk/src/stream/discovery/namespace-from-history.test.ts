@@ -266,28 +266,66 @@ describe("collectSubgraphHostNamespaces", () => {
     expect(hosts[0].status).toBe("complete");
   });
 
-  it("promotes nested subgraph hosts and every non-internal ancestor", () => {
+  it("promotes the host ancestor but not the inner function-node leaf", () => {
+    // `inner:u3` is a plain function node inside the `research` subgraph, not
+    // a subgraph host. Only the strict ancestor `research:u2` is promoted —
+    // mirroring the live SubgraphDiscovery, which never promotes a leaf.
     const history = [
       nsState("research:u2"),
       nsState("research:u2|inner:u3"),
     ];
     const hosts = collectSubgraphHostNamespaces(history);
+    expect(hosts.map((h) => h.namespace)).toEqual([["research:u2"]]);
+  });
+
+  it("promotes interior hosts but not the deepest leaf in a multi-level chain", () => {
+    // a > b > c, all observed. `a` and `a|b` are interior subgraph hosts;
+    // the deepest `a|b|c` is a leaf and must not be promoted on its own.
+    const history = [
+      nsState("a:1"),
+      nsState("a:1|b:2"),
+      nsState("a:1|b:2|c:3"),
+    ];
+    const hosts = collectSubgraphHostNamespaces(history);
     expect(hosts.map((h) => h.namespace)).toEqual([
-      ["research:u2"],
-      ["research:u2", "inner:u3"],
+      ["a:1"],
+      ["a:1", "b:2"],
     ]);
   });
 
-  it("synthesizes a parent host when only the deeper namespace is in the page", () => {
+  it("marks an interior host running when a nested descendant is pending", () => {
+    // The newest checkpoint's pending task is the deeper `research:u2|inner:u3`
+    // namespace; its `research:u2` ancestor host must report running via the
+    // prefix match, not just an exact pending hit.
+    const newest = {
+      values: {},
+      next: ["inner"],
+      checkpoint: checkpoint("", "cp-newest"),
+      metadata: {},
+      parent_checkpoint: null,
+      tasks: [
+        {
+          id: "u3",
+          name: "inner",
+          path: ["__pregel_pull", "inner"],
+          error: null,
+          interrupts: [],
+          checkpoint: { checkpoint_ns: "research:u2|inner:u3" },
+          state: null,
+        },
+      ],
+    } as unknown as ThreadState<Record<string, unknown>>;
+    const hosts = collectSubgraphHostNamespaces([newest]);
+    expect(hosts).toEqual([{ namespace: ["research:u2"], status: "running" }]);
+  });
+
+  it("promotes the host ancestor from a deeper namespace alone (parent off-page)", () => {
     // The parent subgraph's own checkpoint may fall outside the fetched
-    // page; its `research:u2` ancestor must still be promoted from the
-    // deeper `research:u2|inner:u3` namespace alone.
+    // page; its `research:u2` ancestor is still promoted from the deeper
+    // `research:u2|inner:u3` namespace, while the inner leaf is not.
     const history = [nsState("research:u2|inner:u3")];
     const hosts = collectSubgraphHostNamespaces(history);
-    expect(hosts.map((h) => h.namespace)).toEqual([
-      ["research:u2"],
-      ["research:u2", "inner:u3"],
-    ]);
+    expect(hosts.map((h) => h.namespace)).toEqual([["research:u2"]]);
   });
 
   it("tracks mixed running/complete hosts across a parallel fan-out", () => {

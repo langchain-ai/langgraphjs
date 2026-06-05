@@ -256,38 +256,45 @@ function isInternalSegment(segment: string): boolean {
 }
 
 /**
- * Identify subgraph host namespaces from checkpoint history.
+ * Identify subgraph host namespaces from checkpoint history, mirroring the
+ * promotion rule of the live {@link ./subgraphs} `SubgraphDiscovery`: a
+ * namespace is a host iff it is a *strict ancestor* of a deeper namespace,
+ * and inner function-node leaves are never promoted on their own.
  *
- * Unlike the live `lifecycle` path — where every node (including plain
- * function nodes) emits a namespaced event, so a strict-prefix rule is
- * needed to tell hosts from leaves — a non-root `checkpoint_ns` is only
- * ever written for a genuine subgraph execution. Every observed
- * checkpoint namespace is therefore a host, and so is each of its
- * ancestors (each segment of a nested `checkpoint_ns` is itself a
- * subgraph). This also recovers the values-only subgraph shape supported
- * by `SubgraphDiscovery.#onValuesEvent`, where the host namespace (e.g.
- * `research:<uuid>`) appears with no deeper `research:<uuid>|...` key —
- * the old strict-prefix rule dropped those, so reconnecting waited for
- * SSE replay instead of hydrating the card immediately.
+ * Two host signals are derived from the checkpoint namespaces observed in
+ * history (`state` + `task` `checkpoint_ns`):
+ *
+ *  - **Interior hosts** — every strict ancestor of an observed namespace.
+ *    Each segment of a nested `checkpoint_ns` wraps a deeper one, so the
+ *    parent is always a subgraph (this also recovers a host whose own
+ *    checkpoint fell outside the fetched page).
+ *  - **Top-level hosts** — every depth-1 observed namespace. A top-level
+ *    subgraph is always a host, including the values-only shape supported
+ *    by `SubgraphDiscovery.#onValuesEvent`, where the host (e.g.
+ *    `research:<uuid>`) appears with no deeper `research:<uuid>|...` key.
+ *    The old strict-prefix rule dropped those, so reconnecting waited for
+ *    SSE replay instead of hydrating the card immediately.
+ *
+ * A *deeper* observed namespace's own deepest segment is NOT promoted
+ * unless it is itself an ancestor of something deeper — otherwise a plain
+ * inner node (e.g. `worker:<uuid>|inner:<uuid>`) would surface as a
+ * spurious subgraph card that was never present during live streaming.
  *
  * Tool/subagent namespaces (`tools:` / `task:`) are excluded — those are
- * owned by {@link ./subagents} and must not be duplicated as subgraphs
- * (mirrors `SubgraphDiscovery.#onValuesEvent`). A namespace nested under
- * a subgraph (e.g. `research:<uuid>|tools:<uuid>`) still promotes its
- * non-internal `research:<uuid>` ancestor.
+ * owned by {@link ./subagents}. A namespace nested under a subgraph (e.g.
+ * `research:<uuid>|tools:<uuid>`) still promotes its non-internal
+ * `research:<uuid>` ancestor.
  */
 export function collectSubgraphHostNamespaces(
   history: AnyCheckpoint[]
 ): SubgraphHost[] {
-  // Collect every observed namespace tuple (state + task checkpoint_ns)
-  // together with each of its non-empty ancestor prefixes: a parent
-  // subgraph's own checkpoint may fall outside the fetched page.
+  // Directly observed namespace tuples (state + task checkpoint_ns), with
+  // NO prefix synthesis — host promotion is derived below so that a deeper
+  // namespace's leaf segment is not mistaken for a host.
   const observed = new Map<string, string[]>();
   const record = (segments: string[]) => {
-    for (let depth = 1; depth <= segments.length; depth += 1) {
-      const slice = segments.slice(0, depth);
-      observed.set(namespaceKey(slice), slice);
-    }
+    if (segments.length === 0) return;
+    observed.set(namespaceKey(segments), segments);
   };
   for (const state of history) {
     record(checkpointNsToSegments(state.checkpoint?.checkpoint_ns));
@@ -305,8 +312,22 @@ export function collectSubgraphHostNamespaces(
     }
   }
 
+  // Host candidates = strict ancestors of observed (interior) + depth-1
+  // observed (top-level). Insertion order: shallow ancestors first so the
+  // emitted host list keeps parents ahead of children.
+  const candidates = new Map<string, string[]>();
+  for (const segments of observed.values()) {
+    for (let depth = 1; depth < segments.length; depth += 1) {
+      const slice = segments.slice(0, depth);
+      candidates.set(namespaceKey(slice), slice);
+    }
+    if (segments.length === 1) {
+      candidates.set(namespaceKey(segments), segments);
+    }
+  }
+
   const hosts: SubgraphHost[] = [];
-  for (const [key, segments] of observed) {
+  for (const [key, segments] of candidates) {
     if (segments.some(isInternalSegment)) continue;
     const prefix = key + NAMESPACE_SEPARATOR;
     const running =
