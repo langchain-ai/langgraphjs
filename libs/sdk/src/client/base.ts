@@ -219,6 +219,7 @@ export class BaseClient {
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
       withResponse?: boolean;
+      dedupe?: boolean;
     }
   ): [url: URL, init: RequestInit] {
     const mutatedOptions = {
@@ -236,6 +237,10 @@ export class BaseClient {
 
     if (mutatedOptions.withResponse) {
       delete mutatedOptions.withResponse;
+    }
+
+    if ("dedupe" in mutatedOptions) {
+      delete mutatedOptions.dedupe;
     }
 
     let timeoutSignal: AbortSignal | null = null;
@@ -286,6 +291,7 @@ export class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: false;
+      dedupe?: boolean;
     }
   ): Promise<T>;
 
@@ -297,10 +303,60 @@ export class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: boolean;
+      dedupe?: boolean;
     }
   ): Promise<T | [T, Response]> {
     const [url, init] = this.prepareFetchOptions(path, options);
 
+    /**
+     * Coalesce concurrent, identical idempotent reads onto a single
+     * in-flight request. Only engaged when the caller opts in
+     * (`dedupe: true`), is not asking for the raw `Response`, and did
+     * not supply its own `AbortSignal` (sharing a request across
+     * consumers must never let one consumer's abort cancel another's).
+     */
+    const canDedupe =
+      options?.dedupe === true &&
+      options?.withResponse !== true &&
+      options?.signal == null;
+
+    if (canDedupe) {
+      const headers = init.headers as Record<string, string> | undefined;
+      const auth = headers?.["x-api-key"] ?? "";
+      const body = typeof init.body === "string" ? init.body : "";
+      const key = `${init.method ?? "GET"} ${url.toString()} ${body} ${auth}`;
+      const existing = inFlightReads.get(key);
+      if (existing != null) return existing as Promise<T>;
+
+      const promise = this.#performFetch<T>(url, init);
+      inFlightReads.set(key, promise);
+      const clear = () => {
+        if (inFlightReads.get(key) === promise) inFlightReads.delete(key);
+      };
+      promise.then(clear, clear);
+      return promise;
+    }
+
+    const [body, response] = await this.#performFetchWithResponse<T>(url, init);
+    if (options?.withResponse) {
+      return [body, response];
+    }
+    return body;
+  }
+
+  /**
+   * Issue the prepared request (applying the `onRequest` hook) and
+   * resolve the parsed body. Shared by the deduped and direct paths.
+   */
+  async #performFetch<T>(url: URL, init: RequestInit): Promise<T> {
+    const [body] = await this.#performFetchWithResponse<T>(url, init);
+    return body;
+  }
+
+  async #performFetchWithResponse<T>(
+    url: URL,
+    init: RequestInit
+  ): Promise<[T, Response]> {
     let finalInit = init;
     if (this.onRequest) {
       finalInit = await this.onRequest(url, init);
@@ -308,18 +364,14 @@ export class BaseClient {
 
     const response = await this.asyncCaller.fetch(url.toString(), finalInit);
 
-    const body = (() => {
+    const body = await (async () => {
       if (response.status === 202 || response.status === 204) {
         return undefined as T;
       }
       return response.json() as Promise<T>;
     })();
 
-    if (options?.withResponse) {
-      return [await body, response];
-    }
-
-    return body;
+    return [body, response];
   }
 
   protected async *streamWithRetry<
@@ -408,3 +460,25 @@ export function getRunMetadataFromResponse(
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+/**
+ * Module-scoped, in-flight-only coalescing map for idempotent reads.
+ *
+ * Two independently-constructed clients (e.g. a React component that
+ * remounts under Suspense / a reachability state flip, each minting a
+ * fresh `Client`) can fire the *same* `getState` / `getHistory` read a
+ * few milliseconds apart, before the first has resolved. Without
+ * coalescing each pays the full round-trip — the duplicate
+ * `threads/{id}/state` and `threads/{id}/history` requests seen on
+ * reconnect.
+ *
+ * Keyed by `method + url + body + auth`, entries live only while a
+ * request is in flight and are removed the moment it settles. This is
+ * deliberately *not* a result cache: there is no TTL and no stored
+ * payload, so it cannot serve stale data — it only ever shares a
+ * promise that is already on the wire. Opt-in per call via
+ * `{ dedupe: true }`, and skipped whenever the caller supplies its own
+ * `AbortSignal` (so one consumer aborting can never cancel another's
+ * read).
+ */
+const inFlightReads = new Map<string, Promise<unknown>>();

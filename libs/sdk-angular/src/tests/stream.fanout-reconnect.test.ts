@@ -53,7 +53,12 @@ it("seeds N parallel subagents on reconnect with a bounded getHistory cost", asy
   await expect
     .element(screen.getByTestId("panel-messages-count"), { timeout: 20_000 })
     .not.toHaveTextContent("0");
-  expect(readNumber("registry-size")).toBeGreaterThanOrEqual(1);
+  // Poll the element: `registry-size` is repainted on a 25ms tick (it
+  // reads a non-reactive Map.size), so a synchronous read can race the
+  // panel mount and observe a stale 0.
+  await expect
+    .element(screen.getByTestId("registry-size"), { timeout: 20_000 })
+    .not.toHaveTextContent("0");
   expect(readNumber("history-request-count")).toBeLessThanOrEqual(4);
 });
 
@@ -116,5 +121,7 @@ it("seeds M parallel subgraphs on reconnect with a bounded getHistory cost", asy
   await expect
     .element(screen.getByTestId("panel-messages-count"), { timeout: 20_000 })
     .not.toHaveTextContent("0");
-  expect(readNumber("registry-size")).toBeGreaterThanOrEqual(1);
+  await expect
+    .element(screen.getByTestId("registry-size"), { timeout: 20_000 })
+    .not.toHaveTextContent("0");
 });

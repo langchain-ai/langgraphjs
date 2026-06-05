@@ -232,6 +232,98 @@ describe.each([["global"], ["mocked"]])(
       });
     });
 
+    describe("in-flight read coalescing", () => {
+      let pending: Array<() => void>;
+
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+      beforeEach(() => {
+        pending = [];
+        const makeResponse = () => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ values: {}, next: [] }),
+          text: () => Promise.resolve(""),
+          headers: new Headers({}),
+        });
+        // A fetch that only resolves when we explicitly flush, so two
+        // concurrent reads genuinely overlap in flight.
+        const deferred = vi.fn(
+          () =>
+            new Promise((resolve) => {
+              pending.push(() => resolve(makeResponse()));
+            })
+        );
+        expectedFetchMock = deferred as ReturnType<typeof vi.fn>;
+        overrideFetchImplementation(deferred);
+        (globalThis as any).fetch = deferred;
+      });
+
+      const flush = () => {
+        for (const resolve of pending.splice(0)) resolve();
+      };
+
+      it("coalesces concurrent identical getState reads into one request", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-state");
+        const p2 = client.threads.getState("t-state");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce reads for different threads", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-a");
+        const p2 = client.threads.getState("t-b");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("re-fetches once the in-flight read settles (no result caching)", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-resettle");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await p1;
+
+        const p2 = client.threads.getState("t-resettle");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await p2;
+      });
+
+      it("coalesces concurrent getHistory reads into one request", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getHistory("t-hist", { limit: 20 });
+        const p2 = client.threads.getHistory("t-hist", { limit: 20 });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce when the caller supplies an AbortSignal", async () => {
+        const client = new Client({ apiKey: "k" });
+        const ac = new AbortController();
+        const p1 = client.threads.getState("t-signal", undefined, {
+          signal: ac.signal,
+        });
+        const p2 = client.threads.getState("t-signal", undefined, {
+          signal: ac.signal,
+        });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+    });
+
     describe("API key auto-load", () => {
       it("should auto-load API key from environment when apiKey is undefined", async () => {
         const getEnvSpy = vi
