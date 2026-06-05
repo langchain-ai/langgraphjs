@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import type {
@@ -21,6 +21,13 @@ interface Props {
   apiUrl: string;
   assistantId: string;
   kind: Kind;
+  /**
+   * Mount a scoped panel for *every* card at once (instead of behind a
+   * per-card "open" click). Mirrors the playground, where each card's
+   * `useMessages`/`useToolCalls` fire on mount and race the hydrate-time
+   * discovery seed — the scenario the resolve-coalescing guards.
+   */
+  openAll?: boolean;
 }
 
 /**
@@ -37,6 +44,7 @@ export function ParallelFanoutReconnectStream({
   apiUrl,
   assistantId,
   kind,
+  openAll = false,
 }: Props) {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [gen, setGen] = useState(0);
@@ -78,6 +86,7 @@ export function ParallelFanoutReconnectStream({
         apiUrl={apiUrl}
         assistantId={assistantId}
         kind={kind}
+        openAll={openAll}
         threadId={threadId}
         onThreadId={setThreadId}
         wrappedFetch={wrappedFetch}
@@ -91,6 +100,7 @@ interface StreamViewProps {
   apiUrl: string;
   assistantId: string;
   kind: Kind;
+  openAll: boolean;
   threadId: string | undefined;
   onThreadId: (id: string) => void;
   wrappedFetch: typeof fetch;
@@ -101,6 +111,7 @@ function StreamView({
   apiUrl,
   assistantId,
   kind,
+  openAll,
   threadId,
   onThreadId,
   wrappedFetch,
@@ -115,6 +126,18 @@ function StreamView({
   });
 
   const [openKey, setOpenKey] = useState<string | null>(null);
+
+  // Count of mounted panels whose scoped messages have landed — used by
+  // the "open all" test to wait for every card's lazy resolve to settle.
+  const readyRef = useRef<Set<string>>(new Set());
+  const [readyCount, setReadyCount] = useState(0);
+  const markReady = useCallback((key: string, ready: boolean) => {
+    const set = readyRef.current;
+    if (ready === set.has(key)) return;
+    if (ready) set.add(key);
+    else set.delete(key);
+    setReadyCount(set.size);
+  }, []);
 
   const cards: Card[] = (
     kind === "subagent"
@@ -140,6 +163,7 @@ function StreamView({
       <div data-testid="card-statuses">
         {cards.map((c) => c.status).join(",")}
       </div>
+      <div data-testid="panels-ready">{readyCount}</div>
       <RegistryDiagnostics stream={thread} historyCount={historyCount} />
 
       <button
@@ -166,7 +190,19 @@ function StreamView({
         Close
       </button>
 
-      {openCard != null ? <CardPanel stream={thread} card={openCard} /> : null}
+      {openAll
+        ? cards.map((c, i) => (
+            <CardPanel
+              key={cardKey(c)}
+              idx={i}
+              stream={thread}
+              card={c}
+              onReady={markReady}
+            />
+          ))
+        : openCard != null
+          ? <CardPanel stream={thread} card={openCard} />
+          : null}
     </div>
   );
 }
@@ -175,11 +211,24 @@ function cardKey(card: Card): string {
   return card.namespace.join("/") || card.id;
 }
 
-function CardPanel({ stream, card }: { stream: Thread; card: Card }) {
+function CardPanel({
+  stream,
+  card,
+  idx,
+  onReady,
+}: {
+  stream: Thread;
+  card: Card;
+  idx?: number;
+  onReady?: (key: string, ready: boolean) => void;
+}) {
   const messages = useMessages(stream, card);
   const toolCalls = useToolCalls(stream, card);
+  useEffect(() => {
+    onReady?.(cardKey(card), messages.length > 0);
+  }, [onReady, card, messages.length]);
   return (
-    <div data-testid="panel">
+    <div data-testid={idx != null ? `panel-${idx}` : "panel"}>
       <div data-testid="panel-namespace">{card.namespace.join("/")}</div>
       <div data-testid="panel-messages-count">{messages.length}</div>
       <div data-testid="panel-toolcalls-count">{toolCalls.length}</div>

@@ -15,6 +15,7 @@
     apiUrl: string;
     assistantId: string;
     kind: "subagent" | "subgraph";
+    openAll?: boolean;
     threadId: string | undefined;
     onThreadId: (id: string) => void;
     wrappedFetch: typeof fetch;
@@ -42,6 +43,17 @@
   }, 25);
   onDestroy(() => clearInterval(interval));
 
+  // Count of mounted panels whose scoped messages have landed — lets the
+  // "open all" test wait for every card's lazy resolve to settle.
+  const readySet = new Set<string>();
+  let readyCount = $state(0);
+  function markReady(key: string, ready: boolean) {
+    if (ready === readySet.has(key)) return;
+    if (ready) readySet.add(key);
+    else readySet.delete(key);
+    readyCount = readySet.size;
+  }
+
   const cards = $derived(
     (props.kind === "subagent"
       ? [...stream.subagents.values()]
@@ -65,6 +77,7 @@
   <div data-testid="subgraph-count">{stream.subgraphs.size}</div>
   <div data-testid="card-count">{cards.length}</div>
   <div data-testid="card-statuses">{cards.map((c) => c.status).join(",")}</div>
+  <div data-testid="panels-ready">{readyCount}</div>
   <div data-testid="registry-size">{registrySize}</div>
 
   <button
@@ -86,7 +99,11 @@
     </button>
   {/each}
 
-  {#if openCard}
+  {#if props.openAll}
+    {#each cards as card, i (cardKey(card))}
+      <ParallelFanoutCardPanel {stream} {card} idx={i} onReady={markReady} />
+    {/each}
+  {:else if openCard}
     <ParallelFanoutCardPanel {stream} card={openCard} />
   {/if}
 </div>

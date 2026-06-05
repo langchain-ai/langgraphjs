@@ -3,7 +3,9 @@ import {
   DestroyRef,
   Injectable,
   computed,
+  effect,
   inject as angularInject,
+  input,
   signal,
   type Signal,
 } from "@angular/core";
@@ -65,6 +67,54 @@ class FanoutHarnessState {
   }
 }
 
+/**
+ * Per-view bridge so the dynamically-rendered card panels can reach the
+ * (constructor-created) `Thread` and the view's `markReady` callback. A
+ * panel must call `injectMessages`/`injectToolCalls` in its own injection
+ * context, so it cannot receive the stream as a signal input (not readable
+ * at construction) — it pulls both from this DI-provided bridge instead.
+ */
+@Injectable()
+class FanoutViewBridge {
+  stream!: Thread;
+  markReady: (key: string, ready: boolean) => void = () => undefined;
+}
+
+/**
+ * Scoped panel for a single card. Mirrors the React `CardPanel`: its
+ * `injectMessages`/`injectToolCalls` fire on mount, triggering the lazy
+ * `resolveSubagentNamespace`. When all cards mount at once, the resolves
+ * coalesce onto the single hydrate seed.
+ */
+@Component({
+  selector: "lg-fanout-card-panel",
+  template: `
+    <div [attr.data-testid]="'panel-' + idx()">
+      <div data-testid="panel-namespace">{{ card().namespace.join("/") }}</div>
+      <div data-testid="panel-messages-count">{{ messages().length }}</div>
+      <div data-testid="panel-toolcalls-count">{{ toolCalls().length }}</div>
+    </div>
+  `,
+})
+class FanoutCardPanelComponent {
+  readonly card = input.required<Card>();
+  readonly idx = input.required<number>();
+  readonly messages: Signal<BaseMessage[]>;
+  readonly toolCalls: Signal<{ name: string }[]>;
+
+  constructor() {
+    const bridge = angularInject(FanoutViewBridge);
+    const target = computed<SelectorTarget>(() => this.card());
+    this.messages = injectMessages(bridge.stream, target);
+    this.toolCalls = injectToolCalls(bridge.stream, target) as Signal<
+      { name: string }[]
+    >;
+    effect(() => {
+      bridge.markReady(cardKey(this.card()), this.messages().length > 0);
+    });
+  }
+}
+
 const VIEW_TEMPLATE = `
   <div>
     <div data-testid="loading">
@@ -74,6 +124,7 @@ const VIEW_TEMPLATE = `
     <div data-testid="subgraph-count">{{ stream.subgraphs().size }}</div>
     <div data-testid="card-count">{{ cards().length }}</div>
     <div data-testid="card-statuses">{{ cardStatuses() }}</div>
+    <div data-testid="panels-ready">{{ readyCount() }}</div>
     <div data-testid="registry-size">{{ registrySize() }}</div>
 
     <button data-testid="submit" (click)="submit()">Run</button>
@@ -84,7 +135,11 @@ const VIEW_TEMPLATE = `
       </button>
     }
 
-    @if (openCard(); as card) {
+    @if (openAll) {
+      @for (card of cards(); track cardKeyOf(card); let i = $index) {
+        <lg-fanout-card-panel [card]="card" [idx]="i" />
+      }
+    } @else if (openCard(); as card) {
       <div data-testid="panel">
         <div data-testid="panel-namespace">{{ card.namespace.join("/") }}</div>
         <div data-testid="panel-messages-count">{{ panelMessages().length }}</div>
@@ -99,15 +154,30 @@ const VIEW_TEMPLATE = `
 abstract class BaseFanoutView {
   readonly openKey = signal<string | null>(null);
   readonly registrySize = signal(0);
+  readonly readyCount = signal(0);
   readonly cards: Signal<Card[]>;
   readonly openCard: Signal<Card | null>;
   readonly panelMessages: Signal<BaseMessage[]>;
   readonly panelToolCalls: Signal<{ name: string }[]>;
 
+  readonly #readySet = new Set<string>();
+
+  markReady(key: string, ready: boolean): void {
+    if (ready === this.#readySet.has(key)) return;
+    if (ready) this.#readySet.add(key);
+    else this.#readySet.delete(key);
+    this.readyCount.set(this.#readySet.size);
+  }
+
   constructor(
     readonly stream: Thread,
-    kind: "subagent" | "subgraph"
+    kind: "subagent" | "subgraph",
+    readonly openAll = false
   ) {
+    const bridge = angularInject(FanoutViewBridge);
+    bridge.stream = stream;
+    bridge.markReady = (key, ready) => this.markReady(key, ready);
+
     this.cards = computed(() => {
       const list =
         kind === "subagent"
@@ -154,6 +224,8 @@ abstract class BaseFanoutView {
 
 @Component({
   selector: "lg-fanout-subagent-view",
+  imports: [FanoutCardPanelComponent],
+  providers: [FanoutViewBridge],
   template: VIEW_TEMPLATE,
 })
 class FanoutSubagentViewComponent extends BaseFanoutView {
@@ -173,7 +245,32 @@ class FanoutSubagentViewComponent extends BaseFanoutView {
 }
 
 @Component({
+  selector: "lg-fanout-subagent-openall-view",
+  imports: [FanoutCardPanelComponent],
+  providers: [FanoutViewBridge],
+  template: VIEW_TEMPLATE,
+})
+class FanoutSubagentOpenAllViewComponent extends BaseFanoutView {
+  constructor() {
+    const state = angularInject(FanoutHarnessState);
+    super(
+      injectStream<{ messages: BaseMessage[] }>({
+        assistantId: "parallel_fanout",
+        apiUrl: serverUrl,
+        threadId: state.threadId,
+        onThreadId: state.onThreadId,
+        fetch: state.wrappedFetch,
+      }),
+      "subagent",
+      true
+    );
+  }
+}
+
+@Component({
   selector: "lg-fanout-subgraph-view",
+  imports: [FanoutCardPanelComponent],
+  providers: [FanoutViewBridge],
   template: VIEW_TEMPLATE,
 })
 class FanoutSubgraphViewComponent extends BaseFanoutView {
@@ -215,6 +312,16 @@ const HARNESS_TEMPLATE = (view: string) => `
   template: HARNESS_TEMPLATE("<lg-fanout-subagent-view />"),
 })
 export class ParallelFanoutSubagentHarnessComponent {
+  readonly state = angularInject(FanoutHarnessState);
+}
+
+@Component({
+  selector: "lg-parallel-fanout-subagent-openall",
+  imports: [FanoutSubagentOpenAllViewComponent],
+  providers: [FanoutHarnessState],
+  template: HARNESS_TEMPLATE("<lg-fanout-subagent-openall-view />"),
+})
+export class ParallelFanoutSubagentOpenAllHarnessComponent {
   readonly state = angularInject(FanoutHarnessState);
 }
 

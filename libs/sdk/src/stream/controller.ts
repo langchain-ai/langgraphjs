@@ -222,6 +222,16 @@ export class StreamController<
    * parallel `getHistory` walks.
    */
   readonly #namespaceResolves = new Map<string, Promise<void>>();
+  /**
+   * In-flight hydrate-time discovery seed ({@link #seedDiscoveryFromHistory}):
+   * a single bounded `getHistory` page that bulk-promotes every
+   * still-default subagent namespace and seeds subgraph hosts. Per-card
+   * {@link resolveSubagentNamespace} calls await this shared promise
+   * instead of each firing their own `getHistory` walk, so opening N
+   * cards right after reconnect costs one history read, not N. Re-armed
+   * per hydrate cycle and cleared once it settles.
+   */
+  #discoverySeedPromise: Promise<void> | undefined;
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
@@ -412,6 +422,9 @@ export class StreamController<
     const target = threadId === undefined ? this.#currentThreadId : threadId;
     const changed = target !== this.#currentThreadId;
     this.#currentThreadId = target ?? null;
+    // Re-arm per hydrate cycle: a stale seed from a previous thread must
+    // not be awaited by this thread's lazy namespace resolves.
+    this.#discoverySeedPromise = undefined;
     this.rootStore.setState((s) => ({ ...s, threadId: this.#currentThreadId }));
 
     if (changed) {
@@ -618,8 +631,20 @@ export class StreamController<
        * history. Fire-and-forget — not awaited into the hydration
        * promise, so Suspense / first paint stay unblocked; cards fill
        * in progressively when it resolves.
+       *
+       * Held in `#discoverySeedPromise` so lazy per-card
+       * {@link resolveSubagentNamespace} calls coalesce onto this single
+       * read instead of each firing their own `getHistory` walk.
        */
-      void this.#seedDiscoveryFromHistory(this.#currentThreadId);
+      const seed: Promise<void> = this.#seedDiscoveryFromHistory(
+        this.#currentThreadId
+      ).finally(() => {
+        // Only clear if a later hydrate cycle hasn't re-armed it.
+        if (this.#discoverySeedPromise === seed) {
+          this.#discoverySeedPromise = undefined;
+        }
+      });
+      this.#discoverySeedPromise = seed;
     }
   }
 
@@ -683,6 +708,24 @@ export class StreamController<
 
     const run = (async () => {
       try {
+        /**
+         * Coalesce onto the hydrate-time discovery seed. That single
+         * bounded `getHistory` page bulk-promotes every default-only
+         * subagent, so when many cards mount at once (the common
+         * reconnect case) they all await this one read instead of each
+         * firing their own walk. Re-check after it settles: usually the
+         * bulk seed already promoted us and no further fetch is needed.
+         */
+        const seed = this.#discoverySeedPromise;
+        if (seed != null) {
+          await seed;
+          if (this.#disposed || this.#currentThreadId !== threadId) return;
+          if (
+            !namespaceIsDefaultOnly(this.#subagents.snapshot.get(toolCallId))
+          ) {
+            return;
+          }
+        }
         const map = await resolveSubagentNamespaces(
           this.#options.client,
           threadId,

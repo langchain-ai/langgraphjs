@@ -2,6 +2,7 @@ import {
   defineComponent,
   onScopeDispose,
   ref,
+  watchEffect,
   type PropType,
 } from "vue";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
@@ -36,6 +37,7 @@ export const ParallelFanoutReconnectStream = defineComponent({
     apiUrl: { type: String, required: true },
     assistantId: { type: String, required: true },
     kind: { type: String as PropType<Kind>, required: true },
+    openAll: { type: Boolean, default: false },
   },
   setup(props) {
     const threadId = ref<string | undefined>(undefined);
@@ -76,6 +78,7 @@ export const ParallelFanoutReconnectStream = defineComponent({
           apiUrl={props.apiUrl}
           assistantId={props.assistantId}
           kind={props.kind}
+          openAll={props.openAll}
           threadId={threadId.value}
           onThreadId={(id: string) => {
             threadId.value = id;
@@ -94,6 +97,7 @@ const StreamView = defineComponent({
     apiUrl: { type: String, required: true },
     assistantId: { type: String, required: true },
     kind: { type: String as PropType<Kind>, required: true },
+    openAll: { type: Boolean, default: false },
     threadId: { type: String, default: undefined },
     onThreadId: {
       type: Function as PropType<(id: string) => void>,
@@ -124,6 +128,17 @@ const StreamView = defineComponent({
     }, 25);
     onScopeDispose(() => clearInterval(handle));
 
+    // Count of mounted panels whose scoped messages have landed — lets
+    // the "open all" test wait for every card's lazy resolve to settle.
+    const readySet = new Set<string>();
+    const readyCount = ref(0);
+    const markReady = (key: string, ready: boolean) => {
+      if (ready === readySet.has(key)) return;
+      if (ready) readySet.add(key);
+      else readySet.delete(key);
+      readyCount.value = readySet.size;
+    };
+
     return () => {
       void tick.value;
       const cards: Card[] = (
@@ -146,6 +161,7 @@ const StreamView = defineComponent({
           <div data-testid="card-statuses">
             {cards.map((c) => c.status).join(",")}
           </div>
+          <div data-testid="panels-ready">{readyCount.value}</div>
           <div data-testid="registry-size">
             {thread[STREAM_CONTROLLER].registry.size}
           </div>
@@ -176,9 +192,19 @@ const StreamView = defineComponent({
             </button>
           ))}
 
-          {openCard != null ? (
-            <CardPanel stream={thread} card={openCard} />
-          ) : null}
+          {props.openAll
+            ? cards.map((c, i) => (
+                <CardPanel
+                  key={cardKey(c)}
+                  idx={i}
+                  stream={thread}
+                  card={c}
+                  onReady={markReady}
+                />
+              ))
+            : openCard != null
+              ? <CardPanel stream={thread} card={openCard} />
+              : null}
         </div>
       );
     };
@@ -190,12 +216,20 @@ const CardPanel = defineComponent({
   props: {
     stream: { type: Object as PropType<Thread>, required: true },
     card: { type: Object as PropType<Card>, required: true },
+    idx: { type: Number, default: undefined },
+    onReady: {
+      type: Function as PropType<(key: string, ready: boolean) => void>,
+      default: undefined,
+    },
   },
   setup(props) {
     const messages = useMessages(props.stream, () => props.card);
     const toolCalls = useToolCalls(props.stream, () => props.card);
+    watchEffect(() => {
+      props.onReady?.(cardKey(props.card), messages.value.length > 0);
+    });
     return () => (
-      <div data-testid="panel">
+      <div data-testid={props.idx != null ? `panel-${props.idx}` : "panel"}>
         <div data-testid="panel-namespace">{props.card.namespace.join("/")}</div>
         <div data-testid="panel-messages-count">{messages.value.length}</div>
         <div data-testid="panel-toolcalls-count">{toolCalls.value.length}</div>

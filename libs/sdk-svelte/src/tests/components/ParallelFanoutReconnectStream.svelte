@@ -5,9 +5,10 @@
     apiUrl: string;
     assistantId: string;
     kind: "subagent" | "subgraph";
+    openAll?: boolean;
   }
 
-  const { apiUrl, assistantId, kind }: Props = $props();
+  const { apiUrl, assistantId, kind, openAll = false }: Props = $props();
 
   let threadId = $state<string | undefined>(undefined);
   let gen = $state(0);
@@ -55,6 +56,7 @@
       {apiUrl}
       {assistantId}
       {kind}
+      {openAll}
       {threadId}
       {onThreadId}
       {wrappedFetch}

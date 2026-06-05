@@ -1573,4 +1573,96 @@ describe("StreamController", () => {
 
     await controller.dispose();
   });
+
+  it("coalesces concurrent per-card resolves onto the single hydrate seed", async () => {
+    const { thread } = discoveryThread();
+    // Three subagents spawned in one AI turn → three default-only cards
+    // after checkpoint-message seeding.
+    const multiTaskMessages = [
+      {
+        type: "ai",
+        id: "orchestrator",
+        tool_calls: [
+          { id: "task-1", name: "task", args: { subagent_type: "r1" } },
+          { id: "task-2", name: "task", args: { subagent_type: "r2" } },
+          { id: "task-3", name: "task", args: { subagent_type: "r3" } },
+        ],
+      },
+      { type: "tool", id: "t1", tool_call_id: "task-1", content: "done" },
+      { type: "tool", id: "t2", tool_call_id: "task-2", content: "done" },
+      { type: "tool", id: "t3", tool_call_id: "task-3", content: "done" },
+    ];
+
+    // Gate the seed's getHistory so the per-card resolves run while it is
+    // still in flight — the real reconnect race the coalescing fixes.
+    let releaseHistory: () => void = () => undefined;
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const getHistory = vi.fn(async () => {
+      await historyGate;
+      return [
+        {
+          values: { messages: multiTaskMessages },
+          tasks: [
+            {
+              id: "exec-1",
+              name: "tools",
+              path: ["__pregel_push", 0],
+              result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
+            },
+            {
+              id: "exec-2",
+              name: "tools",
+              path: ["__pregel_push", 1],
+              result: { messages: [{ type: "tool", tool_call_id: "task-2" }] },
+            },
+            {
+              id: "exec-3",
+              name: "tools",
+              path: ["__pregel_push", 2],
+              result: { messages: [{ type: "tool", tool_call_id: "task-3" }] },
+            },
+          ],
+          checkpoint: checkpointState("", "cp-1"),
+        },
+      ];
+    });
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: multiTaskMessages },
+        })),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    // All three seeded from checkpoint messages, still default-only.
+    expect(controller.subagentStore.getSnapshot().size).toBe(3);
+
+    // Cards mount and resolve concurrently WHILE the seed is in flight.
+    const resolves = Promise.all([
+      controller.resolveSubagentNamespace("task-1"),
+      controller.resolveSubagentNamespace("task-2"),
+      controller.resolveSubagentNamespace("task-3"),
+    ]);
+    releaseHistory();
+    await resolves;
+
+    // One history read total — the shared seed — not one walk per card.
+    expect(getHistory).toHaveBeenCalledTimes(1);
+    const snapshot = controller.subagentStore.getSnapshot();
+    expect(snapshot.get("task-1")?.namespace).toEqual(["tools:exec-1"]);
+    expect(snapshot.get("task-2")?.namespace).toEqual(["tools:exec-2"]);
+    expect(snapshot.get("task-3")?.namespace).toEqual(["tools:exec-3"]);
+
+    await controller.dispose();
+  });
 });

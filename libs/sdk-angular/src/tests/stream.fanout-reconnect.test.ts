@@ -8,6 +8,7 @@ import { render } from "vitest-browser-angular";
 
 import {
   ParallelFanoutSubagentHarnessComponent,
+  ParallelFanoutSubagentOpenAllHarnessComponent,
   ParallelFanoutSubgraphHarnessComponent,
 } from "./components/ParallelFanoutReconnectStream.js";
 
@@ -54,6 +55,36 @@ it("seeds N parallel subagents on reconnect with a bounded getHistory cost", asy
     .not.toHaveTextContent("0");
   expect(readNumber("registry-size")).toBeGreaterThanOrEqual(1);
   expect(readNumber("history-request-count")).toBeLessThanOrEqual(4);
+});
+
+it("opening every subagent card at once after reconnect stays bounded (resolves coalesce onto one history read)", async () => {
+  const screen = await render(ParallelFanoutSubagentOpenAllHarnessComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+    .toHaveTextContent(String(WORKER_COUNT));
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 20_000 })
+    .toHaveTextContent("Not loading");
+
+  // Reconnect: every card panel mounts at once, so all N scoped
+  // selectors fire `resolveSubagentNamespace` concurrently and race the
+  // hydrate seed (see the deterministic core unit test for the proof).
+  await screen.getByTestId("reconnect").click();
+  await expect
+    .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+    .toHaveTextContent(String(WORKER_COUNT));
+  await expect
+    .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
+    .toHaveTextContent(String(WORKER_COUNT));
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 20_000 })
+    .toHaveTextContent("Not loading");
+
+  const historyRequests = readNumber("history-request-count");
+  expect(historyRequests).toBeLessThanOrEqual(3);
+  expect(historyRequests).toBeLessThan(WORKER_COUNT);
 });
 
 it("seeds M parallel subgraphs on reconnect with a bounded getHistory cost", async () => {

@@ -92,6 +92,57 @@ it("seeds N parallel subagents on reconnect with a bounded getHistory cost", asy
   }
 });
 
+it("opening every subagent card at once after reconnect stays bounded (resolves coalesce onto one history read)", async () => {
+  const screen = await render(
+    <ParallelFanoutReconnectStream
+      apiUrl={apiUrl}
+      assistantId="parallel_fanout"
+      kind="subagent"
+      openAll
+    />
+  );
+
+  try {
+    // ---- producer: run the fan-out to completion ----
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 20_000 })
+      .toHaveTextContent("Not loading");
+
+    // ---- reconnect: every card's panel mounts at once, so all N
+    // scoped selectors fire `resolveSubagentNamespace` concurrently and
+    // race the hydrate-time discovery seed. ----
+    await screen.getByTestId("reconnect").click();
+    await expect
+      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    // Wait for every panel's scoped messages to land → every lazy
+    // resolve has settled.
+    await expect
+      .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 20_000 })
+      .toHaveTextContent("Not loading");
+
+    // The N concurrent per-card resolves coalesced onto the single
+    // hydrate seed: history reads stay bounded, NOT one walk per card.
+    // (Honest caveat: on an instant in-memory server the resolve/seed
+    // race window is tiny; the unit test
+    // "coalesces concurrent per-card resolves onto the single hydrate
+    // seed" is the deterministic proof — this is the end-to-end
+    // regression guard.)
+    const historyRequests = readNumber("history-request-count");
+    expect(historyRequests).toBeLessThanOrEqual(3);
+    expect(historyRequests).toBeLessThan(FANOUT_WORKER_COUNT);
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
 it("seeds M parallel subgraphs on reconnect with a bounded getHistory cost", async () => {
   const screen = await render(
     <ParallelFanoutReconnectStream
