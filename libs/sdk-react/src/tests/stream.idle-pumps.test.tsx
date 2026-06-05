@@ -29,6 +29,7 @@ import { apiUrl, cleanupRender } from "./test-utils.js";
  */
 function trackEventsRequests() {
   let count = 0;
+  let bodies: string[] = [];
   let counting = false;
   const originalFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -40,16 +41,21 @@ function trackEventsRequests() {
           : (input as Request).url;
     if (counting && typeof url === "string" && url.includes("/events")) {
       count += 1;
+      bodies.push(String(init?.body ?? ""));
     }
     return originalFetch(input, init);
   }) as typeof fetch;
   return {
     start() {
       count = 0;
+      bodies = [];
       counting = true;
     },
     get count() {
       return count;
+    },
+    get bodies() {
+      return bodies;
     },
     restore() {
       globalThis.fetch = originalFetch;
@@ -64,6 +70,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
       apiUrl={apiUrl}
       assistantId="parallel_fanout"
       kind="subagent"
+      openAllAfterReconnect
     />
   );
 
@@ -81,9 +88,12 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
     events.start();
     await screen.getByTestId("reconnect").click();
 
-    // Cards reappear from the seed (getState + getHistory) — no SSE.
+    // Cards and their scoped panels reappear from getState + history — no SSE.
     await expect
       .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
       .toHaveTextContent(String(FANOUT_WORKER_COUNT));
     await expect
       .element(screen.getByTestId("loading"), { timeout: 20_000 })
@@ -92,7 +102,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     // The core assertion: a finished thread opens ZERO /events.
-    expect(events.count).toBe(0);
+    expect(events.count, events.bodies.join("\n")).toBe(0);
 
     // ---- submit on the reconnected idle thread → pumps come up ----
     await screen.getByTestId("submit").click();

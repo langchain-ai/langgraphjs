@@ -28,6 +28,7 @@ interface Props {
    * discovery seed — the scenario the resolve-coalescing guards.
    */
   openAll?: boolean;
+  openAllAfterReconnect?: boolean;
 }
 
 /**
@@ -45,6 +46,7 @@ export function ParallelFanoutReconnectStream({
   assistantId,
   kind,
   openAll = false,
+  openAllAfterReconnect = false,
 }: Props) {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [gen, setGen] = useState(0);
@@ -75,7 +77,6 @@ export function ParallelFanoutReconnectStream({
         data-testid="reconnect"
         disabled={threadId == null}
         onClick={() => {
-          historyCount.current = 0;
           setGen((g) => g + 1);
         }}
       >
@@ -86,7 +87,7 @@ export function ParallelFanoutReconnectStream({
         apiUrl={apiUrl}
         assistantId={assistantId}
         kind={kind}
-        openAll={openAll}
+        openAll={openAll || (openAllAfterReconnect && gen > 0)}
         threadId={threadId}
         onThreadId={setThreadId}
         wrappedFetch={wrappedFetch}
@@ -117,6 +118,10 @@ function StreamView({
   wrappedFetch,
   historyCount,
 }: StreamViewProps) {
+  useEffect(() => {
+    historyCount.current = 0;
+  }, [historyCount]);
+
   const thread = useStream<{ messages: BaseMessage[] }>({
     assistantId,
     apiUrl,
@@ -171,7 +176,10 @@ function StreamView({
         {cards.map((c) => c.status).join(",")}
       </div>
       <div data-testid="panels-ready">{readyCount}</div>
-      <RegistryDiagnostics stream={thread} historyCount={historyCount} />
+      <RegistryDiagnostics
+        stream={thread}
+        historyCount={historyCount}
+      />
 
       <button
         data-testid="submit"

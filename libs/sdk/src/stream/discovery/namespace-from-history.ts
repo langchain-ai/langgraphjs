@@ -16,7 +16,12 @@
  *    {@link ./subgraphs}.
  */
 import type { Client } from "../../client/index.js";
-import type { Config, ThreadState } from "../../schema.js";
+import type {
+  Checkpoint,
+  Config,
+  Metadata,
+  ThreadState,
+} from "../../schema.js";
 import { NAMESPACE_SEPARATOR } from "../constants.js";
 import { namespaceKey } from "../namespace.js";
 import { normalizeAIMessageToolCalls } from "../message-coercion.js";
@@ -244,7 +249,13 @@ export async function resolveSubagentNamespaces<TStateType>(
 export function getHistoryPage<TStateType>(
   client: Client<TStateType>,
   threadId: string,
-  options: { limit?: number; before?: Config; signal?: AbortSignal }
+  options: {
+    limit?: number;
+    before?: Config;
+    checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
+    metadata?: Metadata;
+    signal?: AbortSignal;
+  }
 ): Promise<AnyCheckpoint[]> {
   return client.threads.getHistory<Record<string, unknown>>(threadId, options);
 }

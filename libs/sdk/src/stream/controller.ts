@@ -34,9 +34,11 @@ import type { Interrupt } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../client/stream/handles/tools.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
+import { NAMESPACE_SEPARATOR } from "./constants.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { ensureMessageInstances } from "./message-coercion.js";
@@ -58,6 +60,7 @@ import {
   isInternalWorkNamespace,
   isLegacySubagentNamespace,
   isRootNamespace,
+  namespaceKey,
 } from "./namespace.js";
 import {
   MessageMetadataTracker,
@@ -79,6 +82,7 @@ import {
 } from "./submit-coordinator.js";
 import {
   reconcileToolCallsFromMessages,
+  seedToolCallsFromMessages,
   upsertToolCall,
 } from "./tool-calls.js";
 import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
@@ -108,6 +112,11 @@ function lifecycleReason(event: string | undefined): RunExecutionReason | null {
   if (event === "failed") return "error";
   if (event === "interrupted") return "interrupt";
   return null;
+}
+
+interface ScopedHistorySeed {
+  readonly messages: BaseMessage[];
+  readonly toolCalls: AssembledToolCall[];
 }
 
 /**
@@ -276,6 +285,10 @@ export class StreamController<
    * per hydrate cycle and cleared once it settles.
    */
   #discoverySeedPromise: Promise<void> | undefined;
+  readonly #scopedHistorySeeds = new Map<
+    string,
+    Promise<ScopedHistorySeed | null>
+  >();
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
@@ -332,6 +345,8 @@ export class StreamController<
           this.#rootEventListeners.delete(listener);
         };
       },
+      trySeedFromHistory: (params) =>
+        this.#trySeedProjectionFromHistory(params),
     };
     this.registry = new ChannelRegistry(this.#rootBus);
     this.subagentStore = this.#subagents.store;
@@ -469,6 +484,7 @@ export class StreamController<
     // Re-arm per hydrate cycle: a stale seed from a previous thread must
     // not be awaited by this thread's lazy namespace resolves.
     this.#discoverySeedPromise = undefined;
+    this.#scopedHistorySeeds.clear();
     this.rootStore.setState((s) => ({ ...s, threadId: this.#currentThreadId }));
 
     if (changed) {
@@ -731,6 +747,8 @@ export class StreamController<
       // A thread swap (or dispose) during the fetch invalidates this seed.
       if (this.#disposed || this.#currentThreadId !== threadId) return;
 
+      this.#primeScopedHistorySeedsFromHistory(threadId, history);
+
       const hosts = collectSubgraphHostNamespaces(history);
       this.#subgraphs.seedFromHistory(hosts);
 
@@ -815,6 +833,206 @@ export class StreamController<
     })();
     this.#namespaceResolves.set(toolCallId, run);
     return run;
+  }
+
+  /**
+   * Try to satisfy a scoped selector projection from checkpoint history
+   * instead of opening a scoped `/events` replay.
+   *
+   * This is only valid while the root pump is deferred, which means hydrate
+   * has classified the thread as idle/stale. Active and interrupted threads
+   * must keep using SSE so ongoing work and resumes are observed. For an idle
+   * thread, though, a late-mounted subagent card only needs the latest scoped
+   * checkpoint snapshot; opening `/events` just asks the server to replay work
+   * that already finished and can be slow for namespaces discovered from
+   * history.
+   *
+   * Returns `true` when the projection was handled without `/events`. That can
+   * mean either the store was seeded from namespace-specific history, or the
+   * projection targeted a default subagent namespace that should be skipped
+   * because hydrate promoted it to its execution namespace. Returns `false`
+   * when the caller should fall back to the normal subscription path.
+   */
+  async #trySeedProjectionFromHistory<T>(params: {
+    kind: "messages" | "toolCalls";
+    namespace: readonly string[];
+    store: StreamStore<T>;
+  }): Promise<boolean> {
+    const threadId = this.#currentThreadId;
+    if (
+      this.#disposed ||
+      threadId == null ||
+      params.namespace.length === 0 ||
+      !this.#rootPumpDeferred ||
+      this.#selfCreatedThreadIds.has(threadId)
+    ) {
+      return false;
+    }
+
+    if (await this.#skipDefaultSubagentProjection(params.namespace, threadId)) {
+      return true;
+    }
+    if (
+      this.#disposed ||
+      this.#currentThreadId !== threadId ||
+      !this.#rootPumpDeferred
+    ) {
+      return false;
+    }
+
+    const seed = await this.#getScopedHistorySeed(threadId, params.namespace);
+    if (
+      seed == null ||
+      this.#disposed ||
+      this.#currentThreadId !== threadId ||
+      !this.#rootPumpDeferred
+    ) {
+      return false;
+    }
+
+    if (await this.#skipDefaultSubagentProjection(params.namespace, threadId)) {
+      return true;
+    }
+
+    if (params.kind === "messages") {
+      params.store.setValue(seed.messages as T);
+      return true;
+    }
+    params.store.setValue(seed.toolCalls as T);
+    return true;
+  }
+
+  /**
+   * Suppress subscriptions for placeholder subagent namespaces once hydrate has
+   * resolved the real execution namespace.
+   *
+   * Deep-agent discovery first creates cards at `tools:<toolCallId>`. The
+   * actual worker history usually lives under a different checkpoint namespace
+   * such as `tools:<uuid>`, and hydrate resolves that mapping from the bounded
+   * root history seed. React/Vue/Svelte/Angular selector effects can mount
+   * while that seed is still in flight, so this helper waits for it and then
+   * returns `true` when the original placeholder namespace is stale. Returning
+   * `true` tells the projection runtime not to open an `/events` subscription
+   * for the wrong namespace; the framework will re-render with the promoted
+   * card namespace and acquire the real projection.
+   */
+  async #skipDefaultSubagentProjection(
+    namespace: readonly string[],
+    threadId: string
+  ): Promise<boolean> {
+    const toolCallId = defaultSubagentToolCallId(namespace);
+    if (toolCallId == null) return false;
+    if (!namespaceIsDefaultOnly(this.#subagents.snapshot.get(toolCallId))) {
+      return false;
+    }
+    const seed = this.#discoverySeedPromise;
+    if (seed != null) {
+      await seed;
+    }
+    if (this.#disposed || this.#currentThreadId !== threadId) return true;
+    return !namespaceIsDefaultOnly(this.#subagents.snapshot.get(toolCallId));
+  }
+
+  /**
+   * Load and cache the latest checkpoint snapshot for one scoped namespace.
+   *
+   * `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` often
+   * mount together. Both need the same namespace-specific history page, so the
+   * controller keeps an in-flight promise per `threadId + checkpoint_ns`.
+   * The cache may already be primed by the hydrate-time discovery history page;
+   * otherwise this method performs a narrow `checkpoint_ns` read and derives
+   * both projection snapshots from that one response:
+   *
+   * - `messages` are coerced with the stream-local message coercion rules, so
+   *   serialized `content_blocks` and tool-call metadata hydrate correctly.
+   * - `toolCalls` are reconstructed from AI tool calls plus matching
+   *   ToolMessages, enough for finished/stale card panels without replaying
+   *   the `tools` channel.
+   *
+   * Returns `null` when history does not contain usable values, or the request
+   * fails. Callers treat that as a signal to fall back to `/events` so custom
+   * servers or unusual state shapes still work.
+   */
+  #getScopedHistorySeed(
+    threadId: string,
+    namespace: readonly string[]
+  ): Promise<ScopedHistorySeed | null> {
+    const checkpointNs = namespaceKey(namespace);
+    const key = `${threadId}|${checkpointNs}`;
+    const existing = this.#scopedHistorySeeds.get(key);
+    if (existing != null) return existing;
+
+    const seed = (async (): Promise<ScopedHistorySeed | null> => {
+      try {
+        const history = await getHistoryPage(this.#options.client, threadId, {
+          limit: 1,
+          checkpoint: { checkpoint_ns: checkpointNs },
+        });
+        const values = history[0]?.values;
+        if (values == null || typeof values !== "object") return null;
+        const messages = extractAndCoerceMessagesWithFallback(
+          values as Record<string, unknown>,
+          this.#messagesKey
+        );
+        if (messages == null) return null;
+        return {
+          messages,
+          toolCalls: seedToolCallsFromMessages(namespace, messages),
+        };
+      } catch {
+        return null;
+      }
+    })();
+    this.#scopedHistorySeeds.set(key, seed);
+    return seed;
+  }
+
+  /**
+   * Reuse the hydrate-time discovery history page as scoped projection data
+   * when it already contains checkpoint values for a namespace.
+   *
+   * The discovery read is required to resolve subagent execution namespaces and
+   * subgraph hosts. That same page often includes the latest values for those
+   * namespaces, so priming `#scopedHistorySeeds` here lets later
+   * `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` mounts
+   * hydrate from memory instead of issuing an immediate second `getHistory`
+   * request. If a namespace is not present in the bounded page,
+   * `#getScopedHistorySeed` still falls back to a targeted `checkpoint_ns`
+   * history read.
+   */
+  #primeScopedHistorySeedsFromHistory(
+    threadId: string,
+    history: Array<{
+      checkpoint?: { checkpoint_ns?: unknown };
+      values?: unknown;
+    }>
+  ): void {
+    for (const state of history) {
+      const checkpointNs = state.checkpoint?.checkpoint_ns;
+      if (typeof checkpointNs !== "string" || checkpointNs.length === 0) {
+        continue;
+      }
+      const namespace = checkpointNs
+        .split(NAMESPACE_SEPARATOR)
+        .filter((segment) => segment.length > 0);
+      if (namespace.length === 0) continue;
+      const key = `${threadId}|${namespaceKey(namespace)}`;
+      if (this.#scopedHistorySeeds.has(key)) continue;
+      const values = state.values;
+      if (values == null || typeof values !== "object") continue;
+      const messages = extractAndCoerceMessagesWithFallback(
+        values as Record<string, unknown>,
+        this.#messagesKey
+      );
+      if (messages == null) continue;
+      this.#scopedHistorySeeds.set(
+        key,
+        Promise.resolve({
+          messages,
+          toolCalls: seedToolCallsFromMessages(namespace, messages),
+        })
+      );
+    }
   }
 
   /**
@@ -1364,6 +1582,7 @@ export class StreamController<
     this.#lifecycleLoading.reset();
     this.#subagents.reset();
     this.#subgraphs.reset();
+    this.#scopedHistorySeeds.clear();
     this.#activeRunId = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();
@@ -2098,6 +2317,16 @@ function namespaceIsDefaultOnly(
   );
 }
 
+function defaultSubagentToolCallId(
+  namespace: readonly string[]
+): string | undefined {
+  if (namespace.length !== 1) return undefined;
+  const segment = namespace[0];
+  if (!segment.startsWith("tools:")) return undefined;
+  const id = segment.slice("tools:".length);
+  return id.length > 0 ? id : undefined;
+}
+
 /**
  * Extract and coerce the configured messages key from a values object.
  *
@@ -2110,6 +2339,20 @@ function extractAndCoerceMessages(
 ): BaseMessage[] {
   const raw = values[messagesKey];
   if (!Array.isArray(raw)) return [];
+  return ensureMessageInstances(
+    raw as (Message | BaseMessage)[]
+  ) as BaseMessage[];
+}
+
+function extractAndCoerceMessagesWithFallback(
+  values: Record<string, unknown>,
+  messagesKey: string
+): BaseMessage[] | null {
+  let raw = values[messagesKey];
+  if (!Array.isArray(raw) && messagesKey !== "messages") {
+    raw = values.messages;
+  }
+  if (!Array.isArray(raw)) return null;
   return ensureMessageInstances(
     raw as (Message | BaseMessage)[]
   ) as BaseMessage[];
