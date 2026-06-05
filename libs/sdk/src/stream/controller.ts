@@ -124,21 +124,27 @@ function lifecycleReason(event: string | undefined): RunExecutionReason | null {
  * up on the first local `submit()` (the existing deferred-pump path) or
  * a thread swap that lands on an active thread.
  *
- * Signals (either ⇒ active):
+ * The gate is deliberately conservative: we only conclude *idle* when
+ * the state proves it. A thread is treated as active unless `next` is a
+ * present, empty array AND no task carries a pending interrupt:
+ *  - `next` missing / not an array: unknown shape (a server or custom
+ *    client may omit it). Treat as active so an already-running
+ *    server-side run is still observed on reconnect — never silently
+ *    disable streaming on an unfamiliar `getState` shape.
  *  - `next.length > 0`: the checkpoint still has nodes to execute, i.e.
- *    a run is mid-flight or paused at an interrupt. A completed run
- *    leaves `next` empty.
- *  - any `tasks[].interrupts` non-empty: the thread is interrupted and a
- *    resume (which starts a run) must be observable.
- *
- * Unknown/missing state is treated as active so a transient `getState`
- * shape never silently disables streaming.
+ *    a run is mid-flight or paused at an interrupt.
+ *  - `next` is `[]` but a `tasks[].interrupts` is non-empty: the thread
+ *    is interrupted and a resume (which starts a run) must be observable.
+ *  - `next` is `[]` and no pending interrupts: a completed run → idle.
  */
 function isThreadStateActive(
   state: { next?: unknown; tasks?: unknown } | null | undefined
 ): boolean {
   if (state == null) return true;
-  if (Array.isArray(state.next) && state.next.length > 0) return true;
+  // Only a present, empty `next` array proves "no nodes pending". A
+  // missing/non-array `next` is an unknown shape → assume active.
+  if (!Array.isArray(state.next)) return true;
+  if (state.next.length > 0) return true;
   if (Array.isArray(state.tasks)) {
     for (const task of state.tasks) {
       const interrupts = (task as { interrupts?: unknown } | null)?.interrupts;

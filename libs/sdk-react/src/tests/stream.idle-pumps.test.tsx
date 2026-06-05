@@ -17,13 +17,19 @@ import { expect, it } from "vitest";
 import { render } from "vitest-browser-react";
 
 import { ParallelFanoutReconnectStream } from "./components/ParallelFanoutReconnectStream.js";
+import { InterruptStream } from "./components/InterruptStream.js";
 import { FANOUT_WORKER_COUNT } from "./fixtures/parallel-constants.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
-it("opens no idle /events on reconnect to a finished thread, then opens them on submit", async () => {
-  let eventsCount = 0;
+/**
+ * Wrap global `fetch` to count `/events` (SSE pump) opens. The SDK
+ * Client + transport both route through global fetch, so this captures
+ * every pump regardless of how the request is issued. Returns a handle
+ * to start/stop counting and restore the original.
+ */
+function trackEventsRequests() {
+  let count = 0;
   let counting = false;
-  const eventBodies: string[] = [];
   const originalFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url =
@@ -33,16 +39,26 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
           ? input.toString()
           : (input as Request).url;
     if (counting && typeof url === "string" && url.includes("/events")) {
-      eventsCount += 1;
-      try {
-        eventBodies.push(String(init?.body ?? ""));
-      } catch {
-        /* ignore */
-      }
+      count += 1;
     }
     return originalFetch(input, init);
   }) as typeof fetch;
+  return {
+    start() {
+      count = 0;
+      counting = true;
+    },
+    get count() {
+      return count;
+    },
+    restore() {
+      globalThis.fetch = originalFetch;
+    },
+  };
+}
 
+it("opens no idle /events on reconnect to a finished thread, then opens them on submit", async () => {
+  const events = trackEventsRequests();
   const screen = await render(
     <ParallelFanoutReconnectStream
       apiUrl={apiUrl}
@@ -62,8 +78,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
       .toHaveTextContent("Not loading");
 
     // ---- reconnect: fresh controller hydrates a FINISHED thread ----
-    counting = true;
-    eventsCount = 0;
+    events.start();
     await screen.getByTestId("reconnect").click();
 
     // Cards reappear from the seed (getState + getHistory) — no SSE.
@@ -77,9 +92,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     // The core assertion: a finished thread opens ZERO /events.
-    expect(eventsCount, `/events bodies: ${JSON.stringify(eventBodies)}`).toBe(
-      0
-    );
+    expect(events.count).toBe(0);
 
     // ---- submit on the reconnected idle thread → pumps come up ----
     await screen.getByTestId("submit").click();
@@ -91,9 +104,52 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
       .toHaveTextContent("Not loading");
 
     // Sending a message brought the pumps up.
-    expect(eventsCount).toBeGreaterThan(0);
+    expect(events.count).toBeGreaterThan(0);
   } finally {
-    globalThis.fetch = originalFetch;
+    events.restore();
+    await cleanupRender(screen);
+  }
+});
+
+it("opens /events on hydrate of an interrupted thread (active → eager pumps)", async () => {
+  const events = trackEventsRequests();
+  let capturedThreadId: string | undefined;
+
+  // ---- seed: run the interrupt graph until it pauses at the interrupt ----
+  const seed = await render(
+    <InterruptStream
+      apiUrl={apiUrl}
+      onThreadId={(id) => {
+        capturedThreadId = id;
+      }}
+    />
+  );
+  try {
+    await seed.getByTestId("submit").click();
+    await expect
+      .element(seed.getByTestId("interrupt-count"), { timeout: 20_000 })
+      .toHaveTextContent("1");
+  } finally {
+    await cleanupRender(seed);
+  }
+  expect(capturedThreadId).toMatch(/.+/);
+
+  // ---- reconnect: a fresh controller hydrates the INTERRUPTED thread ----
+  events.start();
+  const screen = await render(
+    <InterruptStream apiUrl={apiUrl} threadId={capturedThreadId} />
+  );
+  try {
+    // The pending interrupt is restored from getState...
+    await expect
+      .element(screen.getByTestId("interrupt-count"), { timeout: 20_000 })
+      .toHaveTextContent("1");
+    // ...and because the thread is active (interrupted), the pumps open
+    // eagerly so the user's resume — which starts a run — is observed.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(events.count).toBeGreaterThan(0);
+  } finally {
+    events.restore();
     await cleanupRender(screen);
   }
 });

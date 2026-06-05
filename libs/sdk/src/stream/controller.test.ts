@@ -724,6 +724,40 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("opens SSE pumps eagerly when getState omits `next` (unknown shape)", async () => {
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const thread = {
+      subscribe,
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        // Custom/legacy server shape with no `next` array — must NOT be
+        // mistaken for "finished", or an in-flight run goes unobserved.
+        getState: vi.fn(async () => ({ values: {} })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-no-next",
+    });
+    await controller.hydrationPromise;
+
+    expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await waitForExpectation(() => {
+      expect(subscribe).toHaveBeenCalled();
+    });
+    await controller.dispose();
+  });
+
   it("opens the lifecycle watcher eagerly for an interrupted thread", async () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
