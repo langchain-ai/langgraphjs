@@ -541,6 +541,16 @@ export class StreamController<
         const checkpointId = state.checkpoint?.checkpoint_id;
         const parentCheckpointId =
           state.parent_checkpoint?.checkpoint_id ?? undefined;
+        /**
+         * Carry the checkpoint `step` from `getState()` metadata so the
+         * root message projection treats this seed as the authoritative
+         * latest superstep. The content pump's reconnect replay emits
+         * older checkpoints (lower step); marking the seed's step lets
+         * the projection reject those as stale instead of letting them
+         * remove the seeded message tail (the final assistant turn).
+         */
+        const seedStep = (state.metadata as { step?: unknown } | undefined)
+          ?.step;
         const syntheticCheckpoint =
           typeof checkpointId === "string"
             ? {
@@ -548,6 +558,7 @@ export class StreamController<
                 ...(parentCheckpointId != null
                   ? { parent_id: parentCheckpointId }
                   : {}),
+                ...(typeof seedStep === "number" ? { step: seedStep } : {}),
               }
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
@@ -1691,6 +1702,7 @@ export class StreamController<
       const data = event.params.data as {
         id?: unknown;
         parent_id?: unknown;
+        step?: unknown;
       } | null;
       this.#messageMetadata.bufferCheckpoint(event.params.namespace, data);
       return;
@@ -1855,7 +1867,9 @@ export class StreamController<
       nextValues = state as StateType;
       nextMessages = [];
     }
-    this.#rootMessages.applyValues(nextValues, nextMessages);
+    this.#rootMessages.applyValues(nextValues, nextMessages, {
+      step: checkpoint?.step,
+    });
     if (nextMessages.length > 0) {
       // Any optimistic message the server just echoed is now
       // server-authoritative: flip its status `pending` → `sent`.

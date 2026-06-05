@@ -124,6 +124,20 @@ function valuesEvent(messages: unknown[], seq: number): Event {
   } as Event;
 }
 
+function checkpointsEvent(step: number, seq: number, id = `cp-${step}`): Event {
+  return {
+    type: "event",
+    event_id: `checkpoints-${step}-${seq}`,
+    seq,
+    method: "checkpoints",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: { id, step },
+    },
+  } as Event;
+}
+
 function lifecycleEvent(event: string, seq: number): Event {
   return {
     type: "event",
@@ -383,6 +397,85 @@ describe("StreamController", () => {
     });
 
     unsubscribe();
+    await controller.dispose();
+  });
+
+  it("does not drop hydrate-seeded tail messages when the root pump replays an older checkpoint", async () => {
+    // Reconnect to an active thread whose getState() already carries the
+    // finished message tail (human → ai(tool) → tool → ai(final)). The
+    // root pump then replays the run from an earlier checkpoint whose
+    // values snapshot only has the first two messages. The earlier
+    // (older) snapshot must NOT be treated as a removal of the seeded
+    // tail — otherwise the final assistant message vanishes after the
+    // /events replay lands, exactly the deep-agent reconnect symptom.
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const seededMessages = [
+      { type: "human", content: "compare frameworks", id: "human-1" },
+      {
+        type: "ai",
+        id: "ai-1",
+        content: "",
+        tool_calls: [
+          {
+            id: "toolu_1",
+            name: "task",
+            args: { subagent_type: "researcher", description: "react" },
+            type: "tool_call",
+          },
+        ],
+      },
+      { type: "tool", id: "tool-1", content: "react facts", tool_call_id: "toolu_1" },
+      { type: "ai", id: "ai-final", content: "All workers completed." },
+    ];
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: seededMessages },
+          next: ["agent"],
+          checkpoint: { checkpoint_id: "cp-latest" },
+          metadata: { step: 5 },
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().messages).toHaveLength(4);
+    });
+    await rootSubscription.started;
+
+    // Older replay checkpoint (step 1): only the first two messages
+    // exist yet. The seed carried the latest step (5), so this is stale.
+    rootSubscription.push(checkpointsEvent(1, 1));
+    rootSubscription.push(
+      valuesEvent([seededMessages[0], seededMessages[1]], 2)
+    );
+
+    // Give the projection's macrotask flush time to (incorrectly) drop.
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The seeded tail (tool-1, ai-final) must survive the older snapshot.
+    await waitForExpectation(() => {
+      const ids = controller.rootStore
+        .getSnapshot()
+        .messages.map((m) => (m as { id?: string }).id);
+      expect(ids).toContain("ai-final");
+      expect(ids).toContain("tool-1");
+    });
+
     await controller.dispose();
   });
 

@@ -148,6 +148,53 @@ it("opening every subagent card at once after reconnect stays bounded (resolves 
   }
 });
 
+it("keeps the final root AI message after reconnect once every subagent card resolves", async () => {
+  const screen = await render(
+    <ParallelFanoutReconnectStream
+      apiUrl={apiUrl}
+      assistantId="parallel_fanout"
+      kind="subagent"
+      openAll
+    />
+  );
+
+  try {
+    // ---- producer: run the fan-out to completion ----
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 20_000 })
+      .toHaveTextContent("Not loading");
+    // The orchestrator's final summary turn is part of root messages.
+    await expect
+      .element(screen.getByTestId("root-message-texts"), { timeout: 20_000 })
+      .toHaveTextContent("All workers completed.");
+
+    // ---- reconnect: every card's panel mounts at once and races the
+    // hydrate-time seed; the root final message must survive. ----
+    await screen.getByTestId("reconnect").click();
+    await expect
+      .element(screen.getByTestId("subagent-count"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("panels-ready"), { timeout: 20_000 })
+      .toHaveTextContent(String(FANOUT_WORKER_COUNT));
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 20_000 })
+      .toHaveTextContent("Not loading");
+
+    // Regression: the final root AI message must remain after the scoped
+    // card pumps resolve — it must not be dropped from root messages.
+    await expect
+      .element(screen.getByTestId("root-message-texts"), { timeout: 20_000 })
+      .toHaveTextContent("All workers completed.");
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
 it("seeds M parallel subgraphs on reconnect with a bounded getHistory cost", async () => {
   const screen = await render(
     <ParallelFanoutReconnectStream

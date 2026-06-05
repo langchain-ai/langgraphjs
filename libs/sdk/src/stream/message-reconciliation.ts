@@ -35,6 +35,14 @@ export interface ReconcileMessagesFromValuesOptions {
     valuesMessage: BaseMessage,
     streamedMessage: BaseMessage
   ) => boolean;
+  /**
+   * When true, treat the snapshot as a non-authoritative (older / replayed)
+   * view: never drop a current message just because it is absent from this
+   * snapshot. Used on reconnect, where the content pump replays older
+   * checkpoints after the authoritative `getState()` seed — an older
+   * snapshot legitimately lacks later messages and must not remove them.
+   */
+  readonly addOnly?: boolean;
 }
 
 export interface ReconciledMessages {
@@ -58,6 +66,7 @@ export function reconcileMessagesFromValues({
   previousValueMessageIds,
   streamedMessageIds,
   preferValuesMessage,
+  addOnly,
 }: ReconcileMessagesFromValuesOptions): ReconciledMessages {
   const valueMessageIds = new Set<string>();
   const merged: BaseMessage[] = [];
@@ -92,7 +101,11 @@ export function reconcileMessagesFromValues({
     const id = normalizedMessageId(existing);
     if (id == null) continue;
     if (valueMessageIds.has(id)) continue;
-    if (previousValueMessageIds.has(id)) continue;
+    // A previously-seen id missing from this snapshot is a server-side
+    // removal — UNLESS this is an older/replayed snapshot (`addOnly`),
+    // where the absence only means "this earlier checkpoint predates the
+    // message", not "the message was removed".
+    if (!addOnly && previousValueMessageIds.has(id)) continue;
     if (streamedMessageIds != null && !streamedMessageIds.has(id)) continue;
     merged.push(existing);
   }

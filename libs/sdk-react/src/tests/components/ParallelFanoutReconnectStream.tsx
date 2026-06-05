@@ -154,6 +154,13 @@ function StreamView({
       <div data-testid="loading">
         {thread.isLoading ? "Loading..." : "Not loading"}
       </div>
+      <div data-testid="root-message-count">{thread.messages.length}</div>
+      <div data-testid="root-message-texts">
+        {thread.messages
+          .map((m) => (typeof m.text === "string" ? m.text : ""))
+          .filter((t) => t.length > 0)
+          .join("|")}
+      </div>
       <div data-testid="subagent-count">{thread.subagents.size}</div>
       <div data-testid="subgraph-count">{thread.subgraphs.size}</div>
       <div data-testid="card-count">{cards.length}</div>
