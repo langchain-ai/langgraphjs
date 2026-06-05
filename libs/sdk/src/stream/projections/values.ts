@@ -15,7 +15,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import {
   ensureMessageInstances,
   tryCoerceMessageLikeToMessage,
-} from "../../ui/messages.js";
+} from "../message-coercion.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";

@@ -22,9 +22,9 @@ import {
   assembledMessageToBaseMessage,
   type ExtendedMessageRole,
 } from "../assembled-to-message.js";
-import { ensureMessageInstances } from "../../ui/messages.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
+import { ensureMessageInstances } from "../message-coercion.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
 import {
   buildMessageIndex,

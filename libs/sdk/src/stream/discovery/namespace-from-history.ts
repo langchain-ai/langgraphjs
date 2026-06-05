@@ -19,6 +19,7 @@ import type { Client } from "../../client/index.js";
 import type { Config, ThreadState } from "../../schema.js";
 import { NAMESPACE_SEPARATOR } from "../constants.js";
 import { namespaceKey } from "../namespace.js";
+import { normalizeAIMessageToolCalls } from "../message-coercion.js";
 
 type AnyCheckpoint = ThreadState<Record<string, unknown>>;
 
@@ -108,14 +109,21 @@ export function collectPositionalTaskMappings(
   let toolCalls: Array<{ id?: string; name?: string }> | undefined;
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
     const m = msgs[i] as Record<string, unknown>;
+    if (m.type !== "ai") continue;
+    const normalized = normalizeAIMessageToolCalls(
+      m as unknown as Parameters<typeof normalizeAIMessageToolCalls>[0]
+    ) as Record<string, unknown>;
+    const normalizedToolCalls = normalized.tool_calls;
     if (
-      m.type === "ai" &&
-      Array.isArray(m.tool_calls) &&
-      (m.tool_calls as Array<{ name?: string }>).some(
+      Array.isArray(normalizedToolCalls) &&
+      (normalizedToolCalls as Array<{ name?: string }>).some(
         (tc) => tc.name === "task"
       )
     ) {
-      toolCalls = m.tool_calls as Array<{ id?: string; name?: string }>;
+      toolCalls = normalizedToolCalls as Array<{
+        id?: string;
+        name?: string;
+      }>;
       break;
     }
   }

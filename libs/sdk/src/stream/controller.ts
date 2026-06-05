@@ -34,12 +34,12 @@ import type { Interrupt } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
-import { ensureMessageInstances } from "../ui/messages.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
+import { ensureMessageInstances } from "./message-coercion.js";
 import {
   SubagentDiscovery,
   type SubagentMap,

@@ -119,6 +119,42 @@ describe("mapSubagentNamespaces", () => {
     expect(map.get("task-b")).toBe("tools:uuid-b");
   });
 
+  it("reads positional tool calls from snake_case content_blocks in history", () => {
+    const history = [
+      {
+        values: {
+          messages: [
+            {
+              type: "ai",
+              content: [],
+              content_blocks: [
+                { type: "tool_call", id: "task-a", name: "task", args: {} },
+              ],
+            },
+          ],
+        },
+        next: [],
+        checkpoint: checkpoint("", "cp-content-blocks"),
+        metadata: {},
+        parent_checkpoint: null,
+        tasks: [
+          {
+            id: "uuid-a",
+            name: "tools",
+            path: ["__pregel_push", 0],
+            error: null,
+            interrupts: [],
+            checkpoint: null,
+            state: null,
+          },
+        ],
+      } as unknown as ThreadState<Record<string, unknown>>,
+    ];
+
+    const map = mapSubagentNamespaces(history, ["task-a"]);
+    expect(map.get("task-a")).toBe("tools:uuid-a");
+  });
+
   it("positional fallback indexes path[1] into the full tool_calls array", () => {
     // AI message mixes a normal tool call (index 0) before the subagent
     // `task` call (index 1). Both push tasks are still pending, so only the
