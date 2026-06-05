@@ -25,6 +25,7 @@ import {
 import {
   StateGraph,
   MessagesAnnotation,
+  Annotation,
   Command,
   interrupt,
   pushMessage,
@@ -120,6 +121,27 @@ const slowGraph = new StateGraph(MessagesAnnotation)
       setTimeout(resolve, 400);
     });
     return { messages: [new AIMessage("Done.")] };
+  })
+  .addEdge(START, "agent")
+  .compile();
+
+// State with a non-message channel alongside `messages`, used to
+// exercise optimistic handling of non-message input keys. Sleeps
+// before overwriting `status` with the server-authoritative value.
+const StatefulState = Annotation.Root({
+  ...MessagesAnnotation.spec,
+  status: Annotation<string>({
+    reducer: (_prev, next) => next,
+    default: () => "idle",
+  }),
+});
+
+const statefulValuesGraph = new StateGraph(StatefulState)
+  .addNode("agent", async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 400);
+    });
+    return { messages: [new AIMessage("Done.")], status: "final" };
   })
   .addEdge(START, "agent")
   .compile();
@@ -533,6 +555,7 @@ const graphs: Record<string, AnyPregel> = {
   multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
   parentAgent,
   slow_graph: slowGraph,
+  stateful_values_graph: statefulValuesGraph,
   customChannelAgent,
   namedCustomChannelAgent,
   embeddedSubgraphAgent,

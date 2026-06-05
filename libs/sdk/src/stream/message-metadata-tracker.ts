@@ -48,6 +48,24 @@ import { StreamStore } from "./store.js";
 import { namespaceKey } from "./namespace.js";
 
 /**
+ * Optimistic lifecycle status for a message that originated from a
+ * local {@link StreamController.submit} before the server echoed it.
+ *
+ *   - `"pending"` — applied optimistically; the run is in flight and
+ *     the server has not yet echoed this id in a `values` snapshot.
+ *   - `"sent"`    — the server echoed the id (run progressed); the
+ *     message is now server-authoritative.
+ *   - `"failed"`  — the run failed before the id was echoed. The
+ *     message is kept (so UIs can show it with a retry affordance) but
+ *     is dropped on the next {@link StreamController.hydrate} because
+ *     it was never persisted server-side.
+ *
+ * Server-originated messages (history, streamed assistant turns) never
+ * carry a status — `undefined` means "not optimistic".
+ */
+export type OptimisticStatus = "pending" | "sent" | "failed";
+
+/**
  * Metadata tracked per message id. Surfaced to applications via
  * `useMessageMetadata(stream, messageId)`.
  */
@@ -62,6 +80,13 @@ export interface MessageMetadata {
    * the caller stripped them upstream).
    */
   readonly parentCheckpointId: string | undefined;
+
+  /**
+   * Optimistic lifecycle status, present only for messages applied
+   * locally by an optimistic `submit()`. `undefined` for ordinary
+   * server-originated messages. See {@link OptimisticStatus}.
+   */
+  readonly optimisticStatus?: OptimisticStatus;
 }
 
 /**
@@ -127,12 +152,22 @@ export class MessageMetadataTracker {
   >();
 
   /**
+   * Ids of messages currently in the `"pending"` optimistic state.
+   * Maintained alongside the metadata map so the controller can cheaply
+   * (a) flip ids to `"sent"` when the server echoes them and (b) flip
+   * any leftover ids to `"sent"` / `"failed"` at run terminal, without
+   * scanning the whole metadata map.
+   */
+  readonly #pendingOptimisticIds = new Set<string>();
+
+  /**
    * Drop all buffered checkpoints and reset the metadata map to the
    * shared empty instance. Called on thread rebind / dispose so a new
    * thread's metadata can't bleed into the old one.
    */
   reset(): void {
     this.#pendingCheckpointByNamespace.clear();
+    this.#pendingOptimisticIds.clear();
     this.store.setState(() => EMPTY_METADATA_MAP);
   }
 
@@ -215,6 +250,94 @@ export class MessageMetadataTracker {
       }
       next.set(id, { ...prev, ...metadata });
       changed = true;
+    }
+    if (changed) this.store.setState(() => next);
+  }
+
+  /**
+   * Mark a set of message ids as optimistically `"pending"`.
+   *
+   * Called from {@link StreamController}'s optimistic submit path right
+   * after the messages are appended to the projection, so a UI can
+   * render a "sending…" affordance via
+   * `useMessageMetadata(stream, id).optimisticStatus`.
+   *
+   * @param ids - Message ids that were just applied optimistically.
+   */
+  markPending(ids: Iterable<string>): void {
+    let changed = false;
+    const next = new Map(this.store.getSnapshot());
+    for (const id of ids) {
+      if (typeof id !== "string" || id.length === 0) continue;
+      this.#pendingOptimisticIds.add(id);
+      const prev = next.get(id);
+      if (prev?.optimisticStatus === "pending") continue;
+      next.set(id, {
+        parentCheckpointId: prev?.parentCheckpointId,
+        ...prev,
+        optimisticStatus: "pending",
+      });
+      changed = true;
+    }
+    if (changed) this.store.setState(() => next);
+  }
+
+  /**
+   * Transition the given ids out of `"pending"`.
+   *
+   * Only ids currently tracked as pending are affected, so passing a
+   * full server `values.messages` id list (to flip echoed messages to
+   * `"sent"`) never stamps a status onto ordinary server messages.
+   *
+   * @param ids    - Candidate ids (e.g. all ids in a server snapshot,
+   *   or the ids echoed by a single submit).
+   * @param status - Terminal optimistic status (`"sent"` / `"failed"`).
+   */
+  resolvePending(ids: Iterable<string>, status: OptimisticStatus): void {
+    let changed = false;
+    const next = new Map(this.store.getSnapshot());
+    for (const id of ids) {
+      if (!this.#pendingOptimisticIds.has(id)) continue;
+      this.#pendingOptimisticIds.delete(id);
+      const prev = next.get(id);
+      next.set(id, {
+        parentCheckpointId: prev?.parentCheckpointId,
+        ...prev,
+        optimisticStatus: status,
+      });
+      changed = true;
+    }
+    if (changed) this.store.setState(() => next);
+  }
+
+  /**
+   * Snapshot of ids whose optimistic status is `"pending"` or
+   * `"failed"` — i.e. messages applied locally that the server has not
+   * echoed. Used by {@link StreamController.hydrate} to drop
+   * never-persisted optimistic messages so a reload converges to
+   * server truth.
+   */
+  unpersistedOptimisticIds(): Set<string> {
+    const ids = new Set<string>(this.#pendingOptimisticIds);
+    for (const [id, meta] of this.store.getSnapshot()) {
+      if (meta.optimisticStatus === "failed") ids.add(id);
+    }
+    return ids;
+  }
+
+  /**
+   * Drop all metadata for the given ids. Called after never-persisted
+   * optimistic messages are removed from the projection on
+   * {@link StreamController.hydrate}, so their status doesn't linger.
+   *
+   * @param ids - Message ids to forget.
+   */
+  forget(ids: Iterable<string>): void {
+    let changed = false;
+    const next = new Map(this.store.getSnapshot());
+    for (const id of ids) {
+      this.#pendingOptimisticIds.delete(id);
+      if (next.delete(id)) changed = true;
     }
     if (changed) this.store.setState(() => next);
   }

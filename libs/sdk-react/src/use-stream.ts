@@ -450,6 +450,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
   // Narrow once: a non-string `transport` is a custom adapter; anything
@@ -507,6 +508,7 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        optimistic: asBag.optimistic,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, assistantId, transport]

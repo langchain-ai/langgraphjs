@@ -1020,4 +1020,89 @@ describe("RootMessageProjection", () => {
       expect(values.messages).toBeUndefined();
     });
   });
+
+  describe("appendOptimistic", () => {
+    it("appends an optimistic message after existing history", async () => {
+      const { store, projection } = makeProjection();
+
+      const existing = new AIMessage({ id: "a1", content: "prior" });
+      projection.applyValues({ messages: [existing] } as State, [existing]);
+      await drainFlush();
+
+      const optimistic = new HumanMessage({ id: "h1", content: "hi" });
+      projection.appendOptimistic([optimistic]);
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages.map((m) => m.id)).toEqual(["a1", "h1"]);
+    });
+
+    it("merges non-message extraValues into values", async () => {
+      const { store, projection } = makeProjection();
+
+      const optimistic = new HumanMessage({ id: "h1", content: "hi" });
+      projection.appendOptimistic([optimistic], { cursor: "pending" });
+      await drainFlush();
+
+      expect((store.getSnapshot().values as State).cursor).toBe("pending");
+    });
+
+    it("reconciles by id when the server echoes the message", async () => {
+      const { store, projection } = makeProjection();
+
+      const optimistic = new HumanMessage({ id: "h1", content: "hi" });
+      projection.appendOptimistic([optimistic]);
+      await drainFlush();
+
+      // Server echoes [h1, a1] — no duplicate h1, ai appended.
+      const echoed = new HumanMessage({ id: "h1", content: "hi" });
+      const ai = new AIMessage({ id: "a1", content: "reply" });
+      projection.applyValues({ messages: [echoed, ai] } as State, [echoed, ai]);
+      await drainFlush();
+
+      expect(store.getSnapshot().messages.map((m) => m.id)).toEqual([
+        "h1",
+        "a1",
+      ]);
+    });
+  });
+
+  describe("dropOptimisticMessages", () => {
+    it("removes the given ids and preserves the rest", async () => {
+      const { store, projection } = makeProjection();
+
+      const a = new AIMessage({ id: "a1", content: "keep" });
+      const h = new HumanMessage({ id: "h1", content: "drop" });
+      projection.applyValues({ messages: [a] } as State, [a]);
+      projection.appendOptimistic([h]);
+      await drainFlush();
+
+      projection.dropOptimisticMessages(new Set(["h1"]));
+      await drainFlush();
+
+      expect(store.getSnapshot().messages.map((m) => m.id)).toEqual(["a1"]);
+    });
+  });
+
+  describe("restoreValueKeys", () => {
+    it("restores a previously-existing key and deletes a new one", async () => {
+      const { store, projection } = makeProjection();
+
+      const h = new HumanMessage({ id: "h1", content: "hi" });
+      projection.appendOptimistic([h], { cursor: "optimistic", added: "x" });
+      await drainFlush();
+
+      projection.restoreValueKeys([
+        { key: "cursor", hadKey: true, prevValue: "prev" },
+        { key: "added", hadKey: false, prevValue: undefined },
+      ]);
+      await drainFlush();
+
+      const values = store.getSnapshot().values as Record<string, unknown>;
+      expect(values.cursor).toBe("prev");
+      expect("added" in values).toBe(false);
+      // Messages are left intact (kept on failure).
+      expect(store.getSnapshot().messages.map((m) => m.id)).toEqual(["h1"]);
+    });
+  });
 });

@@ -37,6 +37,7 @@ The option bag is a discriminated union on `transport`:
 | `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Convenience callback fired when a run's active streaming phase ends. `runId` may be omitted for re-attached in-flight runs. |
 | `tools`         | `HeadlessToolImplementation[]`                                                            | Headless tools. Matching interrupts are auto-resolved with the handler's return value. See [Interrupts](./interrupts.md).   |
 | `onTool`        | `OnToolCallback`                                                                          | Observe headless-tool lifecycle events (`start` / `success` / `error`).                                                     |
+| `optimistic`    | `boolean`                                                                                 | Echo `submit()` input into `values` / `messages` immediately and reconcile by id as the server streams back. Defaults to `true`. Set `false` for server-authoritative-only. See [v1 migration §5.4](./v1-migration.md). |
 
 ### Agent Server branch (`AgentServerOptions`)
 
