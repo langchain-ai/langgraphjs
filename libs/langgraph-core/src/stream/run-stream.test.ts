@@ -380,7 +380,7 @@ describe("createGraphRunStream", () => {
     }
 
     const channelEvents = events.filter(
-      (e) => (e.method as string) === "custom-ext"
+      (e) => (e.method as string) === "custom:custom-ext"
     );
     expect(channelEvents).toHaveLength(1);
     expect(channelEvents[0].params.data).toEqual({ msg: "forwarded" });
@@ -512,7 +512,7 @@ describe("createGraphRunStream", () => {
     }
 
     const extEvents = events.filter(
-      (e) => (e.method as string) === "ext-data"
+      (e) => (e.method as string) === "custom:ext-data"
     );
     expect(extEvents).toHaveLength(1);
     expect(extEvents[0].params.data).toBe("ext-item");
