@@ -1,7 +1,4 @@
-import type {
-  BaseMessage,
-  BaseMessageChunk,
-} from "@langchain/core/messages";
+import type { BaseMessage, BaseMessageChunk } from "@langchain/core/messages";
 import {
   AIMessage,
   HumanMessage,
@@ -84,7 +81,9 @@ export function ensureMessageInstances(
   });
 }
 
-function normalizeSerializedContentBlocks<T extends MessageLike>(message: T): T {
+function normalizeSerializedContentBlocks<T extends MessageLike>(
+  message: T
+): T {
   const record = message as SerializedMessageWithContentBlocks;
   const contentBlocks = record.contentBlocks ?? record.content_blocks;
   if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
