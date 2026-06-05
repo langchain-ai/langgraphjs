@@ -21,7 +21,7 @@ function directMappingState(
   toolCallId: string,
   taskName: string,
   taskId: string
-): ThreadState {
+): ThreadState<Record<string, unknown>> {
   return {
     values: { messages: [] },
     next: [],
@@ -42,7 +42,7 @@ function directMappingState(
         state: null,
       },
     ],
-  } as unknown as ThreadState;
+  } as unknown as ThreadState<Record<string, unknown>>;
 }
 
 /** A checkpoint whose push tasks are still pending (positional only). */
@@ -50,7 +50,7 @@ function positionalState(
   toolCallIds: string[],
   taskNames: string[],
   taskIds: string[]
-): ThreadState {
+): ThreadState<Record<string, unknown>> {
   return {
     values: {
       messages: [
@@ -73,7 +73,30 @@ function positionalState(
       checkpoint: null,
       state: null,
     })),
-  } as unknown as ThreadState;
+  } as unknown as ThreadState<Record<string, unknown>>;
+}
+
+/** A pending checkpoint with arbitrary mixed tool_calls and push tasks. */
+function mixedPositionalState(
+  toolCalls: Array<{ id: string; name: string }>,
+  pushTasks: Array<{ taskId: string; index: number }>
+): ThreadState<Record<string, unknown>> {
+  return {
+    values: { messages: [{ type: "ai", tool_calls: toolCalls }] },
+    next: [],
+    checkpoint: checkpoint("", "cp-mixed"),
+    metadata: {},
+    parent_checkpoint: null,
+    tasks: pushTasks.map(({ taskId, index }) => ({
+      id: taskId,
+      name: "tools",
+      path: ["__pregel_push", index],
+      error: null,
+      interrupts: [],
+      checkpoint: null,
+      state: null,
+    })),
+  } as unknown as ThreadState<Record<string, unknown>>;
 }
 
 describe("mapSubagentNamespaces", () => {
@@ -96,6 +119,65 @@ describe("mapSubagentNamespaces", () => {
     expect(map.get("task-b")).toBe("tools:uuid-b");
   });
 
+  it("positional fallback indexes path[1] into the full tool_calls array", () => {
+    // AI message mixes a normal tool call (index 0) before the subagent
+    // `task` call (index 1). Both push tasks are still pending, so only the
+    // positional fallback runs. The subagent must resolve to *its own* push
+    // task (Send index 1), never the normal tool's push task at index 0.
+    const mixed = mixedPositionalState(
+      [
+        { id: "normal-1", name: "search" },
+        { id: "task-1", name: "task" },
+      ],
+      [
+        { taskId: "normal-uuid", index: 0 },
+        { taskId: "subagent-uuid", index: 1 },
+      ]
+    );
+    const map = mapSubagentNamespaces([mixed], ["task-1"]);
+    expect(map.get("task-1")).toBe("tools:subagent-uuid");
+  });
+
+  it("positional fallback maps multiple interleaved subagents by their own index", () => {
+    // tool_calls: [search(0), task-a(1), lookup(2), task-b(3)]. Each subagent
+    // must land on the push task at its own Send index, never a neighbour's.
+    const mixed = mixedPositionalState(
+      [
+        { id: "search-1", name: "search" },
+        { id: "task-a", name: "task" },
+        { id: "lookup-1", name: "lookup" },
+        { id: "task-b", name: "task" },
+      ],
+      [
+        { taskId: "search-uuid", index: 0 },
+        { taskId: "a-uuid", index: 1 },
+        { taskId: "lookup-uuid", index: 2 },
+        { taskId: "b-uuid", index: 3 },
+      ]
+    );
+    const map = mapSubagentNamespaces([mixed], ["task-a", "task-b"]);
+    expect(map.get("task-a")).toBe("tools:a-uuid");
+    expect(map.get("task-b")).toBe("tools:b-uuid");
+  });
+
+  it("positional fallback ignores a push index out of the tool_calls range", () => {
+    // A defensive guard: a push task whose Send index points past the end of
+    // tool_calls must not crash or mismap. Only the in-range subagent maps.
+    const mixed = mixedPositionalState(
+      [
+        { id: "search-1", name: "search" },
+        { id: "task-1", name: "task" },
+      ],
+      [
+        { taskId: "in-range-uuid", index: 1 },
+        { taskId: "orphan-uuid", index: 9 },
+      ]
+    );
+    const map = mapSubagentNamespaces([mixed], ["task-1"]);
+    expect(map.get("task-1")).toBe("tools:in-range-uuid");
+    expect(map.size).toBe(1);
+  });
+
   it("prefers direct mapping over positional across the whole history", () => {
     // Newer checkpoint only has a positional (pending) guess; older has the
     // correct direct mapping. Direct must win.
@@ -110,9 +192,11 @@ describe("mapSubagentNamespaces", () => {
 
 describe("resolveSubagentNamespaces", () => {
   it("issues exactly one getHistory call on the happy path", async () => {
-    const getHistory = vi.fn(async () => [
-      directMappingState("task-1", "tools", "uuid-1"),
-    ]);
+    const getHistory = vi.fn(
+      async (_threadId: string, _options?: Record<string, unknown>) => [
+        directMappingState("task-1", "tools", "uuid-1"),
+      ]
+    );
     const client = { threads: { getHistory } } as unknown as Client;
 
     const map = await resolveSubagentNamespaces(client, "t1", ["task-1"]);
@@ -161,7 +245,7 @@ describe("resolveSubagentNamespaces", () => {
 });
 
 describe("collectSubgraphHostNamespaces", () => {
-  function nsState(ns: string): ThreadState {
+  function nsState(ns: string): ThreadState<Record<string, unknown>> {
     return {
       values: {},
       next: [],
@@ -169,19 +253,78 @@ describe("collectSubgraphHostNamespaces", () => {
       metadata: {},
       parent_checkpoint: null,
       tasks: [],
-    } as unknown as ThreadState;
+    } as unknown as ThreadState<Record<string, unknown>>;
   }
 
-  it("promotes only namespaces that host a strictly-deeper namespace", () => {
-    const history = [
-      nsState("orchestrator:u1"),
-      nsState("research:u2"),
-      nsState("research:u2|researcher:u3"),
-      nsState("writer:u5"),
-    ];
+  it("promotes a single-level (values-only) subgraph host with no deeper namespace", () => {
+    // The values-only subgraph shape: a host checkpoint namespace appears
+    // with no `research:<uuid>|...` descendant. The old strict-prefix rule
+    // dropped these; they must hydrate immediately on reconnect.
+    const history = [nsState("research:u2")];
     const hosts = collectSubgraphHostNamespaces(history);
     expect(hosts.map((h) => h.namespace)).toEqual([["research:u2"]]);
     expect(hosts[0].status).toBe("complete");
+  });
+
+  it("promotes nested subgraph hosts and every non-internal ancestor", () => {
+    const history = [
+      nsState("research:u2"),
+      nsState("research:u2|inner:u3"),
+    ];
+    const hosts = collectSubgraphHostNamespaces(history);
+    expect(hosts.map((h) => h.namespace)).toEqual([
+      ["research:u2"],
+      ["research:u2", "inner:u3"],
+    ]);
+  });
+
+  it("synthesizes a parent host when only the deeper namespace is in the page", () => {
+    // The parent subgraph's own checkpoint may fall outside the fetched
+    // page; its `research:u2` ancestor must still be promoted from the
+    // deeper `research:u2|inner:u3` namespace alone.
+    const history = [nsState("research:u2|inner:u3")];
+    const hosts = collectSubgraphHostNamespaces(history);
+    expect(hosts.map((h) => h.namespace)).toEqual([
+      ["research:u2"],
+      ["research:u2", "inner:u3"],
+    ]);
+  });
+
+  it("tracks mixed running/complete hosts across a parallel fan-out", () => {
+    // Newest checkpoint: worker:u1 still pending (running); worker:u2 already
+    // finished and only present as a completed task in an older checkpoint.
+    const newest = {
+      values: {},
+      next: ["worker"],
+      checkpoint: checkpoint("", "cp-newest"),
+      metadata: {},
+      parent_checkpoint: null,
+      tasks: [
+        {
+          id: "u1",
+          name: "worker",
+          path: ["__pregel_pull", "worker"],
+          error: null,
+          interrupts: [],
+          checkpoint: { checkpoint_ns: "worker:u1" },
+          state: null,
+        },
+      ],
+    } as unknown as ThreadState<Record<string, unknown>>;
+    const history = [newest, nsState("worker:u2")];
+    const hosts = collectSubgraphHostNamespaces(history);
+    expect(hosts).toEqual([
+      { namespace: ["worker:u1"], status: "running" },
+      { namespace: ["worker:u2"], status: "complete" },
+    ]);
+  });
+
+  it("promotes a subgraph ancestor of a nested subagent namespace", () => {
+    // A subagent (`tools:*`) running inside a subgraph: the full namespace
+    // is internal and skipped, but its `research:u2` host ancestor is not.
+    const history = [nsState("research:u2|tools:u4")];
+    const hosts = collectSubgraphHostNamespaces(history);
+    expect(hosts.map((h) => h.namespace)).toEqual([["research:u2"]]);
   });
 
   it("excludes tool/subagent namespaces", () => {
@@ -212,8 +355,8 @@ describe("collectSubgraphHostNamespaces", () => {
           state: null,
         },
       ],
-    } as unknown as ThreadState;
-    const history = [newest, nsState("research:u2|researcher:u3")];
+    } as unknown as ThreadState<Record<string, unknown>>;
+    const history = [newest];
     const hosts = collectSubgraphHostNamespaces(history);
     expect(hosts).toEqual([{ namespace: ["research:u2"], status: "running" }]);
   });

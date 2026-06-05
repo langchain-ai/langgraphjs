@@ -1445,18 +1445,17 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("hydrate seeds subgraphStore from getHistory without any SSE event", async () => {
+  it("hydrate seeds subgraphStore from a values-only (single-level) subgraph in getHistory", async () => {
     const { thread } = discoveryThread();
+    // The values-only subgraph shape: the host checkpoint namespace appears
+    // with NO deeper `research:u1|...` descendant. The old strict-prefix
+    // rule dropped these, so the card only reappeared once SSE replay
+    // arrived; hydrate must now seed it directly from getHistory.
     const getHistory = vi.fn(async () => [
       {
         values: {},
         tasks: [],
         checkpoint: checkpointState("research:u1", "cp-a"),
-      },
-      {
-        values: {},
-        tasks: [],
-        checkpoint: checkpointState("research:u1|inner:u2", "cp-b"),
       },
     ]);
     const client = {

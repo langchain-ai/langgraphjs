@@ -77,9 +77,12 @@ export function collectDirectTaskMappings(
 
 /**
  * Phase 2 (fallback): align still-pending push tasks to the triggering
- * AI message's `task` tool calls by Send index (`path[1]`). Applied
- * only to ids Phase 1 could not resolve so a correct direct mapping is
- * never overwritten by a positional guess.
+ * AI message's tool calls by Send index (`path[1]`), where `path[1]`
+ * indexes into the *full* `tool_calls` array. Only push tasks whose
+ * targeted call is a subagent `task` are mapped, so a sibling
+ * non-subagent tool call in the same message can't capture a subagent's
+ * namespace. Applied only to ids Phase 1 could not resolve so a correct
+ * direct mapping is never overwritten by a positional guess.
  */
 export function collectPositionalTaskMappings(
   checkpoint: AnyCheckpoint,
@@ -102,7 +105,7 @@ export function collectPositionalTaskMappings(
   ];
   if (!Array.isArray(msgs)) return;
 
-  let aiMessage: Record<string, unknown> | undefined;
+  let toolCalls: Array<{ id?: string; name?: string }> | undefined;
   for (let i = msgs.length - 1; i >= 0; i -= 1) {
     const m = msgs[i] as Record<string, unknown>;
     if (
@@ -112,28 +115,22 @@ export function collectPositionalTaskMappings(
         (tc) => tc.name === "task"
       )
     ) {
-      aiMessage = m;
+      toolCalls = m.tool_calls as Array<{ id?: string; name?: string }>;
       break;
     }
   }
-  if (aiMessage == null) return;
+  if (toolCalls == null) return;
 
-  const subagentToolCalls = (
-    aiMessage.tool_calls as Array<{ id?: string; name?: string }>
-  ).filter((tc) => tc.name === "task");
-  if (subagentToolCalls.length === 0) return;
-
-  const sorted = [...pushTasks].sort((a, b) => {
-    const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
-    const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
-    return ai - bi;
-  });
-
-  for (let i = 0; i < sorted.length && i < subagentToolCalls.length; i += 1) {
-    const tc = subagentToolCalls[i];
-    const task = sorted[i];
+  // `path[1]` is the Send index into the *full* `tool_calls` array, not the
+  // subagent-only subset. Resolve each push task against that array and map
+  // it only when the targeted call is itself a `task`, so a sibling
+  // non-subagent tool call cannot capture a subagent's namespace.
+  for (const task of pushTasks) {
+    const index = (task.path as unknown[])[1] as number;
+    const tc = toolCalls[index];
     if (
-      tc?.id != null &&
+      tc?.name === "task" &&
+      tc.id != null &&
       typeof task.id === "string" &&
       typeof task.name === "string" &&
       targets.has(tc.id) &&
@@ -259,22 +256,38 @@ function isInternalSegment(segment: string): boolean {
 }
 
 /**
- * Identify subgraph host namespaces from checkpoint history by the same
- * strict-prefix rule the live runner uses: a namespace is a host iff a
- * strictly-deeper namespace was observed with it as a prefix.
+ * Identify subgraph host namespaces from checkpoint history.
+ *
+ * Unlike the live `lifecycle` path — where every node (including plain
+ * function nodes) emits a namespaced event, so a strict-prefix rule is
+ * needed to tell hosts from leaves — a non-root `checkpoint_ns` is only
+ * ever written for a genuine subgraph execution. Every observed
+ * checkpoint namespace is therefore a host, and so is each of its
+ * ancestors (each segment of a nested `checkpoint_ns` is itself a
+ * subgraph). This also recovers the values-only subgraph shape supported
+ * by `SubgraphDiscovery.#onValuesEvent`, where the host namespace (e.g.
+ * `research:<uuid>`) appears with no deeper `research:<uuid>|...` key —
+ * the old strict-prefix rule dropped those, so reconnecting waited for
+ * SSE replay instead of hydrating the card immediately.
  *
  * Tool/subagent namespaces (`tools:` / `task:`) are excluded — those are
  * owned by {@link ./subagents} and must not be duplicated as subgraphs
- * (mirrors `SubgraphDiscovery.#onValuesEvent`).
+ * (mirrors `SubgraphDiscovery.#onValuesEvent`). A namespace nested under
+ * a subgraph (e.g. `research:<uuid>|tools:<uuid>`) still promotes its
+ * non-internal `research:<uuid>` ancestor.
  */
 export function collectSubgraphHostNamespaces(
   history: AnyCheckpoint[]
 ): SubgraphHost[] {
-  // Collect every observed namespace tuple (state + task checkpoint_ns).
+  // Collect every observed namespace tuple (state + task checkpoint_ns)
+  // together with each of its non-empty ancestor prefixes: a parent
+  // subgraph's own checkpoint may fall outside the fetched page.
   const observed = new Map<string, string[]>();
   const record = (segments: string[]) => {
-    if (segments.length === 0) return;
-    observed.set(namespaceKey(segments), segments);
+    for (let depth = 1; depth <= segments.length; depth += 1) {
+      const slice = segments.slice(0, depth);
+      observed.set(namespaceKey(slice), slice);
+    }
   };
   for (const state of history) {
     record(checkpointNsToSegments(state.checkpoint?.checkpoint_ns));
@@ -292,14 +305,10 @@ export function collectSubgraphHostNamespaces(
     }
   }
 
-  const keys = [...observed.keys()];
   const hosts: SubgraphHost[] = [];
-  for (const key of keys) {
-    const segments = observed.get(key)!;
+  for (const [key, segments] of observed) {
     if (segments.some(isInternalSegment)) continue;
     const prefix = key + NAMESPACE_SEPARATOR;
-    const isHost = keys.some((other) => other.startsWith(prefix));
-    if (!isHost) continue;
     const running =
       pending.has(key) || [...pending].some((p) => p.startsWith(prefix));
     hosts.push({
