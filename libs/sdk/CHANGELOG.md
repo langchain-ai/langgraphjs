@@ -1,5 +1,16 @@
 # @langchain/langgraph-sdk
 
+## 1.9.18
+
+### Patch Changes
+
+- [#2500](https://github.com/langchain-ai/langgraphjs/pull/2500) [`f67772f`](https://github.com/langchain-ai/langgraphjs/commit/f67772ff3f7ac13d81576d395d7529de4eb4390b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resume useChannel subscriptions across serial runs
+
+  Enable `resumeOnPause` on the channel projection so `useChannel` keeps
+  accumulating events across prompts on the same thread. Clarify selector
+  docs and JSDoc: `useChannel` for the full event stream, `useExtension`
+  for the latest payload.
+
 ## 1.9.17
 
 ### Patch Changes
