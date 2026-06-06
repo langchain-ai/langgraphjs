@@ -1,5 +1,13 @@
 # @examples/ui-react
 
+## 0.0.19
+
+### Patch Changes
+
+- Updated dependencies [[`f67772f`](https://github.com/langchain-ai/langgraphjs/commit/f67772ff3f7ac13d81576d395d7529de4eb4390b)]:
+  - @langchain/langgraph-sdk@1.9.18
+  - @langchain/react@1.0.18
+
 ## 0.0.18
 
 ### Patch Changes
