@@ -13,8 +13,8 @@ subscription, and the last consumer's `DestroyRef` closes it.
 | `injectValues(stream, target?)` | State snapshot for the target. |
 | `injectMessageMetadata(stream, msgId)` | `{ parentCheckpointId }` for forking / editing. |
 | `injectSubmissionQueue(stream)` | `{ entries, size, cancel(id), clear() }` for the enqueue strategy. |
-| `injectExtension(stream, name, target?)` | Read a named protocol extension. |
-| `injectChannel(stream, channels, target?)` | Raw event buffer — escape hatch. |
+| `injectExtension(stream, name, target?)` | Latest payload of a `custom:<name>` extension. |
+| `injectChannel(stream, channels, target?)` | Raw event stream (bounded buffer, all runs) — escape hatch. |
 | `injectAudio` / `injectImages` / `injectVideo` / `injectFiles` | Multimodal media streams. |
 | `injectMediaUrl(media)` | Create + revoke an `objectURL` for a media handle. |
 
@@ -72,6 +72,17 @@ The first consumer of `injectMessages(stream, subagent)` opens a
 scoped subscription; when the last card unmounts, the subscription is
 released. Mounting / unmounting subagent cards mid-run is safe — no
 manual cleanup required.
+
+## `injectChannel` vs. `injectExtension`
+
+For a `custom:<name>` channel both injectors keep receiving events
+across serial runs on the same thread, but they expose different shapes:
+
+- **`injectExtension`** — the **latest** payload only. Use it for
+  "current state" panels (progress, score, status).
+- **`injectChannel`** — the **full history** of events as a bounded
+  buffer. Use it for an event log or to derive your own running totals,
+  e.g. `injectChannel(stream, ["custom:redaction-stats"])`.
 
 ## Media selectors
 

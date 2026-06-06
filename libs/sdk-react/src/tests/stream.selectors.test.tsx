@@ -195,6 +195,32 @@ it("unwraps named custom event payloads through useExtension", async () => {
   }
 });
 
+it("continues useChannel subscriptions across serial submits", async () => {
+  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("custom-event-count"))
+      .toHaveTextContent("3");
+
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("custom-event-count"))
+      .toHaveTextContent("6");
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
 it("continues useExtension subscriptions across serial submits", async () => {
   const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
 
