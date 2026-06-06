@@ -134,15 +134,23 @@ Escape hatch to the raw protocol event stream. Subscribe to one or more channels
 const events = useChannel(stream, ["values", "updates"]);
 ```
 
+The buffer keeps accumulating across serial runs for the lifetime of the thread, so this is the hook for an **event log / stream** of a channel — e.g. every payload published on a custom channel:
+
+```tsx
+const statsEvents = useChannel(stream, ["custom:redaction-stats"]);
+```
+
 Pass `target` (subagent / subgraph / `{ namespace }`) to scope. Useful for bespoke reducers that can't be expressed through `useValues` / `useMessages`.
 
 ## `useExtension`
 
-Read a single custom extension (wire-level `custom:<name>` channel) as a reactive snapshot:
+Read a single custom extension (wire-level `custom:<name>` channel) as a reactive snapshot of the **latest** payload:
 
 ```tsx
 const telemetry = useExtension<Telemetry>(stream, "telemetry");
 ```
+
+`useExtension` and `useChannel` are complementary for custom channels: reach for `useExtension` when you only need the current value (progress, score, status), and `useChannel` when you need the full history of events. Both keep receiving events across serial runs on the same thread.
 
 ## `useSubmissionQueue`
 

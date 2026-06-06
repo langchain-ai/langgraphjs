@@ -2,10 +2,13 @@
  * Raw channel escape hatch.
  *
  * Subscribes to an arbitrary list of channels at an arbitrary
- * namespace and retains a bounded buffer of events. Consumers that
- * need assembly semantics should use `messagesProjection`,
- * `toolCallsProjection`, etc. instead; this one is for inspection,
- * custom reducers, or niche use-cases.
+ * namespace and retains a bounded buffer of events. The subscription
+ * resumes across serial runs, so the buffer keeps accumulating events
+ * for the lifetime of the thread (use `extensionProjection` instead when
+ * you only need the most-recent payload of a single `custom:<name>`
+ * channel). Consumers that need assembly semantics should use
+ * `messagesProjection`, `toolCallsProjection`, etc. instead; this one is
+ * for inspection, custom reducers, or niche use-cases.
  */
 import type { Channel, Event } from "@langchain/protocol";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
@@ -101,6 +104,11 @@ export function channelProjection(
         thread,
         channels: chs as Channel[],
         namespace: ns,
+        // Keep the buffer alive across serial runs. Some transports pause a
+        // subscription on each run's terminal lifecycle event; without
+        // resuming, the channel would go silent after the first run and a
+        // second prompt on the same thread would emit no further events.
+        resumeOnPause: true,
         onEvent(event) {
           const current = store.getSnapshot();
           const next =

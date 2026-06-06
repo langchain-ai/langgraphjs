@@ -281,6 +281,11 @@ export function injectValues(
 /**
  * Subscribe to a `custom:<name>` stream extension — the most recent
  * payload emitted by the transformer, scoped to the target namespace.
+ *
+ * Returns only the latest value and resumes across serial runs, so it is
+ * ideal for "current state" panels (progress, score, status). When you
+ * need the full history of events rather than just the latest payload,
+ * use {@link injectChannel} instead.
  */
 export function injectExtension<T = unknown>(
   stream: AnyStream,
@@ -302,8 +307,13 @@ export function injectExtension<T = unknown>(
 /**
  * Raw-events escape hatch. Subscribes to one or more channels at a
  * namespace and returns a bounded buffer of raw protocol events.
- * Prefer {@link injectMessages} / {@link injectToolCalls} /
- * {@link injectValues} for the common cases.
+ *
+ * The buffer keeps accumulating across serial runs for the lifetime of
+ * the thread, so this is the hook to use for an event log / stream of a
+ * custom channel (e.g. `["custom:redaction-stats"]`). When you only need
+ * the latest payload of a single `custom:<name>` channel, prefer
+ * {@link injectExtension}. For the common message/tool/value cases prefer
+ * {@link injectMessages} / {@link injectToolCalls} / {@link injectValues}.
  */
 export type InjectChannelOptions = ChannelProjectionOptions;
 
