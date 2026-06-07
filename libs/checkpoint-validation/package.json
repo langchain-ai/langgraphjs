@@ -4,7 +4,7 @@
   "description": "Library for validating LangGraph checkpoint saver implementations.",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": "^20.0.0 || ^22.0.0 || >=24.0.0"
   },
   "main": "./dist/index.cjs",
   "types": "./dist/index.d.ts",
