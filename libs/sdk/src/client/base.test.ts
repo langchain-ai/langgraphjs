@@ -256,7 +256,7 @@ describe.each([["global"], ["mocked"]])(
               pending.push(() => resolve(makeResponse()));
             })
         );
-        expectedFetchMock = deferred as ReturnType<typeof vi.fn>;
+        expectedFetchMock = deferred as MockFetch;
         overrideFetchImplementation(deferred);
         (globalThis as any).fetch = deferred;
       });
