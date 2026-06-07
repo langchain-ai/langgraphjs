@@ -7,7 +7,7 @@ import { RootMessageProjection } from "./root-message-projection.js";
 import { StreamStore } from "./store.js";
 import { SubagentDiscovery } from "./discovery/index.js";
 import type { RootSnapshot } from "./types.js";
-import { ensureMessageInstances } from "../ui/messages.js";
+import { ensureMessageInstances } from "./message-coercion.js";
 
 interface State {
   messages?: unknown;

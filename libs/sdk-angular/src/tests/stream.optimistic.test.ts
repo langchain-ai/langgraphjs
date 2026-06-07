@@ -12,8 +12,6 @@ import {
 } from "./components/OptimisticStream.js";
 
 it("echoes the submitted message immediately as pending, then marks it sent", async () => {
-  // The slow graph sleeps before emitting, giving us a stable window to
-  // observe the optimistic (pending) message while the run is in flight.
   const screen = await render(OptimisticSlowStreamComponent);
 
   await screen.getByTestId("submit").click();
@@ -21,9 +19,13 @@ it("echoes the submitted message immediately as pending, then marks it sent", as
   await expect
     .element(screen.getByTestId("message-0-content"))
     .toHaveTextContent("Hello");
+  // The server echoes the input id within a frame or two, so the live
+  // `pending` status is too short-lived to poll reliably under suite load.
+  // Assert the sticky latch (it rendered `pending` at least once) instead
+  // of racing the transient.
   await expect
-    .element(screen.getByTestId("message-0-status"))
-    .toHaveTextContent("pending");
+    .element(screen.getByTestId("message-0-ever-pending"))
+    .toHaveTextContent("true");
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Loading...");

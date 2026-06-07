@@ -109,6 +109,14 @@ export interface CheckpointEnvelope {
    * {@link MessageMetadata.parentCheckpointId} on the next values event.
    */
   readonly parent_id?: string;
+  /**
+   * Monotonic superstep counter for the checkpoint. Used by the root
+   * message projection to distinguish a fresh/live `values` snapshot
+   * from an older one replayed by the content pump on reconnect, so a
+   * stale replay can't remove tail messages the authoritative
+   * `getState()` seed already established.
+   */
+  readonly step?: number;
 }
 
 /**
@@ -188,12 +196,15 @@ export class MessageMetadataTracker {
    */
   bufferCheckpoint(
     namespace: readonly string[],
-    data: { id?: unknown; parent_id?: unknown } | null
+    data: { id?: unknown; parent_id?: unknown; step?: unknown } | null
   ): void {
     if (data == null || typeof data.id !== "string") return;
     const envelope: CheckpointEnvelope = { id: data.id };
     if (typeof data.parent_id === "string") {
       (envelope as { parent_id?: string }).parent_id = data.parent_id;
+    }
+    if (typeof data.step === "number") {
+      (envelope as { step?: number }).step = data.step;
     }
     this.#pendingCheckpointByNamespace.set(namespaceKey(namespace), envelope);
   }

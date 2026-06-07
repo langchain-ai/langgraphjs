@@ -250,6 +250,19 @@ export interface RootEventBus {
   readonly channels: readonly Channel[];
   /** Subscribe; returns an unsubscribe handle. */
   subscribe(listener: (event: Event) => void): () => void;
+  /**
+   * Optional fast path for idle/stale threads: seed a scoped projection from
+   * checkpoint history instead of opening a replaying `/events` subscription.
+   * This produces a snapshot for finished-thread reconnects; active and
+   * interrupted threads return `false` so projections subscribe normally.
+   * Returns `false` when history cannot satisfy the projection and the caller
+   * should fall back to its normal subscription.
+   */
+  trySeedFromHistory?<T>(params: {
+    kind: "messages" | "toolCalls";
+    namespace: readonly string[];
+    store: StreamStore<T>;
+  }): Promise<boolean>;
 }
 
 /**

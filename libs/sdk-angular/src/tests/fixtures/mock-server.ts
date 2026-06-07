@@ -11,6 +11,7 @@ import {
   AIMessage,
   AIMessageChunk,
   BaseMessage,
+  HumanMessage,
   RemoveMessage,
 } from "@langchain/core/messages";
 import {
@@ -29,6 +30,7 @@ import {
   Command,
   interrupt,
   pushMessage,
+  Send,
   START,
   END,
   type LangGraphRunnableConfig,
@@ -471,6 +473,78 @@ const deepAgentGraph: DeepAgent = createDeepAgent({
   systemPrompt: "You are an AI coordinator that delegates tasks.",
 });
 
+// --- Parallel fan-out fixtures (subagents + subgraphs) ---
+
+const FANOUT_WORKER_COUNT = 6;
+
+const fanoutOrchestratorModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: Array.from({ length: FANOUT_WORKER_COUNT }, (_, i) => ({
+        name: "task",
+        args: {
+          description: `Worker worker-${String(i + 1).padStart(
+            3,
+            "0"
+          )} covering topic ${i + 1}`,
+          subagent_type: "worker",
+        },
+        id: `task-${i + 1}`,
+        type: "tool_call" as const,
+      })),
+    }),
+    new AIMessage("All workers completed."),
+  ],
+});
+
+const fanoutWorkerModel = new FakeToolCallingModel({
+  responses: [new AIMessage("Worker done.")],
+});
+
+const parallelFanoutGraph: DeepAgent = createDeepAgent({
+  model: fanoutOrchestratorModel,
+  subagents: [
+    {
+      name: "worker",
+      description: "A worker that completes a single delegated subtask.",
+      systemPrompt: "You are a worker. Complete the task and report back.",
+      tools: [],
+      model: fanoutWorkerModel,
+    },
+  ],
+  systemPrompt: "You are a coordinator that fans out work to many workers.",
+});
+
+const SUBGRAPH_WORKER_COUNT = 6;
+
+const parallelSubgraphWorkerModel = new FakeStreamingChatModel({
+  responses: [new AIMessage("Subgraph reply")],
+});
+
+const parallelSubgraphChild = new StateGraph(MessagesAnnotation)
+  .addNode("inner", async (state: { messages: BaseMessage[] }) => {
+    const response = await parallelSubgraphWorkerModel.invoke(state.messages);
+    return { messages: [response] };
+  })
+  .addEdge(START, "inner")
+  .compile();
+
+const parallelSubgraphGraph = new StateGraph(MessagesAnnotation)
+  .addNode("worker", parallelSubgraphChild, {
+    subgraphs: [parallelSubgraphChild],
+  })
+  .addConditionalEdges(START, () =>
+    Array.from(
+      { length: SUBGRAPH_WORKER_COUNT },
+      (_, i) =>
+        new Send("worker", {
+          messages: [new HumanMessage(`Subtask ${i + 1}`)],
+        })
+    )
+  )
+  .compile();
+
 /**
  * Stateless model for headless tool tests. Inspects incoming messages instead
  * of using a call counter, so retries never receive a stale response.
@@ -563,6 +637,8 @@ const graphs: Record<string, AnyPregel> = {
   errorAgent,
   headlessToolAgent,
   deepAgent: deepAgentGraph as unknown as AnyPregel,
+  parallel_fanout: parallelFanoutGraph as unknown as AnyPregel,
+  parallel_subgraph: parallelSubgraphGraph as unknown as AnyPregel,
 };
 
 let httpServer: { close: () => void } | null = null;

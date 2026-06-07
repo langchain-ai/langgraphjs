@@ -29,6 +29,8 @@ import { graph as slowGraph } from "./fixtures/slow-graph.js";
 import { graph as headlessToolGraph } from "./fixtures/headless-tool-graph.js";
 import { graph as removeMessageGraph } from "./fixtures/remove-message-graph.js";
 import { statefulValuesGraph } from "./fixtures/stateful-values-graph.js";
+import { graph as parallelFanoutGraph } from "./fixtures/parallel-fanout.js";
+import { graph as parallelSubgraphGraph } from "./fixtures/parallel-subgraph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -84,6 +86,8 @@ const graphs: Record<string, AnyPregel> = {
   headless_tool_graph: headlessToolGraph as unknown as AnyPregel,
   remove_message_graph: removeMessageGraph as unknown as AnyPregel,
   stateful_values_graph: statefulValuesGraph as unknown as AnyPregel,
+  parallel_fanout: parallelFanoutGraph as unknown as AnyPregel,
+  parallel_subgraph: parallelSubgraphGraph as unknown as AnyPregel,
 };
 
 let httpServer: Server | null = null;

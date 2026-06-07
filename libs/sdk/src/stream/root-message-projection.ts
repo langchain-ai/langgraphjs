@@ -168,6 +168,18 @@ export class RootMessageProjection<
   #flushScheduled = false;
 
   /**
+   * Highest checkpoint `step` whose `values` snapshot has been applied.
+   * Seeded by {@link StreamController.hydrate} from `getState()` and
+   * advanced by live `values` events. A snapshot arriving with a lower
+   * step is an older checkpoint replayed by the content pump on
+   * reconnect; it is reconciled in add-only mode so it cannot remove
+   * the seeded message tail (the final assistant turn). `undefined`
+   * until the first step-bearing snapshot, where the legacy
+   * remove-on-absence behavior is preserved.
+   */
+  #maxStep: number | undefined = undefined;
+
+  /**
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
@@ -196,6 +208,7 @@ export class RootMessageProjection<
     this.#pendingMessages = null;
     this.#pendingValues = null;
     this.#flushScheduled = false;
+    this.#maxStep = undefined;
   }
 
   /**
@@ -317,11 +330,27 @@ export class RootMessageProjection<
    * @param nextValues   - Full values snapshot from the `values` event.
    * @param nextMessages - The messages array extracted from
    *   `values[messagesKey]` and coerced to `BaseMessage` instances.
+   * @param opts.step    - Checkpoint superstep for this snapshot, when
+   *   known. A snapshot whose step is below the highest applied step is
+   *   treated as a stale reconnect replay and reconciled add-only.
    */
-  applyValues(nextValues: StateType, nextMessages: BaseMessage[]): void {
+  applyValues(
+    nextValues: StateType,
+    nextMessages: BaseMessage[],
+    opts?: { step?: number }
+  ): void {
     const baselineSnapshot = this.#store.getSnapshot();
     const baselineMessages = this.#pendingMessages ?? baselineSnapshot.messages;
     const baselineValues = this.#pendingValues ?? baselineSnapshot.values;
+
+    const step = opts?.step;
+    // Stale only when we have both a prior high-water step and a lower
+    // incoming step. A missing step preserves the legacy semantics.
+    const addOnly =
+      step != null && this.#maxStep != null && step < this.#maxStep;
+    if (step != null && (this.#maxStep == null || step > this.#maxStep)) {
+      this.#maxStep = step;
+    }
 
     if (nextMessages.length === 0) {
       if (
@@ -347,8 +376,12 @@ export class RootMessageProjection<
       currentIndexById: this.#indexById,
       previousValueMessageIds: this.#valuesMessageIds,
       preferValuesMessage: shouldPreferValuesMessageForToolCalls,
+      addOnly,
     });
-    this.#valuesMessageIds = reconciliation.valueMessageIds;
+    // A stale replay snapshot must not shrink the authoritative id set:
+    // keep the (larger) seeded set so a genuinely-newer removal is still
+    // detected once the timeline advances past the seed.
+    if (!addOnly) this.#valuesMessageIds = reconciliation.valueMessageIds;
     const messages = reconciliation.messages as BaseMessage[];
     const values = {
       ...(nextValues as Record<string, unknown>),

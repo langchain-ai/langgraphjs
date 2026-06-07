@@ -5,9 +5,9 @@
  * cursors. Local channels stay in-process only. Remote channels declare a
  * protocol channel name; when registered with a {@link StreamMux} (via a
  * transformer's `init()` return value), every {@link push} is automatically
- * forwarded as a {@link ProtocolEvent} on the named channel — making the data
- * available both in-process (via `run.extensions`) and to remote clients (via
- * `session.subscribe("custom:<channelName>")`).
+ * forwarded as a {@link ProtocolEvent} on `custom:<channelName>` — making the
+ * data available both in-process (via `run.extensions`) and to remote clients
+ * (via `session.subscribe("custom:<channelName>")`).
  *
  * Lifecycle (`close` / `fail`) is managed by the mux automatically;
  * transformers do not need to call them.

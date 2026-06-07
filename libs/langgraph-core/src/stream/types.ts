@@ -130,8 +130,8 @@ export type InferExtensions<
  * over WebSocket / SSE), create a named channel with
  * `StreamChannel.remote(name)`.  The {@link StreamMux} detects named
  * `StreamChannel` instances in the `init()` return and auto-forwards every
- * `push()` as a {@link ProtocolEvent} on the channel's named method.  Remote
- * clients subscribe via `session.subscribe("custom:<name>")`.
+ * `push()` as a {@link ProtocolEvent} on `custom:<name>`.  Remote clients
+ * subscribe via `session.subscribe("custom:<name>")`.
  *
  * `finalize` and `fail` are optional.  When a transformer uses
  * `StreamChannel`, the mux auto-closes/fails the channels on run

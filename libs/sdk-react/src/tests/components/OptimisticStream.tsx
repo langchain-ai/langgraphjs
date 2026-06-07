@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 
 import { useStream, useMessageMetadata } from "../../index.js";
@@ -16,13 +17,21 @@ function MessageRow({
   message: BaseMessage;
 }) {
   const metadata = useMessageMetadata(stream, message.id);
+  const status = metadata?.optimisticStatus ?? "none";
+  // Latch: the server echoes the input message id almost immediately, so
+  // the live `pending` status is a sub-frame transient that a polling
+  // assertion can race under suite load. Recording that we *ever* rendered
+  // `pending` is sticky and race-free.
+  const everPending = useRef(false);
+  if (status === "pending") everPending.current = true;
   return (
     <div data-testid={`message-${index}`}>
       <span data-testid={`message-${index}-content`}>
         {formatMessage(message)}
       </span>
-      <span data-testid={`message-${index}-status`}>
-        {metadata?.optimisticStatus ?? "none"}
+      <span data-testid={`message-${index}-status`}>{status}</span>
+      <span data-testid={`message-${index}-ever-pending`}>
+        {everPending.current ? "true" : "false"}
       </span>
     </div>
   );
