@@ -40,8 +40,4 @@ export type PendingResponse = {
   reject: (error: Error) => void;
 };
 
-export type StreamPart = {
-  id: string | undefined;
-  event: string;
-  data: unknown;
-};
+export type { StreamPart } from "../../../utils/sse.js";
