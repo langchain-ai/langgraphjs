@@ -24,11 +24,17 @@ coverage/
 **/.eslintcache
 
 .env
+.env.*
+*.pem
+*.key
+*.crt
+credentials.json
 .ipynb_checkpoints
 dist-cjs
 **/dist-cjs
 tmp/
 __pycache__
+.venv
 .DS_Store
 tsconfig.vitest-temp.json
 .pnpm-store
