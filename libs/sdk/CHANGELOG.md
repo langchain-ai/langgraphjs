@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.9.19
+
+### Patch Changes
+
+- [#2505](https://github.com/langchain-ai/langgraphjs/pull/2505) [`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Deduplicate the client stream transports: the protocol transport now shares the SSE decoder and `IterableReadableStream` helpers with the legacy transport instead of carrying its own copies. Removes the redundant `transport/decoder.ts` and `transport/stream.ts` shims (and a dead `StreamPart` re-export), importing the shared utilities from `utils/sse.ts` directly. No public API or behavior change.
+
 ## 1.9.18
 
 ### Patch Changes
