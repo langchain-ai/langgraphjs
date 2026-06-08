@@ -48,5 +48,4 @@ services:
       LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY:-}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
       LANGSMITH_TRACING: "false"
-      FF_JS_ZEROMQ_ENABLED: ${FF_JS_ZEROMQ_ENABLED:-}
       LANGGRAPH_CONFIG: '{"agent": {"configurable": {"model_name": "openai"}}}'

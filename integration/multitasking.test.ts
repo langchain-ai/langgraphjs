@@ -30,7 +30,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   // reject
   // -------------------------------------------------------------------------
-  it.concurrent("reject", { retry: 3, timeout: 15_000 }, async () => {
+  it.concurrent("reject", { timeout: 15_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -62,7 +62,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   // interrupt
   // -------------------------------------------------------------------------
-  it.concurrent("interrupt", { retry: 3, timeout: 15_000 }, async () => {
+  it.concurrent("interrupt", { timeout: 15_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input1 = {
@@ -122,7 +122,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   // rollback
   // -------------------------------------------------------------------------
-  it.concurrent("rollback", { retry: 3, timeout: 15_000 }, async () => {
+  it.concurrent("rollback", { timeout: 15_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input1 = {
@@ -177,7 +177,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   // enqueue
   // -------------------------------------------------------------------------
-  it.concurrent("enqueue", { retry: 3, timeout: 15_000 }, async () => {
+  it.concurrent("enqueue", { timeout: 15_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input1 = {
@@ -231,7 +231,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   it.concurrent(
     "reject with streaming",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -286,7 +286,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   it.concurrent(
     "interrupt with streaming",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -356,7 +356,7 @@ describe("multitasking", () => {
   // -------------------------------------------------------------------------
   it.concurrent(
     "state update while inflight",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();

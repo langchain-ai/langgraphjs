@@ -24,7 +24,7 @@ beforeAll(async () => {
 });
 
 describe("background run lifecycle", () => {
-  it.concurrent("create background run", { retry: 3 }, async () => {
+  it.concurrent("create background run", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -59,7 +59,7 @@ describe("background run lifecycle", () => {
     expect(runs[0].status).toBe("success");
   });
 
-  it.concurrent("create + join", { retry: 3 }, async () => {
+  it.concurrent("create + join", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -83,7 +83,7 @@ describe("background run lifecycle", () => {
     expect(state.values.messages.length).toBeGreaterThan(0);
   });
 
-  it.concurrent("create + stream join", { retry: 3 }, async () => {
+  it.concurrent("create + stream join", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -110,7 +110,7 @@ describe("background run lifecycle", () => {
 
   it.concurrent(
     "cancel background run",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -143,7 +143,7 @@ describe("background run lifecycle", () => {
 
   it.concurrent(
     "cancel and join concurrently",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -172,7 +172,7 @@ describe("background run lifecycle", () => {
 
   it.concurrent(
     "stream background run with resumable",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -220,7 +220,7 @@ describe("background run lifecycle", () => {
 
   it.concurrent(
     "after_seconds delay",
-    { retry: 3, timeout: 15_000 },
+    { timeout: 15_000 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -262,7 +262,7 @@ describe("background run lifecycle", () => {
     },
   );
 
-  it.concurrent("join failed background run", { retry: 3 }, async () => {
+  it.concurrent("join failed background run", async () => {
     const assistant = await client.assistants.create({ graphId: "error" });
     const thread = await client.threads.create();
     const input = { messages: [] };

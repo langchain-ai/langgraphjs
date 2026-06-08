@@ -5,11 +5,12 @@ integration framework the Python `langgraph-api` repo uses to run **JS graphs on
 the real managed server** (Go core + Python orchestrator + Node subprocess via
 `RemotePregel`), driven by the `@langchain/langgraph-sdk` client over HTTP.
 
-It exists so a JS change that breaks the managed runtime gets caught here —
-e.g. PR #2314 widened the raw `StreamChunk` to a 4-tuple, which the Python
-orchestrator unpacks strictly (`stream.py:324  ns, mode, chunk = ...`) and throws
-`too many values to unpack`. The in-repo JS server strips that 4th element, so
-only this managed-runtime path surfaces the regression.
+It exists so a JS change that breaks the *managed* runtime gets caught here. The
+in-repo JS server (`@langchain/langgraph-api`) and the managed server treat the
+wire protocol differently: payloads the in-repo server normalizes before sending
+are passed through strictly by the managed Python orchestrator. A change that
+looks correct against the in-repo server can therefore still break graphs on the
+managed runtime — and only this suite exercises that path.
 
 ## Layout
 

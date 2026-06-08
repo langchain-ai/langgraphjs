@@ -2,13 +2,14 @@ import {
   StateGraph,
   END,
   Send,
-  MessagesAnnotation,
-  Annotation,
+  StateSchema,
+  MessagesValue,
   START,
   LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { AIMessage, BaseMessage, ToolMessage } from "@langchain/core/messages";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
+import { z } from "zod";
 
 const getStableModel = (() => {
   const cached: Record<string, FakeListChatModel> = {};
@@ -20,12 +21,12 @@ const getStableModel = (() => {
   };
 })();
 
-const AgentState = Annotation.Root({
-  key_one: Annotation<string>(),
-  key_two: Annotation<string>(),
-  sleep: Annotation<number>(),
-  messages: MessagesAnnotation.spec.messages,
-  prompts: MessagesAnnotation.spec.messages,
+const AgentState = new StateSchema({
+  key_one: z.string(),
+  key_two: z.string(),
+  sleep: z.number(),
+  messages: MessagesValue,
+  prompts: MessagesValue,
 });
 
 async function callModel(

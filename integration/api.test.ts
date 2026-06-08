@@ -306,7 +306,7 @@ describe("threads crud", () => {
 });
 
 describe("threads copy", () => {
-  it.concurrent("copy", { retry: 3 }, async () => {
+  it.concurrent("copy", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -380,7 +380,7 @@ describe("threads copy", () => {
     }
   });
 
-  it.concurrent("copy runs", { retry: 3 }, async () => {
+  it.concurrent("copy runs", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
 
@@ -426,7 +426,7 @@ describe("threads copy", () => {
     expect(currentOriginalThreadState).toEqual(originalThreadState);
   });
 
-  it.concurrent("get thread history", { retry: 3 }, async () => {
+  it.concurrent("get thread history", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = { messages: [{ type: "human", content: "foo" }] };
@@ -470,7 +470,7 @@ describe("threads copy", () => {
     expect(filteredHistory.at(-1)?.values.messages.length).toBe(4);
   });
 
-  it.concurrent("copy update", { retry: 3 }, async () => {
+  it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
     const input = {
@@ -540,7 +540,7 @@ describe("runs", () => {
     expect(runs.length).toBe(1);
   });
 
-  it.concurrent("stream values", { retry: 3 }, async () => {
+  it.concurrent("stream values", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -588,7 +588,7 @@ describe("runs", () => {
     expect(cur.length).toBeGreaterThan(1);
   });
 
-  it.concurrent("wait error", { retry: 3 }, async () => {
+  it.concurrent("wait error", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -605,7 +605,7 @@ describe("runs", () => {
     expect(threadUpdated.status).toBe("error");
   });
 
-  it.concurrent("wait", { retry: 3 }, async () => {
+  it.concurrent("wait", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -704,7 +704,7 @@ describe("runs", () => {
     );
   });
 
-  it.concurrent("stream messages", { retry: 3 }, async () => {
+  it.concurrent("stream messages", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -762,7 +762,7 @@ describe("runs", () => {
     expect(run.status).toBe("success");
   });
 
-  it.concurrent("stream messages tuple", { retry: 3 }, async () => {
+  it.concurrent("stream messages tuple", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
     const input = {
@@ -843,7 +843,6 @@ describe("runs", () => {
 
   it.concurrent(
     "human in the loop - no modification",
-    { retry: 3 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "agent" });
       const thread = await client.threads.create();
@@ -899,7 +898,7 @@ describe("runs", () => {
     },
   );
 
-  it.concurrent("human in the loop - modification", { retry: 3 }, async () => {
+  it.concurrent("human in the loop - modification", async () => {
     // (2) interrupt, modify the message and then continue running
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
@@ -979,7 +978,7 @@ describe("runs", () => {
     expect(history.at(-1)?.next).toEqual(["__start__"]);
   });
 
-  it.concurrent("interrupt before", { retry: 3 }, async () => {
+  it.concurrent("interrupt before", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     let thread = await client.threads.create();
     const input = {
@@ -1298,7 +1297,6 @@ describe("subgraphs", () => {
   // (1) interrupt and then continue running, no modification
   it.concurrent(
     "human in the loop - no modification",
-    { retry: 3 },
     async () => {
       const assistant = await client.assistants.create({ graphId: "weather" });
       const thread = await client.threads.create();
@@ -1590,7 +1588,7 @@ describe("subgraphs", () => {
   );
 
   // (2) interrupt, modify the message and then continue running
-  it.concurrent("human in the loop - modification", { retry: 3 }, async () => {
+  it.concurrent("human in the loop - modification", async () => {
     const assistant = await client.assistants.create({ graphId: "weather" });
     const thread = await client.threads.create();
     const input = {
@@ -1688,7 +1686,7 @@ describe("subgraphs", () => {
     expect(innerHistory[innerHistory.length - 1].next).toEqual(["__start__"]);
   });
 
-  it.concurrent("interrupt inside node", { retry: 3 }, async () => {
+  it.concurrent("interrupt inside node", async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
 
     let thread = await client.threads.create();
