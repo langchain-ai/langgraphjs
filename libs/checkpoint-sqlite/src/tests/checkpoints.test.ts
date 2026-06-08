@@ -183,7 +183,8 @@ describe("SqliteSaver", () => {
       return tuples;
     };
 
-    expect((await collect({ tenant_id: "acme" })).length).toBe(2);
+    const ids = (tuples) => tuples.map(t => t.config.configurable?.thread_id).sort();
+    expect(ids(await collect({ tenant_id: "acme" }))).toEqual(["1", "2"]);
     expect((await collect({ env: "prod" })).length).toBe(2);
     expect((await collect({ tenant_id: "acme", env: "prod" })).length).toBe(1);
     expect((await collect({ tenant_id: "missing" })).length).toBe(0);
