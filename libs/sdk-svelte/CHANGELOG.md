@@ -1,5 +1,12 @@
 # @langchain/svelte
 
+## 1.0.19
+
+### Patch Changes
+
+- Updated dependencies [[`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5)]:
+  - @langchain/langgraph-sdk@1.9.19
+
 ## 1.0.18
 
 ### Patch Changes

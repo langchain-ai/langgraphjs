@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.9.18",
+  "version": "1.9.19",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
