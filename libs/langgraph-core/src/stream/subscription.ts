@@ -69,7 +69,10 @@ export function normalizeNamespaceSegment(segment: string): string {
  * @param namespace - Event namespace to test.
  * @param prefix - Subscription namespace prefix.
  */
-export function isPrefixMatch(namespace: Namespace, prefix: Namespace): boolean {
+export function isPrefixMatch(
+  namespace: Namespace,
+  prefix: Namespace
+): boolean {
   if (prefix.length > namespace.length) return false;
   for (let i = 0; i < prefix.length; i += 1) {
     const segment = prefix[i]!;
@@ -125,7 +128,9 @@ export const SUPPORTED_CHANNELS = new Set<Channel>([
  * @param value - Candidate channel name.
  */
 export function isSupportedChannel(value: string): value is Channel {
-  return SUPPORTED_CHANNELS.has(value as Channel) || value.startsWith("custom:");
+  return (
+    SUPPORTED_CHANNELS.has(value as Channel) || value.startsWith("custom:")
+  );
 }
 
 /**
