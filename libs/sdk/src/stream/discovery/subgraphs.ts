@@ -221,6 +221,44 @@ export class SubgraphDiscovery {
     this.#commit();
   }
 
+  /**
+   * Seed subgraph hosts from checkpoint history (see
+   * `namespace-from-history.collectSubgraphHostNamespaces`) so subgraph
+   * cards render on thread refresh without waiting for the depth-1 SSE
+   * replay. Supplies the host/promotion decision from history instead
+   * of the live strict-prefix heuristic, then reuses the same
+   * `#ensureShadow` / `#promoted` / `#commit` path. Idempotent: never
+   * downgrades an entry that already reached a terminal state.
+   */
+  seedFromHistory(
+    hosts: Array<{
+      namespace: string[];
+      status: "running" | "complete" | "error";
+    }>
+  ): void {
+    if (hosts.length === 0) return;
+    for (const host of hosts) {
+      if (isRootNamespace(host.namespace)) continue;
+      const id = namespaceKey(host.namespace);
+      const lastSegment = host.namespace[host.namespace.length - 1] ?? "";
+      const entry = this.#ensureShadow(
+        id,
+        host.namespace,
+        parseNodeName(lastSegment)
+      );
+      if (
+        host.status !== "running" &&
+        entry.status !== "complete" &&
+        entry.status !== "error"
+      ) {
+        entry.status = host.status;
+        entry.completedAt = new Date();
+      }
+      this.#promoted.add(id);
+    }
+    this.#commit();
+  }
+
   get snapshot(): SubgraphMap {
     return this.store.getSnapshot();
   }

@@ -1,6 +1,6 @@
 {
   "name": "@example/ai-elements",
-  "version": "0.1.30",
+  "version": "0.1.33",
   "private": true,
   "type": "module",
   "scripts": {

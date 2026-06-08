@@ -302,6 +302,10 @@ export class ThreadsClient<
     return this.fetch<ThreadState<ValuesType>>(`/threads/${threadId}/state`, {
       params: { subgraphs: options?.subgraphs },
       signal: options?.signal,
+      // Coalesce concurrent identical reads (e.g. two controllers
+      // hydrating the same thread on reconnect). Skipped automatically
+      // when a caller supplies its own `signal`.
+      dedupe: true,
     });
   }
 
@@ -395,6 +399,10 @@ export class ThreadsClient<
           checkpoint: options?.checkpoint,
         },
         signal: options?.signal,
+        // `getHistory` is a read despite using POST — coalesce the
+        // hydrate-time discovery seed when two controllers reconnect to
+        // the same thread concurrently. Skipped when `signal` is set.
+        dedupe: true,
       }
     );
   }

@@ -201,58 +201,57 @@ describe("convertToProtocolEvent", () => {
     });
   });
 
-  it("returns empty for 'debug' and 'checkpoints' modes (not part of V2)", () => {
+  it("returns empty for 'debug' and full-state 'checkpoints' payloads", () => {
     for (const mode of ["debug", "checkpoints"] as const) {
       const result = convertToProtocolEvent({
         namespace: ns,
         mode,
-        payload: { info: mode },
+        payload: { info: mode, values: {}, config: {} },
         seq: 10,
       });
       expect(result).toEqual([]);
     }
   });
 
-  it("emits a 'checkpoints' event immediately before the companion 'values' event when meta.checkpoint is present", () => {
-    const payload = { count: 1 };
-    const meta = {
-      checkpoint: {
-        id: "ckpt-2",
-        parent_id: "ckpt-1",
-        step: 1,
-        source: "loop" as const,
-      },
+  it("converts a lightweight 'checkpoints' envelope chunk", () => {
+    const envelope = {
+      id: "ckpt-2",
+      parent_id: "ckpt-1",
+      step: 1,
+      source: "loop" as const,
     };
+    const result = convertToProtocolEvent({
+      namespace: ns,
+      mode: "checkpoints",
+      payload: envelope,
+      seq: 20,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      seq: 20,
+      method: "checkpoints",
+      params: { namespace: ns, data: envelope },
+    });
+  });
+
+  it("converts a 'values' chunk without an inline checkpoint field", () => {
+    const payload = { count: 1 };
     const result = convertToProtocolEvent({
       namespace: ns,
       mode: "values",
       payload,
-      seq: 20,
-      meta,
+      seq: 21,
     });
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
-      seq: 20,
-      method: "checkpoints",
-      params: {
-        namespace: ns,
-        data: {
-          id: "ckpt-2",
-          parent_id: "ckpt-1",
-          step: 1,
-          source: "loop",
-        },
-      },
-    });
-    expect(result[1]).toMatchObject({
       seq: 21,
       method: "values",
       params: { namespace: ns, data: payload },
     });
-    expect(result[1].params).not.toHaveProperty("checkpoint");
+    expect(result[0].params).not.toHaveProperty("checkpoint");
   });
 
-  it("omits the companion checkpoints event on 'values' when meta is absent", () => {
+  it("emits only a 'values' event when no checkpoint envelope chunk precedes it", () => {
     const result = convertToProtocolEvent({
       namespace: ns,
       mode: "values",

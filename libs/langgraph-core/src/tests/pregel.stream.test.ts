@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { z } from "zod/v4";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
@@ -7,7 +7,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/index.js";
 import { Command, END, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { gatherIterator } from "../utils.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
 import { StreamChannel } from "../stream/stream-channel.js";
@@ -18,10 +18,6 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "../prebuilt/tool_node.js";
 import type { ToolsEventData } from "../stream/types.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-
-beforeAll(() => {
-  initializeAsyncLocalStorageSingleton();
-});
 
 async function collectEvents(
   run: AsyncIterable<ProtocolEvent>
@@ -440,10 +436,8 @@ describe("streamEvents version v3", () => {
       }
 
       const eventSequence = events.map((e) => e.method);
-      // Each `values` event is preceded by its companion `checkpoints`
-      // envelope event on the same namespace.  The subgraph is bracketed
-      // by the `LifecycleTransformer`'s synthesized started/completed
-      // events.
+      // SubgraphRunStream scopes protocol events to the child namespace.
+      // In-memory checkpoints still produce companion `checkpoints` events.
       expect(eventSequence).toEqual([
         "lifecycle",
         "checkpoints",
@@ -646,7 +640,7 @@ describe("streamEvents version v3", () => {
       const events = await collectEvents(run);
 
       const stepEvents = events.filter(
-        (e) => e.method === ("steps" as any)
+        (e) => e.method === ("custom:steps" as any)
       );
       expect(stepEvents).toHaveLength(2);
       expect(stepEvents[0].params.data).toEqual({ node: "step1", count: 1 });
@@ -763,7 +757,7 @@ describe("streamEvents version v3", () => {
           {
             version: "v3",
             configurable: {
-              thread_id: `tool-error-${handleToolErrors}-${Date.now()}`,
+              thread_id: `tool-error-${handleToolErrors}`,
             },
           }
         );
@@ -805,5 +799,64 @@ describe("streamEvents version v3", () => {
         message: "test error",
       });
     });
+  });
+});
+
+describe("stream() chunk shape", () => {
+  // Public `graph.stream()` chunks are always `[namespace, mode, payload]`.
+  // Checkpoint envelopes stay on the optional 4th meta element internally and
+  // are promoted to protocol / SSE `checkpoints` events by the streaming layer.
+  it("yields 3-tuples for subgraphs + multi-mode runs with a checkpointer", async () => {
+    const graph = new StateGraph(CounterState)
+      .addNode("add_one", () => ({ count: 1 }))
+      .addEdge(START, "add_one")
+      .addEdge("add_one", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        { count: 0 },
+        {
+          subgraphs: true,
+          streamMode: ["values", "updates"],
+          configurable: { thread_id: "stream-chunk-shape" },
+        }
+      )
+    );
+
+    expect(chunks.length).toBeGreaterThan(0);
+    expect(
+      chunks.some((c) => Array.isArray(c) && c[1] === "values")
+    ).toBe(true);
+    // Envelope chunks are not requested on plain `stream()` (checkpoints
+    // mode is absent), so they must not appear on the public iterator.
+    expect(
+      chunks.some(
+        (c) => Array.isArray(c) && (c as [unknown, string, unknown])[1] === "checkpoints"
+      )
+    ).toBe(false);
+    for (const chunk of chunks) {
+      expect(Array.isArray(chunk)).toBe(true);
+      expect((chunk as unknown[]).length).toBe(3);
+    }
+  });
+
+  it("still surfaces the checkpoint envelope on the v3 protocol stream", async () => {
+    const graph = new StateGraph(CounterState)
+      .addNode("add_one", () => ({ count: 1 }))
+      .addEdge(START, "add_one")
+      .addEdge("add_one", END)
+      .compile({ checkpointer: new MemorySaver() });
+
+    const run = await graph.streamEvents(
+      { count: 0 },
+      { version: "v3", configurable: { thread_id: "stream-chunk-v3" } }
+    );
+    const events = await collectEvents(run);
+
+    const checkpoints = byMethod(events, "checkpoints");
+    const values = byMethod(events, "values");
+    expect(values.length).toBeGreaterThan(0);
+    expect(checkpoints.length).toBe(values.length);
   });
 });

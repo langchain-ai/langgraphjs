@@ -6,7 +6,7 @@ import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { _AnyIdAIMessage, _AnyIdAIMessageChunk } from "./utils.js";
 import { FakeToolCallingChatModel } from "./utils.models.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
-import { END, START, StateGraph } from "../index.js";
+import { END, START, StateGraph } from "../web.js";
 import { gatherIterator } from "../utils.js";
 import { createReactAgent } from "../prebuilt/react_agent_executor.js";
 

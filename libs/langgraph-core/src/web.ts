@@ -55,6 +55,7 @@ export {
   SubgraphRunStream,
   STREAM_EVENTS_V3_MODES,
   convertToProtocolEvent,
+  isCheckpointEnvelope,
   isNativeTransformer,
   createGraphRunStream,
   createMessagesTransformer,

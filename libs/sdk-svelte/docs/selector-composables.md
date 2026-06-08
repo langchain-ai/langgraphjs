@@ -11,8 +11,8 @@ Each selector opens a **ref-counted** subscription when the first component moun
 | `useMessages(stream, target?)`                    | `{ current: BaseMessage[] }`                                             | Scoped messages. At root delegates to `stream.messages`. |
 | `useToolCalls(stream, target?)`                   | `{ current: AssembledToolCall[] }`                                       | Scoped tool calls.                                       |
 | `useValues(stream, target?, options?)`            | `{ current: StateType }` (root) / `{ current: T \| undefined }` (scoped) | Scoped state values.                                     |
-| `useExtension(stream, name, target?)`             | `{ current: T \| undefined }`                                            | Read a `custom:<name>` stream extension.                 |
-| `useChannel(stream, channels, target?, options?)` | `{ current: Event[] }`                                                   | Raw-protocol events (bounded buffer).                    |
+| `useExtension(stream, name, target?)`             | `{ current: T \| undefined }`                                            | Latest payload of a `custom:<name>` stream extension.    |
+| `useChannel(stream, channels, target?, options?)` | `{ current: Event[] }`                                                   | Raw-protocol event stream (bounded buffer, all runs).    |
 | `useMessageMetadata(stream, messageId)`           | `{ current: MessageMetadata \| undefined }`                              | Per-message metadata (`parentCheckpointId`).             |
 | `useSubmissionQueue(stream)`                      | `{ entries, size, cancel, clear }`                                       | Server-side [submission queue](./submission-queue.md).   |
 | `useAudio(stream, target?)`                       | `{ current: AudioMedia[] }`                                              | Audio attachments in the namespace.                      |
@@ -71,3 +71,19 @@ Reach for `useChannel` when you need to observe the wire protocol directly — f
   <pre>{JSON.stringify(ev)}</pre>
 {/each}
 ```
+
+The buffer keeps accumulating across serial runs for the lifetime of the thread, so `useChannel` is also the composable to use for an **event log** of a custom channel (e.g. `["custom:redaction-stats"]`):
+
+```svelte
+<script lang="ts">
+  import { useChannel } from "@langchain/svelte";
+  const statsEvents = useChannel(stream, ["custom:redaction-stats"]);
+</script>
+```
+
+## `useChannel` vs. `useExtension`
+
+Both keep receiving events across serial runs on the same thread, but they expose different shapes for a `custom:<name>` channel:
+
+- **`useExtension`** — the **latest** payload only. Use it for "current state" panels (progress, score, status).
+- **`useChannel`** — the **full history** of events as a bounded buffer. Use it when you need an event log or want to derive your own running totals.

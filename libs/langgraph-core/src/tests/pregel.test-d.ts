@@ -12,7 +12,7 @@ import { Annotation } from "../graph/annotation.js";
 import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
 import { task, entrypoint } from "../func/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import { Command, END, INTERRUPT, isInterrupted, START } from "../constants.js";
 import { withLangGraph } from "../graph/zod/meta.js";
 import { Runtime } from "../pregel/runnable_types.js";
