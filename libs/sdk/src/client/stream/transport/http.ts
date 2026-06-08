@@ -20,8 +20,8 @@ import {
   toError,
   isProtocolResponse,
 } from "./utils.js";
-import { BytesLineDecoder, SSEDecoder } from "./decoder.js";
-import { IterableReadableStream } from "./stream.js";
+import { BytesLineDecoder, SSEDecoder } from "../../../utils/sse.js";
+import { IterableReadableStream } from "../../../utils/stream.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP

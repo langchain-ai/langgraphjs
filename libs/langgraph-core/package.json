@@ -152,6 +152,18 @@
         "default": "./dist/remote.cjs"
       }
     },
+    "./stream": {
+      "input": "./src/stream.ts",
+      "typedoc": "./src/stream.ts",
+      "import": {
+        "types": "./dist/stream.d.ts",
+        "default": "./dist/stream.js"
+      },
+      "require": {
+        "types": "./dist/stream.d.cts",
+        "default": "./dist/stream.cjs"
+      }
+    },
     "./zod": {
       "input": "./src/graph/zod/index.ts",
       "typedoc": "./src/graph/zod/index.ts",

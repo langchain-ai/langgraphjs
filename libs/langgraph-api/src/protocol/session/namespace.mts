@@ -1,4 +1,15 @@
+import {
+  isPrefixMatch,
+  normalizeNamespaceSegment,
+} from "@langchain/langgraph/stream";
 import type { Namespace } from "../types.mjs";
+
+/**
+ * Namespace prefix matching and dynamic-suffix normalization are shared with
+ * the core streaming toolkit so the server, the SDK, and custom transports all
+ * agree on subscription semantics.
+ */
+export { isPrefixMatch, normalizeNamespaceSegment };
 
 /**
  * Converts a namespace array into a stable internal lookup key.
@@ -7,15 +18,6 @@ import type { Namespace } from "../types.mjs";
  * @returns A string key that preserves segment boundaries.
  */
 export const toNamespaceKey = (namespace: Namespace) => namespace.join("\0");
-
-/**
- * Strips dynamic suffixes from a namespace segment for display purposes.
- *
- * @param segment - Raw namespace segment.
- * @returns The stable graph-oriented portion of the segment.
- */
-export const normalizeNamespaceSegment = (segment: string) =>
-  segment.split(":")[0];
 
 /**
  * Preserves raw namespace segments in protocol events.
@@ -34,23 +36,6 @@ export const normalizeNamespace = (namespace: string[]): Namespace => namespace;
 export const parseEventName = (event: string) => {
   const [method, ...namespace] = event.split("|");
   return { method, namespace };
-};
-
-/**
- * Checks whether a namespace starts with a requested prefix.
- *
- * @param namespace - Event namespace to test.
- * @param prefix - Subscription namespace prefix.
- * @returns Whether the namespace matches the prefix semantics.
- */
-export const isPrefixMatch = (namespace: Namespace, prefix: Namespace) => {
-  if (prefix.length > namespace.length) return false;
-  return prefix.every((segment, index) => {
-    const candidate = namespace[index];
-    if (candidate === segment) return true;
-    if (segment.includes(":")) return false;
-    return normalizeNamespaceSegment(candidate) === segment;
-  });
 };
 
 /**

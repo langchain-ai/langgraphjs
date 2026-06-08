@@ -90,7 +90,7 @@ export function BytesLineDecoder() {
   });
 }
 
-interface StreamPart {
+export interface StreamPart {
   id: string | undefined;
   event: string;
   data: unknown;

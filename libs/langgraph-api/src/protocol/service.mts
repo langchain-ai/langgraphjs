@@ -1,3 +1,4 @@
+import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "uuid";
 import { getAssistantId } from "../graph/load.mjs";
 import type {
@@ -22,10 +23,6 @@ import type {
   ProtocolTransportName,
   StateGetResult,
 } from "./types.mjs";
-import {
-  isSupportedChannel,
-  isRecord as isRecordInternal,
-} from "./session/internal-types.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
 import { RunProtocolSession } from "./session/index.mjs";
 
@@ -790,14 +787,13 @@ export class ProtocolService {
   }
 }
 
-function isPrefixMatch(namespace: string[], prefix: string[]): boolean {
-  if (prefix.length > namespace.length) return false;
-  return prefix.every((segment, i) => namespace[i] === segment);
-}
-
 /**
  * Check whether a protocol event matches an SSE event sink filter.
- * Mirrors the subscription matching logic in {@link RunProtocolSession}.
+ *
+ * Shares its channel inference and namespace matching with
+ * {@link RunProtocolSession} (and the core streaming toolkit) so SSE and
+ * WebSocket subscribers apply identical semantics, including dynamic
+ * namespace-suffix normalization.
  */
 export function matchesSinkFilter(
   filter: EventSinkFilter,
@@ -805,25 +801,14 @@ export function matchesSinkFilter(
 ): boolean {
   if (filter.since != null && (event.seq ?? 0) <= filter.since) return false;
 
-  const channel: string | undefined =
-    event.method === "input.requested"
-      ? "input"
-      : isSupportedChannel(event.method)
-        ? event.method
-        : undefined;
+  // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
+  // `custom` filter still matches via the prefix check below.
+  const channel = inferChannel(event);
   if (channel == null) return false;
 
-  let channelMatched = filter.channels.has(channel);
-  if (!channelMatched && channel === "custom") {
-    const params = event.params as Record<string, unknown>;
-    const eventName =
-      isRecordInternal(params.data) && typeof params.data.name === "string"
-        ? params.data.name
-        : undefined;
-    if (eventName != null) {
-      channelMatched = filter.channels.has(`custom:${eventName}`);
-    }
-  }
+  const channelMatched =
+    filter.channels.has(channel) ||
+    (channel.startsWith("custom:") && filter.channels.has("custom"));
   if (!channelMatched) return false;
 
   if (filter.namespaces == null || filter.namespaces.length === 0) {

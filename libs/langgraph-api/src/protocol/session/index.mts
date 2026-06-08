@@ -1,3 +1,4 @@
+import { inferChannel, isSupportedChannel } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "uuid";
 
 import type { AuthContext } from "../../auth/index.mjs";
@@ -33,11 +34,7 @@ import type {
   Subscription,
   SubscriptionChannel,
 } from "./internal-types.mjs";
-import {
-  SUPPORTED_CHANNELS,
-  isRecord,
-  isSupportedChannel,
-} from "./internal-types.mjs";
+import { isRecord } from "./internal-types.mjs";
 import {
   guessGraphName,
   isPrefixMatch,
@@ -767,27 +764,14 @@ export class RunProtocolSession {
     subscription: Subscription,
     event: ProtocolEvent
   ): boolean {
-    const channel =
-      event.method === "input.requested"
-        ? "input"
-        : isSupportedChannel(event.method)
-          ? event.method
-          : undefined;
+    // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
+    // `custom` subscription still matches via the prefix check below.
+    const channel = inferChannel(event);
     if (channel == null) return false;
 
-    // Support "custom:name" subscriptions: "custom:a2a" matches custom
-    // events with data.name === "a2a", while "custom" matches all.
-    let channelMatched = subscription.channels.has(channel);
-    if (!channelMatched && channel === "custom") {
-      const params = event.params as Record<string, unknown>;
-      const eventName =
-        isRecord(params.data) && typeof params.data.name === "string"
-          ? params.data.name
-          : undefined;
-      if (eventName != null) {
-        channelMatched = subscription.channels.has(`custom:${eventName}`);
-      }
-    }
+    const channelMatched =
+      subscription.channels.has(channel) ||
+      (channel.startsWith("custom:") && subscription.channels.has("custom"));
     if (!channelMatched) return false;
 
     if (
@@ -885,9 +869,7 @@ export class RunProtocolSession {
 
     const channels = rawChannels.filter(
       (value): value is SubscriptionChannel =>
-        typeof value === "string" &&
-        (SUPPORTED_CHANNELS.has(value as SupportedChannel) ||
-          value.startsWith("custom:"))
+        typeof value === "string" && isSupportedChannel(value)
     );
 
     if (channels.length !== rawChannels.length) {
@@ -1009,9 +991,7 @@ export class RunProtocolSession {
 
     const channels = rawChannels.filter(
       (value): value is SubscriptionChannel =>
-        typeof value === "string" &&
-        (SUPPORTED_CHANNELS.has(value as SupportedChannel) ||
-          value.startsWith("custom:"))
+        typeof value === "string" && isSupportedChannel(value)
     );
 
     if (channels.length !== rawChannels.length) {
