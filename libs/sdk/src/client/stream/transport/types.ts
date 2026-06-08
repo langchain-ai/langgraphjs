@@ -39,5 +39,3 @@ export type PendingResponse = {
   resolve: (response: CommandResponse | ErrorResponse) => void;
   reject: (error: Error) => void;
 };
-
-export type { StreamPart } from "../../../utils/sse.js";
