@@ -19,6 +19,7 @@ export {
   ProtocolSseTransportAdapter,
   ProtocolWebSocketTransportAdapter,
   HttpAgentServerAdapter,
+  resolveClientApiUrl,
 } from "./client/index.js";
 
 export type { HttpAgentServerAdapterOptions } from "./client/index.js";
