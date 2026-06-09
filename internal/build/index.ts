@@ -106,7 +106,11 @@ async function buildProject(
     sourcemap,
     unbundle: true,
     fixedExtension: false,
-    inlineOnly: false,
+    deps: {
+      // uuid@12+ is ESM-only; bundle it into outputs so CJS require() consumers
+      // (e.g. Jest) don't resolve uuid's dist-node ESM entry at runtime.
+      alwaysBundle: ["uuid"],
+    },
     platform: "node",
     target: "es2022",
     outDir: "./dist",
