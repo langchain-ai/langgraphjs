@@ -166,20 +166,19 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  * ```ts
  * import { ToolNode } from "@langchain/langgraph/prebuilt";
  * import {
- *   Annotation,
- *   MessagesAnnotation,
  *   StateGraph,
+ *   MessagesZodState,
  *   getCurrentTaskInput,
  *   type LangGraphRunnableConfig,
  * } from "@langchain/langgraph";
  * import { tool } from "@langchain/core/tools";
  * import { z } from "zod";
  *
- * // Define the graph state. The extra `userId` key becomes part of the state
- * // that `getCurrentTaskInput` returns inside the tool.
- * const StateAnnotation = Annotation.Root({
- *   ...MessagesAnnotation.spec,
- *   userId: Annotation<string>,
+ * // Define the graph state with a Zod schema. The extra `userId` key becomes
+ * // part of the state that `getCurrentTaskInput` returns inside the tool.
+ * const AgentState = z.object({
+ *   ...MessagesZodState.shape,
+ *   userId: z.string(),
  * });
  *
  * const getUserInfo = tool(
@@ -187,7 +186,7 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  *     // Read the current graph state that was passed into the ToolNode.
  *     // Passing `config` makes this work in web browsers too, where
  *     // AsyncLocalStorage is unavailable.
- *     const state = getCurrentTaskInput(config) as typeof StateAnnotation.State;
+ *     const state = getCurrentTaskInput(config) as z.infer<typeof AgentState>;
  *     return state.userId === "user_123" ? "User is John Smith" : "Unknown user";
  *   },
  *   {
@@ -197,9 +196,9 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  *   }
  * );
  *
- * // Wire the ToolNode into a StateGraph that uses `StateAnnotation`. Because the
+ * // Wire the ToolNode into a StateGraph that uses `AgentState`. Because the
  * // node runs with the graph state as its input, the tool can read `userId`.
- * const graph = new StateGraph(StateAnnotation)
+ * const graph = new StateGraph(AgentState)
  *   .addNode("tools", new ToolNode([getUserInfo]))
  *   .addEdge("__start__", "tools")
  *   .compile();

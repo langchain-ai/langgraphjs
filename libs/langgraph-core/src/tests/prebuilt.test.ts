@@ -2715,9 +2715,9 @@ describe("ToolNode", () => {
   });
 
   it("tools can read the graph state via getCurrentTaskInput(config)", async () => {
-    const StateAnnotation = Annotation.Root({
-      ...MessagesAnnotation.spec,
-      userId: Annotation<string>,
+    const AgentState = z.object({
+      ...MessagesZodState.shape,
+      userId: z.string(),
     });
 
     let observedUserId: string | undefined;
@@ -2725,9 +2725,7 @@ describe("ToolNode", () => {
       async (_input: Record<string, never>, config: RunnableConfig) => {
         // Passing `config` keeps this working in environments without
         // AsyncLocalStorage support (e.g. web browsers).
-        const state = getCurrentTaskInput(
-          config
-        ) as typeof StateAnnotation.State;
+        const state = getCurrentTaskInput(config) as z.infer<typeof AgentState>;
         observedUserId = state.userId;
         return observedUserId === "user_123"
           ? "User is John Smith"
@@ -2741,7 +2739,7 @@ describe("ToolNode", () => {
     );
 
     const toolNode = new ToolNode([getUserInfo]);
-    const graph = new StateGraph(StateAnnotation)
+    const graph = new StateGraph(AgentState)
       .addNode("tools", toolNode)
       .addEdge("__start__", "tools")
       .compile();
