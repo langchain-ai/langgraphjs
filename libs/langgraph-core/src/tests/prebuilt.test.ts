@@ -38,7 +38,11 @@ import {
   FakeConfigurableModel,
   FakeToolCallingChatModel,
 } from "./utils.models.js";
-import { ToolNode, createReactAgent } from "../prebuilt/index.js";
+import {
+  ToolNode,
+  createReactAgent,
+  type ToolRunnableConfig,
+} from "../prebuilt/index.js";
 import {
   _shouldBindTools,
   _getModel,
@@ -2718,7 +2722,7 @@ describe("ToolNode", () => {
     );
   });
 
-  it("tools can read the graph state via getCurrentTaskInput(config)", async () => {
+  it("forwards graph state to tools via config.state (graph node)", async () => {
     const AgentState = z.object({
       ...MessagesZodState.shape,
       userId: z.string(),
@@ -2726,11 +2730,12 @@ describe("ToolNode", () => {
 
     let observedUserId: string | undefined;
     const getUserInfo = tool(
-      async (_input: Record<string, never>, config: RunnableConfig) => {
-        // Passing `config` keeps this working in environments without
-        // AsyncLocalStorage support (e.g. web browsers).
-        const state = getCurrentTaskInput(config) as z.infer<typeof AgentState>;
-        observedUserId = state.userId;
+      async (
+        _input: Record<string, never>,
+        config: ToolRunnableConfig<z.infer<typeof AgentState>>
+      ) => {
+        // Read the graph state directly from the second argument.
+        observedUserId = config.state?.userId;
         return observedUserId === "user_123"
           ? "User is John Smith"
           : "Unknown user";
@@ -2765,12 +2770,48 @@ describe("ToolNode", () => {
     expect(lastMessage.content).toBe("User is John Smith");
   });
 
-  it("getCurrentTaskInput(config) reads state without AsyncLocalStorage (browser-like)", async () => {
+  it("forwards input to tools via config.state on direct .invoke()", async () => {
+    // Reproduces the issue scenario: invoking a ToolNode directly (outside a
+    // graph) and expecting the tool to access the surrounding state.
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (
+        _input: Record<string, never>,
+        config: ToolRunnableConfig<{ userId: string }>
+      ) => {
+        observedUserId = config.state?.userId;
+        return "ok";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const toolNode = new ToolNode([getUserInfo]);
+    await toolNode.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      // Extra state the tool needs; ToolNode forwards it via `config.state`.
+      userId: "user_123",
+    } as unknown as { messages: BaseMessage[] });
+
+    expect(observedUserId).toBe("user_123");
+  });
+
+  it("config.state works without AsyncLocalStorage (browser-like)", async () => {
     // Simulate a browser/web runtime without `async_hooks` support: the global
     // ALS instance is absent, so @langchain/core falls back to a no-op
     // MockAsyncLocalStorage. In this environment `getCurrentTaskInput()` cannot
-    // recover the config implicitly, but passing `config` explicitly still works
-    // because ToolNode threads it to the tool as a function argument.
+    // recover the config implicitly, but `config.state` still works because
+    // ToolNode threads the state to the tool as a function argument.
     const getInstanceSpy = vi
       .spyOn(AsyncLocalStorageProviderSingleton, "getInstance")
       .mockReturnValue(new MockAsyncLocalStorage());
@@ -2789,18 +2830,18 @@ describe("ToolNode", () => {
       let observedUserId: string | undefined;
       let implicitLookupThrew = false;
       const getUserInfo = tool(
-        async (_input: Record<string, never>, config: RunnableConfig) => {
+        async (
+          _input: Record<string, never>,
+          config: ToolRunnableConfig<z.infer<typeof AgentState>>
+        ) => {
           // Without ALS, the implicit (no-arg) lookup must fail.
           try {
             getCurrentTaskInput();
           } catch {
             implicitLookupThrew = true;
           }
-          // ...but passing `config` explicitly works.
-          const state = getCurrentTaskInput(
-            config
-          ) as z.infer<typeof AgentState>;
-          observedUserId = state.userId;
+          // ...but reading from the second argument still works.
+          observedUserId = config.state?.userId;
           return "ok";
         },
         {
@@ -2832,6 +2873,46 @@ describe("ToolNode", () => {
     } finally {
       getInstanceSpy.mockRestore();
     }
+  });
+
+  it("still exposes state via getCurrentTaskInput(config) for backwards compatibility", async () => {
+    const AgentState = z.object({
+      ...MessagesZodState.shape,
+      userId: z.string(),
+    });
+
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (_input: Record<string, never>, config: RunnableConfig) => {
+        const state = getCurrentTaskInput(config) as z.infer<typeof AgentState>;
+        observedUserId = state.userId;
+        return "ok";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const graph = new StateGraph(AgentState)
+      .addNode("tools", new ToolNode([getUserInfo]))
+      .addEdge("__start__", "tools")
+      .compile();
+
+    await graph.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      userId: "user_123",
+    });
+
+    expect(observedUserId).toBe("user_123");
   });
 
   // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)

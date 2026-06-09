@@ -197,6 +197,10 @@ export function getConfig(): LangGraphRunnableConfig {
  * without `AsyncLocalStorage` support, pass the `config` that your node/tool
  * function receives directly, e.g. `getCurrentTaskInput(config)`.
  *
+ * Tip: Inside a tool run by a `ToolNode`, prefer reading the graph state from
+ * the second argument via `config.state` (typed as `ToolRunnableConfig`). It
+ * is equivalent for tools and works in every runtime, including web browsers.
+ *
  * @example
  * ```ts
  * import { tool } from "@langchain/core/tools";
