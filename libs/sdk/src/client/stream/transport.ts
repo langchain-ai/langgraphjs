@@ -93,14 +93,18 @@ export interface TransportAdapter {
  */
 export interface AgentServerAdapter extends TransportAdapter {
   /**
-   * Fetch the latest checkpointed state for the bound thread. When
-   * the adapter doesn't expose state (e.g. a purely event-replay
-   * backend), leave this undefined — the framework will skip
-   * hydration.
+   * Fetch the latest checkpointed state for the bound thread via
+   * `GET /threads/:threadId/state` (or an adapter-specific override).
+   * When omitted, {@link StreamController.hydrate} falls back to
+   * `client.threads.getState()`.
    */
   getState?<StateType = unknown>(): Promise<{
     values: StateType;
+    next?: unknown;
+    tasks?: unknown;
+    metadata?: unknown;
     checkpoint?: { checkpoint_id?: string } | null;
+    parent_checkpoint?: { checkpoint_id?: string } | null;
   } | null>;
   /**
    * Fetch a slice of checkpoint history for the bound thread. Used

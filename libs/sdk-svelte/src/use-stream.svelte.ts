@@ -11,6 +11,7 @@ import {
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
@@ -431,7 +432,10 @@ export function useStream<
   const client: Client =
     asBag.client ??
     (new ClientCtor({
-      apiUrl: asBag.apiUrl,
+      apiUrl: resolveClientApiUrl({
+        apiUrl: asBag.apiUrl,
+        transport: hasCustomAdapter ? transport : asBag.transport,
+      }),
       apiKey: asBag.apiKey,
       callerOptions: asBag.callerOptions,
       defaultHeaders: asBag.defaultHeaders,

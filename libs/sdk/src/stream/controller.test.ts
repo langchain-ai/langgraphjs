@@ -522,6 +522,43 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("prefers transport.getState over client.threads.getState", async () => {
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const transportGetState = vi.fn(async () => ({
+      values: { messages: [{ type: "human", content: "from transport" }] },
+      next: [],
+      tasks: [],
+    }));
+    const clientGetState = vi.fn(async () => {
+      throw new Error("client getState should not run");
+    });
+    const client = {
+      threads: {
+        getState: clientGetState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "custom-backend",
+      client: client as never,
+      threadId: "thread-transport",
+      transport: { getState: transportGetState } as never,
+    });
+    await controller.hydrationPromise;
+
+    expect(transportGetState).toHaveBeenCalledTimes(1);
+    expect(clientGetState).not.toHaveBeenCalled();
+
+    await controller.dispose();
+  });
+
   it("hydrate seeds rootStore.interrupts from getState tasks", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {

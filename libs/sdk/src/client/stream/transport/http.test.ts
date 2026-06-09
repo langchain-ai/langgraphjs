@@ -71,4 +71,56 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
       `${LANGGRAPH_PROXY_API_URL}/threads/${THREAD_ID}/commands`
     );
   });
+
+  it("fetches thread state with GET for hydration", async () => {
+    const calls: Array<{ href: string; method?: string }> = [];
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const href =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      calls.push({ href, method: init?.method });
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            values: { messages: [] },
+            next: [],
+            tasks: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+    };
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+      paths: {
+        state: `/threads/${THREAD_ID}/state`,
+      },
+    });
+
+    const state = await transport.getState();
+    expect(state?.values).toEqual({ messages: [] });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("GET");
+    expect(calls[0]?.href).toBe(
+      `${PROXIED_API_URL}/threads/${THREAD_ID}/state`
+    );
+  });
+
+  it("returns null when thread state is missing", async () => {
+    const { fetch } = createFetchRecorder({
+      response: new Response("not found", { status: 404 }),
+    });
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+    });
+
+    await expect(transport.getState()).resolves.toBeNull();
+  });
 });

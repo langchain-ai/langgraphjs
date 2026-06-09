@@ -13,6 +13,7 @@ import {
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
@@ -467,9 +468,13 @@ export function useStream<
   // fresh controller re-fires its constructor hydrate: a *duplicate*
   // `getState` + `getHistory`. A ref is never dropped, so the client
   // stays referentially stable until its config actually changes.
+  const resolvedApiUrl = resolveClientApiUrl({
+    apiUrl: asBag.apiUrl,
+    transport: hasCustomAdapter ? transport : asBag.transport,
+  });
   const clientDeps = [
     asBag.client,
-    asBag.apiUrl,
+    resolvedApiUrl,
     asBag.apiKey,
     asBag.callerOptions,
     asBag.defaultHeaders,
@@ -487,7 +492,7 @@ export function useStream<
       client:
         asBag.client ??
         (new ClientCtor({
-          apiUrl: asBag.apiUrl,
+          apiUrl: resolvedApiUrl,
           apiKey: asBag.apiKey,
           callerOptions: asBag.callerOptions,
           defaultHeaders: asBag.defaultHeaders,

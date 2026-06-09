@@ -30,7 +30,7 @@ import type {
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";
-import type { Interrupt } from "../schema.js";
+import type { Interrupt, ThreadState } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
@@ -469,6 +469,26 @@ export class StreamController<
   // ---------- public imperatives ----------
 
   /**
+   * Load thread state for hydration, preferring the active custom
+   * adapter's `getState()` when present.
+   */
+  async #fetchHydrationState(): Promise<ThreadState<StateType> | null> {
+    const threadId = this.#currentThreadId;
+    if (threadId == null) return null;
+
+    const transport = this.#options.transport;
+    if (
+      transport != null &&
+      typeof transport === "object" &&
+      typeof transport.getState === "function"
+    ) {
+      return (await transport.getState<StateType>()) as ThreadState<StateType> | null;
+    }
+
+    return this.#options.client.threads.getState<StateType>(threadId);
+  }
+
+  /**
    * Fetch the checkpointed thread state and seed the root snapshot.
    * Re-calling with a different `threadId` swaps the underlying
    * {@link ThreadStream}, rewires the registry to the new thread, and
@@ -540,9 +560,7 @@ export class StreamController<
     // Flipped to the real signal once we have the state in hand.
     let threadActive = true;
     try {
-      const state = await this.#options.client.threads.getState<StateType>(
-        this.#currentThreadId
-      );
+      const state = await this.#fetchHydrationState();
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
       if (state?.values != null) {
