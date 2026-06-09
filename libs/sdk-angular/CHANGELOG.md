@@ -1,5 +1,18 @@
 # @langchain/angular
 
+## 1.0.20
+
+### Patch Changes
+
+- [#2508](https://github.com/langchain-ai/langgraphjs/pull/2508) [`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): hydrate custom HttpAgentServerAdapter via transport getState
+
+  StreamController now prefers adapter getState() before client.threads.getState,
+  HttpAgentServerAdapter implements GET /threads/:id/state, and useStream inherits
+  apiUrl from the transport so hydration no longer defaults to localhost:8123.
+
+- Updated dependencies [[`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6)]:
+  - @langchain/langgraph-sdk@1.9.20
+
 ## 1.0.19
 
 ### Patch Changes
