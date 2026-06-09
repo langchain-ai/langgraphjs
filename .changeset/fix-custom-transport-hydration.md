@@ -3,6 +3,7 @@
 "@langchain/react": patch
 "@langchain/vue": patch
 "@langchain/angular": patch
+"@langchain/svelte": patch
 ---
 
 fix(sdk): hydrate custom HttpAgentServerAdapter via transport getState
