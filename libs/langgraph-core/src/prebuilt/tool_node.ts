@@ -168,12 +168,15 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  * import {
  *   Annotation,
  *   MessagesAnnotation,
+ *   StateGraph,
  *   getCurrentTaskInput,
  *   type LangGraphRunnableConfig,
  * } from "@langchain/langgraph";
  * import { tool } from "@langchain/core/tools";
  * import { z } from "zod";
  *
+ * // Define the graph state. The extra `userId` key becomes part of the state
+ * // that `getCurrentTaskInput` returns inside the tool.
  * const StateAnnotation = Annotation.Root({
  *   ...MessagesAnnotation.spec,
  *   userId: Annotation<string>,
@@ -194,7 +197,14 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  *   }
  * );
  *
- * const toolNode = new ToolNode([getUserInfo]);
+ * // Wire the ToolNode into a StateGraph that uses `StateAnnotation`. Because the
+ * // node runs with the graph state as its input, the tool can read `userId`.
+ * const graph = new StateGraph(StateAnnotation)
+ *   .addNode("tools", new ToolNode([getUserInfo]))
+ *   .addEdge("__start__", "tools")
+ *   .compile();
+ *
+ * await graph.invoke({ messages: [...], userId: "user_123" });
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
