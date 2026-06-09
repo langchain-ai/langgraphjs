@@ -68,10 +68,7 @@ async function buildProject(
     return;
   }
 
-  /**
-   * build checks to run, automatically disabled if watch is enabled
-   */
-  const buildChecks = {
+  const buildChecks = (runPackageChecks: boolean) => ({
     unused:
       // oxlint-disable-next-line no-constant-condition
       !watch && !opts.skipUnused && false
@@ -80,47 +77,64 @@ async function buildProject(
             level: "error" as const,
           } as UnusedOptions)
         : false,
-    attw: {
-      profile: (exportsCJS ? "node16" : "esm-only") as "node16" | "esm-only",
-      level: "error" as const,
-    },
+    attw: runPackageChecks
+      ? {
+          profile: (exportsCJS ? "node16" : "esm-only") as
+            | "node16"
+            | "esm-only",
+          level: "error" as const,
+        }
+      : false,
     /**
      * skip publint if:
      * - watch is enabled, to avoid running publint on every change
      * - noEmit is enabled, as not emitting types fails this check
+     * - intermediate dual-format pass (checks run after CJS is emitted)
      */
     publint:
-      !watch && !opts.noEmit
+      runPackageChecks && !watch && !opts.noEmit
         ? ({
             level: "error" as const,
             strict: true,
           } as const)
         : false,
-  };
+  });
 
-  await build({
+  const sharedBuildOptions = (runPackageChecks: boolean) => ({
     entry,
-    clean,
     cwd: path,
     dts,
     sourcemap,
-    unbundle: true,
+    unbundle: true as const,
     fixedExtension: false,
-    deps: {
-      // uuid@12+ is ESM-only; bundle it into outputs so CJS require() consumers
-      // (e.g. Jest) don't resolve uuid's dist-node ESM entry at runtime.
-      alwaysBundle: ["uuid"],
-    },
-    platform: "node",
+    platform: "node" as const,
     target: "es2022",
     outDir: "./dist",
-    format,
     watch,
     tsconfig: resolve(path, "tsconfig.json"),
     ignoreWatch: [`${path}/.turbo`, `${path}/dist`, `${path}/node_modules`],
     inputOptions: {
       cwd: path,
     },
-    ...buildChecks,
+    ...buildChecks(runPackageChecks),
   });
+
+  // uuid@12+ is ESM-only. Bundle it into CJS outputs only so require() consumers
+  // (e.g. Jest) get relative .cjs copies. Keep ESM uuid external: tsx/esbuild
+  // mishandle bundled default imports when loading dist/*.js in workspace packages.
+  if (exportsCJS) {
+    await build({
+      ...sharedBuildOptions(false),
+      clean,
+      format: ["esm"],
+    });
+    await build({
+      ...sharedBuildOptions(true),
+      clean: false,
+      format: ["cjs"],
+      deps: { alwaysBundle: ["uuid"] },
+    });
+  } else {
+    await build({ ...sharedBuildOptions(true), clean, format });
+  }
 }
