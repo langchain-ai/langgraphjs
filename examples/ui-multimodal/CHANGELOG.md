@@ -1,5 +1,12 @@
 # @examples/ui-multimodal
 
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [[`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6)]:
+  - @langchain/react@1.0.20
+
 ## 0.0.20
 
 ### Patch Changes
