@@ -3,6 +3,10 @@
 /* eslint-disable no-return-assign */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { StructuredTool, tool } from "@langchain/core/tools";
+import {
+  AsyncLocalStorageProviderSingleton,
+  MockAsyncLocalStorage,
+} from "@langchain/core/singletons";
 
 import {
   AIMessage,
@@ -2759,6 +2763,75 @@ describe("ToolNode", () => {
     expect(observedUserId).toBe("user_123");
     const lastMessage = result.messages[result.messages.length - 1];
     expect(lastMessage.content).toBe("User is John Smith");
+  });
+
+  it("getCurrentTaskInput(config) reads state without AsyncLocalStorage (browser-like)", async () => {
+    // Simulate a browser/web runtime without `async_hooks` support: the global
+    // ALS instance is absent, so @langchain/core falls back to a no-op
+    // MockAsyncLocalStorage. In this environment `getCurrentTaskInput()` cannot
+    // recover the config implicitly, but passing `config` explicitly still works
+    // because ToolNode threads it to the tool as a function argument.
+    const getInstanceSpy = vi
+      .spyOn(AsyncLocalStorageProviderSingleton, "getInstance")
+      .mockReturnValue(new MockAsyncLocalStorage());
+
+    try {
+      // Sanity check: in this simulated environment, the implicit lookup fails.
+      expect(
+        AsyncLocalStorageProviderSingleton.getRunnableConfig()
+      ).toBeUndefined();
+
+      const AgentState = z.object({
+        ...MessagesZodState.shape,
+        userId: z.string(),
+      });
+
+      let observedUserId: string | undefined;
+      let implicitLookupThrew = false;
+      const getUserInfo = tool(
+        async (_input: Record<string, never>, config: RunnableConfig) => {
+          // Without ALS, the implicit (no-arg) lookup must fail.
+          try {
+            getCurrentTaskInput();
+          } catch {
+            implicitLookupThrew = true;
+          }
+          // ...but passing `config` explicitly works.
+          const state = getCurrentTaskInput(
+            config
+          ) as z.infer<typeof AgentState>;
+          observedUserId = state.userId;
+          return "ok";
+        },
+        {
+          name: "get_user_info",
+          description: "Look up user info.",
+          schema: z.object({}),
+        }
+      );
+
+      const graph = new StateGraph(AgentState)
+        .addNode("tools", new ToolNode([getUserInfo]))
+        .addEdge("__start__", "tools")
+        .compile();
+
+      await graph.invoke({
+        messages: [
+          new AIMessage({
+            content: "",
+            tool_calls: [
+              { name: "get_user_info", args: {}, id: "call_user_info" },
+            ],
+          }),
+        ],
+        userId: "user_123",
+      });
+
+      expect(implicitLookupThrew).toBe(true);
+      expect(observedUserId).toBe("user_123");
+    } finally {
+      getInstanceSpy.mockRestore();
+    }
   });
 
   // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)
