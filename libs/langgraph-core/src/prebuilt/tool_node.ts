@@ -149,6 +149,53 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  * }
  * // Returns the messages in the state at each step of execution
  * ```
+ *
+ * ### Accessing graph state and runtime context from tools
+ *
+ * Tools executed by a `ToolNode` only receive the arguments produced by the
+ * model. To give a tool access to the surrounding graph state or other runtime
+ * context, you have two first-class options:
+ *
+ * 1. Read the current graph state with {@link getCurrentTaskInput}. The input
+ *    that was passed into the `ToolNode` (i.e. the current graph state) is made
+ *    available to every tool it runs.
+ * 2. Read run-scoped values from the {@link RunnableConfig} that is passed as
+ *    the second argument to each tool (e.g. `config.configurable`, `config.store`).
+ *
+ * @example
+ * ```ts
+ * import { ToolNode } from "@langchain/langgraph/prebuilt";
+ * import {
+ *   Annotation,
+ *   MessagesAnnotation,
+ *   getCurrentTaskInput,
+ *   type LangGraphRunnableConfig,
+ * } from "@langchain/langgraph";
+ * import { tool } from "@langchain/core/tools";
+ * import { z } from "zod";
+ *
+ * const StateAnnotation = Annotation.Root({
+ *   ...MessagesAnnotation.spec,
+ *   userId: Annotation<string>,
+ * });
+ *
+ * const getUserInfo = tool(
+ *   async (_input, config: LangGraphRunnableConfig) => {
+ *     // Read the current graph state that was passed into the ToolNode.
+ *     // Passing `config` makes this work in web browsers too, where
+ *     // AsyncLocalStorage is unavailable.
+ *     const state = getCurrentTaskInput(config) as typeof StateAnnotation.State;
+ *     return state.userId === "user_123" ? "User is John Smith" : "Unknown user";
+ *   },
+ *   {
+ *     name: "get_user_info",
+ *     description: "Look up user info.",
+ *     schema: z.object({}),
+ *   }
+ * );
+ *
+ * const toolNode = new ToolNode([getUserInfo]);
+ * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class ToolNode<T = any> extends RunnableCallable<T, T> {

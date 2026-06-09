@@ -17,6 +17,7 @@ import { z } from "zod/v3";
 import { z as z4 } from "zod/v4";
 import {
   Runnable,
+  RunnableConfig,
   RunnableLambda,
   RunnableSequence,
 } from "@langchain/core/runnables";
@@ -2711,6 +2712,55 @@ describe("ToolNode", () => {
     expect(res[0].content).toEqual(
       `Error: Tool "badtool" not found.\n Please fix your mistakes.`
     );
+  });
+
+  it("tools can read the graph state via getCurrentTaskInput(config)", async () => {
+    const StateAnnotation = Annotation.Root({
+      ...MessagesAnnotation.spec,
+      userId: Annotation<string>,
+    });
+
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (_input: Record<string, never>, config: RunnableConfig) => {
+        // Passing `config` keeps this working in environments without
+        // AsyncLocalStorage support (e.g. web browsers).
+        const state = getCurrentTaskInput(
+          config
+        ) as typeof StateAnnotation.State;
+        observedUserId = state.userId;
+        return observedUserId === "user_123"
+          ? "User is John Smith"
+          : "Unknown user";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const toolNode = new ToolNode([getUserInfo]);
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("tools", toolNode)
+      .addEdge("__start__", "tools")
+      .compile();
+
+    const result = await graph.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      userId: "user_123",
+    });
+
+    expect(observedUserId).toBe("user_123");
+    const lastMessage = result.messages[result.messages.length - 1];
+    expect(lastMessage.content).toBe("User is John Smith");
   });
 
   // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)

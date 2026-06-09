@@ -168,6 +168,10 @@ Tools can access context through:
 * Use `RunnableConfig` for config access
 * Use `getCurrentTaskInput()` for agent state
 
+!!! tip "Browser / web environments"
+
+    `getCurrentTaskInput()` relies on [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html), which is available in Node.js, Deno, and Cloudflare Workers, but **not** in web browsers. To read the current state from a tool in a browser, pass the `config` that the tool receives as its second argument directly: `getCurrentTaskInput(config)`.
+
 === "Using config"
 
     ```ts
@@ -206,6 +210,7 @@ Tools can access context through:
 === "Using state"
 
     ```ts
+    import { RunnableConfig } from "@langchain/core/runnables";
     import { initChatModel } from "langchain/chat_models/universal";
     import { createReactAgent } from "@langchain/langgraph/prebuilt";
     import { Annotation, MessagesAnnotation, getCurrentTaskInput } from "@langchain/langgraph";
@@ -221,9 +226,13 @@ Tools can access context through:
     const getUserInfo = tool(
       async (
         input: Record<string, any>,
-      ) => {
         // highlight-next-line
-        const state = getCurrentTaskInput() as typeof CustomState.State;
+        config: RunnableConfig,
+      ) => {
+        // Pass `config` so this also works in web browsers, where
+        // AsyncLocalStorage is unavailable.
+        // highlight-next-line
+        const state = getCurrentTaskInput(config) as typeof CustomState.State;
         // highlight-next-line
         const userId = state.userId;
         return userId === "user_123" ? "User is John Smith" : "Unknown user";
