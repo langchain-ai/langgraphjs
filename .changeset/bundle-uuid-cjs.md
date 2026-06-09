@@ -3,6 +3,7 @@
 "@langchain/langgraph": patch
 "@langchain/langgraph-sdk": patch
 "@langchain/langgraph-supervisor": patch
+"@langchain/langgraph-checkpoint-redis": patch
 ---
 
 fix(build): bundle uuid into CJS outputs for Jest compatibility
