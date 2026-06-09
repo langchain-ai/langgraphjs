@@ -64,6 +64,12 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
 
   readonly #delegate: TransportAdapter;
 
+  /**
+   * Thread-state reads are SSE-only. WebSocket delegates omit this so
+   * {@link StreamController} falls back to `client.threads.getState()`.
+   */
+  getState?: AgentServerAdapter["getState"];
+
   constructor(options: HttpAgentServerAdapterOptions) {
     this.threadId = options.threadId;
     this.apiUrl = options.apiUrl;
@@ -85,6 +91,11 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
             fetch: options.fetch,
             paths: options.paths,
           });
+
+    if (options.webSocketFactory == null) {
+      const sse = this.#delegate as ProtocolSseTransportAdapter;
+      this.getState = sse.getState.bind(sse);
+    }
   }
 
   open(): Promise<void> {
@@ -110,29 +121,5 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
 
   close(): Promise<void> {
     return this.#delegate.close();
-  }
-
-  getState<StateType = unknown>(): Promise<{
-    values: StateType;
-    next?: unknown;
-    tasks?: unknown;
-    metadata?: unknown;
-    checkpoint?: { checkpoint_id?: string } | null;
-    parent_checkpoint?: { checkpoint_id?: string } | null;
-  } | null> {
-    const delegate = this.#delegate as {
-      getState?: () => Promise<{
-        values: StateType;
-        next?: unknown;
-        tasks?: unknown;
-        metadata?: unknown;
-        checkpoint?: { checkpoint_id?: string } | null;
-        parent_checkpoint?: { checkpoint_id?: string } | null;
-      } | null>;
-    };
-    if (typeof delegate.getState !== "function") {
-      return Promise.resolve(null);
-    }
-    return delegate.getState();
   }
 }
