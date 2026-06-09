@@ -60,10 +60,13 @@ export interface HttpAgentServerAdapterOptions {
 export class HttpAgentServerAdapter implements AgentServerAdapter {
   readonly threadId: string;
 
+  readonly apiUrl: string;
+
   readonly #delegate: TransportAdapter;
 
   constructor(options: HttpAgentServerAdapterOptions) {
     this.threadId = options.threadId;
+    this.apiUrl = options.apiUrl;
     this.#delegate =
       options.webSocketFactory != null
         ? new ProtocolWebSocketTransportAdapter({
@@ -107,5 +110,29 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
 
   close(): Promise<void> {
     return this.#delegate.close();
+  }
+
+  getState<StateType = unknown>(): Promise<{
+    values: StateType;
+    next?: unknown;
+    tasks?: unknown;
+    metadata?: unknown;
+    checkpoint?: { checkpoint_id?: string } | null;
+    parent_checkpoint?: { checkpoint_id?: string } | null;
+  } | null> {
+    const delegate = this.#delegate as {
+      getState?: () => Promise<{
+        values: StateType;
+        next?: unknown;
+        tasks?: unknown;
+        metadata?: unknown;
+        checkpoint?: { checkpoint_id?: string } | null;
+        parent_checkpoint?: { checkpoint_id?: string } | null;
+      } | null>;
+    };
+    if (typeof delegate.getState !== "function") {
+      return Promise.resolve(null);
+    }
+    return delegate.getState();
   }
 }

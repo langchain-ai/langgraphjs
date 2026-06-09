@@ -8,6 +8,8 @@ export type ProtocolRequestHook = (
 export interface ProtocolTransportPaths {
   commands?: string;
   stream?: string;
+  /** `GET` path for thread-state hydration. Defaults to `/threads/:threadId/state`. */
+  state?: string;
 }
 
 export interface ProtocolSseTransportOptions {
