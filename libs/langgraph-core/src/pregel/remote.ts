@@ -30,6 +30,8 @@ import {
 import { StrRecord } from "./algo.js";
 import { PregelInputType, PregelOptions, PregelOutputType } from "./index.js";
 import { PregelNode } from "./read.js";
+import { RemoteGraphRunStream } from "./remote-run-stream.js";
+import { IterableReadableStreamWithAbortSignal } from "./stream.js";
 import {
   PregelParams,
   PregelInterface,
@@ -44,6 +46,7 @@ import {
   isCommand,
 } from "../constants.js";
 import { propagateConfigurableToMetadata } from "./utils/config.js";
+import type { ProtocolEvent } from "../stream/types.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -122,6 +125,36 @@ const getStreamModes = (
     reqSingle,
   };
 };
+
+function protocolEventsToEventStream(run: AsyncIterable<ProtocolEvent>) {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of run) {
+          const namespace = event.params.namespace;
+          const eventName = namespace.length
+            ? `${event.method}|${namespace.join("|")}`
+            : event.method;
+          controller.enqueue(
+            encoder.encode(
+              `event: ${eventName}\ndata: ${JSON.stringify(event.params.data ?? {})}\n\n`
+            )
+          );
+        }
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ message: String(error) })}\n\n`
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
 
 /**
  * The `RemoteGraph` class is a client implementation for calling remote
@@ -465,6 +498,22 @@ export class RemoteGraph<
   override streamEvents(
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v3";
+      encoding: "text/event-stream";
+    }
+  ): Promise<IterableReadableStream<Uint8Array>>;
+
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v3";
+      encoding?: undefined;
+    }
+  ): Promise<RemoteGraphRunStream<PregelOutputType>>;
+
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
     },
     streamOptions?: StreamEventsOptions
@@ -480,14 +529,141 @@ export class RemoteGraph<
   ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
-    _input: PregelInputType,
-    _options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
-      version: "v1" | "v2";
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v1" | "v2" | "v3";
       encoding?: "text/event-stream";
     },
     _streamOptions?: StreamEventsOptions
-  ): IterableReadableStream<StreamEvent | Uint8Array> {
+  ):
+    | IterableReadableStream<StreamEvent | Uint8Array>
+    | Promise<RemoteGraphRunStream<PregelOutputType>>
+    | Promise<IterableReadableStream<Uint8Array>>
+    | Promise<
+        | RemoteGraphRunStream<PregelOutputType>
+        | IterableReadableStream<Uint8Array>
+      > {
+    if (options.version === "v3") {
+      return this._streamEventsV3(
+        input,
+        options as Partial<PregelOptions<Nn, Cc, ContextType>> & {
+          version: "v3";
+          encoding?: "text/event-stream";
+        }
+      );
+    }
     throw new Error("Not implemented.");
+  }
+
+  protected _rejectV3Unsupported(
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      transformers?: any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      control?: any;
+    }
+  ) {
+    if (options.transformers !== undefined) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `transformers`.'
+      );
+    }
+    if (options.control !== undefined) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `control`.'
+      );
+    }
+    if (
+      options.interruptBefore !== undefined ||
+      this.interruptBefore !== undefined
+    ) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `interruptBefore`.'
+      );
+    }
+    if (
+      options.interruptAfter !== undefined ||
+      this.interruptAfter !== undefined
+    ) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `interruptAfter`.'
+      );
+    }
+  }
+
+  protected async _streamEventsV3(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v3";
+      encoding?: "text/event-stream";
+    }
+  ): Promise<
+    RemoteGraphRunStream<PregelOutputType> | IterableReadableStream<Uint8Array>
+  > {
+    this._rejectV3Unsupported(options);
+
+    const abortController = new AbortController();
+    const mergedConfig = mergeConfigs(this.config, options);
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const configurable = { ...sanitizedConfig.configurable };
+    const threadId = configurable.thread_id;
+    delete configurable.thread_id;
+
+    const runConfig = {
+      ...sanitizedConfig,
+      configurable,
+    };
+
+    const thread =
+      typeof threadId === "string"
+        ? this.client.threads.stream(threadId, { assistantId: this.graphId })
+        : this.client.threads.stream({ assistantId: this.graphId });
+
+    let serializedInput;
+    if (isCommand(input)) {
+      serializedInput = input.toJSON() as Record<string, unknown>;
+    } else {
+      serializedInput = _serializeInputs(input);
+    }
+
+    const run = await thread.run.start({
+      input: serializedInput,
+      config: runConfig,
+    });
+
+    const graphRun = new RemoteGraphRunStream<PregelOutputType>({
+      client: this.client,
+      thread,
+      runId: run.run_id,
+      abortController,
+    });
+
+    if (mergedConfig.signal != null) {
+      if (mergedConfig.signal.aborted) {
+        graphRun.abort(mergedConfig.signal.reason);
+      } else {
+        mergedConfig.signal.addEventListener(
+          "abort",
+          () => graphRun.abort(mergedConfig.signal?.reason),
+          { once: true }
+        );
+      }
+    }
+
+    if (options.encoding === "text/event-stream") {
+      const encodingAbortController = new AbortController();
+      encodingAbortController.signal.addEventListener(
+        "abort",
+        () => graphRun.abort(encodingAbortController.signal.reason),
+        { once: true }
+      );
+      return new IterableReadableStreamWithAbortSignal(
+        protocolEventsToEventStream(graphRun),
+        encodingAbortController
+      );
+    }
+
+    return graphRun;
   }
 
   override async *_streamIterator(
