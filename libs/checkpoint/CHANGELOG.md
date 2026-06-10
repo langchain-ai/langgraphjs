@@ -1,5 +1,70 @@
 # @langchain/langgraph-checkpoint
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2452](https://github.com/langchain-ai/langgraphjs/pull/2452) [`a8e7659`](https://github.com/langchain-ai/langgraphjs/commit/a8e7659a9d22fd84425aaf26bda88667c76b185a) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add `DeltaChannel` and the writes-history saver API (beta).
+
+  `DeltaChannel` is a reducer channel that stores only a sentinel in checkpoint
+  blobs instead of the full accumulated value, reconstructing state on read by
+  replaying ancestor writes through a batch reducer. This avoids re-serializing
+  the entire accumulated value at every step (e.g. long message histories).
+
+  - `DeltaChannel(reducer, { snapshotFrequency })` in `@langchain/langgraph` —
+    count-based snapshot cadence (default `snapshotFrequency=1000`) plus a
+    system bound `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT` (default 5000, env
+    `LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`).
+  - `messagesDeltaReducer` — a batching-invariant messages reducer that coerces
+    raw object/string writes, for use with `DeltaChannel`.
+  - `BaseCheckpointSaver.getDeltaChannelHistory({ config, channels })` (beta) —
+    walks the parent chain returning per-channel `{ writes, seed? }`, with a
+    direct-storage override in `MemorySaver`.
+  - `counters_since_delta_snapshot` added to `CheckpointMetadata`; `DeltaSnapshot`
+    serialization support in the JSON+ serializer.
+
+  Reconstruction is wired through the Pregel read/execution paths (initialization,
+  `getState`, `updateState`, local reads) and `exit` durability accumulates and
+  anchors delta writes so threads remain reconstructible without forcing
+  snapshots.
+
+### Patch Changes
+
+- [#2450](https://github.com/langchain-ai/langgraphjs/pull/2450) [`2f6d873`](https://github.com/langchain-ai/langgraphjs/commit/2f6d87368e590ae2fc2a7990fd13cb0a5fe3c198) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add node-level timeouts.
+
+  A `timeout` option is now supported on `StateGraph.addNode`, the functional API
+  (`task`/`entrypoint`), and the `Send` constructor. Pass a number of milliseconds
+  for a hard wall-clock cap, or a `TimeoutPolicy` for finer control:
+
+  ```ts
+  import { TimeoutPolicy } from "@langchain/langgraph";
+
+  // hard wall-clock cap on each attempt
+  builder.addNode("agent", agentFn, { timeout: 60_000 });
+
+  // full control
+  builder.addNode("agent", agentFn, {
+    timeout: {
+      runTimeout: 60_000, // hard wall-clock cap, never refreshed
+      idleTimeout: 10_000, // cap on time without observable progress
+      refreshOn: "auto", // "auto" | "heartbeat"
+    },
+  });
+
+  // per-task override
+  new Send("agent", state, { timeout: { idleTimeout: 5_000 } });
+  ```
+
+  When a timeout fires, a `NodeTimeoutError` (carrying `node`, `kind`
+  (`"run"`/`"idle"`), `timeout`, `elapsed`, `runTimeout`, `idleTimeout`) is raised,
+  the attempt's buffered writes are dropped, and the node's `AbortSignal` is
+  aborted. `idleTimeout` is refreshed by observable progress (writes, custom
+  stream-writer calls, child-task scheduling, callback events) or an explicit
+  `runtime.heartbeat()` call. The timer resets per retry attempt, and
+  `NodeTimeoutError` is retryable under the default retry policy.
+
+  Ports langchain-ai/langgraph#7599, [#7646](https://github.com/langchain-ai/langgraphjs/issues/7646), and [#7659](https://github.com/langchain-ai/langgraphjs/issues/7659).
+
 ## 1.0.4
 
 ### Patch Changes

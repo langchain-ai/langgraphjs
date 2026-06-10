@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2512](https://github.com/langchain-ai/langgraphjs/pull/2512) [`375c73f`](https://github.com/langchain-ai/langgraphjs/commit/375c73fcd1ef06145301df80466fda35c0a99385) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: reject SQL `LIKE` wildcards (`%`, `_`) and the backslash escape character in `PostgresStore` namespace labels. `BaseStore.search()` matches namespaces via `namespace_path LIKE ${prefix}%`, and these characters in caller-supplied namespace labels are interpreted as wildcards by Postgres even through a bound parameter — letting a namespace prefix of `["%"]` match every namespace in the store across tenants. `validateNamespace` now throws for these characters at all `search` / `get` / `put` entrypoints, keeping store-wide consistency. CWE-1336.
+
 ## 1.0.2
 
 ### Patch Changes
