@@ -152,7 +152,7 @@ These keep working without changes:
 | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `onError` (hook-level)                                                                                                                     | Read `stream.error` directly, or pass a per-submit `onError` via `submit(input, { onError })` — the v1 per-submit callback is fire-and-forget and scoped to the one submission it was passed to.                                                    |
 | `onFinish`                                                                                                                                 | Use `onCompleted` for imperative side effects, or derive render state from `isLoading` / `useValues(stream)`.                                                                                                                                       |
-| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. New event-based streaming delivers these as structured store updates; read them via selector hooks (`useChannel`, `useExtension`) when you genuinely need raw events.                                                                                   |
+| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent`, `onDebugEvent`, `onCheckpointEvent`, `onTaskEvent`, `onToolEvent` | Drop. New event-based streaming delivers these as structured store updates; read them via selector hooks (`useChannel`, `useExtension`) or, for per-event side effects like analytics, `useChannelEffect(stream, channels, { onEvent })`.                                                                                   |
 | `onStop`                                                                                                                                   | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` to leave the agent running server-side. See §5.3. |
 | `fetchStateHistory`                                                                                                                        | Drop. Fork/edit flows use `useMessageMetadata` + `submit({}, { forkFrom })` instead (§5).                                                                                                                                                           |
 | `reconnectOnMount`                                                                                                                         | Drop. Re-attach is automatic: remounting the hook with the same `threadId` attaches to the in-flight run.                                                                                                                                           |
@@ -418,7 +418,8 @@ All of these are exported from `@langchain/react`:
 | `useMessageMetadata(stream, msgId)`               | `stream.getMessagesMetadata(msg, i)` | Returns `{ parentCheckpointId } \| undefined`. Drives fork-from-checkpoint.                                                                             |
 | `useSubmissionQueue(stream)`                      | `stream.queue`                       | Returns `{ entries, size, cancel(id), clear() }`. Backed by `multitaskStrategy: "enqueue"`.                                                             |
 | `useExtension(stream, name)`                      | Per-event callbacks                  | Read a named protocol extension (custom channel).                                                                                                       |
-| `useChannel(stream, channels)`                    | Raw event callbacks                  | Low-level escape hatch.                                                                                                                                 |
+| `useChannel(stream, channels)`                    | Raw event callbacks                  | Low-level escape hatch (buffered, for rendering).                                                                                                       |
+| `useChannelEffect(stream, channels, { onEvent })` | `onLangChainEvent`, `onCustomEvent`  | Per-event side-effect callback (analytics, logging). Doesn't re-render.                                                                                 |
 | `useAudio`, `useImages`, `useVideo`, `useFiles`   | —                                    | New, multimodal streaming.                                                                                                                              |
 | `useMediaURL`, `useAudioPlayer`, `useVideoPlayer` | —                                    | Helpers built on top of the media hooks.                                                                                                                |
 
@@ -895,11 +896,32 @@ surface will start to function the moment the server catches up.
 
 ### Q. We still need a raw event stream for analytics. What replaces `onLangChainEvent` / `onDebugEvent` / `onCustomEvent`?
 
-Use `useChannel(stream, channels)` for a bounded buffer of raw events
-scoped to a namespace, or subscribe to a specific extension with
-`useExtension(stream, name)`. For app-wide telemetry, pipe the raw
-stream through a custom `AgentServerAdapter` (§9) and tee events to
-your analytics sink there.
+For per-event side effects (analytics, logging) the direct replacement is
+`useChannelEffect`, which calls back once per event without re-rendering:
+
+```tsx
+useChannelEffect(stream, ["lifecycle", "tools", "custom"], {
+  replay: false,
+  onEvent(event) {
+    sendAnalytics(event);
+  },
+  onError(error) {
+    logger.error(error);
+  },
+});
+```
+
+If you instead want to **render** an event log, use `useChannel(stream, channels)`
+for a bounded buffer of raw events scoped to a namespace, or subscribe to a
+specific extension with `useExtension(stream, name)`. For app-wide telemetry
+that should run regardless of which component is mounted, pipe the raw stream
+through a custom `AgentServerAdapter` (§9) and tee events to your analytics
+sink there.
+
+> The callback receives v1 **protocol events** (`lifecycle.*`, `tools.*`,
+> `messages.*`, `custom`), not the legacy LangChain event names
+> (`on_chain_start`, `on_tool_end`, …). Map the protocol events to your
+> analytics schema, or normalize on the backend if you need the old names.
 
 ### Q. My backend only emits `values` events (no `messages` channel). Will streaming still work?
 

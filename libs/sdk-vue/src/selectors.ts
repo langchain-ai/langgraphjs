@@ -4,6 +4,7 @@ import {
   readonly,
   shallowRef,
   toValue,
+  watch,
   watchEffect,
   type ComputedRef,
   type MaybeRefOrGetter,
@@ -12,6 +13,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  acquireChannelEffect,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -24,6 +26,7 @@ import {
   type AssembledToolCall,
   type AudioMedia,
   type Channel,
+  type ChannelEffectOptions,
   type ChannelProjectionOptions,
   type Event,
   type FileMedia,
@@ -287,6 +290,98 @@ export function useChannel(
 }
 
 const EMPTY_EVENTS: Event[] = [];
+
+/**
+ * Options for {@link useChannelEffect}. Extends the projection options
+ * (`bufferSize`, `replay`) with the per-event callback, an optional
+ * error sink, a reactive `target` scope, and a reactive `enabled` gate.
+ */
+export interface UseChannelEffectOptions extends ChannelEffectOptions {
+  /**
+   * Scope events to a subagent / subgraph / explicit namespace.
+   * Defaults to the root namespace. Accepts a ref/getter so reactive
+   * state can drive the scope.
+   */
+  target?: MaybeRefOrGetter<SelectorTarget>;
+  /**
+   * Gate the subscription. When `false`, no subscription is opened and
+   * no events are delivered. Defaults to `true`. Accepts a ref/getter.
+   */
+  enabled?: MaybeRefOrGetter<boolean>;
+}
+
+/**
+ * Side-effect counterpart to {@link useChannel}. Instead of returning a
+ * reactive buffer, it invokes `onEvent` once per event for as long as
+ * the calling scope is alive — the idiomatic place for analytics,
+ * logging, and other fire-and-forget side effects.
+ *
+ * ```ts
+ * useChannelEffect(stream, ["lifecycle", "tools"], {
+ *   replay: false,
+ *   onEvent(event) {
+ *     sendAnalytics(event);
+ *   },
+ *   onError(error) {
+ *     logger.error(error);
+ *   },
+ * });
+ * ```
+ *
+ * Reactive `channels` / `target` / `enabled` re-bind the subscription
+ * when they change. The underlying subscription is shared (ref-counted)
+ * with any matching {@link useChannel} consumer. `replay` defaults to
+ * `false` (live-only); events buffered before the effect attaches are
+ * not re-delivered.
+ *
+ * Must be called from a component `setup()` (or another effect scope) so
+ * the subscription is torn down on `onScopeDispose`.
+ */
+export function useChannelEffect(
+  stream: AnyStream,
+  channels: MaybeRefOrGetter<readonly Channel[]>,
+  options: UseChannelEffectOptions
+): void {
+  useResolveSubagentNamespace(stream, options.target);
+
+  let dispose: (() => void) | null = null;
+  const detach = () => {
+    dispose?.();
+    dispose = null;
+  };
+
+  watch(
+    () => {
+      const enabled = toValue(options.enabled) ?? true;
+      const sortedChannels = [...toValue(channels)].sort().join(",");
+      const namespace = resolveNamespace(toValue(options.target));
+      // Return a stable string so the watcher only re-acquires when the
+      // resolved scope actually changes (not on every getter call).
+      return `${enabled ? "on" : "off"}|${sortedChannels}|${namespaceKey(namespace)}`;
+    },
+    () => {
+      detach();
+      const enabled = toValue(options.enabled) ?? true;
+      if (!enabled) return;
+      const registry = getRegistry(stream);
+      if (registry == null) return;
+      const resolvedChannels = toValue(channels);
+      const namespace = resolveNamespace(toValue(options.target));
+      dispose = acquireChannelEffect(registry, resolvedChannels, namespace, {
+        replay: options.replay,
+        bufferSize: options.bufferSize,
+        // Read callbacks lazily so a fresh closure never re-acquires.
+        onEvent: (event) => options.onEvent(event),
+        onError: options.onError
+          ? (error) => options.onError?.(error)
+          : undefined,
+      });
+    },
+    { immediate: true, flush: "sync" }
+  );
+
+  onScopeDispose(detach);
+}
 
 /**
  * Subscribe to a scoped audio-media stream. Each handle is yielded

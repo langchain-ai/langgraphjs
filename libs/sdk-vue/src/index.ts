@@ -15,6 +15,7 @@ export { useProjection } from "./use-projection.js";
 export {
   useAudio,
   useChannel,
+  useChannelEffect,
   useExtension,
   useFiles,
   useImages,
@@ -25,6 +26,7 @@ export {
   useValues,
   useVideo,
   type SelectorTarget,
+  type UseChannelEffectOptions,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
   type UseSubmissionQueueReturn,

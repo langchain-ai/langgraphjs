@@ -11,6 +11,7 @@ Each selector hook opens a **ref-counted subscription** when the first component
 - [Root vs. scoped example](#root-vs-scoped-example)
 - [`useMessageMetadata`](#usemessagemetadata)
 - [`useChannel`](#usechannel)
+- [`useChannelEffect`](#usechanneleffect)
 - [`useExtension`](#useextension)
 - [`useSubmissionQueue`](#usesubmissionqueue)
 - [Related](#related)
@@ -37,6 +38,7 @@ Subscriptions open on mount and close when the last consumer for a given `(chann
 | `useSubmissionQueue(stream)`                                            | `{ entries, size, cancel, clear }`                               | Reactive client-side submission queue. See [queue](./submission-queue.md). |
 | `useExtension(stream, name, target?)`                                   | `T \| undefined`                                                 | Read a named `custom:<name>` extension.                                    |
 | `useChannel(stream, channels, target?, options?)`                       | `Event[]`                                                        | Low-level raw-events escape hatch.                                         |
+| `useChannelEffect(stream, channels, options)`                           | `void`                                                           | Per-event side-effect callback (analytics, logging).                       |
 | `useAudio` / `useImages` / `useVideo` / `useFiles`                      | `AudioMedia[]` / `ImageMedia[]` / `VideoMedia[]` / `FileMedia[]` | Assembled multimodal streams. See [Multimodal](./multimodal.md).           |
 | `useMediaURL(handle)`                                                   | `string \| undefined`                                            | Turns a media handle into an `<img/audio/video src>` URL.                  |
 | `useAudioPlayer(handle, options?)` / `useVideoPlayer(handle, options?)` | Player handles                                                   | Opinionated playback helpers built on top of the media hooks.              |
@@ -141,6 +143,43 @@ const statsEvents = useChannel(stream, ["custom:redaction-stats"]);
 ```
 
 Pass `target` (subagent / subgraph / `{ namespace }`) to scope. Useful for bespoke reducers that can't be expressed through `useValues` / `useMessages`.
+
+## `useChannelEffect`
+
+`useChannel` is for events you want to **render**. When you instead want to **react** to each event — fire analytics, write a log, increment a counter — use `useChannelEffect`. It invokes `onEvent` once per event and returns nothing, so it never re-renders the component:
+
+```tsx
+import { useChannelEffect } from "@langchain/react";
+
+useChannelEffect(stream, ["lifecycle", "tools"], {
+  replay: false,
+  onEvent(event) {
+    sendAnalytics(event);
+  },
+  onError(error) {
+    logger.error(error);
+  },
+});
+```
+
+This is the v1 replacement for the old `onLangChainEvent` / `onCustomEvent` callbacks (see [migration](./v1-migration.md)): keep side effects out of render, scoped to the channels you actually care about.
+
+Options (third argument):
+
+| Option       | Default | Description                                                                                         |
+| ------------ | ------- | --------------------------------------------------------------------------------------------------- |
+| `onEvent`    | —       | Required. Called once per event observed while mounted.                                             |
+| `onError`    | —       | Called when `onEvent` throws. When omitted, a throwing `onEvent` is swallowed (best-effort).        |
+| `target`     | root    | Scope to a subagent / subgraph / `{ namespace }`.                                                   |
+| `enabled`    | `true`  | Gate the subscription. Flip to `false` to pause delivery (e.g. while viewing a different thread).   |
+| `replay`     | `false` | Whether to (re)process replayed history. Defaults to live-only — the opposite of `useChannel`.      |
+| `bufferSize` | `4096`  | Forwarded to the underlying projection.                                                             |
+
+Notes:
+
+- `onEvent` / `onError` are read from a ref, so passing a fresh inline closure each render is fine — it never re-subscribes.
+- The subscription is **shared** (ref-counted) with any matching `useChannel`, so you only ever pay for one server subscription per channel set.
+- Events buffered before the hook mounts are **not** re-delivered — analytics never double-counts history on a late mount.
 
 ## `useExtension`
 

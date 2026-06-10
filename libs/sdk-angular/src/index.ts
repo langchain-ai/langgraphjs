@@ -17,6 +17,7 @@ export { injectProjection } from "./inject-projection.js";
 export {
   injectAudio,
   injectChannel,
+  injectChannelEffect,
   injectExtension,
   injectFiles,
   injectImages,
@@ -24,6 +25,7 @@ export {
   injectToolCalls,
   injectValues,
   injectVideo,
+  type InjectChannelEffectOptions,
   type SelectorTarget,
 } from "./selectors.js";
 export {

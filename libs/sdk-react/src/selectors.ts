@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type {
   MessageMetadata,
@@ -12,6 +12,7 @@ import type {
 } from "@langchain/langgraph-sdk/stream";
 import {
   NAMESPACE_SEPARATOR,
+  acquireChannelEffect,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -24,6 +25,7 @@ import {
   type AssembledToolCall,
   type AudioMedia,
   type Channel,
+  type ChannelEffectOptions,
   type ChannelProjectionOptions,
   type Event,
   type FileMedia,
@@ -423,6 +425,100 @@ export function useChannel(
 }
 
 const EMPTY_EVENTS: Event[] = [];
+
+/**
+ * Options for {@link useChannelEffect}. Extends the projection options
+ * (`bufferSize`, `replay`) with the per-event callback, an optional
+ * error sink, a `target` scope, and an `enabled` gate.
+ */
+export interface UseChannelEffectOptions extends ChannelEffectOptions {
+  /**
+   * Scope events to a subagent / subgraph / explicit namespace.
+   * Defaults to the root namespace.
+   */
+  target?: SelectorTarget;
+  /**
+   * Gate the subscription. When `false`, no subscription is opened and
+   * no events are delivered. Defaults to `true`. Flipping this lets you
+   * pause analytics (e.g. while the user is viewing a different thread)
+   * without unmounting.
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Side-effect counterpart to {@link useChannel}. Instead of returning a
+ * buffer of events that re-renders the component, it invokes `onEvent`
+ * once per event for as long as the hook is mounted — the idiomatic
+ * place for analytics, logging, and other fire-and-forget side effects.
+ *
+ * ```tsx
+ * useChannelEffect(stream, ["lifecycle", "tools"], {
+ *   replay: false,
+ *   onEvent(event) {
+ *     sendAnalytics(event);
+ *   },
+ *   onError(error) {
+ *     logger.error(error);
+ *   },
+ * });
+ * ```
+ *
+ * Notes:
+ *  - `onEvent` / `onError` are read from a ref, so passing a fresh
+ *    closure each render is fine — it never re-subscribes.
+ *  - The underlying subscription is shared (ref-counted) with any
+ *    matching {@link useChannel} consumer, so you only ever pay for one
+ *    server subscription per channel set.
+ *  - `replay` defaults to `false` (live-only). Set it to `true` only if
+ *    you genuinely want to (re)process replayed history.
+ *  - Events buffered before the hook mounts are not re-delivered.
+ */
+export function useChannelEffect(
+  stream: AnyStream,
+  channels: readonly Channel[],
+  options: UseChannelEffectOptions
+): void {
+  const {
+    target,
+    enabled = true,
+    replay,
+    bufferSize,
+    onEvent,
+    onError,
+  } = options;
+
+  // Keep the latest callbacks in refs so re-renders that pass new inline
+  // closures never tear down and re-open the subscription.
+  const onEventRef = useRef(onEvent);
+  const onErrorRef = useRef(onError);
+  onEventRef.current = onEvent;
+  onErrorRef.current = onError;
+
+  useResolveSubagentNamespace(stream, target);
+
+  const namespace = resolveNamespace(target);
+  const channelKey = useMemo(() => [...channels].sort().join(","), [channels]);
+  const key = `channelEffect|${bufferSize ?? "default"}|${
+    (replay ?? false) ? "replay" : "live"
+  }|${channelKey}|${namespaceKey(namespace)}`;
+
+  const registry = getRegistry(stream);
+
+  useEffect(() => {
+    if (!enabled || registry == null) return undefined;
+    return acquireChannelEffect(registry, channels, namespace, {
+      replay,
+      bufferSize,
+      onEvent: (event) => onEventRef.current(event),
+      onError: (error) => onErrorRef.current?.(error),
+    });
+    // `channels` / `namespace` / `replay` / `bufferSize` are folded into
+    // `key`; callbacks live in refs. Re-subscribe only when the resolved
+    // scope or `enabled` changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registry, key, enabled]);
+}
 
 /**
  * Read metadata recorded for a specific message id — today exposes

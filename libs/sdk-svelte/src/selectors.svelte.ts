@@ -1,6 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  acquireChannelEffect,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -13,6 +14,7 @@ import {
   type AssembledToolCall,
   type AudioMedia,
   type Channel,
+  type ChannelEffectOptions,
   type ChannelProjectionOptions,
   type Event,
   type FileMedia,
@@ -382,6 +384,86 @@ export function useChannel(
     },
     EMPTY_EVENTS
   );
+}
+
+/**
+ * Options for {@link useChannelEffect}. Extends the projection options
+ * (`bufferSize`, `replay`) with the per-event callback, an optional
+ * error sink, a reactive `target` scope, and a reactive `enabled` gate.
+ */
+export interface UseChannelEffectOptions extends ChannelEffectOptions {
+  /**
+   * Scope events to a subagent / subgraph / explicit namespace.
+   * Defaults to the root namespace. Accepts a getter so component
+   * `$state` can drive the scope.
+   */
+  target?: ValueOrGetter<SelectorTarget>;
+  /**
+   * Gate the subscription. When `false`, no subscription is opened and
+   * no events are delivered. Defaults to `true`. Accepts a getter.
+   */
+  enabled?: ValueOrGetter<boolean>;
+}
+
+/**
+ * Side-effect counterpart to {@link useChannel}. Instead of returning a
+ * reactive buffer, it invokes `onEvent` once per event for as long as
+ * the calling scope is alive — the idiomatic place for analytics,
+ * logging, and other fire-and-forget side effects.
+ *
+ * ```svelte
+ * <script lang="ts">
+ *   useChannelEffect(stream, ["lifecycle", "tools"], {
+ *     replay: false,
+ *     onEvent(event) {
+ *       sendAnalytics(event);
+ *     },
+ *     onError(error) {
+ *       logger.error(error);
+ *     },
+ *   });
+ * </script>
+ * ```
+ *
+ * Reactive `channels` / `target` / `enabled` getters re-bind the
+ * subscription when they change. The underlying subscription is shared
+ * (ref-counted) with any matching {@link useChannel} consumer. `replay`
+ * defaults to `false` (live-only); events buffered before the effect
+ * attaches are not re-delivered.
+ *
+ * Must be called from a reactive context (a `.svelte` component script
+ * or inside `$effect.root`).
+ */
+export function useChannelEffect(
+  stream: AnyStream,
+  channels: ValueOrGetter<readonly Channel[]>,
+  options: UseChannelEffectOptions
+): void {
+  useResolveSubagentNamespace(stream, options.target);
+
+  $effect(() => {
+    const enabled = isGetter(options.enabled)
+      ? options.enabled()
+      : (options.enabled ?? true);
+    const resolvedChannels = isGetter(channels) ? channels() : channels;
+    const target = isGetter(options.target) ? options.target() : options.target;
+    const namespace = resolveNamespace(target);
+
+    if (!enabled) return;
+    const registry = getRegistry(stream);
+    if (registry == null) return;
+
+    // `onEvent` / `onError` are read lazily inside the wrappers so the
+    // effect doesn't re-acquire when a caller passes a fresh closure.
+    return acquireChannelEffect(registry, resolvedChannels, namespace, {
+      replay: options.replay,
+      bufferSize: options.bufferSize,
+      onEvent: (event) => options.onEvent(event),
+      onError: options.onError
+        ? (error) => options.onError?.(error)
+        : undefined,
+    });
+  });
 }
 
 /**

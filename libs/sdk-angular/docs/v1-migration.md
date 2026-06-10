@@ -143,7 +143,7 @@ are flagged in the later sections.
 |---|---|
 | `onError` | Read `stream.error()` directly, drive a `computed` / `effect` off it, or pass a per-submit `onError` via `submit(input, { onError })`. |
 | `onFinish` | Derive from `stream.isLoading()` transitioning `true → false`. |
-| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events. |
+| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events, or `injectChannelEffect(stream, channels, { onEvent })` for per-event side effects like analytics. |
 | `onStop` | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` for join/rejoin. See §5.3. |
 | `fetchStateHistory` | Drop. Fork flows use `injectMessageMetadata` + `submit({}, { forkFrom })` (see §5 / §6). |
 | `reconnectOnMount` | Drop. Re-attach is automatic. |
@@ -327,7 +327,8 @@ All of these are exported from `@langchain/angular`:
 | `injectMessageMetadata(stream, msgId)` | `stream.getMessagesMetadata(msg, i)` | Returns `Signal<{ parentCheckpointId } \| undefined>`. Drives fork-from-checkpoint. |
 | `injectSubmissionQueue(stream)` | `stream.queue` | Returns `{ entries, size, cancel(id), clear() }`. |
 | `injectExtension(stream, name, …)` | Per-event callbacks | Read a named protocol extension. |
-| `injectChannel(stream, channels, …)` | Raw event callbacks | Low-level escape hatch. |
+| `injectChannel(stream, channels, …)` | Raw event callbacks | Low-level escape hatch (buffered, for rendering). |
+| `injectChannelEffect(stream, channels, { onEvent })` | `onLangChainEvent`, `onCustomEvent` | Per-event side-effect callback (analytics, logging). No change detection. |
 | `injectAudio`, `injectImages`, `injectVideo`, `injectFiles` | — | Multimodal streaming. |
 | `injectMediaUrl(media)` | — | Creates and revokes an object URL for a media item. |
 

@@ -4,6 +4,7 @@ import { render } from "vitest-browser-vue";
 import { ExtensionSelectorsStream } from "./components/ExtensionSelectorsStream.js";
 import { SelectorsStream } from "./components/SelectorsStream.js";
 import { SubgraphDiscoveryStream } from "./components/SubgraphDiscoveryStream.js";
+import { ChannelEffectStream } from "./components/ChannelEffectStream.js";
 import { apiUrl } from "./test-utils.js";
 
 it("useMessages projects the same data as stream.messages", async () => {
@@ -201,6 +202,71 @@ it("exposes the latest thread values via useValues", async () => {
     await expect
       .element(screen.getByTestId("values-message-count"))
       .toHaveTextContent("2");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("delivers raw custom events to a useChannelEffect callback", async () => {
+  const screen = await render(ChannelEffectStream, { props: { apiUrl } });
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+
+    // The `customChannelAgent` fixture emits exactly three writer
+    // payloads per run on the raw `custom` channel.
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("3");
+    await expect
+      .element(screen.getByTestId("effect-methods"))
+      .toHaveTextContent(/custom/);
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("keeps delivering useChannelEffect events across serial submits", async () => {
+  const screen = await render(ChannelEffectStream, { props: { apiUrl } });
+
+  try {
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("3");
+
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("6");
+  } finally {
+    await screen.unmount();
+  }
+});
+
+it("does not deliver useChannelEffect events when disabled", async () => {
+  const screen = await render(ChannelEffectStream, {
+    props: { apiUrl, enabled: false },
+  });
+
+  try {
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("0");
   } finally {
     await screen.unmount();
   }

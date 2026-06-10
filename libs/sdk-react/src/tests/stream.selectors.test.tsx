@@ -4,6 +4,7 @@ import { render } from "vitest-browser-react";
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
 import { SubgraphDiscoveryStream } from "./components/SubgraphDiscoveryStream.js";
 import { ExtensionSelectorsStream } from "./components/ExtensionSelectorsStream.js";
+import { ChannelEffectStream } from "./components/ChannelEffectStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
 it("discovers subagents and scopes useMessages/useToolCalls to each namespace", async () => {
@@ -242,6 +243,74 @@ it("continues useExtension subscriptions across serial submits", async () => {
     await expect
       .element(screen.getByTestId("extension-count"))
       .toHaveTextContent("2");
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
+it("delivers raw custom events to a useChannelEffect callback", async () => {
+  const screen = await render(<ChannelEffectStream apiUrl={apiUrl} />);
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+
+    // The `custom_channel_graph` fixture emits exactly three writer
+    // payloads per run on the raw `custom` channel.
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("3");
+    await expect
+      .element(screen.getByTestId("effect-methods"))
+      .toHaveTextContent(/custom/);
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
+it("keeps delivering useChannelEffect events across serial submits", async () => {
+  const screen = await render(<ChannelEffectStream apiUrl={apiUrl} />);
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("3");
+
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("6");
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
+it("does not deliver useChannelEffect events when disabled", async () => {
+  const screen = await render(
+    <ChannelEffectStream apiUrl={apiUrl} enabled={false} />,
+  );
+
+  try {
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("effect-count"))
+      .toHaveTextContent("0");
   } finally {
     await cleanupRender(screen);
   }
