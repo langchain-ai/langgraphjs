@@ -25,7 +25,7 @@ function lifecycleEvent(eventName: string): Event {
   return {
     type: "event",
     method: "lifecycle",
-    params: { namespace: [], data: { event: eventName } },
+    params: { namespace: [], data: { event: eventName }, timestamp: 0 },
   } as Event;
 }
 
