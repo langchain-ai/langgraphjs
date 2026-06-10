@@ -16,7 +16,7 @@ import {
   type TimeoutPolicy,
 } from "../pregel/utils/index.js";
 import type { Runtime } from "../web.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 
 beforeAll(() => {
   initializeAsyncLocalStorageSingleton();
