@@ -1801,17 +1801,17 @@ export class CompiledStateGraph<
       const schemaDef = this.builder._schemaRuntimeDefinition;
       if (StateSchema.isInstance(schemaDef)) {
         const schemaKeys = new Set(schemaDef.getChannelKeys());
-        const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
-        if (schemaUpdates.length === 0) return updates;
+        return Promise.all(
+          updates.map(async ([k, v]) => {
+            if (!schemaKeys.has(k)) return [k, v];
 
-        const updateObj = Object.fromEntries(schemaUpdates);
-        const parsed = await schemaDef.validateInput(updateObj);
-        return updates.map(([k, v]) => [
-          k,
-          schemaKeys.has(k) && Object.prototype.hasOwnProperty.call(parsed, k)
-            ? parsed[k]
-            : v,
-        ]);
+            const parsed = await schemaDef.validateInput({ [k]: v });
+            return [
+              k,
+              Object.prototype.hasOwnProperty.call(parsed, k) ? parsed[k] : v,
+            ];
+          })
+        );
       }
 
       if (isInteropZodObject(schemaDef)) {
@@ -1827,43 +1827,26 @@ export class CompiledStateGraph<
           })
         );
         const valueSchema = interopZodObjectPartial(schemaDef);
-        const parsed = new Map<string, unknown>();
+        return updates.map(([k, v]) => {
+          if (!schemaKeys.has(k)) return [k, v];
 
-        const normalUpdates: [string, unknown][] = [];
-        const overwriteUpdates: [string, unknown][] = [];
-        for (const [k, v] of schemaUpdates) {
           const [isOverwrite, overwriteValue] = _getOverwriteValue(v);
           if (isOverwrite) {
-            overwriteUpdates.push([k, overwriteValue]);
-          } else {
-            normalUpdates.push([k, v]);
+            const parsed = interopParse(valueSchema, { [k]: overwriteValue });
+            return [
+              k,
+              Object.prototype.hasOwnProperty.call(parsed, k)
+                ? { [OVERWRITE]: parsed[k] }
+                : v,
+            ];
           }
-        }
 
-        if (normalUpdates.length > 0) {
-          const normalObj = Object.fromEntries(normalUpdates);
-          const normalParsed = interopParse(updateSchema, normalObj);
-          for (const k of Object.keys(normalObj)) {
-            if (Object.prototype.hasOwnProperty.call(normalParsed, k)) {
-              parsed.set(k, normalParsed[k]);
-            }
-          }
-        }
-
-        if (overwriteUpdates.length > 0) {
-          const overwriteObj = Object.fromEntries(overwriteUpdates);
-          const overwriteParsed = interopParse(valueSchema, overwriteObj);
-          for (const k of Object.keys(overwriteObj)) {
-            if (Object.prototype.hasOwnProperty.call(overwriteParsed, k)) {
-              parsed.set(k, { [OVERWRITE]: overwriteParsed[k] });
-            }
-          }
-        }
-
-        return updates.map(([k, v]) => [
-          k,
-          schemaKeys.has(k) && parsed.has(k) ? parsed.get(k) : v,
-        ]);
+          const parsed = interopParse(updateSchema, { [k]: v });
+          return [
+            k,
+            Object.prototype.hasOwnProperty.call(parsed, k) ? parsed[k] : v,
+          ];
+        });
       }
 
       return updates;
