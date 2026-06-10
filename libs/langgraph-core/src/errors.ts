@@ -130,7 +130,11 @@ export class EmptyInputError extends BaseLangGraphError {
 
 export class EmptyChannelError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    // Skip expensive stack trace capture — used for control flow on channel reads.
+    const prevLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
     super(message, fields);
+    Error.stackTraceLimit = prevLimit;
     this.name = "EmptyChannelError";
   }
 
