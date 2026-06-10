@@ -41,6 +41,7 @@ import {
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_STREAM,
   ERROR,
+  ERROR_SOURCE_NODE,
   INPUT,
   INTERRUPT,
   NULL_TASK_ID,
@@ -58,6 +59,7 @@ import {
 import {
   _applyWrites,
   _prepareNextTasks,
+  _prepareNodeErrorHandlerTask,
   _prepareSingleTask,
   increment,
   shouldInterrupt,
@@ -817,7 +819,7 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
-    const taskList = Object.values(this.tasks);
+    let taskList = Object.values(this.tasks);
 
     // Full-state checkpoint snapshots are expensive; skip unless a consumer
     // subscribed to "checkpoints" or the legacy "debug" wrapper mode.
@@ -851,7 +853,12 @@ export class PregelLoop {
     // if there are pending writes from a previous loop, apply them
     if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
-        if (k === ERROR || k === INTERRUPT || k === RESUME) {
+        if (
+          k === ERROR ||
+          k === ERROR_SOURCE_NODE ||
+          k === INTERRUPT ||
+          k === RESUME
+        ) {
           continue;
         }
         const task = taskList.find((t) => t.id === tid);
@@ -859,6 +866,13 @@ export class PregelLoop {
           task.writes.push([k, v]);
         }
       }
+      // On resume, re-schedule error handlers for nodes that failed in a prior
+      // run (recorded via ERROR_SOURCE_NODE) before they completed handling.
+      this._resumeErrorHandlersIfApplicable();
+      // Re-scheduling can add handler tasks to `this.tasks`, so refresh the
+      // cached task list before emitting writes and the downstream re-tick /
+      // interrupt / debug checks see the newly scheduled handlers.
+      taskList = Object.values(this.tasks);
       for (const task of taskList) {
         if (task.writes.length > 0) {
           this._outputWrites(task.id, task.writes, true);
@@ -1002,6 +1016,103 @@ export class PregelLoop {
     }
 
     return pushed;
+  }
+
+  /**
+   * Returns the name of the error handler node registered for `nodeName`, or
+   * `undefined` if none is configured.
+   */
+  getErrorHandlerNode(nodeName: string): string | undefined {
+    return this.nodes[nodeName]?.errorHandlerNode;
+  }
+
+  /**
+   * Whether `nodeName` is itself an auto-generated error handler node.
+   */
+  isErrorHandlerNode(nodeName: string): boolean {
+    return this.nodes[nodeName]?.isErrorHandler === true;
+  }
+
+  /**
+   * Schedule a node-level error handler task for a task that failed after its
+   * retry policy was exhausted. Prepares the handler task (injecting a
+   * {@link NodeError}), registers it so the runner executes it within the
+   * current step, and returns it (or `undefined` if no handler applies).
+   *
+   * The failure provenance (`ERROR` + `ERROR_SOURCE_NODE`) is checkpointed by
+   * the runner via {@link PregelLoop#putWrites} so handlers observe the same
+   * context after a resume.
+   */
+  scheduleErrorHandler(
+    failedTask: PregelExecutableTask<string, string>,
+    error: Error
+  ): PregelExecutableTask<string, string> | undefined {
+    const handlerNode = this.getErrorHandlerNode(String(failedTask.name));
+    if (!handlerNode) return undefined;
+
+    const handlerTask = _prepareNodeErrorHandlerTask(
+      failedTask,
+      handlerNode,
+      error,
+      this.checkpoint,
+      this.checkpointPendingWrites,
+      this.nodes,
+      this.channels,
+      failedTask.config ?? this.config,
+      {
+        step: this.step,
+        checkpointer: this.checkpointer,
+        manager: this.manager,
+        store: this.store,
+        stream: this.stream,
+      }
+    ) as PregelExecutableTask<string, string> | undefined;
+
+    if (handlerTask === undefined) return undefined;
+
+    this.tasks[handlerTask.id] = handlerTask;
+
+    this._emit(
+      gatherIteratorSync(prefixGenerator(mapDebugTasks([handlerTask]), "tasks"))
+    );
+    if (this.debug) printStepTasks(this.step, [handlerTask]);
+
+    return handlerTask;
+  }
+
+  /**
+   * On resume, re-schedule error handlers for tasks that failed in a prior run
+   * but had not finished being handled. Scans pending writes for
+   * `ERROR_SOURCE_NODE` markers (paired with `ERROR`), marks the originating
+   * task as done (so the runner won't re-run it), and prepares a fresh handler
+   * task so the runner picks it up.
+   */
+  protected _resumeErrorHandlersIfApplicable() {
+    // Collect failed task ids with both ERROR_SOURCE_NODE and ERROR writes.
+    const failed = new Map<string, Error>();
+    for (const [tid, chan] of this.checkpointPendingWrites) {
+      if (chan !== ERROR_SOURCE_NODE) continue;
+      const errorWrite = this.checkpointPendingWrites.find(
+        ([t, c]) => t === tid && c === ERROR
+      );
+      if (errorWrite === undefined) continue;
+      const value = errorWrite[2] as { message?: string; name?: string };
+      const error = new Error(value?.message ?? String(value));
+      if (value?.name) error.name = value.name;
+      failed.set(tid, error);
+    }
+
+    for (const [tid, error] of failed) {
+      const task = this.tasks[tid];
+      if (task === undefined) continue;
+      const handlerNode = this.getErrorHandlerNode(String(task.name));
+      if (!handlerNode) continue;
+      // Non-empty writes => runner's `writes.length === 0` filter skips it.
+      if (task.writes.length === 0) {
+        task.writes.push([ERROR, { message: error.message, name: error.name }]);
+      }
+      this.scheduleErrorHandler(task, error);
+    }
   }
 
   protected _suppressInterrupt(e?: Error): boolean {

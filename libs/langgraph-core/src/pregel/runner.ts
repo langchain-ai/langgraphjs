@@ -15,6 +15,7 @@ import {
 import {
   CONFIG_KEY_SCRATCHPAD,
   ERROR,
+  ERROR_SOURCE_NODE,
   INTERRUPT,
   RESUME,
   NO_WRITES,
@@ -87,6 +88,12 @@ export class PregelRunner {
   private loop: PregelLoop;
 
   /**
+   * Exceptions already routed to a node-level error handler. Consulted when
+   * deciding whether a failed task should abort the run.
+   */
+  private handledExceptions = new WeakSet<Error>();
+
+  /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
    */
@@ -136,6 +143,11 @@ export class PregelRunner {
 
     for await (const { task, error, signalAborted } of taskStream) {
       this._commit(task, error);
+      if (error !== undefined && this.handledExceptions.has(error)) {
+        // Routed to a node-level error handler in this tick; provenance is
+        // checkpointed and the error must not abort the run.
+        continue;
+      }
       if (isGraphInterrupt(error)) {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
@@ -331,7 +343,42 @@ export class PregelRunner {
         continue;
       }
 
-      yield settledTask as SettledPregelTask;
+      const settled = settledTask as SettledPregelTask;
+      const { task: settledPregelTask, error: settledError } = settled;
+
+      // If the task failed (after exhausting its retry policy) and the node has
+      // a registered error handler, schedule that handler to run within this
+      // same tick instead of aborting the run. GraphBubbleUp errors (e.g.
+      // interrupts / parent commands) are never routed to error handlers.
+      if (
+        settledError !== undefined &&
+        !isGraphBubbleUp(settledError) &&
+        !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
+        this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
+          undefined
+      ) {
+        const handlerTask = this.loop.scheduleErrorHandler(
+          settledPregelTask,
+          settledError
+        );
+        if (handlerTask !== undefined) {
+          executingTasksMap[handlerTask.id] = _runWithRetry(
+            handlerTask,
+            retryPolicy,
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
+            signals?.composedAbortSignal
+          ).catch((error) => {
+            return {
+              task: handlerTask,
+              error,
+              signalAborted: signals?.composedAbortSignal?.aborted,
+            };
+          });
+          barrier.next();
+        }
+      }
+
+      yield settled;
 
       if (listener != null) {
         timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
@@ -340,6 +387,19 @@ export class PregelRunner {
 
       delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
+  }
+
+  /**
+   * Whether a failed task should record {@link ERROR_SOURCE_NODE} provenance.
+   */
+  private _shouldRouteToErrorHandler(
+    task: PregelExecutableTask<string, string>
+  ): boolean {
+    const name = String(task.name);
+    if (this.loop.isErrorHandlerNode(name)) {
+      return false;
+    }
+    return this.loop.getErrorHandlerNode(name) !== undefined;
   }
 
   /**
@@ -366,9 +426,12 @@ export class PregelRunner {
       } else if (isGraphBubbleUp(error) && task.writes.length) {
         this.loop.putWrites(task.id, task.writes);
       } else {
-        this.loop.putWrites(task.id, [
-          [ERROR, { message: error.message, name: error.name }],
-        ]);
+        task.writes.push([ERROR, { message: error.message, name: error.name }]);
+        if (this._shouldRouteToErrorHandler(task)) {
+          task.writes.push([ERROR_SOURCE_NODE, String(task.name)]);
+          this.handledExceptions.add(error);
+        }
+        this.loop.putWrites(task.id, task.writes);
       }
     } else {
       if (

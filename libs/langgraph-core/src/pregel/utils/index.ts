@@ -78,7 +78,10 @@ export type RetryPolicy = {
    */
   maxAttempts?: number;
 
-  /** Whether to add random jitter to the interval between retries. */
+  /**
+   * Whether to add random jitter to the interval between retries.
+   * @default true
+   */
   jitter?: boolean;
 
   /** A function that returns True for exceptions that should trigger a retry. */

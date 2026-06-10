@@ -49,11 +49,13 @@ import {
   CONFIG_KEY_SCRATCHPAD,
   RETURN,
   ERROR,
+  ERROR_SOURCE_NODE,
   NO_WRITES,
   CONFIG_KEY_PREVIOUS_STATE,
   PREVIOUS,
   CACHE_NS_WRITES,
   CONFIG_KEY_RESUME_MAP,
+  CONFIG_KEY_NODE_ERROR,
   START,
 } from "../constants.js";
 import {
@@ -66,7 +68,7 @@ import {
   TaskPath,
   VariadicTaskPath,
 } from "./types.js";
-import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
+import { EmptyChannelError, InvalidUpdateError, NodeError } from "../errors.js";
 import { getNullChannelVersion } from "./utils/index.js";
 import { ExecutionInfo, LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
@@ -240,6 +242,7 @@ const IGNORE = new Set<string | number | symbol>([
   INTERRUPT,
   RETURN,
   ERROR,
+  ERROR_SOURCE_NODE,
 ]);
 
 const RESERVED_SET: ReadonlySet<string> = new Set(RESERVED);
@@ -1142,6 +1145,168 @@ export function _prepareSingleTask<
     }
   }
   return undefined;
+}
+
+/**
+ * Prepare an immediate node-level error handler task for a failed task.
+ *
+ * The handler runs only after the failed node's retry policy is exhausted (the
+ * runner schedules it once a non-bubble-up error settles). It is prepared like
+ * a PUSH task targeting the auto-generated handler node, receives the failed
+ * node's input, and is injected with a {@link NodeError} under
+ * {@link CONFIG_KEY_NODE_ERROR} so the handler can inspect the failure
+ * provenance (and route via `Command({ goto })`).
+ *
+ * @internal
+ */
+export function _prepareNodeErrorHandlerTask<
+  Nn extends StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel>,
+>(
+  failedTask: PregelExecutableTask<keyof Nn, keyof Cc>,
+  handlerNodeName: string,
+  error: Error,
+  checkpoint: ReadonlyCheckpoint,
+  pendingWrites: CheckpointPendingWrite[] | undefined,
+  processes: Nn,
+  channels: Cc,
+  config: LangGraphRunnableConfig,
+  extra: NextTaskExtraFieldsWithStore
+): PregelExecutableTask<keyof Nn, keyof Cc> | undefined {
+  const { step, checkpointer, manager } = extra;
+  const proc = processes[handlerNodeName as keyof Nn];
+  if (proc === undefined) {
+    return undefined;
+  }
+  const node = proc.getNode();
+  if (node === undefined) {
+    return undefined;
+  }
+
+  const configurable = config.configurable ?? {};
+  const parentNamespace = configurable.checkpoint_ns ?? "";
+  const triggers = [PUSH];
+  const checkpointNamespace =
+    parentNamespace === ""
+      ? handlerNodeName
+      : `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${handlerNodeName}`;
+  // Deterministic task id (includes the failed task id) so resuming from a
+  // checkpoint reconstructs the same handler task.
+  const taskId = uuid5(
+    JSON.stringify([
+      checkpointNamespace,
+      step.toString(),
+      handlerNodeName,
+      PUSH,
+      "node_error_handler",
+      failedTask.id,
+    ]),
+    checkpoint.id
+  );
+  const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
+  // Last path element is a string (not `true`), so interrupts raised by the
+  // handler are surfaced normally rather than deferred to a parent call.
+  const taskPath = [
+    PUSH,
+    String(failedTask.name),
+    handlerNodeName,
+    false,
+  ] as VariadicTaskPath;
+
+  let metadata = {
+    langgraph_step: step,
+    langgraph_node: handlerNodeName,
+    langgraph_triggers: triggers,
+    langgraph_path: taskPath,
+    langgraph_checkpoint_ns: taskCheckpointNamespace,
+    checkpoint_ns: taskCheckpointNamespace,
+  };
+  if (proc.metadata !== undefined) {
+    metadata = { ...metadata, ...proc.metadata };
+  }
+
+  const writes: [keyof Cc, unknown][] = [];
+  const executionInfo: ExecutionInfo = {
+    checkpointId: checkpoint.id,
+    checkpointNs: taskCheckpointNamespace,
+    taskId,
+    threadId: configurable.thread_id as string | undefined,
+    runId: config.runId != null ? String(config.runId) : undefined,
+    nodeAttempt: 1,
+  };
+
+  return {
+    name: handlerNodeName as keyof Nn,
+    input: failedTask.input,
+    proc: node,
+    subgraphs: proc.subgraphs,
+    writes,
+    config: {
+      ...patchConfig(
+        mergeConfigs(config, {
+          metadata,
+          tags: proc.tags,
+          store: extra.store ?? config.store,
+        }),
+        {
+          runName: handlerNodeName,
+          callbacks: manager?.getChild(`graph:step:${step}`),
+          configurable: {
+            [CONFIG_KEY_TASK_ID]: taskId,
+            [CONFIG_KEY_SEND]: (writes_: PendingWrite[]) =>
+              _localWrite(
+                (items: PendingWrite<keyof Cc>[]) => writes.push(...items),
+                processes,
+                writes_
+              ),
+            [CONFIG_KEY_READ]: (
+              select_: Array<keyof Cc> | keyof Cc,
+              fresh_: boolean = false
+            ) =>
+              _localRead(
+                checkpoint,
+                channels,
+                {
+                  name: handlerNodeName,
+                  writes: writes as PendingWrite[],
+                  triggers,
+                  path: taskPath,
+                },
+                select_,
+                fresh_
+              ),
+            [CONFIG_KEY_CHECKPOINTER]:
+              checkpointer ?? configurable[CONFIG_KEY_CHECKPOINTER],
+            [CONFIG_KEY_CHECKPOINT_MAP]: {
+              ...configurable[CONFIG_KEY_CHECKPOINT_MAP],
+              [parentNamespace]: checkpoint.id,
+            },
+            [CONFIG_KEY_SCRATCHPAD]: _scratchpad({
+              pendingWrites: pendingWrites ?? [],
+              taskId,
+              currentTaskInput: failedTask.input,
+              resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
+              namespaceHash: XXH3(taskCheckpointNamespace),
+            }),
+            [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
+            [CONFIG_KEY_NODE_ERROR]: new NodeError(
+              String(failedTask.name),
+              error
+            ),
+            checkpoint_id: undefined,
+            checkpoint_ns: taskCheckpointNamespace,
+          },
+        }
+      ),
+      executionInfo,
+    },
+    triggers,
+    retry_policy: proc.retryPolicy,
+    cache_key: undefined,
+    id: taskId,
+    path: taskPath,
+    writers: proc.getWriters(),
+  } satisfies PregelExecutableTask<keyof Nn, keyof Cc>;
 }
 
 /**

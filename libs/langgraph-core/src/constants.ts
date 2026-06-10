@@ -11,6 +11,13 @@ export const END = "__end__";
 export const INPUT = "__input__";
 export const COPY = "__copy__";
 export const ERROR = "__error__";
+/**
+ * Special reserved write key recording the name of the node whose execution
+ * failed, so node-level error handlers see the same failure provenance after a
+ * checkpoint resume. Value format in pending writes:
+ * `[taskId, ERROR_SOURCE_NODE, nodeName: string]`.
+ */
+export const ERROR_SOURCE_NODE = "__error_source_node__";
 
 /** Special reserved cache namespaces */
 export const CACHE_NS_WRITES = "__pregel_ns_writes";
@@ -33,6 +40,13 @@ export const CONFIG_KEY_CHECKPOINT_ID = "checkpoint_id";
 export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
+
+/**
+ * Config key holding a {@link NodeError} (failed source node + error) for the
+ * current node-level error handler invocation. Injected when an error handler
+ * task is prepared after the failing node's retry policy is exhausted.
+ */
+export const CONFIG_KEY_NODE_ERROR = "__pregel_node_error";
 
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
@@ -69,6 +83,7 @@ export const RESERVED = [
   INTERRUPT,
   RESUME,
   ERROR,
+  ERROR_SOURCE_NODE,
   NO_WRITES,
 
   // reserved config.configurable keys
