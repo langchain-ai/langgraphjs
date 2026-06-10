@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-sqlite
 
+## 1.0.3
+
+### Patch Changes
+
+- [#2516](https://github.com/langchain-ai/langgraphjs/pull/2516) [`f6a6d26`](https://github.com/langchain-ai/langgraphjs/commit/f6a6d26b7e69003c4fa052f3cd3319f3e72f0f8f) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: `SqliteSaver.putWrites` now honors `WRITES_IDX_MAP`, pinning special channels (`__error__`, `__scheduled__`, `__interrupt__`, `__resume__`) to fixed negative indices instead of the call-local ordinal. Previously a follow-up `putWrites([[INTERRUPT, …]], taskId)` for the same checkpoint silently `REPLACE`d the regular write previously stored at `idx=0` for that task, losing data. The conflict-resolution clause also now matches the Python checkpointer contract: `OR REPLACE` only when every channel is a special one (so e.g. INTERRUPT→RESUME state transitions overwrite), `OR IGNORE` otherwise.
+
 ## 1.0.2
 
 ### Patch Changes
