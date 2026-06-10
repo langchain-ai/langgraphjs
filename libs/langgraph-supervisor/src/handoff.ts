@@ -20,9 +20,11 @@ function _normalizeAgentName(agentName: string): string {
 const createHandoffTool = ({
   agentName,
   agentDescription,
+  addHandoffMessages = true,
 }: {
   agentName: string;
   agentDescription?: string;
+  addHandoffMessages?: boolean;
 }) => {
   /**
    * Create a tool that can handoff control to the requested agent.
@@ -33,6 +35,12 @@ const createHandoffTool = ({
    *   although you are only limited to the names accepted by LangGraph
    *   nodes as well as the tool names accepted by LLM providers
    *   (the tool name will look like this: `transfer_to_<agent_name>`).
+   * @param agentDescription - Optional description for the handoff tool.
+   * @param addHandoffMessages - Whether to add the handoff messages to the
+   *   message history forwarded to the expert agent. If `false`, the
+   *   supervisor `AIMessage` containing the handoff tool call and the handoff
+   *   `ToolMessage` are omitted from the expert agent's message history.
+   *   Defaults to `true`.
    */
   const toolName = `transfer_to_${_normalizeAgentName(agentName)}`;
 
@@ -41,19 +49,28 @@ const createHandoffTool = ({
       /**
        * Ask another agent for help.
        */
-      const toolMessage = new ToolMessage({
-        content: `Successfully transferred to ${agentName}`,
-        name: toolName,
-        tool_call_id: config.toolCall.id,
-      });
-
       // inject the current agent state
       const state =
         getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];
+
+      let messages = state.messages;
+      if (addHandoffMessages) {
+        const toolMessage = new ToolMessage({
+          content: `Successfully transferred to ${agentName}`,
+          name: toolName,
+          tool_call_id: config.toolCall.id,
+        });
+        messages = messages.concat(toolMessage);
+      } else {
+        // omit the supervisor AIMessage containing the handoff tool call
+        // (and the handoff ToolMessage) from the expert agent's history
+        messages = messages.slice(0, -1);
+      }
+
       return new Command({
         goto: agentName,
         graph: Command.PARENT,
-        update: { messages: state.messages.concat(toolMessage) },
+        update: { messages },
       });
     },
     {

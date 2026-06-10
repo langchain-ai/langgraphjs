@@ -205,6 +205,16 @@ export type CreateSupervisorParams<
   outputMode?: OutputMode;
 
   /**
+   * Whether to add the supervisor-to-agent handoff messages (the supervisor
+   * `AIMessage` containing the handoff tool call and the handoff `ToolMessage`)
+   * to the message history forwarded to the expert agent. If `false`, those
+   * handoff bookkeeping messages are omitted from the expert agent's message
+   * history. This is useful for providers that strictly validate tool-call
+   * message sequences. Defaults to `true`.
+   */
+  addHandoffMessages?: boolean;
+
+  /**
    * Whether to add a pair of (AIMessage, ToolMessage) to the message history
    * when returning control to the supervisor to indicate that a handoff has occurred
    */
@@ -280,6 +290,7 @@ const createSupervisor = <
   stateSchema,
   contextSchema,
   outputMode = "last_message",
+  addHandoffMessages = true,
   addHandoffBackMessages = true,
   supervisorName = "supervisor",
   includeAgentName,
@@ -322,7 +333,11 @@ const createSupervisor = <
         ? agent.description
         : undefined;
 
-    return createHandoffTool({ agentName, agentDescription });
+    return createHandoffTool({
+      agentName,
+      agentDescription,
+      addHandoffMessages,
+    });
   });
   const allTools = [...(tools ?? []), ...handoffTools];
 
