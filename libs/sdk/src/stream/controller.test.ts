@@ -956,6 +956,83 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("does not re-stream seeded messages on idle submit when getState omits metadata.step", async () => {
+    // Same as above, but the idle thread's getState carries no
+    // metadata.step (server/custom transport). The seal boundary is then
+    // unknown, so the deferred pump's replayed `values` checkpoints —
+    // which carry their own increasing steps — must NOT advance the
+    // timeline past the seed and lift the seal mid-replay (the bug).
+    const rootSubscription = makePushableSubscription();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const seededMessages = [
+      { type: "human", content: "ship it", id: "human-1" },
+      { type: "ai", id: "ai-1", content: "All done." },
+    ];
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: seededMessages },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-latest" },
+          // No metadata.step — the seal boundary is unknown.
+          metadata: {},
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-idle-no-step",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().messages).toHaveLength(2);
+    });
+
+    void controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    await rootSubscription.started;
+
+    // seq=0 replay of the finished run: its checkpoints carry increasing
+    // steps that initialize and then advance the projection's high-water
+    // mark. With an unknown seal boundary these must not lift the seal.
+    rootSubscription.push(checkpointsEvent(1, 1));
+    rootSubscription.push(valuesEvent(seededMessages, 2));
+    rootSubscription.push(checkpointsEvent(2, 3));
+    rootSubscription.push(valuesEvent(seededMessages, 4));
+
+    // ...and the replayed `messages` channel re-streams ai-1 from empty.
+    rootSubscription.push(messageStartEvent("ai-1", 5));
+    rootSubscription.push(messageDeltaEvent(6, "A"));
+    rootSubscription.push(messageDeltaEvent(7, "All do"));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const messages = controller.rootStore.getSnapshot().messages;
+    expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+      "human-1",
+      "ai-1",
+    ]);
+    expect((messages[1] as { text?: string }).text).toBe("All done.");
+
+    await controller.dispose();
+  });
+
   it("opens SSE pumps eagerly when getState omits `next` (unknown shape)", async () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const subscribe = vi.fn(async () => makeNeverEndingSubscription());

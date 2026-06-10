@@ -189,12 +189,28 @@ export class RootMessageProjection<
    * message from an empty `message-start` and re-stream the whole turn
    * token-by-token, clobbering the seeded tail (a visible "messages
    * replay" on the first submit). Deltas for a sealed id are dropped in
-   * {@link handleMessage}. The seal is lifted once a newer checkpoint
-   * advances the timeline past the seed (see {@link applyValues}) or on
+   * {@link handleMessage}. The seal is lifted once a checkpoint advances
+   * strictly past {@link #sealStep} (see {@link applyValues}) or on
    * thread rebind ({@link reset}). New ids from the next run are never
    * sealed, so they stream normally.
    */
   readonly #sealedMessageIds = new Set<string>();
+
+  /**
+   * High-water {@link #maxStep} captured when {@link sealMessageIds} ran,
+   * i.e. the seed checkpoint's step (or `undefined` when `getState()`
+   * carried no `metadata.step`). It is the boundary between the replayed
+   * idle history (steps `<= #sealStep`, emitted by the deferred pump's
+   * `seq=0` replay) and the new run (steps `> #sealStep`); only a
+   * checkpoint strictly past it lifts the seal. Without this boundary the
+   * replayed old-run checkpoints — which themselves carry increasing
+   * steps — would advance {@link #maxStep} and lift the seal mid-replay,
+   * reopening the clobber. When the seed step is unknown the boundary
+   * stays `undefined` and the seal holds until {@link reset}; the
+   * `values` channel (which ignores the seal) still reconciles any
+   * genuine change to a sealed id, only its streamed deltas are dropped.
+   */
+  #sealStep: number | undefined = undefined;
 
   /**
    * @param params.messagesKey - Key inside `values` that holds the
@@ -227,20 +243,28 @@ export class RootMessageProjection<
     this.#flushScheduled = false;
     this.#maxStep = undefined;
     this.#sealedMessageIds.clear();
+    this.#sealStep = undefined;
   }
 
   /**
    * Seal message ids so the streamed `messages` channel cannot downgrade
    * them to partial re-streams. Called by {@link StreamController.hydrate}
    * after seeding an idle thread, whose deferred pump replays the finished
-   * run from `seq=0` on the first submit. The seal is lifted once a newer
-   * checkpoint advances the timeline past the seed (see {@link applyValues})
-   * or on thread rebind ({@link reset}).
+   * run from `seq=0` on the first submit.
+   *
+   * Captures the current {@link #maxStep} as the lift boundary
+   * ({@link #sealStep}). The seal is applied immediately after the seed's
+   * `getState()` snapshot is reconciled, so `#maxStep` here is the seed
+   * step (or `undefined` when `getState()` carried no `metadata.step`).
+   * The seal is lifted once a checkpoint advances strictly past that
+   * boundary (see {@link applyValues}) or on thread rebind
+   * ({@link reset}).
    *
    * @param ids - Complete message ids from the idle `getState()` seed.
    */
   sealMessageIds(ids: Iterable<string>): void {
     for (const id of ids) this.#sealedMessageIds.add(id);
+    if (this.#sealStep == null) this.#sealStep = this.#maxStep;
   }
 
   /**
@@ -387,15 +411,25 @@ export class RootMessageProjection<
     const addOnly =
       step != null && this.#maxStep != null && step < this.#maxStep;
     if (step != null && (this.#maxStep == null || step > this.#maxStep)) {
-      // A checkpoint strictly newer than the current high-water step
-      // means the live timeline has advanced past the replayed (idle)
-      // history, so seeded ids may now receive genuine updates — lift
-      // the replay seal. The `== null` case is the seed itself (or the
-      // first live snapshot) and must not lift it.
-      if (this.#maxStep != null && this.#sealedMessageIds.size > 0) {
-        this.#sealedMessageIds.clear();
-      }
       this.#maxStep = step;
+    }
+    // Lift the replay seal only when a checkpoint advances strictly past
+    // the step captured when the ids were sealed (the seed step). That
+    // boundary separates the replayed idle history (steps <= #sealStep,
+    // emitted by the deferred pump's seq=0 replay) from the new run
+    // (steps > #sealStep), so crossing it means seeded ids may now take
+    // genuine streamed updates. Replayed old-run checkpoints advance
+    // #maxStep but never reach past #sealStep, so they can't lift it. A
+    // `null` boundary (the seed step was unknown) keeps the seal until
+    // reset() — we can't tell replay from live, and the values channel
+    // still reconciles a sealed id even while its streamed deltas drop.
+    if (
+      this.#sealedMessageIds.size > 0 &&
+      step != null &&
+      this.#sealStep != null &&
+      step > this.#sealStep
+    ) {
+      this.#sealedMessageIds.clear();
     }
 
     if (nextMessages.length === 0) {
