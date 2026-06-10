@@ -10,7 +10,7 @@ import {
   StateGraph,
 } from "../web.js";
 import { task, entrypoint } from "../func/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 
 beforeAll(() => {
   initializeAsyncLocalStorageSingleton();
