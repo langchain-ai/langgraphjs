@@ -6,6 +6,57 @@ import { BasicStream } from "./components/BasicStream.js";
 import { OnRequestStream } from "./components/OnRequestStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
+// Regression guard: re-mounting an existing thread through a
+// `Client` (no custom `fetch`) must hydrate purely from the
+// idle catch-up subscription — without submitting a new run. A
+// past bug routed the long-lived SSE event stream through
+// `AsyncCaller`, which stalled this hydrate-only path and never
+// surfaced the checkpointed messages. The submit-driven test
+// above does not exercise it because an active run keeps the
+// stream busy; only this no-submit hydrate does.
+it("hydrates an existing thread through a Client without re-submitting", async () => {
+  const onRequestCallback = vi.fn();
+  const threadId = crypto.randomUUID();
+
+  const client = new Client({
+    apiUrl,
+    onRequest: (url, init) => {
+      onRequestCallback(url.toString(), init);
+      return init;
+    },
+  });
+
+  // Seed a thread with a completed run (two messages) using an
+  // internal client so hydrate has checkpoint state to load.
+  const seed = await render(
+    <BasicStream apiUrl={apiUrl} threadId={threadId} />,
+  );
+  await seed.getByTestId("submit").click();
+  await expect
+    .element(seed.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await cleanupRender(seed);
+
+  onRequestCallback.mockClear();
+
+  // Re-mount the *same* thread with the `onRequest` client and do
+  // NOT submit. Reaching `message-count === "2"` depends solely on
+  // hydration's catch-up subscription resolving.
+  const screen = await render(
+    <BasicStream apiUrl={apiUrl} client={client} threadId={threadId} />,
+  );
+
+  try {
+    await expect
+      .element(screen.getByTestId("message-count"), { timeout: 5_000 })
+      .toHaveTextContent("2");
+
+    expect(onRequestCallback).toHaveBeenCalled();
+  } finally {
+    await cleanupRender(screen);
+  }
+});
+
 it("routes client-backed requests through onRequest", async () => {
   const onRequestCallback = vi.fn();
   const threadId = crypto.randomUUID();

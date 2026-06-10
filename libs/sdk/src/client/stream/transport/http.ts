@@ -219,20 +219,24 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
       while (!ac.signal.aborted && !this.closed) {
         try {
-          const response = await this.request(streamUrl, {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              accept: "text/event-stream",
+          const response = await this.request(
+            streamUrl,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                accept: "text/event-stream",
+              },
+              body: JSON.stringify({
+                channels: params.channels,
+                ...(params.namespaces ? { namespaces: params.namespaces } : {}),
+                ...(params.depth != null ? { depth: params.depth } : {}),
+                ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
+              }),
+              signal: ac.signal,
             },
-            body: JSON.stringify({
-              channels: params.channels,
-              ...(params.namespaces ? { namespaces: params.namespaces } : {}),
-              ...(params.depth != null ? { depth: params.depth } : {}),
-              ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
-            }),
-            signal: ac.signal,
-          });
+            { stream: true }
+          );
 
           if (!readySettled) {
             readySettled = true;
@@ -337,7 +341,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.queue.close();
   }
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
+  private async request(
+    path: string,
+    init: RequestInit,
+    options?: { stream?: boolean }
+  ): Promise<Response> {
     const url = toAbsoluteUrl(this.apiUrl, path);
     let requestInit: RequestInit = {
       ...init,
@@ -348,13 +356,20 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       requestInit = await this.onRequest(url, requestInit);
     }
 
+    // Long-lived SSE event streams must not run through AsyncCaller: its
+    // p-queue/p-retry semantics are designed for discrete request/response
+    // calls, and wrapping a streaming response stalls the call (and can
+    // leak retries). Stream resilience is handled separately by the
+    // reconnect loop in `openEventStream`.
+    const useAsyncCaller = this.asyncCaller != null && !options?.stream;
+
     const execute = async (): Promise<Response> => {
       const fetchImpl = await this.resolveFetch();
       const response = await fetchImpl(url.toString(), requestInit);
       if (!response.ok) {
         // Reject with the Response so AsyncCaller maps it to HTTPError and
         // applies STATUS_NO_RETRY / retry policy consistently with REST.
-        if (this.asyncCaller) {
+        if (useAsyncCaller) {
           throw response;
         }
         let detail = "";
@@ -380,8 +395,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     };
 
     try {
-      return this.asyncCaller
-        ? await this.asyncCaller.call(execute)
+      return useAsyncCaller
+        ? await this.asyncCaller!.call(execute)
         : await execute();
     } catch (error) {
       throw toError(error);
