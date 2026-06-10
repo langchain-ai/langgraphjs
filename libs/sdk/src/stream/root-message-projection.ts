@@ -180,6 +180,23 @@ export class RootMessageProjection<
   #maxStep: number | undefined = undefined;
 
   /**
+   * Message ids seeded as complete-and-final from an idle thread's
+   * `getState()` snapshot. An idle thread defers its root SSE pump, and
+   * the first `submit()` brings it up — at which point the transport
+   * replays the finished run from `seq=0`. Unlike the `values` channel
+   * (guarded by {@link #maxStep}), `messages`-channel deltas carry no
+   * step, so that replay would otherwise rebuild each already-complete
+   * message from an empty `message-start` and re-stream the whole turn
+   * token-by-token, clobbering the seeded tail (a visible "messages
+   * replay" on the first submit). Deltas for a sealed id are dropped in
+   * {@link handleMessage}. The seal is lifted once a newer checkpoint
+   * advances the timeline past the seed (see {@link applyValues}) or on
+   * thread rebind ({@link reset}). New ids from the next run are never
+   * sealed, so they stream normally.
+   */
+  readonly #sealedMessageIds = new Set<string>();
+
+  /**
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
@@ -209,6 +226,21 @@ export class RootMessageProjection<
     this.#pendingValues = null;
     this.#flushScheduled = false;
     this.#maxStep = undefined;
+    this.#sealedMessageIds.clear();
+  }
+
+  /**
+   * Seal message ids so the streamed `messages` channel cannot downgrade
+   * them to partial re-streams. Called by {@link StreamController.hydrate}
+   * after seeding an idle thread, whose deferred pump replays the finished
+   * run from `seq=0` on the first submit. The seal is lifted once a newer
+   * checkpoint advances the timeline past the seed (see {@link applyValues})
+   * or on thread rebind ({@link reset}).
+   *
+   * @param ids - Complete message ids from the idle `getState()` seed.
+   */
+  sealMessageIds(ids: Iterable<string>): void {
+    for (const id of ids) this.#sealedMessageIds.add(id);
   }
 
   /**
@@ -274,6 +306,12 @@ export class RootMessageProjection<
     if (update == null) return;
     const id = update.message.id;
     if (id == null) return;
+    // A sealed id belongs to a message seeded complete from an idle
+    // thread's `getState()`; the deferred pump's `seq=0` replay would
+    // otherwise rebuild it from an empty start and re-stream the whole
+    // turn. Drop the replayed delta — the authoritative seed already
+    // holds the final content (see {@link #sealedMessageIds}).
+    if (this.#sealedMessageIds.has(id)) return;
     const captured = this.#roles.get(id) ?? { role: "ai" as const };
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
       toolCallId: captured.toolCallId,
@@ -349,6 +387,14 @@ export class RootMessageProjection<
     const addOnly =
       step != null && this.#maxStep != null && step < this.#maxStep;
     if (step != null && (this.#maxStep == null || step > this.#maxStep)) {
+      // A checkpoint strictly newer than the current high-water step
+      // means the live timeline has advanced past the replayed (idle)
+      // history, so seeded ids may now receive genuine updates — lift
+      // the replay seal. The `== null` case is the seed itself (or the
+      // first live snapshot) and must not lift it.
+      if (this.#maxStep != null && this.#sealedMessageIds.size > 0) {
+        this.#sealedMessageIds.clear();
+      }
       this.#maxStep = step;
     }
 
