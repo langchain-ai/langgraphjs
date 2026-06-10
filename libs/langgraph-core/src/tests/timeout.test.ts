@@ -22,6 +22,13 @@ beforeAll(() => {
   initializeAsyncLocalStorageSingleton();
 });
 
+/** Block the event loop synchronously for ~`ms` (simulates a CPU-bound node). */
+function busyWait(ms: number): void {
+  const end = Date.now() + ms;
+  // eslint-disable-next-line no-empty
+  while (Date.now() < end) {}
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(resolve, ms);
@@ -285,6 +292,53 @@ describe("_runWithRetry timeout enforcement", () => {
     expect(isNodeTimeoutError(error)).toBe(true);
     // pre-timeout writes from the failed attempt must not leak
     expect(taskObj.writes).toEqual([]);
+  });
+
+  it("enforces the run timeout for a synchronous CPU-bound node that blocks the event loop", async () => {
+    // The node never yields to the event loop, so the watchdog timer (a
+    // macrotask) cannot fire while it runs. The post-race wall-clock check must
+    // still report a run timeout.
+    const taskObj = makeTask(
+      () => {
+        busyWait(150);
+        return "done";
+      },
+      { timeout: 50, name: "cpu-bound" }
+    );
+    const { result, error } = await _runWithRetry(taskObj);
+    expect(result).toBeUndefined();
+    expect(isNodeTimeoutError(error)).toBe(true);
+    const timeoutErr = error as unknown as NodeTimeoutError;
+    expect(timeoutErr.kind).toBe("run");
+    expect(timeoutErr.node).toBe("cpu-bound");
+    expect(timeoutErr.runTimeout).toBe(50);
+  });
+
+  it("discards writes from a synchronous node that blew its run budget", async () => {
+    const taskObj = makeTask(
+      (_input, config) => {
+        config.configurable[CONFIG_KEY_SEND]([["value", "stale"]]);
+        busyWait(150);
+        return "done";
+      },
+      { timeout: 50, name: "cpu-writer" }
+    );
+    const { error } = await _runWithRetry(taskObj);
+    expect(isNodeTimeoutError(error)).toBe(true);
+    expect(taskObj.writes).toEqual([]);
+  });
+
+  it("does not falsely time out a fast synchronous node", async () => {
+    const taskObj = makeTask(
+      () => {
+        busyWait(10);
+        return "done";
+      },
+      { timeout: 200, name: "cpu-fast" }
+    );
+    const { result, error } = await _runWithRetry(taskObj);
+    expect(error).toBeUndefined();
+    expect(result).toBe("done");
   });
 
   it("is retryable under the default retry policy and resets the timer per attempt", async () => {

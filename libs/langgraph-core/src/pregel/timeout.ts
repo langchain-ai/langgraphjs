@@ -278,6 +278,25 @@ export async function runAttemptWithTimeout<T>(
     clearTimers();
   }
 
+  // Watchdog timers are macrotasks and cannot fire while a synchronous
+  // (CPU-bound) node blocks the event loop. Such a node — or one with a long
+  // synchronous prefix — can therefore settle the race as "ok"/"err" before an
+  // already-expired timer ever runs, bypassing the documented hard wall-clock
+  // cap. Re-check the budget against wall-clock time here so the caps hold for
+  // synchronous nodes too. (For genuinely async work the watchdog already
+  // wins the race, so this only catches what timers structurally cannot.)
+  if (outcome.type !== "timeout") {
+    const now = Date.now();
+    if (policy.runTimeout !== undefined && now - start >= policy.runTimeout) {
+      outcome = { type: "timeout", kind: "run" };
+    } else if (
+      policy.idleTimeout !== undefined &&
+      now - scope.lastProgress >= policy.idleTimeout
+    ) {
+      outcome = { type: "timeout", kind: "idle" };
+    }
+  }
+
   if (outcome.type === "ok") {
     dispose?.();
     return outcome.value;
