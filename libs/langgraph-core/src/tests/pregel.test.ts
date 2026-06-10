@@ -112,6 +112,7 @@ import {
   TASKS,
 } from "../constants.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { StateSchema, MessagesValue } from "../state/index.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { interrupt } from "../interrupt.js";
 import {
@@ -11454,6 +11455,79 @@ graph TD;
           )
         ).rejects.toBeDefined();
 
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
+
+      it("with StateSchema and zod context", async () => {
+        const state = new StateSchema({
+          messages: MessagesValue,
+          agentId: z4.string().describe("Agent ID from the dashboard"),
+        });
+        const config = z4.object({
+          prompt: withLangGraph(z4.string().min(1), {
+            jsonSchemaExtra: {
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            },
+          }),
+        });
+
+        const graph = new StateGraph(state, config)
+          .addNode("agent", () => ({
+            messages: [{ role: "assistant", content: "Hi" }],
+          }))
+          .addEdge("__start__", "agent")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { agentId: "agent-1" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toMatchObject({ agentId: "agent-1" });
+
+        expect(getStateTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+          required: ["agentId"],
+        });
+        expect(getInputTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+        });
+        expect(getUpdateTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+        });
+        expect(getOutputTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+          required: ["agentId"],
+        });
         expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
       });
     });
