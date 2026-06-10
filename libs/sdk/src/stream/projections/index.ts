@@ -12,6 +12,8 @@ export { valuesProjection } from "./values.js";
 export { extensionProjection } from "./extension.js";
 export { channelProjection } from "./channel.js";
 export type { ChannelProjectionOptions } from "./channel.js";
+export { acquireChannelEffect } from "./channel-effect.js";
+export type { ChannelEffectOptions } from "./channel-effect.js";
 export {
   audioProjection,
   imagesProjection,

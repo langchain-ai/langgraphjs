@@ -73,6 +73,7 @@ export {
   valuesProjection,
   extensionProjection,
   channelProjection,
+  acquireChannelEffect,
   audioProjection,
   imagesProjection,
   videoProjection,
@@ -80,6 +81,7 @@ export {
 } from "./projections/index.js";
 export type {
   ChannelProjectionOptions,
+  ChannelEffectOptions,
   MediaProjectionOptions,
 } from "./projections/index.js";
 
