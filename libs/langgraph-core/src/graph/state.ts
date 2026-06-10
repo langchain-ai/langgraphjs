@@ -721,8 +721,15 @@ export class StateGraph<
        * `addNode(..., { errorHandler })`. Runs only after the failing node's
        * retry policy is exhausted. It is never invoked when an error-handler
        * node itself raises — handler failures fail the run.
+       *
+       * Because a single shared handler serves every node, its `state`
+       * argument is typed as `unknown`: at runtime it receives the **failing
+       * node's input** (see `addNode(..., { input })`), which may be a subset
+       * of the graph state and differs per node. Narrow it yourself before
+       * reading fields. The handler may still return a graph-level update (`U`)
+       * or route via `new Command({ goto })` to any node (`N`).
        */
-      errorHandler?: NodeErrorHandler<S, U, N>;
+      errorHandler?: NodeErrorHandler<unknown, U, N>;
     }
   ): this {
     if (defaults.retryPolicy !== undefined) {
@@ -764,11 +771,13 @@ export class StateGraph<
     const handlerRunnable = new RunnableCallable({
       func: (state: unknown, config: LangGraphRunnableConfig) => {
         // Per-task failure context, injected when the handler task is prepared
-        // (see _prepareNodeErrorHandlerTask).
+        // (see _prepareNodeErrorHandlerTask). `state` is the failing node's
+        // input, which may be a per-node subset of the graph state — hence the
+        // handler's `state` parameter is typed `unknown`.
         const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
           | NodeError
           | undefined;
-        return userHandler(state as S, nodeError as NodeError, config);
+        return userHandler(state, nodeError as NodeError, config);
       },
       name: DEFAULT_ERROR_HANDLER_NODE,
       trace: false,

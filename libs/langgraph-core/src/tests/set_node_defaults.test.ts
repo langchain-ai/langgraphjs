@@ -480,4 +480,45 @@ describe("StateGraph.setNodeDefaults — errorHandler", () => {
     const result = await graph.invoke({ foo: "" });
     expect(result.foo).toBe("handled");
   });
+
+  it("receives the failing node's input, not the full graph state", async () => {
+    // A single shared default handler serves nodes with differing input
+    // schemas, so at runtime it sees the failing node's input (here a subset
+    // that omits `b`). This is why its `state` parameter is typed `unknown`
+    // rather than the full graph state.
+    const FullState = Annotation.Root({
+      a: Annotation<string>(),
+      b: Annotation<string>(),
+      handled: Annotation<boolean>(),
+    });
+    const NodeInput = Annotation.Root({
+      a: Annotation<string>(),
+    });
+
+    let received: Record<string, unknown> | undefined;
+    const graph = new StateGraph(FullState)
+      .setNodeDefaults({
+        errorHandler: (state) => {
+          received = state as Record<string, unknown>;
+          return { handled: true };
+        },
+      })
+      .addNode(
+        "fail",
+        () => {
+          throw new Error("boom");
+        },
+        { input: NodeInput }
+      )
+      .addEdge(START, "fail")
+      .compile();
+
+    const result = await graph.invoke({ a: "x", b: "y", handled: false });
+
+    expect(result.handled).toBe(true);
+    // The handler saw the node's input subset: `a` is present, the graph-only
+    // field `b` is absent — matching the `unknown` typing.
+    expect(received?.a).toBe("x");
+    expect(received?.b).toBeUndefined();
+  });
 });
