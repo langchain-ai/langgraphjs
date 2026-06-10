@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod/v3";
 import * as z4 from "zod/v4";
+import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../constants.js";
+import { Command, END, START } from "../constants.js";
 import { _AnyIdAIMessage, _AnyIdHumanMessage } from "./utils.js";
 import {
   getOutputTypeSchema,
@@ -475,6 +476,58 @@ describe("StateGraph with Zod schemas", () => {
       const result = await graph.invoke({ name: "test" });
       expect(result.items).toEqual(["a", "b", "c", "d"]);
       expect(result.name).toBe("test");
+    });
+  });
+
+  describe("Command.update with Zod schema .default() fields", () => {
+    it("should not overwrite state with schema defaults when Command.update omits fields (zod v3)", async () => {
+      const StateSchema = z.object({
+        mode: z.enum(["foo", "bar"]).default("foo"),
+        data: z.record(z.unknown()).optional(),
+      });
+
+      const graph = new StateGraph(StateSchema)
+        .addNode("start", (state) => state)
+        .addEdge(START, "start")
+        .addEdge("start", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const config = { configurable: { thread_id: "test-zod-v3-default" } };
+
+      await graph.invoke({ mode: "bar", data: { x: 1 } }, config);
+
+      const result = await graph.invoke(
+        new Command({ update: { data: { y: 2 } } }),
+        config
+      );
+
+      expect(result.mode).toBe("bar");
+      expect(result.data).toEqual({ y: 2 });
+    });
+
+    it("should not overwrite state with schema defaults when Command.update omits fields (zod v4)", async () => {
+      const StateSchema = z4.object({
+        mode: z4.enum(["foo", "bar"]).default("foo"),
+        data: z4.record(z4.string(), z4.unknown()).optional(),
+      });
+
+      const graph = new StateGraph(StateSchema)
+        .addNode("start", (state) => state)
+        .addEdge(START, "start")
+        .addEdge("start", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const config = { configurable: { thread_id: "test-zod-v4-default" } };
+
+      await graph.invoke({ mode: "bar", data: { x: 1 } }, config);
+
+      const result = await graph.invoke(
+        new Command({ update: { data: { y: 2 } } }),
+        config
+      );
+
+      expect(result.mode).toBe("bar");
+      expect(result.data).toEqual({ y: 2 });
     });
   });
 });

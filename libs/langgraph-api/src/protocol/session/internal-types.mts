@@ -66,21 +66,6 @@ export type ProtocolEventDataMap = {
 };
 
 /**
- * Channel names supported by the run-scoped protocol session.
- */
-export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
-  "values",
-  "updates",
-  "checkpoints",
-  "messages",
-  "tools",
-  "custom",
-  "lifecycle",
-  "input",
-  "tasks",
-]);
-
-/**
  * Checks whether a value is a non-null object record.
  *
  * @param value - Candidate value to inspect.
@@ -88,12 +73,3 @@ export const SUPPORTED_CHANNELS = new Set<SupportedChannel>([
  */
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-/**
- * Checks whether a channel name is supported by the session transport.
- *
- * @param value - Raw channel name.
- * @returns Whether the name matches a supported protocol channel.
- */
-export const isSupportedChannel = (value: string): value is SupportedChannel =>
-  SUPPORTED_CHANNELS.has(value as SupportedChannel);

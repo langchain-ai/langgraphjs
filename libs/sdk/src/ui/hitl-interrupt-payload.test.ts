@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
+import { normalizeHitlInterruptPayload, normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
 import { normalizeInterruptForClient } from "./interrupts.js";
 import {
   filterOutHeadlessToolInterrupts,
@@ -87,6 +87,54 @@ describe("normalizeHitlInterruptPayload", () => {
     expect(normalizeHitlInterruptPayload({ foo: 1 })).toEqual({ foo: 1 });
     expect(normalizeHitlInterruptPayload(null)).toBeNull();
     expect(normalizeHitlInterruptPayload("x")).toBe("x");
+  });
+});
+
+describe("normalizeHitlResponseForServer", () => {
+  it("adds edited_action alias for camelCase edit decisions", () => {
+    const raw = {
+      decisions: [
+        { type: "approve" },
+        {
+          type: "edit",
+          editedAction: { name: "send_email", args: { to: "a@b.com" } },
+        },
+      ],
+    };
+    const out = normalizeHitlResponseForServer(raw) as {
+      decisions: Record<string, unknown>[];
+    };
+    expect(out.decisions[1]).toEqual({
+      type: "edit",
+      editedAction: { name: "send_email", args: { to: "a@b.com" } },
+      edited_action: { name: "send_email", args: { to: "a@b.com" } },
+    });
+  });
+
+  it("adds editedAction alias for snake_case edit decisions", () => {
+    const raw = {
+      decisions: [
+        {
+          type: "edit",
+          edited_action: { name: "send_email", args: { to: "a@b.com" } },
+        },
+      ],
+    };
+    const out = normalizeHitlResponseForServer(raw) as {
+      decisions: Record<string, unknown>[];
+    };
+    expect(out.decisions[0]).toEqual({
+      type: "edit",
+      editedAction: { name: "send_email", args: { to: "a@b.com" } },
+      edited_action: { name: "send_email", args: { to: "a@b.com" } },
+    });
+  });
+
+  it("passes through non-HITL responses", () => {
+    expect(normalizeHitlResponseForServer({ approved: true })).toEqual({
+      approved: true,
+    });
+    expect(normalizeHitlResponseForServer(null)).toBeNull();
   });
 });
 
@@ -201,6 +249,7 @@ describe("headless tool interrupt helpers", () => {
       resume: {
         "call-1": { latitude: 1, longitude: 2 },
       },
+      keyedByInterruptId: false,
     });
   });
 
@@ -251,6 +300,7 @@ describe("headless tool interrupt helpers", () => {
           "call-1": { latitude: 1, longitude: 2 },
         },
       },
+      keyedByInterruptId: true,
     });
 
     expect(handled.has("headless-1")).toBe(true);
@@ -328,6 +378,7 @@ describe("headless tool interrupt helpers", () => {
           "call-1": { latitude: 1, longitude: 2 },
         },
       },
+      keyedByInterruptId: true,
     });
     expect(handled.has("py-headless")).toBe(true);
     expect(onTool).toHaveBeenCalledTimes(2);
@@ -394,6 +445,7 @@ describe("headless tool interrupt helpers", () => {
           },
         },
       },
+      keyedByInterruptId: true,
     });
     expect(onTool).toHaveBeenCalledTimes(2);
   });

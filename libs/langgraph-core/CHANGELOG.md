@@ -1,5 +1,53 @@
 # @langchain/langgraph
 
+## 1.3.7
+
+### Patch Changes
+
+- [#2505](https://github.com/langchain-ai/langgraphjs/pull/2505) [`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Add the `@langchain/langgraph/stream` entrypoint — a transport-agnostic backend toolkit for building custom servers on top of the v2 streaming protocol. Alongside the existing `StreamChannel` and `convertToProtocolEvent`, it exposes subscription primitives, typed against a minimal `MatchableEvent` shape so they work on both the core `ProtocolEvent` and the wire-level `Event` from `@langchain/protocol`:
+
+  - `inferChannel(event)` — map an event to its subscription `Channel` (named `custom:<name>` channels included).
+  - `matchesSubscription(event, definition)` — decide whether a buffered event should be delivered for a `SubscribeParams` filter, honoring channel, namespace prefix/depth, and an optional `since` replay cursor.
+  - `isPrefixMatch(namespace, prefix)` / `normalizeNamespaceSegment(segment)` — namespace prefix matching with dynamic-suffix normalization (e.g. `fetcher:<uuid>` matches the `fetcher` prefix).
+  - `SUPPORTED_CHANNELS` / `isSupportedChannel(value)` — the recognized channel set and a guard for validating subscription requests.
+
+- Updated dependencies [[`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5)]:
+  - @langchain/langgraph-sdk@1.9.19
+
+## 1.3.6
+
+### Patch Changes
+
+- [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): forward named custom stream channels consistently
+
+  Forward remote `StreamChannel` emissions as `custom:<name>` protocol events and normalize them back to custom-channel payloads in the API session. This aligns JavaScript stream-channel forwarding with the protocol subscription shape used by remote clients, so `custom:<name>` subscriptions receive extension channel data consistently.
+
+- Updated dependencies [[`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e), [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f), [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31)]:
+  - @langchain/langgraph-sdk@1.9.17
+
+## 1.3.5
+
+### Patch Changes
+
+- [#2489](https://github.com/langchain-ai/langgraphjs/pull/2489) [`e3a1933`](https://github.com/langchain-ai/langgraphjs/commit/e3a1933a8825a515d847b38b24a0743f4d418646) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(core): keep stream chunks as three-element tuples
+
+  Emit lightweight checkpoint envelopes as separate
+  `[namespace, "checkpoints", envelope]` chunks before paired `values` chunks.
+  Public `stream()` always yields `[namespace, mode, payload]`; the v3
+  protocol path surfaces envelopes via `convertToProtocolEvent`.
+
+- Updated dependencies [[`244c24e`](https://github.com/langchain-ai/langgraphjs/commit/244c24eaccff4009df7d83e4320e51a4b310b15f)]:
+  - @langchain/langgraph-sdk@1.9.16
+
+## 1.3.4
+
+### Patch Changes
+
+- [#2035](https://github.com/langchain-ai/langgraphjs/pull/2035) [`7c3a98b`](https://github.com/langchain-ai/langgraphjs/commit/7c3a98b23af29fee0d9f064942abb71044ed0e51) Thanks [@JadenKim-dev](https://github.com/JadenKim-dev)! - fix(core): prevent Zod schema defaults from overwriting checkpoint state in Command.update
+
+- Updated dependencies [[`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36)]:
+  - @langchain/langgraph-sdk@1.9.12
+
 ## 1.3.3
 
 ### Patch Changes

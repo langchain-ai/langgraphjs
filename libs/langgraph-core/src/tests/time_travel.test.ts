@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Command, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import { StateGraph } from "../graph/state.js";
 import { Annotation } from "../graph/annotation.js";
 import { gatherIterator } from "../utils.js";

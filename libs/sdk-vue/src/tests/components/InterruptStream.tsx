@@ -13,11 +13,18 @@ export const InterruptStream = defineComponent({
   props: {
     apiUrl: { type: String, default: undefined },
     assistantId: { type: String, default: "interruptAgent" },
+    threadId: { type: String, default: undefined },
+    onThreadId: {
+      type: Function as unknown as () => (threadId: string) => void,
+      default: undefined,
+    },
   },
   setup(props) {
     const stream = useStream<InterruptState>({
       assistantId: props.assistantId,
       apiUrl: props.apiUrl,
+      threadId: props.threadId,
+      onThreadId: props.onThreadId,
     });
 
     const interruptNode = computed(() => {

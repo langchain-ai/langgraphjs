@@ -13,6 +13,8 @@ export {
   type CompiledGraphType,
   type NodeSpec,
   type AddNodeOptions,
+  type NodeErrorHandler,
+  type NodeErrorHandlerReturnValue,
 } from "./graph.js";
 export {
   type StateGraphArgs,
@@ -20,12 +22,14 @@ export {
   CompiledStateGraph,
   type StateGraphNodeSpec,
   type StateGraphAddNodeOptions,
+  type NodePolicyOptions,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
 } from "./state.js";
 export { MessageGraph, pushMessage } from "./message.js";
 export {
   messagesStateReducer,
+  messagesDeltaReducer,
   REMOVE_ALL_MESSAGES,
   type Messages,
 } from "./messages_reducer.js";

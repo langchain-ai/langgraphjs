@@ -1,6 +1,7 @@
 import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
+import { runAttemptWithTimeout } from "./timeout.js";
 import { PregelExecutableTask } from "./types.js";
 import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
@@ -9,6 +10,7 @@ export const DEFAULT_INITIAL_INTERVAL = 500;
 export const DEFAULT_BACKOFF_FACTOR = 2;
 export const DEFAULT_MAX_INTERVAL = 128000;
 export const DEFAULT_MAX_RETRIES = 3;
+export const DEFAULT_JITTER = true;
 
 const DEFAULT_STATUS_NO_RETRY = [
   400, // Bad Request
@@ -78,10 +80,6 @@ export async function _runWithRetry<
   signalAborted?: boolean;
 }> {
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
-  let interval =
-    resolvedRetryPolicy !== undefined
-      ? (resolvedRetryPolicy.initialInterval ?? DEFAULT_INITIAL_INTERVAL)
-      : 0;
   let attempts = 0;
   let error;
   let result;
@@ -111,7 +109,19 @@ export async function _runWithRetry<
     pregelTask.writes.splice(0, pregelTask.writes.length);
     error = undefined;
     try {
-      result = await pregelTask.proc.invoke(pregelTask.input, config);
+      if (pregelTask.timeout !== undefined) {
+        // Enforce a per-attempt timeout. The timer resets on each retry since
+        // a fresh attempt scope is created here per iteration.
+        result = await runAttemptWithTimeout(
+          pregelTask as PregelExecutableTask<string, string>,
+          config,
+          pregelTask.timeout,
+          (scopedConfig) =>
+            pregelTask.proc.invoke(pregelTask.input, scopedConfig)
+        );
+      } else {
+        result = await pregelTask.proc.invoke(pregelTask.input, config);
+      }
       break;
     } catch (e: unknown) {
       error = e;
@@ -152,16 +162,21 @@ export async function _runWithRetry<
       if (!retryOn(error)) {
         break;
       }
-      interval = Math.min(
+      const initialInterval =
+        resolvedRetryPolicy.initialInterval ?? DEFAULT_INITIAL_INTERVAL;
+      const interval = Math.min(
         resolvedRetryPolicy.maxInterval ?? DEFAULT_MAX_INTERVAL,
-        interval * (resolvedRetryPolicy.backoffFactor ?? DEFAULT_BACKOFF_FACTOR)
+        initialInterval *
+          (resolvedRetryPolicy.backoffFactor ?? DEFAULT_BACKOFF_FACTOR) **
+            (attempts - 1)
       );
-      const intervalWithJitter = resolvedRetryPolicy.jitter
-        ? Math.floor(interval + Math.random() * 1000)
-        : interval;
+      const sleepMs =
+        (resolvedRetryPolicy.jitter ?? DEFAULT_JITTER)
+          ? interval + Math.random() * 1000
+          : interval;
       // sleep before retrying
       // eslint-disable-next-line no-promise-executor-return
-      await new Promise((resolve) => setTimeout(resolve, intervalWithJitter));
+      await new Promise((resolve) => setTimeout(resolve, sleepMs));
       // log the retry
       const errorName =
         (error as Error).name ??
@@ -170,7 +185,7 @@ export async function _runWithRetry<
         (error as Error).constructor.name;
       if (resolvedRetryPolicy?.logWarning ?? true) {
         console.log(
-          `Retrying task "${String(pregelTask.name)}" after ${interval.toFixed(
+          `Retrying task "${String(pregelTask.name)}" after ${sleepMs.toFixed(
             2
           )}ms (attempt ${attempts}) after ${errorName}: ${error}`
         );

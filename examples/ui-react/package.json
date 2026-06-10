@@ -2,7 +2,7 @@
   "name": "@examples/ui-react",
   "private": true,
   "type": "module",
-  "version": "0.0.12",
+  "version": "0.0.21",
   "scripts": {
     "dev": "turbo dev:client dev:server",
     "dev:client": "vite",
@@ -11,25 +11,25 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/anthropic": "^1.3.26",
-    "@langchain/core": "^1.1.44",
+    "@langchain/anthropic": "^1.4.0",
+    "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/quickjs": "https://pkg.pr.new/@langchain/quickjs@7493df1",
     "@langchain/react": "workspace:*",
     "@uiw/react-json-view": "^2.0.0-alpha.38",
     "deepagents": "https://pkg.pr.new/deepagents@9a528ec",
-    "langchain": "1.4.0-dev-1777615538778",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "langchain": "1.4.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "streamdown": "^2.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
-    "@types/react": "^19.0.8",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^6.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
     "vite": "^8.0.5"

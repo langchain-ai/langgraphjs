@@ -2,8 +2,21 @@ import {
   ReadonlyCheckpoint,
   uuid6,
   Checkpoint,
+  DeltaSnapshot,
+  type BaseCheckpointSaver,
+  type DeltaChannelHistory,
 } from "@langchain/langgraph-checkpoint";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { EmptyChannelError } from "../errors.js";
+import { getDeltaMaxSuperstepsSinceSnapshot } from "../constants.js";
+
+/**
+ * Structural check for a {@link DeltaChannel} without importing it (avoids an
+ * import cycle: `delta.ts` imports `base.ts`).
+ */
+export function isDeltaChannel(channel: BaseChannel): boolean {
+  return channel != null && channel.lc_graph_name === "DeltaChannel";
+}
 
 export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && (obj as BaseChannel).lg_is_channel === true;
@@ -154,22 +167,89 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
   return newChannels;
 }
 
+/**
+ * Minimal structural view of a {@link DeltaChannel}, used by helpers in this
+ * module that must not import the concrete class (import-cycle avoidance).
+ */
+interface DeltaChannelLike extends BaseChannel {
+  snapshotFrequency: number;
+  replayWrites(writes: DeltaChannelHistory["writes"]): void;
+}
+
+/**
+ * Return the set of {@link DeltaChannel} names that should snapshot now.
+ *
+ * A channel snapshots when EITHER its accumulated update count reaches
+ * `snapshotFrequency` OR the total supersteps since its last snapshot reaches
+ * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. Pure predicate — no mutation.
+ */
+export function deltaChannelsToSnapshot(
+  channels: Record<string, BaseChannel>,
+  countersSinceDeltaSnapshot: Record<string, [number, number]>
+): Set<string> {
+  const result = new Set<string>();
+  const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
+  for (const name in channels) {
+    if (!Object.prototype.hasOwnProperty.call(channels, name)) continue;
+    const ch = channels[name];
+    if (!isDeltaChannel(ch) || !ch.isAvailable()) continue;
+    const [updates, supersteps] = countersSinceDeltaSnapshot[name] ?? [0, 0];
+    if (
+      updates >= (ch as DeltaChannelLike).snapshotFrequency ||
+      supersteps >= maxSupersteps
+    ) {
+      result.add(name);
+    }
+  }
+  return result;
+}
+
 export function createCheckpoint<ValueType>(
   checkpoint: ReadonlyCheckpoint,
   channels: Record<string, BaseChannel<ValueType>> | undefined,
   step: number,
-  options?: { id?: string }
+  options?: {
+    id?: string;
+    channelsToSnapshot?: Set<string>;
+    updatedChannels?: Set<string>;
+    getNextVersion?: (current: number | string | undefined) => number | string;
+  }
 ): Checkpoint {
+  const channelsToSnapshot = options?.channelsToSnapshot ?? new Set<string>();
+  const { updatedChannels, getNextVersion } = options ?? {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let values: Record<string, any>;
+  let channelVersions: Record<string, number | string> =
+    checkpoint.channel_versions;
   if (channels === undefined) {
     values = checkpoint.channel_values;
   } else {
     values = {};
+    channelVersions = { ...checkpoint.channel_versions };
     for (const k in channels) {
       if (!Object.prototype.hasOwnProperty.call(channels, k)) continue;
+      const channel = channels[k];
+      if (channelsToSnapshot.has(k)) {
+        // Snapshot a DeltaChannel: store the materialized value directly. In
+        // exit/deferred modes the channel may have reached its snapshot
+        // threshold over several supersteps without the LAST superstep
+        // writing to it, so its version wouldn't be bumped by applyWrites —
+        // bump it here so the saver includes the snapshot blob.
+        if (
+          getNextVersion !== undefined &&
+          (updatedChannels === undefined || !updatedChannels.has(k))
+        ) {
+          channelVersions[k] = getNextVersion(channelVersions[k]);
+        }
+        values[k] = new DeltaSnapshot(channel.get());
+        continue;
+      }
+      if (isDeltaChannel(channel)) {
+        // Omitted from channel_values; reconstructed from ancestor writes.
+        continue;
+      }
       try {
-        values[k] = channels[k].checkpoint();
+        values[k] = channel.checkpoint();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (error: any) {
         if (error.name === EmptyChannelError.unminifiable_name) {
@@ -186,7 +266,61 @@ export function createCheckpoint<ValueType>(
     id: options?.id ?? uuid6(step),
     ts: new Date().toISOString(),
     channel_values: values,
-    channel_versions: checkpoint.channel_versions,
+    channel_versions: channelVersions,
     versions_seen: checkpoint.versions_seen,
   };
+}
+
+/**
+ * Hydrate channels from a checkpoint, reconstructing any {@link DeltaChannel}
+ * whose value is absent from `channel_values` by replaying ancestor writes.
+ *
+ * For most channels (and for delta channels with a {@link DeltaSnapshot} or a
+ * migrated plain value in `channel_values`), {@link emptyChannels} is
+ * sufficient and no saver access is required. When a delta channel is absent
+ * from `channel_values`, an ancestor walk via `saver.getDeltaChannelHistory`
+ * finds the nearest seed and accumulates the writes between it and the
+ * target. All delta channels needing replay are batched into a single saver
+ * call.
+ */
+export async function channelsFromCheckpoint<
+  Cc extends Record<string, BaseChannel>,
+>(
+  specs: Cc,
+  checkpoint: ReadonlyCheckpoint,
+  options?: { saver?: BaseCheckpointSaver; config?: RunnableConfig }
+): Promise<Cc> {
+  const channels = emptyChannels(specs, checkpoint);
+  const { saver, config } = options ?? {};
+
+  const filteredSpecs = getOnlyChannels(specs);
+  const deltaKeys: string[] = [];
+  for (const k in filteredSpecs) {
+    if (!Object.prototype.hasOwnProperty.call(filteredSpecs, k)) continue;
+    if (
+      isDeltaChannel(filteredSpecs[k]) &&
+      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
+    ) {
+      deltaKeys.push(k);
+    }
+  }
+
+  if (deltaKeys.length === 0 || saver === undefined || config === undefined) {
+    return channels;
+  }
+
+  const histories = await saver.getDeltaChannelHistory({
+    config,
+    channels: deltaKeys,
+  });
+  for (const k of deltaKeys) {
+    const history = histories[k];
+    if (history === undefined) continue;
+    const replayCh = filteredSpecs[k].fromCheckpoint(
+      history.seed
+    ) as unknown as DeltaChannelLike;
+    replayCh.replayWrites(history.writes);
+    (channels as Record<string, BaseChannel>)[k] = replayCh;
+  }
+  return channels;
 }

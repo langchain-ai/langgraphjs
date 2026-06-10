@@ -30,8 +30,10 @@ const CONFIG_KEYS = [
   "checkpointDuring",
   "durability",
   "signal",
+  "heartbeat",
   "executionInfo",
   "serverInfo",
+  "control",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;

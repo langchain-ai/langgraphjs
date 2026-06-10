@@ -23,6 +23,13 @@ const createMockClient = () => ({
   })),
 });
 
+const asBinary = (value: unknown) => ({
+  value: (encoding: string) => {
+    expect(encoding).toBe("utf8");
+    return JSON.stringify(value);
+  },
+});
+
 describe("MongoDBSaver", () => {
   it("should set client metadata", async () => {
     const client = createMockClient();
@@ -217,6 +224,151 @@ describe("MongoDBSaver", () => {
         "metadata_search.active": true,
         "metadata_search.optional": null,
       });
+    });
+  });
+
+  describe("list pendingWrites", () => {
+    it("should include pendingWrites in list() results", async () => {
+      const checkpointDoc = {
+        thread_id: "test-thread",
+        checkpoint_ns: "",
+        checkpoint_id: "cp-1",
+        type: "json",
+        checkpoint: asBinary({
+          v: 4,
+          id: "cp-1",
+          ts: "2024-04-19T17:19:07.952Z",
+          channel_values: {},
+          channel_versions: {},
+          versions_seen: {},
+        }),
+        metadata: asBinary({
+          source: "input",
+          step: 1,
+          parents: {},
+        }),
+        parent_checkpoint_id: null,
+      };
+
+      const writeDoc = {
+        task_id: "task-1",
+        channel: "bar",
+        type: "json",
+        value: asBinary("baz"),
+      };
+
+      const writesFindMock = vi.fn(() => ({
+        toArray: vi.fn(() => Promise.resolve([writeDoc])),
+      }));
+
+      const checkpointsFindMock = vi.fn(() => ({
+        sort: vi.fn(() => ({
+          async *[Symbol.asyncIterator]() {
+            yield checkpointDoc;
+          },
+        })),
+      }));
+
+      const collectionMock = vi.fn((name: string) => {
+        if (name === "checkpoints") {
+          return { find: checkpointsFindMock };
+        }
+        if (name === "checkpoint_writes") {
+          return { find: writesFindMock };
+        }
+        throw new Error(`Unexpected collection: ${name}`);
+      });
+
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: collectionMock,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const generator = saver.list({
+        configurable: { thread_id: "test-thread" },
+      });
+      const result = await generator.next();
+
+      expect(result.done).toBe(false);
+      expect(result.value?.pendingWrites).toEqual([["task-1", "bar", "baz"]]);
+      expect(writesFindMock).toHaveBeenCalledWith({
+        thread_id: "test-thread",
+        checkpoint_ns: "",
+        checkpoint_id: "cp-1",
+      });
+
+      const done = await generator.next();
+      expect(done.done).toBe(true);
+    });
+
+    it("should return empty pendingWrites when none exist", async () => {
+      const checkpointDoc = {
+        thread_id: "test-thread",
+        checkpoint_ns: "",
+        checkpoint_id: "cp-1",
+        type: "json",
+        checkpoint: asBinary({
+          v: 4,
+          id: "cp-1",
+          ts: "2024-04-19T17:19:07.952Z",
+          channel_values: {},
+          channel_versions: {},
+          versions_seen: {},
+        }),
+        metadata: asBinary({
+          source: "input",
+          step: 1,
+          parents: {},
+        }),
+        parent_checkpoint_id: null,
+      };
+
+      const writesFindMock = vi.fn(() => ({
+        toArray: vi.fn(() => Promise.resolve([])),
+      }));
+
+      const checkpointsFindMock = vi.fn(() => ({
+        sort: vi.fn(() => ({
+          async *[Symbol.asyncIterator]() {
+            yield checkpointDoc;
+          },
+        })),
+      }));
+
+      const collectionMock = vi.fn((name: string) => {
+        if (name === "checkpoints") {
+          return { find: checkpointsFindMock };
+        }
+        if (name === "checkpoint_writes") {
+          return { find: writesFindMock };
+        }
+        throw new Error(`Unexpected collection: ${name}`);
+      });
+
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: collectionMock,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const generator = saver.list({
+        configurable: { thread_id: "test-thread" },
+      });
+      const result = await generator.next();
+
+      expect(result.done).toBe(false);
+      expect(result.value?.pendingWrites).toEqual([]);
     });
   });
 

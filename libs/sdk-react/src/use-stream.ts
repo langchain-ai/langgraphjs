@@ -6,18 +6,21 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
+  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
@@ -368,11 +371,19 @@ export interface UseStreamReturn<
  * Erased stream handle useful as a parameter type for helpers and
  * wrapper components that pass a `stream` through to selector hooks
  * (`useMessages`, `useChannel`, …) without reading `values` directly.
- * Any fully-typed `UseStreamReturn<S, I, C>` is
- * assignable to `AnyStream` because the generic slots are `any`
- * (bivariant), which avoids the `CompiledStateGraph` → `Record<string,
- * unknown>` assignment friction you hit when using the bare
- * `UseStreamReturn` default.
+ *
+ * Any fully-typed `UseStreamReturn<T, I, C>` is assignable to
+ * `AnyStream`. Widening the three generic slots to `any` is **not**
+ * enough on its own: members whose types are computed from `T` in
+ * covariant positions don't collapse to a top type under `any`. In
+ * particular `toolCalls: InferToolCalls<any>[]` resolves to
+ * `AssembledToolCall<string, …, never>[]` — the `never` output slot is
+ * *narrower* than a concrete handle's `AssembledToolCall<…, unknown>[]`,
+ * so the concrete handle fails to assign and every `useToolCalls(stream)`
+ * call would need an `as AnyStream` cast. `values` / `~stateType`
+ * (computed via `InferStateType<any>`) have the same hazard. We override
+ * those members with their widest forms so the erased handle is a true
+ * supertype of every concrete `UseStreamReturn`.
  *
  * @example
  * ```tsx
@@ -385,8 +396,15 @@ export interface UseStreamReturn<
  * }
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStream = UseStreamReturn<any, any, any>;
+export type AnyStream = Omit<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  UseStreamReturn<any, any, any>,
+  "toolCalls" | "values" | "~stateType"
+> & {
+  readonly toolCalls: AssembledToolCall[];
+  readonly values: unknown;
+  readonly "~stateType"?: unknown;
+};
 
 /**
  * React binding for the v2-native stream runtime.
@@ -449,6 +467,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
   // Narrow once: a non-string `transport` is a custom adapter; anything
@@ -457,23 +476,46 @@ export function useStream<
     asBag.transport != null && typeof asBag.transport !== "string";
   const transport = asBag.transport;
 
-  const client = useMemo<Client>(
-    () =>
-      asBag.client ??
-      (new ClientCtor({
-        apiUrl: asBag.apiUrl,
-        apiKey: asBag.apiKey,
-        callerOptions: asBag.callerOptions,
-        defaultHeaders: asBag.defaultHeaders,
-      }) as unknown as Client),
-    [
-      asBag.client,
-      asBag.apiUrl,
-      asBag.apiKey,
-      asBag.callerOptions,
-      asBag.defaultHeaders,
-    ]
-  );
+  // Stable client across re-renders.
+  //
+  // A `useMemo` is NOT a stability guarantee — React may drop a memo
+  // cache even when its deps are unchanged. If the client is dropped,
+  // the controller below (which depends on it) is recreated too, and a
+  // fresh controller re-fires its constructor hydrate: a *duplicate*
+  // `getState` + `getHistory`. A ref is never dropped, so the client
+  // stays referentially stable until its config actually changes.
+  const resolvedApiUrl = resolveClientApiUrl({
+    apiUrl: asBag.apiUrl,
+    transport: hasCustomAdapter ? transport : asBag.transport,
+  });
+  const clientDeps = [
+    asBag.client,
+    resolvedApiUrl,
+    asBag.apiKey,
+    asBag.callerOptions,
+    asBag.defaultHeaders,
+  ] as const;
+  const clientRef = useRef<{
+    deps: typeof clientDeps;
+    client: Client;
+  } | null>(null);
+  if (
+    clientRef.current == null ||
+    clientRef.current.deps.some((dep, i) => dep !== clientDeps[i])
+  ) {
+    clientRef.current = {
+      deps: clientDeps,
+      client:
+        asBag.client ??
+        (new ClientCtor({
+          apiUrl: resolvedApiUrl,
+          apiKey: asBag.apiKey,
+          callerOptions: asBag.callerOptions,
+          defaultHeaders: asBag.defaultHeaders,
+        }) as unknown as Client),
+    };
+  }
+  const client = clientRef.current.client;
 
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
@@ -482,13 +524,35 @@ export function useStream<
   const assistantId =
     "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
-  // Recreate the controller only on assistantId / client / transport
-  // change; the ThreadStream is bound to one assistant for its
-  // lifetime and we want selector-hook subscriptions to stay stable
-  // across renders.
-  const controller = useMemo(
-    () =>
-      new StreamController<StateType, InterruptType, ConfigurableType>({
+  // Stable controller across re-renders (same rationale as `clientRef`).
+  //
+  // The controller self-hydrates in its constructor, so recreating it
+  // re-issues `getState` + `getHistory`. Pinning it in a ref guarantees
+  // a single hydrate per mount even when React re-renders or re-runs the
+  // component body (a dropped `useMemo` here was the source of duplicate
+  // hydrate fetches). `threadId` is deliberately NOT part of the
+  // identity — the controller persists across thread switches and
+  // self-create (`onThreadId`) so in-flight runs are never orphaned;
+  // thread changes rebind in-place via `hydrate()` in the effect below.
+  // Recreated only when its identity inputs change; the previous
+  // instance is disposed by the `activate()` effect when `controller`
+  // changes.
+  const controllerDeps = [client, assistantId, transport] as const;
+  const controllerRef = useRef<{
+    deps: typeof controllerDeps;
+    controller: StreamController<StateType, InterruptType, ConfigurableType>;
+  } | null>(null);
+  if (
+    controllerRef.current == null ||
+    controllerRef.current.deps.some((dep, i) => dep !== controllerDeps[i])
+  ) {
+    controllerRef.current = {
+      deps: controllerDeps,
+      controller: new StreamController<
+        StateType,
+        InterruptType,
+        ConfigurableType
+      >({
         assistantId,
         // Cast: the runtime `Client` is state-shape agnostic, but the
         // controller declares `client: Client<StateType>` so its own
@@ -506,10 +570,11 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        optimistic: asBag.optimistic,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [client, assistantId, transport]
-  );
+    };
+  }
+  const controller = controllerRef.current.controller;
 
   // Rehydrate on threadId change. The initial hydrate is fired
   // synchronously inside the controller constructor so Suspense
@@ -600,9 +665,7 @@ export function useStream<
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) =>
-          controller.submit(null, {
-            command,
-          } as StreamSubmitOptions<StateType, ConfigurableType>),
+          applyHeadlessToolResumeCommand(controller, command),
       }
     );
   }, [controller, tools, onTool, rootValuesForTools, rootInterruptsForTools]);
@@ -689,10 +752,7 @@ export type UseStreamResult<
  *
  * @internal
  */
-export function getRegistry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>
-): ChannelRegistry {
+export function getRegistry(stream: AnyStream): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }
 

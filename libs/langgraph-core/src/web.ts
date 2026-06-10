@@ -6,6 +6,7 @@ export {
   MessageGraph,
   messagesStateReducer,
   messagesStateReducer as addMessages,
+  messagesDeltaReducer,
   REMOVE_ALL_MESSAGES,
   type Messages,
   Annotation,
@@ -32,6 +33,7 @@ export {
   type AddNodeOptions,
   type StateGraphNodeSpec,
   type StateGraphAddNodeOptions,
+  type NodePolicyOptions,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
 } from "./graph/index.js";
@@ -55,6 +57,7 @@ export {
   SubgraphRunStream,
   STREAM_EVENTS_V3_MODES,
   convertToProtocolEvent,
+  isCheckpointEnvelope,
   isNativeTransformer,
   createGraphRunStream,
   createMessagesTransformer,
@@ -95,6 +98,8 @@ export {
   BaseChannel,
   type BinaryOperator,
   BinaryOperatorAggregate,
+  DeltaChannel,
+  type DeltaReducer,
   type AnyValue,
   type WaitForNames,
   type DynamicBarrierValue,
@@ -105,9 +110,14 @@ export {
 export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { UntrackedValueChannel } from "./channels/untracked_value.js";
 export { type AnnotationRoot } from "./graph/index.js";
-export { type RetryPolicy, type CachePolicy } from "./pregel/utils/index.js";
+export {
+  type RetryPolicy,
+  type CachePolicy,
+  type TimeoutPolicy,
+} from "./pregel/utils/index.js";
 export {
   Send,
+  type SendOptions,
   Command,
   CommandInstance,
   type CommandParams,
@@ -162,6 +172,7 @@ export {
   type Runtime,
   type ServerInfo,
 } from "./pregel/runnable_types.js";
+export { RunControl } from "./pregel/runtime.js";
 
 export * from "./state/index.js";
 

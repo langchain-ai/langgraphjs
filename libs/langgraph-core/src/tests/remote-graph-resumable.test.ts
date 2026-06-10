@@ -70,12 +70,12 @@ const createErroringSSEResponseBody = (
 };
 
 describe("RemoteGraph with streamResumable", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
+  let mockFetch: ReturnType<typeof vi.fn<typeof fetch>>;
   let client: Client;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    mockFetch = vi.fn();
+    mockFetch = vi.fn<typeof fetch>();
 
     client = new Client({
       apiUrl: "http://localhost:8000",
@@ -134,7 +134,7 @@ describe("RemoteGraph with streamResumable", () => {
     expect(results.length).toBe(3);
 
     // Verify streamResumable was passed in the request body
-    const [, init] = mockFetch.mock.calls[0];
+    const init = mockFetch.mock.calls[0]![1]!;
     const body = JSON.parse(init.body as string);
     expect(body.stream_resumable).toBe(true);
   });
@@ -213,7 +213,7 @@ describe("RemoteGraph with streamResumable", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(results.length).toBe(3);
 
-    const [, init] = mockFetch.mock.calls[0];
+    const init = mockFetch.mock.calls[0]![1]!;
     const body = JSON.parse(init.body as string);
     expect(body.stream_resumable).toBe(true);
   });

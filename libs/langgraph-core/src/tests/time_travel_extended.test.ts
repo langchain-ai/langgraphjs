@@ -3,7 +3,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Command, COPY, END, START } from "../constants.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 import { interrupt } from "../interrupt.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import { StateGraph } from "../graph/state.js";
 import { Annotation } from "../graph/annotation.js";
 import { gatherIterator } from "../utils.js";

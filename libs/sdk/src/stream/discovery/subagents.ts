@@ -24,6 +24,7 @@ import {
   isToolNamespaceSegment,
   namespaceKey,
 } from "../namespace.js";
+import { normalizeAIMessageToolCalls } from "../message-coercion.js";
 
 export type SubagentMap = ReadonlyMap<string, SubagentDiscoverySnapshot>;
 
@@ -67,6 +68,72 @@ export class SubagentDiscovery {
     } else if (event.method === "values") {
       this.#onValuesEvent(event as ValuesEvent);
     }
+  }
+
+  /**
+   * Seed discovery from a checkpoint's root `messages` array (as
+   * returned by `client.threads.getState().values.messages`) so deep
+   * agent cards render on thread refresh without waiting for SSE
+   * replay.
+   *
+   * Drives the existing root `values` path via a synthetic event so it
+   * reuses task discovery + completion marking with no new parsing
+   * logic. Root namespace `[]` keeps namespaces at the default
+   * `tools:<toolCallId>`; the always-on root pump (and {@link
+   * applyExecutionNamespace}) promote them to the execution namespace
+   * later. Idempotent by construction: re-driving root values for
+   * already-discovered tasks is a no-op (the FIFO `taskInput` queue is
+   * only populated on first discovery), so no `snapshot.size` guard is
+   * needed.
+   */
+  seedFromCheckpointMessages(messages: unknown[]): void {
+    if (!Array.isArray(messages) || messages.length === 0) return;
+    this.push({
+      type: "event",
+      method: "values",
+      params: { namespace: [], timestamp: Date.now(), data: { messages } },
+    } as ValuesEvent & Event);
+  }
+
+  /**
+   * Promote a discovered subagent to its execution namespace, derived
+   * from checkpoint history (see `namespace-from-history`).
+   *
+   * Routes through the same guarded promotion machinery the live SSE
+   * replay uses ({@link #recordTaskNamespaceCandidate} + the
+   * `#observedOwnNamespaces` no-demote rule) so a getHistory-derived
+   * namespace and an SSE-derived one cannot disagree. A no-op when the
+   * subagent is unknown or already sits on the target namespace.
+   *
+   * @param toolCallId - Parent `task` tool-call id (the subagent's discovery key).
+   * @param executionSegment - Single execution namespace segment, e.g. `tools:<uuid>`.
+   */
+  applyExecutionNamespace(toolCallId: string, executionSegment: string): void {
+    if (typeof executionSegment !== "string" || executionSegment.length === 0) {
+      return;
+    }
+    const entry = this.#map.get(toolCallId);
+    if (entry == null) return;
+    const namespace: readonly string[] = [executionSegment];
+    const namespaceKeyed = namespaceKey(namespace);
+    const ownNamespaceKey = `tools:${toolCallId}`;
+
+    // Record the candidate so a later live `values` event at the same
+    // namespace recognizes it as already-bound (mirrors
+    // `#recordTaskNamespaceCandidate`).
+    this.#recordTaskNamespaceCandidate(toolCallId, namespace);
+
+    // Respect the no-demote rule: once discovery has observed the
+    // subagent's own namespace carrying state, do not move it.
+    if (
+      namespaceKeyed !== ownNamespaceKey &&
+      this.#observedOwnNamespaces.has(toolCallId)
+    ) {
+      return;
+    }
+    if (namespaceKey(entry.namespace) === namespaceKeyed) return;
+    entry.namespace = namespace;
+    this.#commit();
   }
 
   /** Current snapshot map. */
@@ -408,7 +475,9 @@ function getTaskToolCalls(message: unknown): Array<{
   ) {
     return [];
   }
-  const record = message as {
+  const record = normalizeAIMessageToolCalls(
+    message as Parameters<typeof normalizeAIMessageToolCalls>[0]
+  ) as {
     tool_calls?: unknown;
     kwargs?: { tool_calls?: unknown };
     lc_kwargs?: { tool_calls?: unknown };
