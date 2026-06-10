@@ -101,6 +101,15 @@ import type { Pregel } from "../pregel/index.js";
 
 const ROOT = "__root__";
 
+/**
+ * Reserved node name for the single shared error handler that is materialized
+ * when a graph-wide default error handler is set via
+ * {@link StateGraph.setNodeDefaults}. Every regular node that lacks its own
+ * `errorHandler` routes failures to this node. Mirrors Python's
+ * `__default_error_handler__`.
+ */
+const DEFAULT_ERROR_HANDLER_NODE = "__default_error_handler__";
+
 export type ChannelReducers<Channels extends object> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [K in keyof Channels]: SingleReducer<Channels[K], any>;
@@ -166,6 +175,21 @@ export type NodePolicies = {
   cachePolicy?: CachePolicy | false;
   /** Resolved timeout policy after the `number` shorthand is normalized. */
   timeout?: TimeoutPolicy;
+};
+
+/**
+ * Graph-wide node defaults captured by {@link StateGraph.setNodeDefaults} and
+ * resolved at {@link StateGraph.compile} time.
+ *
+ * @internal
+ */
+type ResolvedNodeDefaults = NodePolicies & {
+  /**
+   * Default error handler applied to every regular node that does not set its
+   * own via `addNode(..., { errorHandler })`. Never applied to error-handler
+   * nodes themselves — handlers must not catch their own failures.
+   */
+  errorHandler?: NodeErrorHandler;
 };
 
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
@@ -438,7 +462,7 @@ export class StateGraph<
    * Graph-wide default node policies, resolved at `compile()` time.
    * @internal
    */
-  _nodeDefaults: NodePolicies = {};
+  _nodeDefaults: ResolvedNodeDefaults = {};
 
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
@@ -652,6 +676,12 @@ export class StateGraph<
    *
    * Policies set here are **not** inherited by subgraphs.
    *
+   * `retryPolicy` and `timeout` defaults apply to **all** nodes, including
+   * auto-generated error-handler nodes. `cachePolicy` and `errorHandler`
+   * defaults apply to **regular nodes only** — caching an error-handler result
+   * is unsafe, and a handler must never catch its own (or another handler's)
+   * failure.
+   *
    * @param defaults - The default node policies to apply.
    * @returns The builder instance, for chaining.
    *
@@ -662,6 +692,7 @@ export class StateGraph<
    *     retryPolicy: { maxAttempts: 3 },
    *     cachePolicy: { ttl: 60 },
    *     timeout: 60_000,
+   *     errorHandler: (state, { node, error }) => ({ lastError: error.message }),
    *   })
    *   .addNode("a", nodeA)
    *   .addNode("b", nodeB, { retryPolicy: { maxAttempts: 5 } }) // overrides default
@@ -682,7 +713,18 @@ export class StateGraph<
    *   .compile();
    * ```
    */
-  setNodeDefaults(defaults: NodePolicyOptions): this {
+  setNodeDefaults(
+    defaults: NodePolicyOptions & {
+      /**
+       * Default node-level error handler invoked when any **regular** node
+       * raises and does not have its own handler set via
+       * `addNode(..., { errorHandler })`. Runs only after the failing node's
+       * retry policy is exhausted. It is never invoked when an error-handler
+       * node itself raises — handler failures fail the run.
+       */
+      errorHandler?: NodeErrorHandler<S, U, N>;
+    }
+  ): this {
     if (defaults.retryPolicy !== undefined) {
       this._nodeDefaults.retryPolicy = defaults.retryPolicy;
     }
@@ -697,7 +739,48 @@ export class StateGraph<
     if (defaults.timeout !== undefined) {
       this._nodeDefaults.timeout = coerceTimeoutPolicy(defaults.timeout);
     }
+    if (defaults.errorHandler !== undefined) {
+      this._nodeDefaults.errorHandler =
+        defaults.errorHandler as NodeErrorHandler;
+    }
     return this;
+  }
+
+  /**
+   * Build the shared spec for a graph-wide default error handler, or
+   * `undefined` when {@link setNodeDefaults} did not configure one. The spec is
+   * installed under {@link DEFAULT_ERROR_HANDLER_NODE} for the duration of a
+   * single {@link compile} call and routes failures from every regular node
+   * that lacks its own handler.
+   * @internal
+   */
+  protected _createDefaultErrorHandlerSpec():
+    | StateGraphNodeSpec<S, U>
+    | undefined {
+    const userHandler = this._nodeDefaults.errorHandler;
+    if (userHandler === undefined) {
+      return undefined;
+    }
+    const handlerRunnable = new RunnableCallable({
+      func: (state: unknown, config: LangGraphRunnableConfig) => {
+        // Per-task failure context, injected when the handler task is prepared
+        // (see _prepareNodeErrorHandlerTask).
+        const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
+          | NodeError
+          | undefined;
+        return userHandler(state as S, nodeError as NodeError, config);
+      },
+      name: DEFAULT_ERROR_HANDLER_NODE,
+      trace: false,
+    });
+    return {
+      runnable: handlerRunnable as unknown as Runnable<S, U>,
+      metadata: undefined,
+      input: this._schemaDefinition,
+      retryPolicy: undefined,
+      cachePolicy: undefined,
+      isErrorHandler: true,
+    };
   }
 
   /**
@@ -1335,6 +1418,83 @@ export class StateGraph<
     WriterType,
     TTransformers
   > {
+    // Materialize the single shared default error-handler node (when
+    // `setNodeDefaults({ errorHandler })` configured one) BEFORE validation so
+    // reachability and `Command({ goto })` target checks treat it like any
+    // other error-handler node. It is removed in `finally` so the builder stays
+    // immutable across repeated `compile()` calls.
+    const defaultErrorHandlerSpec = this._createDefaultErrorHandlerSpec();
+    if (defaultErrorHandlerSpec !== undefined) {
+      if (DEFAULT_ERROR_HANDLER_NODE in this.nodes) {
+        throw new Error(
+          `Cannot apply a default error handler: the reserved node name ` +
+            `\`${DEFAULT_ERROR_HANDLER_NODE}\` is already in use. ` +
+            `setNodeDefaults({ errorHandler }) registers a node with that name; ` +
+            `rename the conflicting node.`
+        );
+      }
+      this.nodes[DEFAULT_ERROR_HANDLER_NODE as N] = defaultErrorHandlerSpec;
+    }
+
+    try {
+      return this._compileResolved({
+        checkpointer,
+        store,
+        cache,
+        interruptBefore,
+        interruptAfter,
+        name,
+        description,
+        transformers,
+        defaultErrorHandlerNode:
+          defaultErrorHandlerSpec !== undefined
+            ? DEFAULT_ERROR_HANDLER_NODE
+            : undefined,
+      });
+    } finally {
+      if (defaultErrorHandlerSpec !== undefined) {
+        delete this.nodes[DEFAULT_ERROR_HANDLER_NODE as N];
+      }
+    }
+  }
+
+  /** @internal */
+  protected _compileResolved<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
+    checkpointer,
+    store,
+    cache,
+    interruptBefore,
+    interruptAfter,
+    name,
+    description,
+    transformers,
+    defaultErrorHandlerNode,
+  }: {
+    checkpointer?: BaseCheckpointSaver | boolean;
+    store?: BaseStore;
+    cache?: BaseCache;
+    interruptBefore?: N[] | All;
+    interruptAfter?: N[] | All;
+    name?: string;
+    description?: string;
+    transformers?: TTransformers;
+    defaultErrorHandlerNode?: string;
+  }): CompiledStateGraph<
+    Prettify<S>,
+    Prettify<U>,
+    N,
+    I,
+    O,
+    C,
+    NodeReturnType,
+    InterruptType,
+    WriterType,
+    TTransformers
+  > {
     // validate the graph
     this.validate([
       ...(Array.isArray(interruptBefore) ? interruptBefore : []),
@@ -1393,23 +1553,39 @@ export class StateGraph<
     // Resolve graph-wide node defaults. Per-node values always win. Defaults
     // are merged into a copy of each spec so repeated `compile()` calls remain
     // stable (the builder's node specs are never mutated).
+    //
+    //  - `retryPolicy` / `timeout` apply to all nodes, including error-handler
+    //    nodes (a stuck or transiently-failing handler is treated like any
+    //    other node).
+    //  - `cachePolicy` and the default `errorHandler` apply to regular nodes
+    //    only — caching a handler result is unsafe, and a handler must never
+    //    catch its own (or another handler's) failure.
     const nodeDefaults = this._nodeDefaults;
     const hasNodeDefaults =
       nodeDefaults.retryPolicy !== undefined ||
       nodeDefaults.cachePolicy !== undefined ||
-      nodeDefaults.timeout !== undefined;
+      nodeDefaults.timeout !== undefined ||
+      defaultErrorHandlerNode !== undefined;
     for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
       this.nodes
     )) {
+      const isErrorHandlerNode = node.isErrorHandler === true;
       const resolvedNode = hasNodeDefaults
         ? {
             ...node,
             retryPolicy: node.retryPolicy ?? nodeDefaults.retryPolicy,
-            cachePolicy:
-              node.cachePolicy === false
+            cachePolicy: isErrorHandlerNode
+              ? undefined
+              : node.cachePolicy === false
                 ? undefined
                 : (node.cachePolicy ?? nodeDefaults.cachePolicy),
             timeout: node.timeout ?? nodeDefaults.timeout,
+            errorHandlerNode:
+              !isErrorHandlerNode &&
+              defaultErrorHandlerNode !== undefined &&
+              node.errorHandlerNode === undefined
+                ? defaultErrorHandlerNode
+                : node.errorHandlerNode,
           }
         : node;
       compiled.attachNode(key as N, resolvedNode);
