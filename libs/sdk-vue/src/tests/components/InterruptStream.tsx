@@ -13,13 +13,18 @@ export const InterruptStream = defineComponent({
   props: {
     apiUrl: { type: String, default: undefined },
     assistantId: { type: String, default: "interruptAgent" },
-    /** When true, the Resume button uses stream.respond() directly. */
-    useRespondMethod: { type: Boolean, default: false },
+    threadId: { type: String, default: undefined },
+    onThreadId: {
+      type: Function as unknown as () => (threadId: string) => void,
+      default: undefined,
+    },
   },
   setup(props) {
     const stream = useStream<InterruptState>({
       assistantId: props.assistantId,
       apiUrl: props.apiUrl,
+      threadId: props.threadId,
+      onThreadId: props.onThreadId,
     });
 
     const interruptNode = computed(() => {
@@ -66,12 +71,8 @@ export const InterruptStream = defineComponent({
         <button
           data-testid="resume"
           onClick={() => {
-            if (props.useRespondMethod && stream.interrupt.value) {
+            if (stream.interrupt.value) {
               void stream.respond("approved");
-            } else {
-              void stream.submit(undefined, {
-                command: { resume: "approved" },
-              });
             }
           }}
         >

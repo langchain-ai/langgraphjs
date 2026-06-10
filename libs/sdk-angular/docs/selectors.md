@@ -13,8 +13,9 @@ subscription, and the last consumer's `DestroyRef` closes it.
 | `injectValues(stream, target?)` | State snapshot for the target. |
 | `injectMessageMetadata(stream, msgId)` | `{ parentCheckpointId }` for forking / editing. |
 | `injectSubmissionQueue(stream)` | `{ entries, size, cancel(id), clear() }` for the enqueue strategy. |
-| `injectExtension(stream, name, target?)` | Read a named protocol extension. |
-| `injectChannel(stream, channels, target?)` | Raw event buffer — escape hatch. |
+| `injectExtension(stream, name, target?)` | Latest payload of a `custom:<name>` extension. |
+| `injectChannel(stream, channels, target?)` | Raw event stream (bounded buffer, all runs) — escape hatch. |
+| `injectChannelEffect(stream, channels, options)` | Per-event side-effect callback (analytics, logging) — no re-render. |
 | `injectAudio` / `injectImages` / `injectVideo` / `injectFiles` | Multimodal media streams. |
 | `injectMediaUrl(media)` | Create + revoke an `objectURL` for a media handle. |
 
@@ -72,6 +73,52 @@ The first consumer of `injectMessages(stream, subagent)` opens a
 scoped subscription; when the last card unmounts, the subscription is
 released. Mounting / unmounting subagent cards mid-run is safe — no
 manual cleanup required.
+
+## `injectChannel` vs. `injectExtension`
+
+For a `custom:<name>` channel both injectors keep receiving events
+across serial runs on the same thread, but they expose different shapes:
+
+- **`injectExtension`** — the **latest** payload only. Use it for
+  "current state" panels (progress, score, status).
+- **`injectChannel`** — the **full history** of events as a bounded
+  buffer. Use it for an event log or to derive your own running totals,
+  e.g. `injectChannel(stream, ["custom:redaction-stats"])`.
+
+## Per-event side effects via `injectChannelEffect`
+
+`injectChannel` is for events you **render**. When you instead want to
+**react** to each event — fire analytics, write a log — use
+`injectChannelEffect`. It invokes `onEvent` once per event and returns
+nothing, so it never triggers change detection:
+
+```typescript
+import { Component } from "@angular/core";
+import { injectStream, injectChannelEffect } from "@langchain/angular";
+
+@Component({
+  /* ... */
+})
+export class AnalyticsComponent {
+  readonly stream = injectStream();
+
+  constructor() {
+    injectChannelEffect(this.stream, ["lifecycle", "tools"], {
+      replay: false,
+      onEvent: (event) => sendAnalytics(event),
+      onError: (error) => logger.error(error),
+    });
+  }
+}
+```
+
+`channels`, `target`, and `enabled` accept `Signal`s so a `computed`
+scope re-binds the subscription. The subscription is **shared**
+(ref-counted) with any matching `injectChannel`, so you only pay for one
+server subscription per channel set. `replay` defaults to `false`
+(live-only); events buffered before the effect attaches are not
+re-delivered. Call it from an injection context (field initializer,
+constructor, or `runInInjectionContext`).
 
 ## Media selectors
 

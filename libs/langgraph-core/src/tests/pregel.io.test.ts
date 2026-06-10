@@ -310,7 +310,7 @@ describe("mapOutputUpdates", () => {
       "someOutputChannelName"
     >[] = [
       {
-        id: uuid6(-1),
+        id: uuid6(0),
         name: "task1",
         input: null,
         proc: new RunnablePassthrough(),
@@ -320,7 +320,7 @@ describe("mapOutputUpdates", () => {
         writers: [],
       },
       {
-        id: uuid6(-1),
+        id: uuid6(0),
         name: "task2",
         input: null,
         proc: new RunnablePassthrough(),
@@ -369,7 +369,7 @@ describe("mapOutputUpdates", () => {
       | "someOutputChannelName4"
     >[] = [
       {
-        id: uuid6(-1),
+        id: uuid6(0),
         name: "task1",
         input: null,
         proc: new RunnablePassthrough(),
@@ -382,7 +382,7 @@ describe("mapOutputUpdates", () => {
         writers: [],
       },
       {
-        id: uuid6(-1),
+        id: uuid6(0),
         name: "task2",
         input: null,
         proc: new RunnablePassthrough(),

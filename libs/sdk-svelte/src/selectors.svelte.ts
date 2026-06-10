@@ -1,6 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  acquireChannelEffect,
   audioProjection,
   channelProjection,
   extensionProjection,
@@ -13,10 +14,12 @@ import {
   type AssembledToolCall,
   type AudioMedia,
   type Channel,
+  type ChannelEffectOptions,
   type ChannelProjectionOptions,
   type Event,
   type FileMedia,
   type ImageMedia,
+  type InferToolCalls,
   type InferStateType,
   type MessageMetadata,
   type MessageMetadataMap,
@@ -88,6 +91,39 @@ function namespaceKey(namespace: readonly string[]): string {
 
 function isGetter<T>(input: ValueOrGetter<T> | undefined): input is () => T {
   return typeof input === "function";
+}
+
+/**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Re-evaluates when a reactive `target` changes; the controller
+ * de-dupes and skips already-promoted ids.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target: ValueOrGetter<SelectorTarget> | undefined
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  $effect(() => {
+    const resolved = isGetter(target) ? target() : target;
+    const id = subagentNeedingNamespace(resolved);
+    if (id != null) void controller.resolveSubagentNamespace(id);
+  });
 }
 
 /**
@@ -164,6 +200,7 @@ export function useMessages(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<BaseMessage[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {
@@ -191,7 +228,16 @@ export function useMessages(
 export function useToolCalls(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
+): ReactiveValue<AssembledToolCall[]>;
+export function useToolCalls<T>(
+  stream: AnyStream,
+  target?: ValueOrGetter<SelectorTarget>
+): ReactiveValue<InferToolCalls<T>[]>;
+export function useToolCalls(
+  stream: AnyStream,
+  target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<AssembledToolCall[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {
@@ -262,8 +308,13 @@ export function useValues(
 }
 
 /**
- * Subscribe to a `custom:<name>` stream extension — most-recent
+ * Subscribe to a `custom:<name>` stream extension — the most-recent
  * payload emitted by the transformer, scoped to the target namespace.
+ *
+ * Returns only the latest value and resumes across serial runs, so it is
+ * ideal for "current state" panels (progress, score, status). When you
+ * need the full history of events rather than just the latest payload,
+ * use {@link useChannel} instead.
  *
  * `name` accepts either a plain string or a getter so component
  * state can drive the extension name at runtime.
@@ -296,8 +347,13 @@ export function useExtension<T = unknown>(
 /**
  * Raw-events escape hatch. Subscribes to one or more channels at a
  * namespace and returns a bounded buffer of raw protocol events.
- * Prefer {@link useMessages} / {@link useToolCalls} / {@link useValues}
- * for the common cases.
+ *
+ * The buffer keeps accumulating across serial runs for the lifetime of
+ * the thread, so this is the hook to use for an event log / stream of a
+ * custom channel (e.g. `["custom:redaction-stats"]`). When you only need
+ * the latest payload of a single `custom:<name>` channel, prefer
+ * {@link useExtension}. For the common message/tool/value cases prefer
+ * {@link useMessages} / {@link useToolCalls} / {@link useValues}.
  */
 export type UseChannelOptions = ChannelProjectionOptions;
 
@@ -328,6 +384,86 @@ export function useChannel(
     },
     EMPTY_EVENTS
   );
+}
+
+/**
+ * Options for {@link useChannelEffect}. Extends the projection options
+ * (`bufferSize`, `replay`) with the per-event callback, an optional
+ * error sink, a reactive `target` scope, and a reactive `enabled` gate.
+ */
+export interface UseChannelEffectOptions extends ChannelEffectOptions {
+  /**
+   * Scope events to a subagent / subgraph / explicit namespace.
+   * Defaults to the root namespace. Accepts a getter so component
+   * `$state` can drive the scope.
+   */
+  target?: ValueOrGetter<SelectorTarget>;
+  /**
+   * Gate the subscription. When `false`, no subscription is opened and
+   * no events are delivered. Defaults to `true`. Accepts a getter.
+   */
+  enabled?: ValueOrGetter<boolean>;
+}
+
+/**
+ * Side-effect counterpart to {@link useChannel}. Instead of returning a
+ * reactive buffer, it invokes `onEvent` once per event for as long as
+ * the calling scope is alive — the idiomatic place for analytics,
+ * logging, and other fire-and-forget side effects.
+ *
+ * ```svelte
+ * <script lang="ts">
+ *   useChannelEffect(stream, ["lifecycle", "tools"], {
+ *     replay: false,
+ *     onEvent(event) {
+ *       sendAnalytics(event);
+ *     },
+ *     onError(error) {
+ *       logger.error(error);
+ *     },
+ *   });
+ * </script>
+ * ```
+ *
+ * Reactive `channels` / `target` / `enabled` getters re-bind the
+ * subscription when they change. The underlying subscription is shared
+ * (ref-counted) with any matching {@link useChannel} consumer. `replay`
+ * defaults to `false` (live-only); events buffered before the effect
+ * attaches are not re-delivered.
+ *
+ * Must be called from a reactive context (a `.svelte` component script
+ * or inside `$effect.root`).
+ */
+export function useChannelEffect(
+  stream: AnyStream,
+  channels: ValueOrGetter<readonly Channel[]>,
+  options: UseChannelEffectOptions
+): void {
+  useResolveSubagentNamespace(stream, options.target);
+
+  $effect(() => {
+    const enabled = isGetter(options.enabled)
+      ? options.enabled()
+      : (options.enabled ?? true);
+    const resolvedChannels = isGetter(channels) ? channels() : channels;
+    const target = isGetter(options.target) ? options.target() : options.target;
+    const namespace = resolveNamespace(target);
+
+    if (!enabled) return;
+    const registry = getRegistry(stream);
+    if (registry == null) return;
+
+    // `onEvent` / `onError` are read lazily inside the wrappers so the
+    // effect doesn't re-acquire when a caller passes a fresh closure.
+    return acquireChannelEffect(registry, resolvedChannels, namespace, {
+      replay: options.replay,
+      bufferSize: options.bufferSize,
+      onEvent: (event) => options.onEvent(event),
+      onError: options.onError
+        ? (error) => options.onError?.(error)
+        : undefined,
+    });
+  });
 }
 
 /**

@@ -12,7 +12,8 @@ The root hook of `@langchain/react` v1. Mount it once per thread. It owns the th
 - [`submit()` options](#submit-options)
 - [Stopping a run and responding to interrupts](#stopping-a-run-and-responding-to-interrupts)
   - [`stop()`](#stop)
-  - [`respond(response, target?)`](#respondresponse-target)
+  - [`respond(response, options?)`](#respondresponse-options)
+  - [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
   - [`hydrationPromise`](#hydrationpromise)
 - [Related](#related)
 
@@ -25,16 +26,18 @@ The option bag is a discriminated union on `transport`:
 
 ### Common options
 
-| Option          | Type                                    | Description                                                                                                                 |
-| --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `assistantId`   | `string`                                | Assistant/graph ID. Required on the Agent Server branch; optional (defaults to `"_"`) on the custom-adapter branch.         |
-| `threadId`      | `string \| null`                        | Bind to an existing thread. Pass `null` to start a new thread on next submit; changing the value hydrates and resubscribes. |
-| `initialValues` | `StateType`                             | Initial state values used until the first `values` event lands.                                                             |
-| `messagesKey`   | `string`                                | State key holding the message array. Defaults to `"messages"`.                                                              |
-| `onThreadId`    | `(id: string) => void`                  | Fires when the server mints a new thread id.                                                                                |
-| `onCreated`     | `(meta: { run_id, thread_id }) => void` | Fires when a run is accepted by the server.                                                                                 |
-| `tools`         | `HeadlessToolImplementation[]`          | Headless tools. Matching interrupts are auto-resolved with the handler's return value. See [Interrupts](./interrupts.md).   |
-| `onTool`        | `OnToolCallback`                        | Observe headless-tool lifecycle events (`start` / `success` / `error`).                                                     |
+| Option          | Type                                                                                      | Description                                                                                                                 |
+| --------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `assistantId`   | `string`                                                                                  | Assistant/graph ID. Required on the Agent Server branch; optional (defaults to `"_"`) on the custom-adapter branch.         |
+| `threadId`      | `string \| null`                                                                          | Bind to an existing thread. Pass `null` to start a new thread on next submit; changing the value hydrates and resubscribes. |
+| `initialValues` | `StateType`                                                                               | Initial state values used until the first `values` event lands.                                                             |
+| `messagesKey`   | `string`                                                                                  | State key holding the message array. Defaults to `"messages"`.                                                              |
+| `onThreadId`    | `(id: string) => void`                                                                    | Fires when the server mints a new thread id.                                                                                |
+| `onCreated`     | `(info: { runId: string }) => void`                                                       | Convenience callback fired when this hook's run is accepted by the server.                                                  |
+| `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Convenience callback fired when a run's active streaming phase ends. `runId` may be omitted for re-attached in-flight runs. |
+| `tools`         | `HeadlessToolImplementation[]`                                                            | Headless tools. Matching interrupts are auto-resolved with the handler's return value. See [Interrupts](./interrupts.md).   |
+| `onTool`        | `OnToolCallback`                                                                          | Observe headless-tool lifecycle events (`start` / `success` / `error`).                                                     |
+| `optimistic`    | `boolean`                                                                                 | Echo `submit()` input into `values` / `messages` immediately and reconcile by id as the server streams back. Defaults to `true`. Set `false` for server-authoritative-only. See [v1 migration §5.4](./v1-migration.md). |
 
 ### Agent Server branch (`AgentServerOptions`)
 
@@ -73,23 +76,24 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 | `subgraphs`                  | `ReadonlyMap<string, SubgraphDiscoverySnapshot>`            | Subgraphs discovered on the run.                                                                |
 | `subgraphsByNode`            | `ReadonlyMap<string, readonly SubgraphDiscoverySnapshot[]>` | Same snapshots keyed by the graph node that produced them.                                      |
 | `submit(input, options?)`    | function                                                    | Dispatch a new run on the bound thread.                                                         |
-| `stop()`                     | `() => Promise<void>`                                       | Abort the in-flight run.                                                                        |
-| `respond(response, target?)` | function                                                    | Resume an interrupt with a response payload.                                                    |
-| `getThread()`                | `() => ThreadStream \| undefined`                           | Escape hatch to the underlying v2 `ThreadStream`.                                               |
+| `stop(options?)`             | `(options?: { cancel?: boolean }) => Promise<void>`       | Cancel the active run (default) and disconnect the client. Pass `{ cancel: false }` to disconnect only. |
+| `disconnect()`               | `() => Promise<void>`                                     | Disconnect the client without cancelling the run (`stop({ cancel: false })`).                          |
+| `respond(response, options?)` | function                                                    | Resume a single interrupt with a response payload (target via `options.interruptId` / `namespace`). |
+| `respondAll(responsesById, options?)` | function                                            | Resume several interrupts pending at the same checkpoint in one command (`interruptId` → response map). |
+| `getThread()`                | `() => ThreadStream \| undefined`                           | Returns the bound `ThreadStream` for low-level protocol access; `undefined` until a thread is bound. |
 | `client`                     | `Client`                                                    | The bound client (`HttpAgentServerAdapter`'s client on the custom branch).                      |
 | `assistantId`                | `string`                                                    | Resolved assistant id (including the `"_"` fallback on custom adapters).                        |
 
 ## `submit()` options
 
-`submit()` accepts `Partial<StateType>` as input (`messages` is widened to also accept `BaseMessage` class instances, or a single message). Pass `null` / `undefined` when resuming an interrupt via `options.command.resume`.
+`submit()` accepts `Partial<StateType>` as input (`messages` is widened to also accept `BaseMessage` class instances, or a single message). To resume a pending interrupt, use `stream.respond()` instead.
 
 | Option                              | Type                                                 | Description                                                                                                                                                               |
 | ----------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config`                            | `{ configurable?, tags?, recursion_limit?, ... }`    | Run config forwarded to the server.                                                                                                                                       |
 | `metadata`                          | `Record<string, unknown>`                            | Run metadata.                                                                                                                                                             |
-| `command`                           | `{ resume?, goto?, update? }`                        | Resume / steer an interrupted run.                                                                                                                                        |
 | `multitaskStrategy`                 | `"rollback" \| "interrupt" \| "reject" \| "enqueue"` | How to handle a submit while a run is active. See [Submission queue](./submission-queue.md).                                                                              |
-| `forkFrom`                          | `{ checkpointId: string }`                           | Fork the new run from a specific checkpoint (edit / retry flows). See [Fork / edit from a checkpoint](./fork-from-checkpoint.md).                                         |
+| `forkFrom`                          | `string`                                             | Fork the new run from a specific checkpoint id (edit / retry flows). See [Fork / edit from a checkpoint](./fork-from-checkpoint.md).                                      |
 | `interruptBefore`, `interruptAfter` | `string[]`                                           | Breakpoint debugging.                                                                                                                                                     |
 | `runId`                             | `string`                                             | Pre-generate a run id (for optimistic UI / telemetry).                                                                                                                    |
 | `durability`                        | `"async" \| "sync" \| "exit"`                        | Checkpoint policy.                                                                                                                                                        |
@@ -102,7 +106,7 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 
 ### `stop()`
 
-`stream.stop()` aborts the in-flight run. The transport `AbortController` fires, the `messages` / `toolCalls` projections stop receiving deltas, and `values` reverts to the server's authoritative snapshot after reconciliation. Safe to call unconditionally — when no run is active it is a no-op.
+`stream.stop()` cancels the active run by default: it disconnects the client transport, calls `client.runs.cancel` on the server, and sets `isLoading` to `false`. Messages and values received so far are preserved. Safe to call unconditionally — when no run is active it is a no-op.
 
 ```tsx
 <button onClick={() => void stream.stop()} disabled={!stream.isLoading}>
@@ -110,22 +114,67 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 </button>
 ```
 
-### `respond(response, target?)`
+Pass `{ cancel: false }` to disconnect without cancelling server-side execution, or use `stream.disconnect()` (see below).
 
-Resume a specific interrupt from anywhere in the tree. The target selects which pending interrupt to resolve — useful when multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs). When `target` is omitted, the most recent root interrupt is resumed.
+### `disconnect()`
+
+`stream.disconnect()` is an alias for `stop({ cancel: false })`. Use it in join/rejoin UIs where the agent should keep running after the client leaves the stream.
 
 ```tsx
-// Resolve the latest root interrupt:
-await stream.respond({ approved: true });
-
-// Resolve a specific interrupt by id:
-await stream.respond(
-  { approved: true },
-  { interruptId: myInterrupt.id, namespace: ["subagent"] },
-);
+<button onClick={() => void stream.disconnect()} disabled={!stream.isLoading}>
+  Disconnect
+</button>
 ```
 
-For the common "user approves / rejects a pending interrupt" flow at the root, `submit(null, { command: { resume: value } })` is equivalent and slightly more ergonomic. See [Interrupts](./interrupts.md).
+### `respond(response, options?)`
+
+Resume a single pending interrupt. When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `options.interruptId` (and `options.namespace` for subgraph interrupts).
+
+The server validates `namespace` against the pending interrupt. Root interrupts use `namespace: []` (default when omitted). For subgraph interrupts, copy `namespace` from `getThread()?.interrupts` — see [Interrupts](./interrupts.md#subgraph-interrupts-and-namespace).
+
+Pass `options.config` / `options.metadata` to fold run-level config (model, user context, …) and metadata (trigger source, test flags, …) into the resumed run, mirroring `submit()`.
+
+```tsx
+// Single pending interrupt — omit target:
+await stream.respond({ approved: true });
+
+// Multiple root interrupts — target by id:
+await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
+
+// Subgraph interrupt — namespace from getThread():
+const entry = stream.getThread()?.interrupts.find(
+  (e) => e.interruptId === myInterruptId,
+);
+await stream.respond(
+  { approved: true },
+  { interruptId: entry!.interruptId, namespace: entry!.namespace },
+);
+
+// Carry run config + metadata onto the resume:
+await stream.respond({ approved: true }, {
+  config: { configurable: { model: "gpt-4o" } },
+  metadata: { source: "ui" },
+});
+```
+
+See [Interrupts](./interrupts.md) for HITL resume patterns.
+
+### `respondAll(responsesById, options?)`
+
+Resume several interrupts pending at the same checkpoint (e.g. parallel tool-authorization prompts) in a single command. Sequential `respond()` calls would fail because the first resume starts a run, leaving the rest with no interrupted run to respond to. `responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads; namespaces are resolved internally from `getThread()?.interrupts`. `options.config` / `options.metadata` fold run-level config and metadata into the single run that services the resume.
+
+```tsx
+// Distinct payloads per interrupt:
+await stream.respondAll({
+  [interruptA.id]: { approved: true },
+  [interruptB.id]: { approved: false },
+});
+
+// Same payload to every pending interrupt:
+await stream.respondAll(
+  Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+);
+```
 
 ### `hydrationPromise`
 

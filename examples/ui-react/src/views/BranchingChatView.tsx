@@ -132,7 +132,7 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
         content == null
           ? undefined
           : { messages: [{ content, type: "human" }] },
-        { forkFrom: { checkpointId } }
+        { forkFrom: checkpointId }
       );
     },
     [stream]

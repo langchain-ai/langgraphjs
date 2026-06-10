@@ -5,7 +5,6 @@ export {
   type AgentServerOptions,
   type AnyStream,
   type CustomAdapterOptions,
-  type StateOf,
   type StreamApi,
   type ThreadStream,
   type UseStreamOptions,
@@ -18,6 +17,7 @@ export { injectProjection } from "./inject-projection.js";
 export {
   injectAudio,
   injectChannel,
+  injectChannelEffect,
   injectExtension,
   injectFiles,
   injectImages,
@@ -25,6 +25,7 @@ export {
   injectToolCalls,
   injectValues,
   injectVideo,
+  type InjectChannelEffectOptions,
   type SelectorTarget,
 } from "./selectors.js";
 export {
@@ -56,6 +57,7 @@ export type {
   AgentServerAdapter,
   AnyMediaHandle,
   AssembledToolCall,
+  AssembledToolCallFromTool as ToolCallFromTool,
   AudioMedia,
   Channel,
   Event,
@@ -68,6 +70,7 @@ export type {
   MediaBase,
   MediaBlockType,
   StreamSubmitOptions,
+  StreamStopOptions,
   SubagentDiscoverySnapshot,
   SubgraphDiscoverySnapshot,
   ToolCallStatus,
@@ -83,7 +86,6 @@ export type {
   HeadlessToolInterrupt,
   HttpAgentServerAdapterOptions,
   OnToolCallback,
-  ToolCallFromTool,
   ToolCallsFromTools,
   ToolCallState,
   ToolEvent,

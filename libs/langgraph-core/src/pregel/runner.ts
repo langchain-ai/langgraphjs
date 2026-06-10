@@ -10,10 +10,12 @@ import {
   combineAbortSignals,
   patchConfigurable,
   RetryPolicy,
+  TimeoutPolicy,
 } from "./utils/index.js";
 import {
   CONFIG_KEY_SCRATCHPAD,
   ERROR,
+  ERROR_SOURCE_NODE,
   INTERRUPT,
   RESUME,
   NO_WRITES,
@@ -22,7 +24,12 @@ import {
   CONFIG_KEY_CALL,
   CONFIG_KEY_ABORT_SIGNALS,
 } from "../constants.js";
-import { GraphBubbleUp, isGraphBubbleUp, isGraphInterrupt } from "../errors.js";
+import {
+  GraphBubbleUp,
+  isGraphBubbleUp,
+  isGraphDrained,
+  isGraphInterrupt,
+} from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
 
@@ -86,6 +93,12 @@ export class PregelRunner {
   private loop: PregelLoop;
 
   /**
+   * Exceptions already routed to a node-level error handler. Consulted when
+   * deciding whether a failed task should abort the run.
+   */
+  private handledExceptions = new WeakSet<Error>();
+
+  /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
    */
@@ -118,10 +131,8 @@ export class PregelRunner {
       ? AbortSignal.timeout(timeout)
       : undefined;
 
-    // Start task execution
-    const pendingTasks = Object.values(this.loop.tasks).filter(
-      (t) => t.writes.length === 0
-    );
+    const allTasks = Object.values(this.loop.tasks);
+    const pendingTasks = allTasks.filter((t) => t.writes.length === 0);
 
     const { signals, disposeCombinedSignal } = this._initializeAbortSignals({
       exceptionSignal,
@@ -137,6 +148,11 @@ export class PregelRunner {
 
     for await (const { task, error, signalAborted } of taskStream) {
       this._commit(task, error);
+      if (error !== undefined && this.handledExceptions.has(error)) {
+        // Routed to a node-level error handler in this tick; provenance is
+        // checkpointed and the error must not abort the run.
+        continue;
+      }
       if (isGraphInterrupt(error)) {
         graphBubbleUp = error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
@@ -163,12 +179,7 @@ export class PregelRunner {
 
     disposeCombinedSignal?.();
 
-    onStepWrite?.(
-      this.loop.step,
-      Object.values(this.loop.tasks)
-        .map((task) => task.writes)
-        .flat()
-    );
+    onStepWrite?.(this.loop.step, allTasks.map((task) => task.writes).flat());
 
     if (nodeErrors.size === 1) {
       throw Array.from(nodeErrors)[0];
@@ -180,6 +191,13 @@ export class PregelRunner {
     }
 
     if (isGraphInterrupt(graphBubbleUp)) {
+      throw graphBubbleUp;
+    }
+
+    // A cooperative drain raised by a subgraph bubbles up through the parent
+    // loop (even when the parent is the top graph) so the parent stops at this
+    // boundary and its checkpoint can be resumed later.
+    if (isGraphDrained(graphBubbleUp)) {
       throw graphBubbleUp;
     }
 
@@ -337,7 +355,42 @@ export class PregelRunner {
         continue;
       }
 
-      yield settledTask as SettledPregelTask;
+      const settled = settledTask as SettledPregelTask;
+      const { task: settledPregelTask, error: settledError } = settled;
+
+      // If the task failed (after exhausting its retry policy) and the node has
+      // a registered error handler, schedule that handler to run within this
+      // same tick instead of aborting the run. GraphBubbleUp errors (e.g.
+      // interrupts / parent commands) are never routed to error handlers.
+      if (
+        settledError !== undefined &&
+        !isGraphBubbleUp(settledError) &&
+        !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
+        this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
+          undefined
+      ) {
+        const handlerTask = this.loop.scheduleErrorHandler(
+          settledPregelTask,
+          settledError
+        );
+        if (handlerTask !== undefined) {
+          executingTasksMap[handlerTask.id] = _runWithRetry(
+            handlerTask,
+            retryPolicy,
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
+            signals?.composedAbortSignal
+          ).catch((error) => {
+            return {
+              task: handlerTask,
+              error,
+              signalAborted: signals?.composedAbortSignal?.aborted,
+            };
+          });
+          barrier.next();
+        }
+      }
+
+      yield settled;
 
       if (listener != null) {
         timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
@@ -346,6 +399,19 @@ export class PregelRunner {
 
       delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
     }
+  }
+
+  /**
+   * Whether a failed task should record {@link ERROR_SOURCE_NODE} provenance.
+   */
+  private _shouldRouteToErrorHandler(
+    task: PregelExecutableTask<string, string>
+  ): boolean {
+    const name = String(task.name);
+    if (this.loop.isErrorHandlerNode(name)) {
+      return false;
+    }
+    return this.loop.getErrorHandlerNode(name) !== undefined;
   }
 
   /**
@@ -369,12 +435,22 @@ export class PregelRunner {
           }
           this.loop.putWrites(task.id, interrupts);
         }
+      } else if (isGraphDrained(error)) {
+        // Cooperative drain bubbled up from a subgraph. Leave the task
+        // uncommitted (unless it already produced writes) so it is
+        // re-executed when the parent run resumes.
+        if (task.writes.length) {
+          this.loop.putWrites(task.id, task.writes);
+        }
       } else if (isGraphBubbleUp(error) && task.writes.length) {
         this.loop.putWrites(task.id, task.writes);
       } else {
-        this.loop.putWrites(task.id, [
-          [ERROR, { message: error.message, name: error.name }],
-        ]);
+        task.writes.push([ERROR, { message: error.message, name: error.name }]);
+        if (this._shouldRouteToErrorHandler(task)) {
+          task.writes.push([ERROR_SOURCE_NODE, String(task.name)]);
+          this.handledExceptions.add(error);
+        }
+        this.loop.putWrites(task.id, task.writes);
       }
     } else {
       if (
@@ -427,6 +503,7 @@ async function call(
   options: {
     retry?: RetryPolicy;
     cache?: CachePolicy;
+    timeout?: TimeoutPolicy;
     callbacks?: unknown;
   } = {}
 ): Promise<unknown> {
@@ -451,6 +528,7 @@ async function call(
     input,
     cache: options.cache,
     retry: options.retry,
+    timeout: options.timeout,
     callbacks: options.callbacks,
   });
   const nextTask = await this.scheduleTask(task, cnt, wcall);

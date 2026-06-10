@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-validation
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2503](https://github.com/langchain-ai/langgraphjs/pull/2503) [`6e850fb`](https://github.com/langchain-ai/langgraphjs/commit/6e850fbabc842bb495352fbd6ef424c67ab0948f) Thanks [@jkennedyvz](https://github.com/jkennedyvz)! - fix(langgraph-checkpoint-validation): align node engine with vitest
+
 ## 1.0.9
 
 ### Patch Changes

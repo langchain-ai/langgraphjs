@@ -5,6 +5,10 @@ import {
   ExtensionSelectorsStreamComponent,
   NamedExtensionSelectorsStreamComponent,
 } from "./components/ExtensionSelectorsStream.js";
+import {
+  ChannelEffectStreamComponent,
+  DisabledChannelEffectStreamComponent,
+} from "./components/ChannelEffectStream.js";
 import { SelectorsStreamComponent } from "./components/SelectorsStream.js";
 import {
   EmbeddedSubgraphDiscoveryStreamComponent,
@@ -116,6 +120,49 @@ it("captures named custom events and exposes latest values", async () => {
   await expect
     .element(screen.getByTestId("values-message-count"))
     .toHaveTextContent("2");
+});
+
+it("delivers raw custom events to an injectChannelEffect callback", async () => {
+  const screen = await render(ChannelEffectStreamComponent);
+
+  await screen.getByTestId("submit").click();
+
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+
+  // The `customChannelAgent` fixture emits exactly two writer payloads
+  // per run on the raw `custom` channel.
+  await expect.element(screen.getByTestId("effect-count")).toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("effect-methods"))
+    .toHaveTextContent(/custom/);
+});
+
+it("keeps delivering injectChannelEffect events across serial submits", async () => {
+  const screen = await render(ChannelEffectStreamComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("effect-count")).toHaveTextContent("2");
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("effect-count")).toHaveTextContent("4");
+});
+
+it("does not deliver injectChannelEffect events when disabled", async () => {
+  const screen = await render(DisabledChannelEffectStreamComponent);
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 10_000 })
+    .toHaveTextContent("Not loading");
+  await expect.element(screen.getByTestId("effect-count")).toHaveTextContent("0");
 });
 
 it("continues injectExtension subscriptions across serial submits", async () => {

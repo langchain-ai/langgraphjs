@@ -112,6 +112,36 @@ describe("SubagentDiscovery", () => {
     });
   });
 
+  it("discovers task subagents from snake_case content_blocks", () => {
+    const discovery = new SubagentDiscovery();
+
+    discovery.seedFromCheckpointMessages([
+      {
+        type: "ai",
+        id: "orchestrator",
+        content: [],
+        content_blocks: [
+          {
+            type: "tool_call",
+            id: "task-1",
+            name: "task",
+            args: {
+              description: "Search from content blocks",
+              subagent_type: "researcher",
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(discovery.snapshot.get("task-1")).toMatchObject({
+      id: "task-1",
+      name: "researcher",
+      namespace: ["tools:task-1"],
+      taskInput: "Search from content blocks",
+    });
+  });
+
   it("marks discovered subagents complete from values tool-result messages", () => {
     const discovery = new SubagentDiscovery();
 
@@ -563,5 +593,147 @@ describe("SubagentDiscovery", () => {
       name: "haiku-drafter",
       namespace: ["tools:exec-uuid-123"],
     });
+  });
+
+  it("seedFromCheckpointMessages discovers task calls and marks completion", () => {
+    const discovery = new SubagentDiscovery();
+
+    discovery.seedFromCheckpointMessages([
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "task-1",
+            name: "task",
+            args: { description: "Do research", subagent_type: "researcher" },
+          },
+        ],
+      }),
+      new ToolMessage({
+        id: "tool-result",
+        content: "done",
+        tool_call_id: "task-1",
+        name: "task",
+      }),
+    ]);
+
+    expect(discovery.snapshot.get("task-1")).toMatchObject({
+      name: "researcher",
+      namespace: ["tools:task-1"],
+      status: "complete",
+    });
+  });
+
+  it("seedFromCheckpointMessages is idempotent on re-seed", () => {
+    const discovery = new SubagentDiscovery();
+    const messages = [
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "task-1",
+            name: "task",
+            args: { description: "Do research", subagent_type: "researcher" },
+          },
+        ],
+      }),
+    ];
+    discovery.seedFromCheckpointMessages(messages);
+    discovery.seedFromCheckpointMessages(messages);
+    expect(discovery.snapshot.size).toBe(1);
+  });
+
+  it("applyExecutionNamespace promotes a default-only subagent", () => {
+    const discovery = new SubagentDiscovery();
+    discovery.discoverFromMessage(
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "toolu_haiku",
+            name: "task",
+            args: { description: "Write a haiku", subagent_type: "poet" },
+          },
+        ],
+      }),
+      []
+    );
+    expect(discovery.snapshot.get("toolu_haiku")?.namespace).toEqual([
+      "tools:toolu_haiku",
+    ]);
+
+    discovery.applyExecutionNamespace("toolu_haiku", "tools:exec-uuid");
+    expect(discovery.snapshot.get("toolu_haiku")?.namespace).toEqual([
+      "tools:exec-uuid",
+    ]);
+  });
+
+  it("applyExecutionNamespace does not demote an observed own namespace", () => {
+    const discovery = new SubagentDiscovery();
+    discovery.discoverFromMessage(
+      new AIMessage({
+        id: "orchestrator",
+        content: "",
+        tool_calls: [
+          {
+            id: "toolu_123",
+            name: "task",
+            args: { description: "Write a quatrain", subagent_type: "poet" },
+          },
+        ],
+      }),
+      ["model_request:root"]
+    );
+    // Observe the subagent's own namespace carrying state.
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:toolu_123"],
+        timestamp: Date.now(),
+        data: {
+          messages: [{ type: "human", content: "Write a quatrain", id: "h1" }],
+        },
+      },
+    } as ValuesEvent & Event);
+    expect(discovery.snapshot.get("toolu_123")?.namespace).toEqual([
+      "tools:toolu_123",
+    ]);
+
+    // A history-derived wrapper namespace must NOT demote it.
+    discovery.applyExecutionNamespace("toolu_123", "tools:wrapper-run");
+    expect(discovery.snapshot.get("toolu_123")?.namespace).toEqual([
+      "tools:toolu_123",
+    ]);
+  });
+
+  it("reset clears committed subagent maps", () => {
+    const discovery = new SubagentDiscovery();
+    discovery.push(
+      valuesEvent([
+        new AIMessage({
+          id: "orchestrator",
+          content: "",
+          tool_calls: [
+            {
+              id: "task-1",
+              name: "task",
+              args: {
+                description: "Search for protocol risks",
+                subagent_type: "researcher",
+              },
+            },
+          ],
+        }),
+      ])
+    );
+    expect(discovery.snapshot.size).toBeGreaterThan(0);
+
+    discovery.reset();
+
+    expect(discovery.snapshot.size).toBe(0);
   });
 });

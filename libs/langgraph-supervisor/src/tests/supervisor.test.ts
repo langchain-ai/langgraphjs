@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { LanguageModelLike } from "@langchain/core/language_models/base";
 import { tool } from "@langchain/core/tools";
-import { HumanMessage, AIMessage } from "@langchain/core/messages";
+import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { MessagesAnnotation } from "@langchain/langgraph";
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";
@@ -331,4 +331,113 @@ describe("Test supervisor basic workflow", () => {
       );
     }
   );
+});
+
+describe("Test supervisor addHandoffMessages", () => {
+  const withoutSystemMessages = (messages: BaseMessage[]) =>
+    messages.filter((m) => m.getType() !== "system");
+
+  const buildWorkflow = (addHandoffMessages?: boolean) => {
+    const supervisorMessages = [
+      new AIMessage({
+        content: "",
+        tool_calls: [
+          {
+            name: "transfer_to_research_expert",
+            args: {},
+            id: "call_transfer_research",
+            type: "tool_call",
+          },
+        ],
+      }),
+      new AIMessage({ content: "All done." }),
+    ];
+
+    const researchAgentMessages = [
+      new AIMessage({ content: "Here is the research result." }),
+    ];
+
+    const supervisorModel = new FakeToolCallingChatModel({
+      responses: supervisorMessages,
+    });
+    const researchModel = new FakeToolCallingChatModel({
+      responses: researchAgentMessages,
+    });
+
+    const researchAgent = createReactAgent({
+      llm: researchModel,
+      tools: [],
+      name: "research_expert",
+      description: "World class researcher.",
+    });
+
+    const workflow = createSupervisor({
+      agents: [researchAgent],
+      llm: supervisorModel,
+      prompt: "You are a team supervisor managing a research expert.",
+      ...(addHandoffMessages === undefined ? {} : { addHandoffMessages }),
+    });
+
+    return { workflow, researchModel };
+  };
+
+  it("omits supervisor-to-agent handoff messages when addHandoffMessages is false", async () => {
+    const { workflow, researchModel } = buildWorkflow(false);
+    const app = workflow.compile();
+    const result = await app.invoke({
+      messages: [new HumanMessage({ content: "do some research" })],
+    });
+    const resultObj = result as (typeof MessagesAnnotation)["State"];
+    const workerMessages = withoutSystemMessages(researchModel.chatMessages[0]);
+
+    expect(workerMessages).toHaveLength(1);
+    expect(workerMessages[0].getType()).toBe("human");
+    expect(workerMessages[0].content).toBe("do some research");
+
+    // No supervisor-to-agent handoff ToolMessage should be present.
+    const handoffToolMessages = resultObj.messages.filter(
+      (m) =>
+        m.getType() === "tool" &&
+        typeof m.content === "string" &&
+        m.content.startsWith("Successfully transferred")
+    );
+    expect(handoffToolMessages.length).toBe(0);
+
+    // The supervisor AIMessage carrying a handoff tool call should be omitted.
+    const handoffAIMessages = resultObj.messages.filter(
+      (m) =>
+        m.getType() === "ai" &&
+        Array.isArray((m as AIMessage).tool_calls) &&
+        (m as AIMessage).tool_calls!.some((tc) =>
+          tc.name.startsWith("transfer_")
+        )
+    );
+    expect(handoffAIMessages.length).toBe(0);
+  });
+
+  it("keeps supervisor-to-agent handoff messages by default", async () => {
+    const { workflow, researchModel } = buildWorkflow();
+    const app = workflow.compile();
+    const result = await app.invoke({
+      messages: [new HumanMessage({ content: "do some research" })],
+    });
+    const resultObj = result as (typeof MessagesAnnotation)["State"];
+    const workerMessages = withoutSystemMessages(researchModel.chatMessages[0]);
+
+    expect(workerMessages.map((m) => m.getType())).toEqual([
+      "human",
+      "ai",
+      "tool",
+    ]);
+    expect((workerMessages[1] as AIMessage).tool_calls?.[0].name).toBe(
+      "transfer_to_research_expert"
+    );
+
+    const handoffToolMessages = resultObj.messages.filter(
+      (m) =>
+        m.getType() === "tool" &&
+        m.content === "Successfully transferred to research_expert"
+    );
+    expect(handoffToolMessages.length).toBe(1);
+  });
 });

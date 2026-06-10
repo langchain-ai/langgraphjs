@@ -376,7 +376,7 @@ export class StreamManager<
      * derive the subgraph namespace for every tool call without any external
      * metadata on the ToolMessage itself.
      */
-    let toolCallIdToNamespace: Map<string, string> | undefined;
+    const toolCallIdToNamespace = new Map<string, string>();
 
     try {
       /**
@@ -388,30 +388,36 @@ export class StreamManager<
         { limit: options?.historyLimit ?? 20, signal }
       );
 
+      /**
+       * Phase 1: Direct mapping across ALL checkpoints (preferred).
+       *
+       * When a completed checkpoint contains task results, each task.result
+       * has a ToolMessage whose tool_call_id directly and unambiguously maps
+       * the task to the LLM tool call that triggered it. This is more robust
+       * than positional alignment: it works even when a step mixes subagent
+       * tool calls with other tool calls, and requires no assumptions about
+       * the ordering of tasks vs tool_calls.
+       *
+       * We collect these direct mappings across the entire history before
+       * attempting any positional fallback. Otherwise a more recent checkpoint
+       * whose task is still pending (e.g. an interrupted run) could produce a
+       * positional guess and stop the scan before reaching the older checkpoint
+       * that actually holds the correct, completed mapping.
+       *
+       * LangGraph v2 dispatches each parallel tool call as a separate PUSH
+       * task ("__pregel_push"). The subgraph checkpoint_ns is constructed as
+       * `task.name + ":" + task.id`, mirroring algo.ts:
+       *   taskCheckpointNamespace = checkpointNamespace + ":" + taskId
+       *   where checkpointNamespace = task.name for root-level tasks.
+       *
+       * task.checkpoint is always null for completed tasks, so we derive the
+       * namespace from task.name + task.id rather than task.checkpoint.checkpoint_ns.
+       */
       for (const checkpoint of mainHistory) {
         const { tasks } = checkpoint;
         if (!tasks || tasks.length === 0) {
           continue;
         }
-
-        /**
-         * When a completed checkpoint contains task results, each task.result
-         * has a ToolMessage whose tool_call_id directly and unambiguously maps
-         * the task to the LLM tool call that triggered it. This is more robust
-         * than positional alignment: it works even when a step mixes subagent
-         * tool calls with other tool calls, and requires no assumptions about
-         * the ordering of tasks vs tool_calls.
-         *
-         * LangGraph v2 dispatches each parallel tool call as a separate PUSH
-         * task ("__pregel_push"). The subgraph checkpoint_ns is constructed as
-         * `task.name + ":" + task.id`, mirroring algo.ts:
-         *   taskCheckpointNamespace = checkpointNamespace + ":" + taskId
-         *   where checkpointNamespace = task.name for root-level tasks.
-         *
-         * task.checkpoint is always null for completed tasks, so we derive the
-         * namespace from task.name + task.id rather than task.checkpoint.checkpoint_ns.
-         */
-        const directMap = new Map<string, string>();
 
         for (const task of tasks) {
           if (
@@ -430,101 +436,124 @@ export class StreamManager<
             task as unknown as { result?: { messages?: unknown[] } }
           ).result?.messages;
 
-          if (Array.isArray(resultMessages)) {
-            for (const msg of resultMessages) {
-              const m = msg as Record<string, unknown>;
-              if (
-                m.type === "tool" &&
-                typeof m.tool_call_id === "string" &&
-                toFetch.some(([id]) => id === m.tool_call_id)
-              ) {
-                directMap.set(m.tool_call_id, `${task.name}:${task.id}`);
-              }
+          if (!Array.isArray(resultMessages)) {
+            continue;
+          }
+
+          for (const msg of resultMessages) {
+            const m = msg as Record<string, unknown>;
+            if (
+              m.type === "tool" &&
+              typeof m.tool_call_id === "string" &&
+              toFetch.some(([id]) => id === m.tool_call_id) &&
+              !toolCallIdToNamespace.has(m.tool_call_id)
+            ) {
+              toolCallIdToNamespace.set(
+                m.tool_call_id,
+                `${task.name}:${task.id}`
+              );
             }
           }
         }
+      }
 
-        if (directMap.size > 0) {
-          toolCallIdToNamespace = directMap;
-          break;
-        }
+      /**
+       * Phase 2: Positional fallback, applied ONLY to tool calls that Phase 1
+       * could not resolve.
+       *
+       * This covers checkpoints whose task results are not yet populated (tasks
+       * still pending — the live or just-interrupted case). We align push tasks
+       * to the subagent tool calls of the triggering AI message by Send index
+       * (task.path[1]). Restricting this to still-unmapped tool calls guarantees
+       * a correct direct mapping from Phase 1 is never overwritten by a guess.
+       */
+      const hasUnmappedToolCalls = () =>
+        toFetch.some(([id]) => !toolCallIdToNamespace.has(id));
 
-        /**
-         * Fallback for checkpoints where task results are not yet populated
-         * (tasks are still pending). Use positional alignment via the Send
-         * index in task.path[1] as a secondary strategy.
-         */
-        const pushTasks = tasks.filter(
-          (t) =>
-            Array.isArray(t.path) &&
-            t.path[0] === "__pregel_push" &&
-            typeof t.path[1] === "number" &&
-            typeof t.id === "string" &&
-            typeof t.name === "string"
-        );
-        if (pushTasks.length === 0) continue;
+      if (hasUnmappedToolCalls()) {
+        for (const checkpoint of mainHistory) {
+          if (!hasUnmappedToolCalls()) break;
 
-        /**
-         * Find the AI message with subagent tool calls to align by Send index.
-         */
-        const msgs = checkpoint.values[messagesKey];
-        if (!Array.isArray(msgs)) continue;
+          const { tasks } = checkpoint;
+          if (!tasks || tasks.length === 0) {
+            continue;
+          }
 
-        let aiMessage: Record<string, unknown> | undefined;
-        for (let i = msgs.length - 1; i >= 0; i -= 1) {
-          const m = msgs[i] as Record<string, unknown>;
-          if (
-            m.type === "ai" &&
-            Array.isArray(m.tool_calls) &&
-            m.tool_calls.length > 0 &&
-            (m.tool_calls as Array<{ name: string }>).some((tc) =>
-              this.subagentManager.isSubagentToolCall(tc.name)
-            )
+          const pushTasks = tasks.filter(
+            (t) =>
+              Array.isArray(t.path) &&
+              t.path[0] === "__pregel_push" &&
+              typeof t.path[1] === "number" &&
+              typeof t.id === "string" &&
+              typeof t.name === "string"
+          );
+          if (pushTasks.length === 0) continue;
+
+          /**
+           * Find the AI message with subagent tool calls to align by Send index.
+           */
+          const msgs = checkpoint.values[messagesKey];
+          if (!Array.isArray(msgs)) continue;
+
+          let aiMessage: Record<string, unknown> | undefined;
+          for (let i = msgs.length - 1; i >= 0; i -= 1) {
+            const m = msgs[i] as Record<string, unknown>;
+            if (
+              m.type === "ai" &&
+              Array.isArray(m.tool_calls) &&
+              m.tool_calls.length > 0 &&
+              (m.tool_calls as Array<{ name: string }>).some((tc) =>
+                this.subagentManager.isSubagentToolCall(tc.name)
+              )
+            ) {
+              aiMessage = m;
+              break;
+            }
+          }
+          if (!aiMessage) {
+            continue;
+          }
+
+          /**
+           * Only consider subagent tool calls from the AI message — not all tool
+           * calls. This ensures regular tool calls (searchWeb, queryDatabase, etc.)
+           * are never mistaken for subagents even when they appear in the same step.
+           */
+          const subagentToolCalls = (
+            aiMessage.tool_calls as Array<{ id?: string; name: string }>
+          ).filter((tc) => this.subagentManager.isSubagentToolCall(tc.name));
+
+          if (subagentToolCalls.length === 0) {
+            continue;
+          }
+
+          /**
+           * Sort push tasks by Send index (path[1]) to align with tool_calls order
+           */
+          const sorted = [...pushTasks].sort((a, b) => {
+            const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
+            const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
+            return ai - bi;
+          });
+
+          for (
+            let i = 0;
+            i < sorted.length && i < subagentToolCalls.length;
+            i += 1
           ) {
-            aiMessage = m;
-            break;
+            const tc = subagentToolCalls[i];
+            const task = sorted[i];
+            if (
+              tc?.id &&
+              task.id &&
+              task.name &&
+              toFetch.some(([id]) => id === tc.id) &&
+              !toolCallIdToNamespace.has(tc.id)
+            ) {
+              toolCallIdToNamespace.set(tc.id, `${task.name}:${task.id}`);
+            }
           }
         }
-        if (!aiMessage) {
-          continue;
-        }
-
-        /**
-         * Only consider subagent tool calls from the AI message — not all tool
-         * calls. This ensures regular tool calls (searchWeb, queryDatabase, etc.)
-         * are never mistaken for subagents even when they appear in the same step.
-         */
-        const subagentToolCalls = (
-          aiMessage.tool_calls as Array<{ id?: string; name: string }>
-        ).filter((tc) => this.subagentManager.isSubagentToolCall(tc.name));
-
-        if (subagentToolCalls.length === 0) {
-          continue;
-        }
-
-        /**
-         * Sort push tasks by Send index (path[1]) to align with tool_calls order
-         */
-        const sorted = [...pushTasks].sort((a, b) => {
-          const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
-          const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
-          return ai - bi;
-        });
-
-        toolCallIdToNamespace = new Map();
-        for (
-          let i = 0;
-          i < sorted.length && i < subagentToolCalls.length;
-          i += 1
-        ) {
-          const tc = subagentToolCalls[i];
-          const task = sorted[i];
-          if (tc?.id && task.id && task.name) {
-            toolCallIdToNamespace.set(tc.id, `${task.name}:${task.id}`);
-          }
-        }
-
-        if (toolCallIdToNamespace.size > 0) break;
       }
     } catch {
       /**
@@ -544,7 +573,7 @@ export class StreamManager<
          *   3. Skip — we cannot reliably identify the namespace
          */
         const checkpointNs =
-          toolCallIdToNamespace?.get(toolCallId) ??
+          toolCallIdToNamespace.get(toolCallId) ??
           (subagent.namespace.length > 0
             ? subagent.namespace.join("|")
             : undefined);

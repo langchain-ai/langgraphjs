@@ -11,7 +11,7 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import type { CachePolicy, RetryPolicy } from "./utils/index.js";
+import type { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,8 +86,13 @@ interface PregelNodeArgs<RunInput, RunOutput> extends Partial<
   metadata?: Record<string, unknown>;
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy;
+  timeout?: TimeoutPolicy;
   subgraphs?: Runnable[];
   ends?: string[];
+  /** Whether this node is an auto-generated node-level error handler. */
+  isErrorHandler?: boolean;
+  /** Name of the error handler node to run if this node's execution fails. */
+  errorHandlerNode?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,9 +129,15 @@ export class PregelNode<
 
   cachePolicy?: CachePolicy;
 
+  timeout?: TimeoutPolicy;
+
   subgraphs?: Runnable[];
 
   ends?: string[];
+
+  isErrorHandler?: boolean;
+
+  errorHandlerNode?: string;
 
   constructor(fields: PregelNodeArgs<RunInput, RunOutput>) {
     const {
@@ -139,9 +150,12 @@ export class PregelNode<
       metadata,
       retryPolicy,
       cachePolicy,
+      timeout,
       tags,
       subgraphs,
       ends,
+      isErrorHandler,
+      errorHandlerNode,
     } = fields;
     const mergedTags = [
       ...(fields.config?.tags ? fields.config.tags : []),
@@ -169,8 +183,11 @@ export class PregelNode<
     this.tags = mergedTags;
     this.retryPolicy = retryPolicy;
     this.cachePolicy = cachePolicy;
+    this.timeout = timeout;
     this.subgraphs = subgraphs;
     this.ends = ends;
+    this.isErrorHandler = isErrorHandler;
+    this.errorHandlerNode = errorHandlerNode;
   }
 
   getWriters(): Array<Runnable> {
@@ -241,6 +258,7 @@ export class PregelNode<
       config: this.config,
       retryPolicy: this.retryPolicy,
       cachePolicy: this.cachePolicy,
+      timeout: this.timeout,
     });
   }
 
@@ -261,6 +279,7 @@ export class PregelNode<
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
+        timeout: this.timeout,
       });
     } else if (this.bound === defaultRunnableBound) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -273,6 +292,7 @@ export class PregelNode<
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
+        timeout: this.timeout,
       });
     } else {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -285,6 +305,7 @@ export class PregelNode<
         kwargs: this.kwargs,
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
+        timeout: this.timeout,
       });
     }
   }

@@ -1,3 +1,4 @@
+import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "uuid";
 import { getAssistantId } from "../graph/load.mjs";
 import type {
@@ -5,6 +6,7 @@ import type {
   RunsRepo,
   ThreadsRepo,
   StreamMode,
+  MultitaskStrategy,
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
 import type {
@@ -21,10 +23,6 @@ import type {
   ProtocolTransportName,
   StateGetResult,
 } from "./types.mjs";
-import {
-  isSupportedChannel,
-  isRecord as isRecordInternal,
-} from "./session/internal-types.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
 import { RunProtocolSession } from "./session/index.mjs";
 
@@ -51,32 +49,51 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+// Concurrency strategies accepted on `run.start`, matching the four values
+// the SDK's `multitaskStrategy` option can take.
+const VALID_MULTITASK_STRATEGIES: readonly MultitaskStrategy[] = [
+  "reject",
+  "rollback",
+  "interrupt",
+  "enqueue",
+];
+
+// Legacy stream-endpoint default: queue new runs behind active ones instead
+// of interrupting. Used when the caller omits `multitaskStrategy`.
+export const DEFAULT_MULTITASK_STRATEGY: MultitaskStrategy = "enqueue";
+
 /**
- * `run.start` params as accepted by the service. Wider than the
- * stock `RunStartParams` from `@langchain/protocol` to carry the
- * SDK-side `forkFrom: { checkpointId }` convenience field, which
- * `createOrResumeRun` promotes to `config.configurable.checkpoint_id`
- * so the engine replays from the requested fork target. Callers that
- * prefer to set `config.configurable.checkpoint_id` directly remain
- * fully supported — `forkFrom` is merged after the caller's config so
- * it takes precedence when both are provided.
+ * Resolve the per-run `multitaskStrategy`. Honor it when it is one of the
+ * recognized strategies, otherwise return `undefined` so the caller falls
+ * back to {@link DEFAULT_MULTITASK_STRATEGY}. Lenient by design (matches
+ * the rest of `normalizeRunStart` and the Python reference server).
  */
-type ExtendedRunStartParams = RunStartParams & {
-  forkFrom?: { checkpointId: string };
-};
-
-const normalizeForkFrom = (
+export const normalizeMultitaskStrategy = (
   value: unknown
-): { checkpointId: string } | undefined => {
-  if (!isRecord(value)) return undefined;
-  const checkpointId = value.checkpointId;
-  if (typeof checkpointId !== "string" || checkpointId.length === 0) {
-    return undefined;
-  }
-  return { checkpointId };
+): MultitaskStrategy | undefined => {
+  return typeof value === "string" &&
+    (VALID_MULTITASK_STRATEGIES as readonly string[]).includes(value)
+    ? (value as MultitaskStrategy)
+    : undefined;
 };
 
-const normalizeRunStart = (value: unknown): ExtendedRunStartParams => {
+/**
+ * `run.start` params after normalization. Extends the stock protocol
+ * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
+ * server honors per-run (see {@link normalizeMultitaskStrategy}).
+ *
+ * Fork/time-travel targets are NOT carried here: they are provided
+ * exclusively via `config.configurable.checkpoint_id` — the same field the
+ * legacy run endpoints accept. The SDK folds its ergonomic `forkFrom`
+ * option into that field client-side before sending `run.start`, so the
+ * server only ever understands a single, legacy-compliant way to select
+ * the checkpoint to replay from.
+ */
+type NormalizedRunStart = RunStartParams & {
+  multitaskStrategy?: MultitaskStrategy;
+};
+
+const normalizeRunStart = (value: unknown): NormalizedRunStart => {
   if (isRecord(value)) {
     return {
       assistant_id:
@@ -84,7 +101,7 @@ const normalizeRunStart = (value: unknown): ExtendedRunStartParams => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
-      forkFrom: normalizeForkFrom(value.forkFrom),
+      multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
     };
   }
   return {
@@ -302,13 +319,37 @@ export class ProtocolService {
     record: ThreadRecord,
     command: ProtocolCommandByMethod<"input.respond">
   ): Promise<ProtocolSuccess | ProtocolError> {
-    const params = isRecord(command.params)
-      ? (command.params as Partial<
-          ProtocolCommandByMethod<"input.respond">["params"]
-        >)
+    // Build the resume input map (`{ [interrupt_id]: response }`). The
+    // SDK sends either a single `interrupt_id` / `response` or a
+    // `responses` batch (several interrupts at the same checkpoint, which
+    // must be resumed in one command) — the `InputRespondOne` /
+    // `InputRespondMany` variants of `InputRespondParams`. Read leniently
+    // to tolerate clients pinned to older bindings.
+    const rawParams: Record<string, unknown> = isRecord(command.params)
+      ? command.params
       : {};
-
-    if (typeof params.interrupt_id !== "string") {
+    const resumeInput: Record<string, unknown> = {};
+    if (Array.isArray(rawParams.responses)) {
+      for (const entry of rawParams.responses) {
+        if (!isRecord(entry) || typeof entry.interrupt_id !== "string") {
+          return this.error(
+            command.id,
+            "invalid_argument",
+            "input.respond responses entries require an interrupt_id."
+          );
+        }
+        resumeInput[entry.interrupt_id] = entry.response;
+      }
+      if (Object.keys(resumeInput).length === 0) {
+        return this.error(
+          command.id,
+          "invalid_argument",
+          "input.respond requires at least one response."
+        );
+      }
+    } else if (typeof rawParams.interrupt_id === "string") {
+      resumeInput[rawParams.interrupt_id] = rawParams.response;
+    } else {
       return this.error(
         command.id,
         "invalid_argument",
@@ -347,11 +388,18 @@ export class ProtocolService {
       );
     }
 
+    // `config` / `metadata` are part of `InputRespondParams` (both the
+    // `InputRespondOne` and `InputRespondMany` variants). The SDK's
+    // `respond({ config, metadata })` forwards them on the `input.respond`
+    // command so a resumed run can carry the same run config (model, user
+    // context, …) and metadata (trigger source, test flags, …) a fresh
+    // `run.start` would. Read them leniently — same posture as
+    // `normalizeRunStart`.
     await this.createOrResumeRun(record, {
       assistant_id: record.assistantId,
-      input: { [params.interrupt_id]: params.response },
-      config: undefined,
-      metadata: undefined,
+      input: resumeInput,
+      config: isRecord(rawParams.config) ? rawParams.config : undefined,
+      metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
     });
 
     return {
@@ -367,7 +415,7 @@ export class ProtocolService {
 
   private async createOrResumeRun(
     record: ThreadRecord,
-    params: ExtendedRunStartParams
+    params: NormalizedRunStart
   ) {
     const assistantId = getAssistantId(params.assistant_id);
     const currentRun =
@@ -389,22 +437,17 @@ export class ProtocolService {
         hasPendingInterrupts);
 
     /**
-     * When `forkFrom: { checkpointId }` is present, promote it to
-     * `configurable.checkpoint_id` so the engine replays from the
-     * requested fork target. `forkFrom` is merged last so it wins over
-     * any `checkpoint_id` the caller may have pre-baked into
-     * `config.configurable`; in resume flows we intentionally skip the
-     * promotion because a resume must follow the thread's active
-     * checkpoint, not a historical fork.
+     * Fork/time-travel replays from `config.configurable.checkpoint_id`
+     * when the caller supplies it (the SDK folds its `forkFrom`
+     * convenience option into this field client-side). Forwarded as-is so
+     * the engine starts from the requested checkpoint instead of the
+     * thread's latest state.
      */
     const runConfig = {
       ...params.config,
       configurable: {
         ...params.config?.configurable,
         thread_id: record.threadId,
-        ...(!isResume && params.forkFrom?.checkpointId != null
-          ? { checkpoint_id: params.forkFrom.checkpointId }
-          : {}),
       },
     };
 
@@ -420,7 +463,11 @@ export class ProtocolService {
       stream_subgraphs: true,
       stream_resumable: true,
       if_not_exists: "create" as const,
-      multitask_strategy: "interrupt" as const,
+      // Honor the caller's `multitaskStrategy` (the SDK sends it on every
+      // run.start), falling back to `enqueue` — the legacy stream-endpoint
+      // default — when omitted. Matches the Python protocol-v2 server.
+      multitask_strategy:
+        params.multitaskStrategy ?? DEFAULT_MULTITASK_STRATEGY,
     };
 
     const [run] = await this.bindings.runs.put(
@@ -740,14 +787,13 @@ export class ProtocolService {
   }
 }
 
-function isPrefixMatch(namespace: string[], prefix: string[]): boolean {
-  if (prefix.length > namespace.length) return false;
-  return prefix.every((segment, i) => namespace[i] === segment);
-}
-
 /**
  * Check whether a protocol event matches an SSE event sink filter.
- * Mirrors the subscription matching logic in {@link RunProtocolSession}.
+ *
+ * Shares its channel inference and namespace matching with
+ * {@link RunProtocolSession} (and the core streaming toolkit) so SSE and
+ * WebSocket subscribers apply identical semantics, including dynamic
+ * namespace-suffix normalization.
  */
 export function matchesSinkFilter(
   filter: EventSinkFilter,
@@ -755,25 +801,14 @@ export function matchesSinkFilter(
 ): boolean {
   if (filter.since != null && (event.seq ?? 0) <= filter.since) return false;
 
-  const channel: string | undefined =
-    event.method === "input.requested"
-      ? "input"
-      : isSupportedChannel(event.method)
-        ? event.method
-        : undefined;
+  // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
+  // `custom` filter still matches via the prefix check below.
+  const channel = inferChannel(event);
   if (channel == null) return false;
 
-  let channelMatched = filter.channels.has(channel);
-  if (!channelMatched && channel === "custom") {
-    const params = event.params as Record<string, unknown>;
-    const eventName =
-      isRecordInternal(params.data) && typeof params.data.name === "string"
-        ? params.data.name
-        : undefined;
-    if (eventName != null) {
-      channelMatched = filter.channels.has(`custom:${eventName}`);
-    }
-  }
+  const channelMatched =
+    filter.channels.has(channel) ||
+    (channel.startsWith("custom:") && filter.channels.has("custom"));
   if (!channelMatched) return false;
 
   if (filter.namespaces == null || filter.namespaces.length === 0) {

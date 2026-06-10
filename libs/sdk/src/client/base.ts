@@ -108,7 +108,17 @@ export type RequestHook = (
   init: RequestInit
 ) => Promise<RequestInit> | RequestInit;
 
+/**
+ * Configuration for {@link BaseClient} and the exported LangGraph SDK
+ * {@link Client}.
+ */
 export interface ClientConfig {
+  /**
+   * Base URL of the LangGraph API server.
+   *
+   * Defaults to `http://localhost:8123`, unless the runtime provides a
+   * `langgraph_api:url` global override.
+   */
   apiUrl?: string;
   /**
    * API key for authentication.
@@ -117,10 +127,37 @@ export interface ClientConfig {
    * - If null, no API key will be set (skips auto-loading)
    */
   apiKey?: string | null;
+  /**
+   * Options forwarded to the internal {@link AsyncCaller}, such as retry,
+   * concurrency, or custom `fetch` behavior.
+   */
   callerOptions?: AsyncCallerParams;
+  /**
+   * Default timeout, in milliseconds, applied to client requests.
+   *
+   * Per-request `timeoutMs` values override this default. Passing `null`
+   * at the request level disables the configured timeout for that request.
+   */
   timeoutMs?: number;
+  /**
+   * Headers applied to every request.
+   *
+   * The configured API key, when present, is added as the `x-api-key`
+   * header after these defaults are initialized.
+   */
   defaultHeaders?: Record<string, HeaderValue>;
+  /**
+   * Hook for inspecting or mutating a request before it is sent.
+   *
+   * Receives the resolved URL and prepared `RequestInit`; return the
+   * original init or a replacement object to continue the request.
+   */
   onRequest?: RequestHook;
+  /**
+   * Streaming protocol used by stream-capable endpoints.
+   *
+   * Defaults to `"legacy"` for backwards compatibility.
+   */
   streamProtocol?: StreamProtocol;
 }
 
@@ -182,6 +219,7 @@ export class BaseClient {
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
       withResponse?: boolean;
+      dedupe?: boolean;
     }
   ): [url: URL, init: RequestInit] {
     const mutatedOptions = {
@@ -199,6 +237,10 @@ export class BaseClient {
 
     if (mutatedOptions.withResponse) {
       delete mutatedOptions.withResponse;
+    }
+
+    if ("dedupe" in mutatedOptions) {
+      delete mutatedOptions.dedupe;
     }
 
     let timeoutSignal: AbortSignal | null = null;
@@ -249,6 +291,7 @@ export class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: false;
+      dedupe?: boolean;
     }
   ): Promise<T>;
 
@@ -260,10 +303,76 @@ export class BaseClient {
       timeoutMs?: number | null;
       signal: AbortSignal | undefined;
       withResponse?: boolean;
+      dedupe?: boolean;
     }
   ): Promise<T | [T, Response]> {
     const [url, init] = this.prepareFetchOptions(path, options);
 
+    /**
+     * Coalesce concurrent, identical idempotent reads onto a single
+     * in-flight request. Only engaged when the caller opts in
+     * (`dedupe: true`), is not asking for the raw `Response`, did not
+     * supply its own `AbortSignal` (sharing a request across consumers
+     * must never let one consumer's abort cancel another's), and no
+     * `onRequest` hook is configured.
+     *
+     * `onRequest` is excluded because it can inject per-request headers
+     * (e.g. a freshly-minted `Authorization` bearer) that are not
+     * visible until *after* it runs — i.e. after the dedupe key is
+     * computed — so two requests that look identical here could be sent
+     * with different credentials. Coalescing them would let one
+     * consumer receive a response fetched with another's auth.
+     */
+    const canDedupe =
+      options?.dedupe === true &&
+      options?.withResponse !== true &&
+      options?.signal == null &&
+      this.onRequest == null;
+
+    if (canDedupe) {
+      const body = typeof init.body === "string" ? init.body : "";
+      /**
+       * The key must capture the FULL request identity, including every
+       * prepared header. `inFlightReads` is module-scoped across all
+       * `Client` instances, so omitting headers would let two clients
+       * pointed at the same URL/thread but using different credentials
+       * (Authorization, custom auth headers, tenant-scoping defaults, …)
+       * share one in-flight promise — a cross-tenant data leak.
+       */
+      const headers = serializeHeaders(init.headers);
+      const key = `${init.method ?? "GET"} ${url.toString()} ${body} ${headers}`;
+      const existing = inFlightReads.get(key);
+      if (existing != null) return existing as Promise<T>;
+
+      const promise = this.#performFetch<T>(url, init);
+      inFlightReads.set(key, promise);
+      const clear = () => {
+        if (inFlightReads.get(key) === promise) inFlightReads.delete(key);
+      };
+      promise.then(clear, clear);
+      return promise;
+    }
+
+    const [body, response] = await this.#performFetchWithResponse<T>(url, init);
+    if (options?.withResponse) {
+      return [body, response];
+    }
+    return body;
+  }
+
+  /**
+   * Issue the prepared request (applying the `onRequest` hook) and
+   * resolve the parsed body. Shared by the deduped and direct paths.
+   */
+  async #performFetch<T>(url: URL, init: RequestInit): Promise<T> {
+    const [body] = await this.#performFetchWithResponse<T>(url, init);
+    return body;
+  }
+
+  async #performFetchWithResponse<T>(
+    url: URL,
+    init: RequestInit
+  ): Promise<[T, Response]> {
     let finalInit = init;
     if (this.onRequest) {
       finalInit = await this.onRequest(url, init);
@@ -271,18 +380,14 @@ export class BaseClient {
 
     const response = await this.asyncCaller.fetch(url.toString(), finalInit);
 
-    const body = (() => {
+    const body = await (async () => {
       if (response.status === 202 || response.status === 204) {
         return undefined as T;
       }
       return response.json() as Promise<T>;
     })();
 
-    if (options?.withResponse) {
-      return [await body, response];
-    }
-
-    return body;
+    return [body, response];
   }
 
   protected async *streamWithRetry<
@@ -371,3 +476,42 @@ export function getRunMetadataFromResponse(
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+/**
+ * Module-scoped, in-flight-only coalescing map for idempotent reads.
+ *
+ * Two independently-constructed clients (e.g. a React component that
+ * remounts under Suspense / a reachability state flip, each minting a
+ * fresh `Client`) can fire the *same* `getState` / `getHistory` read a
+ * few milliseconds apart, before the first has resolved. Without
+ * coalescing each pays the full round-trip — the duplicate
+ * `threads/{id}/state` and `threads/{id}/history` requests seen on
+ * reconnect.
+ *
+ * Keyed by `method + url + body + auth`, entries live only while a
+ * request is in flight and are removed the moment it settles. This is
+ * deliberately *not* a result cache: there is no TTL and no stored
+ * payload, so it cannot serve stale data — it only ever shares a
+ * promise that is already on the wire. Opt-in per call via
+ * `{ dedupe: true }`, and skipped whenever the caller supplies its own
+ * `AbortSignal` (so one consumer aborting can never cancel another's
+ * read).
+ */
+const inFlightReads = new Map<string, Promise<unknown>>();
+
+/**
+ * Deterministically serialize a prepared request's headers into a
+ * stable string for use in the {@link inFlightReads} dedupe key. Header
+ * names are normalized and sorted so ordering differences never produce
+ * a different key, and every header (not just `x-api-key`) is included
+ * so requests carrying different credentials never collide.
+ */
+function serializeHeaders(headers: RequestInit["headers"]): string {
+  const normalized = mergeHeaders(
+    headers as Record<string, HeaderValue> | undefined
+  );
+  return Object.keys(normalized)
+    .sort()
+    .map((name) => `${name}:${normalized[name]}`)
+    .join("\n");
+}

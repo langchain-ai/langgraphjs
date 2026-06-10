@@ -1,5 +1,6 @@
 import { RunnableConfig, RunnableInterface } from "@langchain/core/runnables";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
+import { RunControl } from "./runtime.js";
 
 type RunnableFunc<
   RunInput,
@@ -99,17 +100,37 @@ export interface Runtime<
   /** Abort signal to cancel the run. */
   signal: AbortSignal;
 
+  /**
+   * Manually signal that the node is still making progress, resetting the
+   * `idleTimeout` of the node's {@link TimeoutPolicy} (if configured).
+   *
+   * This is a no-op when the node has no `idleTimeout` configured. It is the
+   * only progress signal when `refreshOn` is `"heartbeat"`, and is useful for
+   * long-running work that doesn't otherwise emit writes, stream events, child
+   * tasks, or callback events.
+   */
+  heartbeat?: () => void;
+
   /** Read-only execution information/metadata for the current node run. Undefined before task preparation. */
   executionInfo?: ExecutionInfo;
 
   /** Metadata injected by LangGraph Server. Undefined when running open-source LangGraph without LangSmith deployments. */
   serverInfo?: ServerInfo;
+
+  /**
+   * Run-scoped control plane for cooperative draining.
+   *
+   * Populated automatically during graph runs. Nodes can read
+   * `runtime.control.drainRequested` / `drainReason`, or call
+   * `runtime.control.requestDrain()` to ask the graph to stop at the next
+   * superstep boundary. Undefined outside an active graph runtime.
+   */
+  control?: RunControl;
 }
 
 export interface LangGraphRunnableConfig<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ContextType extends Record<string, any> = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 >
   extends
     RunnableConfig<ContextType>,

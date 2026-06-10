@@ -12,7 +12,9 @@ wire transport at construction time:
   from `@langchain/langgraph-sdk`. `HttpAgentServerAdapter` is the
   stock HTTP/SSE implementation.
 
-Passing both `assistantId` and an adapter is a compile-time error.
+When you pass an adapter, LGP-specific options such as `apiUrl`,
+`client`, `fetch`, and `webSocketFactory` are compile-time errors.
+`assistantId` remains optional for adapters that multiplex internally.
 
 ## LangGraph Platform (SSE — default)
 

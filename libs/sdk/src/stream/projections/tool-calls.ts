@@ -4,12 +4,15 @@
  * Opens `thread.subscribe({ channels: ["tools"], namespaces: [ns] })`,
  * feeds events through {@link ToolCallAssembler}, and surfaces an
  * array of {@link AssembledToolCall}s that grows as calls are
- * discovered. Each assembled call carries `output`/`status`/`error`
- * promises for consumers that want to await completion without
- * re-subscribing.
+ * discovered. Each handle exposes reactive {@link AssembledToolCall.status},
+ * {@link AssembledToolCall.error}, and {@link AssembledToolCall.output}
+ * (`null` until the call succeeds).
  */
 import type { ToolsEvent } from "@langchain/protocol";
-import { ToolCallAssembler } from "../../client/stream/handles/tools.js";
+import {
+  shouldIgnoreScopedTaskToolEvent,
+  ToolCallAssembler,
+} from "../../client/stream/handles/tools.js";
 import type { AssembledToolCall } from "../../client/stream/handles/tools.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
@@ -30,14 +33,7 @@ export function toolCallsProjection(
       const assembler = new ToolCallAssembler();
 
       const applyToolsEvent = (event: ToolsEvent): void => {
-        const data = event.params.data;
-        if (
-          ns.length > 0 &&
-          event.params.namespace.length === ns.length &&
-          data.tool_name === "task"
-        ) {
-          return;
-        }
+        if (shouldIgnoreScopedTaskToolEvent(ns, event)) return;
         const tc = assembler.consume(event);
         if (tc == null) return;
         const next = upsertToolCall(store.getSnapshot(), tc);
@@ -63,19 +59,34 @@ export function toolCallsProjection(
         };
       }
 
-      const runtime = openProjectionSubscription({
-        thread,
-        channels: ["tools"],
-        namespace: ns,
-        onEvent(event) {
-          if (event.method !== "tools") return;
-          applyToolsEvent(event as ToolsEvent);
-        },
-      });
+      let runtime: ProjectionRuntime | undefined;
+      const openSubscription = () => {
+        runtime = openProjectionSubscription({
+          thread,
+          channels: ["tools"],
+          namespace: ns,
+          onEvent(event) {
+            if (event.method !== "tools") return;
+            applyToolsEvent(event as ToolsEvent);
+          },
+        });
+      };
+
+      let disposed = false;
+      void (async () => {
+        const seeded =
+          (await rootBus.trySeedFromHistory?.({
+            kind: "toolCalls",
+            namespace: ns,
+            store,
+          })) === true;
+        if (!seeded && !disposed) openSubscription();
+      })();
 
       return {
         async dispose() {
-          await runtime.dispose();
+          disposed = true;
+          await runtime?.dispose();
         },
       };
     },

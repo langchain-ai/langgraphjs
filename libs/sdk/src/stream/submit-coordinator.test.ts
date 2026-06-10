@@ -7,7 +7,12 @@ import {
 } from "./submit-coordinator.js";
 import { StreamStore } from "./store.js";
 import type { ThreadStream } from "../client/stream/index.js";
-import type { RootSnapshot, StreamControllerOptions } from "./types.js";
+import type {
+  RootSnapshot,
+  RunExecutionReason,
+  StreamControllerOptions,
+} from "./types.js";
+import type { OptimisticHandle } from "./optimistic-input.js";
 
 interface State {
   count?: number;
@@ -42,16 +47,16 @@ interface Harness {
   /** Probe the most recent terminal control object. */
   currentTerminal: () => TerminalControl | undefined;
   setDisposed: (value: boolean) => void;
-  setLatestInterrupt: (
-    value: { interruptId: string; namespace: string[] } | null
-  ) => void;
   options: StreamControllerOptions<State>;
   hydrate: ReturnType<typeof vi.fn>;
   ensureThread: ReturnType<typeof vi.fn>;
   startDeferredRootPump: ReturnType<typeof vi.fn>;
   abandonDeferredRootPump: ReturnType<typeof vi.fn>;
   forgetSelfCreatedThreadId: ReturnType<typeof vi.fn>;
-  markInterruptResolved: ReturnType<typeof vi.fn>;
+  onRunStart: ReturnType<typeof vi.fn>;
+  onRunCreated: ReturnType<typeof vi.fn>;
+  onRunCompleted: ReturnType<typeof vi.fn>;
+  onRunEnd: ReturnType<typeof vi.fn>;
   rememberSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   setCurrentThreadId: ReturnType<typeof vi.fn>;
   threadIds: string[];
@@ -82,7 +87,20 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-function makeHarness(initial: { threadId?: string | null } = {}): Harness {
+interface OptimisticOverrides {
+  beginOptimistic?: (
+    input: unknown
+  ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+  settleOptimistic?: (
+    handle: OptimisticHandle,
+    event: "completed" | "failed" | "interrupted" | "aborted"
+  ) => void;
+}
+
+function makeHarness(
+  initial: { threadId?: string | null } = {},
+  optimistic: OptimisticOverrides = {}
+): Harness {
   const rootStore = makeRootStore();
   const queueStore = new StreamStore<SubmissionQueueSnapshot<State>>(
     EMPTY_QUEUE as SubmissionQueueSnapshot<State>
@@ -104,7 +122,6 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   let disposed = false;
   let currentThreadId: string | null =
     "threadId" in initial ? initial.threadId ?? null : "thread-1";
-  let latestInterrupt: { interruptId: string; namespace: string[] } | null = null;
 
   let terminalControl: TerminalControl | undefined;
   let terminalRegisteredDeferred = deferred<TerminalControl>();
@@ -143,7 +160,12 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
   });
   const rememberSelfCreatedThreadId = vi.fn(() => undefined);
   const forgetSelfCreatedThreadId = vi.fn(() => undefined);
-  const markInterruptResolved = vi.fn(() => undefined);
+  const onRunStart = vi.fn(() => undefined);
+  const onRunCreated = vi.fn(() => undefined);
+  const onRunCompleted = vi.fn(
+    (_reason: RunExecutionReason, _runId?: string) => undefined
+  );
+  const onRunEnd = vi.fn(() => undefined);
 
   const onCreated = vi.fn();
   const onThreadId = vi.fn();
@@ -171,8 +193,13 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
-    latestUnresolvedInterrupt: () => latestInterrupt,
-    markInterruptResolved,
+    awaitResumedRunTerminal: awaitNextTerminal,
+    onRunStart,
+    onRunCreated,
+    onRunCompleted,
+    onRunEnd,
+    beginOptimistic: optimistic.beginOptimistic,
+    settleOptimistic: optimistic.settleOptimistic,
   });
 
   return {
@@ -203,16 +230,16 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     setDisposed: (value) => {
       disposed = value;
     },
-    setLatestInterrupt: (value) => {
-      latestInterrupt = value;
-    },
     options,
     hydrate,
     ensureThread,
     startDeferredRootPump,
     abandonDeferredRootPump,
     forgetSelfCreatedThreadId,
-    markInterruptResolved,
+    onRunStart,
+    onRunCreated,
+    onRunCompleted,
+    onRunEnd,
     rememberSelfCreatedThreadId,
     setCurrentThreadId,
     threadIds: [],
@@ -236,6 +263,132 @@ describe("SubmitCoordinator", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe("optimistic wiring", () => {
+    it("dispatches the optimistic dispatchInput instead of the raw input", async () => {
+      const handle = { echoedIds: ["m1"], restoreKeys: [] };
+      const beginOptimistic = vi.fn(() => ({
+        dispatchInput: { count: 1, messages: [{ id: "m1" }] },
+        handle,
+      }));
+      const settleOptimistic = vi.fn();
+      const h = makeHarness({}, { beginOptimistic, settleOptimistic });
+
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(beginOptimistic).toHaveBeenCalledWith({ count: 1 });
+      expect(h.submitRun.mock.calls[0][0].input).toEqual({
+        count: 1,
+        messages: [{ id: "m1" }],
+      });
+      expect(settleOptimistic).toHaveBeenCalledWith(handle, "completed");
+    });
+
+    it("settles with 'failed' when the run fails", async () => {
+      const handle = { echoedIds: ["m1"], restoreKeys: [] };
+      const settleOptimistic = vi.fn();
+      const h = makeHarness(
+        {},
+        {
+          beginOptimistic: () => ({ dispatchInput: { messages: [] }, handle }),
+          settleOptimistic,
+        }
+      );
+
+      const submitPromise = h.coordinator.submit({ messages: [] });
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "failed", error: "boom" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(settleOptimistic).toHaveBeenCalledWith(handle, "failed");
+    });
+
+    it("settles the submit lifecycle when optimistic preparation throws", async () => {
+      const err = new Error("malformed message entry");
+      const beginOptimistic = vi.fn(() => {
+        throw err;
+      });
+      const settleOptimistic = vi.fn();
+      const onError = vi.fn();
+      const h = makeHarness({}, { beginOptimistic, settleOptimistic });
+
+      const submitPromise = h.coordinator.submit({ count: 1 }, { onError });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      // A synchronous prep failure is surfaced like a dispatch failure…
+      expect(h.rootStore.getSnapshot().error).toBe(err);
+      expect(onError).toHaveBeenCalledWith(err);
+      // …and the lifecycle is fully settled: not stuck loading, no run
+      // dispatched, no optimistic state to reconcile.
+      expect(h.rootStore.getSnapshot().isLoading).toBe(false);
+      expect(h.submitRun).not.toHaveBeenCalled();
+      expect(h.onRunStart).not.toHaveBeenCalled();
+      expect(settleOptimistic).not.toHaveBeenCalled();
+      expect(h.onRunEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not strand later submits behind a phantom run when prep throws", async () => {
+      const beginOptimistic = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("malformed message entry");
+        })
+        .mockImplementation(() => undefined);
+      const h = makeHarness({}, { beginOptimistic });
+
+      // First submit: preparation throws before any dispatch.
+      await h.coordinator.submit({ count: 1 });
+      await vi.runAllTimersAsync();
+      expect(h.submitRun).not.toHaveBeenCalled();
+
+      // The abort slot must be clear, so a `reject` submit proceeds and
+      // dispatches instead of seeing a phantom in-flight run.
+      const second = h.coordinator.submit(
+        { count: 2 },
+        { multitaskStrategy: "reject" }
+      );
+      await h.terminalRegistered();
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it("does not echo an enqueued submission until it drains", async () => {
+      const beginOptimistic = vi.fn(() => ({
+        dispatchInput: { messages: [] },
+        handle: { echoedIds: [], restoreKeys: [] },
+      }));
+      const h = makeHarness({}, { beginOptimistic });
+
+      // First run in flight.
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      expect(beginOptimistic).toHaveBeenCalledTimes(1);
+
+      // Enqueue behind it — must NOT echo yet.
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      expect(beginOptimistic).toHaveBeenCalledTimes(1);
+
+      // Finish the first run; the drained submission now echoes.
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+
+      expect(beginOptimistic).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("submit (happy path)", () => {
@@ -271,7 +424,7 @@ describe("SubmitCoordinator", () => {
       expect(h.rootStore.getSnapshot().isLoading).toBe(false);
     });
 
-    it("invokes onCreated with the dispatch result", async () => {
+    it("notifies when a run is created with the dispatch result", async () => {
       const h = makeHarness();
       const submitPromise = h.coordinator.submit({ count: 1 });
       await h.terminalRegistered();
@@ -280,10 +433,43 @@ describe("SubmitCoordinator", () => {
       await vi.runAllTimersAsync();
       await submitPromise;
 
-      expect(h.options.onCreated).toHaveBeenCalledWith({
-        run_id: "run-42",
-        thread_id: "thread-1",
-      });
+      expect(h.onRunCreated).toHaveBeenCalledWith("run-42");
+    });
+
+    it.each([
+      ["completed", "success"],
+      ["failed", "error"],
+      ["interrupted", "interrupt"],
+    ] as const)(
+      "notifies onCompleted with reason %s -> %s",
+      async (event, reason) => {
+        const h = makeHarness();
+        const submitPromise = h.coordinator.submit({ count: 1 });
+        await h.terminalRegistered();
+        h.resolveSubmit({ run_id: "run-42" });
+        h.resolveTerminal({ event });
+        await vi.runAllTimersAsync();
+        await submitPromise;
+
+        expect(h.onRunCompleted).toHaveBeenCalledWith(reason, "run-42");
+      }
+    );
+
+    it("keeps onCreated before onCompleted for very fast runs", async () => {
+      const h = makeHarness();
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(h.onRunCompleted).not.toHaveBeenCalled();
+
+      h.resolveSubmit({ run_id: "run-fast" });
+      await flush();
+
+      expect(h.onRunCreated).toHaveBeenCalledWith("run-fast");
+      expect(h.onRunCompleted).toHaveBeenCalledWith("success", "run-fast");
     });
 
     it("merges thread_id into config.configurable without losing user fields", async () => {
@@ -326,6 +512,8 @@ describe("SubmitCoordinator", () => {
       expect(h.rootStore.getSnapshot().error).toBe(err);
       expect(onError).toHaveBeenCalledWith(err);
       expect(h.rootStore.getSnapshot().isLoading).toBe(false);
+      expect(h.onRunCreated).not.toHaveBeenCalled();
+      expect(h.onRunCompleted).not.toHaveBeenCalled();
     });
 
     it("captures `failed` terminal events into an Error", async () => {
@@ -434,6 +622,24 @@ describe("SubmitCoordinator", () => {
       await first;
     });
 
+    it("enqueues a follow-up fired in the same tick as dispatch", async () => {
+      const h = makeHarness();
+      const first = h.coordinator.submit({ count: 1 });
+      void h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      await flush();
+
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.submitRun.mock.calls[0]?.[0]?.input).toEqual({ count: 1 });
+
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
     it("drains the queue after the active run terminates", async () => {
       const h = makeHarness();
       const first = h.coordinator.submit({ count: 1 });
@@ -534,6 +740,8 @@ describe("SubmitCoordinator", () => {
       h.resolveSubmit();
       await vi.runAllTimersAsync();
       await submitPromise;
+
+      expect(h.onRunCompleted).toHaveBeenCalledWith("stopped", "run-1");
     });
 
     it("abortActiveRun() aborts without forcing isLoading=false", async () => {
@@ -547,91 +755,6 @@ describe("SubmitCoordinator", () => {
       h.resolveSubmit();
       await vi.runAllTimersAsync();
       await submitPromise;
-    });
-  });
-
-  describe("submit({ command: { resume } })", () => {
-    it("calls respondInput on the active interrupt and marks it resolved", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt({
-        interruptId: "interrupt-1",
-        namespace: ["task:1"],
-      });
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: { value: 42 } },
-      });
-      await h.terminalRegistered();
-
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
-        config: { configurable: { thread_id: "thread-1" } },
-        metadata: undefined,
-      });
-      expect(h.markInterruptResolved).toHaveBeenCalledWith("interrupt-1");
-
-      h.resolveTerminal({ event: "completed" });
-      await vi.runAllTimersAsync();
-      await submitPromise;
-    });
-
-    it("forwards caller-supplied config and metadata through to respondInput", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt({
-        interruptId: "interrupt-1",
-        namespace: ["task:1"],
-      });
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: { value: 42 } },
-        config: {
-          configurable: { llm_model_config: { model: "claude-opus-4-7" } },
-        },
-        metadata: { user_id: "u-1", trace_id: "t-9" },
-      });
-      await h.terminalRegistered();
-
-      // bindThreadConfig merges the caller's configurable with the
-      // thread_id stamp — both must survive.
-      expect(h.respondInput).toHaveBeenCalledWith({
-        namespace: ["task:1"],
-        interrupt_id: "interrupt-1",
-        response: { value: 42 },
-        config: {
-          configurable: {
-            thread_id: "thread-1",
-            llm_model_config: { model: "claude-opus-4-7" },
-          },
-        },
-        metadata: { user_id: "u-1", trace_id: "t-9" },
-      });
-
-      h.resolveTerminal({ event: "completed" });
-      await vi.runAllTimersAsync();
-      await submitPromise;
-    });
-
-    it("rejects when no pending interrupt is available", async () => {
-      const h = makeHarness();
-      h.setLatestInterrupt(null);
-
-      const submitPromise = h.coordinator.submit(null, {
-        command: { resume: "anything" },
-        onError: () => undefined,
-      });
-      await h.terminalRegistered();
-      // Resolve the terminal so the submit's finally can run.
-      // Since no submitRun is dispatched (resume path), we still get
-      // here from the throw before the race.
-      await vi.runAllTimersAsync();
-      await submitPromise;
-
-      expect(h.rootStore.getSnapshot().error).toBeInstanceOf(Error);
-      expect(
-        (h.rootStore.getSnapshot().error as Error).message
-      ).toMatch(/no pending protocol interrupt/);
     });
   });
 

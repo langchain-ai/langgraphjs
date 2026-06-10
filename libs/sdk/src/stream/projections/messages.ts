@@ -22,9 +22,9 @@ import {
   assembledMessageToBaseMessage,
   type ExtendedMessageRole,
 } from "../assembled-to-message.js";
-import { ensureMessageInstances } from "../../ui/messages.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
+import { ensureMessageInstances } from "../message-coercion.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
 import {
   buildMessageIndex,
@@ -265,22 +265,35 @@ export function messagesProjection(
         scheduleFlush();
       };
 
-      const runtime = openProjectionSubscription({
-        thread,
-        // Subscribe to both `messages` (live token deltas that drive
-        // the in-flight assistant bubble) and `values` (periodic full-
-        // state snapshots). Consuming values lets late-mounted scoped
-        // projections backfill history after the run has finished.
-        channels: ["messages", "values"],
-        namespace: ns,
-        onEvent(event) {
-          if (event.method === "messages") {
-            applyEvent(event as MessagesEvent);
-          } else if (event.method === "values") {
-            applyValuesEvent(event as ValuesEvent);
-          }
-        },
-      });
+      let runtime: ProjectionRuntime | undefined;
+      const openSubscription = () => {
+        runtime = openProjectionSubscription({
+          thread,
+          // Subscribe to both `messages` (live token deltas that drive
+          // the in-flight assistant bubble) and `values` (periodic full-
+          // state snapshots). Consuming values lets late-mounted scoped
+          // projections backfill history after the run has finished.
+          channels: ["messages", "values"],
+          namespace: ns,
+          onEvent(event) {
+            if (event.method === "messages") {
+              applyEvent(event as MessagesEvent);
+            } else if (event.method === "values") {
+              applyValuesEvent(event as ValuesEvent);
+            }
+          },
+        });
+      };
+
+      void (async () => {
+        const seeded =
+          (await rootBus.trySeedFromHistory?.({
+            kind: "messages",
+            namespace: ns,
+            store,
+          })) === true;
+        if (!seeded && !disposed) openSubscription();
+      })();
 
       return {
         async dispose() {
@@ -290,7 +303,7 @@ export function messagesProjection(
             flushChannel.port1.close();
             flushChannel.port2.close();
           }
-          await runtime.dispose();
+          await runtime?.dispose();
         },
       };
     },

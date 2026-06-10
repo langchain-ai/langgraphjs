@@ -321,8 +321,17 @@ it("useStream forwards submissions to a custom AgentServerAdapter", async () => 
     expect.objectContaining({
       method: "run.start",
       params: expect.objectContaining({
+        // Optimistic echo mints a stable id for the id-less message and
+        // normalizes it to a message dict before dispatch, so the server
+        // can reconcile its echo by id.
         input: {
-          messages: [{ type: "human", content: "Hi" }],
+          messages: [
+            expect.objectContaining({
+              type: "human",
+              content: "Hi",
+              id: expect.any(String),
+            }),
+          ],
         },
         config: expect.objectContaining({
           configurable: expect.objectContaining({

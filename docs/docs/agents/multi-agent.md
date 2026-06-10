@@ -219,8 +219,8 @@ Putting this together, here is how you can implement a simple multi-agent system
 ```ts
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { StateGraph, MessagesAnnotation, Command, START, getCurrentTaskInput, END } from "@langchain/langgraph";
-import { tool } from "@langchain/core/tools";
+import { StateGraph, MessagesAnnotation, Command, START, END } from "@langchain/langgraph";
+import { tool, type ToolRuntime } from "@langchain/core/tools";
 import { z } from "zod";
 import { ToolMessage } from "@langchain/core/messages";
 
@@ -237,17 +237,16 @@ const createHandoffTool = ({
   const toolDescription = description || `Ask agent '${agentName}' for help`;
 
   const handoffTool = tool(
-    async (_, config) => {
+    async (_, runtime: ToolRuntime<typeof MessagesAnnotation.State>) => {
       const toolMessage = new ToolMessage({
         content: `Successfully transferred to ${agentName}`,
         name: toolName,
-        tool_call_id: config.toolCall.id,
+        tool_call_id: runtime.toolCallId,
       });
 
       // inject the current agent state
-      const state =
-        // highlight-next-line
-        getCurrentTaskInput() as (typeof MessagesAnnotation)["State"];  // (1)!
+      // highlight-next-line
+      const state = runtime.state;  // (1)!
       return new Command({  // (2)!
         // highlight-next-line
         goto: agentName,  // (3)!

@@ -1,5 +1,84 @@
 # @langchain/langgraph-api
 
+## 1.3.0
+
+### Minor Changes
+
+- [#2505](https://github.com/langchain-ai/langgraphjs/pull/2505) [`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Consolidate the protocol session's channel inference, channel-set validation, and namespace prefix matching onto the shared `@langchain/langgraph/stream` helpers instead of maintaining local copies. This removes duplicated logic across `session/index.mts`, `session/namespace.mts`, `session/internal-types.mts`, and `service.mts`.
+
+  This also aligns SSE event-sink filtering (`matchesSinkFilter`) with the WebSocket subscription matcher: both now normalize dynamic namespace suffixes (e.g. a `["fetcher"]` namespace filter matches an event emitted under `["fetcher:<uuid>"]`). Previously the SSE path used a stricter exact-segment match.
+
+  Because the session now imports `@langchain/langgraph/stream`, the `@langchain/langgraph` peer dependency floor is raised to `^1.3.6` (the first release that ships the `/stream` entrypoint).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.3.0
+
+## 1.2.5
+
+### Patch Changes
+
+- [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): forward named custom stream channels consistently
+
+  Forward remote `StreamChannel` emissions as `custom:<name>` protocol events and normalize them back to custom-channel payloads in the API session. This aligns JavaScript stream-channel forwarding with the protocol subscription shape used by remote clients, so `custom:<name>` subscriptions receive extension channel data consistently.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.5
+
+## 1.2.4
+
+### Patch Changes
+
+- [#2344](https://github.com/langchain-ai/langgraphjs/pull/2344) [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore(deps): bump uuid to 14.0.0 and keep checkpoint ID ordering stable
+
+  Bump `uuid` from 10.x/13.x to 14.0.0 across packages. Starting with uuid 11, `v6({ clockseq })` no longer advances the sub-millisecond time counter when an explicit `clockseq` is passed, so checkpoint IDs created within the same millisecond were ordered only by `clockseq`. Since checkpoint IDs are sorted lexicographically, this broke ordering — most visibly for the negative `clockseq` used by the first ("input") checkpoint, which sorted as the newest.
+
+  `uuid6()` now maintains its own monotonic `(msecs, nsecs)` clock (mirroring uuid 10's internal v1 behavior) so the time component is always strictly increasing and checkpoint ordering no longer depends on the `clockseq` value. `emptyCheckpoint()` also uses a non-negative `clockseq`.
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.2.4
+
+## 1.2.3
+
+### Patch Changes
+
+- [#2447](https://github.com/langchain-ai/langgraphjs/pull/2447) [`80c2806`](https://github.com/langchain-ai/langgraphjs/commit/80c2806cb2da93745a640664bd0cf603c2361da9) Thanks [@christian-bromann](https://github.com/christian-bromann)! - protocol-v2: fold forkFrom client-side and honor per-run multitaskStrategy
+
+  The SDK now folds the ergonomic `forkFrom` option into
+  `config.configurable.checkpoint_id` before sending `run.start`, so the
+  agent server only ever accepts the single, legacy-compliant fork field
+  (`forkFrom` no longer hits the wire). The protocol-v2 reference servers
+  drop their top-level `forkFrom` normalization accordingly.
+
+  The protocol-v2 servers now honor the caller's `multitaskStrategy` per
+  run (one of `reject` | `rollback` | `interrupt` | `enqueue`) instead of
+  hardcoding it, falling back to `enqueue` when omitted or unrecognized.
+
+- [#2443](https://github.com/langchain-ai/langgraphjs/pull/2443) [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(sdk): drop StreamSubmitOptions.command and simplify forkFrom
+
+  Remove the misleading submit({ command }) surface from protocol-v2
+  StreamController; HITL resume is respond() only. Accept forkFrom as a
+  plain checkpoint id string and align protocol-v2 servers and docs.
+
+- [#2448](https://github.com/langchain-ai/langgraphjs/pull/2448) [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - protocol-v2: add `respondAll()` and run config/metadata on interrupt resume
+
+  The stream controller (and the React/Angular/Svelte/Vue wrappers) gain a
+  `respondAll(responsesById, options)` method to resume several interrupts
+  pending at the same checkpoint in a single command — required for runs that
+  pause on multiple interrupts at once (e.g. parallel tool-authorization
+  prompts), which sequential `respond()` calls cannot handle.
+
+  `respond()` now takes an options object (`{ interruptId?, namespace?,
+config?, metadata? }`) so a resumed run can carry the same run-level config
+  (model, user context, …) and metadata (trigger source, test flags, …) a
+  fresh `submit()` would. The protocol-v2 reference servers read the new
+  `responses` batch and `config` / `metadata` fields leniently and fold them
+  onto the run that services the `input.respond` command.
+
+- Updated dependencies [[`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532)]:
+  - @langchain/langgraph-ui@1.2.3
+
 ## 1.2.2
 
 ### Patch Changes

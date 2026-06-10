@@ -60,10 +60,19 @@ export interface HttpAgentServerAdapterOptions {
 export class HttpAgentServerAdapter implements AgentServerAdapter {
   readonly threadId: string;
 
+  readonly apiUrl: string;
+
   readonly #delegate: TransportAdapter;
+
+  /**
+   * Thread-state reads are SSE-only. WebSocket delegates omit this so
+   * {@link StreamController} falls back to `client.threads.getState()`.
+   */
+  getState?: AgentServerAdapter["getState"];
 
   constructor(options: HttpAgentServerAdapterOptions) {
     this.threadId = options.threadId;
+    this.apiUrl = options.apiUrl;
     this.#delegate =
       options.webSocketFactory != null
         ? new ProtocolWebSocketTransportAdapter({
@@ -82,6 +91,11 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
             fetch: options.fetch,
             paths: options.paths,
           });
+
+    if (options.webSocketFactory == null) {
+      const sse = this.#delegate as ProtocolSseTransportAdapter;
+      this.getState = sse.getState.bind(sse);
+    }
   }
 
   open(): Promise<void> {

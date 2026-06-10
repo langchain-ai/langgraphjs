@@ -9,18 +9,21 @@ interface InterruptState {
 interface Props {
   apiUrl: string;
   assistantId?: string;
-  /** When true, the Resume button uses stream.respond() directly. */
-  useRespondMethod?: boolean;
+  threadId?: string;
+  onThreadId?: (threadId: string) => void;
 }
 
 export function InterruptStream({
   apiUrl,
   assistantId = "interrupt_graph",
-  useRespondMethod = false,
+  threadId,
+  onThreadId,
 }: Props) {
   const thread = useStream<InterruptState>({
     assistantId,
     apiUrl,
+    threadId,
+    onThreadId,
   });
 
   const promptValue = thread.interrupt?.value;
@@ -58,12 +61,8 @@ export function InterruptStream({
       <button
         data-testid="resume"
         onClick={() => {
-          if (useRespondMethod && thread.interrupt) {
+          if (thread.interrupt) {
             void thread.respond({ approved: true });
-          } else {
-            void thread.submit(undefined, {
-              command: { resume: { approved: true } },
-            });
           }
         }}
       >

@@ -31,7 +31,7 @@ import {
 import {
   BaseChannel,
   createCheckpoint,
-  emptyChannels,
+  channelsFromCheckpoint,
   getOnlyChannels,
 } from "../channels/base.js";
 import {
@@ -59,10 +59,12 @@ import {
   TASKS,
 } from "../constants.js";
 import {
+  GraphDrained,
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
+import { RunControl } from "./runtime.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -93,6 +95,7 @@ import {
 import {
   createGraphRunStream,
   GraphRunStream,
+  isCheckpointEnvelope,
   STREAM_EVENTS_V3_MODES,
 } from "../stream/index.js";
 import type {
@@ -882,10 +885,16 @@ export class Pregel<
       };
     }
 
-    // Create all channels
-    const channels = emptyChannels(
+    // Create all channels, reconstructing any DeltaChannel from ancestor
+    // writes via the checkpointer.
+    const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
-      saved.checkpoint
+      saved.checkpoint,
+      {
+        saver:
+          typeof this.checkpointer === "object" ? this.checkpointer : undefined,
+        config: saved.config ?? config,
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -1061,6 +1070,7 @@ export class Pregel<
       config.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_READ] === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
@@ -1289,10 +1299,11 @@ export class Pregel<
         );
       }
 
-      // update channels
-      const channels = emptyChannels(
+      // update channels, reconstructing any DeltaChannel from ancestor writes
+      const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
-        checkpoint
+        checkpoint,
+        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
       );
 
       if (values === null && asNode === END) {
@@ -2223,6 +2234,8 @@ export class Pregel<
         ? undefined
         : (options?.encoding ?? undefined);
     const streamSubgraphs = options?.subgraphs;
+    const isV3 =
+      (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -2285,9 +2298,7 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const useProtocolMessagesStream =
-        (options as { version?: unknown } | undefined)?.version === "v3";
-      const messageStreamer = useProtocolMessagesStream
+      const messageStreamer = isV3
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
         : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
@@ -2337,6 +2348,14 @@ export class Pregel<
     if (config.serverInfo == null) {
       config.serverInfo = _buildServerInfo(config);
     }
+
+    // Resolve the run-scoped control surface for cooperative draining.
+    // Precedence: an explicit `control` option, then a control propagated
+    // from a parent run (via `mergeConfigs` on task/subgraph configs), then a
+    // fresh `RunControl` so `runtime.control` is always available to nodes.
+    // Keep `control` on the top-level config only — not in `configurable` —
+    // so it is not persisted or emitted in checkpoint configs.
+    config.control ??= new RunControl();
 
     const callbackManagerOptions: Parameters<
       typeof CallbackManager._configureSync
@@ -2428,6 +2447,12 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
+          // LangChain invokes `handleToolError` via an async callback; yield one
+          // microtask so tool stream chunks are enqueued before the writable
+          // stream is sealed.
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
           // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
@@ -2448,8 +2473,17 @@ export class Pregel<
         if (chunk === undefined) {
           throw new Error("Data structure error.");
         }
-        const [namespace, mode, payload, meta] = chunk;
-        if (streamMode.includes(mode)) {
+        const [namespace, mode, payload] = chunk;
+        const isStreamEvents = "version" in (options ?? {});
+        const includeChunk =
+          streamMode.includes(mode) ||
+          (mode === "checkpoints" &&
+            isCheckpointEnvelope(payload) &&
+            (isV3 ||
+              (isStreamEvents &&
+                streamSubgraphs &&
+                streamMode.includes("values"))));
+        if (includeChunk) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
               yield [namespace, mode, payload];
@@ -2459,12 +2493,7 @@ export class Pregel<
             continue;
           }
           if (streamSubgraphs && !streamModeSingle) {
-            // Preserve chunk meta (e.g. the checkpoint envelope on `values`
-            // events) so `streamEvents(..., { version: "v3" })` / `pump()`
-            // can surface it on the protocol stream.
-            yield meta !== undefined
-              ? [namespace, mode, payload, meta]
-              : [namespace, mode, payload];
+            yield [namespace, mode, payload];
           } else if (!streamModeSingle) {
             yield [mode, payload];
           } else if (streamSubgraphs) {
@@ -2580,6 +2609,12 @@ export class Pregel<
           maxConcurrency: config.maxConcurrency,
           signal: config.signal,
         });
+      }
+      if (loop.status === "draining") {
+        if (loop.control == null) {
+          throw new Error("Draining status requires run control");
+        }
+        throw new GraphDrained(loop.control.drainReason ?? "shutdown");
       }
       if (loop.status === "out_of_steps") {
         throw new GraphRecursionError(

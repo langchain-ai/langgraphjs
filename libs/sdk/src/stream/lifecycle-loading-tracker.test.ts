@@ -79,7 +79,7 @@ describe("LifecycleLoadingTracker", () => {
     expect(store.getSnapshot().isLoading).toBe(false);
   });
 
-  it.each([["completed"], ["failed"], ["interrupted"], ["cancelled"]])(
+  it.each([["completed"], ["failed"], ["interrupted"]])(
     "treats %s as terminal",
     (terminal) => {
       const store = makeStore();

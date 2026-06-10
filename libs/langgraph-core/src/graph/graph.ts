@@ -40,12 +40,14 @@ import {
 } from "../utils.js";
 import {
   InvalidUpdateError,
+  NodeError,
   NodeInterrupt,
   UnreachableNodeError,
 } from "../errors.js";
 import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import type { StreamTransformer } from "../stream/types.js";
+import type { GraphNodeReturnValue } from "./types.js";
 
 export interface BranchOptions<
   IO,
@@ -223,7 +225,42 @@ export type NodeSpec<RunInput, RunOutput> = {
   subgraphs?: Pregel<any, any>[];
   ends?: string[];
   defer?: boolean;
+  /** Whether this node is an auto-generated node-level error handler. */
+  isErrorHandler?: boolean;
+  /** Name of the auto-generated error handler node to run on failure. */
+  errorHandlerNode?: string;
 };
+
+/**
+ * Return value type for node-level error handlers.
+ *
+ * Handlers may return a partial state update, a `Command`, or a Promise of either.
+ *
+ * @template Update - The update type (what fields can be returned)
+ * @template Nodes - Union of valid node names for Command.goto
+ */
+export type NodeErrorHandlerReturnValue<
+  Update,
+  Nodes extends string = string,
+> = GraphNodeReturnValue<Update, Nodes>;
+
+/**
+ * A node-level error handler callable.
+ *
+ * Invoked with the node input state, a {@link NodeError} describing the failed
+ * node and thrown error, and the runnable config. The handler runs ONLY after
+ * the failing node's {@link RetryPolicy} is exhausted. It may return a state
+ * update or a `Command` (to route via `goto`).
+ */
+export type NodeErrorHandler<
+  TState = unknown,
+  TUpdate = Partial<TState>,
+  Nodes extends string = string,
+> = (
+  state: TState,
+  error: NodeError,
+  config?: LangGraphRunnableConfig
+) => NodeErrorHandlerReturnValue<TUpdate, Nodes>;
 
 export type AddNodeOptions<Nodes extends string = string> = {
   metadata?: Record<string, unknown>;
@@ -596,8 +633,24 @@ export class Graph<
         allTargets.add(target);
       }
     }
+    // Node-level error handlers can route to any node via `Command({ goto })`
+    // (saga / compensation flows), so treat them like an open-ended branch:
+    // any node may be a recovery target reachable from a handler.
+    const hasErrorHandler = Object.values<NodeSpecType>(this.nodes).some(
+      (node) => node.isErrorHandler
+    );
+    if (hasErrorHandler) {
+      for (const node of Object.keys(this.nodes)) {
+        allTargets.add(node);
+      }
+    }
     // validate targets
     for (const node of Object.keys(this.nodes)) {
+      // auto-generated error handler nodes are reachable only on failure of
+      // their source node, so they are exempt from the reachability check.
+      if (this.nodes[node as N].isErrorHandler) {
+        continue;
+      }
       if (!allTargets.has(node)) {
         throw new UnreachableNodeError(
           [
@@ -820,6 +873,8 @@ export class CompiledGraph<
       );
     }
 
+    const discoveredEdges: DiscoveredGraphEdge[] = [];
+
     function addEdge(
       start: string,
       end: string,
@@ -835,6 +890,7 @@ export class CompiledGraph<
       if (endNodes[end] === undefined) {
         throw new Error(`End node ${end} not found!`);
       }
+      discoveredEdges.push({ src: start, dest: end, conditional });
       return graph.addEdge(
         startNodes[start],
         endNodes[end],
@@ -991,6 +1047,7 @@ export class CompiledGraph<
         }
       }
     }
+    addImplicitTerminalEndEdges(this.builder.nodes, discoveredEdges, addEdge);
     return graph;
   }
 
@@ -1024,6 +1081,8 @@ export class CompiledGraph<
       );
     }
 
+    const discoveredEdges: DiscoveredGraphEdge[] = [];
+
     function addEdge(
       start: string,
       end: string,
@@ -1033,6 +1092,13 @@ export class CompiledGraph<
       if (end === END && endNodes[END] === undefined) {
         endNodes[END] = graph.addNode({ schema: z.any() }, END);
       }
+      if (startNodes[start] === undefined) {
+        return;
+      }
+      if (endNodes[end] === undefined) {
+        throw new Error(`End node ${end} not found!`);
+      }
+      discoveredEdges.push({ src: start, dest: end, conditional });
       return graph.addEdge(
         startNodes[start],
         endNodes[end],
@@ -1172,6 +1238,22 @@ export class CompiledGraph<
         }
       }
     }
+    for (const [key, node] of Object.entries(this.builder.nodes) as [
+      N,
+      NodeSpec<State, Update>,
+    ][]) {
+      if (node.ends !== undefined) {
+        for (const end of node.ends) {
+          addEdge(
+            _escapeMermaidKeywords(key),
+            _escapeMermaidKeywords(end),
+            undefined,
+            true
+          );
+        }
+      }
+    }
+    addImplicitTerminalEndEdges(this.builder.nodes, discoveredEdges, addEdge);
     return graph;
   }
 }
@@ -1191,4 +1273,61 @@ function _escapeMermaidKeywords(key: string) {
     return `"${key}"`;
   }
   return key;
+}
+
+/**
+ * An edge collected while building a {@link DrawableGraph} from a compiled
+ * {@link StateGraph}.
+ *
+ * Used by {@link addImplicitTerminalEndEdges} to detect nodes that should
+ * receive an implicit edge to {@link END} (terminal nodes with no outgoing
+ * edges in the drawable view).
+ *
+ * @internal
+ */
+type DiscoveredGraphEdge = {
+  /** Display name of the source node (Mermaid-escaped). */
+  src: string;
+  /** Display name of the target node (Mermaid-escaped), or {@link END}. */
+  dest: string;
+  /**
+   * Whether the edge comes from a conditional branch or `node.ends` declaration.
+   * Non-conditional edges alone determine implicit terminal `→ END` links.
+   */
+  conditional: boolean;
+};
+
+/**
+ * Add implicit edges to END for terminal nodes (targets with no outgoing edges).
+ *
+ * Only nodes reached by a non-conditional edge are considered, so
+ * conditional-branch targets are not treated as implicit sinks.
+ */
+function addImplicitTerminalEndEdges<N extends string>(
+  nodes: Record<N, NodeSpec<unknown, unknown>>,
+  discovered: DiscoveredGraphEdge[],
+  addEdge: (
+    start: string,
+    end: string,
+    label?: string,
+    conditional?: boolean
+  ) => void
+): void {
+  const sources = new Set(discovered.map((e) => e.src));
+  const nonConditionalDestinations = [
+    ...new Set(
+      discovered
+        .filter((e) => !e.conditional && e.dest !== END)
+        .map((e) => e.dest)
+    ),
+  ].sort();
+
+  for (const displayDest of nonConditionalDestinations) {
+    if (sources.has(displayDest)) continue;
+    const rawKey = (Object.keys(nodes) as N[]).find(
+      (k) => _escapeMermaidKeywords(k) === displayDest
+    );
+    if (rawKey !== undefined && nodes[rawKey]?.isErrorHandler) continue;
+    addEdge(displayDest, END);
+  }
 }

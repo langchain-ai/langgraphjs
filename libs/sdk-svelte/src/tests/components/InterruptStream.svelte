@@ -6,13 +6,15 @@
   interface Props {
     apiUrl: string;
     assistantId?: string;
-    useRespondMethod?: boolean;
+    threadId?: string;
+    onThreadId?: (threadId: string) => void;
   }
 
   const {
     apiUrl,
     assistantId = "interruptAgent",
-    useRespondMethod = false,
+    threadId,
+    onThreadId,
   }: Props = $props();
 
   const stream = useStream<
@@ -21,6 +23,8 @@
   >({
     assistantId,
     apiUrl,
+    threadId,
+    onThreadId,
   });
 
   const interruptNode = $derived(
@@ -54,13 +58,7 @@
       <button
         data-testid="resume"
         onclick={() => {
-          if (useRespondMethod) {
-            void stream.respond("approved");
-          } else {
-            void stream.submit(undefined, {
-              command: { resume: "approved" },
-            });
-          }
+          void stream.respond("approved");
         }}
       >
         Resume
