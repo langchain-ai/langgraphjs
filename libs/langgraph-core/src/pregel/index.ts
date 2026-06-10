@@ -2429,11 +2429,16 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
-          // LangChain invokes `handleToolError` via an async callback. Use a
-          // macrotask (not a microtask) so tool stream chunks are enqueued
-          // before the writable stream is sealed.
+          // LangChain invokes `handleToolError` via an async callback. When
+          // streaming tools, defer stream.error to a macrotask so tool-error
+          // chunks are enqueued first. Otherwise a microtask is enough and
+          // avoids yielding to in-flight runner work (e.g. checkpointer I/O).
           await new Promise<void>((resolve) => {
-            setTimeout(resolve, 0);
+            if (stream.modes.has("tools")) {
+              setTimeout(resolve, 0);
+            } else {
+              queueMicrotask(resolve);
+            }
           });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
