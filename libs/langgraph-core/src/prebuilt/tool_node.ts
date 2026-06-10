@@ -244,10 +244,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
         store: (config.store as ToolRuntime["store"] | undefined) ?? null,
         writer: config.writer ?? config.configurable?.writer ?? null,
       };
-      const output = await tool.invoke(
-        toolCall,
-        runtime
-      );
+      const output = await tool.invoke(toolCall, runtime);
 
       if (
         (isBaseMessage(output) && output.getType() === "tool") ||
