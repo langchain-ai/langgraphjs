@@ -89,6 +89,40 @@ describe("StateGraph with Zod schemas", () => {
     });
   });
 
+  it("should validate Zod node updates against state schema constraints", async () => {
+    const stateSchema = z4.object({
+      count: z4.number().min(0).max(10),
+    });
+
+    const graph = new StateGraph(stateSchema)
+      .addNode("increment", (state) => ({ count: state.count + 15 }))
+      .addEdge(START, "increment")
+      .addEdge("increment", END)
+      .compile();
+
+    await expect(graph.invoke({ count: 0 })).rejects.toThrow(/count/);
+  });
+
+  it("should validate Zod Command updates against state schema constraints", async () => {
+    const stateSchema = z4.object({
+      count: z4.number().min(0).max(10),
+    });
+
+    const graph = new StateGraph(stateSchema)
+      .addNode(
+        "increment",
+        (state) =>
+          new Command({
+            update: { count: state.count + 15 },
+          })
+      )
+      .addEdge(START, "increment")
+      .addEdge("increment", END)
+      .compile();
+
+    await expect(graph.invoke({ count: 0 })).rejects.toThrow(/count/);
+  });
+
   it("should accept Zod messages schema & return tagged JSON schema", async () => {
     const schema = MessagesZodState.extend({ count: z.number() });
 

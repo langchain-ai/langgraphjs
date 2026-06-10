@@ -7,6 +7,7 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import {
+  getInteropZodObjectShape,
   type InteropZodObject,
   interopParse,
   interopZodObjectPartial,
@@ -55,6 +56,8 @@ import {
   Interrupt,
   INTERRUPT,
   CONFIG_KEY_NODE_ERROR,
+  _getOverwriteValue,
+  OVERWRITE,
 } from "../constants.js";
 import {
   InvalidUpdateError,
@@ -1788,14 +1791,95 @@ export class CompiledStateGraph<
     const nodeKey = key;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function _getUpdates(input: U): [string, any][] | null {
+    const validateStateUpdates = async (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      updates: [string, any][] | null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ): Promise<[string, any][] | null> => {
+      if (updates == null || updates.length === 0) return updates;
+
+      const schemaDef = this.builder._schemaRuntimeDefinition;
+      if (StateSchema.isInstance(schemaDef)) {
+        const schemaKeys = new Set(schemaDef.getChannelKeys());
+        const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
+        if (schemaUpdates.length === 0) return updates;
+
+        const updateObj = Object.fromEntries(schemaUpdates);
+        const parsed = await schemaDef.validateInput(updateObj);
+        return updates.map(([k, v]) => [
+          k,
+          schemaKeys.has(k) && Object.prototype.hasOwnProperty.call(parsed, k)
+            ? parsed[k]
+            : v,
+        ]);
+      }
+
+      if (isInteropZodObject(schemaDef)) {
+        const schemaKeys = new Set(
+          Object.keys(getInteropZodObjectShape(schemaDef))
+        );
+        const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
+        if (schemaUpdates.length === 0) return updates;
+
+        const updateSchema = interopZodObjectPartial(
+          this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
+            withReducerSchema: true,
+          })
+        );
+        const valueSchema = interopZodObjectPartial(schemaDef);
+        const parsed = new Map<string, unknown>();
+
+        const normalUpdates: [string, unknown][] = [];
+        const overwriteUpdates: [string, unknown][] = [];
+        for (const [k, v] of schemaUpdates) {
+          const [isOverwrite, overwriteValue] = _getOverwriteValue(v);
+          if (isOverwrite) {
+            overwriteUpdates.push([k, overwriteValue]);
+          } else {
+            normalUpdates.push([k, v]);
+          }
+        }
+
+        if (normalUpdates.length > 0) {
+          const normalObj = Object.fromEntries(normalUpdates);
+          const normalParsed = interopParse(updateSchema, normalObj);
+          for (const k of Object.keys(normalObj)) {
+            if (Object.prototype.hasOwnProperty.call(normalParsed, k)) {
+              parsed.set(k, normalParsed[k]);
+            }
+          }
+        }
+
+        if (overwriteUpdates.length > 0) {
+          const overwriteObj = Object.fromEntries(overwriteUpdates);
+          const overwriteParsed = interopParse(valueSchema, overwriteObj);
+          for (const k of Object.keys(overwriteObj)) {
+            if (Object.prototype.hasOwnProperty.call(overwriteParsed, k)) {
+              parsed.set(k, { [OVERWRITE]: overwriteParsed[k] });
+            }
+          }
+        }
+
+        return updates.map(([k, v]) => [
+          k,
+          schemaKeys.has(k) && parsed.has(k) ? parsed.get(k) : v,
+        ]);
+      }
+
+      return updates;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function _getUpdates(input: U): Promise<[string, any][] | null> {
       if (!input) {
         return null;
       } else if (isCommand(input)) {
         if (input.graph === Command.PARENT) {
           return null;
         }
-        return input._updateAsTuples().filter(([k]) => outputKeys.includes(k));
+        return validateStateUpdates(
+          input._updateAsTuples().filter(([k]) => outputKeys.includes(k))
+        );
       } else if (
         Array.isArray(input) &&
         input.length > 0 &&
@@ -1811,15 +1895,17 @@ export class CompiledStateGraph<
               ...item._updateAsTuples().filter(([k]) => outputKeys.includes(k))
             );
           } else {
-            const itemUpdates = _getUpdates(item);
+            const itemUpdates = await _getUpdates(item);
             if (itemUpdates) {
               updates.push(...(itemUpdates ?? []));
             }
           }
         }
-        return updates;
+        return validateStateUpdates(updates);
       } else if (typeof input === "object" && !Array.isArray(input)) {
-        return Object.entries(input).filter(([k]) => outputKeys.includes(k));
+        return validateStateUpdates(
+          Object.entries(input).filter(([k]) => outputKeys.includes(k))
+        );
       } else {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
         throw new InvalidUpdateError(

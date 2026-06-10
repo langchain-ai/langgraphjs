@@ -13,7 +13,11 @@ import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import type { SerializableSchema } from "./types.js";
 import { isStandardSchema } from "./types.js";
 import { getJsonSchemaFromSchema, getSchemaDefaultGetter } from "./adapter.js";
-import type { OverwriteValue } from "../constants.js";
+import {
+  _getOverwriteValue,
+  OVERWRITE,
+  type OverwriteValue,
+} from "../constants.js";
 import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
 
@@ -384,6 +388,22 @@ export class StateSchema<TFields extends StateSchemaFields> {
       let schema: StandardSchemaV1 | undefined;
 
       if (ReducedValue.isInstance(fieldDef)) {
+        const [isOverwrite, overwriteValue] = _getOverwriteValue(value);
+        if (isOverwrite) {
+          schema = fieldDef.valueSchema;
+          const validationResult =
+            await schema["~standard"].validate(overwriteValue);
+          if (validationResult.issues) {
+            throw new Error(
+              `Validation failed for field "${key}": ${JSON.stringify(
+                validationResult.issues
+              )}`
+            );
+          }
+          result[key] = { [OVERWRITE]: validationResult.value };
+          continue;
+        }
+
         schema = fieldDef.inputSchema;
       } else if (UntrackedValue.isInstance(fieldDef)) {
         schema = fieldDef.schema;
