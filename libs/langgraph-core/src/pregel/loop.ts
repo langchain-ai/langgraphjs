@@ -184,11 +184,38 @@ type PregelLoopParams = {
   hasPersistedParent?: boolean;
 };
 
+/**
+ * Split a serialized checkpoint namespace into its path segments.
+ *
+ * Checkpoint namespaces are stored as a single string whose nested levels are
+ * joined by {@link CHECKPOINT_NAMESPACE_SEPARATOR} (e.g. `"parent|child"`).
+ * The root namespace — represented as `undefined` or the empty string — maps
+ * to an empty array.
+ *
+ * @param ns - The serialized checkpoint namespace, or `undefined`.
+ * @returns The namespace as an array of path segments (`[]` for the root).
+ */
 function checkpointNamespaceFromNs(ns: string | undefined): string[] {
   if (ns === undefined || ns === "") return [];
   return ns.split(CHECKPOINT_NAMESPACE_SEPARATOR);
 }
 
+/**
+ * Find the most deeply nested namespace recorded in a checkpoint map.
+ *
+ * The checkpoint map ({@link CONFIG_KEY_CHECKPOINT_MAP}) associates every
+ * namespace seen on a thread with its checkpoint id. Because nested namespaces
+ * are built by appending segments to their parent, a deeper namespace always
+ * yields a longer key — so the longest non-empty key is the deepest one.
+ *
+ * Used by the loop's `#interruptStreamNamespace()` during subgraph
+ * time-travel: interrupt events must be emitted against the active (deepest)
+ * subgraph namespace rather than the root graph.
+ *
+ * @param map - The checkpoint map (namespace -> checkpoint id), or `undefined`.
+ * @returns The deepest namespace as path segments, or `[]` when the map is
+ *   absent, empty, or only contains the root namespace.
+ */
 function deepestCheckpointMapNamespace(
   map: Record<string, string> | undefined
 ): string[] {
