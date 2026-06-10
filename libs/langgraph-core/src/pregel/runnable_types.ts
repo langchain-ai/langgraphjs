@@ -1,5 +1,6 @@
 import { RunnableConfig, RunnableInterface } from "@langchain/core/runnables";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
+import { RunControl } from "./runtime.js";
 
 type RunnableFunc<
   RunInput,
@@ -115,6 +116,16 @@ export interface Runtime<
 
   /** Metadata injected by LangGraph Server. Undefined when running open-source LangGraph without LangSmith deployments. */
   serverInfo?: ServerInfo;
+
+  /**
+   * Run-scoped control plane for cooperative draining.
+   *
+   * Populated automatically during graph runs. Nodes can read
+   * `runtime.control.drainRequested` / `drainReason`, or call
+   * `runtime.control.requestDrain()` to ask the graph to stop at the next
+   * superstep boundary. Undefined outside an active graph runtime.
+   */
+  control?: RunControl;
 }
 
 export interface LangGraphRunnableConfig<

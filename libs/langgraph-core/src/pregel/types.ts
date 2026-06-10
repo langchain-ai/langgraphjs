@@ -17,6 +17,7 @@ import type { Interrupt } from "../constants.js";
 import type { StreamTransformer } from "../stream/types.js";
 import { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import type { RunControl } from "./runtime.js";
 
 /**
  * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
@@ -369,6 +370,15 @@ export interface PregelOptions<
    * Static context for the graph run, like `userId`, `dbConnection` etc.
    */
   context?: ContextType;
+
+  /**
+   * Optional run control used to request cooperative drain. When
+   * {@link RunControl#requestDrain} is called (e.g. from a SIGTERM handler or
+   * a node), the graph stops at the next superstep boundary, persists its
+   * checkpoint, and throws {@link GraphDrained}. The run can then be resumed
+   * later from the saved checkpoint.
+   */
+  control?: RunControl;
 
   /**
    * The encoding to use for the stream.
