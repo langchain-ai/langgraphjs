@@ -19,10 +19,15 @@ function _normalizeAgentName(agentName: string): string {
 
 const createHandoffTool = ({
   agentName,
+  description,
   agentDescription,
   addHandoffMessages = true,
 }: {
   agentName: string;
+  description?: string;
+  /**
+   * @deprecated Use `description` instead.
+   */
   agentDescription?: string;
   addHandoffMessages?: boolean;
 }) => {
@@ -35,7 +40,8 @@ const createHandoffTool = ({
    *   although you are only limited to the names accepted by LangGraph
    *   nodes as well as the tool names accepted by LLM providers
    *   (the tool name will look like this: `transfer_to_<agent_name>`).
-   * @param agentDescription - Optional description for the handoff tool.
+   * @param description - Optional description for the handoff tool.
+   * @param agentDescription - Deprecated. Use `description` instead.
    * @param addHandoffMessages - Whether to add the handoff messages to the
    *   message history forwarded to the expert agent. If `false`, the
    *   supervisor `AIMessage` containing the handoff tool call and the handoff
@@ -76,7 +82,8 @@ const createHandoffTool = ({
     {
       name: toolName,
       schema: z.object({}),
-      description: agentDescription ?? "Ask another agent for help.",
+      description:
+        description ?? agentDescription ?? "Ask another agent for help.",
     }
   );
   return handoffTool;
@@ -88,6 +95,8 @@ function createHandoffBackMessages(
 ): [AIMessage, ToolMessage] {
   /**
    * Create a pair of (AIMessage, ToolMessage) to add to the message history when returning control to the supervisor.
+   *
+   * @deprecated This helper is intended for supervisor internals. Prefer configuring handoff behavior through `createSupervisor`.
    */
   const toolCallId = uuidv4();
   const toolName = `transfer_back_to_${_normalizeAgentName(supervisorName)}`;

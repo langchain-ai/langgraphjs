@@ -217,6 +217,7 @@ export type CreateSupervisorParams<
   /**
    * Whether to add a pair of (AIMessage, ToolMessage) to the message history
    * when returning control to the supervisor to indicate that a handoff has occurred
+   * Defaults to the value of `addHandoffMessages`.
    */
   addHandoffBackMessages?: boolean;
 
@@ -291,7 +292,7 @@ const createSupervisor = <
   contextSchema,
   outputMode = "last_message",
   addHandoffMessages = true,
-  addHandoffBackMessages = true,
+  addHandoffBackMessages,
   supervisorName = "supervisor",
   includeAgentName,
   preModelHook,
@@ -307,6 +308,8 @@ const createSupervisor = <
   AnnotationRootT["spec"],
   AnnotationRootT["spec"]
 > => {
+  const resolvedAddHandoffBackMessages =
+    addHandoffBackMessages ?? addHandoffMessages;
   const agentNames = new Set<string>();
 
   for (const agent of agents) {
@@ -335,7 +338,7 @@ const createSupervisor = <
 
     return createHandoffTool({
       agentName,
-      agentDescription,
+      description: agentDescription,
       addHandoffMessages,
     });
   });
@@ -401,7 +404,12 @@ const createSupervisor = <
   for (const agent of agents) {
     builder = builder.addNode(
       agent.name!,
-      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      makeCallAgent(
+        agent,
+        outputMode,
+        resolvedAddHandoffBackMessages,
+        supervisorName
+      ),
       { subgraphs: isRemoteGraph(agent) ? undefined : [agent] }
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);
