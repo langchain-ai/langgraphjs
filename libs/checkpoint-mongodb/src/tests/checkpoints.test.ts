@@ -491,6 +491,91 @@ describe("MongoDBSaver", () => {
       ).rejects.toThrow('Invalid configurable.thread_id: expected a string');
     });
 
+    it("should pin special channels to fixed negative indices and switch to $setOnInsert for regular writes", async () => {
+      // Capture the bulkWrite operations so we can assert on their structure
+      // without standing up a real MongoDB.
+      const bulkWriteCalls: unknown[][] = [];
+      const writesCollection = {
+        find: vi.fn(() => ({
+          sort: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              toArray: vi.fn(() => Promise.resolve([])),
+            })),
+          })),
+        })),
+        bulkWrite: vi.fn((ops: unknown[]) => {
+          bulkWriteCalls.push(ops);
+          return Promise.resolve({});
+        }),
+      };
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: vi.fn(() => writesCollection),
+        })),
+      };
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const config = {
+        configurable: {
+          thread_id: "t",
+          checkpoint_ns: "",
+          checkpoint_id: "c",
+        },
+      };
+
+      // Mix of regular writes and a special-channel write in the same call.
+      // Regular writes must NOT push the special-channel onto a positive idx.
+      await saver.putWrites(
+        config,
+        [
+          ["foo", "v_foo"],
+          ["bar", "v_bar"],
+          ["__interrupt__", "paused"],
+        ],
+        "task_A"
+      );
+
+      const ops = bulkWriteCalls[bulkWriteCalls.length - 1] as Array<{
+        updateOne: {
+          filter: { idx: number };
+          update: Record<string, unknown>;
+        };
+      }>;
+      const indices = ops.map((op) => op.updateOne.filter.idx).sort(
+        (a, b) => a - b
+      );
+      // foo (idx 0), bar (idx 1), __interrupt__ (idx -3 via WRITES_IDX_MAP)
+      expect(indices).toEqual([-3, 0, 1]);
+
+      // Mixed batch must go through $setOnInsert so a peer task's row at
+      // (task_A, idx=0) can't be silently overwritten.
+      for (const op of ops) {
+        expect(op.updateOne.update).toHaveProperty("$setOnInsert");
+        expect(op.updateOne.update).not.toHaveProperty("$set");
+      }
+
+      // A separate call where every write is a special channel must go
+      // through $set so e.g. INTERRUPT → RESUME state transitions overwrite.
+      await saver.putWrites(
+        config,
+        [["__resume__", "carry_on"]],
+        "task_A"
+      );
+      const specialOnly = bulkWriteCalls[bulkWriteCalls.length - 1] as Array<{
+        updateOne: {
+          filter: { idx: number };
+          update: Record<string, unknown>;
+        };
+      }>;
+      expect(specialOnly[0].updateOne.filter.idx).toBe(-4); // RESUME
+      expect(specialOnly[0].updateOne.update).toHaveProperty("$set");
+      expect(specialOnly[0].updateOne.update).not.toHaveProperty(
+        "$setOnInsert"
+      );
+    });
+
     it("should reject non-string thread_id in putWrites", async () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
