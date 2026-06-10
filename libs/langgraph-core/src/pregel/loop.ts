@@ -1,5 +1,7 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
+import { BaseMessage } from "@langchain/core/messages";
+import { v4 as uuidv4 } from "uuid";
 import {
   BaseCheckpointSaver,
   Checkpoint,
@@ -21,7 +23,9 @@ import {
 import {
   BaseChannel,
   createCheckpoint,
-  emptyChannels,
+  channelsFromCheckpoint,
+  deltaChannelsToSnapshot,
+  isDeltaChannel,
 } from "../channels/base.js";
 import type {
   Call,
@@ -104,6 +108,27 @@ const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
+/**
+ * Recursively assign a stable UUID to any {@link BaseMessage} (in a value, an
+ * array, or an object's values) that is missing an `id`. Used so DeltaChannel
+ * writes — replayed on every read — reconstruct identical message identities.
+ */
+function ensureMessageIds(value: unknown): void {
+  if (value == null || typeof value !== "object") return;
+  if (BaseMessage.isInstance(value)) {
+    const msg = value as BaseMessage;
+    if (msg.id == null) {
+      msg.id = uuidv4();
+      if (msg.lc_kwargs != null) msg.lc_kwargs.id = msg.id;
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) ensureMessageIds(item);
+    return;
+  }
+}
+
 export type PregelLoopInitializeParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input?: any | Command;
@@ -153,6 +178,7 @@ type PregelLoopParams = {
   durability: Durability;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
+  hasPersistedParent?: boolean;
 };
 
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
@@ -225,6 +251,18 @@ export class PregelLoop {
   protected checkpoint: Checkpoint;
 
   protected checkpointIdSaved: string | undefined;
+
+  /**
+   * Exit-mode accumulator of DeltaChannel writes across the whole run, as
+   * `[step, taskId, channel, value]`. `undefined` outside "exit" durability.
+   */
+  protected _exitDeltaWrites: [number, string, string, unknown][] | undefined;
+
+  /** Whether a real checkpoint was loaded from the saver at initialization. */
+  protected _hasPersistedParent = false;
+
+  /** The checkpointConfig as captured at initialization (anchor for exit writes). */
+  protected _initialCheckpointConfig: RunnableConfig | undefined;
 
   protected checkpointConfig: RunnableConfig;
 
@@ -403,6 +441,15 @@ export class PregelLoop {
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
     this.control = this.config.control;
+    // Exit-mode delta-channel accumulator: in "exit" durability, per-step
+    // writes are not persisted incrementally, so DeltaChannel writes would be
+    // lost. Accumulate them across the run and persist (anchored to a parent
+    // or stub) at exit. `undefined` outside exit mode disables capture.
+    this._exitDeltaWrites =
+      this.durability === "exit" && this.checkpointer != null ? [] : undefined;
+    this._hasPersistedParent = params.hasPersistedParent ?? false;
+    this._initialCheckpointConfig = params.checkpointConfig;
+    this.checkpointIdSaved = params.checkpoint.id;
   }
 
   static async initialize(params: PregelLoopInitializeParams) {
@@ -467,9 +514,9 @@ export class PregelLoop {
         CHECKPOINT_NAMESPACE_SEPARATOR
       ) ?? [];
 
-    const saved: CheckpointTuple = (await params.checkpointer?.getTuple(
-      checkpointConfig
-    )) ?? {
+    const loadedTuple = await params.checkpointer?.getTuple(checkpointConfig);
+    const hasPersistedParent = loadedTuple !== undefined;
+    const saved: CheckpointTuple = loadedTuple ?? {
       config,
       checkpoint: emptyCheckpoint(),
       metadata: { source: "input", step: -2, parents: {} },
@@ -489,7 +536,14 @@ export class PregelLoop {
     const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
     const checkpointPendingWrites = saved.pendingWrites ?? [];
 
-    const channels = emptyChannels(params.channelSpecs, checkpoint);
+    const channels = await channelsFromCheckpoint(
+      params.channelSpecs,
+      checkpoint,
+      {
+        saver: params.checkpointer,
+        config: checkpointConfig,
+      }
+    );
 
     const step = (checkpointMetadata.step ?? 0) + 1;
     const stop = step + (config.recursionLimit ?? DEFAULT_LOOP_LIMIT) + 1;
@@ -531,6 +585,7 @@ export class PregelLoop {
       durability: params.durability,
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
+      hasPersistedParent,
     });
   }
 
@@ -610,6 +665,17 @@ export class PregelLoop {
     // save writes
     for (const [c, v] of writesToSave) {
       this.checkpointPendingWrites.push([taskId, c, v]);
+    }
+
+    // Assign stable IDs to any id-less BaseMessages in DeltaChannel writes
+    // before they are serialised. DeltaChannel state is reconstructed by
+    // replaying these stored writes, so without stable IDs every getState()
+    // replay would mint a fresh UUID and dedup/RemoveMessage would break.
+    for (const [c, v] of writesToSave) {
+      const channel = this.channels[c];
+      if (channel != null && isDeltaChannel(channel)) {
+        ensureMessageIds(v);
+      }
     }
 
     const config = patchConfigurable(this.checkpointConfig, {
@@ -784,6 +850,16 @@ export class PregelLoop {
           "values"
         )
       );
+      // capture delta-channel writes for the exit-mode accumulator before
+      // clearing (in "exit" durability they are not persisted incrementally)
+      if (this._exitDeltaWrites !== undefined) {
+        for (const [tid, ch, v] of this.checkpointPendingWrites) {
+          const channel = this.channels[ch];
+          if (channel != null && isDeltaChannel(channel)) {
+            this._exitDeltaWrites.push([this.step, tid, ch, v]);
+          }
+        }
+      }
       // clear pending writes
       this.checkpointPendingWrites = [];
       // persist the new checkpoint BEFORE emitting values, so the
@@ -932,6 +1008,7 @@ export class PregelLoop {
           (part) => !part.includes(CHECKPOINT_NAMESPACE_END)
         ))
     ) {
+      await this._putExitDeltaWrites();
       this._putCheckpoint(this.checkpointMetadata);
       this._flushPendingWrites();
     }
@@ -1282,6 +1359,26 @@ export class PregelLoop {
           this.checkpointerGetNextVersion,
           this.triggerToNodes
         );
+        // Input writes go through `_applyWrites` directly (above) — they never
+        // enter `checkpointPendingWrites`, so the after-tick capture site does
+        // not see them.
+        const deltaInput = (inputWrites as PendingWrite[]).filter(([c]) => {
+          const channel = this.channels[c];
+          return channel != null && isDeltaChannel(channel);
+        });
+        if (deltaInput.length > 0) {
+          if (this._exitDeltaWrites !== undefined) {
+            // Exit mode: capture so the accumulator includes input deltas.
+            for (const [c, v] of deltaInput) {
+              this._exitDeltaWrites.push([this.step, NULL_TASK_ID, c, v]);
+            }
+          } else if (this.checkpointer != null) {
+            // Non-exit: persist so sub-frequency inputs are recoverable via the
+            // ancestor walk (StateGraph routes inputs through a START node whose
+            // writes are persisted; this covers raw Pregel delta input channels).
+            this.putWrites(NULL_TASK_ID, deltaInput);
+          }
+        }
         // save input checkpoint
         await this._putCheckpoint({ source: "input" });
 
@@ -1434,21 +1531,69 @@ export class PregelLoop {
       };
     };
 
+    // Per-delta-channel counter bookkeeping. Each delta channel tracks a
+    // [updates, supersteps] pair: `updates` increments only when the channel
+    // is written this step; `supersteps` increments every superstep. The exit
+    // call must NOT bump again (the last intermediate call already counted the
+    // final superstep) or it would double-count.
+    let newCounters: Record<string, [number, number]>;
     if (!exiting) {
+      const prevCounters =
+        this.checkpointMetadata.counters_since_delta_snapshot ?? {};
+      newCounters = {};
+      const updated = this.updatedChannels ?? new Set<string>();
+      for (const chName in this.channels) {
+        if (!Object.prototype.hasOwnProperty.call(this.channels, chName))
+          continue;
+        if (!isDeltaChannel(this.channels[chName])) continue;
+        const [u, s] = prevCounters[chName] ?? [0, 0];
+        newCounters[chName] = [updated.has(chName) ? u + 1 : u, s + 1];
+      }
       this.checkpointMetadata = {
         ...inputMetadata,
         step: this.step,
         parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
       };
+    } else {
+      newCounters = {
+        ...(this.checkpointMetadata.counters_since_delta_snapshot ?? {}),
+      };
     }
+
+    const channelsToSnapshot = doCheckpoint
+      ? deltaChannelsToSnapshot(this.channels, newCounters)
+      : new Set<string>();
 
     // create new checkpoint
     this.checkpoint = createCheckpoint(
       this.checkpoint,
       doCheckpoint ? this.channels : undefined,
       this.step,
-      exiting ? { id: this.checkpoint.id } : undefined
+      {
+        id: exiting ? this.checkpoint.id : undefined,
+        channelsToSnapshot,
+        updatedChannels: this.updatedChannels,
+        getNextVersion: doCheckpoint
+          ? (current) =>
+              this.checkpointerGetNextVersion(current as number | undefined)
+          : undefined,
+      }
     );
+
+    // Reset counters for channels that just snapshotted, and persist the
+    // non-zero remainder into metadata (or clear the field entirely).
+    for (const k of channelsToSnapshot) newCounters[k] = [0, 0];
+    const nonZero: Record<string, [number, number]> = {};
+    for (const k in newCounters) {
+      if (!Object.prototype.hasOwnProperty.call(newCounters, k)) continue;
+      const [u, s] = newCounters[k];
+      if (u !== 0 || s !== 0) nonZero[k] = [u, s];
+    }
+    if (Object.keys(nonZero).length > 0) {
+      this.checkpointMetadata.counters_since_delta_snapshot = nonZero;
+    } else {
+      delete this.checkpointMetadata.counters_since_delta_snapshot;
+    }
 
     // Bail if no checkpointer
     if (doCheckpoint) storeCheckpoint(this.checkpoint);
@@ -1456,6 +1601,95 @@ export class PregelLoop {
     if (!exiting) {
       // increment step
       this.step += 1;
+    }
+  }
+
+  /**
+   * Stage the exit-mode accumulator of DeltaChannel writes so the final
+   * checkpoint can be reconstructed. In "exit" durability per-step writes are
+   * not persisted, so delta writes are accumulated across the run and anchored
+   * here — under the saved parent, or a freshly-created stub when this is a
+   * first run with no persisted parent. Channels that will snapshot in the
+   * final checkpoint are excluded (their full value lives in `channel_values`).
+   *
+   * Must run BEFORE the final `_putCheckpoint` so the stub branch can adjust
+   * `checkpointConfig` to anchor the final checkpoint on the stub.
+   */
+  protected async _putExitDeltaWrites(): Promise<void> {
+    if (
+      this._exitDeltaWrites === undefined ||
+      this._exitDeltaWrites.length === 0 ||
+      this.checkpointer == null ||
+      this._initialCheckpointConfig === undefined
+    ) {
+      return;
+    }
+
+    const counters =
+      this.checkpointMetadata.counters_since_delta_snapshot ?? {};
+    const channelsToSnapshot = deltaChannelsToSnapshot(this.channels, counters);
+
+    const pending = this._exitDeltaWrites.filter(
+      ([, , ch]) => !channelsToSnapshot.has(ch)
+    );
+    if (pending.length === 0) return;
+
+    let anchorConfig: RunnableConfig;
+    if (this._hasPersistedParent) {
+      // _initialCheckpointConfig points at the saved parent checkpoint.
+      anchorConfig = this._initialCheckpointConfig;
+    } else {
+      // No persisted parent: create a stub empty checkpoint (no parent) and
+      // anchor on it, then point the final checkpoint at the stub.
+      const stubCp = emptyCheckpoint();
+      stubCp.id = this.checkpointIdSaved ?? stubCp.id;
+      stubCp.ts = new Date().toISOString();
+      const stubPutConfig = patchConfigurable(this._initialCheckpointConfig, {
+        [CONFIG_KEY_CHECKPOINT_ID]: undefined,
+      });
+      anchorConfig = patchConfigurable(this._initialCheckpointConfig, {
+        [CONFIG_KEY_CHECKPOINT_ID]: stubCp.id,
+      });
+      this._trackCheckpointerPromise(
+        this.checkpointer.put(
+          stubPutConfig,
+          stubCp,
+          { source: "loop", step: -2, parents: {} },
+          {}
+        )
+      );
+      this.checkpointConfig = anchorConfig;
+    }
+
+    const anchorWriteConfig = patchConfigurable(anchorConfig, {
+      [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
+      [CONFIG_KEY_CHECKPOINT_ID]:
+        anchorConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID],
+    });
+
+    // Group by [step, taskId]; a step-prefixed synthetic task id preserves
+    // chronological super-step order under the saver's (task_id, idx) sort.
+    const grouped = new Map<string, PendingWrite<string>[]>();
+    const order: { key: string; step: number; tid: string }[] = [];
+    for (const [step, tid, ch, v] of pending) {
+      const key = `${step}\u0000${tid}`;
+      let group = grouped.get(key);
+      if (group === undefined) {
+        group = [];
+        grouped.set(key, group);
+        order.push({ key, step, tid });
+      }
+      group.push([ch, v]);
+    }
+    for (const { key, step, tid } of order) {
+      const synthTid = `${String(step).padStart(8, "0")}-${tid}`;
+      this._trackCheckpointerPromise(
+        this.checkpointer.putWrites(
+          anchorWriteConfig,
+          grouped.get(key)!,
+          synthTid
+        )
+      );
     }
   }
 

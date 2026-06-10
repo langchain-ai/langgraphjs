@@ -23,6 +23,7 @@ import {
   BaseChannel,
   createCheckpoint,
   emptyChannels,
+  isDeltaChannel,
   getOnlyChannels,
 } from "../channels/base.js";
 import { PregelNode } from "./read.js";
@@ -191,7 +192,25 @@ export function _localRead<Cc extends Record<string, BaseChannel>>(
       Object.entries(channels).filter(([k, _]) => updated.has(k as keyof Cc))
     ) as Partial<Cc>;
 
-    const newCheckpoint = createCheckpoint(checkpoint, localChannels as Cc, -1);
+    // DeltaChannels are omitted from `channel_values` by default (their state
+    // is reconstructed from ancestor writes via the saver). A local read has
+    // no saver, so snapshot every delta channel inline to round-trip its full
+    // live value through `emptyChannels`.
+    const channelsToSnapshot = new Set<string>();
+    for (const k in localChannels) {
+      if (!Object.prototype.hasOwnProperty.call(localChannels, k)) continue;
+      const ch = (localChannels as Record<string, BaseChannel>)[k];
+      if (isDeltaChannel(ch) && ch.isAvailable()) channelsToSnapshot.add(k);
+    }
+
+    const newCheckpoint = createCheckpoint(
+      checkpoint,
+      localChannels as Cc,
+      -1,
+      {
+        channelsToSnapshot,
+      }
+    );
     const newChannels = emptyChannels(localChannels as Cc, newCheckpoint);
 
     _applyWrites(
