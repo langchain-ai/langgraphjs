@@ -37,6 +37,7 @@ import {
 import {
   getRegistry,
   STREAM_CONTROLLER,
+  type AnyStream,
   type UseStreamReturn,
 } from "./use-stream.js";
 import { useProjection } from "./use-projection.js";
@@ -129,21 +130,17 @@ function namespaceKey(namespace: readonly string[]): string {
   return namespace.join(NAMESPACE_SEPARATOR);
 }
 
-// The stream type we accept for selectors — purposely loose so
-// selector hooks remain callable from components that don't carry
-// the exact State/Interrupt/Configurable generics. We use `any` for
-// all three generics because `UseStreamReturn` is
-// invariant in `State` and `Configurable` (they flow through both
-// reader and writer positions), so a concrete
-// `useStream<typeof agent>()` handle wouldn't flow into
-// a `<object, unknown, object>` slot otherwise.
+// The stream type we accept for selectors — the public {@link AnyStream}
+// erased handle. It overrides the generic-computed covariant members
+// (`toolCalls`, `values`, `~stateType`) with their widest forms so a
+// concrete `useStream<typeof agent>()` handle flows in without an
+// `as AnyStream` cast (a bare `UseStreamReturn<any, any, any>` does not
+// — see the `AnyStream` definition in `use-stream.ts`).
 //
-// Typed selectors (`useValues<S>` etc.) use {@link StreamHandle}
-// above so the concrete `StateType` flows into the return; hooks
-// that don't depend on state (`useMessages`, `useAudio`, …) stay on
-// `AnyStream` for maximum flexibility.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyStream = UseStreamReturn<any, any, any>;
+// Typed selectors (`useValues<S>` etc.) use {@link StreamHandle} above
+// so the concrete `StateType` flows into the return; hooks that don't
+// depend on state (`useMessages`, `useAudio`, …) stay on `AnyStream`
+// for maximum flexibility.
 
 /**
  * Subscribe to a scoped `messages` stream. Pass `stream` and
