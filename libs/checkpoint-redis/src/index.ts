@@ -8,6 +8,7 @@ import {
   PendingWrite,
   uuid6,
   TASKS,
+  WRITES_IDX_MAP,
   maxChannelVersion,
   copyCheckpoint,
 } from "@langchain/langgraph-checkpoint";
@@ -667,10 +668,25 @@ export class RedisSaver extends BaseCheckpointSaver {
     // Use high-resolution timestamp to ensure unique ordering across putWrites calls
     const baseTimestamp = performance.now() * 1000; // Microsecond precision
 
+    // Conflict resolution matches the Python checkpointer contract and the
+    // sibling TS implementations (Memory, Postgres, SQLite #2516, MongoDB):
+    //   - When every write targets a special channel (ERROR / SCHEDULED /
+    //     INTERRUPT / RESUME, each pinned to a negative `idx` by
+    //     WRITES_IDX_MAP), the write OVERWRITES any existing row so e.g.
+    //     INTERRUPT can be overwritten on RESUME.
+    //   - Otherwise it's an insert-or-ignore so a regular write from one
+    //     task can never silently clobber a regular write that another
+    //     concurrent task already stored at the same (task_id, idx).
+    const allSpecial = writes.every(([channel]) => channel in WRITES_IDX_MAP);
+
     // Store each write as a separate indexed JSON document
     for (let idx = 0; idx < writes.length; idx++) {
       const [channel, value] = writes[idx];
-      const writeKey = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:${taskId}:${idx}`;
+      // Special channels are stored at fixed negative indices so they
+      // never collide with regular per-step writes (whose `idx` is the
+      // ordinal within `writes`).
+      const writeIdx = WRITES_IDX_MAP[channel] ?? idx;
+      const writeKey = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:${taskId}:${writeIdx}`;
       writeKeys.push(writeKey);
 
       const writeDoc = {
@@ -678,7 +694,7 @@ export class RedisSaver extends BaseCheckpointSaver {
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpointId,
         task_id: taskId,
-        idx: idx,
+        idx: writeIdx,
         channel: channel,
         type: typeof value === "object" ? "json" : "string",
         value: value,
@@ -686,7 +702,17 @@ export class RedisSaver extends BaseCheckpointSaver {
         global_idx: baseTimestamp + idx, // Add microseconds for sub-millisecond ordering
       };
 
-      await this.client.json.set(writeKey, "$", writeDoc as any);
+      if (allSpecial) {
+        await this.client.json.set(writeKey, "$", writeDoc as never);
+      } else {
+        // Equivalent of SQL `INSERT OR IGNORE`: only set when the key is
+        // absent. `node-redis` exposes this as the `NX` modifier on
+        // `JSON.SET`. The return value is the string "OK" on insert and
+        // `null` on no-op, both of which are fine to discard here.
+        await this.client.json.set(writeKey, "$", writeDoc as never, {
+          NX: true,
+        });
+      }
     }
 
     // Register write keys in sorted set for efficient retrieval
