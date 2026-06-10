@@ -9,7 +9,7 @@
  * WebSocket serving uses the `ws` package; clients use the Node.js 22+ global
  * {@link WebSocket} API.
  */
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -39,6 +39,10 @@ export interface MockProtocolServer {
   closeWebSocketConnection(connectionIndex: number): void;
   close(): Promise<void>;
 }
+
+type FlushableServerResponse = ServerResponse & {
+  flush?: () => void;
+};
 
 const MIN_NODE_MAJOR = 22;
 
@@ -77,7 +81,7 @@ function filterEvents(
 }
 
 function writeSseFrame(
-  res: import("node:http").ServerResponse,
+  res: FlushableServerResponse,
   event: MockProtocolEvent
 ): void {
   const payload = serialise(event);
@@ -259,7 +263,7 @@ export async function startMockProtocolServer(
 
   async function handleSse(
     req: import("node:http").IncomingMessage,
-    res: import("node:http").ServerResponse
+    res: FlushableServerResponse
   ) {
     const chunks: Buffer[] = [];
     for await (const chunk of req) {

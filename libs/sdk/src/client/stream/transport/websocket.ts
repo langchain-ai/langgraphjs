@@ -22,6 +22,10 @@ import type {
 import type { TransportAdapter } from "../transport.js";
 import { MaxWebSocketReconnectAttemptsError } from "../error.js";
 
+const WEB_SOCKET_CONNECTING = 0;
+const WEB_SOCKET_OPEN = 1;
+const WEB_SOCKET_CLOSED = 3;
+
 /**
  * Reconnect tuning for {@link ProtocolWebSocketTransportAdapter}. A subset
  * of {@link ProtocolWebSocketTransportOptions}.
@@ -123,7 +127,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     if (this.closed) {
       throw new Error("Protocol WebSocket transport is closed.");
     }
-    if (this.socket?.readyState === WebSocket.OPEN) {
+    if (this.socket?.readyState === WEB_SOCKET_OPEN) {
       return;
     }
     if (this.socket != null) {
@@ -202,7 +206,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.#detachSocket(socket);
 
     await new Promise<void>((resolve) => {
-      if (socket.readyState === WebSocket.CLOSED) {
+      if (socket.readyState === WEB_SOCKET_CLOSED) {
         resolve();
         return;
       }
@@ -214,8 +218,8 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
       socket.addEventListener("close", onClose, { once: true });
       if (
-        socket.readyState === WebSocket.OPEN ||
-        socket.readyState === WebSocket.CONNECTING
+        socket.readyState === WEB_SOCKET_OPEN ||
+        socket.readyState === WEB_SOCKET_CONNECTING
       ) {
         socket.close();
       } else {
@@ -242,13 +246,13 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     let socket = this.socket;
     if (
       this.reconnectInFlight != null &&
-      (socket == null || socket.readyState !== WebSocket.OPEN)
+      (socket == null || socket.readyState !== WEB_SOCKET_OPEN)
     ) {
       await this.reconnectInFlight.catch(() => undefined);
       socket = this.socket;
     }
 
-    if (socket == null || socket.readyState !== WebSocket.OPEN) {
+    if (socket == null || socket.readyState !== WEB_SOCKET_OPEN) {
       throw new Error("Protocol WebSocket is not open.");
     }
 
