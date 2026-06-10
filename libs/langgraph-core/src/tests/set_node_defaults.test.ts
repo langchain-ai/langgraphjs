@@ -1,15 +1,16 @@
 /* eslint-disable no-promise-executor-return */
 import { it, expect, describe, vi, beforeAll } from "vitest";
+import { z } from "zod/v4";
 import { InMemoryCache, MemorySaver } from "@langchain/langgraph-checkpoint";
-import { Annotation, StateGraph } from "../graph/index.js";
+import { StateGraph } from "../graph/index.js";
+import { StateSchema } from "../state/schema.js";
+import { ReducedValue } from "../state/values/reduced.js";
 import { START, Command } from "../constants.js";
 import { NodeError } from "../errors.js";
 import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import type { RetryPolicy } from "../pregel/utils/index.js";
 
-const State = Annotation.Root({
-  foo: Annotation<string>(),
-});
+const State = new StateSchema({ foo: z.string() });
 
 const fastRetry: RetryPolicy = {
   maxAttempts: 3,
@@ -232,11 +233,10 @@ describe("StateGraph.setNodeDefaults", () => {
 
 const RECOVERY_NODE = "__default_error_handler__";
 
-const RoutedState = Annotation.Root({
-  route: Annotation<string>(),
-  foo: Annotation<string[]>({
-    reducer: (a, b) => a.concat(b),
-    default: () => [],
+const RoutedState = new StateSchema({
+  route: z.string(),
+  foo: new ReducedValue(z.array(z.string()).default(() => []), {
+    reducer: (a: string[], b: string[]) => a.concat(b),
   }),
 });
 
@@ -486,13 +486,13 @@ describe("StateGraph.setNodeDefaults — errorHandler", () => {
     // schemas, so at runtime it sees the failing node's input (here a subset
     // that omits `b`). This is why its `state` parameter is typed `unknown`
     // rather than the full graph state.
-    const FullState = Annotation.Root({
-      a: Annotation<string>(),
-      b: Annotation<string>(),
-      handled: Annotation<boolean>(),
+    const FullState = new StateSchema({
+      a: z.string(),
+      b: z.string(),
+      handled: z.boolean(),
     });
-    const NodeInput = Annotation.Root({
-      a: Annotation<string>(),
+    const NodeInput = new StateSchema({
+      a: z.string(),
     });
 
     let received: Record<string, unknown> | undefined;
