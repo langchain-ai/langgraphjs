@@ -610,6 +610,27 @@ export class StreamController<
         ];
         if (Array.isArray(seedMessages)) {
           this.#subagents.seedFromCheckpointMessages(seedMessages);
+
+          /**
+           * An idle (finished) thread defers its root SSE pump; the first
+           * `submit()` brings it up and the transport replays the finished
+           * run from `seq=0`. Seal the seeded message ids so that replay's
+           * `messages` channel deltas can't downgrade the already-complete
+           * tail to empty partials (a visible "messages replay"). Only safe
+           * for idle threads, where every seeded message is final — an
+           * active thread's tail may still be streaming and must keep
+           * receiving deltas. New ids from the next run are never sealed,
+           * and the seal lifts once a newer checkpoint advances the
+           * timeline.
+           */
+          if (!threadActive) {
+            const sealedIds = (seedMessages as Array<{ id?: unknown }>)
+              .map((message) => message?.id)
+              .filter((id): id is string => typeof id === "string");
+            if (sealedIds.length > 0) {
+              this.#rootMessages.sealMessageIds(sealedIds);
+            }
+          }
         }
       }
       /**

@@ -153,6 +153,38 @@ function lifecycleEvent(event: string, seq: number): Event {
   } as Event;
 }
 
+function messageStartEvent(id: string, seq: number, role = "ai"): Event {
+  return {
+    type: "event",
+    event_id: `msg-start-${id}-${seq}`,
+    seq,
+    method: "messages",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: { event: "message-start", id, role },
+    },
+  } as unknown as Event;
+}
+
+function messageDeltaEvent(seq: number, text: string): Event {
+  return {
+    type: "event",
+    event_id: `msg-delta-${seq}`,
+    seq,
+    method: "messages",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: {
+        event: "content-block-delta",
+        index: 0,
+        content: { type: "text", text },
+      },
+    },
+  } as unknown as Event;
+}
+
 function namespacedLifecycleEvent(
   namespace: readonly string[],
   event: "started" | "completed",
@@ -852,6 +884,152 @@ describe("StreamController", () => {
       expect(thread.submitRun).toHaveBeenCalled();
       expect(subscribe).toHaveBeenCalled();
     });
+    await controller.dispose();
+  });
+
+  it("does not re-stream seeded messages when the first submit replays an idle thread", async () => {
+    // Open a finished thread (idle), seeded from getState with a complete
+    // tail. On the first submit the deferred pump comes up and the
+    // transport replays the finished run from seq=0 — including the
+    // `messages` channel. That replay must NOT clobber the seeded tail by
+    // re-streaming it from an empty start (the visible "messages replay").
+    const rootSubscription = makePushableSubscription();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const seededMessages = [
+      { type: "human", content: "ship it", id: "human-1" },
+      { type: "ai", id: "ai-1", content: "All done." },
+    ];
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: seededMessages },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-latest" },
+          metadata: { step: 5 },
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-idle",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().messages).toHaveLength(2);
+    });
+
+    void controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    await rootSubscription.started;
+
+    // seq=0 replay of the finished run re-streams ai-1 from an empty start.
+    rootSubscription.push(messageStartEvent("ai-1", 1));
+    rootSubscription.push(messageDeltaEvent(2, "A"));
+    rootSubscription.push(messageDeltaEvent(3, "All do"));
+
+    // Give the projection's macrotask flush time to (incorrectly) clobber.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const messages = controller.rootStore.getSnapshot().messages;
+    expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+      "human-1",
+      "ai-1",
+    ]);
+    expect((messages[1] as { text?: string }).text).toBe("All done.");
+
+    await controller.dispose();
+  });
+
+  it("does not re-stream seeded messages on idle submit when getState omits metadata.step", async () => {
+    // Same as above, but the idle thread's getState carries no
+    // metadata.step (server/custom transport). The seal boundary is then
+    // unknown, so the deferred pump's replayed `values` checkpoints —
+    // which carry their own increasing steps — must NOT advance the
+    // timeline past the seed and lift the seal mid-replay (the bug).
+    const rootSubscription = makePushableSubscription();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const seededMessages = [
+      { type: "human", content: "ship it", id: "human-1" },
+      { type: "ai", id: "ai-1", content: "All done." },
+    ];
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: seededMessages },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-latest" },
+          // No metadata.step — the seal boundary is unknown.
+          metadata: {},
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-idle-no-step",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().messages).toHaveLength(2);
+    });
+
+    void controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    await rootSubscription.started;
+
+    // seq=0 replay of the finished run: its checkpoints carry increasing
+    // steps that initialize and then advance the projection's high-water
+    // mark. With an unknown seal boundary these must not lift the seal.
+    rootSubscription.push(checkpointsEvent(1, 1));
+    rootSubscription.push(valuesEvent(seededMessages, 2));
+    rootSubscription.push(checkpointsEvent(2, 3));
+    rootSubscription.push(valuesEvent(seededMessages, 4));
+
+    // ...and the replayed `messages` channel re-streams ai-1 from empty.
+    rootSubscription.push(messageStartEvent("ai-1", 5));
+    rootSubscription.push(messageDeltaEvent(6, "A"));
+    rootSubscription.push(messageDeltaEvent(7, "All do"));
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const messages = controller.rootStore.getSnapshot().messages;
+    expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+      "human-1",
+      "ai-1",
+    ]);
+    expect((messages[1] as { text?: string }).text).toBe("All done.");
+
     await controller.dispose();
   });
 

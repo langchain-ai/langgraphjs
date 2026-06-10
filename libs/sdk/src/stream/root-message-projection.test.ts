@@ -821,6 +821,156 @@ describe("RootMessageProjection", () => {
     });
   });
 
+  describe("sealMessageIds", () => {
+    it("drops replayed streamed deltas for a sealed (idle-seeded) message", async () => {
+      const { store, projection } = makeProjection();
+
+      // Seed an idle thread's complete tail from getState, then seal it.
+      const seeded = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      projection.sealMessageIds(["a1"]);
+      await drainFlush();
+      expect(store.getSnapshot().messages[0].text).toBe("All done.");
+
+      // The deferred pump's seq=0 replay re-streams a1 from an empty
+      // start. Without the seal this would clobber the seeded content
+      // and re-stream the whole turn.
+      projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
+      projection.handleMessage(blockStartEvent(0, { type: "text", text: "" }));
+      projection.handleMessage(blockDeltaEvent(0, { type: "text", text: "A" }));
+
+      await drainFlush();
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].id).toBe("a1");
+      expect(snap.messages[0].text).toBe("All done.");
+    });
+
+    it("still streams a non-sealed message id from the next run", async () => {
+      const { store, projection } = makeProjection();
+
+      const seeded = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      projection.sealMessageIds(["a1"]);
+      await drainFlush();
+
+      // The next run appends a brand-new id, which must stream normally.
+      projection.handleMessage(startEvent({ id: "a2", role: "ai" }));
+      projection.handleMessage(blockStartEvent(0, { type: "text", text: "" }));
+      projection.handleMessage(
+        blockDeltaEvent(0, { type: "text", text: "fresh" })
+      );
+
+      await drainFlush();
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(2);
+      expect(snap.messages[0].text).toBe("All done.");
+      expect(snap.messages[1].id).toBe("a2");
+      expect(snap.messages[1].text).toBe("fresh");
+    });
+
+    it("lifts the seal once a newer checkpoint advances the timeline", async () => {
+      const { store, projection } = makeProjection();
+
+      const seeded = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      projection.sealMessageIds(["a1"]);
+
+      // A genuinely newer checkpoint (step 6 > seed 5) means the live
+      // timeline advanced past the replayed history, so the seal lifts.
+      const advanced = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [advanced] } as State, [advanced], {
+        step: 6,
+      });
+
+      // A later delta for a1 now streams again (seal lifted).
+      projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "text", text: "edited" })
+      );
+
+      await drainFlush();
+      expect(store.getSnapshot().messages[0].text).toBe("edited");
+    });
+
+    it("does not lift on replayed checkpoints at or below the seed step", async () => {
+      const { store, projection } = makeProjection();
+
+      const seeded = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      projection.sealMessageIds(["a1"]);
+      await drainFlush();
+
+      // The deferred pump replays the finished run: its checkpoints are
+      // at or below the seed step (5). They advance nothing past the
+      // seal boundary, so the seal must hold.
+      const replay = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [replay] } as State, [replay], {
+        step: 4,
+      });
+      const replayAtSeed = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues(
+        { messages: [replayAtSeed] } as State,
+        [replayAtSeed],
+        { step: 5 }
+      );
+
+      // Replayed messages deltas for a1 must still be dropped.
+      projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
+      projection.handleMessage(blockStartEvent(0, { type: "text", text: "" }));
+      projection.handleMessage(blockDeltaEvent(0, { type: "text", text: "A" }));
+
+      await drainFlush();
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].text).toBe("All done.");
+    });
+
+    it("holds the seal when the seed step is unknown and replay advances maxStep", async () => {
+      const { store, projection } = makeProjection();
+
+      // Idle thread whose getState() carried no metadata.step: the seed
+      // applyValues has no step, so the projection starts with no
+      // high-water mark and the seal boundary is unknown.
+      const seeded = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [seeded] } as State, [seeded]);
+      projection.sealMessageIds(["a1"]);
+      await drainFlush();
+      expect(store.getSnapshot().messages[0].text).toBe("All done.");
+
+      // The deferred pump replays the finished run from seq=0: its values
+      // checkpoints carry increasing steps that initialize and then
+      // advance maxStep. These are replay, not a new run, so an unknown
+      // seal boundary must NOT lift the seal (the bug this guards).
+      const replay1 = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [replay1] } as State, [replay1], {
+        step: 1,
+      });
+      const replay2 = new AIMessage({ id: "a1", content: "All done." });
+      projection.applyValues({ messages: [replay2] } as State, [replay2], {
+        step: 2,
+      });
+
+      // Replayed messages deltas for a1 must still be dropped.
+      projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
+      projection.handleMessage(blockStartEvent(0, { type: "text", text: "" }));
+      projection.handleMessage(blockDeltaEvent(0, { type: "text", text: "A" }));
+
+      await drainFlush();
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].text).toBe("All done.");
+    });
+  });
+
   describe("reset", () => {
     it("clears all per-thread state", async () => {
       const { store, projection } = makeProjection();
