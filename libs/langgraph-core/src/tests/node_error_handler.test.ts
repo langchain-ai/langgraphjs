@@ -17,7 +17,7 @@ import { START } from "../constants.js";
 import { Command } from "../constants.js";
 import { NodeError } from "../errors.js";
 import { interrupt } from "../interrupt.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 
 beforeAll(() => {
   // Need to initialize the AsyncLocalStorage singleton for interrupt() to work.
