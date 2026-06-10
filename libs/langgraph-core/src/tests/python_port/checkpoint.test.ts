@@ -1373,13 +1373,15 @@ describe("Checkpoint Tests (Python port)", () => {
         newHistory.push(state);
       }
 
-      // Check updated history
-      expect(newHistory.length).toBe(history.length + 1);
+      // +2: one fork checkpoint from time travel, one from the new execution
+      expect(newHistory.length).toBe(history.length + 2);
+      // newHistory[0] is the new execution result, newHistory[1] is the fork
+      expect(newHistory[1].metadata?.source).toBe("fork");
 
-      // Compare original history with new history (skipping the first new state)
+      // Compare original history with new history (skipping the first 2 new states)
       for (let i = 0; i < history.length; i += 1) {
         const original = history[i];
-        const newState = newHistory[i + 1];
+        const newState = newHistory[i + 2];
 
         expect(newState.values).toEqual(original.values);
         expect(newState.next).toEqual(original.next);
@@ -1397,7 +1399,7 @@ describe("Checkpoint Tests (Python port)", () => {
       };
 
       // Compare tasks
-      expect(getTasks(newHistory, 1)).toEqual(getTasks(history, 0));
+      expect(getTasks(newHistory, 2)).toEqual(getTasks(history, 0));
     } else {
       throw new Error("Expected checkpoint_id to be defined in history[1]");
     }
@@ -1548,7 +1550,7 @@ describe("Checkpoint Tests (Python port)", () => {
     // Verify checkpoints are sorted descending by ID
     expect(
       thread1History[0]?.config?.configurable?.checkpoint_id >
-        thread1History[1].config?.configurable?.checkpoint_id
+      thread1History[1].config?.configurable?.checkpoint_id
     ).toBe(true);
 
     // Test cursor pagination (get checkpoint after the first one)
@@ -1590,7 +1592,7 @@ describe("Checkpoint Tests (Python port)", () => {
     // Update creates a new checkpoint with higher ID
     expect(
       thread1NextConfig.configurable?.checkpoint_id >
-        thread1History[0]?.config?.configurable?.checkpoint_id
+      thread1History[0]?.config?.configurable?.checkpoint_id
     ).toBe(true);
 
     // There should now be 8 checkpoints in history
@@ -1923,31 +1925,31 @@ describe("Long-term Memory Store Tests (Python port)", () => {
     // Define a node that accesses store from config.store
     const getNodeFunc =
       (i?: number) =>
-      async (
-        state: typeof StateAnnotation.State,
-        config: LangGraphRunnableConfig
-      ) => {
-        // Access the store from config.store, which is how it's passed in JS
-        const { store } = config;
-        expect(store).toBeDefined();
+        async (
+          state: typeof StateAnnotation.State,
+          config: LangGraphRunnableConfig
+        ) => {
+          // Access the store from config.store, which is how it's passed in JS
+          const { store } = config;
+          expect(store).toBeDefined();
 
-        const putNamespace =
-          i !== undefined &&
-          [thread1, thread2].includes(config.configurable?.thread_id)
-            ? namespace
-            : [`foo_${i ?? ""}`, "bar"];
+          const putNamespace =
+            i !== undefined &&
+              [thread1, thread2].includes(config.configurable?.thread_id)
+              ? namespace
+              : [`foo_${i ?? ""}`, "bar"];
 
-        if (store) {
-          // Use the store to write data
-          await store.put(putNamespace, docId, {
-            ...doc,
-            from_thread: config.configurable?.thread_id,
-            some_val: state.count,
-          });
-        }
+          if (store) {
+            // Use the store to write data
+            await store.put(putNamespace, docId, {
+              ...doc,
+              from_thread: config.configurable?.thread_id,
+              some_val: state.count,
+            });
+          }
 
-        return { count: 1 };
-      };
+          return { count: 1 };
+        };
 
     // Another node that also uses the store
     const otherNodeFunc = async (

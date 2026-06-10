@@ -82,7 +82,10 @@ export default defineConfig((env) => {
       ...common.test,
       name: "unit",
       environment: "node",
-      setupFiles: ["./src/tests/setup.node.ts"],
+      setupFiles: [
+        "./src/tests/setup.node.ts",
+        "./src/tests/matchers/setup.ts",
+      ],
       include: ["**/*.test-d.ts", ...configDefaults.include],
       typecheck: { enabled: true },
     },
