@@ -18,6 +18,7 @@ import {
   StreamController,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
+  type AssembledToolCall,
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
@@ -355,9 +356,25 @@ export interface UseStreamReturn<
  * components that pass a `stream` through to selector composables
  * without reading `values` directly. Mirrors the React
  * `AnyStream` alias.
+ *
+ * Widening the generic slots to `any` is **not** enough on its own:
+ * members computed from `T` in covariant positions don't collapse to a
+ * top type under `any`. `toolCalls: InferToolCalls<any>[]` resolves to
+ * `AssembledToolCall<…, never>[]` — the `never` output slot is narrower
+ * than a concrete handle's `AssembledToolCall<…, unknown>[]`, so a
+ * fully-typed `useStream<typeof agent>()` handle would fail to assign
+ * and every `useToolCalls(stream)` call would need an `as AnyStream`
+ * cast. Override `toolCalls` / `values` with their widest forms so the
+ * erased handle is a true supertype of every concrete `UseStreamReturn`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStream = UseStreamReturn<any, any, any>;
+export type AnyStream = Omit<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  UseStreamReturn<any, any, any>,
+  "toolCalls" | "values"
+> & {
+  readonly toolCalls: AssembledToolCall[];
+  readonly values: unknown;
+};
 
 /**
  * Svelte 5 binding for the v2-native stream runtime.
@@ -661,10 +678,7 @@ export type UseStreamResult<
  *
  * @internal
  */
-export function getRegistry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>
-): ChannelRegistry {
+export function getRegistry(stream: AnyStream): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }
 
