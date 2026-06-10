@@ -20,8 +20,8 @@ import {
   toError,
   isProtocolResponse,
 } from "./utils.js";
-import { BytesLineDecoder, SSEDecoder } from "./decoder.js";
-import { IterableReadableStream } from "./stream.js";
+import { BytesLineDecoder, SSEDecoder } from "../../../utils/sse.js";
+import { IterableReadableStream } from "../../../utils/stream.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
@@ -32,11 +32,11 @@ import { IterableReadableStream } from "./stream.js";
 export class ProtocolSseTransportAdapter implements TransportAdapter {
   readonly threadId: string;
 
+  readonly apiUrl: string;
+
   private readonly queue = new AsyncQueue<Message>();
 
   private readonly fetchImpl: typeof fetch;
-
-  private readonly apiUrl: string;
 
   private readonly defaultHeaders: Record<string, HeaderValue>;
 
@@ -47,6 +47,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
   private readonly commandsUrl: string;
 
   private readonly streamUrl: string;
+
+  private readonly stateUrl: string;
 
   private readonly sessionAbortController = new AbortController();
 
@@ -65,6 +67,55 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       options.paths?.commands ?? `/threads/${this.threadId}/commands`;
     this.streamUrl =
       options.paths?.stream ?? `/threads/${this.threadId}/stream/events`;
+    this.stateUrl = options.paths?.state ?? `/threads/${this.threadId}/state`;
+  }
+
+  /**
+   * Fetch checkpointed thread state for hydration.
+   *
+   * Uses `GET`, matching `client.threads.getState()` and both LangGraph
+   * Platform and Agent Protocol custom backends (`POST` is reserved for
+   * `updateState`).
+   */
+  async getState<StateType = unknown>(): Promise<{
+    values: StateType;
+    next?: unknown;
+    tasks?: unknown;
+    metadata?: unknown;
+    checkpoint?: { checkpoint_id?: string } | null;
+    parent_checkpoint?: { checkpoint_id?: string } | null;
+  } | null> {
+    const url = toAbsoluteUrl(this.apiUrl, this.stateUrl);
+    let requestInit: RequestInit = {
+      method: "GET",
+      headers: mergeHeaders(this.defaultHeaders, {}),
+    };
+
+    if (this.onRequest) {
+      requestInit = await this.onRequest(url, requestInit);
+    }
+
+    const fetchImpl = await this.resolveFetch();
+    const response = await fetchImpl(url.toString(), requestInit);
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      const error = toError(
+        new Error(
+          `Thread state request failed: ${response.status} ${response.statusText}`
+        )
+      ) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+
+    return (await response.json()) as {
+      values: StateType;
+      next?: unknown;
+      tasks?: unknown;
+      metadata?: unknown;
+      checkpoint?: { checkpoint_id?: string } | null;
+      parent_checkpoint?: { checkpoint_id?: string } | null;
+    };
   }
 
   private async resolveFetch(): Promise<typeof fetch> {

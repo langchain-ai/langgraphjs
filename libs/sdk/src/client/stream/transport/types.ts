@@ -8,6 +8,8 @@ export type ProtocolRequestHook = (
 export interface ProtocolTransportPaths {
   commands?: string;
   stream?: string;
+  /** `GET` path for thread-state hydration. Defaults to `/threads/:threadId/state`. */
+  state?: string;
 }
 
 export interface ProtocolSseTransportOptions {
@@ -38,10 +40,4 @@ export type QueueResult<T> =
 export type PendingResponse = {
   resolve: (response: CommandResponse | ErrorResponse) => void;
   reject: (error: Error) => void;
-};
-
-export type StreamPart = {
-  id: string | undefined;
-  event: string;
-  data: unknown;
 };

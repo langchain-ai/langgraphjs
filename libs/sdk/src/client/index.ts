@@ -155,6 +155,7 @@ export {
 } from "./stream/transport/index.js";
 
 export type { HttpAgentServerAdapterOptions } from "./stream/transport/index.js";
+export { resolveClientApiUrl } from "./stream/resolve-client-api-url.js";
 
 export type {
   ProtocolRequestHook,

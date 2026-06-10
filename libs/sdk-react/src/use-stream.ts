@@ -13,6 +13,7 @@ import {
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
@@ -450,6 +451,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
   // Narrow once: a non-string `transport` is a custom adapter; anything
@@ -458,23 +460,46 @@ export function useStream<
     asBag.transport != null && typeof asBag.transport !== "string";
   const transport = asBag.transport;
 
-  const client = useMemo<Client>(
-    () =>
-      asBag.client ??
-      (new ClientCtor({
-        apiUrl: asBag.apiUrl,
-        apiKey: asBag.apiKey,
-        callerOptions: asBag.callerOptions,
-        defaultHeaders: asBag.defaultHeaders,
-      }) as unknown as Client),
-    [
-      asBag.client,
-      asBag.apiUrl,
-      asBag.apiKey,
-      asBag.callerOptions,
-      asBag.defaultHeaders,
-    ]
-  );
+  // Stable client across re-renders.
+  //
+  // A `useMemo` is NOT a stability guarantee — React may drop a memo
+  // cache even when its deps are unchanged. If the client is dropped,
+  // the controller below (which depends on it) is recreated too, and a
+  // fresh controller re-fires its constructor hydrate: a *duplicate*
+  // `getState` + `getHistory`. A ref is never dropped, so the client
+  // stays referentially stable until its config actually changes.
+  const resolvedApiUrl = resolveClientApiUrl({
+    apiUrl: asBag.apiUrl,
+    transport: hasCustomAdapter ? transport : asBag.transport,
+  });
+  const clientDeps = [
+    asBag.client,
+    resolvedApiUrl,
+    asBag.apiKey,
+    asBag.callerOptions,
+    asBag.defaultHeaders,
+  ] as const;
+  const clientRef = useRef<{
+    deps: typeof clientDeps;
+    client: Client;
+  } | null>(null);
+  if (
+    clientRef.current == null ||
+    clientRef.current.deps.some((dep, i) => dep !== clientDeps[i])
+  ) {
+    clientRef.current = {
+      deps: clientDeps,
+      client:
+        asBag.client ??
+        (new ClientCtor({
+          apiUrl: resolvedApiUrl,
+          apiKey: asBag.apiKey,
+          callerOptions: asBag.callerOptions,
+          defaultHeaders: asBag.defaultHeaders,
+        }) as unknown as Client),
+    };
+  }
+  const client = clientRef.current.client;
 
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
@@ -483,13 +508,35 @@ export function useStream<
   const assistantId =
     "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
-  // Recreate the controller only on assistantId / client / transport
-  // change; the ThreadStream is bound to one assistant for its
-  // lifetime and we want selector-hook subscriptions to stay stable
-  // across renders.
-  const controller = useMemo(
-    () =>
-      new StreamController<StateType, InterruptType, ConfigurableType>({
+  // Stable controller across re-renders (same rationale as `clientRef`).
+  //
+  // The controller self-hydrates in its constructor, so recreating it
+  // re-issues `getState` + `getHistory`. Pinning it in a ref guarantees
+  // a single hydrate per mount even when React re-renders or re-runs the
+  // component body (a dropped `useMemo` here was the source of duplicate
+  // hydrate fetches). `threadId` is deliberately NOT part of the
+  // identity — the controller persists across thread switches and
+  // self-create (`onThreadId`) so in-flight runs are never orphaned;
+  // thread changes rebind in-place via `hydrate()` in the effect below.
+  // Recreated only when its identity inputs change; the previous
+  // instance is disposed by the `activate()` effect when `controller`
+  // changes.
+  const controllerDeps = [client, assistantId, transport] as const;
+  const controllerRef = useRef<{
+    deps: typeof controllerDeps;
+    controller: StreamController<StateType, InterruptType, ConfigurableType>;
+  } | null>(null);
+  if (
+    controllerRef.current == null ||
+    controllerRef.current.deps.some((dep, i) => dep !== controllerDeps[i])
+  ) {
+    controllerRef.current = {
+      deps: controllerDeps,
+      controller: new StreamController<
+        StateType,
+        InterruptType,
+        ConfigurableType
+      >({
         assistantId,
         // Cast: the runtime `Client` is state-shape agnostic, but the
         // controller declares `client: Client<StateType>` so its own
@@ -507,10 +554,11 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        optimistic: asBag.optimistic,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [client, assistantId, transport]
-  );
+    };
+  }
+  const controller = controllerRef.current.controller;
 
   // Rehydrate on threadId change. The initial hydrate is fired
   // synchronously inside the controller constructor so Suspense

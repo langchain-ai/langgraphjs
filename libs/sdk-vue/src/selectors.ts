@@ -4,6 +4,7 @@ import {
   readonly,
   shallowRef,
   toValue,
+  watchEffect,
   type ComputedRef,
   type MaybeRefOrGetter,
   type ShallowRef,
@@ -90,6 +91,38 @@ function isRoot(namespace: readonly string[]): boolean {
   return namespace.length === 0;
 }
 
+/**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Re-evaluates if `target` changes; the controller de-dupes and skips
+ * already-promoted ids so this is cheap to call from every consumer.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target?: MaybeRefOrGetter<SelectorTarget>
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  watchEffect(() => {
+    const id = subagentNeedingNamespace(toValue(target));
+    if (id != null) void controller.resolveSubagentNamespace(id);
+  });
+}
+
 function namespaceKey(namespace: readonly string[]): string {
   return namespace.join(NAMESPACE_SEPARATOR);
 }
@@ -113,6 +146,7 @@ export function useMessages(
   stream: AnyStream,
   target?: MaybeRefOrGetter<SelectorTarget>
 ): Readonly<ShallowRef<BaseMessage[]>> {
+  useResolveSubagentNamespace(stream, target);
   const namespace = computed(() => resolveNamespace(toValue(target)));
   if (isRoot(namespace.value)) return stream.messages;
   const key = computed(() => `messages|${namespaceKey(namespace.value)}`);
@@ -143,6 +177,7 @@ export function useToolCalls(
   stream: AnyStream,
   target?: MaybeRefOrGetter<SelectorTarget>
 ): Readonly<ShallowRef<AssembledToolCall[]>> {
+  useResolveSubagentNamespace(stream, target);
   const namespace = computed(() => resolveNamespace(toValue(target)));
   if (isRoot(namespace.value)) return stream.toolCalls;
   const key = computed(() => `toolCalls|${namespaceKey(namespace.value)}`);
@@ -198,8 +233,13 @@ export function useValues(
 }
 
 /**
- * Subscribe to a `custom:<name>` stream extension — most-recent
+ * Subscribe to a `custom:<name>` stream extension — the most-recent
  * payload emitted by the transformer, scoped to the target namespace.
+ *
+ * Returns only the latest value and resumes across serial runs, so it is
+ * ideal for "current state" panels (progress, score, status). When you
+ * need the full history of events rather than just the latest payload,
+ * use {@link useChannel} instead.
  */
 export function useExtension<T = unknown>(
   stream: AnyStream,
@@ -219,8 +259,13 @@ export function useExtension<T = unknown>(
 /**
  * Raw-events escape hatch. Subscribes to one or more channels at a
  * namespace and returns a bounded buffer of raw protocol events.
- * Prefer {@link useMessages} / {@link useToolCalls} / {@link useValues}
- * for the common cases.
+ *
+ * The buffer keeps accumulating across serial runs for the lifetime of
+ * the thread, so this is the hook to use for an event log / stream of a
+ * custom channel (e.g. `["custom:redaction-stats"]`). When you only need
+ * the latest payload of a single `custom:<name>` channel, prefer
+ * {@link useExtension}. For the common message/tool/value cases prefer
+ * {@link useMessages} / {@link useToolCalls} / {@link useValues}.
  */
 export type UseChannelOptions = ChannelProjectionOptions;
 

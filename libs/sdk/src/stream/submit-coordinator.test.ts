@@ -12,6 +12,7 @@ import type {
   RunExecutionReason,
   StreamControllerOptions,
 } from "./types.js";
+import type { OptimisticHandle } from "./optimistic-input.js";
 
 interface State {
   count?: number;
@@ -86,7 +87,20 @@ function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-function makeHarness(initial: { threadId?: string | null } = {}): Harness {
+interface OptimisticOverrides {
+  beginOptimistic?: (
+    input: unknown
+  ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+  settleOptimistic?: (
+    handle: OptimisticHandle,
+    event: "completed" | "failed" | "interrupted" | "aborted"
+  ) => void;
+}
+
+function makeHarness(
+  initial: { threadId?: string | null } = {},
+  optimistic: OptimisticOverrides = {}
+): Harness {
   const rootStore = makeRootStore();
   const queueStore = new StreamStore<SubmissionQueueSnapshot<State>>(
     EMPTY_QUEUE as SubmissionQueueSnapshot<State>
@@ -179,10 +193,13 @@ function makeHarness(initial: { threadId?: string | null } = {}): Harness {
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
+    awaitResumedRunTerminal: awaitNextTerminal,
     onRunStart,
     onRunCreated,
     onRunCompleted,
     onRunEnd,
+    beginOptimistic: optimistic.beginOptimistic,
+    settleOptimistic: optimistic.settleOptimistic,
   });
 
   return {
@@ -246,6 +263,132 @@ describe("SubmitCoordinator", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe("optimistic wiring", () => {
+    it("dispatches the optimistic dispatchInput instead of the raw input", async () => {
+      const handle = { echoedIds: ["m1"], restoreKeys: [] };
+      const beginOptimistic = vi.fn(() => ({
+        dispatchInput: { count: 1, messages: [{ id: "m1" }] },
+        handle,
+      }));
+      const settleOptimistic = vi.fn();
+      const h = makeHarness({}, { beginOptimistic, settleOptimistic });
+
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(beginOptimistic).toHaveBeenCalledWith({ count: 1 });
+      expect(h.submitRun.mock.calls[0][0].input).toEqual({
+        count: 1,
+        messages: [{ id: "m1" }],
+      });
+      expect(settleOptimistic).toHaveBeenCalledWith(handle, "completed");
+    });
+
+    it("settles with 'failed' when the run fails", async () => {
+      const handle = { echoedIds: ["m1"], restoreKeys: [] };
+      const settleOptimistic = vi.fn();
+      const h = makeHarness(
+        {},
+        {
+          beginOptimistic: () => ({ dispatchInput: { messages: [] }, handle }),
+          settleOptimistic,
+        }
+      );
+
+      const submitPromise = h.coordinator.submit({ messages: [] });
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "failed", error: "boom" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      expect(settleOptimistic).toHaveBeenCalledWith(handle, "failed");
+    });
+
+    it("settles the submit lifecycle when optimistic preparation throws", async () => {
+      const err = new Error("malformed message entry");
+      const beginOptimistic = vi.fn(() => {
+        throw err;
+      });
+      const settleOptimistic = vi.fn();
+      const onError = vi.fn();
+      const h = makeHarness({}, { beginOptimistic, settleOptimistic });
+
+      const submitPromise = h.coordinator.submit({ count: 1 }, { onError });
+      await vi.runAllTimersAsync();
+      await submitPromise;
+
+      // A synchronous prep failure is surfaced like a dispatch failure…
+      expect(h.rootStore.getSnapshot().error).toBe(err);
+      expect(onError).toHaveBeenCalledWith(err);
+      // …and the lifecycle is fully settled: not stuck loading, no run
+      // dispatched, no optimistic state to reconcile.
+      expect(h.rootStore.getSnapshot().isLoading).toBe(false);
+      expect(h.submitRun).not.toHaveBeenCalled();
+      expect(h.onRunStart).not.toHaveBeenCalled();
+      expect(settleOptimistic).not.toHaveBeenCalled();
+      expect(h.onRunEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not strand later submits behind a phantom run when prep throws", async () => {
+      const beginOptimistic = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("malformed message entry");
+        })
+        .mockImplementation(() => undefined);
+      const h = makeHarness({}, { beginOptimistic });
+
+      // First submit: preparation throws before any dispatch.
+      await h.coordinator.submit({ count: 1 });
+      await vi.runAllTimersAsync();
+      expect(h.submitRun).not.toHaveBeenCalled();
+
+      // The abort slot must be clear, so a `reject` submit proceeds and
+      // dispatches instead of seeing a phantom in-flight run.
+      const second = h.coordinator.submit(
+        { count: 2 },
+        { multitaskStrategy: "reject" }
+      );
+      await h.terminalRegistered();
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await expect(second).resolves.toBeUndefined();
+    });
+
+    it("does not echo an enqueued submission until it drains", async () => {
+      const beginOptimistic = vi.fn(() => ({
+        dispatchInput: { messages: [] },
+        handle: { echoedIds: [], restoreKeys: [] },
+      }));
+      const h = makeHarness({}, { beginOptimistic });
+
+      // First run in flight.
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      expect(beginOptimistic).toHaveBeenCalledTimes(1);
+
+      // Enqueue behind it — must NOT echo yet.
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      expect(beginOptimistic).toHaveBeenCalledTimes(1);
+
+      // Finish the first run; the drained submission now echoes.
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+
+      expect(beginOptimistic).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("submit (happy path)", () => {
@@ -474,6 +617,24 @@ describe("SubmitCoordinator", () => {
 
       // Cleanly resolve the first run.
       h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
+    it("enqueues a follow-up fired in the same tick as dispatch", async () => {
+      const h = makeHarness();
+      const first = h.coordinator.submit({ count: 1 });
+      void h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      await flush();
+
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.submitRun.mock.calls[0]?.[0]?.input).toEqual({ count: 1 });
+
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await first;

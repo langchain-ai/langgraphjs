@@ -21,6 +21,7 @@ import {
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
+  resolveClientApiUrl,
   type ClientConfig,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
@@ -434,6 +435,7 @@ export function useStream<
     messagesKey?: string;
     tools?: AnyHeadlessToolImplementation[];
     onTool?: OnToolCallback;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
 
@@ -454,7 +456,11 @@ export function useStream<
   // that flip a backend at runtime get a fresh client without a full
   // remount — the controller is swapped in lock-step below.
   const resolveApiUrl = () =>
-    toValue(asBag.apiUrl) ?? (pluginOptions as { apiUrl?: string }).apiUrl;
+    resolveClientApiUrl({
+      apiUrl:
+        toValue(asBag.apiUrl) ?? (pluginOptions as { apiUrl?: string }).apiUrl,
+      transport: hasCustomAdapter ? transport : asBag.transport,
+    });
   const resolveApiKey = () =>
     toValue(asBag.apiKey) ?? (pluginOptions as { apiKey?: string }).apiKey;
   const explicitClient =
@@ -502,6 +508,7 @@ export function useStream<
     onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
+    optimistic: asBag.optimistic,
   });
 
   // Deferred dispose: on the next microtask after the owning scope

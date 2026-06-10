@@ -6,11 +6,15 @@
   interface Props {
     apiUrl: string;
     assistantId?: string;
+    threadId?: string;
+    onThreadId?: (threadId: string) => void;
   }
 
   const {
     apiUrl,
     assistantId = "interruptAgent",
+    threadId,
+    onThreadId,
   }: Props = $props();
 
   const stream = useStream<
@@ -19,6 +23,8 @@
   >({
     assistantId,
     apiUrl,
+    threadId,
+    onThreadId,
   });
 
   const interruptNode = $derived(

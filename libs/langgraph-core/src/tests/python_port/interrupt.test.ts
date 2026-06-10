@@ -4,7 +4,6 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Command, END, START } from "../../constants.js";
 import { gatherIterator } from "../../utils.js";
 import { interrupt } from "../../interrupt.js";
-import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 import { Graph } from "../../graph/graph.js";
 import { StateGraph } from "../../graph/state.js";
 import { Annotation } from "../../graph/annotation.js";
@@ -298,9 +297,6 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
    * This test verifies dynamic interrupt behavior in a StateGraph with a checkpointer.
    */
   it("should handle dynamic interrupts with state graphs", async () => {
-    // Initialize AsyncLocalStorage for running with checkpointer
-    initializeAsyncLocalStorageSingleton();
-
     // Define our state schema
     const StateAnnotation = Annotation.Root({
       my_key: Annotation<string>({ reducer: (a, b) => (a || "") + b }),
@@ -429,9 +425,6 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
    * This test verifies dynamic interrupt behavior in a StateGraph with a nested subgraph.
    */
   it("should handle dynamic interrupts with nested subgraphs", async () => {
-    // Initialize AsyncLocalStorage for running with checkpointer
-    initializeAsyncLocalStorageSingleton();
-
     // Define our subgraph state schema
     const SubgraphStateAnnotation = Annotation.Root({
       my_key: Annotation<string>(),
@@ -577,9 +570,6 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
    * other node tasks are not cancelled.
    */
   it("should not cancel node task when another node is interrupted", async () => {
-    // Initialize AsyncLocalStorage for running with checkpointer
-    initializeAsyncLocalStorageSingleton();
-
     // Define our state schema
     const StateAnnotation = Annotation.Root({
       hello: Annotation<string>({
@@ -750,9 +740,6 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
    * ongoing tasks are cancelled and the state is properly saved.
    */
   it("should handle cancellation of stream", async () => {
-    // Initialize AsyncLocalStorage for running with checkpointer
-    initializeAsyncLocalStorageSingleton();
-
     // Define our state schema
     const StateAnnotation = Annotation.Root({
       value: Annotation<number>({
@@ -887,9 +874,6 @@ describe("Async Pregel Interrupt Tests (Python port)", () => {
    * ongoing tasks are cancelled and the state is properly saved.
    */
   it("should handle cancellation of astream_events v2", async () => {
-    // Initialize AsyncLocalStorage for running with checkpointer
-    initializeAsyncLocalStorageSingleton();
-
     // Define our state schema
     const StateAnnotation = Annotation.Root({
       value: Annotation<number>(),

@@ -1,5 +1,97 @@
 # @langchain/langgraph-sdk
 
+## 1.9.20
+
+### Patch Changes
+
+- [#2508](https://github.com/langchain-ai/langgraphjs/pull/2508) [`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): hydrate custom HttpAgentServerAdapter via transport getState
+
+  StreamController now prefers adapter getState() before client.threads.getState,
+  HttpAgentServerAdapter implements GET /threads/:id/state, and useStream inherits
+  apiUrl from the transport so hydration no longer defaults to localhost:8123.
+
+## 1.9.19
+
+### Patch Changes
+
+- [#2505](https://github.com/langchain-ai/langgraphjs/pull/2505) [`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Deduplicate the client stream transports: the protocol transport now shares the SSE decoder and `IterableReadableStream` helpers with the legacy transport instead of carrying its own copies. Removes the redundant `transport/decoder.ts` and `transport/stream.ts` shims (and a dead `StreamPart` re-export), importing the shared utilities from `utils/sse.ts` directly. No public API or behavior change.
+
+## 1.9.18
+
+### Patch Changes
+
+- [#2500](https://github.com/langchain-ai/langgraphjs/pull/2500) [`f67772f`](https://github.com/langchain-ai/langgraphjs/commit/f67772ff3f7ac13d81576d395d7529de4eb4390b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resume useChannel subscriptions across serial runs
+
+  Enable `resumeOnPause` on the channel projection so `useChannel` keeps
+  accumulating events across prompts on the same thread. Clarify selector
+  docs and JSDoc: `useChannel` for the full event stream, `useExtension`
+  for the latest payload.
+
+## 1.9.17
+
+### Patch Changes
+
+- [#2494](https://github.com/langchain-ai/langgraphjs/pull/2494) [`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): revive automatic optimistic submit echo
+
+  Echo `submit()` input into `values` / `messages` immediately with client-side
+  id minting and id-based reconciliation as the server streams back. Expose
+  per-message `optimisticStatus` via message metadata (`pending` → `sent` /
+  `failed`), shallow-merge non-message keys with rollback when no `values`
+  arrive, and add an `optimistic: false` hook opt-out. Plumb through React,
+  Vue, Svelte, and Angular with browser e2e coverage.
+
+- [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): coalesce duplicate thread read requests
+
+  Coalesce concurrent identical `threads.getState()` and `threads.getHistory()` reads within the SDK client so transient remounts do not issue duplicate hydrate requests. Request identity includes the prepared URL, body, method, and headers, and coalescing is skipped for caller-provided abort signals, raw response reads, and `onRequest` hooks to preserve auth and cancellation isolation.
+
+- [#2497](https://github.com/langchain-ai/langgraphjs/pull/2497) [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): reconcile subagents and subgraphs on thread reconnect
+
+  Seed deep-agent subagent cards from checkpoint messages and subgraph hosts from a single bounded `getHistory` read during `hydrate()`, so parallel fan-out discovery reappears immediately on refresh instead of waiting for SSE replay. Subagent execution namespaces are promoted through the existing guarded discovery state machine (bulk at hydrate, lazily per opened card via the selector layer). The getHistory cost is O(1) in requests regardless of fan-out width.
+
+## 1.9.16
+
+### Patch Changes
+
+- [#2486](https://github.com/langchain-ai/langgraphjs/pull/2486) [`244c24e`](https://github.com/langchain-ai/langgraphjs/commit/244c24eaccff4009df7d83e4320e51a4b310b15f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): surface resumed run failures on stream.error
+
+  Route `respond()` and `respondAll()` through a coordinator dispatch path that
+  writes the reactive `rootStore.error` slot when a resumed run reaches a failed
+  terminal or when `input.respond` dispatch fails, matching submit() behavior so
+  framework consumers (e.g. API-key retry UIs) observe resume failures via
+  `stream.error` instead of only `isLoading` transitions.
+
+## 1.9.15
+
+### Patch Changes
+
+- [#2484](https://github.com/langchain-ai/langgraphjs/pull/2484) [`9861f42`](https://github.com/langchain-ai/langgraphjs/commit/9861f42cc4fa23d9e80ae45a76d511d7618cda07) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): claim in-flight slot before root pump wait for enqueue
+
+  Move `#runAbort` and `isLoading` setup ahead of `waitForRootPumpReady()` so
+  `multitaskStrategy: "enqueue"` submits in the same tick land in `queueStore`
+  instead of bypassing the client queue.
+
+## 1.9.14
+
+### Patch Changes
+
+- [#2482](https://github.com/langchain-ai/langgraphjs/pull/2482) [`ba583b6`](https://github.com/langchain-ai/langgraphjs/commit/ba583b601d284c689bbfc15397686f1aa7481fba) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep subgraph status complete when values arrives late
+
+  `SubgraphDiscovery` no longer downgrades a terminal subgraph back to
+  `running` when a host-namespace `values` snapshot is observed after its
+  `completed` or `failed` lifecycle event. The content pump and lifecycle
+  watcher are independent streams, so this reordering could strand nodes as
+  perpetually running in `useStream` subgraph UIs.
+
+## 1.9.13
+
+### Patch Changes
+
+- [#2469](https://github.com/langchain-ai/langgraphjs/pull/2469) [`0bbe66e`](https://github.com/langchain-ai/langgraphjs/commit/0bbe66e31de3abe7526c7810755a40c31bc60e0d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): normalize HITL edit decisions for Python servers
+
+  `StreamController.respond()` now mirrors camelCase and snake_case on edit
+  decisions (`editedAction` / `edited_action`) so JS clients can resume
+  human-in-the-loop interrupts against Python LangGraph servers.
+
 ## 1.9.12
 
 ### Patch Changes

@@ -147,6 +147,49 @@ describe("SqliteSaver", () => {
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
   });
 
+  it("should filter on arbitrary metadata keys, not just CheckpointMetadata keys", async () => {
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+
+    const put = (id: string, tenant: string, env: string) =>
+      sqliteSaver.put(
+        { configurable: { thread_id: id } },
+        {
+          ...emptyCheckpoint(),
+          id: uuid6(parseInt(id, 10)),
+          ts: `2024-06-08T0${id}:00:00.000Z`,
+        },
+        {
+          source: "update",
+          step: 0,
+          parents: {},
+          // arbitrary user-defined keys that other checkpointers
+          // (MongoDB / Postgres / Redis) all support
+          tenant_id: tenant,
+          env,
+        } as Parameters<typeof sqliteSaver.put>[2]
+      );
+
+    await put("1", "acme", "prod");
+    await put("2", "acme", "dev");
+    await put("3", "globex", "prod");
+
+    const collect = async (
+      filter: Record<string, unknown>
+    ): Promise<CheckpointTuple[]> => {
+      const tuples: CheckpointTuple[] = [];
+      for await (const t of sqliteSaver.list({} as RunnableConfig, { filter })) {
+        tuples.push(t);
+      }
+      return tuples;
+    };
+
+    const ids = (tuples) => tuples.map(t => t.config.configurable?.thread_id).sort();
+    expect(ids(await collect({ tenant_id: "acme" }))).toEqual(["1", "2"]);
+    expect((await collect({ env: "prod" })).length).toBe(2);
+    expect((await collect({ tenant_id: "acme", env: "prod" })).length).toBe(1);
+    expect((await collect({ tenant_id: "missing" })).length).toBe(0);
+  });
+
   it("should delete thread", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
     await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {

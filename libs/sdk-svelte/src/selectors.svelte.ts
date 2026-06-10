@@ -92,6 +92,39 @@ function isGetter<T>(input: ValueOrGetter<T> | undefined): input is () => T {
 }
 
 /**
+ * If `target` is a subagent snapshot still on its default
+ * `tools:<toolCallId>` namespace, return that tool-call id. See the
+ * React selectors for the rationale (deep-agent subagents execute under
+ * a distinct `tools:<uuid>` namespace resolved lazily from history).
+ */
+function subagentNeedingNamespace(target: SelectorTarget): string | null {
+  if (target == null || Array.isArray(target)) return null;
+  const obj = target as { id?: unknown; namespace?: readonly string[] };
+  if (typeof obj.id !== "string" || !Array.isArray(obj.namespace)) return null;
+  if (obj.namespace.length === 1 && obj.namespace[0] === `tools:${obj.id}`) {
+    return obj.id;
+  }
+  return null;
+}
+
+/**
+ * Lazily resolve a subagent's execution namespace on first scoped use.
+ * Re-evaluates when a reactive `target` changes; the controller
+ * de-dupes and skips already-promoted ids.
+ */
+function useResolveSubagentNamespace(
+  stream: AnyStream,
+  target: ValueOrGetter<SelectorTarget> | undefined
+): void {
+  const controller = stream[STREAM_CONTROLLER];
+  $effect(() => {
+    const resolved = isGetter(target) ? target() : target;
+    const id = subagentNeedingNamespace(resolved);
+    if (id != null) void controller.resolveSubagentNamespace(id);
+  });
+}
+
+/**
  * Internal helper that wires a reactive-or-static target into
  * {@link useProjection}. Encapsulates the bookkeeping every selector
  * otherwise repeats.
@@ -165,6 +198,7 @@ export function useMessages(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<BaseMessage[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {
@@ -201,6 +235,7 @@ export function useToolCalls(
   stream: AnyStream,
   target?: ValueOrGetter<SelectorTarget>
 ): ReactiveValue<AssembledToolCall[]> {
+  useResolveSubagentNamespace(stream, target);
   if (!isGetter(target)) {
     const ns = resolveNamespace(target);
     if (isRoot(ns)) {
@@ -271,8 +306,13 @@ export function useValues(
 }
 
 /**
- * Subscribe to a `custom:<name>` stream extension — most-recent
+ * Subscribe to a `custom:<name>` stream extension — the most-recent
  * payload emitted by the transformer, scoped to the target namespace.
+ *
+ * Returns only the latest value and resumes across serial runs, so it is
+ * ideal for "current state" panels (progress, score, status). When you
+ * need the full history of events rather than just the latest payload,
+ * use {@link useChannel} instead.
  *
  * `name` accepts either a plain string or a getter so component
  * state can drive the extension name at runtime.
@@ -305,8 +345,13 @@ export function useExtension<T = unknown>(
 /**
  * Raw-events escape hatch. Subscribes to one or more channels at a
  * namespace and returns a bounded buffer of raw protocol events.
- * Prefer {@link useMessages} / {@link useToolCalls} / {@link useValues}
- * for the common cases.
+ *
+ * The buffer keeps accumulating across serial runs for the lifetime of
+ * the thread, so this is the hook to use for an event log / stream of a
+ * custom channel (e.g. `["custom:redaction-stats"]`). When you only need
+ * the latest payload of a single `custom:<name>` channel, prefer
+ * {@link useExtension}. For the common message/tool/value cases prefer
+ * {@link useMessages} / {@link useToolCalls} / {@link useValues}.
  */
 export type UseChannelOptions = ChannelProjectionOptions;
 

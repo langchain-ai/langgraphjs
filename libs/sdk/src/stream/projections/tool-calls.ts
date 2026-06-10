@@ -59,19 +59,34 @@ export function toolCallsProjection(
         };
       }
 
-      const runtime = openProjectionSubscription({
-        thread,
-        channels: ["tools"],
-        namespace: ns,
-        onEvent(event) {
-          if (event.method !== "tools") return;
-          applyToolsEvent(event as ToolsEvent);
-        },
-      });
+      let runtime: ProjectionRuntime | undefined;
+      const openSubscription = () => {
+        runtime = openProjectionSubscription({
+          thread,
+          channels: ["tools"],
+          namespace: ns,
+          onEvent(event) {
+            if (event.method !== "tools") return;
+            applyToolsEvent(event as ToolsEvent);
+          },
+        });
+      };
+
+      let disposed = false;
+      void (async () => {
+        const seeded =
+          (await rootBus.trySeedFromHistory?.({
+            kind: "toolCalls",
+            namespace: ns,
+            store,
+          })) === true;
+        if (!seeded && !disposed) openSubscription();
+      })();
 
       return {
         async dispose() {
-          await runtime.dispose();
+          disposed = true;
+          await runtime?.dispose();
         },
       };
     },

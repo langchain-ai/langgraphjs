@@ -91,8 +91,8 @@ import {
 import { PregelNode } from "./read.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import {
+  createDuplexStream,
   IterableReadableWritableStream,
-  StreamChunk,
   StreamChunkMeta,
 } from "./stream.js";
 import { isXXH3 } from "../hash.js";
@@ -151,19 +151,6 @@ type PregelLoopParams = {
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
 };
-
-function createDuplexStream(...streams: IterableReadableWritableStream[]) {
-  return new IterableReadableWritableStream({
-    passthroughFn: (value: StreamChunk) => {
-      for (const stream of streams) {
-        if (stream.modes.has(value[1])) {
-          stream.push(value);
-        }
-      }
-    },
-    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
-  });
-}
 
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
   protected cache: BaseCache<PendingWrite<string>[]>;
@@ -766,13 +753,14 @@ export class PregelLoop {
     } else if (
       Object.values(this.tasks).every((task) => task.writes.length > 0)
     ) {
+      const finishTaskList = Object.values(this.tasks);
       // finish superstep
-      const writes = Object.values(this.tasks).flatMap((t) => t.writes);
+      const writes = finishTaskList.flatMap((t) => t.writes);
       // All tasks have finished
       this.updatedChannels = _applyWrites(
         this.checkpoint,
         this.channels,
-        Object.values(this.tasks),
+        finishTaskList,
         this.checkpointerGetNextVersion,
         this.triggerToNodes
       );
@@ -792,11 +780,7 @@ export class PregelLoop {
       this._emitValuesWithCheckpointMeta(valuesOutput);
       // after execution, check if we should interrupt
       if (
-        shouldInterrupt(
-          this.checkpoint,
-          this.interruptAfter,
-          Object.values(this.tasks)
-        )
+        shouldInterrupt(this.checkpoint, this.interruptAfter, finishTaskList)
       ) {
         this.status = "interrupt_after";
         throw new GraphInterrupt();
@@ -833,6 +817,7 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
+    const taskList = Object.values(this.tasks);
 
     // Full-state checkpoint snapshots are expensive; skip unless a consumer
     // subscribed to "checkpoints" or the legacy "debug" wrapper mode.
@@ -848,7 +833,7 @@ export class PregelLoop {
               this.channels,
               this.streamKeys,
               this.checkpointMetadata,
-              Object.values(this.tasks),
+              taskList,
               this.checkpointPendingWrites,
               this.prevCheckpointConfig,
               this.outputKeys
@@ -859,7 +844,7 @@ export class PregelLoop {
       );
     }
 
-    if (Object.values(this.tasks).length === 0) {
+    if (taskList.length === 0) {
       this.status = "done";
       return false;
     }
@@ -869,37 +854,31 @@ export class PregelLoop {
         if (k === ERROR || k === INTERRUPT || k === RESUME) {
           continue;
         }
-        const task = Object.values(this.tasks).find((t) => t.id === tid);
+        const task = taskList.find((t) => t.id === tid);
         if (task) {
           task.writes.push([k, v]);
         }
       }
-      for (const task of Object.values(this.tasks)) {
+      for (const task of taskList) {
         if (task.writes.length > 0) {
           this._outputWrites(task.id, task.writes, true);
         }
       }
     }
     // if all tasks have finished, re-tick
-    if (Object.values(this.tasks).every((task) => task.writes.length > 0)) {
+    if (taskList.every((task) => task.writes.length > 0)) {
       return this.tick({ inputKeys });
     }
 
     // Before execution, check if we should interrupt
-    if (
-      shouldInterrupt(
-        this.checkpoint,
-        this.interruptBefore,
-        Object.values(this.tasks)
-      )
-    ) {
+    if (shouldInterrupt(this.checkpoint, this.interruptBefore, taskList)) {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
     }
 
     if (this.stream.modes.has("tasks") || this.stream.modes.has("debug")) {
       const debugOutput = await gatherIterator(
-        prefixGenerator(mapDebugTasks(Object.values(this.tasks)), "tasks")
+        prefixGenerator(mapDebugTasks(taskList), "tasks")
       );
       this._emit(debugOutput);
     }
@@ -1105,18 +1084,22 @@ export class PregelLoop {
     }
     const isCommandUpdateOrGoto =
       isCommand(this.input) && nullWrites.length > 0;
-    if (this.isResuming || isCommandUpdateOrGoto) {
+    const cachedIsResuming = this.isResuming;
+    if (cachedIsResuming || isCommandUpdateOrGoto) {
+      // One spread (O(N)) instead of O(N²) per-channel spreads. Must be a
+      // new object — copyCheckpoint shallow-copies versions_seen.
+      const interruptSeen: Record<string, string | number> = {
+        ...this.checkpoint.versions_seen[INTERRUPT],
+      };
       for (const channelName in this.channels) {
         if (!Object.prototype.hasOwnProperty.call(this.channels, channelName))
           continue;
         if (this.checkpoint.channel_versions[channelName] !== undefined) {
-          const version = this.checkpoint.channel_versions[channelName];
-          this.checkpoint.versions_seen[INTERRUPT] = {
-            ...this.checkpoint.versions_seen[INTERRUPT],
-            [channelName]: version,
-          };
+          interruptSeen[channelName] =
+            this.checkpoint.channel_versions[channelName];
         }
       }
+      this.checkpoint.versions_seen[INTERRUPT] = interruptSeen;
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -1128,7 +1111,7 @@ export class PregelLoop {
       // `isResuming` and `isCommandUpdateOrGoto` are true (resuming from
       // an interrupt with a Command update/goto), the resume path wins
       // and no new input checkpoint is created here.
-      if (this.isResuming) {
+      if (cachedIsResuming) {
         this.input = INPUT_RESUMING;
       } else if (isCommandUpdateOrGoto) {
         // Persist the input checkpoint BEFORE emitting values so the
@@ -1189,19 +1172,10 @@ export class PregelLoop {
     }
   }
 
-  protected _emit(
-    values: Array<
-      [StreamMode, unknown] | [StreamMode, unknown, StreamChunkMeta | undefined]
-    >
-  ) {
-    for (const entry of values) {
-      const [mode, payload, meta] = entry as [
-        StreamMode,
-        unknown,
-        StreamChunkMeta | undefined,
-      ];
+  protected _emit(values: Array<[StreamMode, unknown]>) {
+    for (const [mode, payload] of values) {
       if (this.stream.modes.has(mode)) {
-        this.stream.push([this.checkpointNamespace, mode, payload, meta]);
+        this.stream.push([this.checkpointNamespace, mode, payload]);
       }
 
       // debug mode is a "checkpoints" or "tasks" wrapped in an object
@@ -1237,13 +1211,9 @@ export class PregelLoop {
 
   /**
    * Build a {@link StreamChunkMeta} describing the currently active checkpoint.
-   * Used to enrich `values` tuples with a lightweight fork pointer that
-   * `streamEvents(..., { version: "v3" })` promotes to a companion
-   * `checkpoints` event (emitted immediately before its paired `values`).
-   * This envelope backs branching / time-travel UIs
-   * (`useMessageMetadata(msg.id).parentCheckpointId`). Returns `undefined`
-   * if no checkpoint metadata is available yet (no checkpointer
-   * configured, or first superstep before the input checkpoint lands).
+   * Emitted as a separate ``[namespace, "checkpoints", envelope]`` chunk before
+   * the paired ``values`` chunk. Returns `undefined` if no checkpoint metadata
+   * is available yet.
    */
   protected _currentCheckpointMeta(): StreamChunkMeta | undefined {
     if (!this.checkpointMetadata || !this.checkpoint?.id) return undefined;
@@ -1261,25 +1231,29 @@ export class PregelLoop {
   }
 
   /**
-   * Emit the given stream entries, attaching the current checkpoint meta to
-   * every `"values"` entry. Callers MUST invoke this after the checkpoint
-   * corresponding to the emitted state has been created (typically via
-   * `_putCheckpoint`), so the attached `id` points at the fork target that
-   * captures the emitted state.
+   * Emit stream entries. When checkpoint meta is available, push a lightweight
+   * ``[namespace, "checkpoints", envelope]`` chunk before each ``values`` chunk.
    */
   protected _emitValuesWithCheckpointMeta(
     entries: [StreamMode, unknown][]
   ): void {
     const meta = this._currentCheckpointMeta();
-    if (!meta) {
-      this._emit(entries);
-      return;
+    for (const [mode, payload] of entries) {
+      if (
+        mode === "values" &&
+        meta?.checkpoint != null &&
+        !this.stream.modes.has("checkpoints")
+      ) {
+        this.stream.push([
+          this.checkpointNamespace,
+          "checkpoints",
+          meta.checkpoint,
+        ]);
+      }
+      if (this.stream.modes.has(mode)) {
+        this.stream.push([this.checkpointNamespace, mode, payload]);
+      }
     }
-    this._emit(
-      entries.map(([mode, payload]) =>
-        mode === "values" ? [mode, payload, meta] : [mode, payload]
-      )
-    );
   }
 
   protected _putCheckpoint(

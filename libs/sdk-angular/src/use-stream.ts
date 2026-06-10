@@ -20,6 +20,7 @@ import {
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
+  resolveClientApiUrl,
   type ClientConfig,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
@@ -412,6 +413,7 @@ export function useStream<
     messagesKey?: string;
     tools?: AnyHeadlessToolImplementation[];
     onTool?: OnToolCallback;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
 
@@ -422,7 +424,10 @@ export function useStream<
   const client: Client =
     asBag.client ??
     (new ClientCtor({
-      apiUrl: asBag.apiUrl,
+      apiUrl: resolveClientApiUrl({
+        apiUrl: asBag.apiUrl,
+        transport: hasCustomAdapter ? transport : asBag.transport,
+      }),
       apiKey: asBag.apiKey,
       callerOptions: asBag.callerOptions,
       defaultHeaders: asBag.defaultHeaders,
@@ -466,6 +471,7 @@ export function useStream<
     onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
+    optimistic: asBag.optimistic,
   });
 
   // Deferred dispose — matches the React `useEffect(() =>

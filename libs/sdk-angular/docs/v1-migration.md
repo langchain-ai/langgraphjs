@@ -1,8 +1,8 @@
 # Migrating to `@langchain/angular` v1
 
 This guide walks application authors through the jump from the pre-v1
-`injectStream` / `useStream` API to the v2-native `injectStream` that
-ships with `@langchain/angular@^1.0.0`.
+`injectStream` / `useStream` API to the `injectStream` injector built for
+**new event-based streaming**, which ships with `@langchain/angular@^1.0.0`.
 
 Short version: **the `injectStream` import name does not change, but
 the return shape, option bag, and protocol semantics do.** Most chat
@@ -33,14 +33,14 @@ covered in their own sections.
 
 ## 1. Why the breaking change?
 
-The legacy `injectStream` was built against the v1 streaming protocol
+The legacy `injectStream` was built against the legacy streaming protocol
 and accreted a large surface of opt-in callbacks (`onUpdateEvent`,
 `onCustomEvent`, `onMetadataEvent`, `onStop`, …) plus derived state
 (`history`, `branch`, `experimental_branchTree`,
 `getMessagesMetadata`, `joinStream`) that had to be recomputed on every
 change-detection cycle.
 
-The v1 injector targets **protocol v2**. In practice that means:
+The v1 package injector uses **new event-based streaming**. In practice that means:
 
 - **Selector-based subscriptions.** Namespaced data (subagent
   messages, subgraph tool calls, media) is opened *only* when a
@@ -70,11 +70,15 @@ The net effect is a smaller, faster, more predictable API.
 For the typical chat app, this is the whole migration. Deeper changes
 are flagged in the later sections.
 
-- [ ] **Upgrade** `@langchain/angular` to `^1.0.0`.
+- [ ] **Upgrade** `@langchain/angular` to `^1.0.0` and
+      `@langchain/langgraph-sdk` to the matching new event-based streaming
+      runtime.
 - [ ] **Imports stay the same** — `import { injectStream } from "@langchain/angular"`
-      now resolves to the v2-native injector. A framework-agnostic
-      `useStream` factory is also exported for library code / advanced
-      callers (see §11); prefer `injectStream` in component code.
+      now resolves to the injector built for new event-based streaming.
+      `useStreamExperimental` is
+      not exported from this package. A framework-agnostic `useStream`
+      factory is also exported for library code / advanced callers (see §11);
+      prefer `injectStream` in component code.
 - [ ] **Remove these option-bag fields** (see §3):
       `onError`, `onFinish`, `onUpdateEvent`, `onCustomEvent`,
       `onMetadataEvent`, `onStop`, `fetchStateHistory`,
@@ -267,11 +271,11 @@ await this.stream.submit({ messages: new HumanMessage("hi") });
 | `context` | Fold into `config.configurable`. |
 | `checkpoint: { checkpoint_id }` | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed. |
 | `command: { resume }` | Use `stream.respond()` instead. |
-| `interruptBefore`, `interruptAfter` | Drop — not supported in v2. |
+| `interruptBefore`, `interruptAfter` | Drop — not supported with new event-based streaming. |
 | `metadata` | Unchanged. |
 | `multitaskStrategy` | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support. |
 | `onCompletion` | Use the hook-level `onCompleted` option for run-completion side effects. |
-| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Other fields map to protocol-v2 defaults. |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Other fields map to new event-based streaming defaults. |
 | **(new submit option)** `onError` | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error()` updates still happen in parallel. |
 | **(new)** `threadId` | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the `threadId` option changes again. |
 
@@ -556,13 +560,15 @@ It returns the same `StreamApi` shape as `injectStream`.
 
 ## 12. Type helpers
 
-| Legacy | v1 |
-|---|---|
-| `UseStream<T>` | `StreamApi<T>` for Angular code. |
-| `UseStreamOptions<T>` | `UseStreamOptions<T>` — now a discriminated union of the LGP and custom-adapter branches. |
-| `UseStreamTransport` | `AgentServerAdapter` (re-exported from `@langchain/angular` and `@langchain/langgraph-sdk`). |
-| `CustomStreamTransport` | Dropped. |
-| `StreamOrchestrator` | Dropped. |
+| Legacy                         | v1                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `UseStream<T>`                 | `StreamApi<T>` / `UseStreamReturn<T>` for Angular code (prefer `StreamApi<T>`).         |
+| `UseStreamOptions<State, Bag>` | `UseStreamOptions<State>` — discriminated union of the LGP and custom-adapter branches. |
+| `UseStreamTransport`           | `AgentServerAdapter` (re-exported from `@langchain/angular` and `@langchain/langgraph-sdk`). |
+| `CustomStreamTransport`        | Dropped.                                                                                |
+| `StreamOrchestrator`           | Dropped.                                                                                |
+| —                              | `AnyStream` — type-erased handle (`UseStreamReturn<any, any, any>`) for prop-drilling. |
+| —                              | `InjectSubmissionQueueReturn` — return shape of `injectSubmissionQueue(stream)`.        |
 
 `StreamApi<T>` and `UseStreamResult<T>` are aliases for the same stream
 handle. Prefer `StreamApi<T>` when writing Angular components,

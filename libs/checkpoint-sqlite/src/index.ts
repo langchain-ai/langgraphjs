@@ -36,33 +36,6 @@ interface PendingSendColumn {
   value: string;
 }
 
-// In the `SqliteSaver.list` method, we need to sanitize the `options.filter` argument to ensure it only contains keys
-// that are part of the `CheckpointMetadata` type. The lines below ensure that we get compile-time errors if the list
-// of keys that we use is out of sync with the `CheckpointMetadata` type.
-const checkpointMetadataKeys = ["source", "step", "parents"] as const;
-
-type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
-  keyof T,
-]
-  ? [keyof T] extends [K[number]]
-    ? K
-    : never
-  : never;
-
-function validateKeys<T, K extends readonly (keyof T)[]>(
-  keys: CheckKeys<T, K>
-): K {
-  return keys;
-}
-
-// If this line fails to compile, the list of keys that we use in the `SqliteSaver.list` method is out of sync with the
-// `CheckpointMetadata` type. In that case, just update `checkpointMetadataKeys` to contain all the keys in
-// `CheckpointMetadata`
-const validCheckpointMetadataKeys = validateKeys<
-  CheckpointMetadata,
-  typeof checkpointMetadataKeys
->(checkpointMetadataKeys);
-
 function prepareSql(db: DatabaseType, checkpointId: boolean) {
   const sql = `
   SELECT
@@ -314,16 +287,12 @@ CREATE TABLE IF NOT EXISTS writes (
     }
 
     const sanitizedFilter = Object.fromEntries(
-      Object.entries(filter ?? {}).filter(
-        ([key, value]) =>
-          value !== undefined &&
-          validCheckpointMetadataKeys.includes(key as keyof CheckpointMetadata)
-      )
+      Object.entries(filter ?? {}).filter(([, value]) => value !== undefined)
     );
 
     whereClause.push(
-      ...Object.entries(sanitizedFilter).map(
-        ([key]) => `jsonb(CAST(metadata AS TEXT))->'$.${key}' = ?`
+      ...Object.keys(sanitizedFilter).map(
+        () => `jsonb(CAST(metadata AS TEXT))->? = ?`
       )
     );
 
@@ -342,7 +311,10 @@ CREATE TABLE IF NOT EXISTS writes (
       thread_id,
       checkpoint_ns,
       before?.configurable?.checkpoint_id,
-      ...Object.values(sanitizedFilter).map((value) => JSON.stringify(value)),
+      ...Object.entries(sanitizedFilter).flatMap(([key, value]) => [
+        `$.${key}`,
+        JSON.stringify(value),
+      ]),
     ].filter((value) => value !== undefined && value !== null);
 
     const rows: CheckpointRow[] = this.db

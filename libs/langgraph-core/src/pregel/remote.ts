@@ -57,6 +57,8 @@ export type RemoteGraphParams = Omit<
   streamResumable?: boolean;
 };
 
+type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _serializeInputs = (obj: any): any => {
   if (obj === null || typeof obj !== "object") {
@@ -464,24 +466,27 @@ export class RemoteGraph<
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
-    }
+    },
+    streamOptions?: StreamEventsOptions
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
-      encoding: never;
-    }
-  ): IterableReadableStream<never>;
+      encoding: "text/event-stream";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
     _input: PregelInputType,
     _options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
-      encoding?: never;
-    }
-  ): IterableReadableStream<StreamEvent> {
+      encoding?: "text/event-stream";
+    },
+    _streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<StreamEvent | Uint8Array> {
     throw new Error("Not implemented.");
   }
 
