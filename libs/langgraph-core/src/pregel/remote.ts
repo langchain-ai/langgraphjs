@@ -536,7 +536,7 @@ export class RemoteGraph<
     },
     _streamOptions?: StreamEventsOptions
   ):
-    | IterableReadableStream<StreamEvent>
+    | IterableReadableStream<StreamEvent | Uint8Array>
     | Promise<RemoteGraphRunStream<PregelOutputType>>
     | Promise<IterableReadableStream<Uint8Array>>
     | Promise<
