@@ -2,7 +2,7 @@
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { StructuredTool, tool } from "@langchain/core/tools";
+import { StructuredTool, tool, type ToolRuntime } from "@langchain/core/tools";
 import {
   AsyncLocalStorageProviderSingleton,
   MockAsyncLocalStorage,
@@ -38,11 +38,7 @@ import {
   FakeConfigurableModel,
   FakeToolCallingChatModel,
 } from "./utils.models.js";
-import {
-  ToolNode,
-  createReactAgent,
-  type ToolRunnableConfig,
-} from "../prebuilt/index.js";
+import { ToolNode, createReactAgent } from "../prebuilt/index.js";
 import {
   _shouldBindTools,
   _getModel,
@@ -2643,11 +2639,8 @@ describe.each([["v1" as const], ["v2" as const]])(
 
     it("inherit task context", async () => {
       const parrot = tool(
-        async (args) => {
-          const { messages } = getCurrentTaskInput() as {
-            messages: BaseMessage[];
-          };
-
+        async (args, runtime: ToolRuntime<{ messages: BaseMessage[] }>) => {
+          const { messages } = runtime.state;
           return `[tool] ${args.prefix}: ${messages
             .map((i) => i.text)
             .join(", ")}`;
@@ -2722,7 +2715,7 @@ describe("ToolNode", () => {
     );
   });
 
-  it("forwards graph state to tools via config.state (graph node)", async () => {
+  it("forwards graph state to tools via runtime.state (graph node)", async () => {
     const AgentState = z.object({
       ...MessagesZodState.shape,
       userId: z.string(),
@@ -2732,10 +2725,10 @@ describe("ToolNode", () => {
     const getUserInfo = tool(
       async (
         _input: Record<string, never>,
-        config: ToolRunnableConfig<z.infer<typeof AgentState>>
+        runtime: ToolRuntime<typeof AgentState>
       ) => {
         // Read the graph state directly from the second argument.
-        observedUserId = config.state?.userId;
+        observedUserId = runtime.state.userId;
         return observedUserId === "user_123"
           ? "User is John Smith"
           : "Unknown user";
@@ -2770,16 +2763,16 @@ describe("ToolNode", () => {
     expect(lastMessage.content).toBe("User is John Smith");
   });
 
-  it("forwards input to tools via config.state on direct .invoke()", async () => {
+  it("forwards input to tools via runtime.state on direct .invoke()", async () => {
     // Reproduces the issue scenario: invoking a ToolNode directly (outside a
     // graph) and expecting the tool to access the surrounding state.
     let observedUserId: string | undefined;
     const getUserInfo = tool(
       async (
         _input: Record<string, never>,
-        config: ToolRunnableConfig<{ userId: string }>
+        runtime: ToolRuntime<{ userId: string }>
       ) => {
-        observedUserId = config.state?.userId;
+        observedUserId = runtime.state.userId;
         return "ok";
       },
       {
@@ -2799,18 +2792,18 @@ describe("ToolNode", () => {
           ],
         }),
       ],
-      // Extra state the tool needs; ToolNode forwards it via `config.state`.
+      // Extra state the tool needs; ToolNode forwards it via `runtime.state`.
       userId: "user_123",
     } as unknown as { messages: BaseMessage[] });
 
     expect(observedUserId).toBe("user_123");
   });
 
-  it("config.state works without AsyncLocalStorage (browser-like)", async () => {
+  it("runtime.state works without AsyncLocalStorage (browser-like)", async () => {
     // Simulate a browser/web runtime without `async_hooks` support: the global
     // ALS instance is absent, so @langchain/core falls back to a no-op
     // MockAsyncLocalStorage. In this environment `getCurrentTaskInput()` cannot
-    // recover the config implicitly, but `config.state` still works because
+    // recover the config implicitly, but `runtime.state` still works because
     // ToolNode threads the state to the tool as a function argument.
     const getInstanceSpy = vi
       .spyOn(AsyncLocalStorageProviderSingleton, "getInstance")
@@ -2832,7 +2825,7 @@ describe("ToolNode", () => {
       const getUserInfo = tool(
         async (
           _input: Record<string, never>,
-          config: ToolRunnableConfig<z.infer<typeof AgentState>>
+          runtime: ToolRuntime<typeof AgentState>
         ) => {
           // Without ALS, the implicit (no-arg) lookup must fail.
           try {
@@ -2841,7 +2834,7 @@ describe("ToolNode", () => {
             implicitLookupThrew = true;
           }
           // ...but reading from the second argument still works.
-          observedUserId = config.state?.userId;
+          observedUserId = runtime.state.userId;
           return "ok";
         },
         {

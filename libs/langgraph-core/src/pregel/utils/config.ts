@@ -186,10 +186,7 @@ export function getConfig(): LangGraphRunnableConfig {
 
 /**
  * A helper utility function that returns the input for the currently executing
- * task. When called from a tool that runs inside a `ToolNode` (or a graph
- * node), this returns the full graph state that was passed into that node,
- * which is a convenient first-class way for tools to read the current graph
- * state without manually threading it through `config.configurable`.
+ * task.
  *
  * Note: When called without arguments, this relies on `node:async_hooks` /
  * `AsyncLocalStorage`, which is available in many JavaScript environments
@@ -197,26 +194,9 @@ export function getConfig(): LangGraphRunnableConfig {
  * without `AsyncLocalStorage` support, pass the `config` that your node/tool
  * function receives directly, e.g. `getCurrentTaskInput(config)`.
  *
- * Tip: Inside a tool run by a `ToolNode`, prefer reading the graph state from
- * the second argument via `config.state` (typed as `ToolRunnableConfig`). It
- * is equivalent for tools and works in every runtime, including web browsers.
- *
- * @example
- * ```ts
- * import { tool } from "@langchain/core/tools";
- * import { getCurrentTaskInput, type LangGraphRunnableConfig } from "@langchain/langgraph";
- * import { z } from "zod";
- *
- * const myTool = tool(
- *   async (input, config: LangGraphRunnableConfig) => {
- *     // Works in Node.js and other AsyncLocalStorage-capable runtimes.
- *     // Pass `config` explicitly to also support web browsers.
- *     const state = getCurrentTaskInput(config) as { userId: string };
- *     return `Hello ${state.userId}`;
- *   },
- *   { name: "my_tool", description: "...", schema: z.object({}) }
- * );
- * ```
+ * Tip: Inside a tool run by a `ToolNode`, prefer reading graph state from
+ * `runtime.state` on the second tool argument (typed as `ToolRuntime` from
+ * `@langchain/core/tools`). It works in every runtime, including web browsers.
  *
  * @param config - Optional {@link LangGraphRunnableConfig} to read the task
  * input from. Provide this when running in an environment without

@@ -22,7 +22,6 @@ export {
   ToolNode,
   toolsCondition,
   type ToolNodeOptions,
-  type ToolRunnableConfig,
 } from "./tool_node.js";
 export type {
   HumanInterruptConfig,

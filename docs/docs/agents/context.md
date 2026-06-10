@@ -166,13 +166,13 @@ Common use cases:
 Tools can access context through:
 
 * Use `RunnableConfig` for config access
-* Use `config.state` (the second argument, typed as `ToolRunnableConfig`) for agent state
+* Use `runtime.state` (the second argument, typed as `ToolRuntime`) for agent state
 
 !!! tip "Browser / web environments"
 
-    When a tool runs inside a `ToolNode` (including in `createReactAgent`), the `ToolNode` forwards its input (the current graph state) to the tool via `config.state`. This works in every runtime, including web browsers.
+    When a tool runs inside a `ToolNode` (including in `createReactAgent`), the `ToolNode` forwards its input (the current graph state) to the tool via `runtime.state`. This works in every runtime, including web browsers.
 
-    An older alternative, `getCurrentTaskInput()`, relies on [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html), which is available in Node.js, Deno, and Cloudflare Workers, but **not** in web browsers. Prefer `config.state` for portability.
+    An older alternative, `getCurrentTaskInput()`, relies on [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html), which is available in Node.js, Deno, and Cloudflare Workers, but **not** in web browsers. Prefer `runtime.state` for portability.
 
 === "Using config"
 
@@ -213,9 +213,9 @@ Tools can access context through:
 
     ```ts
     import { initChatModel } from "langchain/chat_models/universal";
-    import { createReactAgent, type ToolRunnableConfig } from "@langchain/langgraph/prebuilt";
+    import { createReactAgent } from "@langchain/langgraph/prebuilt";
     import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
-    import { tool } from "@langchain/core/tools";
+    import { tool, type ToolRuntime } from "@langchain/core/tools";
     import { z } from "zod";
 
     const CustomState = Annotation.Root({
@@ -228,12 +228,12 @@ Tools can access context through:
       async (
         input: Record<string, any>,
         // highlight-next-line
-        config: ToolRunnableConfig<typeof CustomState.State>,
+        runtime: ToolRuntime<typeof CustomState.State>,
       ) => {
         // Read the graph state directly from the second argument.
         // This works in web browsers too (no AsyncLocalStorage required).
         // highlight-next-line
-        const userId = config.state?.userId;
+        const userId = runtime.state.userId;
         return userId === "user_123" ? "User is John Smith" : "Unknown user";
       },
       {

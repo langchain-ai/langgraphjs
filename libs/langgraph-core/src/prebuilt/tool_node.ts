@@ -5,8 +5,12 @@ import {
   isBaseMessage,
   isAIMessage,
 } from "@langchain/core/messages";
-import { RunnableConfig, RunnableToolLike } from "@langchain/core/runnables";
-import { DynamicTool, StructuredToolInterface } from "@langchain/core/tools";
+import { RunnableToolLike } from "@langchain/core/runnables";
+import {
+  DynamicTool,
+  StructuredToolInterface,
+  type ToolRuntime,
+} from "@langchain/core/tools";
 import type { ToolCall } from "@langchain/core/messages/tool";
 import { RunnableCallable } from "../utils.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -19,48 +23,6 @@ export type ToolNodeOptions = {
   tags?: string[];
   handleToolErrors?: boolean;
 };
-
-/**
- * The {@link RunnableConfig} that a {@link ToolNode} passes as the second
- * argument to each tool it runs.
- *
- * In addition to the usual {@link LangGraphRunnableConfig} fields, it exposes
- * the {@link ToolRunnableConfig#state | state} that was handed to the
- * `ToolNode`. This lets tools read the surrounding graph state directly from
- * their second parameter, without relying on `getCurrentTaskInput()` (which
- * requires `node:async_hooks` and therefore does not work in web browsers).
- *
- * @example
- * ```ts
- * import { tool } from "@langchain/core/tools";
- * import type { ToolRunnableConfig } from "@langchain/langgraph/prebuilt";
- * import { z } from "zod";
- *
- * const getUserInfo = tool(
- *   async (_input, config: ToolRunnableConfig<{ userId: string }>) => {
- *     const userId = config.state?.userId;
- *     return userId === "user_123" ? "User is John Smith" : "Unknown user";
- *   },
- *   { name: "get_user_info", description: "Look up user info.", schema: z.object({}) }
- * );
- * ```
- */
-export interface ToolRunnableConfig<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StateType = Record<string, any>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType extends Record<string, any> = Record<string, any>,
-> extends LangGraphRunnableConfig<ContextType> {
-  /**
-   * The input that was passed into the {@link ToolNode} that invoked this tool.
-   *
-   * When the `ToolNode` runs as a graph node (e.g. inside `createReactAgent`),
-   * this is the current graph state. When you invoke a `ToolNode` directly,
-   * this is whatever you passed to `.invoke()` — so pass the full state if your
-   * tools need access to it.
-   */
-  state?: StateType;
-}
 
 const isBaseMessageArray = (input: unknown): input is BaseMessage[] =>
   Array.isArray(input) && input.every(isBaseMessage);
@@ -197,33 +159,34 @@ const isSendInput = (input: unknown): input is { lg_tool_call: ToolCall } =>
  *
  * Tools executed by a `ToolNode` only receive the arguments produced by the
  * model. To give a tool access to the surrounding graph state or other runtime
- * context, read them from the {@link ToolRunnableConfig} that is passed as the
+ * context, read them from the {@link ToolRuntime} that is passed as the
  * second argument to every tool:
  *
- * - `config.state` — the input the `ToolNode` was invoked with. When the
+ * - `runtime.state` — the input the `ToolNode` was invoked with. When the
  *   `ToolNode` runs as a graph node (e.g. inside `createReactAgent`), this is
  *   the current graph state. This works in any runtime, including web browsers,
  *   because it does not rely on `node:async_hooks`/`AsyncLocalStorage`.
- * - `config.configurable`, `config.store`, etc. — other run-scoped values.
+ * - `runtime.config`, `runtime.context`, `runtime.store`, etc. — other
+ *   run-scoped values.
  *
  * @example
  * ```ts
- * import { ToolNode, type ToolRunnableConfig } from "@langchain/langgraph/prebuilt";
+ * import { ToolNode } from "@langchain/langgraph/prebuilt";
  * import { StateGraph, MessagesZodState } from "@langchain/langgraph";
- * import { tool } from "@langchain/core/tools";
+ * import { tool, type ToolRuntime } from "@langchain/core/tools";
  * import { z } from "zod";
  *
  * // Define the graph state with a Zod schema. The extra `userId` key becomes
- * // part of the state that the ToolNode forwards to its tools via `config.state`.
+ * // part of the state that the ToolNode forwards to its tools via `runtime.state`.
  * const AgentState = z.object({
  *   ...MessagesZodState.shape,
  *   userId: z.string(),
  * });
  *
  * const getUserInfo = tool(
- *   async (_input, config: ToolRunnableConfig<z.infer<typeof AgentState>>) => {
+ *   async (_input, runtime: ToolRuntime<typeof AgentState>) => {
  *     // Read the current graph state directly from the second argument.
- *     const userId = config.state?.userId;
+ *     const userId = runtime.state.userId;
  *     return userId === "user_123" ? "User is John Smith" : "Unknown user";
  *   },
  *   {
@@ -263,22 +226,27 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
 
   protected async runTool(
     call: ToolCall,
-    config: RunnableConfig,
-    state?: unknown
+    config: LangGraphRunnableConfig,
+    state: unknown
   ): Promise<ToolMessage | Command> {
     const tool = this.tools.find((tool) => tool.name === call.name);
     try {
       if (tool === undefined) {
         throw new Error(`Tool "${call.name}" not found.`);
       }
-      // Expose the ToolNode's input (the graph state) to the tool via the
-      // second argument. This works in any runtime, including web browsers,
-      // since it does not depend on `node:async_hooks`/`AsyncLocalStorage`.
-      const toolConfig: ToolRunnableConfig =
-        state === undefined ? config : { ...config, state };
+      const toolCall = { ...call, type: "tool_call" } as ToolCall;
+      const runtime: ToolRuntime = {
+        ...config,
+        state,
+        toolCallId: call.id ?? "",
+        config,
+        context: config.context,
+        store: (config.store as ToolRuntime["store"] | undefined) ?? null,
+        writer: config.writer ?? config.configurable?.writer ?? null,
+      };
       const output = await tool.invoke(
-        { ...call, type: "tool_call" },
-        toolConfig
+        toolCall,
+        runtime
       );
 
       if (
@@ -315,7 +283,10 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected async run(input: unknown, config: RunnableConfig): Promise<T> {
+  protected async run(
+    input: unknown,
+    config: LangGraphRunnableConfig
+  ): Promise<T> {
     let outputs: (ToolMessage | Command)[];
 
     if (isSendInput(input)) {
