@@ -1284,6 +1284,54 @@ describe("StateGraph", () => {
         const result = await graph.invoke({});
         expect(result.items).toEqual(["replaced"]);
       });
+
+      it("should preserve duplicate Command updates", async () => {
+        const AgentState = new StateSchema({
+          items: new ReducedValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string(),
+              reducer: (current: string[], next: string) => [...current, next],
+            }
+          ),
+        });
+
+        const graph = new StateGraph(AgentState)
+          .addNode("append", () => [
+            new Command({ update: { items: "a1" } }),
+            new Command({ update: { items: "a2" } }),
+          ])
+          .addEdge(START, "append")
+          .addEdge("append", END)
+          .compile();
+
+        await expect(graph.invoke({})).resolves.toEqual({
+          items: ["a1", "a2"],
+        });
+      });
+
+      it("should validate each duplicate Command update", async () => {
+        const AgentState = new StateSchema({
+          items: new ReducedValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string().min(2),
+              reducer: (current: string[], next: string) => [...current, next],
+            }
+          ),
+        });
+
+        const graph = new StateGraph(AgentState)
+          .addNode("append", () => [
+            new Command({ update: { items: "x" } }),
+            new Command({ update: { items: "ok" } }),
+          ])
+          .addEdge(START, "append")
+          .addEdge("append", END)
+          .compile();
+
+        await expect(graph.invoke({})).rejects.toThrow(/items/);
+      });
     });
   });
 });
