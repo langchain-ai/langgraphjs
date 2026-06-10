@@ -8,7 +8,7 @@ import {
   getCurrentTaskInput,
 } from "@langchain/langgraph";
 
-const WHITESPACE_RE = /\s+/;
+const WHITESPACE_RE = /\s+/g;
 
 function _normalizeAgentName(agentName: string): string {
   /**

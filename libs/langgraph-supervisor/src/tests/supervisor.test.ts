@@ -6,10 +6,19 @@ import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { MessagesAnnotation } from "@langchain/langgraph";
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";
+import { createHandoffTool } from "../handoff.js";
 import { FakeToolCallingChatModel } from "./utils.js";
 import { withAgentName, AgentNameMode } from "../index.js";
 
 describe("Test supervisor basic workflow", () => {
+  it("normalizes all whitespace in generated handoff tool names", () => {
+    const handoffTool = createHandoffTool({
+      agentName: "travel booking assistant",
+    });
+
+    expect(handoffTool.name).toBe("transfer_to_travel_booking_assistant");
+  });
+
   // Define the test cases
   it.each([
     // [description, supervisorAgentName, individualAgentName]
