@@ -819,8 +819,12 @@ export class PregelLoop {
     this.tasks = nextTasks;
     const taskList = Object.values(this.tasks);
 
-    // Produce debug output
-    if (this.checkpointer) {
+    // Full-state checkpoint snapshots are expensive; skip unless a consumer
+    // subscribed to "checkpoints" or the legacy "debug" wrapper mode.
+    if (
+      this.checkpointer &&
+      (this.stream.modes.has("checkpoints") || this.stream.modes.has("debug"))
+    ) {
       this._emit(
         await gatherIterator(
           prefixGenerator(
@@ -872,11 +876,12 @@ export class PregelLoop {
       throw new GraphInterrupt();
     }
 
-    // Produce debug output
-    const debugOutput = await gatherIterator(
-      prefixGenerator(mapDebugTasks(taskList), "tasks")
-    );
-    this._emit(debugOutput);
+    if (this.stream.modes.has("tasks") || this.stream.modes.has("debug")) {
+      const debugOutput = await gatherIterator(
+        prefixGenerator(mapDebugTasks(taskList), "tasks")
+      );
+      this._emit(debugOutput);
+    }
 
     return true;
   }
@@ -981,9 +986,11 @@ export class PregelLoop {
       return;
     }
 
-    this._emit(
-      gatherIteratorSync(prefixGenerator(mapDebugTasks([pushed]), "tasks"))
-    );
+    if (this.stream.modes.has("tasks") || this.stream.modes.has("debug")) {
+      this._emit(
+        gatherIteratorSync(prefixGenerator(mapDebugTasks([pushed]), "tasks"))
+      );
+    }
 
     if (this.debug) printStepTasks(this.step, [pushed]);
     this.tasks[pushed.id] = pushed;

@@ -204,6 +204,9 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 export class StreamToolsHandler extends BaseCallbackHandler {
   name = "StreamToolsHandler";
 
+  /** Ensure tool lifecycle callbacks run before tool.invoke returns/errors. */
+  awaitHandlers = true;
+
   streamFn: (streamChunk: StreamChunk) => void;
 
   runs: Record<string, ToolRunInfo | undefined> = {};
