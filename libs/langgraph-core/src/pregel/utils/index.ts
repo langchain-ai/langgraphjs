@@ -88,6 +88,9 @@ export type RetryPolicy = {
   logWarning?: boolean;
 };
 
+export type { TimeoutPolicy } from "./timeout.js";
+export { coerceTimeoutPolicy } from "./timeout.js";
+
 /**
  * Configuration for caching nodes.
  */

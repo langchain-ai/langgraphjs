@@ -67,7 +67,12 @@ import {
   StateType,
 } from "./annotation.js";
 import { StateSchema } from "../state/index.js";
-import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
+import type {
+  CachePolicy,
+  RetryPolicy,
+  TimeoutPolicy,
+} from "../pregel/utils/index.js";
+import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
 import { type SchemaMetaRegistry, schemaMetaRegistry } from "./zod/meta.js";
@@ -134,6 +139,15 @@ export type NodePolicyOptions = {
    * @see {@link CachePolicy}
    */
   cachePolicy?: CachePolicy | boolean;
+  /**
+   * Maximum duration for a single attempt of this node. Accepts a number of
+   * milliseconds (a hard wall-clock cap) or a {@link TimeoutPolicy} for finer
+   * control over run / idle timeouts. When exceeded, a {@link NodeTimeoutError}
+   * is raised and the node's retry policy (if any) decides whether to retry.
+   *
+   * @see {@link TimeoutPolicy}
+   */
+  timeout?: number | TimeoutPolicy;
 };
 
 /**
@@ -146,6 +160,8 @@ export type NodePolicies = {
   retryPolicy?: RetryPolicy;
   /** `false` opts out of graph defaults set via {@link StateGraph.setNodeDefaults}. */
   cachePolicy?: CachePolicy | false;
+  /** Resolved timeout policy after the `number` shorthand is normalized. */
+  timeout?: TimeoutPolicy;
 };
 
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
@@ -618,6 +634,7 @@ export class StateGraph<
    *   .setNodeDefaults({
    *     retryPolicy: { maxAttempts: 3 },
    *     cachePolicy: { ttl: 60 },
+   *     timeout: 60_000,
    *   })
    *   .addNode("a", nodeA)
    *   .addNode("b", nodeB, { retryPolicy: { maxAttempts: 5 } }) // overrides default
@@ -649,6 +666,9 @@ export class StateGraph<
             ? {}
             : undefined
           : defaults.cachePolicy;
+    }
+    if (defaults.timeout !== undefined) {
+      this._nodeDefaults.timeout = coerceTimeoutPolicy(defaults.timeout);
     }
     return this;
   }
@@ -1020,6 +1040,7 @@ export class StateGraph<
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
         cachePolicy,
+        timeout: coerceTimeoutPolicy(options?.timeout),
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -1283,7 +1304,8 @@ export class StateGraph<
     const nodeDefaults = this._nodeDefaults;
     const hasNodeDefaults =
       nodeDefaults.retryPolicy !== undefined ||
-      nodeDefaults.cachePolicy !== undefined;
+      nodeDefaults.cachePolicy !== undefined ||
+      nodeDefaults.timeout !== undefined;
     for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
       this.nodes
     )) {
@@ -1295,6 +1317,7 @@ export class StateGraph<
               node.cachePolicy === false
                 ? undefined
                 : (node.cachePolicy ?? nodeDefaults.cachePolicy),
+            timeout: node.timeout ?? nodeDefaults.timeout,
           }
         : node;
       compiled.attachNode(key as N, resolvedNode);
@@ -1587,6 +1610,7 @@ export class CompiledStateGraph<
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
         cachePolicy,
+        timeout: node?.timeout,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
       });

@@ -120,6 +120,8 @@ function _default(obj: any): any {
     return {
       node: obj.node,
       args: obj.args,
+      // preserve an optional per-task timeout policy across (de)serialization
+      ...(obj.timeout !== undefined ? { timeout: obj.timeout } : {}),
     };
   } else if (obj instanceof Uint8Array) {
     return _encodeConstructorArgs(Uint8Array, "from", [Array.from(obj)]);

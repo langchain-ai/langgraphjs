@@ -99,6 +99,17 @@ export interface Runtime<
   /** Abort signal to cancel the run. */
   signal: AbortSignal;
 
+  /**
+   * Manually signal that the node is still making progress, resetting the
+   * `idleTimeout` of the node's {@link TimeoutPolicy} (if configured).
+   *
+   * This is a no-op when the node has no `idleTimeout` configured. It is the
+   * only progress signal when `refreshOn` is `"heartbeat"`, and is useful for
+   * long-running work that doesn't otherwise emit writes, stream events, child
+   * tasks, or callback events.
+   */
+  heartbeat?: () => void;
+
   /** Read-only execution information/metadata for the current node run. Undefined before task preparation. */
   executionInfo?: ExecutionInfo;
 

@@ -15,7 +15,7 @@ import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import type { Interrupt } from "../constants.js";
 import type { StreamTransformer } from "../stream/types.js";
-import { CachePolicy, RetryPolicy } from "./utils/index.js";
+import { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 
 /**
@@ -595,6 +595,12 @@ export interface PregelExecutableTask<
   readonly path?: TaskPath;
   readonly subgraphs?: Runnable[];
   readonly writers: Runnable[];
+  /**
+   * The (already coerced) timeout policy to enforce for each attempt of this
+   * task. Resolved from the node's `timeout`, or overridden by a per-task
+   * {@link Send} timeout / functional `Call` timeout.
+   */
+  readonly timeout?: TimeoutPolicy;
 }
 
 export interface StateSnapshot {
@@ -714,6 +720,7 @@ export type CallOptions = {
   input: unknown;
   cache?: CachePolicy;
   retry?: RetryPolicy;
+  timeout?: TimeoutPolicy;
   callbacks?: unknown;
 };
 
@@ -728,16 +735,27 @@ export class Call {
 
   cache?: CachePolicy;
 
+  timeout?: TimeoutPolicy;
+
   callbacks?: unknown;
 
   readonly __lg_type = "call";
 
-  constructor({ func, name, input, retry, cache, callbacks }: CallOptions) {
+  constructor({
+    func,
+    name,
+    input,
+    retry,
+    cache,
+    timeout,
+    callbacks,
+  }: CallOptions) {
     this.func = func;
     this.name = name;
     this.input = input;
     this.retry = retry;
     this.cache = cache;
+    this.timeout = timeout;
     this.callbacks = callbacks;
   }
 }

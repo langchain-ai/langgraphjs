@@ -107,9 +107,14 @@ export {
 export type { EphemeralValue } from "./channels/ephemeral_value.js";
 export { UntrackedValueChannel } from "./channels/untracked_value.js";
 export { type AnnotationRoot } from "./graph/index.js";
-export { type RetryPolicy, type CachePolicy } from "./pregel/utils/index.js";
+export {
+  type RetryPolicy,
+  type CachePolicy,
+  type TimeoutPolicy,
+} from "./pregel/utils/index.js";
 export {
   Send,
+  type SendOptions,
   Command,
   CommandInstance,
   type CommandParams,

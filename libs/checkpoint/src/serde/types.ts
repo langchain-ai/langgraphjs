@@ -60,4 +60,11 @@ export interface SendProtocol {
   node: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   args: any;
+  // Optional per-task timeout policy. Structural to avoid a dependency on the
+  // langgraph package; mirrors `TimeoutPolicy` in "@langchain/langgraph".
+  timeout?: {
+    runTimeout?: number;
+    idleTimeout?: number;
+    refreshOn?: "auto" | "heartbeat";
+  };
 }
