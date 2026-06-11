@@ -1177,6 +1177,74 @@ describe("test_sync_redis_checkpointer", () => {
 
     await saver.end();
   });
+
+  it("should delete channel blobs when deleting a thread", async () => {
+    const saver = await RedisSaver.fromUrl(redisUrl);
+
+    const threadId = "blob-delete-thread";
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: threadId,
+        checkpoint_ns: "",
+      },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status, leaving messages to live in blob storage.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Sanity check: blob keys for this thread were actually created.
+    const blobKeysBefore = (await redisClient.keys("*")).filter((k: string) =>
+      k.startsWith(`checkpoint_blob:${threadId}:`)
+    );
+    expect(blobKeysBefore.length).toBeGreaterThan(0);
+
+    await saver.deleteThread(threadId);
+
+    // No checkpoint, write, zset, or blob keys for the thread should remain.
+    const remaining = (await redisClient.keys("*")).filter((k: string) =>
+      k.includes(threadId)
+    );
+    expect(remaining).toHaveLength(0);
+
+    await saver.end();
+  });
 });
 
 // ============================================================================

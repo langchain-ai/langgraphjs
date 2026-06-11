@@ -802,6 +802,16 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (zsetKeys.length > 0) {
       await this.client.del(zsetKeys);
     }
+
+    // Delete channel blobs written by put(). Without this the
+    // `checkpoint_blob:*` keys orphan forever, leaking memory and leaving
+    // thread deletion incomplete. Mirrors PostgresSaver.deleteThread().
+    const blobPattern = `checkpoint_blob:${threadId}:*`;
+    const blobKeys = await (this.client as any).keys(blobPattern);
+
+    if (blobKeys.length > 0) {
+      await this.client.del(blobKeys);
+    }
   }
 
   async end(): Promise<void> {

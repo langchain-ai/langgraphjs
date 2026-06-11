@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { RedisSaver } from "../index.js";
 
 describe("RedisSaver.deleteThread", () => {
-  it("deletes checkpoints, writes, and zset keys using correct patterns", async () => {
+  it("deletes checkpoints, writes, zset, and blob keys using correct patterns", async () => {
     const deletedKeys: string[] = [];
 
     const mockClient = {
@@ -18,6 +18,12 @@ describe("RedisSaver.deleteThread", () => {
         }
         if (pattern === "write_keys_zset:thread-1:*") {
           return ["write_keys_zset:thread-1::cp-1"];
+        }
+        if (pattern === "checkpoint_blob:thread-1:*") {
+          return [
+            "checkpoint_blob:thread-1::messages:1",
+            "checkpoint_blob:thread-1::status:2",
+          ];
         }
         return [];
       },
@@ -37,9 +43,11 @@ describe("RedisSaver.deleteThread", () => {
         "checkpoint_write:thread-1::cp-1:task-1:0",
         "checkpoint_write:thread-1::cp-1:task-1:1",
         "write_keys_zset:thread-1::cp-1",
+        "checkpoint_blob:thread-1::messages:1",
+        "checkpoint_blob:thread-1::status:2",
       ])
     );
-    expect(deletedKeys).toHaveLength(5);
+    expect(deletedKeys).toHaveLength(7);
   });
 
   it("handles empty key sets gracefully", async () => {
