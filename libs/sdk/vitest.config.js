@@ -25,6 +25,7 @@ export default defineConfig((env) => {
         exclude: configDefaults.exclude,
         include: ["**/*.int.test.ts"],
         name: "int",
+        // Global WebSocket (client) is available in Node.js 22+.
         environment: "node",
       },
     };

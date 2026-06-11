@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { AsyncCaller } from "../../../utils/async_caller.js";
 import { ProtocolSseTransportAdapter } from "./http.js";
 import {
   LANGGRAPH_PROXY_API_URL,
   PROXIED_API_URL,
   THREAD_ID,
   createFetchRecorder,
+  protocolSuccessResponse,
 } from "./test-helpers.js";
 
 describe("ProtocolSseTransportAdapter URL resolution", () => {
@@ -122,5 +124,111 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
     });
 
     await expect(transport.getState()).resolves.toBeNull();
+  });
+});
+
+describe("ProtocolSseTransportAdapter AsyncCaller", () => {
+  it("retries transient command failures when asyncCaller is provided", async () => {
+    let attempts = 0;
+    const fetchImpl = vi.fn(() => {
+      attempts += 1;
+      if (attempts < 3) {
+        return Promise.resolve(
+          new Response("unavailable", { status: 503, statusText: "Unavailable" })
+        );
+      }
+      return Promise.resolve(protocolSuccessResponse());
+    }) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
+    });
+
+    await transport.send({
+      id: 1,
+      method: "state.get",
+      params: { namespace: [] },
+    });
+
+    expect(attempts).toBe(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry non-retryable status codes when asyncCaller is provided", async () => {
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response("not found", { status: 404, statusText: "Not Found" })
+      )
+    ) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
+    });
+
+    await expect(
+      transport.send({
+        id: 1,
+        method: "state.get",
+        params: { namespace: [] },
+      })
+    ).rejects.toThrow(/HTTP 404/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes commands through asyncCaller but bypasses it for the SSE event stream", async () => {
+    // Long-lived event streams must not run through AsyncCaller (its
+    // p-queue/p-retry semantics stall a streaming response). Commands must
+    // still go through it for retry/backoff parity with REST.
+    const sseFrame =
+      'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"e1"}\n\n';
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (String(input).includes("/stream/events")) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(sseFrame));
+                controller.close();
+              },
+            }),
+            { status: 200, headers: { "content-type": "text/event-stream" } }
+          )
+        );
+      }
+      return Promise.resolve(protocolSuccessResponse());
+    }) as unknown as typeof fetch;
+
+    const asyncCaller = new AsyncCaller({ maxRetries: 0, maxConcurrency: 1 });
+    const callSpy = vi.spyOn(asyncCaller, "call");
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller,
+    });
+
+    await transport.send({ id: 1, method: "state.get", params: { namespace: [] } });
+    expect(callSpy).toHaveBeenCalledTimes(1);
+
+    const callsAfterCommand = callSpy.mock.calls.length;
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+    const iterator = handle.events[Symbol.asyncIterator]();
+    const first = await iterator.next();
+
+    expect(first.value).toMatchObject({ event_id: "e1", seq: 1 });
+    // The event stream must NOT have gone through asyncCaller.
+    expect(callSpy.mock.calls.length).toBe(callsAfterCommand);
+
+    await transport.close();
   });
 });
