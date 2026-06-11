@@ -1,5 +1,23 @@
 # @langchain/langgraph
 
+## 1.4.1
+
+### Patch Changes
+
+- [#2520](https://github.com/langchain-ai/langgraphjs/pull/2520) [`2da5c33`](https://github.com/langchain-ai/langgraphjs/commit/2da5c3374f7b91ba0afa607c507e2ff1591baca7) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(state): validate Zod state updates from nodes
+
+  Validate node return values and Command updates against Zod state schema
+  constraints before applying them to graph state.
+
+  Fixes [#2519](https://github.com/langchain-ai/langgraphjs/issues/2519)
+
+- [#2511](https://github.com/langchain-ai/langgraphjs/pull/2511) [`ef04db3`](https://github.com/langchain-ai/langgraphjs/commit/ef04db316d680ab32b812c88cadda75638294dd3) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(ToolNode): forward graph state to tools via `runtime.state`
+
+  `ToolNode` now forwards its input to each tool through the second argument as `runtime.state`. When using `ToolNode` as a node in a LangGraph graph, this gives tools access to the current graph state for workflows that need tool-call support in LangGraph proper. Tools can type the second parameter as `ToolRuntime<StateType>` from `@langchain/core/tools` and read `runtime.state` directly. This works in every runtime, including web browsers, and removes the need for `getCurrentTaskInput()` (which relies on `node:async_hooks`/`AsyncLocalStorage`). `getCurrentTaskInput(config)` continues to work for backwards compatibility.
+
+- Updated dependencies [[`3855985`](https://github.com/langchain-ai/langgraphjs/commit/3855985dd049739f145295d236ce6aa02ae2fb0e), [`7c3e9e9`](https://github.com/langchain-ai/langgraphjs/commit/7c3e9e93f3c7ec1dc654dac8ee8c03562ee8337b), [`17c44a3`](https://github.com/langchain-ai/langgraphjs/commit/17c44a38b7478e2bc4fe908a54c78ef33fb68ba3)]:
+  - @langchain/langgraph-sdk@1.9.21
+
 ## 1.4.0
 
 ### Minor Changes
