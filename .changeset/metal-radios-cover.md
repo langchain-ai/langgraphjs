@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph": minor
+"@langchain/langgraph": patch
 ---
 
 feat(ToolNode): forward graph state to tools via `runtime.state`
