@@ -632,10 +632,9 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       const writeDoc = await this.client.json.get(writeKey);
       if (writeDoc) {
         // Deserialize write value using serde to restore LangChain objects
-        const deserializedValue = await this.serde.loadsTyped(
-          "json",
-          JSON.stringify(writeDoc.value)
-        );
+        const deserializedValue = Object.hasOwn(writeDoc, "value")
+          ? await this.serde.loadsTyped("json", JSON.stringify(writeDoc.value))
+          : undefined;
         pendingWrites.push([
           writeDoc.task_id,
           writeDoc.channel,

@@ -826,10 +826,9 @@ export class RedisSaver extends BaseCheckpointSaver {
     const pendingWrites: Array<[string, string, any]> = [];
     for (const writeDoc of writeDocuments) {
       // Deserialize write value using serde to restore LangChain objects
-      const deserializedValue = await this.serde.loadsTyped(
-        "json",
-        JSON.stringify(writeDoc.value)
-      );
+      const deserializedValue = Object.hasOwn(writeDoc, "value")
+        ? await this.serde.loadsTyped("json", JSON.stringify(writeDoc.value))
+        : undefined;
       pendingWrites.push([
         writeDoc.task_id,
         writeDoc.channel,
