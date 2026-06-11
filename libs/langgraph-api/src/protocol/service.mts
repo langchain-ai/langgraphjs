@@ -367,10 +367,10 @@ export class ProtocolService {
     const currentRun =
       record.currentRunId != null
         ? await this.bindings.runs.get(
-          record.currentRunId,
-          record.threadId,
-          record.auth
-        )
+            record.currentRunId,
+            record.threadId,
+            record.auth
+          )
         : null;
     const hasPendingInterrupts = await this.hasPendingInterrupts(record);
     if (currentRun == null && !hasPendingInterrupts) {
@@ -421,10 +421,10 @@ export class ProtocolService {
     const currentRun =
       record.currentRunId != null
         ? await this.bindings.runs.get(
-          record.currentRunId,
-          record.threadId,
-          record.auth
-        )
+            record.currentRunId,
+            record.threadId,
+            record.auth
+          )
         : null;
     const currentStatus = currentRun?.status;
     const hasPendingInterrupts =
@@ -565,8 +565,8 @@ export class ProtocolService {
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = isRecord(command.params)
       ? (command.params as Partial<
-        ProtocolCommandByMethod<"state.get">["params"]
-      >)
+          ProtocolCommandByMethod<"state.get">["params"]
+        >)
       : {};
     const values = await this.bindings.threads.state.get(
       { configurable: { thread_id: record.threadId } },
@@ -578,23 +578,23 @@ export class ProtocolService {
       : undefined;
     const checkpoint: StateGetResult["checkpoint"] =
       checkpointConfig != null &&
-        typeof checkpointConfig.checkpoint_id === "string"
+      typeof checkpointConfig.checkpoint_id === "string"
         ? {
-          id: checkpointConfig.checkpoint_id,
-          ...(typeof checkpointConfig.checkpoint_ns === "string"
-            ? { ns: checkpointConfig.checkpoint_ns }
-            : {}),
-        }
+            id: checkpointConfig.checkpoint_id,
+            ...(typeof checkpointConfig.checkpoint_ns === "string"
+              ? { ns: checkpointConfig.checkpoint_ns }
+              : {}),
+          }
         : undefined;
     const requestedKeys = normalizeKeys(params.keys);
     const filteredValues =
       requestedKeys == null
         ? values.values
         : Object.fromEntries(
-          Object.entries(values.values).filter(([key]) =>
-            requestedKeys.includes(key)
-          )
-        );
+            Object.entries(values.values).filter(([key]) =>
+              requestedKeys.includes(key)
+            )
+          );
     return {
       type: "success",
       id: command.id,

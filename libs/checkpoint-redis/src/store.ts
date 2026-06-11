@@ -709,8 +709,8 @@ export class RedisStore {
 
             const score = (doc.value as any)?.__embedding_score
               ? this.calculateSimilarityScore(
-                parseFloat((doc.value as any).__embedding_score as string)
-              )
+                  parseFloat((doc.value as any).__embedding_score as string)
+                )
               : 0;
 
             // Apply similarity threshold if specified

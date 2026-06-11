@@ -128,12 +128,12 @@ export type CreateSupervisorParams<
    */
   agents: (
     | CompiledStateGraph<
-      AnnotationRootT["State"],
-      AnnotationRootT["Update"],
-      string,
-      AnnotationRootT["spec"],
-      AnnotationRootT["spec"]
-    >
+        AnnotationRootT["State"],
+        AnnotationRootT["Update"],
+        string,
+        AnnotationRootT["spec"],
+        AnnotationRootT["spec"]
+      >
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | CompiledStateGraph<any, any, string, any, any>
     | RemoteGraph
@@ -177,14 +177,14 @@ export type CreateSupervisorParams<
    * This is not the only strategy to get structured responses, see more options in [this guide](https://langchain-ai.github.io/langgraph/how-tos/react-agent-structured-output/).
    */
   responseFormat?:
-  | InteropZodType<StructuredResponseFormat>
-  | {
-    prompt: string;
-    schema:
     | InteropZodType<StructuredResponseFormat>
+    | {
+        prompt: string;
+        schema:
+          | InteropZodType<StructuredResponseFormat>
+          | Record<string, unknown>;
+      }
     | Record<string, unknown>;
-  }
-  | Record<string, unknown>;
 
   /**
    * State schema to use for the supervisor graph
@@ -316,7 +316,7 @@ const createSupervisor = <
     if (!agent.name || agent.name === "LangGraph") {
       throw new Error(
         "Please specify a name when you create your agent, either via `createReactAgent({ ..., name: agentName })` " +
-        "or via `graph.compile({ name: agentName })`."
+          "or via `graph.compile({ name: agentName })`."
       );
     }
 

@@ -588,12 +588,12 @@ export class StreamController<
         const syntheticCheckpoint =
           typeof checkpointId === "string"
             ? {
-              id: checkpointId,
-              ...(parentCheckpointId != null
-                ? { parent_id: parentCheckpointId }
-                : {}),
-              ...(typeof seedStep === "number" ? { step: seedStep } : {}),
-            }
+                id: checkpointId,
+                ...(parentCheckpointId != null
+                  ? { parent_id: parentCheckpointId }
+                  : {}),
+                ...(typeof seedStep === "number" ? { step: seedStep } : {}),
+              }
             : undefined;
         this.#applyValues(state.values as unknown, syntheticCheckpoint);
 
@@ -1269,9 +1269,9 @@ export class StreamController<
     const resolved =
       options?.interruptId != null
         ? {
-          interruptId: options.interruptId,
-          namespace: options.namespace ?? [...ROOT_NAMESPACE],
-        }
+            interruptId: options.interruptId,
+            namespace: options.namespace ?? [...ROOT_NAMESPACE],
+          }
         : this.#resolveInterruptForResume();
     if (resolved == null) {
       throw new Error("No pending interrupt to respond to.");

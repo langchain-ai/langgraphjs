@@ -442,7 +442,7 @@ export class PregelLoop {
       this.config.metadata?.run_id !== undefined &&
       (this.checkpointMetadata as { run_id?: unknown })?.run_id !== undefined &&
       this.config.metadata.run_id ===
-      (this.checkpointMetadata as { run_id?: unknown })?.run_id;
+        (this.checkpointMetadata as { run_id?: unknown })?.run_id;
 
     return (
       hasChannelVersions &&
@@ -560,13 +560,13 @@ export class PregelLoop {
       config.configurable?.checkpoint_id === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP]?.[
-      config.configurable?.checkpoint_ns
+        config.configurable?.checkpoint_ns
       ]
     ) {
       checkpointConfig = patchConfigurable(config, {
         checkpoint_id:
           config.configurable[CONFIG_KEY_CHECKPOINT_MAP][
-          config.configurable?.checkpoint_ns
+            config.configurable?.checkpoint_ns
           ],
       });
     }
@@ -1420,7 +1420,7 @@ export class PregelLoop {
         configurable?.[CONFIG_KEY_CHECKPOINT_NS] !== "" &&
         configurable?.[CONFIG_KEY_CHECKPOINT_MAP] !== undefined &&
         configurable[CONFIG_KEY_CHECKPOINT_NS] in
-        configurable[CONFIG_KEY_CHECKPOINT_MAP]) ||
+          configurable[CONFIG_KEY_CHECKPOINT_MAP]) ||
         !(
           (inputIsCommand && (this.input as Command).resume != null) ||
           configurable?.[CONFIG_KEY_RESUMING] === true ||
@@ -1559,7 +1559,7 @@ export class PregelLoop {
         ) {
           replayCheckpointId =
             this.prevCheckpointConfig.configurable?.[
-            CONFIG_KEY_CHECKPOINT_ID
+              CONFIG_KEY_CHECKPOINT_ID
             ] ?? replayCheckpointId;
         }
         replayState = new ReplayState(replayCheckpointId);
@@ -1583,8 +1583,8 @@ export class PregelLoop {
     }
     const deepest = deepestCheckpointMapNamespace(
       this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] as
-      | Record<string, string>
-      | undefined
+        | Record<string, string>
+        | undefined
     );
     return deepest.length > 0 ? deepest : ns;
   }
@@ -1768,7 +1768,7 @@ export class PregelLoop {
         updatedChannels: this.updatedChannels,
         getNextVersion: doCheckpoint
           ? (current) =>
-            this.checkpointerGetNextVersion(current as number | undefined)
+              this.checkpointerGetNextVersion(current as number | undefined)
           : undefined,
       }
     );

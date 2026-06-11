@@ -236,7 +236,7 @@ api.get(
       "getSubgraphsAsync" in graph
         ? graph.getSubgraphsAsync.bind(graph)
         : // @ts-expect-error older versions of langgraph don't have getSubgraphsAsync
-        graph.getSubgraphs.bind(graph);
+          graph.getSubgraphs.bind(graph);
 
     let graphSchemaPromise:
       | ReturnType<typeof getCachedStaticGraphSchema>

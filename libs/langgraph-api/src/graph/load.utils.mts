@@ -46,8 +46,8 @@ export async function resolveGraph(
     | GraphLike
     | Promise<GraphLike>
     | ((config: {
-      configurable?: Record<string, unknown>;
-    }) => GraphLike | Promise<GraphLike>)
+        configurable?: Record<string, unknown>;
+      }) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
