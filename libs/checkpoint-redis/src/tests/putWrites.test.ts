@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RedisSaver } from "../index.js";
+import { ShallowRedisSaver } from "../shallow.js";
 
 // `RedisSaver.putWrites` stores one JSON document per write under a key shaped
 // `checkpoint_write:<thread>:<ns>:<ckpt>:<task>:<idx>`. The two things this
@@ -93,5 +94,109 @@ describe("RedisSaver.putWrites — WRITES_IDX_MAP", () => {
     expect(writeSets[0].key.endsWith(":-4")).toBe(true); // RESUME → idx -4
     // No NX option, so it overwrites whatever was there before.
     expect(writeSets[0].options ?? {}).not.toHaveProperty("NX");
+  });
+});
+
+const makeCheckpointDocWithUndefinedPendingWrite = () => ({
+  thread_id: "t",
+  checkpoint_ns: "",
+  checkpoint_id: "c",
+  parent_checkpoint_id: null,
+  checkpoint: {
+    v: 4,
+    id: "c",
+    ts: "2026-01-01T00:00:00.000Z",
+    channel_values: {},
+    channel_versions: {},
+    versions_seen: {},
+  },
+  metadata: {},
+  checkpoint_ts: 1,
+  has_writes: "true",
+});
+
+const writeDocWithoutValue = {
+  thread_id: "t",
+  checkpoint_ns: "",
+  checkpoint_id: "c",
+  task_id: "task_A",
+  idx: 0,
+  channel: "regular",
+  type: "json",
+  timestamp: 1,
+  global_idx: 1,
+};
+
+describe("RedisSaver.loadPendingWrites — undefined values", () => {
+  it("restores a missing write value as undefined instead of parsing it as JSON", async () => {
+    const checkpointDoc = makeCheckpointDocWithUndefinedPendingWrite();
+    const client = {
+      keys: async (pattern: string) => {
+        if (pattern === "checkpoint_write:t::c:*") {
+          return ["checkpoint_write:t::c:task_A:0"];
+        }
+        return [];
+      },
+      json: {
+        get: async (key: string) => {
+          if (key === "checkpoint:t::c") {
+            return checkpointDoc;
+          }
+          if (key === "checkpoint_write:t::c:task_A:0") {
+            return writeDocWithoutValue;
+          }
+          return null;
+        },
+      },
+      ft: { info: async () => ({}) },
+    } as never;
+
+    const saver = new RedisSaver(client);
+    const tuple = await saver.getTuple({
+      configurable: {
+        thread_id: "t",
+        checkpoint_ns: "",
+        checkpoint_id: "c",
+      },
+    });
+
+    expect(tuple?.pendingWrites).toEqual([["task_A", "regular", undefined]]);
+  });
+});
+
+describe("ShallowRedisSaver.loadPendingWrites — undefined values", () => {
+  it("restores a missing write value as undefined instead of parsing it as JSON", async () => {
+    const checkpointDoc = makeCheckpointDocWithUndefinedPendingWrite();
+    const client = {
+      zRange: async (key: string) => {
+        if (key === "write_keys_zset:t::c") {
+          return ["checkpoint_write:t::c:task_A:0"];
+        }
+        return [];
+      },
+      json: {
+        get: async (key: string) => {
+          if (key === "checkpoint:t::shallow") {
+            return checkpointDoc;
+          }
+          if (key === "checkpoint_write:t::c:task_A:0") {
+            return writeDocWithoutValue;
+          }
+          return null;
+        },
+      },
+      ft: { info: async () => ({}) },
+    } as never;
+
+    const saver = new ShallowRedisSaver(client);
+    const tuple = await saver.getTuple({
+      configurable: {
+        thread_id: "t",
+        checkpoint_ns: "",
+        checkpoint_id: "c",
+      },
+    });
+
+    expect(tuple?.pendingWrites).toEqual([["task_A", "regular", undefined]]);
   });
 });
