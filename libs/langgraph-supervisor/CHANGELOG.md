@@ -1,5 +1,17 @@
 # @langchain/langgraph-supervisor
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2521](https://github.com/langchain-ai/langgraphjs/pull/2521) [`56682a6`](https://github.com/langchain-ai/langgraphjs/commit/56682a69a24d0dfb210f1fb5187c51e3adc356bf) Thanks [@open-swe](https://github.com/apps/open-swe)! - feat(langgraph-supervisor): Add `addHandoffMessages` to `createSupervisor` and `createHandoffTool`, allowing supervisor-to-agent handoff bookkeeping messages to be omitted from the expert agent's message history. When `addHandoffBackMessages` is not provided, it now defaults to the same value as `addHandoffMessages`, matching the Python package behavior.
+
+  `createHandoffTool` now also accepts `description` as the preferred option name while continuing to support the existing `agentDescription` option as deprecated for backwards compatibility.
+
+### Patch Changes
+
+- [#2407](https://github.com/langchain-ai/langgraphjs/pull/2407) [`59d4765`](https://github.com/langchain-ai/langgraphjs/commit/59d4765870bc0cddf3ef594b128ab3280533cb6c) Thanks [@pragnyanramtha](https://github.com/pragnyanramtha)! - Normalize all whitespace in supervisor handoff tool names.
+
 ## 1.0.4
 
 ### Patch Changes

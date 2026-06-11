@@ -1,5 +1,24 @@
 # @langchain/langgraph-sdk
 
+## 1.9.21
+
+### Patch Changes
+
+- [#2522](https://github.com/langchain-ai/langgraphjs/pull/2522) [`3855985`](https://github.com/langchain-ai/langgraphjs/commit/3855985dd049739f145295d236ce6aa02ae2fb0e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(stream): add per-event side-effect selector
+
+  Add `useChannelEffect` (React/Svelte/Vue) / `injectChannelEffect` (Angular), a side-effect counterpart to `useChannel` that invokes an `onEvent` callback once per raw protocol event without re-rendering. This is the idiomatic v1 replacement for the old `onLangChainEvent` / `onCustomEvent` callbacks for analytics and logging. Backed by a new framework-agnostic `acquireChannelEffect` helper in `@langchain/langgraph-sdk/stream` that shares a ref-counted subscription with matching `useChannel` consumers.
+
+- [#2523](https://github.com/langchain-ai/langgraphjs/pull/2523) [`7c3e9e9`](https://github.com/langchain-ai/langgraphjs/commit/7c3e9e93f3c7ec1dc654dac8ee8c03562ee8337b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): stop re-streaming seeded messages on idle-thread submit
+
+  An idle (finished) thread defers its root SSE pump, so the first `submit()` brings it up and the transport replays the finished run from `seq=0`. The replayed `messages` channel carries no step (unlike `values`, guarded by `maxStep`), so it rebuilt each already-complete message from an empty `message-start` and re-streamed the whole turn token-by-token — a visible "messages replay" of the existing conversation. Seal the message ids seeded from the idle `getState()` snapshot so replayed deltas can't downgrade the complete tail; the seal lifts once a newer checkpoint advances the timeline or on thread rebind, and ids from the next run are never sealed.
+
+- [#2462](https://github.com/langchain-ai/langgraphjs/pull/2462) [`17c44a3`](https://github.com/langchain-ai/langgraphjs/commit/17c44a38b7478e2bc4fe908a54c78ef33fb68ba3) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): reconnect v2 SSE and WebSocket thread streams after disconnect
+
+  Add automatic reconnect with resume (`since` for SSE) for protocol transports,
+  wire `AsyncCaller` through `client.threads.stream`, and expose optional
+  reconnect tuning on `ThreadStreamOptions`. Includes integration tests against
+  an in-process mock langgraph-api server.
+
 ## 1.9.20
 
 ### Patch Changes
