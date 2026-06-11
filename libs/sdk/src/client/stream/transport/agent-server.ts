@@ -38,7 +38,13 @@ import type {
 
 export interface HttpAgentServerAdapterOptions {
   apiUrl: string;
-  threadId: string;
+  /**
+   * Thread this adapter targets. Optional: omit to construct an unbound
+   * adapter and let the framework bind it via {@link HttpAgentServerAdapter.setThreadId}
+   * (`client.threads.stream` does this) — e.g. lazy thread creation, where
+   * the id is only known after the first `submit()`.
+   */
+  threadId?: string;
   /** Auth / tenant / diagnostic headers applied to every request. */
   defaultHeaders?: Record<string, HeaderValue>;
   /** Per-request hook for last-mile header mutation. */
@@ -65,7 +71,7 @@ export interface HttpAgentServerAdapterOptions {
 }
 
 export class HttpAgentServerAdapter implements AgentServerAdapter {
-  readonly threadId: string;
+  threadId: string;
 
   readonly apiUrl: string;
 
@@ -78,7 +84,7 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
   getState?: AgentServerAdapter["getState"];
 
   constructor(options: HttpAgentServerAdapterOptions) {
-    this.threadId = options.threadId;
+    this.threadId = options.threadId ?? "";
     this.apiUrl = options.apiUrl;
     this.#delegate =
       options.webSocketFactory != null
@@ -104,6 +110,12 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
       const sse = this.#delegate as ProtocolSseTransportAdapter;
       this.getState = sse.getState.bind(sse);
     }
+  }
+
+  /** {@inheritDoc TransportAdapter.setThreadId} */
+  setThreadId(threadId: string): void {
+    this.threadId = threadId;
+    this.#delegate.setThreadId?.(threadId);
   }
 
   open(): Promise<void> {

@@ -12,6 +12,7 @@ import type {
   HeaderValue,
   ProtocolRequestHook,
   ProtocolSseTransportOptions,
+  ProtocolTransportPaths,
 } from "./types.js";
 import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 import {
@@ -20,6 +21,7 @@ import {
   mergeHeaders,
   toError,
   isProtocolResponse,
+  resolveProtocolPath,
 } from "./utils.js";
 import { BytesLineDecoder, SSEDecoder } from "../../../utils/sse.js";
 import { IterableReadableStream } from "../../../utils/stream.js";
@@ -27,12 +29,14 @@ import { webSocketReconnectDelayMs } from "./websocket.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
- * commands plus SSE event streams. Bound to a specific `threadId`
- * at construction. Each {@link openEventStream} call opens an independent
- * filtered SSE connection via `POST /threads/:thread_id/stream/events`.
+ * commands plus SSE event streams. Bound to a `threadId` at construction
+ * or later via {@link setThreadId}; request URLs derive from the
+ * currently-bound thread. Each {@link openEventStream} call opens an
+ * independent filtered SSE connection via
+ * `POST /threads/:thread_id/stream/events`.
  */
 export class ProtocolSseTransportAdapter implements TransportAdapter {
-  readonly threadId: string;
+  threadId: string;
 
   readonly apiUrl: string;
 
@@ -54,11 +58,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly reconnectDelayMs: (attempt: number) => number;
 
-  private readonly commandsUrl: string;
-
-  private readonly streamUrl: string;
-
-  private readonly stateUrl: string;
+  private readonly paths?: ProtocolTransportPaths;
 
   private readonly sessionAbortController = new AbortController();
 
@@ -79,12 +79,42 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.onReconnect = options.onReconnect;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;
-    this.threadId = options.threadId;
-    this.commandsUrl =
-      options.paths?.commands ?? `/threads/${this.threadId}/commands`;
-    this.streamUrl =
-      options.paths?.stream ?? `/threads/${this.threadId}/stream/events`;
-    this.stateUrl = options.paths?.state ?? `/threads/${this.threadId}/state`;
+    this.threadId = options.threadId ?? "";
+    this.paths = options.paths;
+  }
+
+  /** {@inheritDoc TransportAdapter.setThreadId} */
+  setThreadId(threadId: string): void {
+    this.threadId = threadId;
+  }
+
+  /**
+   * Command/stream/state URLs derive from the currently-bound thread so a
+   * single adapter can follow {@link setThreadId} re-binds. A fixed
+   * `paths.*` string overrides the default and is used as-is.
+   */
+  private get commandsUrl(): string {
+    return resolveProtocolPath(
+      this.paths?.commands,
+      this.threadId,
+      (id) => `/threads/${id}/commands`
+    );
+  }
+
+  private get streamUrl(): string {
+    return resolveProtocolPath(
+      this.paths?.stream,
+      this.threadId,
+      (id) => `/threads/${id}/stream/events`
+    );
+  }
+
+  private get stateUrl(): string {
+    return resolveProtocolPath(
+      this.paths?.state,
+      this.threadId,
+      (id) => `/threads/${id}/state`
+    );
   }
 
   /**

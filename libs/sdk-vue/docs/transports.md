@@ -107,6 +107,12 @@ Subclass `HttpAgentServerAdapter` for header injection / auth /
 observability, or implement `AgentServerAdapter` directly for transports
 that are not HTTP/SSE shaped.
 
+`threadId` is optional on `HttpAgentServerAdapter`. Omit it (and write
+`paths` as functions of the thread id) to let the framework bind the
+thread via `setThreadId` — including the id the SDK mints on the first
+submit of a `threadId: null` stream. See
+[Binding to a thread](./custom-transport.md#binding-to-a-thread).
+
 ## Implementing `AgentServerAdapter` from scratch
 
 The [**custom transports**](./custom-transport.md) guide walks through
@@ -123,6 +129,10 @@ interface AgentServerAdapter {
   close(): Promise<void>;
 
   // Optional:
+  // Bind / re-bind the adapter to a thread before each run, including the
+  // id minted on the first submit of a `threadId: null` stream. Omit to
+  // stay pinned to the constructed thread.
+  setThreadId?(threadId: string): void;
   getState?<S = unknown>(): Promise<{
     values: S;
     checkpoint?: { checkpoint_id?: string } | null;

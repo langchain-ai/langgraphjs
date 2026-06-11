@@ -39,4 +39,6 @@ interrupts, media, and subagents.
 - [`transports.md`](./transports.md) compares built-in SSE, WebSocket,
   header-based auth, and custom adapters.
 - [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  implementing custom transport layers.
+  pointing `useStream` at a custom backend — `HttpAgentServerAdapter`,
+  server-side protocol handling, lazy thread binding, and implementing
+  `AgentServerAdapter` directly.

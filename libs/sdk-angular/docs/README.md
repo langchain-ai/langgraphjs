@@ -38,6 +38,8 @@ interactive agent workflows.
 - [`transports.md`](./transports.md) compares the built-in LangGraph Platform
   transports and custom adapters.
 - [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  implementing custom transport layers.
+  pointing `injectStream` at a custom backend — `HttpAgentServerAdapter`,
+  server-side protocol handling, lazy thread binding, and implementing
+  `AgentServerAdapter` directly.
 - [`v1-migration.md`](./v1-migration.md) explains how to migrate from earlier
   Angular SDK APIs to v1.

@@ -6,16 +6,31 @@ export type ProtocolRequestHook = (
   init: RequestInit
 ) => Promise<RequestInit> | RequestInit;
 
+/**
+ * A protocol request path. Either a fixed string (bound to a specific
+ * thread) or a function of the active threadId. Use the function form
+ * when a single adapter instance must follow {@link TransportAdapter.setThreadId}
+ * re-binds — e.g. lazy thread creation, where the id is only known after
+ * the first `submit()`.
+ */
+export type ProtocolPath = string | ((threadId: string) => string);
+
 export interface ProtocolTransportPaths {
-  commands?: string;
-  stream?: string;
+  commands?: ProtocolPath;
+  stream?: ProtocolPath;
   /** `GET` path for thread-state hydration. Defaults to `/threads/:threadId/state`. */
-  state?: string;
+  state?: ProtocolPath;
 }
 
 export interface ProtocolSseTransportOptions {
   apiUrl: string;
-  threadId: string;
+  /**
+   * Thread this transport targets. Optional: omit to construct an
+   * unbound transport and bind later via {@link TransportAdapter.setThreadId}
+   * (the framework does this from `client.threads.stream`). Requests throw
+   * until a thread is bound.
+   */
+  threadId?: string;
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: ProtocolRequestHook;
   fetch?: typeof fetch;
@@ -43,7 +58,11 @@ export interface ProtocolSseTransportOptions {
 
 export interface ProtocolWebSocketTransportOptions {
   apiUrl: string;
-  threadId: string;
+  /**
+   * Thread this transport targets. Optional: omit to construct an
+   * unbound transport and bind later via {@link TransportAdapter.setThreadId}.
+   */
+  threadId?: string;
   defaultHeaders?: Record<string, HeaderValue>;
   onRequest?: ProtocolRequestHook;
   webSocketFactory?: (url: string) => WebSocket;
