@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { UpgradeWebSocket } from "hono/ws";
-import { v7 as uuid7 } from "uuid";
+import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import { ProtocolService } from "../protocol/service.mjs";

@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
-import { v7 as uuid } from "uuid";
+import { v7 as uuid } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import {
@@ -236,7 +236,7 @@ api.get(
       "getSubgraphsAsync" in graph
         ? graph.getSubgraphsAsync.bind(graph)
         : // @ts-expect-error older versions of langgraph don't have getSubgraphsAsync
-          graph.getSubgraphs.bind(graph);
+        graph.getSubgraphs.bind(graph);
 
     let graphSchemaPromise:
       | ReturnType<typeof getCachedStaticGraphSchema>

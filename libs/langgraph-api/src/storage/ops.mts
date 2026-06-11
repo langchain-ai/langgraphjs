@@ -1,6 +1,6 @@
 import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import { v7 as uuid7, v5 as uuid5 } from "uuid";
+import { v7 as uuid7, v5 as uuid5 } from "@langchain/core/utils/uuid";
 import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
@@ -73,8 +73,8 @@ export class FileSystemOps implements Ops {
   }
 }
 
-class TimeoutError extends Error {}
-class AbortError extends Error {}
+class TimeoutError extends Error { }
+class AbortError extends Error { }
 
 class Queue {
   private log: Message[] = [];
@@ -436,9 +436,9 @@ export class FileSystemAssistants implements AssistantsRepo {
       const metadata =
         mutable.metadata != null
           ? {
-              ...assistant["metadata"],
-              ...mutable.metadata,
-            }
+            ...assistant["metadata"],
+            ...mutable.metadata,
+          }
           : null;
 
       if (options?.graph_id != null) {
@@ -893,12 +893,12 @@ export class FileSystemThreads implements ThreadsRepo {
       thread.interrupts =
         options.checkpoint != null
           ? options.checkpoint.tasks.reduce<Record<string, unknown>>(
-              (acc, task) => {
-                if (task.interrupts) acc[task.id] = task.interrupts;
-                return acc;
-              },
-              {}
-            )
+            (acc, task) => {
+              if (task.interrupts) acc[task.id] = task.interrupts;
+              return acc;
+            },
+            {}
+          )
           : undefined;
     });
   }
@@ -1160,11 +1160,11 @@ export class FileSystemThreads implements ThreadsRepo {
       supersteps: Array<{
         updates: Array<{
           values?:
-            | Record<string, unknown>[]
-            | Record<string, unknown>
-            | unknown
-            | null
-            | undefined;
+          | Record<string, unknown>[]
+          | Record<string, unknown>
+          | unknown
+          | null
+          | undefined;
           command?: RunCommand | undefined | null;
           as_node?: string | undefined;
         }>;
@@ -1872,4 +1872,4 @@ export class FileSystemRuns implements RunsRepo {
   };
 }
 
-export class Crons {}
+export class Crons { }

@@ -8,7 +8,7 @@ export type RedisClusterConnection = ReturnType<typeof createCluster>;
 
 /** A Redis connection, clustered or conventional. */
 export type RedisConnection = RedisClientConnection | RedisClusterConnection;
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   type GetOperation,
   InvalidNamespaceError,
@@ -709,8 +709,8 @@ export class RedisStore {
 
             const score = (doc.value as any)?.__embedding_score
               ? this.calculateSimilarityScore(
-                  parseFloat((doc.value as any).__embedding_score as string)
-                )
+                parseFloat((doc.value as any).__embedding_score as string)
+              )
               : 0;
 
             // Apply similarity threshold if specified

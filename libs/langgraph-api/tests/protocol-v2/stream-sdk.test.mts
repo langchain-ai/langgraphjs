@@ -4,7 +4,7 @@
  * end-to-end against the embed server over real HTTP/SSE.
  */
 import type { Server } from "node:http";
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import {
   afterAll,
   beforeAll,

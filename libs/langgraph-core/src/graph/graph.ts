@@ -13,7 +13,7 @@ import {
 } from "@langchain/core/runnables/graph";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod/v4";
-import { validate as isUuid } from "uuid";
+import { validate as isUuid } from "@langchain/core/utils/uuid";
 import type {
   RunnableLike,
   LangGraphRunnableConfig,
@@ -79,16 +79,16 @@ type CompiledGraphTypeStreamTransformers<Spec> = Spec extends {
   streamTransformers: infer Transformers;
 }
   ? Transformers extends ReadonlyArray<
-      () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-    >
-    ? Transformers
-    : Transformers extends ReadonlyArray<
-          StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-        >
-      ? { readonly [K in keyof Transformers]: () => Transformers[K] }
-      : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
-        ? readonly [() => Transformers]
-        : []
+    () => StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? Transformers
+  : Transformers extends ReadonlyArray<
+    StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  >
+  ? { readonly [K in keyof Transformers]: () => Transformers[K] }
+  : Transformers extends StreamTransformer<any> // eslint-disable-line @typescript-eslint/no-explicit-any
+  ? readonly [() => Transformers]
+  : []
   : [];
 
 /**
@@ -144,12 +144,12 @@ export class Branch<
     }
     this.ends = Array.isArray(options.pathMap)
       ? options.pathMap.reduce(
-          (acc, n) => {
-            acc[n] = n;
-            return acc;
-          },
-          {} as Record<string, N | typeof END>
-        )
+        (acc, n) => {
+          acc[n] = n;
+          return acc;
+        },
+        {} as Record<string, N | typeof END>
+      )
       : options.pathMap;
   }
 
@@ -173,7 +173,7 @@ export class Branch<
             if (e.name === NodeInterrupt.unminifiable_name) {
               console.warn(
                 "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
-                  "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+                "NodeInterrupt should only be thrown inside a node, not in edge conditions."
               );
             }
             throw e;
@@ -313,10 +313,10 @@ export class Graph<
     nodes:
       | Record<K, NodeAction<NodeInput, NodeOutput, C>>
       | [
-          key: K,
-          action: NodeAction<NodeInput, NodeOutput, C>,
-          options?: AddNodeOptions,
-        ][]
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ][]
   ): Graph<N | K, RunInput, RunOutput>;
 
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
@@ -328,30 +328,30 @@ export class Graph<
   addNode<K extends string, NodeInput = RunInput, NodeOutput = RunOutput>(
     ...args:
       | [
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C>,
+        options?: AddNodeOptions,
+      ]
+      | [
+        nodes:
+        | Record<K, NodeAction<NodeInput, NodeOutput, C>>
+        | [
           key: K,
           action: NodeAction<NodeInput, NodeOutput, C>,
           options?: AddNodeOptions,
-        ]
-      | [
-          nodes:
-            | Record<K, NodeAction<NodeInput, NodeOutput, C>>
-            | [
-                key: K,
-                action: NodeAction<NodeInput, NodeOutput, C>,
-                options?: AddNodeOptions,
-              ][],
-        ]
+        ][],
+      ]
   ): Graph<N | K, RunInput, RunOutput> {
     function isMutlipleNodes(
       args: unknown[]
     ): args is [
       nodes:
-        | Record<K, NodeAction<NodeInput, RunOutput, C>>
-        | [
-            key: K,
-            action: NodeAction<NodeInput, RunOutput, C>,
-            options?: AddNodeOptions,
-          ][],
+      | Record<K, NodeAction<NodeInput, RunOutput, C>>
+      | [
+        key: K,
+        action: NodeAction<NodeInput, RunOutput, C>,
+        options?: AddNodeOptions,
+      ][],
       options?: AddNodeOptions,
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
@@ -521,7 +521,7 @@ export class Graph<
   compile<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
-      [],
+    [],
   >({
     checkpointer,
     interruptBefore,
@@ -733,7 +733,7 @@ export class CompiledGraph<
 
   override withConfig<
     const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
-      [],
+    [],
   >(
     config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
       streamTransformers: TTransformers;
@@ -921,9 +921,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? await subgraphs[key].getGraphAsync({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
 
         drawableSubgraph.trimFirstNode();
@@ -1129,9 +1129,9 @@ export class CompiledGraph<
         const drawableSubgraph =
           subgraphs[key] !== undefined
             ? subgraphs[key].getGraph({
-                ...config,
-                xray: newXrayValue,
-              })
+              ...config,
+              xray: newXrayValue,
+            })
             : node.getGraph(config);
         drawableSubgraph.trimFirstNode();
         drawableSubgraph.trimLastNode();

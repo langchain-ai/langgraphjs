@@ -53,7 +53,7 @@
  *
  * @see StreamController - The owner; injects every collaborator dep.
  */
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import type { ThreadStream } from "../client/stream/index.js";
 import { StreamStore } from "./store.js";
 import type { OptimisticHandle } from "./optimistic-input.js";

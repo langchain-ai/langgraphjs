@@ -27,8 +27,7 @@
   "author": "Brian Sam-Bodden <bsb@redis.com>",
   "license": "MIT",
   "dependencies": {
-    "redis": "^4.7.0",
-    "uuid": "^14.0.0"
+    "redis": "^4.7.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44",

@@ -1,4 +1,4 @@
-import { v5, v6 } from "uuid";
+import { v5, v6 } from "@langchain/core/utils/uuid";
 
 // Monotonic timestamp state, mirroring uuid@10's internal v1 clock handling.
 // uuid@11+ dropped the sub-millisecond `nsecs` counter when an explicit

@@ -1,5 +1,5 @@
 import type { CompiledGraph, Graph } from "@langchain/langgraph";
-import * as uuid from "uuid";
+import * as uuid from "@langchain/core/utils/uuid";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -46,8 +46,8 @@ export async function resolveGraph(
     | GraphLike
     | Promise<GraphLike>
     | ((config: {
-        configurable?: Record<string, unknown>;
-      }) => GraphLike | Promise<GraphLike>)
+      configurable?: Record<string, unknown>;
+    }) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {

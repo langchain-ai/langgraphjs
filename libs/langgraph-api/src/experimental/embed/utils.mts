@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import type { MultitaskStrategy, Run } from "../../storage/types.mjs";
@@ -46,9 +46,9 @@ export function createStubRun(
         ...payload.checkpoint,
         ...(payload.langsmith_tracer
           ? {
-              langsmith_project: payload.langsmith_tracer.project_name,
-              langsmith_example_id: payload.langsmith_tracer.example_id,
-            }
+            langsmith_project: payload.langsmith_tracer.project_name,
+            langsmith_example_id: payload.langsmith_tracer.example_id,
+          }
           : null),
       },
     },
