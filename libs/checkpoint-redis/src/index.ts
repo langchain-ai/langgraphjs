@@ -890,6 +890,10 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (checkpoint.channel_versions) {
       const actualNs =
         jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
+      // Track blob keys actually used so their TTL can be refreshed alongside the
+      // checkpoint key. Otherwise a read keeps the checkpoint alive while the
+      // blobs it depends on expire, silently dropping reconstructed channels.
+      const usedBlobKeys: string[] = [];
       for (const [channel, version] of Object.entries(
         checkpoint.channel_versions
       )) {
@@ -904,8 +908,22 @@ export class RedisSaver extends BaseCheckpointSaver {
               "json",
               JSON.stringify(blobDoc.value)
             );
+            usedBlobKeys.push(blobKey);
           }
         }
+      }
+
+      // Refresh blob TTLs in lockstep with the checkpoint key's refresh in
+      // getTuple(), so the checkpoint and the blobs it relies on expire together.
+      // Collected and refreshed in a single applyTTL() call so the per-key EXPIREs
+      // run concurrently and the refreshOnRead check is evaluated once, not per
+      // channel. This path also runs for list(), which reconstructs via this method.
+      if (
+        this.ttlConfig?.refreshOnRead &&
+        this.ttlConfig?.defaultTTL &&
+        usedBlobKeys.length > 0
+      ) {
+        await this.applyTTL(...usedBlobKeys);
       }
     }
 

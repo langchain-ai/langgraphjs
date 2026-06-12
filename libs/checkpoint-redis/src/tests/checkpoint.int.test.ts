@@ -1245,6 +1245,86 @@ describe("test_sync_redis_checkpointer", () => {
 
     await saver.end();
   });
+
+  it("should refresh channel blob TTL on read when refreshOnRead is enabled", async () => {
+    // Long TTL so nothing expires mid-test; we assert on the remaining TTL value
+    // rather than wall-clock expiry to avoid timing flakiness.
+    const defaultTTLMinutes = 60;
+    const ttlSeconds = defaultTTLMinutes * 60;
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: defaultTTLMinutes,
+      refreshOnRead: true,
+    });
+
+    const threadId = "blob-ttl-refresh-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status; messages now lives only in blob storage.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Locate the messages blob key (the channel reconstructed on read).
+    const blobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(blobKey).toBeDefined();
+
+    // Erode the blob's TTL so a successful refresh is observable: drop it well
+    // below the configured default.
+    await redisClient.expire(blobKey as string, 5);
+    const ttlBeforeRead = await redisClient.ttl(blobKey as string);
+    expect(ttlBeforeRead).toBeLessThanOrEqual(5);
+
+    // Reading reconstructs messages from the blob AND should refresh its TTL.
+    const tuple = await saver.getTuple(config);
+    expect(tuple?.checkpoint.channel_values.messages).toEqual([
+      { type: "human", content: "Hi there" },
+    ]);
+
+    // Blob TTL should be bumped back near the configured default, not left to expire.
+    const ttlAfterRead = await redisClient.ttl(blobKey as string);
+    expect(ttlAfterRead).toBeGreaterThan(ttlBeforeRead);
+    expect(ttlAfterRead).toBeGreaterThan(ttlSeconds - 60);
+
+    await saver.end();
+  });
 });
 
 // ============================================================================
