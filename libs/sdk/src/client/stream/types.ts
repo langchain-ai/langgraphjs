@@ -41,10 +41,10 @@ export type EventMethodByChannel = {
 
 export type EventForChannel<TChannel extends Channel> =
   TChannel extends keyof EventMethodByChannel
-  ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
-  : TChannel extends `custom:${string}`
-  ? Extract<Event, { method: "custom" }>
-  : never;
+    ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
+    : TChannel extends `custom:${string}`
+      ? Extract<Event, { method: "custom" }>
+      : never;
 
 export type EventForChannels<TChannels extends readonly Channel[]> =
   EventForChannel<TChannels[number]>;
@@ -246,7 +246,7 @@ export interface InterruptPayload<TPayload = unknown> {
  * opened on first property access and cached.
  */
 export interface ThreadExtension<T = unknown>
-  extends AsyncIterable<T>, PromiseLike<T> { }
+  extends AsyncIterable<T>, PromiseLike<T> {}
 
 /**
  * Unwrap a single in-process projection value to its observable payload
