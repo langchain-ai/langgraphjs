@@ -1,5 +1,17 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.9
+
+### Patch Changes
+
+- [#2525](https://github.com/langchain-ai/langgraphjs/pull/2525) [`829a32a`](https://github.com/langchain-ai/langgraphjs/commit/829a32a30cc22103b1cb0aba6a027b7ccdb68447) Thanks [@lhlyu](https://github.com/lhlyu)! - Fix Redis checkpoint pending write deserialization when a write document has no `value` field. RedisJSON omits `undefined` values, so `loadPendingWrites` now restores a missing `value` as `undefined` instead of passing it through JSON parsing.
+
+- [#2527](https://github.com/langchain-ai/langgraphjs/pull/2527) [`9e114e5`](https://github.com/langchain-ai/langgraphjs/commit/9e114e55d362a874878a817740de42fd62ae9db7) Thanks [@christian-bromann](https://github.com/christian-bromann)! - chore(deps): remove uuid dependency in favor of embedded uuid in core
+
+  Replace direct `uuid` package imports with `@langchain/core/utils/uuid` across
+  langgraph packages to deduplicate dependencies and align with @langchain/core's
+  embedded UUID utilities.
+
 ## 1.0.8
 
 ### Patch Changes
