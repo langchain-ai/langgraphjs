@@ -520,6 +520,7 @@ export class ThreadsClient<
             })
           : new ProtocolSseTransportAdapter({
               ...commonOpts,
+              idleReconnect: options.streamIdleReconnect,
               fetch: userFetch,
               asyncCaller: userFetch ? undefined : this.asyncCaller,
             });
