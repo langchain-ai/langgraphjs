@@ -2,7 +2,12 @@ import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
 import { mergeSignals } from "../utils/signals.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
-import { streamWithRetry, StreamRequestParams } from "../utils/stream.js";
+import {
+  streamWithRetry,
+  idleReconnectStream,
+  type IdleReconnectMode,
+  StreamRequestParams,
+} from "../utils/stream.js";
 import type { StreamProtocol } from "../types.js";
 
 export type HeaderValue = string | undefined | null;
@@ -400,6 +405,7 @@ export class BaseClient {
     params?: Record<string, unknown>;
     json?: unknown;
     maxRetries?: number;
+    idleReconnect?: IdleReconnectMode;
     onReconnect?: (options: {
       attempt: number;
       lastEventId?: string;
@@ -441,9 +447,20 @@ export class BaseClient {
         await config.onInitialResponse(response);
       }
 
-      const stream: ReadableStream<T> = response.body
-        .pipeThrough(BytesLineDecoder())
-        .pipeThrough(SSEDecoder()) as ReadableStream<T>;
+      // Insert the idle watchdog on the line stream (between the byte-line
+      // decoder and the SSE decoder) so it can both reset on any line and
+      // recognise `:` keep-alive heartbeats to drive `"auto"` mode. The SSE
+      // decoder downstream discards those comment lines.
+      const idleMode = config.idleReconnect ?? "auto";
+      const enableIdle = idleMode === "auto" || idleMode > 0;
+
+      const lines = response.body.pipeThrough(BytesLineDecoder());
+      const watched = enableIdle
+        ? lines.pipeThrough(idleReconnectStream({ mode: idleMode }))
+        : lines;
+      const stream: ReadableStream<T> = watched.pipeThrough(
+        SSEDecoder()
+      ) as ReadableStream<T>;
 
       return { response, stream };
     };

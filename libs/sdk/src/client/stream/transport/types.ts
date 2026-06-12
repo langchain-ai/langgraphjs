@@ -1,5 +1,6 @@
 import type { CommandResponse, ErrorResponse } from "@langchain/protocol";
 import type { AsyncCaller } from "../../../utils/async_caller.js";
+import type { IdleReconnectMode } from "../../../utils/stream.js";
 
 export type ProtocolRequestHook = (
   url: URL,
@@ -32,6 +33,23 @@ export interface ProtocolSseTransportOptions {
    * Defaults to 5. Set to 0 to disable automatic reconnection.
    */
   maxReconnectAttempts?: number;
+  /**
+   * Idle-reconnect policy guarding against half-open sockets that hang
+   * indefinitely with no error or close (e.g. a platform revision rollover
+   * that hard-kills the serving pod). On idle the underlying read is aborted,
+   * which the reconnect loop treats like any other disconnect, re-subscribing
+   * with `since` from the last seen sequence.
+   *
+   * - `"auto"`: arm only once the server's SSE keep-alive heartbeats
+   *   (LangGraph Platform: `: heartbeat` every ~5s) are observed, sizing the
+   *   window from their cadence. Independent of agent activity; stays dormant
+   *   on heartbeat-less servers.
+   * - a `number`: a fixed idle window in milliseconds.
+   * - `0`: disables it.
+   *
+   * @see {@link IdleReconnectMode}
+   */
+  idleReconnect?: IdleReconnectMode;
   /** Called before each SSE reconnect attempt (after backoff delay). */
   onReconnect?: (options: { attempt: number; cause: unknown }) => void;
   /**

@@ -22,7 +22,11 @@ import {
   isProtocolResponse,
 } from "./utils.js";
 import { BytesLineDecoder, SSEDecoder } from "../../../utils/sse.js";
-import { IterableReadableStream } from "../../../utils/stream.js";
+import {
+  IterableReadableStream,
+  idleReconnectStream,
+  type IdleReconnectMode,
+} from "../../../utils/stream.js";
 import { webSocketReconnectDelayMs } from "./websocket.js";
 
 /**
@@ -50,6 +54,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly maxReconnectAttempts: number;
 
+  private readonly idleReconnect: IdleReconnectMode | null;
+
   private readonly onReconnect?: ProtocolSseTransportOptions["onReconnect"];
 
   private readonly reconnectDelayMs: (attempt: number) => number;
@@ -76,6 +82,13 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
     this.maxReconnectAttempts =
       options.fetch != null ? 0 : (options.maxReconnectAttempts ?? 5);
+    // Custom fetch (tests/mocks) also disables the idle watchdog, matching the
+    // no-auto-reconnect policy above — a tripped watchdog would have nothing to
+    // reconnect to and would surface spurious errors in those harnesses.
+    // Otherwise default to heartbeat-adaptive `"auto"`, which stays dormant
+    // unless the server actually emits keep-alive heartbeats.
+    this.idleReconnect =
+      options.fetch != null ? null : (options.idleReconnect ?? "auto");
     this.onReconnect = options.onReconnect;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;
@@ -251,9 +264,21 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               },
             });
 
-          const stream = readable
-            .pipeThrough(BytesLineDecoder())
-            .pipeThrough(SSEDecoder());
+          // Idle watchdog on the line stream (between byte-line and SSE
+          // decoding) so it can reset on any line and recognise `:` keep-alive
+          // heartbeats to drive `"auto"` mode. On idle it errors the stream,
+          // which the catch below treats like any other disconnect and
+          // reconnects with `since` from the last seen sequence.
+          const enableIdle =
+            this.idleReconnect === "auto" ||
+            (typeof this.idleReconnect === "number" && this.idleReconnect > 0);
+          const lines = readable.pipeThrough(BytesLineDecoder());
+          const watched = enableIdle
+            ? lines.pipeThrough(
+                idleReconnectStream({ mode: this.idleReconnect! })
+              )
+            : lines;
+          const stream = watched.pipeThrough(SSEDecoder());
           const iterable = IterableReadableStream.fromReadableStream(stream);
 
           for await (const event of iterable) {

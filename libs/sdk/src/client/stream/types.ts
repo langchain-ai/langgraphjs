@@ -15,6 +15,7 @@ import type {
   SubscribeParams,
 } from "@langchain/protocol";
 
+import type { IdleReconnectMode } from "../../utils/stream.js";
 import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 
@@ -40,10 +41,10 @@ export type EventMethodByChannel = {
 
 export type EventForChannel<TChannel extends Channel> =
   TChannel extends keyof EventMethodByChannel
-    ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
-    : TChannel extends `custom:${string}`
-      ? Extract<Event, { method: "custom" }>
-      : never;
+  ? Extract<Event, { method: EventMethodByChannel[TChannel] }>
+  : TChannel extends `custom:${string}`
+  ? Extract<Event, { method: "custom" }>
+  : never;
 
 export type EventForChannels<TChannels extends readonly Channel[]> =
   EventForChannel<TChannels[number]>;
@@ -131,6 +132,19 @@ export interface ThreadStreamOptions {
    * attempts after an unexpected disconnect. Defaults to 5.
    */
   maxReconnectAttempts?: number;
+  /**
+   * Built-in `"sse"` transport only: idle-reconnect policy guarding against
+   * half-open sockets that hang with no error or close (e.g. a platform
+   * revision rollover).
+   *
+   * - `"auto"` (default): arm only once the server's SSE keep-alive
+   *   heartbeats are observed (LangGraph Platform emits `: heartbeat` every
+   *   ~5s), sizing the window from their cadence. Independent of agent
+   *   activity; stays dormant on heartbeat-less servers.
+   * - a `number`: a fixed idle window in milliseconds.
+   * - `0`: disables it.
+   */
+  streamIdleReconnect?: IdleReconnectMode;
   /**
    * Built-in transports only: delay before each reconnect attempt.
    * Defaults to exponential backoff with jitter.
@@ -232,7 +246,7 @@ export interface InterruptPayload<TPayload = unknown> {
  * opened on first property access and cached.
  */
 export interface ThreadExtension<T = unknown>
-  extends AsyncIterable<T>, PromiseLike<T> {}
+  extends AsyncIterable<T>, PromiseLike<T> { }
 
 /**
  * Unwrap a single in-process projection value to its observable payload
