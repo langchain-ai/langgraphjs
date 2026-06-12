@@ -20,7 +20,7 @@
  * one extra subscription per `(channels, namespace)` actually
  * rendered on screen.
  */
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type {
   Channel,

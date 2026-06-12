@@ -19,7 +19,7 @@ import {
 } from "@langchain/core/messages";
 import { ChatResult, ChatGenerationChunk } from "@langchain/core/outputs";
 import { RunnableLambda } from "@langchain/core/runnables";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 
 export interface FakeChatModelArgs extends BaseChatModelParams {
   responses: BaseMessage[];

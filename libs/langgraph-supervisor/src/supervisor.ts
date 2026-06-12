@@ -24,7 +24,7 @@ import {
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import type { RemoteGraph } from "@langchain/langgraph/remote";
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@langchain/core/utils/uuid";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
 export type { AgentNameMode };

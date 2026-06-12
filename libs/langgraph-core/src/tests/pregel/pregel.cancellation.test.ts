@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   Annotation,
   Command,

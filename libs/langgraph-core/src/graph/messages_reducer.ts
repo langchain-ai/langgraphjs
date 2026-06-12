@@ -4,7 +4,7 @@ import {
   coerceMessageLikeToMessage,
   RemoveMessage,
 } from "@langchain/core/messages";
-import { v4 } from "uuid";
+import { v4 } from "@langchain/core/utils/uuid";
 
 /**
  * Special value that signifies the intent to remove all previous messages in the state reducer.

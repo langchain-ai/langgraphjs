@@ -49,7 +49,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "^1.1.44",
+      "@langchain/core": "^1.1.48",
       "langchain": "1.4.0-dev-1777615538778",
       "@examples/streaming>langchain": "1.4.0-dev-1777615538778",
       "@examples/ui-react>langchain": "1.4.0-dev-1777615538778",

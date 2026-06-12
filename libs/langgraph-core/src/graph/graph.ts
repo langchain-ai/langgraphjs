@@ -13,7 +13,7 @@ import {
 } from "@langchain/core/runnables/graph";
 import { All, BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { z } from "zod/v4";
-import { validate as isUuid } from "uuid";
+import { validate as isUuid } from "@langchain/core/utils/uuid";
 import type {
   RunnableLike,
   LangGraphRunnableConfig,

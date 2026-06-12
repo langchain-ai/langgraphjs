@@ -1,5 +1,5 @@
 /* eslint-disable no-promise-executor-return, import/order, import/first */
-import { v4 as uuid } from "uuid";
+import { v4 as uuid } from "@langchain/core/utils/uuid";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v3";

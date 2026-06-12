@@ -1,5 +1,5 @@
 import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
-import { v7 as uuid7 } from "uuid";
+import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { getAssistantId } from "../graph/load.mjs";
 import type {
   Run,
