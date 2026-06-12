@@ -911,9 +911,9 @@ export class RedisSaver extends BaseCheckpointSaver {
       const actualNs =
         jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
       // Fetch the missing channels' blobs in parallel, then assign them in.
-      const missingChannels = Object.entries(checkpoint.channel_versions).filter(
-        ([channel]) => !(channel in (checkpoint.channel_values ?? {}))
-      );
+      const missingChannels = Object.entries(
+        checkpoint.channel_versions
+      ).filter(([channel]) => !(channel in (checkpoint.channel_values ?? {})));
       const reconstructed = await Promise.all(
         missingChannels.map(async ([channel, version]) => {
           const blobKey = `checkpoint_blob:${jsonDoc.thread_id}:${actualNs}:${channel}:${version}`;
