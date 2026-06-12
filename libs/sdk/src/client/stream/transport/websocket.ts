@@ -118,6 +118,17 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
   /** {@inheritDoc TransportAdapter.setThreadId} */
   setThreadId(threadId: string): void {
+    if (threadId === this.threadId) {
+      return;
+    }
+    if (
+      this.reconnectInFlight != null ||
+      (this.socket != null && this.socket.readyState !== WEB_SOCKET_CLOSED)
+    ) {
+      throw new Error(
+        "Protocol WebSocket transport cannot be rebound to a different thread while the socket is open. Close the current stream and create a new WebSocket transport for the new thread."
+      );
+    }
     this.threadId = threadId;
   }
 
