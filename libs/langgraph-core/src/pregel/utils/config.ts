@@ -73,6 +73,43 @@ export function propagateConfigurableToMetadata(
 }
 
 /**
+ * Metadata keys that are langgraph's internal framework bookkeeping and
+ * should not be surfaced as user-meaningful metadata.
+ *
+ * Mirrors `EXCLUDED_METADATA_KEYS` from langgraph's checkpoint base. Used by
+ * the `tasks` stream handler ({@link mapDebugTasks}) to drop framework keys
+ * (which are redundant with a task's own fields and namespace) while keeping
+ * keys like `lc_agent_name`, `ls_integration`, and user-supplied metadata.
+ */
+export const EXCLUDED_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "checkpoint_map",
+  "langgraph_step",
+  "langgraph_node",
+  "langgraph_triggers",
+  "langgraph_path",
+  "langgraph_checkpoint_ns",
+]);
+
+/**
+ * Drop langgraph's internal `seq:step*` bookkeeping tags.
+ *
+ * `seq:step:N` tags are added internally to mark sequence steps; everything
+ * else (user-supplied tags and any other framework tags) is kept. Returns the
+ * surviving tags, or `undefined` if none remain. Shared by the stream handlers
+ * (e.g. {@link mapDebugTasks}) so the same tag set is surfaced consistently.
+ */
+export function filterToUserTags(
+  tags: readonly string[] | undefined
+): string[] | undefined {
+  if (tags == null || tags.length === 0) return undefined;
+  const filtered = tags.filter((tag) => !tag.startsWith("seq:step"));
+  return filtered.length > 0 ? filtered : undefined;
+}
+
+/**
  * Merge two `callbacks` values across configs.
  *
  * A `callbacks` value may be `undefined`, an array of handlers, or a
