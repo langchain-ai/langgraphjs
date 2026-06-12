@@ -251,22 +251,42 @@ export class RedisSaver extends BaseCheckpointSaver {
     // Persist each changed channel as a separate blob so loadCheckpointWithWrites()
     // can reconstruct the full channel_values from blobs written by earlier nodes.
     if (newVersions !== undefined && checkpoint.channel_values) {
-      for (const [channel, version] of Object.entries(newVersions)) {
-        if (channel in checkpoint.channel_values) {
-          const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
-          const blobDoc = {
-            thread_id: threadId,
-            checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
-            checkpoint_id: checkpointId,
-            channel,
-            version: version.toString(),
-            type: "json",
-            value: checkpoint.channel_values[channel],
-          };
-          await this.client.json.set(blobKey, "$", blobDoc as any);
-          if (this.ttlConfig?.defaultTTL) {
-            await this.applyTTL(blobKey);
-          }
+      const channelValues = checkpoint.channel_values;
+      // Write the changed-channel blobs in parallel.
+      await Promise.all(
+        Object.entries(newVersions)
+          .filter(([channel]) => channel in channelValues)
+          .map(([channel, version]) => {
+            const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
+            const blobDoc = {
+              thread_id: threadId,
+              checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+              checkpoint_id: checkpointId,
+              channel,
+              version: version.toString(),
+              type: "json",
+              value: channelValues[channel],
+            };
+            return this.client.json.set(blobKey, "$", blobDoc as any);
+          })
+      );
+
+      // Refresh the TTL of every blob this checkpoint depends on — the whole
+      // channel_versions set, not just the newVersions subset just written.
+      // Channels carried over from earlier nodes live in their own blob keys with
+      // an older TTL; without this they could expire while the freshly-written
+      // checkpoint is still alive, dropping reconstructed channels on later reads.
+      // EXPIRE on a missing key is a no-op, so already-gone carry-overs are
+      // skipped. Write-side refresh — correct independent of refreshOnRead.
+      if (this.ttlConfig?.defaultTTL && checkpoint.channel_versions) {
+        const referencedBlobKeys = Object.entries(
+          checkpoint.channel_versions
+        ).map(
+          ([channel, version]) =>
+            `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`
+        );
+        if (referencedBlobKeys.length > 0) {
+          await this.applyTTL(...referencedBlobKeys);
         }
       }
     }
@@ -900,6 +920,9 @@ export class RedisSaver extends BaseCheckpointSaver {
         if (!(channel in (checkpoint.channel_values ?? {}))) {
           const blobKey = `checkpoint_blob:${jsonDoc.thread_id}:${actualNs}:${channel}:${version}`;
           const blobDoc = (await this.client.json.get(blobKey)) as any;
+          // A carried-over blob may be gone here if it expired during an idle gap
+          // > `defaultTTL`; skip the channel cleanly (absent, not corrupt) rather
+          // than erroring.
           if (blobDoc?.value !== undefined) {
             if (!checkpoint.channel_values) {
               checkpoint.channel_values = {};

@@ -1325,6 +1325,150 @@ describe("test_sync_redis_checkpointer", () => {
 
     await saver.end();
   });
+
+  it("should refresh carried-over channel blob TTL on write", async () => {
+    // Writing a new checkpoint should keep ALL blobs it depends on alive — not
+    // just the channels changed by the current node — so a carried-over blob
+    // does not expire while the fresh checkpoint is still alive.
+    const defaultTTLMinutes = 60;
+    const ttlSeconds = defaultTTLMinutes * 60;
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: defaultTTLMinutes,
+      refreshOnRead: false, // write-side refresh must work regardless
+    });
+
+    const threadId = "blob-ttl-write-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    // Node A writes messages + status.
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // The messages blob (carried over by the next write) — erode its TTL.
+    const messagesBlobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(messagesBlobKey).toBeDefined();
+    await redisClient.expire(messagesBlobKey as string, 5);
+    expect(await redisClient.ttl(messagesBlobKey as string)).toBeLessThanOrEqual(
+      5
+    );
+
+    // Node B writes only status. messages is carried over (in channel_versions
+    // but not newVersions) — its TTL should be refreshed by this write.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // The carried-over messages blob TTL should be bumped back near the default.
+    const ttlAfterWrite = await redisClient.ttl(messagesBlobKey as string);
+    expect(ttlAfterWrite).toBeGreaterThan(5);
+    expect(ttlAfterWrite).toBeGreaterThan(ttlSeconds - 60);
+
+    await saver.end();
+  });
+
+  it("should drop a channel cleanly when its blob has expired (no corruption)", async () => {
+    // Boundary case for the known TTL limitation: if a carried-over blob expires
+    // during an idle gap, reconstruction must skip the channel cleanly — the read
+    // returns without error and the channel is simply absent, not corrupt.
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: 60,
+      refreshOnRead: true,
+    });
+
+    const threadId = "blob-expired-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status; messages now lives only in its blob.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Simulate the idle-gap expiry: delete the messages blob outright.
+    const messagesBlobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(messagesBlobKey).toBeDefined();
+    await redisClient.del(messagesBlobKey as string);
+
+    // Read must not throw; status is still present, messages is cleanly absent.
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.checkpoint.channel_values.status).toBe("completed");
+    expect("messages" in (tuple?.checkpoint.channel_values ?? {})).toBe(false);
+
+    await saver.end();
+  });
 });
 
 // ============================================================================
