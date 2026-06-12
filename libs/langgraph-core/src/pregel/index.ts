@@ -126,7 +126,6 @@ import {
 import {
   _coerceToDict,
   combineAbortSignals,
-  combineCallbacks,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -2171,11 +2170,8 @@ export class Pregel<
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
-      // Similar to `stream`, we need to pass the `config.callbacks` here,
-      // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-
-      // extend the callbacks with the ones from the config
-      callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
+      // `_streamIterator` runs `ensureLangGraphConfig(this.config, options)`,
+      // which merges callbacks.
       signal: combineAbortSignals(options?.signal, abortController.signal)
         .signal,
     };

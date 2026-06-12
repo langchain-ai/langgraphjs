@@ -1,5 +1,6 @@
 import { describe, beforeEach, afterAll, it, expect, vi } from "vitest";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import {
   ensureLangGraphConfig,
@@ -47,7 +48,7 @@ describe("ensureLangGraphConfig", () => {
     });
   });
 
-  it("should merge multiple configs, with later configs taking precedence", () => {
+  it("should merge multiple configs per-key, preserving distinct keys", () => {
     // Mock the AsyncLocalStorage to return undefined
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
@@ -67,14 +68,109 @@ describe("ensureLangGraphConfig", () => {
 
     const result = ensureLangGraphConfig(config1, config2);
 
-    // The implementation completely replaces objects rather than merging them
+    // tags/metadata/configurable now merge across configs rather than
+    // overwriting (matches langgraph's `merge_configs`).
     expect(result).toEqual({
-      tags: ["tag2"],
-      metadata: { key2: "value2" },
+      tags: ["tag1", "tag2"],
+      metadata: { key1: "value1", key2: "value2" },
       callbacks: undefined,
       recursionLimit: 25,
-      configurable: { option2: "value2" },
+      configurable: { option1: "value1", option2: "value2" },
     });
+  });
+
+  it("should merge configurable dicts, with later configs winning per key", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const bound = { configurable: { ls_agent_type: "root", shared: "from_a" } };
+    const invoke = { configurable: { thread_id: "T1", shared: "from_b" } };
+
+    const result = ensureLangGraphConfig(bound, invoke);
+
+    expect(result.configurable).toEqual({
+      ls_agent_type: "root",
+      thread_id: "T1",
+      shared: "from_b",
+    });
+  });
+
+  it("should merge metadata dicts, with later configs winning per key", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const bound = { metadata: { user_id: "U1", shared: "from_a" } };
+    const invoke = { metadata: { correlation_id: "C1", shared: "from_b" } };
+
+    const result = ensureLangGraphConfig(bound, invoke);
+
+    expect(result.metadata).toEqual({
+      user_id: "U1",
+      correlation_id: "C1",
+      shared: "from_b",
+    });
+  });
+
+  it("should concat tags across configs, preserving order and duplicates", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const result = ensureLangGraphConfig(
+      { tags: ["shared", "alpha"] },
+      { tags: ["shared", "beta"] }
+    );
+
+    // Plain concat (no dedup, no sort) — matches langgraph's `merge_configs`.
+    expect(result.tags).toEqual(["shared", "alpha", "shared", "beta"]);
+  });
+
+  it("should concat callbacks arrays across configs, preserving handlers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    class SentinelHandler extends BaseCallbackHandler {
+      name = "sentinel";
+    }
+    const cbA = new SentinelHandler();
+    const cbB = new SentinelHandler();
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [cbA] },
+      { callbacks: [cbB] }
+    );
+
+    expect(result.callbacks).toEqual([cbA, cbB]);
+  });
+
+  it("should not mutate the input configs when merging", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const bound = {
+      metadata: { user_id: "U1" },
+      configurable: { ls_agent_type: "root" },
+      tags: ["bound"],
+    };
+    const invoke = {
+      metadata: { correlation_id: "C1" },
+      // `thread_id` is propagated into metadata, which previously mutated
+      // the shared base config's metadata dict by reference.
+      configurable: { thread_id: "T1" },
+      tags: ["invoke"],
+    };
+
+    ensureLangGraphConfig(bound, invoke);
+
+    expect(bound.metadata).toEqual({ user_id: "U1" });
+    expect(bound.configurable).toEqual({ ls_agent_type: "root" });
+    expect(bound.tags).toEqual(["bound"]);
+    expect(invoke.metadata).toEqual({ correlation_id: "C1" });
+    expect(invoke.configurable).toEqual({ thread_id: "T1" });
   });
 
   it("should copy values from AsyncLocalStorage if available", () => {
