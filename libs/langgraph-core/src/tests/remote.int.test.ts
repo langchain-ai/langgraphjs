@@ -1,97 +1,170 @@
-/* eslint-disable no-process-env */
-import { describe, test } from "vitest";
-import { v4 } from "uuid";
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { createServer } from "node:net";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { RemoteGraph } from "../pregel/remote.js";
-import { MemorySaver, MessagesAnnotation, StateGraph } from "../web.js";
 
-describe("RemoteGraph", () => {
-  const remotePregel = new RemoteGraph({
-    graphId: process.env.LANGGRAPH_REMOTE_GRAPH_ID!,
-    apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
-    url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
+let server: ChildProcess | undefined;
+let apiUrl: string;
+const serverLogs: string[] = [];
+
+const serverScript = fileURLToPath(
+  new URL("../../../langgraph-api/tests/utils.server.mts", import.meta.url)
+);
+const serverConfig = fileURLToPath(
+  new URL("../../../langgraph-api/tests/graphs/langgraph.json", import.meta.url)
+);
+const apiDir = dirname(dirname(serverScript));
+
+async function getAvailablePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const listener = createServer();
+    listener.once("error", reject);
+    listener.listen(0, () => {
+      const address = listener.address();
+      listener.close(() => {
+        if (address != null && typeof address === "object") {
+          resolve(address.port);
+        } else {
+          reject(new Error("Unable to allocate a local test port."));
+        }
+      });
+    });
+  });
+}
+
+async function waitForServer(url: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${url}/ok`);
+      if (response.ok) return;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+  }
+
+  throw new Error(
+    `Timed out waiting for local LangGraph server: ${lastError}\n${serverLogs.join("").slice(-4000)}`
+  );
+}
+
+async function truncateServer(url: string): Promise<void> {
+  await fetch(`${url}/internal/truncate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      runs: true,
+      threads: true,
+      assistants: true,
+      store: true,
+      checkpoint: true,
+    }),
+  });
+}
+
+beforeAll(async () => {
+  const port = await getAvailablePort();
+  apiUrl = `http://localhost:${port}`;
+  server = spawn("tsx", [serverScript, "--dev", "-c", serverConfig], {
+    cwd: apiDir,
+    env: {
+      ...process.env,
+      PORT: String(port),
+      LANGCHAIN_TRACING_V2: "false",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
   });
 
-  const builder = new StateGraph(MessagesAnnotation)
-    .addNode("agent", remotePregel)
-    .addEdge("__start__", "agent")
-    .addEdge("agent", "__end__");
-  const input = {
-    messages: [
+  server.stdout?.on("data", (data) => {
+    serverLogs.push(data.toString());
+  });
+  server.stderr?.on("data", (data) => {
+    serverLogs.push(data.toString());
+  });
+
+  await waitForServer(apiUrl);
+  await truncateServer(apiUrl);
+}, 60_000);
+
+afterAll(() => {
+  server?.kill("SIGTERM");
+});
+
+describe("RemoteGraph local server integration", () => {
+  test("streams v3 events from a local graph through RemoteGraph", async () => {
+    const remoteGraph = new RemoteGraph({
+      graphId: "simple_runtime",
+      url: apiUrl,
+    });
+
+    const run = await remoteGraph.streamEvents(
+      { message: "hello from remote" },
       {
-        role: "human",
-        content: "Hello world!",
-      },
-    ],
-  };
+        version: "v3",
+        configurable: { thread_id: randomUUID() },
+      }
+    );
 
-  const config = {
-    configurable: { thread_id: v4() },
-  };
+    const events = [];
+    for await (const event of run) {
+      events.push(event);
+      if (event.method === "values") break;
+    }
 
-  test("invoke", async () => {
-    const checkpointer = new MemorySaver();
-    const app = builder.compile({ checkpointer });
+    const output = await run.output;
+    await run.thread.close();
 
-    const response = await app.invoke(input, config);
-
-    console.log("response:", response);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "event",
+          method: "values",
+          params: expect.objectContaining({
+            namespace: [],
+            data: expect.objectContaining({
+              message: "hello from remote",
+            }),
+          }),
+        }),
+      ])
+    );
+    expect(output).toMatchObject({
+      message: "hello from remote",
+      model: "unknown",
+    });
   });
 
-  test("stream", async () => {
-    const checkpointer = new MemorySaver();
-    const app = builder.compile({ checkpointer });
-    const stream = await app.stream(input, {
-      ...config,
-      subgraphs: true,
-      streamMode: ["debug", "values"],
+  test("supports text/event-stream encoding over the remote v3 path", async () => {
+    const remoteGraph = new RemoteGraph({
+      graphId: "simple_runtime",
+      url: apiUrl,
     });
 
+    const stream = await remoteGraph.streamEvents(
+      { message: "encoded remote" },
+      {
+        version: "v3",
+        encoding: "text/event-stream",
+        configurable: { thread_id: randomUUID() },
+      }
+    );
+
+    const decoder = new TextDecoder();
+    let text = "";
     for await (const chunk of stream) {
-      console.log("chunk:", chunk);
-    }
-  });
-
-  test("get and update state", async () => {
-    const checkpointer = new MemorySaver();
-    const app = builder.compile({ checkpointer });
-
-    await app.invoke(input, config);
-    // test get state
-    const stateSnapshot = await remotePregel.getState(config, {
-      subgraphs: true,
-    });
-    console.log("state snapshot: ", stateSnapshot);
-
-    // test update state
-    const updateStateResponse = await remotePregel.updateState(config, {
-      messages: [
-        {
-          role: "ai",
-          content: "Hello world again!",
-        },
-      ],
-    });
-    console.log("update state response:", updateStateResponse);
-
-    // test get history
-    for await (const state of remotePregel.getStateHistory(config)) {
-      console.log("state history snapshot:", state);
+      text += decoder.decode(chunk);
     }
 
-    // test get graph
-    const remotePregel2 = new RemoteGraph({
-      graphId: "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
-      apiKey: process.env.LANGGRAPH_REMOTE_GRAPH_API_KEY,
-      url: process.env.LANGGRAPH_REMOTE_GRAPH_API_URL,
-    });
-
-    const graph = await remotePregel2.getGraphAsync({ xray: true });
-    console.log("graph:", graph);
-
-    // test get subgraphs
-    for await (const [name, pregel] of remotePregel2.getSubgraphsAsync()) {
-      console.log("name:", name);
-      console.log("pregel:", pregel);
-    }
+    expect(text).toContain("event: values");
+    expect(text).toContain("encoded remote");
   });
 });

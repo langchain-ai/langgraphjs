@@ -5,6 +5,7 @@ import type {
   PendingWrite,
   CheckpointPendingWrite,
   CheckpointMetadata,
+  DeltaChannelHistory,
 } from "./types.js";
 import { ERROR, INTERRUPT, RESUME, SCHEDULED } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
@@ -16,7 +17,7 @@ export type ChannelVersions = Record<string, ChannelVersion>;
 
 export interface Checkpoint<
   N extends string = string,
-  C extends string = string
+  C extends string = string,
 > {
   /**
    * The version of the checkpoint format. Currently 4
@@ -74,7 +75,7 @@ export function deepCopy<T>(obj: T): T {
 export function emptyCheckpoint(): Checkpoint {
   return {
     v: 4,
-    id: uuid6(-2),
+    id: uuid6(0),
     ts: new Date().toISOString(),
     channel_values: {},
     channel_versions: {},
@@ -151,6 +152,88 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
    * @param threadId The thread ID whose checkpoints should be deleted.
    */
   abstract deleteThread(threadId: string): Promise<void>;
+
+  /**
+   * Walk the parent chain returning per-channel writes + seed, used to
+   * reconstruct `DeltaChannel` state from `checkpoint_writes`.
+   *
+   * For each requested channel, walks ancestors of the checkpoint identified
+   * by `config` (following `parentConfig`) and accumulates the pending writes
+   * for that channel. The walk terminates per-channel at the nearest ancestor
+   * whose `channel_values[ch]` is populated; that value is returned as `seed`.
+   * If the walk reaches the root without finding a stored value, `seed` is
+   * omitted from that channel's entry — the consumer treats the absence as
+   * "start empty".
+   *
+   * Walks the parent chain (not `list({ before })`): for forked threads, only
+   * on-path ancestors contribute.
+   *
+   * The default implementation walks `getTuple` + `parentConfig` once for all
+   * channels — each ancestor visited once, not once per channel. Savers with
+   * direct storage access (e.g. `MemorySaver`) override for performance; the
+   * return contract is fixed here.
+   *
+   * @remarks Beta. The signature, return shape, and interaction with
+   * `DeltaSnapshot` blobs may change. Override at your own risk; the default
+   * implementation will continue to work against the public
+   * `BaseCheckpointSaver` contract.
+   *
+   * @param options.config Configuration identifying the target checkpoint.
+   * @param options.channels Channel names to walk for. Empty → empty mapping.
+   * @returns Per-channel {@link DeltaChannelHistory} for every requested name.
+   */
+  async getDeltaChannelHistory(options: {
+    config: RunnableConfig;
+    channels: string[];
+  }): Promise<Record<string, DeltaChannelHistory>> {
+    const { config, channels } = options;
+    if (channels.length === 0) return {};
+
+    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
+    const seedByCh: Record<string, unknown> = {};
+    const remaining = new Set(channels);
+    for (const ch of channels) collectedByCh[ch] = [];
+
+    const targetTuple = await this.getTuple(config);
+    let cursorConfig: RunnableConfig | undefined = targetTuple?.parentConfig;
+
+    while (cursorConfig != null && remaining.size > 0) {
+      const tup: CheckpointTuple | undefined =
+        await this.getTuple(cursorConfig);
+      if (tup === undefined) break;
+      if (tup.pendingWrites && tup.pendingWrites.length > 0) {
+        for (let i = tup.pendingWrites.length - 1; i >= 0; i -= 1) {
+          const write = tup.pendingWrites[i];
+          const ch = write[1];
+          if (remaining.has(ch)) collectedByCh[ch].push(write);
+        }
+      }
+      for (const ch of Array.from(remaining)) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            tup.checkpoint.channel_values,
+            ch
+          )
+        ) {
+          seedByCh[ch] = tup.checkpoint.channel_values[ch];
+          remaining.delete(ch);
+        }
+      }
+      cursorConfig = tup.parentConfig;
+    }
+
+    const result: Record<string, DeltaChannelHistory> = {};
+    for (const ch of channels) {
+      const entry: DeltaChannelHistory = {
+        writes: collectedByCh[ch].slice().reverse(),
+      };
+      if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
+        entry.seed = seedByCh[ch];
+      }
+      result[ch] = entry;
+    }
+    return result;
+  }
 
   /**
    * Generate the next version ID for a channel.

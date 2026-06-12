@@ -2,7 +2,11 @@
 /* eslint-disable no-param-reassign */
 /* eslint-disable no-return-assign */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { StructuredTool, tool } from "@langchain/core/tools";
+import { StructuredTool, tool, type ToolRuntime } from "@langchain/core/tools";
+import {
+  AsyncLocalStorageProviderSingleton,
+  MockAsyncLocalStorage,
+} from "@langchain/core/singletons";
 
 import {
   AIMessage,
@@ -17,6 +21,7 @@ import { z } from "zod/v3";
 import { z as z4 } from "zod/v4";
 import {
   Runnable,
+  RunnableConfig,
   RunnableLambda,
   RunnableSequence,
 } from "@langchain/core/runnables";
@@ -52,7 +57,7 @@ import {
   Runtime,
   Send,
   StateGraph,
-} from "../index.js";
+} from "../web.js";
 import {
   MessagesAnnotation,
   MessagesZodMeta,
@@ -2040,6 +2045,45 @@ describe.each([["v1" as const], ["v2" as const]])(
           "The weather is nice"
         );
       });
+
+      it("Throws when structured output parser returns null", async () => {
+        const cartResponseSchema = z.object({
+          items: z.array(z.string()),
+          cartStatus: z.string(),
+        });
+
+        const llm = new FakeToolCallingChatModel({
+          responses: [new AIMessage('{"items": ["apple", "banana"]}')],
+          structuredResponse: { items: ["apple", "banana"] },
+        });
+
+        vi.spyOn(llm, "withStructuredOutput").mockReturnValue(
+          RunnableLambda.from(async () => null) as unknown as ReturnType<
+            typeof llm.withStructuredOutput
+          >
+        );
+
+        const agent = createReactAgent({
+          llm,
+          tools: [],
+          version,
+          responseFormat: cartResponseSchema,
+        });
+
+        const error = await agent
+          .invoke({
+            messages: [new HumanMessage("What's in my cart?")],
+          })
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(
+          /Failed to parse structured response/
+        );
+        expect((error as Error).message).toMatch(
+          /returned null\/undefined/
+        );
+      });
     });
 
     describe("Dynamic Model", () => {
@@ -2595,11 +2639,8 @@ describe.each([["v1" as const], ["v2" as const]])(
 
     it("inherit task context", async () => {
       const parrot = tool(
-        async (args) => {
-          const { messages } = getCurrentTaskInput() as {
-            messages: BaseMessage[];
-          };
-
+        async (args, runtime: ToolRuntime<{ messages: BaseMessage[] }>) => {
+          const { messages } = runtime.state;
           return `[tool] ${args.prefix}: ${messages
             .map((i) => i.text)
             .join(", ")}`;
@@ -2672,6 +2713,199 @@ describe("ToolNode", () => {
     expect(res[0].content).toEqual(
       `Error: Tool "badtool" not found.\n Please fix your mistakes.`
     );
+  });
+
+  it("forwards graph state to tools via runtime.state (graph node)", async () => {
+    const AgentState = z.object({
+      ...MessagesZodState.shape,
+      userId: z.string(),
+    });
+
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (
+        _input: Record<string, never>,
+        runtime: ToolRuntime<typeof AgentState>
+      ) => {
+        // Read the graph state directly from the second argument.
+        observedUserId = runtime.state.userId;
+        return observedUserId === "user_123"
+          ? "User is John Smith"
+          : "Unknown user";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const toolNode = new ToolNode([getUserInfo]);
+    const graph = new StateGraph(AgentState)
+      .addNode("tools", toolNode)
+      .addEdge("__start__", "tools")
+      .compile();
+
+    const result = await graph.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      userId: "user_123",
+    });
+
+    expect(observedUserId).toBe("user_123");
+    const lastMessage = result.messages[result.messages.length - 1];
+    expect(lastMessage.content).toBe("User is John Smith");
+  });
+
+  it("forwards input to tools via runtime.state on direct .invoke()", async () => {
+    // Reproduces the issue scenario: invoking a ToolNode directly (outside a
+    // graph) and expecting the tool to access the surrounding state.
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (
+        _input: Record<string, never>,
+        runtime: ToolRuntime<{ userId: string }>
+      ) => {
+        observedUserId = runtime.state.userId;
+        return "ok";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const toolNode = new ToolNode([getUserInfo]);
+    await toolNode.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      // Extra state the tool needs; ToolNode forwards it via `runtime.state`.
+      userId: "user_123",
+    } as unknown as { messages: BaseMessage[] });
+
+    expect(observedUserId).toBe("user_123");
+  });
+
+  it("runtime.state works without AsyncLocalStorage (browser-like)", async () => {
+    // Simulate a browser/web runtime without `async_hooks` support: the global
+    // ALS instance is absent, so @langchain/core falls back to a no-op
+    // MockAsyncLocalStorage. In this environment `getCurrentTaskInput()` cannot
+    // recover the config implicitly, but `runtime.state` still works because
+    // ToolNode threads the state to the tool as a function argument.
+    const getInstanceSpy = vi
+      .spyOn(AsyncLocalStorageProviderSingleton, "getInstance")
+      .mockReturnValue(new MockAsyncLocalStorage());
+
+    try {
+      // Sanity check: in this simulated environment, the implicit lookup fails.
+      expect(
+        AsyncLocalStorageProviderSingleton.getRunnableConfig()
+      ).toBeUndefined();
+
+      const AgentState = z.object({
+        ...MessagesZodState.shape,
+        userId: z.string(),
+      });
+
+      let observedUserId: string | undefined;
+      let implicitLookupThrew = false;
+      const getUserInfo = tool(
+        async (
+          _input: Record<string, never>,
+          runtime: ToolRuntime<typeof AgentState>
+        ) => {
+          // Without ALS, the implicit (no-arg) lookup must fail.
+          try {
+            getCurrentTaskInput();
+          } catch {
+            implicitLookupThrew = true;
+          }
+          // ...but reading from the second argument still works.
+          observedUserId = runtime.state.userId;
+          return "ok";
+        },
+        {
+          name: "get_user_info",
+          description: "Look up user info.",
+          schema: z.object({}),
+        }
+      );
+
+      const graph = new StateGraph(AgentState)
+        .addNode("tools", new ToolNode([getUserInfo]))
+        .addEdge("__start__", "tools")
+        .compile();
+
+      await graph.invoke({
+        messages: [
+          new AIMessage({
+            content: "",
+            tool_calls: [
+              { name: "get_user_info", args: {}, id: "call_user_info" },
+            ],
+          }),
+        ],
+        userId: "user_123",
+      });
+
+      expect(implicitLookupThrew).toBe(true);
+      expect(observedUserId).toBe("user_123");
+    } finally {
+      getInstanceSpy.mockRestore();
+    }
+  });
+
+  it("still exposes state via getCurrentTaskInput(config) for backwards compatibility", async () => {
+    const AgentState = z.object({
+      ...MessagesZodState.shape,
+      userId: z.string(),
+    });
+
+    let observedUserId: string | undefined;
+    const getUserInfo = tool(
+      async (_input: Record<string, never>, config: RunnableConfig) => {
+        const state = getCurrentTaskInput(config) as z.infer<typeof AgentState>;
+        observedUserId = state.userId;
+        return "ok";
+      },
+      {
+        name: "get_user_info",
+        description: "Look up user info.",
+        schema: z.object({}),
+      }
+    );
+
+    const graph = new StateGraph(AgentState)
+      .addNode("tools", new ToolNode([getUserInfo]))
+      .addEdge("__start__", "tools")
+      .compile();
+
+    await graph.invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { name: "get_user_info", args: {}, id: "call_user_info" },
+          ],
+        }),
+      ],
+      userId: "user_123",
+    });
+
+    expect(observedUserId).toBe("user_123");
   });
 
   // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)

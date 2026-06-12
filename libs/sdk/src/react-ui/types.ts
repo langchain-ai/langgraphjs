@@ -1,6 +1,6 @@
 export interface UIMessage<
   TName extends string = string,
-  TProps extends Record<string, unknown> = Record<string, unknown>
+  TProps extends Record<string, unknown> = Record<string, unknown>,
 > {
   type: "ui";
 
@@ -12,7 +12,7 @@ export interface UIMessage<
     run_id?: string;
     name?: string;
     tags?: string[];
-    message_id?: string;
+    id?: string;
     [key: string]: unknown;
   };
 }

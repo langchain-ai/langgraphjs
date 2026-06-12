@@ -4,7 +4,7 @@ import {
   coerceMessageLikeToMessage,
   RemoveMessage,
 } from "@langchain/core/messages";
-import { v4 } from "uuid";
+import { v4 } from "@langchain/core/utils/uuid";
 
 /**
  * Special value that signifies the intent to remove all previous messages in the state reducer.
@@ -128,4 +128,80 @@ export function messagesStateReducer(
 
   // Remove any messages whose IDs are marked for removal
   return merged.filter((m) => !idsToRemove.has(m.id));
+}
+
+/**
+ * **Experimental.** Batch reducer for use with `DeltaChannel`.
+ *
+ * Processes all writes in one pass — dedup by ID and `RemoveMessage`
+ * tombstoning — without calling {@link messagesStateReducer}.
+ *
+ * This reducer is batching-invariant, as required by `DeltaChannel`:
+ * `reducer(reducer(state, xs), ys) === reducer(state, xs.concat(ys))`.
+ *
+ * Raw object / string inputs are coerced to typed `BaseMessage` objects so
+ * that HTTP-driven graphs work without a separate coercion step. This is not
+ * full {@link messagesStateReducer} parity — `REMOVE_ALL_MESSAGES`,
+ * unknown-id `RemoveMessage` errors, and missing-id UUID assignment are not
+ * handled here.
+ *
+ * @param state - The current accumulated list of messages.
+ * @param writes - Batch of writes, each a single message-like or an array.
+ * @returns The new accumulated list of messages.
+ *
+ * @example
+ * ```typescript
+ * import { DeltaChannel, messagesDeltaReducer } from "@langchain/langgraph";
+ *
+ * const channel = new DeltaChannel(messagesDeltaReducer);
+ * ```
+ */
+export function messagesDeltaReducer(
+  state: BaseMessage[],
+  writes: Messages[]
+): BaseMessage[] {
+  // Each write is either an array of message-likes or a single message-like.
+  // Only arrays flatten; everything else is one message.
+  const flat: BaseMessageLike[] = [];
+  for (const w of writes) {
+    if (Array.isArray(w)) {
+      flat.push(...(w as BaseMessageLike[]));
+    } else {
+      flat.push(w as BaseMessageLike);
+    }
+  }
+
+  // Steady state: the reducer's own output is already typed, so skip coercion
+  // on state when the first element is a BaseMessage. Only raw input (initial
+  // objects, deserialized blobs) hits the slow path.
+  const stateMsgs: BaseMessage[] =
+    state.length > 0 && BaseMessage.isInstance(state[0])
+      ? state
+      : (state as BaseMessageLike[]).map(coerceMessageLikeToMessage);
+  const msgs: BaseMessage[] = flat.map(coerceMessageLikeToMessage);
+
+  const index = new Map<string, number>();
+  for (let i = 0; i < stateMsgs.length; i += 1) {
+    const mid = stateMsgs[i].id;
+    if (mid != null) index.set(mid, i);
+  }
+
+  const result: (BaseMessage | null)[] = [...stateMsgs];
+  for (const msg of msgs) {
+    const mid = msg.id;
+    if (mid == null) {
+      result.push(msg);
+    } else if (RemoveMessage.isInstance(msg)) {
+      if (index.has(mid)) {
+        result[index.get(mid)!] = null;
+        index.delete(mid);
+      }
+    } else if (index.has(mid)) {
+      result[index.get(mid)!] = msg;
+    } else {
+      index.set(mid, result.length);
+      result.push(msg);
+    }
+  }
+  return result.filter((m): m is BaseMessage => m !== null);
 }

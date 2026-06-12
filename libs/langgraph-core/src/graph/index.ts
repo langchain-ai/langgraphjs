@@ -7,15 +7,29 @@ export {
   type StateDefinition,
   type SingleReducer,
 } from "./annotation.js";
-export { Graph, type CompiledGraph } from "./graph.js";
+export {
+  Graph,
+  type CompiledGraph,
+  type CompiledGraphType,
+  type NodeSpec,
+  type AddNodeOptions,
+  type NodeErrorHandler,
+  type NodeErrorHandlerReturnValue,
+} from "./graph.js";
 export {
   type StateGraphArgs,
   StateGraph,
   CompiledStateGraph,
+  type StateGraphNodeSpec,
+  type StateGraphAddNodeOptions,
+  type NodePolicyOptions,
+  type StateGraphArgsWithStateSchema,
+  type StateGraphArgsWithInputOutputSchemas,
 } from "./state.js";
 export { MessageGraph, pushMessage } from "./message.js";
 export {
   messagesStateReducer,
+  messagesDeltaReducer,
   REMOVE_ALL_MESSAGES,
   type Messages,
 } from "./messages_reducer.js";
@@ -27,6 +41,7 @@ export type {
   StateGraphOptions,
   ExtractStateType,
   ExtractUpdateType,
+  ToStateDefinition,
   GraphNode,
   GraphNodeTypes,
   GraphNodeReturnValue,

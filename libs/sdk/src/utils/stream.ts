@@ -54,6 +54,160 @@ export class MaxReconnectAttemptsError extends Error {
 }
 
 /**
+ * Error injected into the stream by {@link idleReconnectStream} when no lines
+ * arrive within the active idle window. Surfacing this during the read is what
+ * lets the reconnect loops in `streamWithRetry` and the protocol SSE transport
+ * recover from a half-open socket — one that was silently dropped (e.g. a hard
+ * pod kill on a platform revision rollover) without a TCP FIN/RST, so neither
+ * a `done` nor a thrown network error ever arrives.
+ */
+export class StreamIdleTimeoutError extends Error {
+  readonly idleTimeoutMs: number;
+
+  constructor(idleTimeoutMs: number) {
+    super(
+      `No SSE bytes received for ${idleTimeoutMs}ms; assuming the connection is half-open and reconnecting.`
+    );
+    this.name = "StreamIdleTimeoutError";
+    this.idleTimeoutMs = idleTimeoutMs;
+  }
+}
+
+/** `":"` — first byte of an SSE comment / keep-alive line. */
+const SSE_COMMENT_BYTE = 0x3a;
+
+/**
+ * How {@link idleReconnectStream} decides when the connection is idle.
+ *
+ * - A `number` is a fixed idle window in milliseconds: the watchdog arms
+ *   immediately (even before the first byte) and trips after that long with no
+ *   activity. Use when you know your server's behaviour and want guaranteed
+ *   coverage from t=0; it does not depend on heartbeats.
+ * - `"auto"` is heartbeat-adaptive: the watchdog stays dormant until it has
+ *   observed the server's SSE keep-alive comments (e.g. LangGraph Platform's
+ *   `: heartbeat` every ~5s), then arms with a window derived from the
+ *   observed cadence. On a server that never sends heartbeats it never arms,
+ *   so it can't false-fire during a legitimately quiet period.
+ */
+export type IdleReconnectMode = number | "auto";
+
+export interface IdleReconnectStreamOptions {
+  /** Fixed timeout (ms) or `"auto"` heartbeat-adaptive. */
+  mode: IdleReconnectMode;
+  /** `"auto"`: multiplier applied to the observed heartbeat interval. Default 3. */
+  timeoutFactor?: number;
+  /** `"auto"`: lower clamp for the derived timeout (ms). Default 6000. */
+  minTimeoutMs?: number;
+  /** `"auto"`: upper clamp for the derived timeout (ms). Default 30000. */
+  maxTimeoutMs?: number;
+  /** Fired immediately before the stream is errored, for logging/metrics. */
+  onIdle?: (info: { timeoutMs: number; source: "fixed" | "heartbeat" }) => void;
+}
+
+/**
+ * A pass-through {@link TransformStream} that errors the stream when it goes
+ * idle, so the surrounding reconnect logic can recover a half-open socket.
+ *
+ * MUST sit on the *line* stream — i.e. after
+ * {@link import("./sse.js").BytesLineDecoder} but before
+ * {@link import("./sse.js").SSEDecoder} (which discards `:` comment lines).
+ * Operating at the line level lets the watchdog both (a) reset on any line
+ * (data *or* heartbeat = liveness) and (b) recognise heartbeat comment lines
+ * to drive `"auto"` mode.
+ *
+ * In `"auto"` mode the watchdog is intentionally dormant until it has seen at
+ * least two heartbeats (so it can measure the cadence). This means a socket
+ * that dies inside the first heartbeat interval won't be caught until a
+ * heartbeat would have been due — an acceptable trade for never false-firing
+ * on heartbeat-less servers. Pass a fixed `number` if you need coverage from
+ * the very first byte.
+ */
+export function idleReconnectStream(
+  options: IdleReconnectStreamOptions
+): TransformStream<Uint8Array, Uint8Array> {
+  const factor = options.timeoutFactor ?? 3;
+  const minTimeoutMs = options.minTimeoutMs ?? 6_000;
+  const maxTimeoutMs = options.maxTimeoutMs ?? 30_000;
+  const fixedTimeoutMs = typeof options.mode === "number" ? options.mode : null;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let controllerRef: TransformStreamDefaultController<Uint8Array> | undefined;
+
+  // `"auto"` cadence inference.
+  let lastHeartbeatAt: number | undefined;
+  // The active idle window: the fixed value, or (auto) the heartbeat-derived
+  // value once known. `null` means "not armed yet".
+  let derivedTimeoutMs: number | null = fixedTimeoutMs;
+
+  const clear = () => {
+    if (timer != null) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+  };
+
+  const arm = () => {
+    clear();
+    const timeoutMs = derivedTimeoutMs;
+    if (timeoutMs == null || timeoutMs <= 0) return;
+    timer = setTimeout(() => {
+      options.onIdle?.({
+        timeoutMs,
+        source: fixedTimeoutMs != null ? "fixed" : "heartbeat",
+      });
+      try {
+        controllerRef?.error(new StreamIdleTimeoutError(timeoutMs));
+      } catch {
+        // Stream already closed/errored/cancelled — nothing to abort.
+      }
+    }, timeoutMs);
+    // Don't let the watchdog by itself keep a Node process alive.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  };
+
+  const noteHeartbeat = () => {
+    if (fixedTimeoutMs != null) return; // cadence irrelevant in fixed mode
+    const now = Date.now();
+    if (lastHeartbeatAt != null) {
+      const interval = now - lastHeartbeatAt;
+      if (interval > 0) {
+        const candidate = Math.min(
+          Math.max(interval * factor, minTimeoutMs),
+          maxTimeoutMs
+        );
+        // Keep the most conservative (largest) window observed so far.
+        derivedTimeoutMs =
+          derivedTimeoutMs == null
+            ? candidate
+            : Math.max(derivedTimeoutMs, candidate);
+      }
+    }
+    lastHeartbeatAt = now;
+  };
+
+  return new TransformStream<Uint8Array, Uint8Array>({
+    start(controller) {
+      controllerRef = controller;
+      // Fixed mode arms eagerly (also catches pre-first-byte silence). Auto
+      // mode waits until a cadence is established in `transform`.
+      arm();
+    },
+    transform(line, controller) {
+      // A line beginning with ":" is an SSE comment / keep-alive heartbeat.
+      if (line.length > 0 && line[0] === SSE_COMMENT_BYTE) {
+        noteHeartbeat();
+      }
+      // Any line is liveness — (re)arm the idle timer.
+      arm();
+      controller.enqueue(line);
+    },
+    flush() {
+      clear();
+    },
+  });
+}
+
+/**
  * Stream with automatic retry logic for SSE connections.
  * Implements reconnection behavior similar to the Python SDK.
  *

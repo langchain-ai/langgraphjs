@@ -30,6 +30,8 @@ import {
 import { StrRecord } from "./algo.js";
 import { PregelInputType, PregelOptions, PregelOutputType } from "./index.js";
 import { PregelNode } from "./read.js";
+import { RemoteGraphRunStream } from "./remote-run-stream.js";
+import { IterableReadableStreamWithAbortSignal } from "./stream.js";
 import {
   PregelParams,
   PregelInterface,
@@ -43,6 +45,8 @@ import {
   INTERRUPT,
   isCommand,
 } from "../constants.js";
+import { propagateConfigurableToMetadata } from "./utils/config.js";
+import type { ProtocolEvent } from "../stream/types.js";
 
 export type RemoteGraphParams = Omit<
   PregelParams<StrRecord<string, PregelNode>, StrRecord<string, BaseChannel>>,
@@ -55,6 +59,8 @@ export type RemoteGraphParams = Omit<
   headers?: Record<string, string>;
   streamResumable?: boolean;
 };
+
+type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _serializeInputs = (obj: any): any => {
@@ -120,6 +126,36 @@ const getStreamModes = (
   };
 };
 
+function protocolEventsToEventStream(run: AsyncIterable<ProtocolEvent>) {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of run) {
+          const namespace = event.params.namespace;
+          const eventName = namespace.length
+            ? `${event.method}|${namespace.join("|")}`
+            : event.method;
+          controller.enqueue(
+            encoder.encode(
+              `event: ${eventName}\ndata: ${JSON.stringify(event.params.data ?? {})}\n\n`
+            )
+          );
+        }
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ message: String(error) })}\n\n`
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
+
 /**
  * The `RemoteGraph` class is a client implementation for calling remote
  * APIs that implement the LangGraph Server API specification.
@@ -158,11 +194,11 @@ const getStreamModes = (
  * ```
  */
 export class RemoteGraph<
-    Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
-    Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>
-  >
+  Nn extends StrRecord<string, PregelNode> = StrRecord<string, PregelNode>,
+  Cc extends StrRecord<string, BaseChannel> = StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+>
   extends Runnable<
     PregelInputType,
     PregelOutputType,
@@ -245,6 +281,44 @@ export class RemoteGraph<
       }
     };
 
+    const propagateMetadataDefaults = (obj: unknown) => {
+      const seen = new WeakSet<object>();
+      const visit = (value: unknown) => {
+        if (typeof value !== "object" || value == null) {
+          return;
+        }
+        if (seen.has(value)) {
+          return;
+        }
+        seen.add(value);
+        const record = value as Record<string, unknown>;
+        const configurable = record.configurable;
+        if (
+          typeof configurable === "object" &&
+          configurable != null &&
+          !Array.isArray(configurable)
+        ) {
+          const metadata =
+            typeof record.metadata === "object" &&
+            record.metadata != null &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          record.metadata =
+            propagateConfigurableToMetadata(
+              configurable as Record<string, unknown>,
+              metadata
+            ) ?? record.metadata;
+        }
+        for (const nestedValue of Object.values(record)) {
+          visit(nestedValue);
+        }
+      };
+      visit(obj);
+    };
+
+    propagateMetadataDefaults(config);
+
     // Remove non-JSON serializable fields from the config
     const sanitizedConfig = sanitizeObj(config);
 
@@ -264,6 +338,33 @@ export class RemoteGraph<
     };
   }
 
+  /**
+   * Prepare config and thread ID for remote run API calls.
+   *
+   * `thread_id` is passed via the URL path, not in `config.configurable`, so the
+   * server can accept a separate `context` payload for stateful runs.
+   */
+  #prepareRunRequest(mergedConfig: LangGraphRunnableConfig): {
+    threadId: string | undefined;
+    context: unknown;
+    config: ReturnType<RemoteGraph["_sanitizeConfig"]>;
+  } {
+    const context = mergedConfig.context;
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const configurable = { ...sanitizedConfig.configurable };
+    const threadId = configurable.thread_id as string | undefined;
+    delete configurable.thread_id;
+
+    return {
+      threadId,
+      context,
+      config: {
+        ...sanitizedConfig,
+        configurable,
+      },
+    };
+  }
+
   protected _getConfig(checkpoint: Record<string, unknown>): RunnableConfig {
     return {
       configurable: {
@@ -273,6 +374,38 @@ export class RemoteGraph<
         checkpoint_map: checkpoint.checkpoint_map ?? {},
       },
     };
+  }
+
+  protected _checkpointToConfig(
+    checkpoint?: Partial<Checkpoint> | null,
+    fallbackConfig?: RunnableConfig
+  ): RunnableConfig {
+    const resolvedCheckpoint =
+      checkpoint ?? this._getCheckpoint(fallbackConfig);
+    if (resolvedCheckpoint == null) {
+      return { configurable: {} };
+    }
+
+    const configurable: Record<string, unknown> = {};
+    if (resolvedCheckpoint.thread_id !== undefined) {
+      configurable.thread_id = resolvedCheckpoint.thread_id;
+    }
+    if (resolvedCheckpoint.checkpoint_ns !== undefined) {
+      configurable.checkpoint_ns = resolvedCheckpoint.checkpoint_ns;
+    }
+    if (resolvedCheckpoint.checkpoint_id !== undefined) {
+      configurable.checkpoint_id = resolvedCheckpoint.checkpoint_id;
+    }
+
+    const hasCheckpointFields =
+      resolvedCheckpoint.checkpoint_ns !== undefined ||
+      resolvedCheckpoint.checkpoint_id !== undefined ||
+      resolvedCheckpoint.checkpoint_map !== undefined;
+    if (hasCheckpointFields) {
+      configurable.checkpoint_map = resolvedCheckpoint.checkpoint_map ?? {};
+    }
+
+    return { configurable };
   }
 
   protected _getCheckpoint(config?: RunnableConfig): Checkpoint | undefined {
@@ -296,7 +429,10 @@ export class RemoteGraph<
     return Object.keys(checkpoint).length > 0 ? checkpoint : undefined;
   }
 
-  protected _createStateSnapshot(state: ThreadState): StateSnapshot {
+  protected _createStateSnapshot(
+    state: ThreadState,
+    fallbackConfig?: RunnableConfig
+  ): StateSnapshot {
     const tasks: PregelTaskDescription[] = state.tasks.map((task) => {
       return {
         id: task.id,
@@ -309,10 +445,15 @@ export class RemoteGraph<
         })),
         // eslint-disable-next-line no-nested-ternary
         state: task.state
-          ? this._createStateSnapshot(task.state)
+          ? this._createStateSnapshot(
+              task.state,
+              task.checkpoint
+                ? this._checkpointToConfig(task.checkpoint)
+                : fallbackConfig
+            )
           : task.checkpoint
-          ? { configurable: task.checkpoint }
-          : undefined,
+            ? { configurable: task.checkpoint }
+            : undefined,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         result: (task as any).result,
       };
@@ -321,27 +462,19 @@ export class RemoteGraph<
     return {
       values: state.values,
       next: state.next ? [...state.next] : [],
-      config: {
-        configurable: {
-          thread_id: state.checkpoint.thread_id,
-          checkpoint_ns: state.checkpoint.checkpoint_ns,
-          checkpoint_id: state.checkpoint.checkpoint_id,
-          checkpoint_map: state.checkpoint.checkpoint_map ?? {},
-        },
-      },
+      // TODO: Fix SDK typing. `ThreadState.checkpoint` is typed as non-null,
+      // but deployments can return `null` (e.g. a thread that exists but has
+      // not produced a checkpoint yet). See #2328.
+      config: this._checkpointToConfig(
+        state.checkpoint as Checkpoint | null,
+        fallbackConfig
+      ),
       metadata: state.metadata
         ? (state.metadata as CheckpointMetadata)
         : undefined,
       createdAt: state.created_at ?? undefined,
       parentConfig: state.parent_checkpoint
-        ? {
-            configurable: {
-              thread_id: state.parent_checkpoint.thread_id,
-              checkpoint_ns: state.parent_checkpoint.checkpoint_ns,
-              checkpoint_id: state.parent_checkpoint.checkpoint_id,
-              checkpoint_map: state.parent_checkpoint.checkpoint_map ?? {},
-            },
-          }
+        ? this._checkpointToConfig(state.parent_checkpoint)
         : undefined,
       tasks,
     };
@@ -365,34 +498,187 @@ export class RemoteGraph<
   override streamEvents(
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
-      version: "v1" | "v2";
+      version: "v3";
+      encoding: "text/event-stream";
     }
+  ): Promise<IterableReadableStream<Uint8Array>>;
+
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v3";
+      encoding?: undefined;
+    }
+  ): Promise<RemoteGraphRunStream<PregelOutputType>>;
+
+  override streamEvents(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v1" | "v2";
+    },
+    streamOptions?: StreamEventsOptions
   ): IterableReadableStream<StreamEvent>;
 
   override streamEvents(
     input: PregelInputType,
     options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
       version: "v1" | "v2";
-      encoding: never;
-    }
-  ): IterableReadableStream<never>;
+      encoding: "text/event-stream";
+    },
+    streamOptions?: StreamEventsOptions
+  ): IterableReadableStream<Uint8Array>;
 
   override streamEvents(
-    _input: PregelInputType,
-    _options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
-      version: "v1" | "v2";
-      encoding?: never;
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v1" | "v2" | "v3";
+      encoding?: "text/event-stream";
+    },
+    _streamOptions?: StreamEventsOptions
+  ):
+    | IterableReadableStream<StreamEvent | Uint8Array>
+    | Promise<RemoteGraphRunStream<PregelOutputType>>
+    | Promise<IterableReadableStream<Uint8Array>>
+    | Promise<
+        | RemoteGraphRunStream<PregelOutputType>
+        | IterableReadableStream<Uint8Array>
+      > {
+    if (options.version === "v3") {
+      return this._streamEventsV3(
+        input,
+        options as Partial<PregelOptions<Nn, Cc, ContextType>> & {
+          version: "v3";
+          encoding?: "text/event-stream";
+        }
+      );
     }
-  ): IterableReadableStream<StreamEvent> {
     throw new Error("Not implemented.");
+  }
+
+  protected _rejectV3Unsupported(
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      transformers?: any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      control?: any;
+    }
+  ) {
+    if (options.transformers !== undefined) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `transformers`.'
+      );
+    }
+    if (options.control !== undefined) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `control`.'
+      );
+    }
+    if (
+      options.interruptBefore !== undefined ||
+      this.interruptBefore !== undefined
+    ) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `interruptBefore`.'
+      );
+    }
+    if (
+      options.interruptAfter !== undefined ||
+      this.interruptAfter !== undefined
+    ) {
+      throw new Error(
+        'RemoteGraph.streamEvents({ version: "v3" }) does not support `interruptAfter`.'
+      );
+    }
+  }
+
+  protected async _streamEventsV3(
+    input: PregelInputType,
+    options: Partial<PregelOptions<Nn, Cc, ContextType>> & {
+      version: "v3";
+      encoding?: "text/event-stream";
+    }
+  ): Promise<
+    RemoteGraphRunStream<PregelOutputType> | IterableReadableStream<Uint8Array>
+  > {
+    this._rejectV3Unsupported(options);
+
+    const abortController = new AbortController();
+    const mergedConfig = mergeConfigs(this.config, options);
+    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const configurable = { ...sanitizedConfig.configurable };
+    const threadId = configurable.thread_id;
+    delete configurable.thread_id;
+
+    const runConfig = {
+      ...sanitizedConfig,
+      configurable,
+    };
+
+    const thread =
+      typeof threadId === "string"
+        ? this.client.threads.stream(threadId, { assistantId: this.graphId })
+        : this.client.threads.stream({ assistantId: this.graphId });
+
+    let serializedInput;
+    if (isCommand(input)) {
+      serializedInput = input.toJSON() as Record<string, unknown>;
+    } else {
+      serializedInput = _serializeInputs(input);
+    }
+
+    const run = await thread.run.start({
+      input: serializedInput,
+      config: runConfig,
+    });
+
+    const graphRun = new RemoteGraphRunStream<PregelOutputType>({
+      client: this.client,
+      thread,
+      runId: run.run_id,
+      abortController,
+    });
+
+    if (mergedConfig.signal != null) {
+      if (mergedConfig.signal.aborted) {
+        graphRun.abort(mergedConfig.signal.reason);
+      } else {
+        mergedConfig.signal.addEventListener(
+          "abort",
+          () => graphRun.abort(mergedConfig.signal?.reason),
+          { once: true }
+        );
+      }
+    }
+
+    if (options.encoding === "text/event-stream") {
+      const encodingAbortController = new AbortController();
+      encodingAbortController.signal.addEventListener(
+        "abort",
+        () => graphRun.abort(encodingAbortController.signal.reason),
+        { once: true }
+      );
+      return new IterableReadableStreamWithAbortSignal(
+        protocolEventsToEventStream(graphRun),
+        encodingAbortController
+      );
+    }
+
+    return graphRun;
   }
 
   override async *_streamIterator(
     input: PregelInputType,
     options?: Partial<PregelOptions<Nn, Cc, ContextType>>
   ): AsyncGenerator<PregelOutputType> {
-    const mergedConfig = mergeConfigs(this.config, options);
-    const sanitizedConfig = this._sanitizeConfig(mergedConfig);
+    const mergedConfig = mergeConfigs(
+      this.config,
+      options
+    ) as LangGraphRunnableConfig;
+    const {
+      threadId,
+      context,
+      config: sanitizedConfig,
+    } = this.#prepareRunRequest(mergedConfig);
 
     const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
 
@@ -426,22 +712,26 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
-    for await (const chunk of this.client.runs.stream(
-      sanitizedConfig.configurable.thread_id as string,
-      this.graphId,
-      {
-        command,
-        input: serializedInput,
-        config: sanitizedConfig,
-        streamMode: extendedStreamModes,
-        interruptBefore: interruptBefore as string[],
-        interruptAfter: interruptAfter as string[],
-        streamSubgraphs,
-        ifNotExists: "create",
-        signal: mergedConfig.signal,
-        streamResumable: this.streamResumable,
-      }
-    )) {
+    const streamPayload = {
+      command,
+      input: serializedInput,
+      config: sanitizedConfig,
+      context,
+      streamMode: extendedStreamModes,
+      interruptBefore: interruptBefore as string[],
+      interruptAfter: interruptAfter as string[],
+      streamSubgraphs,
+      ifNotExists: "create" as const,
+      signal: mergedConfig.signal,
+      streamResumable: this.streamResumable,
+    };
+
+    const runStream =
+      threadId != null
+        ? this.client.runs.stream(threadId, this.graphId, streamPayload)
+        : this.client.runs.stream(null, this.graphId, streamPayload);
+
+    for await (const chunk of runStream) {
       let mode;
       let namespace: string[];
       if (chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR)) {
@@ -537,7 +827,7 @@ export class RemoteGraph<
       }
     );
     for (const state of states) {
-      yield this._createStateSnapshot(state);
+      yield this._createStateSnapshot(state, mergedConfig);
     }
   }
 
@@ -555,11 +845,12 @@ export class RemoteGraph<
       const nodeId = node.id;
       nodesMap[nodeId] = {
         id: nodeId.toString(),
-        name: typeof node.data === "string" ? node.data : node.data?.name ?? "",
+        name:
+          typeof node.data === "string" ? node.data : (node.data?.name ?? ""),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
         metadata:
-          typeof node.data !== "string" ? node.data?.metadata ?? {} : {},
+          typeof node.data !== "string" ? (node.data?.metadata ?? {}) : {},
       };
     }
     return nodesMap;
@@ -576,7 +867,7 @@ export class RemoteGraph<
       this._getCheckpoint(mergedConfig),
       options
     );
-    return this._createStateSnapshot(state);
+    return this._createStateSnapshot(state, mergedConfig);
   }
 
   /** @deprecated Use getGraphAsync instead. The async method will become the default in the next minor release. */

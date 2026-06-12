@@ -1,8 +1,17 @@
 import { test, expect } from "vitest";
+import { z } from "zod/v4";
 import { createReactAgent } from "../prebuilt/index.js";
 import { FakeSearchTool } from "./utils.js";
 import { FakeToolCallingChatModel } from "./utils.models.js";
-import { Annotation, StateGraph } from "../web.js";
+import {
+  Annotation,
+  Command,
+  END,
+  NodeError,
+  START,
+  StateGraph,
+  StateSchema,
+} from "../web.js";
 
 test("prebuilt agent", async () => {
   // Define the tools for the agent to use
@@ -28,6 +37,37 @@ graph TD;
 \tclassDef first fill-opacity:0;
 \tclassDef last fill:#bfb6fc;
 `);
+});
+
+test("implicit end edge for terminal nodes", async () => {
+  const State = new StateSchema({ status: z.string() });
+
+  const graph = new StateGraph(State)
+    .addNode(
+      "riskyNode",
+      (state: typeof State.State) => {
+        if (state.status === "fail") {
+          throw new Error("fail");
+        }
+        return { status: "ok" };
+      },
+      {
+        errorHandler: (_state: typeof State.State, _error: NodeError) =>
+          new Command({ update: { status: "recovered" }, goto: "recover" }),
+      }
+    )
+    .addNode("recover", (state: typeof State.State) => ({
+      status: `${state.status}_final`,
+    }))
+    .addEdge(START, "riskyNode")
+    .addEdge("recover", END)
+    .compile();
+
+  const mermaid = graph.getGraph().drawMermaid();
+  expect(mermaid).toContain("__start__ --> riskyNode;");
+  expect(mermaid).toContain("riskyNode --> __end__;");
+  expect(mermaid).toContain("recover --> __end__;");
+  expect(mermaid).not.toContain("__error_handler__riskyNode --> __end__;");
 });
 
 test("graph with multiple sinks", async () => {

@@ -3,8 +3,12 @@ index.cjs
 index.js
 index.d.ts
 *.d.ts
+!vite-env.d.ts
+*.d.ts.map
 *.d.cts
+*.d.cts.map
 *.d.mts
+*.d.mts.map
 node_modules
 dist
 coverage/
@@ -20,12 +24,23 @@ coverage/
 **/.eslintcache
 
 .env
+.env.*
+*.pem
+*.key
+*.crt
+credentials.json
 .ipynb_checkpoints
 dist-cjs
 **/dist-cjs
 tmp/
 __pycache__
+.venv
 .DS_Store
 tsconfig.vitest-temp.json
 .pnpm-store
 .idea
+.claude
+.vitest-attachments
+agent-os/
+__screenshots__
+*_*.md

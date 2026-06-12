@@ -301,8 +301,11 @@ describe("RedisSaver Basic", () => {
         if (pattern === "checkpoint:thread-1:*") {
           return ["checkpoint:thread-1:cp-1", "checkpoint:thread-1:cp-2"];
         }
-        if (pattern === "writes:thread-1:*") {
-          return ["writes:thread-1:cp-1:task-1"];
+        if (pattern === "checkpoint_write:thread-1:*") {
+          return ["checkpoint_write:thread-1::cp-1:task-1:0"];
+        }
+        if (pattern === "write_keys_zset:thread-1:*") {
+          return ["write_keys_zset:thread-1::cp-1"];
         }
         return [];
       },
@@ -317,7 +320,8 @@ describe("RedisSaver Basic", () => {
 
     expect(deletedKeys).toContain("checkpoint:thread-1:cp-1");
     expect(deletedKeys).toContain("checkpoint:thread-1:cp-2");
-    expect(deletedKeys).toContain("writes:thread-1:cp-1:task-1");
+    expect(deletedKeys).toContain("checkpoint_write:thread-1::cp-1:task-1:0");
+    expect(deletedKeys).toContain("write_keys_zset:thread-1::cp-1");
   });
 });
 
@@ -555,7 +559,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "integration" },
     };
 
@@ -588,7 +592,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "fromUrl" },
     };
 
@@ -646,7 +650,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const saved = await saver.put(
@@ -684,12 +688,12 @@ describe("test_from_conn_string", () => {
 
     const checkpoint1: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const checkpoint2: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save checkpoints with different savers
@@ -743,7 +747,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save with saver1

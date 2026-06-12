@@ -47,14 +47,8 @@ this information inside the tool:
 
 ```ts
 import { z } from "zod";
-import { tool } from "@langchain/core/tools";
+import { tool, type ToolRuntime } from "@langchain/core/tools";
 // highlight-next-line
-import {
-  // highlight-next-line
-  getCurrentTaskInput,
-  // highlight-next-line
-  LangGraphRunnableConfig,
-} from "@langchain/langgraph";
 import { MessagesAnnotation } from "@langchain/langgraph";
 
 const myTool = tool(
@@ -63,15 +57,15 @@ const myTool = tool(
       // This will be populated by an LLM
       toolArg: string;
     },
-    // access static data that is passed at agent invocation
+    // access runtime values from the second argument
     // highlight-next-line
-    config: LangGraphRunnableConfig
+    runtime: ToolRuntime<typeof MessagesAnnotation.State>
   ) => {
     // Fetch the current agent state
     // highlight-next-line
-    const state = getCurrentTaskInput() as typeof MessagesAnnotation.State;
+    const state = runtime.state;
     doSomethingWithState(state.messages);
-    doSomethingWithConfig(config);
+    doSomethingWithConfig(runtime.config);
     // ...
   },
   {

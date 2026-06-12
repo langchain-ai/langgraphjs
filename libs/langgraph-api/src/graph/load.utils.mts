@@ -1,5 +1,5 @@
 import type { CompiledGraph, Graph } from "@langchain/langgraph";
-import * as uuid from "uuid";
+import * as uuid from "@langchain/core/utils/uuid";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -78,9 +78,21 @@ export async function resolveGraph(
       const afterResolve = (graphLike: GraphLike): CompiledGraph<string> => {
         const graph = isGraph(graphLike) ? graphLike.compile() : graphLike;
 
-        // TODO: hack, remove once LangChain 1.x createAgent is fixed
-        if (!isCompiledGraph(graph) && "graph" in graph) {
-          return (graph as { graph: CompiledGraph<string> }).graph;
+        // TODO: hack, remove once LangChain 1.x createAgent is fixed.
+        // `createAgent` returns a ReactAgent wrapper that itself looks
+        // like a CompiledGraph (it has a `builder` — the outer
+        // StateGraph) *and* exposes the real compiled pregel under
+        // `.graph`. Unwrap to the inner graph whenever both are
+        // present so downstream code (e.g. the v2 streaming path that
+        // keys off `graph.streamTransformers`) sees the actual pregel
+        // rather than the wrapper.
+        const inner = (graph as { graph?: unknown }).graph;
+        if (
+          inner != null &&
+          typeof inner === "object" &&
+          isCompiledGraph(inner as GraphLike)
+        ) {
+          return inner as CompiledGraph<string>;
         }
         return graph;
       };

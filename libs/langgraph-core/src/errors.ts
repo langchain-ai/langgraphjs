@@ -55,6 +55,33 @@ export class GraphValueError extends BaseLangGraphError {
   }
 }
 
+/**
+ * Raised when a graph run exits early due to a drain request.
+ *
+ * This indicates the graph stopped cooperatively at a superstep boundary
+ * because {@link RunControl#requestDrain} was called (e.g., in response to
+ * SIGTERM). The checkpoint is saved and the run can be resumed later.
+ */
+export class GraphDrained extends GraphBubbleUp {
+  reason: string;
+
+  constructor(reason: string = "shutdown", fields?: BaseLangGraphErrorFields) {
+    super(`Graph drained: ${reason}`, fields);
+    this.name = "GraphDrained";
+    this.reason = reason;
+  }
+
+  static get unminifiable_name() {
+    return "GraphDrained";
+  }
+}
+
+export function isGraphDrained(e?: unknown): e is GraphDrained {
+  return (
+    e !== undefined && (e as Error).name === GraphDrained.unminifiable_name
+  );
+}
+
 export class GraphInterrupt extends GraphBubbleUp {
   interrupts: Interrupt[];
 
@@ -80,6 +107,58 @@ export class NodeInterrupt extends GraphInterrupt {
   static get unminifiable_name() {
     return "NodeInterrupt";
   }
+}
+
+/**
+ * Failure context passed to a node-level error handler.
+ *
+ * A node-level error handler is registered via
+ * `StateGraph.addNode(name, fn, { errorHandler })`. The handler runs ONLY after
+ * the failing node's {@link RetryPolicy} is exhausted, so retry and handling
+ * stay decoupled. The handler receives the failed node's name and the thrown
+ * error via a `NodeError` instance, can return a state update, and can route to
+ * a recovery branch via `new Command({ goto })` (saga / compensation flows).
+ *
+ * @example
+ * ```ts
+ * import { NodeError } from "@langchain/langgraph";
+ *
+ * function handler(state: State, error: NodeError) {
+ *   return new Command({
+ *     update: { status: `recovered from ${error.node}: ${error.error.message}` },
+ *     goto: "finalize",
+ *   });
+ * }
+ * ```
+ */
+export class NodeError {
+  /** Name of the node whose execution failed. */
+  node: string;
+
+  /** Error thrown by the failed node. */
+  error: Error;
+
+  constructor(node: string, error: Error) {
+    this.node = node;
+    this.error = error;
+  }
+
+  static get unminifiable_name() {
+    return "NodeError";
+  }
+}
+
+/**
+ * Type guard that checks whether a value is a {@link NodeError}.
+ */
+export function isNodeError(e?: unknown): e is NodeError {
+  return (
+    e != null &&
+    typeof e === "object" &&
+    e.constructor != null &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (e.constructor as any).unminifiable_name === NodeError.unminifiable_name
+  );
 }
 
 export class ParentCommand extends GraphBubbleUp {
@@ -117,6 +196,92 @@ export function isGraphInterrupt(e?: unknown): e is GraphInterrupt {
   );
 }
 
+/**
+ * Raised when a node invocation exceeds one of its configured timeouts.
+ *
+ * Does **not** extend {@link GraphBubbleUp} (so it flows through the normal node
+ * error path) and is intentionally treated as retryable by the default retry
+ * policy — its message/name do not match the default `retryOn` blocklist, so a
+ * configured {@link RetryPolicy} will retry it (see langchain-ai/langgraph#7659).
+ *
+ * Both {@link NodeTimeoutError.runTimeout} and {@link NodeTimeoutError.idleTimeout}
+ * reflect the configured policy at the time of the failure (each `undefined` if
+ * not configured). {@link NodeTimeoutError.kind} and {@link NodeTimeoutError.timeout}
+ * identify which one fired.
+ *
+ * @category Errors
+ */
+export class NodeTimeoutError extends BaseLangGraphError {
+  /** Name of the node/task that timed out. */
+  node: string;
+
+  /** Which timeout fired: a hard `"run"` cap or a progress-resetting `"idle"` cap. */
+  kind: "run" | "idle";
+
+  /** The value (ms) of the timeout that fired (`runTimeout` or `idleTimeout`). */
+  timeout: number;
+
+  /** Elapsed time (ms) since the attempt started, at the moment the timeout fired. */
+  elapsed: number;
+
+  /** Configured run timeout (ms), if any. */
+  runTimeout?: number;
+
+  /** Configured idle timeout (ms), if any. */
+  idleTimeout?: number;
+
+  constructor(
+    fields: {
+      node: string;
+      elapsed: number;
+      kind: "run" | "idle";
+      runTimeout?: number;
+      idleTimeout?: number;
+    },
+    errorFields?: BaseLangGraphErrorFields
+  ) {
+    const { node, elapsed, kind, runTimeout, idleTimeout } = fields;
+    let message: string;
+    let timeout: number;
+    if (kind === "idle") {
+      if (idleTimeout === undefined) {
+        throw new Error("idleTimeout is required when kind='idle'");
+      }
+      timeout = idleTimeout;
+      message =
+        `Node "${node}" exceeded its idle timeout of ${idleTimeout}ms ` +
+        `without making progress (elapsed: ${elapsed}ms).`;
+    } else {
+      if (runTimeout === undefined) {
+        throw new Error("runTimeout is required when kind='run'");
+      }
+      timeout = runTimeout;
+      message =
+        `Node "${node}" exceeded its run timeout of ${runTimeout}ms ` +
+        `(elapsed: ${elapsed}ms).`;
+    }
+    super(message, errorFields);
+    this.name = "NodeTimeoutError";
+    this.node = node;
+    this.kind = kind;
+    this.timeout = timeout;
+    this.elapsed = elapsed;
+    this.runTimeout = runTimeout;
+    this.idleTimeout = idleTimeout;
+  }
+
+  static get unminifiable_name() {
+    return "NodeTimeoutError";
+  }
+}
+
+export function isNodeTimeoutError(e?: unknown): e is NodeTimeoutError {
+  return (
+    e !== undefined &&
+    (e as NodeTimeoutError).name === NodeTimeoutError.unminifiable_name
+  );
+}
+
 export class EmptyInputError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     super(message, fields);
@@ -130,7 +295,11 @@ export class EmptyInputError extends BaseLangGraphError {
 
 export class EmptyChannelError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    // Skip expensive stack trace capture — used for control flow on channel reads.
+    const prevLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
     super(message, fields);
+    Error.stackTraceLimit = prevLimit;
     this.name = "EmptyChannelError";
   }
 

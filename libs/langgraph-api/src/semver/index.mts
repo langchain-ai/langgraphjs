@@ -1,7 +1,7 @@
 import * as url from "node:url";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as semver from "semver";
+import { satisfiesPeerRange } from "./satisfiesPeerRange.mjs";
 
 const packageJsonPath = path.resolve(
   url.fileURLToPath(import.meta.url),
@@ -21,7 +21,7 @@ export async function checkSemver(
     const required = peerDependencies[pkg.name];
     if (!required) return [];
 
-    const satisfies = semver.satisfies(pkg.version, required);
+    const satisfies = satisfiesPeerRange(pkg.version, required);
     return { ...pkg, required, satisfies };
   });
 }

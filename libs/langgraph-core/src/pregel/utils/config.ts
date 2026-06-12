@@ -30,9 +30,42 @@ const CONFIG_KEYS = [
   "checkpointDuring",
   "durability",
   "signal",
+  "heartbeat",
+  "executionInfo",
+  "serverInfo",
+  "control",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
+export const PROPAGATE_TO_METADATA = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "task_id",
+  "run_id",
+  "assistant_id",
+  "graph_id",
+]);
+
+export function propagateConfigurableToMetadata(
+  configurable?: Record<string, unknown>,
+  metadata?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (!configurable) {
+    return metadata;
+  }
+  const result = metadata ?? {};
+  for (const key of PROPAGATE_TO_METADATA) {
+    if (key in result) {
+      continue;
+    }
+    const value = configurable[key];
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
@@ -87,19 +120,11 @@ export function ensureLangGraphConfig(
     }
   }
 
-  for (const [key, value] of Object.entries(empty.configurable!)) {
-    empty.metadata = empty.metadata ?? {};
-    if (
-      !key.startsWith("__") &&
-      (typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean") &&
-      !(key in empty.metadata!)
-    ) {
-      empty.metadata[key] = value;
-    }
-  }
-
+  empty.metadata =
+    propagateConfigurableToMetadata(
+      empty.configurable as Record<string, unknown> | undefined,
+      empty.metadata as Record<string, unknown> | undefined
+    ) ?? {};
   return empty;
 }
 
@@ -162,8 +187,22 @@ export function getConfig(): LangGraphRunnableConfig {
 }
 
 /**
- * A helper utility function that returns the input for the currently executing task
+ * A helper utility function that returns the input for the currently executing
+ * task.
  *
+ * Note: When called without arguments, this relies on `node:async_hooks` /
+ * `AsyncLocalStorage`, which is available in many JavaScript environments
+ * (Node.js, Deno, Cloudflare Workers) but not in web browsers. In environments
+ * without `AsyncLocalStorage` support, pass the `config` that your node/tool
+ * function receives directly, e.g. `getCurrentTaskInput(config)`.
+ *
+ * Tip: Inside a tool run by a `ToolNode`, prefer reading graph state from
+ * `runtime.state` on the second tool argument (typed as `ToolRuntime` from
+ * `@langchain/core/tools`). It works in every runtime, including web browsers.
+ *
+ * @param config - Optional {@link LangGraphRunnableConfig} to read the task
+ * input from. Provide this when running in an environment without
+ * `AsyncLocalStorage` support (e.g. web browsers).
  * @returns the input for the currently executing task
  */
 export function getCurrentTaskInput<T = unknown>(

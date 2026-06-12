@@ -1,12 +1,14 @@
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
+import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
+import type { IdleReconnectMode } from "./utils/stream.js";
 
 export type MultitaskStrategy = "reject" | "interrupt" | "rollback" | "enqueue";
 export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
 export type DisconnectMode = "cancel" | "continue";
 export type Durability = "exit" | "async" | "sync";
+export type StreamProtocol = "legacy" | "v2" | "v2-websocket";
 export type StreamEvent =
   | "events"
   | "metadata"
@@ -168,7 +170,7 @@ export interface RunsInvokePayload {
 
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
-  TSubgraphs extends boolean = false
+  TSubgraphs extends boolean = false,
 > extends RunsInvokePayload {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
@@ -185,6 +187,26 @@ export interface RunsStreamPayload<
    * If true, the stream can be resumed and replayed in its entirety even after disconnection.
    */
   streamResumable?: boolean;
+
+  /**
+   * Idle-reconnect policy guarding against half-open sockets that hang
+   * indefinitely with no error or close (e.g. a platform revision rollover
+   * that hard-kills the serving pod). On idle the read is aborted and
+   * re-issued with `Last-Event-ID`, resuming from the persisted buffer
+   * (requires `streamResumable: true`).
+   *
+   * - `"auto"` (default): the client watches for the server's SSE keep-alive
+   *   heartbeats (LangGraph Platform sends `: heartbeat` every ~5s) and only
+   *   arms idle detection once it has observed them, sizing the window from
+   *   the observed cadence. Because heartbeats keep flowing while the agent
+   *   is merely quiet (long tool calls, HITL pauses), this is independent of
+   *   agent activity and won't false-fire. On a server that never sends
+   *   heartbeats it stays dormant.
+   * - a `number`: a fixed idle window in milliseconds (arms from the first
+   *   byte; does not depend on heartbeats).
+   * - `0`: disables it.
+   */
+  streamIdleReconnect?: IdleReconnectMode;
 
   /**
    * Pass one or more feedbackKeys if you want to request short-lived signed URLs
@@ -209,13 +231,26 @@ export interface RunsCreatePayload extends RunsInvokePayload {
    * If true, the stream can be resumed and replayed in its entirety even after disconnection.
    */
   streamResumable?: boolean;
+
+  /**
+   * Pass one or more feedbackKeys if you want to request short-lived signed URLs
+   * for submitting feedback to LangSmith with this key for this run.
+   */
+  feedbackKeys?: string[];
 }
 
 export interface CronsCreatePayload extends RunsCreatePayload {
   /**
-   * Schedule for running the Cron Job. Schedules are interpreted in UTC.
+   * Schedule for running the Cron Job. Schedules are interpreted in UTC unless
+   * a timezone is specified.
    */
   schedule: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   * If not provided, the schedule is interpreted in UTC.
+   */
+  timezone?: string;
 
   /**
    * What to do with the thread after the run completes.
@@ -229,11 +264,37 @@ export interface CronsCreatePayload extends RunsCreatePayload {
    * Whether the cron is enabled.
    */
   enabled?: boolean;
+
+  /**
+   * The end date to stop running the cron job (ISO 8601 datetime string).
+   */
+  endTime?: string;
 }
 
 export interface CronsUpdatePayload extends RunsInvokePayload {
   schedule?: string;
   endTime?: string;
+
+  /**
+   * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
+   */
+  timezone?: string;
+
+  /**
+   * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
+   */
+  streamMode?: StreamMode | Array<StreamMode>;
+
+  /**
+   * Stream output from subgraphs. By default, streams only the top graph.
+   */
+  streamSubgraphs?: boolean;
+
+  /**
+   * Whether the stream is considered resumable.
+   */
+  streamResumable?: boolean;
+
   /**
    * What to do with the thread after the run completes.
    * - "delete" (default): Automatically deletes the thread after the run completes.

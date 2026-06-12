@@ -34,7 +34,7 @@ export class AnyValue<Value> extends BaseChannel<Value, Value, Value> {
 
     // eslint-disable-next-line prefer-destructuring
     this.value = [values[values.length - 1]];
-    return false;
+    return true;
   }
 
   get(): Value {

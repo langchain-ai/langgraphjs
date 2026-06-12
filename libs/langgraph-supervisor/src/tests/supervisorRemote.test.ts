@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@langchain/core/utils/uuid";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import { createReactAgent, ToolNode } from "@langchain/langgraph/prebuilt";
 import { createSupervisor } from "../supervisor.js";

@@ -59,10 +59,13 @@ export class ToolExecutor extends RunnableBinding<
     });
     this.tools = fieldsWithDefaults.tools;
     this.invalidToolMsgTemplate = fieldsWithDefaults.invalidToolMsgTemplate;
-    this.toolMap = this.tools.reduce((acc, tool) => {
-      acc[tool.name] = tool;
-      return acc;
-    }, {} as Record<string, StructuredToolInterface | RunnableToolLike>);
+    this.toolMap = this.tools.reduce(
+      (acc, tool) => {
+        acc[tool.name] = tool;
+        return acc;
+      },
+      {} as Record<string, StructuredToolInterface | RunnableToolLike>
+    );
   }
 
   /**
