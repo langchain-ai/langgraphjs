@@ -493,6 +493,11 @@ export class ThreadsClient<
     let transport: TransportAdapter;
     if (options.transport != null && typeof options.transport !== "string") {
       transport = options.transport;
+      // Bind (or re-bind) the caller-supplied adapter to this thread so a
+      // single instance can follow lazy creation (the first `submit()` on a
+      // `threadId: null` controller mints the id here) and thread switches.
+      // No-op for adapters that bake `threadId` at construction.
+      transport.setThreadId?.(threadId);
     } else {
       const transportKind: ThreadStreamTransportKind =
         options.transport ??

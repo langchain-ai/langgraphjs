@@ -40,6 +40,8 @@ context sharing, selectors, transports, testing, and advanced agent workflows.
 - [`transports.md`](./transports.md) compares built-in SSE, WebSocket, and
   custom adapter options.
 - [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  implementing custom transport layers.
+  pointing `useStream` at a custom backend — `HttpAgentServerAdapter`,
+  server-side protocol handling, lazy thread binding, and implementing
+  `AgentServerAdapter` directly.
 - [`v1-migration.md`](./v1-migration.md) explains how to migrate to
   `@langchain/vue` v1.

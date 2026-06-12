@@ -67,6 +67,85 @@ function App() {
 Wrap the adapter in `useMemo`. Recreating it on every render closes
 the old stream and opens a new one.
 
+## Binding To A Thread
+
+The example above bakes a fixed `threadId` into the adapter and its
+`paths`. That is fine for a single-thread local demo, but a real
+multi-thread backend should let the framework **bind the thread**
+instead.
+
+`HttpAgentServerAdapter` — and any `AgentServerAdapter` that implements
+the optional `setThreadId` — can be constructed **without** a `threadId`.
+When you hand the adapter to `useStream`, the framework calls
+`transport.setThreadId(threadId)` before each run, including the id the
+SDK mints on the first `submit()` of a brand-new thread (`threadId:
+null`). To make a re-bound adapter target the right thread, write `paths`
+as **functions of the thread id** rather than fixed strings:
+
+```tsx
+// Your app owns the thread id. Start at `null` for a brand-new thread;
+// the SDK mints the real id on the first submit and reports it through
+// `onThreadId`, which you store here.
+const [threadId, setThreadId] = useState<string | null>(null);
+
+const transport = useMemo(
+  () =>
+    new HttpAgentServerAdapter({
+      apiUrl: window.location.origin,
+      // No `threadId` — the framework binds it via `setThreadId`.
+      paths: {
+        commands: (id) => `/api/threads/${id}/commands`,
+        stream: (id) => `/api/threads/${id}/stream`,
+      },
+    }),
+  []
+);
+
+// `threadId: null` starts a new thread on the first submit. The SDK
+// mints the id, reports it via `onThreadId`, and binds it to the adapter
+// — you don't mint one yourself, and the new thread skips the `getState`
+// hydrate (no 404 against a thread that does not exist yet).
+const stream = useStream<GraphType>({
+  transport,
+  threadId,
+  onThreadId: setThreadId,
+});
+```
+
+`threadId` / `setThreadId` here are plain React state (`useState`):
+`useStream` reads the current `threadId` and calls `setThreadId` (via
+`onThreadId`) once the SDK mints the new id, so a later render can stay
+bound to that thread. A fixed-string path (the form used in
+[Client Setup](#client-setup)) is still honored verbatim and is
+independent of the bound thread — use it only when the adapter never
+moves off a single thread.
+
+### Switching Between Existing Threads
+
+Lazy binding covers the create-a-new-thread flow. If a single provider
+instead switches between **different existing** threads, give the
+adapter a fresh identity per thread (memoize it on `threadId`) so
+`useStream` builds a new stream for the new thread:
+
+```tsx
+const transport = useMemo(
+  () =>
+    new HttpAgentServerAdapter({
+      apiUrl: window.location.origin,
+      paths: {
+        commands: (id) => `/api/threads/${id}/commands`,
+        stream: (id) => `/api/threads/${id}/stream`,
+      },
+    }),
+  [threadId]
+);
+```
+
+Switching threads tears down the previous stream — which closes the
+transport — so one long-lived instance cannot be reused across an
+existing-thread switch. Creating a thread and staying on it never tears
+down, so lazy creation is unaffected.
+
 ## Server Architecture
 
 On the server, `CustomGraphServer` owns a `LocalThreadSession` per
@@ -279,16 +358,21 @@ custom browser adapter that knows how to reverse that transformation.
 
 ## `HttpAgentServerAdapter` Options
 
+`threadId` is optional. Omit it to let the framework bind the thread via
+`setThreadId` (see [Binding To A Thread](#binding-to-a-thread)); supply it
+to pin the adapter to one thread.
+
 Use `paths` when your backend routes do not live at the default
-`/threads/:threadId/...` paths:
+`/threads/:threadId/...` paths. Each entry is either a fixed string or a
+function of the bound thread id — use the function form whenever the
+adapter is late-bound or re-bound:
 
 ```tsx
 const transport = new HttpAgentServerAdapter({
   apiUrl: window.location.origin,
-  threadId: "local",
   paths: {
-    commands: "/api/threads/local/commands",
-    stream: "/api/threads/local/stream",
+    commands: (threadId) => `/api/threads/${threadId}/commands`,
+    stream: (threadId) => `/api/threads/${threadId}/stream`,
   },
 });
 ```
@@ -324,12 +408,21 @@ interface AgentServerAdapter {
   send(command: Command): Promise<CommandResponse | ErrorResponse | void>;
   events(): AsyncIterable<Message>;
   openEventStream?(params: SubscribeParams): EventStreamHandle;
+  // Bind / re-bind the adapter to a thread. The framework calls this
+  // before each run — including the id minted on the first submit of a
+  // `threadId: null` stream. Omit it to keep the adapter pinned to the
+  // thread it was constructed with (the per-call id is then ignored).
+  setThreadId?(threadId: string): void;
   getState?<S = unknown>(): Promise<{
     values: S;
     checkpoint?: { checkpoint_id?: string } | null;
   } | null>;
 }
 ```
+
+Implement `setThreadId` if you want a single instance to follow lazy
+thread creation or re-binds; derive your connection URLs from the
+currently-bound `threadId` rather than capturing it at construction.
 
 Direct adapters are useful for in-memory tests, browser-native
 transports, a shared socket that multiplexes many logical threads, or
@@ -353,6 +446,10 @@ If your backend can expose command and stream endpoints, prefer
   `custom:a2a`.
 - **Recreating the adapter on every render.** Wrap
   `new HttpAgentServerAdapter(...)` in `useMemo`.
+- **Baking the thread id into fixed `paths` when you re-bind.** A
+  late-bound or re-bound adapter needs function `paths`
+  (`(threadId) => ...`); fixed strings stay pinned to one thread. See
+  [Binding To A Thread](#binding-to-a-thread).
 - **Treating the example session as production persistence.**
   `LocalThreadSession` is process-local and in-memory by design.
 
