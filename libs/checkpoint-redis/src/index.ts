@@ -910,30 +910,37 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (checkpoint.channel_versions) {
       const actualNs =
         jsonDoc.checkpoint_ns === "__empty__" ? "" : jsonDoc.checkpoint_ns;
-      // Track blob keys actually used so their TTL can be refreshed alongside the
-      // checkpoint key. Otherwise a read keeps the checkpoint alive while the
-      // blobs it depends on expire, silently dropping reconstructed channels.
-      const usedBlobKeys: string[] = [];
-      for (const [channel, version] of Object.entries(
-        checkpoint.channel_versions
-      )) {
-        if (!(channel in (checkpoint.channel_values ?? {}))) {
+      // Fetch the missing channels' blobs in parallel, then assign them in.
+      const missingChannels = Object.entries(checkpoint.channel_versions).filter(
+        ([channel]) => !(channel in (checkpoint.channel_values ?? {}))
+      );
+      const reconstructed = await Promise.all(
+        missingChannels.map(async ([channel, version]) => {
           const blobKey = `checkpoint_blob:${jsonDoc.thread_id}:${actualNs}:${channel}:${version}`;
           const blobDoc = (await this.client.json.get(blobKey)) as any;
           // A carried-over blob may be gone here if it expired during an idle gap
           // > `defaultTTL`; skip the channel cleanly (absent, not corrupt) rather
           // than erroring.
-          if (blobDoc?.value !== undefined) {
-            if (!checkpoint.channel_values) {
-              checkpoint.channel_values = {};
-            }
-            checkpoint.channel_values[channel] = await this.serde.loadsTyped(
-              "json",
-              JSON.stringify(blobDoc.value)
-            );
-            usedBlobKeys.push(blobKey);
-          }
+          if (blobDoc?.value === undefined) return undefined;
+          const value = await this.serde.loadsTyped(
+            "json",
+            JSON.stringify(blobDoc.value)
+          );
+          return { channel, blobKey, value };
+        })
+      );
+
+      // Track blob keys actually used so their TTL can be refreshed alongside the
+      // checkpoint key. Otherwise a read keeps the checkpoint alive while the
+      // blobs it depends on expire, silently dropping reconstructed channels.
+      const usedBlobKeys: string[] = [];
+      for (const entry of reconstructed) {
+        if (entry === undefined) continue;
+        if (!checkpoint.channel_values) {
+          checkpoint.channel_values = {};
         }
+        checkpoint.channel_values[entry.channel] = entry.value;
+        usedBlobKeys.push(entry.blobKey);
       }
 
       // Refresh blob TTLs in lockstep with the checkpoint key's refresh in
