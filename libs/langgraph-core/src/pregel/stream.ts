@@ -2,6 +2,7 @@ import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { Serialized } from "@langchain/core/load/serializable";
+import { isCheckpointEnvelope } from "../stream/convert.js";
 import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
@@ -13,23 +14,21 @@ import { TAG_HIDDEN } from "../constants.js";
  * clients can build branching / time-travel UIs without subscribing to a
  * full-state `checkpoints` stream.
  *
- * v1 consumers that destructure `StreamChunk` as `[ns, mode, payload]`
- * ignore the 4th element and are unaffected.
+ * Companion checkpoint envelopes are emitted as separate
+ * ``[namespace, "checkpoints", envelope]`` chunks (see
+ * ``PregelLoop._emitValuesWithCheckpointMeta``).
  */
 export interface StreamChunkMeta {
   /**
-   * Lightweight checkpoint envelope for the superstep that produced this
-   * `values` chunk. Shape matches the canonical {@link Checkpoint}
-   * generated from `protocol.cddl`. When present, `convertToProtocolEvent`
-   * emits a companion `checkpoints` event immediately after the `values`
-   * event so clients can correlate by `(namespace, step)` or adjacent
-   * `seq` numbers.
+   * Lightweight checkpoint envelope for the superstep that produced the
+   * paired `values` chunk. Shape matches the canonical {@link Checkpoint}
+   * generated from `protocol.cddl`.
    */
   checkpoint?: Checkpoint;
 }
 
-// [namespace, streamMode, payload, meta?]
-export type StreamChunk = [string[], StreamMode, unknown, StreamChunkMeta?];
+// [namespace, streamMode, payload]
+export type StreamChunk = [string[], StreamMode, unknown];
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",
@@ -162,7 +161,17 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   }
 
   push(chunk: StreamChunk) {
+    // Prevent pushing to a closed stream to avoid race condition errors
+    if (this._closed || !this.controller) {
+      // Silently drop chunks when stream is closed - this is expected behavior
+      // when async operations try to push after stream termination
+      return;
+    }
+
+    // Forward chunk to passthrough function if provided
     this.passthroughFn?.(chunk);
+
+    // Attempt to enqueue the chunk to the underlying stream
     this.controller.enqueue(chunk);
   }
 
@@ -178,7 +187,13 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
-    this.controller.error(e);
+    try {
+      this.controller?.error(e);
+    } finally {
+      // Mark the stream as closed so any late `push()` calls from in-flight
+      // parallel tasks are dropped instead of throwing on an errored controller.
+      this._closed = true;
+    }
   }
 }
 
@@ -188,6 +203,9 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
  */
 export class StreamToolsHandler extends BaseCallbackHandler {
   name = "StreamToolsHandler";
+
+  /** Ensure tool lifecycle callbacks run before tool.invoke returns/errors. */
+  awaitHandlers = true;
 
   streamFn: (streamChunk: StreamChunk) => void;
 
@@ -421,5 +439,23 @@ export function toEventStream(stream: AsyncGenerator) {
 
       controller.close();
     },
+  });
+}
+
+/** Multiplex subgraph stream chunks into the parent pregel stream. */
+export function createDuplexStream(
+  ...streams: IterableReadableWritableStream[]
+) {
+  return new IterableReadableWritableStream({
+    passthroughFn: (value: StreamChunk) => {
+      const isEnvelope =
+        value[1] === "checkpoints" && isCheckpointEnvelope(value[2]);
+      for (const stream of streams) {
+        if (stream.modes.has(value[1]) || isEnvelope) {
+          stream.push(value);
+        }
+      }
+    },
+    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
   });
 }

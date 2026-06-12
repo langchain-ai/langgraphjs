@@ -1,5 +1,222 @@
 # @langchain/svelte
 
+## 1.0.22
+
+### Patch Changes
+
+- [#2522](https://github.com/langchain-ai/langgraphjs/pull/2522) [`3855985`](https://github.com/langchain-ai/langgraphjs/commit/3855985dd049739f145295d236ce6aa02ae2fb0e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(stream): add per-event side-effect selector
+
+  Add `useChannelEffect` (React/Svelte/Vue) / `injectChannelEffect` (Angular), a side-effect counterpart to `useChannel` that invokes an `onEvent` callback once per raw protocol event without re-rendering. This is the idiomatic v1 replacement for the old `onLangChainEvent` / `onCustomEvent` callbacks for analytics and logging. Backed by a new framework-agnostic `acquireChannelEffect` helper in `@langchain/langgraph-sdk/stream` that shares a ref-counted subscription with matching `useChannel` consumers.
+
+- Updated dependencies [[`3855985`](https://github.com/langchain-ai/langgraphjs/commit/3855985dd049739f145295d236ce6aa02ae2fb0e), [`7c3e9e9`](https://github.com/langchain-ai/langgraphjs/commit/7c3e9e93f3c7ec1dc654dac8ee8c03562ee8337b), [`17c44a3`](https://github.com/langchain-ai/langgraphjs/commit/17c44a38b7478e2bc4fe908a54c78ef33fb68ba3)]:
+  - @langchain/langgraph-sdk@1.9.21
+
+## 1.0.21
+
+### Patch Changes
+
+- [#2515](https://github.com/langchain-ai/langgraphjs/pull/2515) [`49b8c1a`](https://github.com/langchain-ai/langgraphjs/commit/49b8c1a04cf03a77069a955816b0f5af2f68ab41) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix: make AnyStream a true supertype so selector hooks need no cast
+
+  A concrete `useStream<typeof agent>()` handle was not assignable to
+  `AnyStream` because generic-computed covariant members (`toolCalls`,
+  `values`) don't widen under `any` — `InferToolCalls<any>[]` resolves to
+  `AssembledToolCall<…, never>[]`, narrower than a concrete handle. Override
+  those members with their widest forms (preserving each framework's
+  reactivity wrapper — plain arrays for React/Svelte, `ShallowRef` for Vue,
+  `Signal` for Angular) so the message/tool/value selector hooks accept a
+  fully-typed stream without an `as AnyStream` cast.
+
+## 1.0.20
+
+### Patch Changes
+
+- [#2508](https://github.com/langchain-ai/langgraphjs/pull/2508) [`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): hydrate custom HttpAgentServerAdapter via transport getState
+
+  StreamController now prefers adapter getState() before client.threads.getState,
+  HttpAgentServerAdapter implements GET /threads/:id/state, and useStream inherits
+  apiUrl from the transport so hydration no longer defaults to localhost:8123.
+
+- Updated dependencies [[`41cd05a`](https://github.com/langchain-ai/langgraphjs/commit/41cd05a411ed262443c2bd1048e1b728b7331ac6)]:
+  - @langchain/langgraph-sdk@1.9.20
+
+## 1.0.19
+
+### Patch Changes
+
+- Updated dependencies [[`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5)]:
+  - @langchain/langgraph-sdk@1.9.19
+
+## 1.0.18
+
+### Patch Changes
+
+- [#2500](https://github.com/langchain-ai/langgraphjs/pull/2500) [`f67772f`](https://github.com/langchain-ai/langgraphjs/commit/f67772ff3f7ac13d81576d395d7529de4eb4390b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resume useChannel subscriptions across serial runs
+
+  Enable `resumeOnPause` on the channel projection so `useChannel` keeps
+  accumulating events across prompts on the same thread. Clarify selector
+  docs and JSDoc: `useChannel` for the full event stream, `useExtension`
+  for the latest payload.
+
+- Updated dependencies [[`f67772f`](https://github.com/langchain-ai/langgraphjs/commit/f67772ff3f7ac13d81576d395d7529de4eb4390b)]:
+  - @langchain/langgraph-sdk@1.9.18
+
+## 1.0.17
+
+### Patch Changes
+
+- [#2494](https://github.com/langchain-ai/langgraphjs/pull/2494) [`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): revive automatic optimistic submit echo
+
+  Echo `submit()` input into `values` / `messages` immediately with client-side
+  id minting and id-based reconciliation as the server streams back. Expose
+  per-message `optimisticStatus` via message metadata (`pending` → `sent` /
+  `failed`), shallow-merge non-message keys with rollback when no `values`
+  arrive, and add an `optimistic: false` hook opt-out. Plumb through React,
+  Vue, Svelte, and Angular with browser e2e coverage.
+
+- [#2497](https://github.com/langchain-ai/langgraphjs/pull/2497) [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): reconcile subagents and subgraphs on thread reconnect
+
+  Seed deep-agent subagent cards from checkpoint messages and subgraph hosts from a single bounded `getHistory` read during `hydrate()`, so parallel fan-out discovery reappears immediately on refresh instead of waiting for SSE replay. Subagent execution namespaces are promoted through the existing guarded discovery state machine (bulk at hydrate, lazily per opened card via the selector layer). The getHistory cost is O(1) in requests regardless of fan-out width.
+
+- Updated dependencies [[`0a0e04e`](https://github.com/langchain-ai/langgraphjs/commit/0a0e04e9ff7e82fd08411cc0094e1f94729a1e1e), [`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f), [`a9aa8d6`](https://github.com/langchain-ai/langgraphjs/commit/a9aa8d6a9b23f5f7d4c56889fa68697b1e076b31)]:
+  - @langchain/langgraph-sdk@1.9.17
+
+## 1.0.16
+
+### Patch Changes
+
+- Updated dependencies [[`244c24e`](https://github.com/langchain-ai/langgraphjs/commit/244c24eaccff4009df7d83e4320e51a4b310b15f)]:
+  - @langchain/langgraph-sdk@1.9.16
+
+## 1.0.15
+
+### Patch Changes
+
+- Updated dependencies [[`9861f42`](https://github.com/langchain-ai/langgraphjs/commit/9861f42cc4fa23d9e80ae45a76d511d7618cda07)]:
+  - @langchain/langgraph-sdk@1.9.15
+
+## 1.0.14
+
+### Patch Changes
+
+- Updated dependencies [[`ba583b6`](https://github.com/langchain-ai/langgraphjs/commit/ba583b601d284c689bbfc15397686f1aa7481fba)]:
+  - @langchain/langgraph-sdk@1.9.14
+
+## 1.0.13
+
+### Patch Changes
+
+- Updated dependencies [[`0bbe66e`](https://github.com/langchain-ai/langgraphjs/commit/0bbe66e31de3abe7526c7810755a40c31bc60e0d)]:
+  - @langchain/langgraph-sdk@1.9.13
+
+## 1.0.12
+
+### Patch Changes
+
+- [#2467](https://github.com/langchain-ai/langgraphjs/pull/2467) [`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): route headless tool resumes through respond on v1 stream
+
+  `useStream` was calling `submit(null, { command })` for headless-tool resumes,
+  which dispatches `run.start` without delivering the tool result. Add
+  `applyHeadlessToolResumeCommand` to route payloads through `respond` /
+  `respondAll`, and tighten headless-tool browser tests to assert end-to-end
+  resume and graph completion.
+
+- Updated dependencies [[`0491534`](https://github.com/langchain-ai/langgraphjs/commit/04915347128e40fc9617647cadba6b472a357d36)]:
+  - @langchain/langgraph-sdk@1.9.12
+
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [[`863b555`](https://github.com/langchain-ai/langgraphjs/commit/863b555346de02c2c0be290e877b7d260a3f8856), [`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-sdk@1.9.11
+
+## 1.0.10
+
+### Patch Changes
+
+- [#2443](https://github.com/langchain-ai/langgraphjs/pull/2443) [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(sdk): drop StreamSubmitOptions.command and simplify forkFrom
+
+  Remove the misleading submit({ command }) surface from protocol-v2
+  StreamController; HITL resume is respond() only. Accept forkFrom as a
+  plain checkpoint id string and align protocol-v2 servers and docs.
+
+- [#2448](https://github.com/langchain-ai/langgraphjs/pull/2448) [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - protocol-v2: add `respondAll()` and run config/metadata on interrupt resume
+
+  The stream controller (and the React/Angular/Svelte/Vue wrappers) gain a
+  `respondAll(responsesById, options)` method to resume several interrupts
+  pending at the same checkpoint in a single command — required for runs that
+  pause on multiple interrupts at once (e.g. parallel tool-authorization
+  prompts), which sequential `respond()` calls cannot handle.
+
+  `respond()` now takes an options object (`{ interruptId?, namespace?,
+config?, metadata? }`) so a resumed run can carry the same run-level config
+  (model, user context, …) and metadata (trigger source, test flags, …) a
+  fresh `submit()` would. The protocol-v2 reference servers read the new
+  `responses` batch and `config` / `metadata` fields leniently and fold them
+  onto the run that services the `input.respond` command.
+
+- Updated dependencies [[`80c2806`](https://github.com/langchain-ai/langgraphjs/commit/80c2806cb2da93745a640664bd0cf603c2361da9), [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532), [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d)]:
+  - @langchain/langgraph-sdk@1.9.10
+
+## 1.0.9
+
+### Patch Changes
+
+- Updated dependencies [[`dbbcb63`](https://github.com/langchain-ai/langgraphjs/commit/dbbcb636e742c38e89854a8ae7ef4e1566d44343)]:
+  - @langchain/langgraph-sdk@1.9.9
+
+## 1.0.8
+
+### Patch Changes
+
+- [#2438](https://github.com/langchain-ai/langgraphjs/pull/2438) [`29d2bde`](https://github.com/langchain-ai/langgraphjs/commit/29d2bde235bf85e8a5e1dd59a997266ff894484b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): cancel runs on stop by default and add disconnect()
+
+  `stream.stop()` now calls `client.runs.cancel` for the active run before disconnecting the client (default `{ cancel: true }`). Join/rejoin UIs can call `stream.disconnect()` or `stop({ cancel: false })` to leave the agent running server-side.
+
+  This fills a missing gap we found when migrating to v1.
+
+- Updated dependencies [[`29d2bde`](https://github.com/langchain-ai/langgraphjs/commit/29d2bde235bf85e8a5e1dd59a997266ff894484b)]:
+  - @langchain/langgraph-sdk@1.9.8
+
+## 1.0.7
+
+### Patch Changes
+
+- [#2435](https://github.com/langchain-ai/langgraphjs/pull/2435) [`cfc8d27`](https://github.com/langchain-ai/langgraphjs/commit/cfc8d274e4dc99cb73ebd9abc4f971622105f08e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): unwrap Command tool outputs and hide scoped task tools
+
+  Filter wrapper `task` dispatch events from subagent-scoped tool-call
+  projections and parse embedded ToolMessage results from LangGraph
+  `Command` payloads on `tool-finished`.
+
+- Updated dependencies [[`cfc8d27`](https://github.com/langchain-ai/langgraphjs/commit/cfc8d274e4dc99cb73ebd9abc4f971622105f08e), [`6b188e8`](https://github.com/langchain-ai/langgraphjs/commit/6b188e80ab989fc8396e1926f729d93b786ca671)]:
+  - @langchain/langgraph-sdk@1.9.7
+
+## 1.0.6
+
+### Patch Changes
+
+- [#2430](https://github.com/langchain-ai/langgraphjs/pull/2430) [`f99941f`](https://github.com/langchain-ai/langgraphjs/commit/f99941f5fe8671ddcb6a78e93e5e05f4028d4af4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear subgraph and subagent discovery on thread swap
+
+  Reset discovery stores in `StreamController.#teardownThread()` so starting a
+  new thread does not leave stale subgraph cards or subagent entries from the
+  previous run.
+
+- Updated dependencies [[`f99941f`](https://github.com/langchain-ai/langgraphjs/commit/f99941f5fe8671ddcb6a78e93e5e05f4028d4af4)]:
+  - @langchain/langgraph-sdk@1.9.6
+
+## 1.0.5
+
+### Patch Changes
+
+- [#2421](https://github.com/langchain-ai/langgraphjs/pull/2421) [`3529e38`](https://github.com/langchain-ai/langgraphjs/commit/3529e3831a488134e7dfaefa4ed7fb1140cf8bb6) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(stream): align AssembledToolCall typing with pre-v1 expectations
+
+  Make `InferToolCalls` resolve to generic `AssembledToolCall` unions, expose
+  sync `status`/`error` for reactive bindings, and align type tests across
+  React, Vue, Svelte, and Angular SDK packages.
+
+- Updated dependencies [[`3529e38`](https://github.com/langchain-ai/langgraphjs/commit/3529e3831a488134e7dfaefa4ed7fb1140cf8bb6)]:
+  - @langchain/langgraph-sdk@1.9.5
+
 ## 1.0.4
 
 ### Patch Changes

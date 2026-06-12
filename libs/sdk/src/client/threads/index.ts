@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
 import {
   Checkpoint,
@@ -302,6 +302,10 @@ export class ThreadsClient<
     return this.fetch<ThreadState<ValuesType>>(`/threads/${threadId}/state`, {
       params: { subgraphs: options?.subgraphs },
       signal: options?.signal,
+      // Coalesce concurrent identical reads (e.g. two controllers
+      // hydrating the same thread on reconnect). Skipped automatically
+      // when a caller supplies its own `signal`.
+      dedupe: true,
     });
   }
 
@@ -395,6 +399,10 @@ export class ThreadsClient<
           checkpoint: options?.checkpoint,
         },
         signal: options?.signal,
+        // `getHistory` is a read despite using POST — coalesce the
+        // hydrate-time discovery seed when two controllers reconnect to
+        // the same thread concurrently. Skipped when `signal` is set.
+        dedupe: true,
       }
     );
   }
@@ -476,31 +484,56 @@ export class ThreadsClient<
     // the built-in factories entirely — this is the seam that lets users
     // point `useStream` at any agent server (including the thin wrappers
     // produced by `HttpAgentServerAdapter`).
+    // When callers supply `fetch`, use it verbatim (tests, auth shims). Otherwise
+    // route protocol HTTP and media URL fetches through AsyncCaller like REST.
+    const userFetch = options.fetch;
+    const protocolFetch =
+      userFetch ?? this.asyncCaller.fetch.bind(this.asyncCaller);
+
     let transport: TransportAdapter;
     if (options.transport != null && typeof options.transport !== "string") {
       transport = options.transport;
+      // Bind (or re-bind) the caller-supplied adapter to this thread so a
+      // single instance can follow lazy creation (the first `submit()` on a
+      // `threadId: null` controller mints the id here) and thread switches.
+      // No-op for adapters that bake `threadId` at construction.
+      transport.setThreadId?.(threadId);
     } else {
       const transportKind: ThreadStreamTransportKind =
         options.transport ??
         (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
+      const maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+
+      /**
+       * Common options for both transports.
+       */
+      const commonOpts = {
+        apiUrl: this.apiUrl,
+        threadId,
+        defaultHeaders: this.defaultHeaders,
+        onRequest: this.onRequest,
+        maxReconnectAttempts,
+        reconnectDelayMs: options.reconnectDelayMs,
+        onReconnect: options.onReconnect,
+      };
+
       transport =
         transportKind === "websocket"
           ? new ProtocolWebSocketTransportAdapter({
-              apiUrl: this.apiUrl,
-              threadId,
-              defaultHeaders: this.defaultHeaders,
-              onRequest: this.onRequest,
+              ...commonOpts,
               webSocketFactory: options.webSocketFactory,
             })
           : new ProtocolSseTransportAdapter({
-              apiUrl: this.apiUrl,
-              threadId,
-              defaultHeaders: this.defaultHeaders,
-              onRequest: this.onRequest,
-              fetch: options.fetch,
+              ...commonOpts,
+              idleReconnect: options.streamIdleReconnect,
+              fetch: userFetch,
+              asyncCaller: userFetch ? undefined : this.asyncCaller,
             });
     }
 
-    return new ThreadStream<TExtensions>(transport, options);
+    return new ThreadStream<TExtensions>(transport, {
+      ...options,
+      fetch: protocolFetch,
+    });
   }
 }

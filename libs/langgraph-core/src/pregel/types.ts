@@ -15,8 +15,9 @@ import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import type { Interrupt } from "../constants.js";
 import type { StreamTransformer } from "../stream/types.js";
-import { CachePolicy, RetryPolicy } from "./utils/index.js";
+import { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import type { RunControl } from "./runtime.js";
 
 /**
  * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
@@ -236,7 +237,7 @@ export interface PregelOptions<
   TEncoding extends "text/event-stream" | undefined =
     | "text/event-stream"
     | undefined,
-> extends RunnableConfig<ContextType> {
+> extends RunnableConfig {
   /**
    * Controls what information is streamed during graph execution.
    * Multiple modes can be enabled simultaneously.
@@ -369,6 +370,15 @@ export interface PregelOptions<
    * Static context for the graph run, like `userId`, `dbConnection` etc.
    */
   context?: ContextType;
+
+  /**
+   * Optional run control used to request cooperative drain. When
+   * {@link RunControl#requestDrain} is called (e.g. from a SIGTERM handler or
+   * a node), the graph stops at the next superstep boundary, persists its
+   * checkpoint, and throws {@link GraphDrained}. The run can then be resumed
+   * later from the saved checkpoint.
+   */
+  control?: RunControl;
 
   /**
    * The encoding to use for the stream.
@@ -595,6 +605,12 @@ export interface PregelExecutableTask<
   readonly path?: TaskPath;
   readonly subgraphs?: Runnable[];
   readonly writers: Runnable[];
+  /**
+   * The (already coerced) timeout policy to enforce for each attempt of this
+   * task. Resolved from the node's `timeout`, or overridden by a per-task
+   * {@link Send} timeout / functional `Call` timeout.
+   */
+  readonly timeout?: TimeoutPolicy;
 }
 
 export interface StateSnapshot {
@@ -714,6 +730,7 @@ export type CallOptions = {
   input: unknown;
   cache?: CachePolicy;
   retry?: RetryPolicy;
+  timeout?: TimeoutPolicy;
   callbacks?: unknown;
 };
 
@@ -728,16 +745,27 @@ export class Call {
 
   cache?: CachePolicy;
 
+  timeout?: TimeoutPolicy;
+
   callbacks?: unknown;
 
   readonly __lg_type = "call";
 
-  constructor({ func, name, input, retry, cache, callbacks }: CallOptions) {
+  constructor({
+    func,
+    name,
+    input,
+    retry,
+    cache,
+    timeout,
+    callbacks,
+  }: CallOptions) {
     this.func = func;
     this.name = name;
     this.input = input;
     this.retry = retry;
     this.cache = cache;
+    this.timeout = timeout;
     this.callbacks = callbacks;
   }
 }

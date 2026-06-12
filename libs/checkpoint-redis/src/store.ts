@@ -8,7 +8,7 @@ export type RedisClusterConnection = ReturnType<typeof createCluster>;
 
 /** A Redis connection, clustered or conventional. */
 export type RedisConnection = RedisClientConnection | RedisClusterConnection;
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   type GetOperation,
   InvalidNamespaceError,

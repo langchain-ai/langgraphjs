@@ -20,6 +20,7 @@ import { graph as stategraphText } from "./fixtures/stategraph-text.js";
 import { graph as createAgentGraph } from "./fixtures/create-agent.js";
 import { graph as deepAgentGraph } from "./fixtures/deep-agent.js";
 import { graph as interruptGraph } from "./fixtures/interrupt-graph.js";
+import { graph as multiInterruptGraph } from "./fixtures/multi-interrupt-graph.js";
 import { graph as errorGraph } from "./fixtures/error-graph.js";
 import { graph as subgraphGraph } from "./fixtures/subgraph-graph.js";
 import { graph as embeddedSubgraphGraph } from "./fixtures/embedded-subgraph-graph.js";
@@ -27,6 +28,9 @@ import { graph as customChannelGraph } from "./fixtures/custom-channel-graph.js"
 import { graph as slowGraph } from "./fixtures/slow-graph.js";
 import { graph as headlessToolGraph } from "./fixtures/headless-tool-graph.js";
 import { graph as removeMessageGraph } from "./fixtures/remove-message-graph.js";
+import { statefulValuesGraph } from "./fixtures/stateful-values-graph.js";
+import { graph as parallelFanoutGraph } from "./fixtures/parallel-fanout.js";
+import { graph as parallelSubgraphGraph } from "./fixtures/parallel-subgraph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -73,6 +77,7 @@ const graphs: Record<string, AnyPregel> = {
   create_agent: createAgentGraph as unknown as AnyPregel,
   deep_agent: deepAgentGraph as unknown as AnyPregel,
   interrupt_graph: interruptGraph as unknown as AnyPregel,
+  multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
   error_graph: errorGraph as unknown as AnyPregel,
   subgraph_graph: subgraphGraph as unknown as AnyPregel,
   embedded_subgraph_graph: embeddedSubgraphGraph as unknown as AnyPregel,
@@ -80,6 +85,9 @@ const graphs: Record<string, AnyPregel> = {
   slow_graph: slowGraph as unknown as AnyPregel,
   headless_tool_graph: headlessToolGraph as unknown as AnyPregel,
   remove_message_graph: removeMessageGraph as unknown as AnyPregel,
+  stateful_values_graph: statefulValuesGraph as unknown as AnyPregel,
+  parallel_fanout: parallelFanoutGraph as unknown as AnyPregel,
+  parallel_subgraph: parallelSubgraphGraph as unknown as AnyPregel,
 };
 
 let httpServer: Server | null = null;

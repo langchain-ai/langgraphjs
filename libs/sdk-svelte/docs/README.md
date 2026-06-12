@@ -31,4 +31,6 @@ workflows.
 - [`headless-tools.md`](./headless-tools.md) covers tool implementations and
   lifecycle events for headless tools.
 - [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  implementing custom transport layers in Svelte apps.
+  pointing `useStream` at a custom backend in Svelte apps —
+  `HttpAgentServerAdapter`, server-side protocol handling, lazy thread
+  binding, and implementing `AgentServerAdapter` directly.

@@ -40,7 +40,7 @@ const TEMPLATE = `
     <div data-testid="tool-events">
       @for (event of toolEvents(); track $index) {
         <div [attr.data-testid]="'tool-event-' + $index">
-          {{ event.phase + ":" + event.name + (event.phase === "error" && event.error ? ":" + event.error.message : "") }}
+          {{ event.phase + ":" + event.name + (event.phase === "success" && event.result != null ? ":" + str(event.result) : "") + (event.phase === "error" && event.error ? ":" + event.error.message : "") }}
         </div>
       }
     </div>

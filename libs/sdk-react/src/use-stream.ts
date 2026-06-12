@@ -6,12 +6,14 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   filterOutHeadlessToolInterrupts,
   flushPendingHeadlessToolInterrupts,
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
@@ -23,7 +25,13 @@ import {
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
   type InferSubagentStates,
+  type InferToolCalls,
   type RootSnapshot,
+  type RunCompletedInfo,
+  type RunExecutionInfo,
+  type StreamRespondAllOptions,
+  type StreamRespondOptions,
+  type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -107,10 +115,44 @@ export interface UseStreamReturn<
    * Equivalent to calling `useMessages(stream)` with no target.
    */
   readonly messages: BaseMessage[];
-  readonly toolCalls: AssembledToolCall[];
+  /**
+   * Root-namespace tool calls assembled from the `tools` channel.
+   * Each entry is a fully parsed {@link AssembledToolCall} with
+   * name, args, and id — suitable for rendering approval UIs or
+   * forwarding to headless tool handlers.
+   *
+   * When the stream is typed with an agent brand or tool list,
+   * entries are narrowed via {@link InferToolCalls}. Equivalent to
+   * calling `useToolCalls(stream)` with no target.
+   */
+  readonly toolCalls: InferToolCalls<T>[];
+  /**
+   * All unresolved protocol interrupts observed on the root
+   * namespace during the active thread. Populated from lifecycle /
+   * input events and seeded on hydration from `thread.getState()`.
+   * Cleared optimistically when a new run starts or an interrupt is
+   * resolved via {@link respond}.
+   */
   readonly interrupts: Interrupt<InterruptType>[];
+  /**
+   * Convenience alias for {@link interrupts}[0] — the primary
+   * interrupt most UIs should act on when only one is pending.
+   * `undefined` when no interrupt is active.
+   */
   readonly interrupt: Interrupt<InterruptType> | undefined;
+  /**
+   * `true` while a run is active or being started on the current
+   * thread. Driven by root-namespace lifecycle events (`running` →
+   * `true`, terminal phases → `false`). Use this to disable submit
+   * buttons and show in-flight spinners.
+   */
   readonly isLoading: boolean;
+  /**
+   * `true` while the initial `thread.getState()` hydration for the
+   * active thread is in flight. Distinct from {@link isLoading} —
+   * thread loading covers the one-time fetch that seeds
+   * {@link values} / {@link messages} before any user submit.
+   */
   readonly isThreadLoading: boolean;
   /**
    * Promise that settles when the current thread's initial hydration
@@ -120,7 +162,17 @@ export interface UseStreamReturn<
    * `switchThread`/`threadId` change.
    */
   readonly hydrationPromise: Promise<void>;
+  /**
+   * The last error observed on the active run or hydration attempt.
+   * `undefined` when no error has occurred. Cleared optimistically
+   * when a new {@link submit} starts.
+   */
   readonly error: unknown;
+  /**
+   * Id of the thread the controller is bound to. `null` until the
+   * first {@link submit} creates or selects a thread (or until an
+   * explicit `threadId` option is provided and hydrated).
+   */
   readonly threadId: string | null;
 
   // ----- always-on discovery -----
@@ -164,25 +216,147 @@ export interface UseStreamReturn<
    * Dispatch a new run on the bound thread.
    *
    * `input` is typed as `Partial<StateType>` so IDE autocompletion
-   * surfaces the state keys declared on the root hook. Pass `null`
-   * (or omit fields) when resuming an interrupt via `options.command.resume`
-   * — the server accepts a null payload in that case.
+   * surfaces the state keys declared on the root hook.
    */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
-  stop(): Promise<void>;
+  /**
+   * Stop the active run on the current thread. By default cancels the
+   * run server-side and disconnects the client; pass `{ cancel: false }`
+   * or use {@link disconnect} for join/rejoin. Sets {@link isLoading} to
+   * `false` immediately; {@link values} and {@link messages} are preserved.
+   */
+  stop(options?: StreamStopOptions): Promise<void>;
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  disconnect(): Promise<void>;
+  /**
+   * Resume a pending protocol interrupt by sending a response payload
+   * back to the interrupted namespace.
+   *
+   * When `options.interruptId` is omitted, walks `getThread()?.interrupts`
+   * from newest to oldest and resumes the first not yet resolved by a prior
+   * `respond()` call. That may be a root or subgraph interrupt and is
+   * **not** necessarily {@link interrupt} (`interrupts[0]`, root-only).
+   * Safe when exactly one interrupt is pending; otherwise pass an explicit
+   * `options.interruptId` (and `options.namespace` for subgraph
+   * interrupts).
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * Pass `options.config` / `options.metadata` to fold run-level config
+   * (model, user context, …) and metadata (trigger source, test flags,
+   * …) into the resumed run, mirroring `submit()`.
+   *
+   * @example
+   * ```tsx
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Resume carrying run config + metadata
+   * await stream.respond({ approved: true }, {
+   *   config: { configurable: { model: "gpt-4o" } },
+   *   metadata: { source: "ui" },
+   * });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Multiple root interrupts — one at a time
+   * stream.interrupts.map((intr) => (
+   *   <button
+   *     key={intr.id}
+   *     onClick={() =>
+   *       void stream.respond({ approved: true }, { interruptId: intr.id! })
+   *     }
+   *   />
+   * ));
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * thread?.interrupts.map((entry) => (
+   *   <button
+   *     key={entry.interruptId}
+   *     onClick={() =>
+   *       void stream.respond(buildResponse(entry.payload), {
+   *         interruptId: entry.interruptId,
+   *         namespace: entry.namespace,
+   *       })
+   *     }
+   *   />
+   * ));
+   * ```
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll}.
+   */
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
+  ): Promise<void>;
+
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command — required when a run pauses on multiple interrupts at once
+   * (e.g. parallel tool-authorization prompts), which sequential
+   * {@link respond} calls cannot handle (the first resume starts a run,
+   * leaving the rest with no interrupted run to respond to).
+   *
+   * `responsesById` maps each pending `interruptId` to its response, so
+   * different interrupts can receive different payloads. To send the same
+   * payload to several interrupts, build the map with that value for each
+   * id, e.g. `Object.fromEntries(ids.map((id) => [id, response]))`.
+   *
+   * Pass `options.config` / `options.metadata` to fold run-level config
+   * and metadata into the single run that services the batched resume,
+   * mirroring `submit()`.
+   *
+   * @example
+   * ```tsx
+   * // Distinct payloads per interrupt
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Same payload to every pending interrupt
+   * await stream.respondAll(
+   *   Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
+   * );
+   * ```
+   */
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
   ): Promise<void>;
 
   // ----- identity -----
+  /** LangGraph SDK client used to construct thread streams. */
   readonly client: Client;
+  /** Assistant id the thread is bound to for its lifetime. */
   readonly assistantId: string;
 
-  /** v2 escape hatch — returns the bound {@link ThreadStream}. */
+  /**
+   * Returns the bound {@link ThreadStream}, if one exists (`undefined`
+   * until the thread is hydrated or the first submit completes). Prefer
+   * the projections and selector hooks for UI work; use this for
+   * low-level protocol access (raw subscriptions, state commands, etc.).
+   */
   getThread(): ThreadStream | undefined;
 
   /** @internal Used by selector hooks (`useMessages`, `useToolCalls`, …). */
@@ -197,11 +371,19 @@ export interface UseStreamReturn<
  * Erased stream handle useful as a parameter type for helpers and
  * wrapper components that pass a `stream` through to selector hooks
  * (`useMessages`, `useChannel`, …) without reading `values` directly.
- * Any fully-typed `UseStreamReturn<S, I, C>` is
- * assignable to `AnyStream` because the generic slots are `any`
- * (bivariant), which avoids the `CompiledStateGraph` → `Record<string,
- * unknown>` assignment friction you hit when using the bare
- * `UseStreamReturn` default.
+ *
+ * Any fully-typed `UseStreamReturn<T, I, C>` is assignable to
+ * `AnyStream`. Widening the three generic slots to `any` is **not**
+ * enough on its own: members whose types are computed from `T` in
+ * covariant positions don't collapse to a top type under `any`. In
+ * particular `toolCalls: InferToolCalls<any>[]` resolves to
+ * `AssembledToolCall<string, …, never>[]` — the `never` output slot is
+ * *narrower* than a concrete handle's `AssembledToolCall<…, unknown>[]`,
+ * so the concrete handle fails to assign and every `useToolCalls(stream)`
+ * call would need an `as AnyStream` cast. `values` / `~stateType`
+ * (computed via `InferStateType<any>`) have the same hazard. We override
+ * those members with their widest forms so the erased handle is a true
+ * supertype of every concrete `UseStreamReturn`.
  *
  * @example
  * ```tsx
@@ -214,8 +396,15 @@ export interface UseStreamReturn<
  * }
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStream = UseStreamReturn<any, any, any>;
+export type AnyStream = Omit<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  UseStreamReturn<any, any, any>,
+  "toolCalls" | "values" | "~stateType"
+> & {
+  readonly toolCalls: AssembledToolCall[];
+  readonly values: unknown;
+  readonly "~stateType"?: unknown;
+};
 
 /**
  * React binding for the v2-native stream runtime.
@@ -274,9 +463,11 @@ export function useStream<
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
+    onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
   // Narrow once: a non-string `transport` is a custom adapter; anything
@@ -285,23 +476,46 @@ export function useStream<
     asBag.transport != null && typeof asBag.transport !== "string";
   const transport = asBag.transport;
 
-  const client = useMemo<Client>(
-    () =>
-      asBag.client ??
-      (new ClientCtor({
-        apiUrl: asBag.apiUrl,
-        apiKey: asBag.apiKey,
-        callerOptions: asBag.callerOptions,
-        defaultHeaders: asBag.defaultHeaders,
-      }) as unknown as Client),
-    [
-      asBag.client,
-      asBag.apiUrl,
-      asBag.apiKey,
-      asBag.callerOptions,
-      asBag.defaultHeaders,
-    ]
-  );
+  // Stable client across re-renders.
+  //
+  // A `useMemo` is NOT a stability guarantee — React may drop a memo
+  // cache even when its deps are unchanged. If the client is dropped,
+  // the controller below (which depends on it) is recreated too, and a
+  // fresh controller re-fires its constructor hydrate: a *duplicate*
+  // `getState` + `getHistory`. A ref is never dropped, so the client
+  // stays referentially stable until its config actually changes.
+  const resolvedApiUrl = resolveClientApiUrl({
+    apiUrl: asBag.apiUrl,
+    transport: hasCustomAdapter ? transport : asBag.transport,
+  });
+  const clientDeps = [
+    asBag.client,
+    resolvedApiUrl,
+    asBag.apiKey,
+    asBag.callerOptions,
+    asBag.defaultHeaders,
+  ] as const;
+  const clientRef = useRef<{
+    deps: typeof clientDeps;
+    client: Client;
+  } | null>(null);
+  if (
+    clientRef.current == null ||
+    clientRef.current.deps.some((dep, i) => dep !== clientDeps[i])
+  ) {
+    clientRef.current = {
+      deps: clientDeps,
+      client:
+        asBag.client ??
+        (new ClientCtor({
+          apiUrl: resolvedApiUrl,
+          apiKey: asBag.apiKey,
+          callerOptions: asBag.callerOptions,
+          defaultHeaders: asBag.defaultHeaders,
+        }) as unknown as Client),
+    };
+  }
+  const client = clientRef.current.client;
 
   // Custom adapters may omit `assistantId`; the controller still
   // requires one so it has something to forward to `threads.stream`.
@@ -310,13 +524,35 @@ export function useStream<
   const assistantId =
     "assistantId" in options ? (options.assistantId ?? sentinel) : sentinel;
 
-  // Recreate the controller only on assistantId / client / transport
-  // change; the ThreadStream is bound to one assistant for its
-  // lifetime and we want selector-hook subscriptions to stay stable
-  // across renders.
-  const controller = useMemo(
-    () =>
-      new StreamController<StateType, InterruptType, ConfigurableType>({
+  // Stable controller across re-renders (same rationale as `clientRef`).
+  //
+  // The controller self-hydrates in its constructor, so recreating it
+  // re-issues `getState` + `getHistory`. Pinning it in a ref guarantees
+  // a single hydrate per mount even when React re-renders or re-runs the
+  // component body (a dropped `useMemo` here was the source of duplicate
+  // hydrate fetches). `threadId` is deliberately NOT part of the
+  // identity — the controller persists across thread switches and
+  // self-create (`onThreadId`) so in-flight runs are never orphaned;
+  // thread changes rebind in-place via `hydrate()` in the effect below.
+  // Recreated only when its identity inputs change; the previous
+  // instance is disposed by the `activate()` effect when `controller`
+  // changes.
+  const controllerDeps = [client, assistantId, transport] as const;
+  const controllerRef = useRef<{
+    deps: typeof controllerDeps;
+    controller: StreamController<StateType, InterruptType, ConfigurableType>;
+  } | null>(null);
+  if (
+    controllerRef.current == null ||
+    controllerRef.current.deps.some((dep, i) => dep !== controllerDeps[i])
+  ) {
+    controllerRef.current = {
+      deps: controllerDeps,
+      controller: new StreamController<
+        StateType,
+        InterruptType,
+        ConfigurableType
+      >({
         assistantId,
         // Cast: the runtime `Client` is state-shape agnostic, but the
         // controller declares `client: Client<StateType>` so its own
@@ -331,12 +567,14 @@ export function useStream<
         webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
         onThreadId: options.onThreadId,
         onCreated: options.onCreated,
+        onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        optimistic: asBag.optimistic,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [client, assistantId, transport]
-  );
+    };
+  }
+  const controller = controllerRef.current.controller;
 
   // Rehydrate on threadId change. The initial hydrate is fired
   // synchronously inside the controller constructor so Suspense
@@ -391,10 +629,10 @@ export function useStream<
   // Subscribe to values + interrupt updates via the root store so the
   // effect re-runs whenever a protocol interrupt lands or the
   // `__interrupt__` key is projected into values, not only on hook
-  // re-render. We feed both sources to the flush helper because
-  // v2-native runs surface protocol interrupts via
-  // `rootStore.interrupts` (`input.requested` events), while legacy
-  // graphs may still emit `values.__interrupt__`.
+  // re-render. Prefer protocol interrupts from `rootStore.interrupts`
+  // (`input.requested` events) because their ids are accepted directly
+  // by `Command({ resume })`; fall back to `values.__interrupt__` for
+  // older streams that only expose interrupts through values.
   const rootValuesForTools = useSyncExternalStore<StateType>(
     controller.rootStore.subscribe,
     () => controller.rootStore.getSnapshot().values,
@@ -410,16 +648,15 @@ export function useStream<
   useEffect(() => {
     if (!tools?.length) return;
     const valuesBag = rootValuesForTools as unknown as Record<string, unknown>;
-    const existingInterrupts = Array.isArray(valuesBag?.__interrupt__)
+    const protocolInterrupts = rootInterruptsForTools as unknown as Interrupt[];
+    const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
       ? (valuesBag.__interrupt__ as Interrupt[])
       : [];
-    const combined: Interrupt[] = [
-      ...existingInterrupts,
-      ...(rootInterruptsForTools as unknown as Interrupt[]),
-    ];
-    if (combined.length === 0) return;
+    const headlessInterrupts =
+      protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+    if (headlessInterrupts.length === 0) return;
     flushPendingHeadlessToolInterrupts(
-      { ...valuesBag, __interrupt__: combined },
+      { ...valuesBag, __interrupt__: headlessInterrupts },
       tools,
       handledToolsRef.current,
       {
@@ -428,9 +665,7 @@ export function useStream<
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) =>
-          controller.submit(null, {
-            command,
-          } as StreamSubmitOptions<StateType, ConfigurableType>),
+          applyHeadlessToolResumeCommand(controller, command),
       }
     );
   }, [controller, tools, onTool, rootValuesForTools, rootInterruptsForTools]);
@@ -463,7 +698,7 @@ export function useStream<
     return {
       values: root.values,
       messages: root.messages,
-      toolCalls: root.toolCalls,
+      toolCalls: root.toolCalls as InferToolCalls<T>[],
       interrupts: userFacingInterrupts,
       interrupt: userFacingInterrupts[0],
       isLoading: root.isLoading,
@@ -479,8 +714,11 @@ export function useStream<
       subgraphs,
       subgraphsByNode,
       submit: (input, submitOptions) => controller.submit(input, submitOptions),
-      stop: () => controller.stop(),
-      respond: (response, target) => controller.respond(response, target),
+      stop: (options) => controller.stop(options),
+      disconnect: () => controller.disconnect(),
+      respond: (response, options) => controller.respond(response, options),
+      respondAll: (responsesById, options) =>
+        controller.respondAll(responsesById, options),
       getThread: () => controller.getThread(),
       client,
       assistantId,
@@ -514,10 +752,7 @@ export type UseStreamResult<
  *
  * @internal
  */
-export function getRegistry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>
-): ChannelRegistry {
+export function getRegistry(stream: AnyStream): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }
 

@@ -49,8 +49,17 @@ export type {
   SubgraphDiscoveryProjection,
   SubgraphDiscoveryTransformerOptions,
 } from "./transformers/index.js";
-export { convertToProtocolEvent } from "./convert.js";
+export { convertToProtocolEvent, isCheckpointEnvelope } from "./convert.js";
 export type { ConvertToProtocolEventOptions } from "./convert.js";
+export {
+  inferChannel,
+  matchesSubscription,
+  isSupportedChannel,
+  SUPPORTED_CHANNELS,
+  isPrefixMatch,
+  normalizeNamespaceSegment,
+} from "./subscription.js";
+export type { MatchableEvent } from "./subscription.js";
 export { isNativeTransformer } from "./types.js";
 export type {
   Namespace,

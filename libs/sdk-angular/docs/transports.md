@@ -12,7 +12,9 @@ wire transport at construction time:
   from `@langchain/langgraph-sdk`. `HttpAgentServerAdapter` is the
   stock HTTP/SSE implementation.
 
-Passing both `assistantId` and an adapter is a compile-time error.
+When you pass an adapter, LGP-specific options such as `apiUrl`,
+`client`, `fetch`, and `webSocketFactory` are compile-time errors.
+`assistantId` remains optional for adapters that multiplex internally.
 
 ## LangGraph Platform (SSE — default)
 
@@ -101,6 +103,12 @@ that are not HTTP/SSE shaped. The [**custom transports**](./custom-transport.md)
 guide walks through the current `examples/ui-react-transport` setup,
 where the UI uses `HttpAgentServerAdapter` and the Hono backend
 implements `/commands` and `/stream` with a `LocalThreadSession`.
+
+`threadId` is optional on `HttpAgentServerAdapter`. Omit it (and write
+`paths` as functions of the thread id) to let the framework bind the
+thread via the adapter's optional `setThreadId` — including the id the
+SDK mints on the first submit of a `threadId: null` stream. See
+[Binding to a thread](./custom-transport.md#binding-to-a-thread).
 
 ## Related
 

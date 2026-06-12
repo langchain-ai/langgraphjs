@@ -43,7 +43,7 @@ const messageWithToolCall = new AIMessage({
 
 const complexValue = {
   number: 1,
-  id: uuid6(-1),
+  id: uuid6(0),
   error: new Error("test error"),
   set: new Set([1, 2, 3, 4]),
   map: new Map([
@@ -132,6 +132,31 @@ it.each(VALUES)(
     assertTypedArraysPreserved(value, deserialized);
   }
 );
+
+it("Should preserve a Send's timeout policy across serialization", async () => {
+  const serde = new JsonPlusSerializer();
+  const packet = {
+    lg_name: "Send",
+    node: "worker",
+    args: { x: 1 },
+    timeout: { runTimeout: 1000, idleTimeout: 2000, refreshOn: "auto" },
+  };
+  const [type, serialized] = await serde.dumpsTyped(packet);
+  const loaded = await serde.loadsTyped(type, serialized);
+  expect(loaded).toEqual({
+    node: "worker",
+    args: { x: 1 },
+    timeout: { runTimeout: 1000, idleTimeout: 2000, refreshOn: "auto" },
+  });
+});
+
+it("Should serialize a Send without a timeout unchanged", async () => {
+  const serde = new JsonPlusSerializer();
+  const packet = { lg_name: "Send", node: "worker", args: { x: 1 } };
+  const [type, serialized] = await serde.dumpsTyped(packet);
+  const loaded = await serde.loadsTyped(type, serialized);
+  expect(loaded).toEqual({ node: "worker", args: { x: 1 } });
+});
 
 it("Should replace circular JSON inputs", async () => {
   const a: Record<string, unknown> = {};

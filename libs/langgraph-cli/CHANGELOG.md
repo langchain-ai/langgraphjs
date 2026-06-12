@@ -1,5 +1,41 @@
 # @langchain/langgraph-cli
 
+## 1.3.0
+
+### Patch Changes
+
+- Updated dependencies [[`cad31b4`](https://github.com/langchain-ai/langgraphjs/commit/cad31b42f001a87fcdf57c4c084c655c8762b6a5)]:
+  - @langchain/langgraph-api@1.3.0
+
+## 1.2.5
+
+### Patch Changes
+
+- Updated dependencies [[`658a076`](https://github.com/langchain-ai/langgraphjs/commit/658a076d5b50af9f5b96ab99f26ed629da6e182f)]:
+  - @langchain/langgraph-api@1.2.5
+
+## 1.2.4
+
+### Patch Changes
+
+- [#1925](https://github.com/langchain-ai/langgraphjs/pull/1925) [`6503319`](https://github.com/langchain-ai/langgraphjs/commit/65033191cc3dd671d64dfac78ccdad453fdfbda2) Thanks [@jbrody-nexxa](https://github.com/jbrody-nexxa)! - fix(cli): add --no-reload flag to dev command
+
+- Updated dependencies [[`0125920`](https://github.com/langchain-ai/langgraphjs/commit/0125920a2c4a87dc1d66aaf541ea16146f8cf842)]:
+  - @langchain/langgraph-api@1.2.4
+
+## 1.2.3
+
+### Patch Changes
+
+- [#2443](https://github.com/langchain-ai/langgraphjs/pull/2443) [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532) Thanks [@christian-bromann](https://github.com/christian-bromann)! - refactor(sdk): drop StreamSubmitOptions.command and simplify forkFrom
+
+  Remove the misleading submit({ command }) surface from protocol-v2
+  StreamController; HITL resume is respond() only. Accept forkFrom as a
+  plain checkpoint id string and align protocol-v2 servers and docs.
+
+- Updated dependencies [[`80c2806`](https://github.com/langchain-ai/langgraphjs/commit/80c2806cb2da93745a640664bd0cf603c2361da9), [`80a8c12`](https://github.com/langchain-ai/langgraphjs/commit/80a8c1200a240fd984edc4deb26a7787d08c7532), [`2c14b12`](https://github.com/langchain-ai/langgraphjs/commit/2c14b12a80c306578563e77595943037c7c4844d)]:
+  - @langchain/langgraph-api@1.2.3
+
 ## 1.2.2
 
 ### Patch Changes

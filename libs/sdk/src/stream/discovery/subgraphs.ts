@@ -56,6 +56,10 @@ export type SubgraphByNodeMap = ReadonlyMap<
   readonly SubgraphDiscoverySnapshot[]
 >;
 
+/** Stable empty maps — reused on {@link SubgraphDiscovery.reset}. */
+const EMPTY_SUBGRAPH_MAP: SubgraphMap = new Map();
+const EMPTY_SUBGRAPH_BY_NODE_MAP: SubgraphByNodeMap = new Map();
+
 interface MutableSubgraph {
   id: string;
   namespace: readonly string[];
@@ -196,9 +200,60 @@ export class SubgraphDiscovery {
     const lastSegment = namespace[namespace.length - 1] ?? "";
     const nodeName = parseNodeName(lastSegment);
     const entry = this.#ensureShadow(id, namespace, nodeName);
-    entry.status = "running";
+    // A `values` snapshot is a discovery/promotion signal, not a status
+    // transition — terminal status is owned by `lifecycle` events. The
+    // content pump (which carries `values`) and the lifecycle watcher
+    // (which carries `lifecycle`) are independent streams deduped through
+    // `onEvent`, so a host namespace's final `values` snapshot can be
+    // observed AFTER its terminal `completed`/`failed` lifecycle event.
+    // Unconditionally writing "running" here would resurrect a finished
+    // subgraph and strand it as perpetually running in the UI. New
+    // entries are already created as "running" by `#ensureShadow`, so we
+    // only need to avoid downgrading an entry that already reached a
+    // terminal state.
+    if (entry.status !== "complete" && entry.status !== "error") {
+      entry.status = "running";
+    }
 
     if (!this.#promoted.has(id)) {
+      this.#promoted.add(id);
+    }
+    this.#commit();
+  }
+
+  /**
+   * Seed subgraph hosts from checkpoint history (see
+   * `namespace-from-history.collectSubgraphHostNamespaces`) so subgraph
+   * cards render on thread refresh without waiting for the depth-1 SSE
+   * replay. Supplies the host/promotion decision from history instead
+   * of the live strict-prefix heuristic, then reuses the same
+   * `#ensureShadow` / `#promoted` / `#commit` path. Idempotent: never
+   * downgrades an entry that already reached a terminal state.
+   */
+  seedFromHistory(
+    hosts: Array<{
+      namespace: string[];
+      status: "running" | "complete" | "error";
+    }>
+  ): void {
+    if (hosts.length === 0) return;
+    for (const host of hosts) {
+      if (isRootNamespace(host.namespace)) continue;
+      const id = namespaceKey(host.namespace);
+      const lastSegment = host.namespace[host.namespace.length - 1] ?? "";
+      const entry = this.#ensureShadow(
+        id,
+        host.namespace,
+        parseNodeName(lastSegment)
+      );
+      if (
+        host.status !== "running" &&
+        entry.status !== "complete" &&
+        entry.status !== "error"
+      ) {
+        entry.status = host.status;
+        entry.completedAt = new Date();
+      }
       this.#promoted.add(id);
     }
     this.#commit();
@@ -210,6 +265,17 @@ export class SubgraphDiscovery {
 
   get byNodeSnapshot(): SubgraphByNodeMap {
     return this.byNodeStore.getSnapshot();
+  }
+
+  /**
+   * Drop all discovery state. Called on thread rebind / dispose so a
+   * new thread's subgraphs cannot bleed into the previous UI.
+   */
+  reset(): void {
+    this.#shadow.clear();
+    this.#promoted.clear();
+    this.store.setValue(EMPTY_SUBGRAPH_MAP);
+    this.byNodeStore.setValue(EMPTY_SUBGRAPH_BY_NODE_MAP);
   }
 
   #ensureShadow(

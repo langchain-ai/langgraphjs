@@ -3,14 +3,16 @@ import { Client } from "../client.js";
 import { overrideFetchImplementation } from "../singletons/fetch.js";
 import * as envUtils from "../utils/env.js";
 
+type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
+
 describe.each([["global"], ["mocked"]])(
   "Client uses %s fetch",
   (description: string) => {
-    let globalFetchMock: ReturnType<typeof vi.fn>;
-    let overriddenFetch: ReturnType<typeof vi.fn>;
+    let globalFetchMock: MockFetch;
+    let overriddenFetch: MockFetch;
 
-    let expectedFetchMock: ReturnType<typeof vi.fn>;
-    let unexpectedFetchMock: ReturnType<typeof vi.fn>;
+    let expectedFetchMock: MockFetch;
+    let unexpectedFetchMock: MockFetch;
 
     beforeEach(() => {
       globalFetchMock = vi.fn(() =>
@@ -25,7 +27,7 @@ describe.each([["global"], ["mocked"]])(
           text: () => Promise.resolve(""),
           headers: new Headers({}),
         })
-      );
+      ) as MockFetch;
       overriddenFetch = vi.fn(() =>
         Promise.resolve({
           ok: true,
@@ -38,7 +40,7 @@ describe.each([["global"], ["mocked"]])(
           text: () => Promise.resolve(""),
           headers: new Headers({}),
         })
-      );
+      ) as MockFetch;
       expectedFetchMock =
         description === "mocked" ? overriddenFetch : globalFetchMock;
       unexpectedFetchMock =
@@ -229,6 +231,138 @@ describe.each([["global"], ["mocked"]])(
             }),
           })
         );
+      });
+    });
+
+    describe("in-flight read coalescing", () => {
+      let pending: Array<() => void>;
+
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+      beforeEach(() => {
+        pending = [];
+        const makeResponse = () => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ values: {}, next: [] }),
+          text: () => Promise.resolve(""),
+          headers: new Headers({}),
+        });
+        // A fetch that only resolves when we explicitly flush, so two
+        // concurrent reads genuinely overlap in flight.
+        const deferred = vi.fn(
+          () =>
+            new Promise((resolve) => {
+              pending.push(() => resolve(makeResponse()));
+            })
+        );
+        expectedFetchMock = deferred as MockFetch;
+        overrideFetchImplementation(deferred);
+        (globalThis as any).fetch = deferred;
+      });
+
+      const flush = () => {
+        for (const resolve of pending.splice(0)) resolve();
+      };
+
+      it("coalesces concurrent identical getState reads into one request", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-state");
+        const p2 = client.threads.getState("t-state");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce reads for different threads", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-a");
+        const p2 = client.threads.getState("t-b");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("re-fetches once the in-flight read settles (no result caching)", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-resettle");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await p1;
+
+        const p2 = client.threads.getState("t-resettle");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await p2;
+      });
+
+      it("coalesces concurrent getHistory reads into one request", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getHistory("t-hist", { limit: 20 });
+        const p2 = client.threads.getHistory("t-hist", { limit: 20 });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce when the caller supplies an AbortSignal", async () => {
+        const client = new Client({ apiKey: "k" });
+        const ac = new AbortController();
+        const p1 = client.threads.getState("t-signal", undefined, {
+          signal: ac.signal,
+        });
+        const p2 = client.threads.getState("t-signal", undefined, {
+          signal: ac.signal,
+        });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce across clients using different credentials", async () => {
+        // Same API URL + thread, different auth → must NOT share a
+        // promise (otherwise the second caller would receive a response
+        // fetched with the first caller's credentials).
+        const clientA = new Client({ apiKey: "tenant-a" });
+        const clientB = new Client({ apiKey: "tenant-b" });
+        const p1 = clientA.threads.getState("t-shared");
+        const p2 = clientB.threads.getState("t-shared");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("coalesces across clients only when credentials match", async () => {
+        const clientA = new Client({ apiKey: "same" });
+        const clientB = new Client({ apiKey: "same" });
+        const p1 = clientA.threads.getState("t-match");
+        const p2 = clientB.threads.getState("t-match");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(1);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
+      it("does not coalesce when an onRequest hook is configured", async () => {
+        // `onRequest` can inject per-request auth that is invisible at
+        // key-computation time, so dedupe must be disabled entirely.
+        const client = new Client({
+          apiKey: "k",
+          onRequest: (_url, requestInit) => requestInit,
+        });
+        const p1 = client.threads.getState("t-hook");
+        const p2 = client.threads.getState("t-hook");
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
       });
     });
 

@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
-import { v7 as uuid7 } from "uuid";
+import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";

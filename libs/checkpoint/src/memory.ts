@@ -13,9 +13,80 @@ import { SerializerProtocol } from "./serde/base.js";
 import {
   CheckpointMetadata,
   CheckpointPendingWrite,
+  DeltaChannelHistory,
   PendingWrite,
 } from "./types.js";
 import { TASKS } from "./serde/types.js";
+
+/**
+ * Keys that, when written into a plain JavaScript object via bracket
+ * notation, traverse the prototype chain and mutate `Object.prototype`
+ * (or the constructor) instead of creating a new own property. Any of
+ * the three reaches `Object.prototype` and pollutes every object in
+ * the running process. CWE-1321 (Prototype Pollution).
+ */
+const POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Asserts that a value sourced from {@link RunnableConfig.configurable} (or
+ * any other caller-influenced position) is safe to use as a property key
+ * on the in-memory checkpoint store.
+ *
+ * `MemorySaver` keeps state in two nested plain objects (`storage` and
+ * `writes`) and writes to them with bracket notation:
+ *
+ *     this.storage[threadId][checkpointNamespace][checkpoint.id] = ...
+ *
+ * Without this guard a `threadId` of `"__proto__"` (or `"constructor"`)
+ * resolves through the prototype chain, and the subsequent assignment
+ * mutates `Object.prototype`. From that point every plain object in the
+ * process inherits the injected property: `for...in` loops over unrelated
+ * objects iterate it, framework code that does `if (obj[x])` short-circuits
+ * unexpectedly, and downstream serializers may emit it. In a Node.js
+ * server this is a stepping stone to remote code execution.
+ *
+ * `MemorySaver` is the default saver used by every quickstart, every
+ * tutorial, and most test fixtures, so this guard runs in the hot path
+ * for the most common LangGraph configuration.
+ *
+ * @param field Name of the configurable field, used in the error message.
+ * @param value Value to validate. Must be a non-empty string that is not
+ *              one of the three prototype-pollution keys.
+ * @param options.allowEmpty When true the empty string is accepted, used
+ *                            for the documented empty `checkpoint_ns`
+ *                            default; otherwise an empty string is
+ *                            rejected the same way as a non-string.
+ */
+function assertSafeStorageKey(
+  field: string,
+  value: unknown,
+  options: { allowEmpty?: boolean } = {}
+): asserts value is string {
+  const { allowEmpty = false } = options;
+  if (typeof value !== "string") {
+    const observed =
+      value === null
+        ? "null"
+        : value === undefined
+          ? "undefined"
+          : Array.isArray(value)
+            ? "array"
+            : typeof value;
+    throw new Error(
+      `Invalid configurable value for key "${field}": expected a string identifier (got ${observed}). This guard protects MemorySaver from prototype pollution.`
+    );
+  }
+  if (!allowEmpty && value === "") {
+    throw new Error(
+      `Invalid configurable value for key "${field}": empty string is not permitted as an in-memory storage key.`
+    );
+  }
+  if (POLLUTION_KEYS.has(value)) {
+    throw new Error(
+      `Invalid configurable value for key "${field}": value "${value}" is reserved (would mutate Object.prototype). This guard protects MemorySaver from prototype pollution.`
+    );
+  }
+}
 
 function _generateKey(
   threadId: string,
@@ -32,12 +103,19 @@ function _parseKey(key: string) {
 
 export class MemorySaver extends BaseCheckpointSaver {
   // thread ID ->  checkpoint namespace -> checkpoint ID -> checkpoint mapping
+  //
+  // Defense in depth against prototype pollution: the backing
+  // objects (and every nested level created below) use a null prototype, so
+  // even if a malicious key bypassed `assertSafeStorageKey` it could not reach
+  // `Object.prototype`. The guard remains the primary control; this is the
+  // structural safety net.
   storage: Record<
     string,
     Record<string, Record<string, [Uint8Array, Uint8Array, string | undefined]>>
-  > = {};
+  > = Object.create(null);
 
-  writes: Record<string, Record<string, [string, string, Uint8Array]>> = {};
+  writes: Record<string, Record<string, [string, string, Uint8Array]>> =
+    Object.create(null);
 
   constructor(serde?: SerializerProtocol) {
     super(serde);
@@ -78,6 +156,20 @@ export class MemorySaver extends BaseCheckpointSaver {
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns ?? "";
     let checkpoint_id = getCheckpointId(config);
+
+    // Defense in depth: every public entry that mutates state already
+    // validates these, but read paths must not return data sourced from
+    // prototype-chain lookups when an attacker passes the magic keys.
+    // `checkpoint_id` is intentionally allowed to be empty / undefined
+    // here because the downstream `if (checkpoint_id)` branch treats
+    // both as "fetch the latest checkpoint" rather than as a lookup key.
+    if (thread_id !== undefined) {
+      assertSafeStorageKey("thread_id", thread_id);
+    }
+    assertSafeStorageKey("checkpoint_ns", checkpoint_ns, { allowEmpty: true });
+    if (checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", checkpoint_id);
+    }
 
     if (checkpoint_id) {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
@@ -201,6 +293,20 @@ export class MemorySaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     // eslint-disable-next-line prefer-const
     let { before, limit, filter } = options ?? {};
+    if (config.configurable?.thread_id !== undefined) {
+      assertSafeStorageKey("thread_id", config.configurable.thread_id);
+    }
+    if (config.configurable?.checkpoint_ns !== undefined) {
+      assertSafeStorageKey("checkpoint_ns", config.configurable.checkpoint_ns, {
+        allowEmpty: true,
+      });
+    }
+    if (config.configurable?.checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", config.configurable.checkpoint_id);
+    }
+    if (before?.configurable?.checkpoint_id) {
+      assertSafeStorageKey("checkpoint_id", before.configurable.checkpoint_id);
+    }
     const threadIds = config.configurable?.thread_id
       ? [config.configurable?.thread_id]
       : Object.keys(this.storage);
@@ -335,11 +441,17 @@ export class MemorySaver extends BaseCheckpointSaver {
       );
     }
 
+    assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNamespace, {
+      allowEmpty: true,
+    });
+    assertSafeStorageKey("checkpoint_id", checkpoint.id);
+
     if (!this.storage[threadId]) {
-      this.storage[threadId] = {};
+      this.storage[threadId] = Object.create(null);
     }
     if (!this.storage[threadId][checkpointNamespace]) {
-      this.storage[threadId][checkpointNamespace] = {};
+      this.storage[threadId][checkpointNamespace] = Object.create(null);
     }
 
     const [[, serializedCheckpoint], [, serializedMetadata]] =
@@ -383,10 +495,16 @@ export class MemorySaver extends BaseCheckpointSaver {
         `Failed to put writes. The passed RunnableConfig is missing a required "checkpoint_id" field in its "configurable" property.`
       );
     }
+    assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNamespace, {
+      allowEmpty: true,
+    });
+    assertSafeStorageKey("checkpoint_id", checkpointId);
+    assertSafeStorageKey("task_id", taskId);
     const outerKey = _generateKey(threadId, checkpointNamespace, checkpointId);
     const outerWrites_ = this.writes[outerKey];
     if (this.writes[outerKey] === undefined) {
-      this.writes[outerKey] = {};
+      this.writes[outerKey] = Object.create(null);
     }
 
     await Promise.all(
@@ -406,9 +524,125 @@ export class MemorySaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    assertSafeStorageKey("thread_id", threadId);
     delete this.storage[threadId];
     for (const key of Object.keys(this.writes)) {
       if (_parseKey(key).threadId === threadId) delete this.writes[key];
     }
+  }
+
+  /**
+   * Override: walk the parent chain ONCE for all requested channels using
+   * direct storage access.
+   *
+   * Each channel terminates independently at the nearest ancestor whose
+   * stored `channel_values[ch]` is populated. Other channels keep walking
+   * until they find their own terminator or hit the root.
+   *
+   * The seed value (whether a `DeltaSnapshot` or a plain pre-delta migration
+   * blob) is the value AT that ancestor, prior to its own pending writes that
+   * produce the child. Those on-path writes — including the ones stored on the
+   * terminating ancestor — are always collected and replayed on top of the
+   * seed, so a thread migrated from a pre-delta channel does not drop the
+   * writes saved under the migration boundary checkpoint.
+   *
+   * @remarks Beta. See {@link BaseCheckpointSaver.getDeltaChannelHistory}.
+   */
+  async getDeltaChannelHistory(options: {
+    config: RunnableConfig;
+    channels: string[];
+  }): Promise<Record<string, DeltaChannelHistory>> {
+    const { config, channels } = options;
+    if (channels.length === 0) return {};
+
+    const threadId = config.configurable?.thread_id;
+    const checkpointNs = config.configurable?.checkpoint_ns ?? "";
+    const checkpointId = getCheckpointId(config);
+
+    if (threadId !== undefined) assertSafeStorageKey("thread_id", threadId);
+    assertSafeStorageKey("checkpoint_ns", checkpointNs, { allowEmpty: true });
+
+    const nsStorage = this.storage[threadId]?.[checkpointNs] ?? {};
+
+    // Build the parent chain starting at the target's parent (the target's
+    // own pending writes are for the next super-step and excluded).
+    const chain: string[] = [];
+    const targetEntry = checkpointId ? nsStorage[checkpointId] : undefined;
+    let current: string | undefined = targetEntry?.[2];
+    while (current !== undefined) {
+      const entry = nsStorage[current];
+      if (entry === undefined) break;
+      chain.push(current);
+      current = entry[2];
+    }
+
+    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
+    const seedByCh: Record<string, unknown> = {};
+    const remaining = new Set(channels);
+    for (const ch of channels) collectedByCh[ch] = [];
+
+    for (const cpId of chain) {
+      if (remaining.size === 0) break;
+      const entry = nsStorage[cpId];
+      const ckpt: Checkpoint | undefined =
+        entry !== undefined
+          ? await this.serde.loadsTyped("json", entry[0])
+          : undefined;
+
+      const blobValueByCh: Record<string, unknown> = {};
+      const terminatedHere = new Set<string>();
+      if (ckpt !== undefined) {
+        for (const ch of remaining) {
+          if (
+            Object.prototype.hasOwnProperty.call(ckpt.channel_values, ch) &&
+            ckpt.channel_values[ch] !== undefined
+          ) {
+            blobValueByCh[ch] = ckpt.channel_values[ch];
+            terminatedHere.add(ch);
+          }
+        }
+      }
+
+      const stepWritesKey = _generateKey(threadId, checkpointNs, cpId);
+      const stepWrites = Object.entries(this.writes[stepWritesKey] ?? {});
+      // Sort by [taskId, idx] descending to mirror the Python walk order;
+      // the full list is reversed once at the end to get oldest→newest.
+      stepWrites.sort(([a], [b]) => {
+        const [aTask, aIdx] = a.split(",");
+        const [bTask, bIdx] = b.split(",");
+        if (aTask !== bTask) return aTask < bTask ? 1 : -1;
+        return Number(bIdx) - Number(aIdx);
+      });
+      for (const [, [tid, ch, serialized]] of stepWrites) {
+        if (!remaining.has(ch)) continue;
+        // Collect on-path writes regardless of seed type. A plain (pre-delta
+        // migration) blob is the settled value AT that ancestor; its own
+        // pending writes produce the child and must still be replayed, just
+        // like a `DeltaSnapshot` seed. Skipping them would drop post-migration
+        // writes saved under the migration boundary checkpoint.
+        collectedByCh[ch].push([
+          tid,
+          ch,
+          await this.serde.loadsTyped("json", serialized),
+        ]);
+      }
+
+      for (const ch of terminatedHere) {
+        seedByCh[ch] = blobValueByCh[ch];
+        remaining.delete(ch);
+      }
+    }
+
+    const result: Record<string, DeltaChannelHistory> = {};
+    for (const ch of channels) {
+      const entryH: DeltaChannelHistory = {
+        writes: collectedByCh[ch].slice().reverse(),
+      };
+      if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
+        entryH.seed = seedByCh[ch];
+      }
+      result[ch] = entryH;
+    }
+    return result;
   }
 }

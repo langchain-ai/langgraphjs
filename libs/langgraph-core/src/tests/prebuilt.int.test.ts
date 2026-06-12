@@ -6,7 +6,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { createReactAgent } from "../prebuilt/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import { MemorySaverAssertImmutable } from "./utils.js";
 
 // Tracing slows down the tests

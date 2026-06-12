@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { v4 as uuidv4 } from "uuid";
+import { describe, it, expect, beforeEach } from "vitest";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   Annotation,
   Command,
@@ -9,7 +9,6 @@ import {
   START,
   StateGraph,
 } from "../../web.js";
-import { initializeAsyncLocalStorageSingleton } from "../../setup/async_local_storage.js";
 
 type TestMode =
   | "Single layer graph"
@@ -18,10 +17,6 @@ type TestMode =
   | "Subgraph called as node";
 
 const ABORT_ERROR_RE = /abort/i;
-
-beforeAll(() => {
-  initializeAsyncLocalStorageSingleton();
-});
 
 describe("Pregel AbortSignal", () => {
   let checkpointer: MemorySaver = new MemorySaver();

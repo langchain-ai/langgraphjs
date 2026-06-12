@@ -15,7 +15,7 @@ import type { CheckpointMetadata } from "../types.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
-  id: uuid6(-1),
+  id: uuid6(0),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue1",

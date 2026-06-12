@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
 import type { UpgradeWebSocket } from "hono/ws";
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import * as schemas from "../../schemas.mjs";
@@ -12,7 +12,11 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
-import { matchesSinkFilter } from "../../protocol/service.mjs";
+import {
+  matchesSinkFilter,
+  normalizeMultitaskStrategy,
+  DEFAULT_MULTITASK_STRATEGY,
+} from "../../protocol/service.mjs";
 import type {
   EventSinkFilter,
   ProtocolCommand,
@@ -145,6 +149,26 @@ export function registerProtocolRoutes(
     return protocolSession;
   }
 
+  async function hasPendingInterruptsForThread(
+    thread: EmbedThread
+  ): Promise<boolean> {
+    const assistantId = thread.assistantId;
+    if (assistantId == null) return false;
+    try {
+      const graph = await context.getGraph(assistantId);
+      const snapshot = await graph.getState(
+        { configurable: { thread_id: thread.threadId } },
+        { subgraphs: true }
+      );
+      return (snapshot.tasks ?? []).some(
+        (task: { interrupts?: unknown[] }) =>
+          Array.isArray(task.interrupts) && task.interrupts.length > 0
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async function handleRunStart(thread: EmbedThread, command: ProtocolCommand) {
     const params: Record<string, unknown> = isRecord(command.params)
       ? command.params
@@ -202,21 +226,45 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Promote SDK-side `forkFrom: { checkpointId }` into
-    // `configurable.checkpoint_id` so the engine replays from the
-    // requested fork target. This mirrors the promotion performed by
-    // `ProtocolService.createOrResumeRun` in the non-embed path and
-    // closes the "client sends forkFrom, server drops it" gap.
+    // Fork/time-travel replays from `config.configurable.checkpoint_id`
+    // — the single legacy-compliant fork field. The SDK folds its
+    // `forkFrom` convenience option into this field client-side, so the
+    // server reads it from there rather than a top-level `forkFrom`.
+    // `createStubRun` only reliably forwards a fork target via the
+    // top-level `checkpoint_id`, so lift it out of `configurable` below.
     const forkCheckpointId = (() => {
-      if (!isRecord(params.forkFrom)) return undefined;
-      const id = params.forkFrom.checkpointId;
-      return typeof id === "string" && id.length > 0 ? id : undefined;
+      const configurable =
+        isRecord(params.config) && isRecord(params.config.configurable)
+          ? params.config.configurable
+          : undefined;
+      const checkpointId = configurable?.checkpoint_id;
+      return typeof checkpointId === "string" && checkpointId.length > 0
+        ? checkpointId
+        : undefined;
     })();
+
+    const currentRun = thread.currentRun;
+    const currentStatus = currentRun?.status;
+    const hasPendingInterrupts =
+      params.input != null
+        ? await hasPendingInterruptsForThread(thread)
+        : false;
+    const isResume =
+      params.input != null &&
+      ((currentRun != null && currentStatus === "interrupted") ||
+        hasPendingInterrupts);
+
+    if (isResume) {
+      // Drop stale lifecycle events from the paused run so late-attaching
+      // sinks do not replay `lifecycle.interrupted` after resume.
+      thread.queuedEvents.length = 0;
+    }
 
     const run = createStubRun(thread.threadId, {
       assistant_id: assistantId,
       on_disconnect: "cancel",
-      input: params.input ?? null,
+      input: isResume ? null : (params.input ?? null),
+      command: isResume ? { resume: params.input } : undefined,
       config: {
         configurable: {
           ...(isRecord(params.config) && isRecord(params.config.configurable)
@@ -229,7 +277,14 @@ export function registerProtocolRoutes(
       // fact, *replaces* any inline configurable the caller passed),
       // so this is the only reliable way to reach the engine with a
       // fork target.
-      ...(forkCheckpointId != null ? { checkpoint_id: forkCheckpointId } : {}),
+      ...(forkCheckpointId != null && !isResume
+        ? { checkpoint_id: forkCheckpointId }
+        : {}),
+      // Honor the caller's `multitaskStrategy`, falling back to `enqueue`
+      // to match the non-embed protocol-v2 server and the Python default.
+      multitask_strategy:
+        normalizeMultitaskStrategy(params.multitaskStrategy) ??
+        DEFAULT_MULTITASK_STRATEGY,
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
@@ -257,9 +312,36 @@ export function registerProtocolRoutes(
     const params: Record<string, unknown> = isRecord(command.params)
       ? command.params
       : {};
-    const interruptId = params.interrupt_id;
 
-    if (typeof interruptId !== "string") {
+    // Build the resume input map. The SDK sends either a single
+    // `interrupt_id` / `response` or a `responses` batch (several
+    // interrupts at the same checkpoint, resumed in one command) — the
+    // protocol's `InputRespondOne` / `InputRespondMany` variants. Read
+    // leniently to tolerate clients pinned to older bindings.
+    const resumeInput: Record<string, unknown> = {};
+    if (Array.isArray(params.responses)) {
+      for (const entry of params.responses) {
+        if (!isRecord(entry) || typeof entry.interrupt_id !== "string") {
+          return jsonResponse({
+            type: "error",
+            id: command.id,
+            error: "invalid_argument",
+            message: "input.respond responses entries require an interrupt_id.",
+          });
+        }
+        resumeInput[entry.interrupt_id] = entry.response;
+      }
+      if (Object.keys(resumeInput).length === 0) {
+        return jsonResponse({
+          type: "error",
+          id: command.id,
+          error: "invalid_argument",
+          message: "input.respond requires at least one response.",
+        });
+      }
+    } else if (typeof params.interrupt_id === "string") {
+      resumeInput[params.interrupt_id] = params.response;
+    } else {
       return jsonResponse({
         type: "error",
         id: command.id,
@@ -282,7 +364,12 @@ export function registerProtocolRoutes(
       assistant_id: assistantId,
       on_disconnect: "cancel",
       input: null,
-      command: { resume: { [interruptId]: params.response } },
+      command: { resume: resumeInput },
+      // Carry the SDK's `respond({ config, metadata })` onto the resumed
+      // run so it applies the same run config / metadata a fresh
+      // `run.start` would (both are part of the `input.respond` params).
+      config: isRecord(params.config) ? params.config : undefined,
+      metadata: isRecord(params.metadata) ? params.metadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
     } as unknown as z.infer<typeof schemas.RunCreate>);

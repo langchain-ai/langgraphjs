@@ -22,8 +22,9 @@ context sharing, selectors, transports, testing, and advanced agent workflows.
   arguments, examples, and cleanup behavior.
 - [`submission-queue.md`](./submission-queue.md) explains queued submissions and
   thread switching.
-- [`interrupts.md`](./interrupts.md) shows how to handle interrupts, resume a
-  specific interrupt, stop runs, and use headless tools.
+- [`interrupts.md`](./interrupts.md) shows how to handle interrupts (including
+  script vs template payload access and HITL), resume a specific interrupt,
+  stop runs, and use headless tools.
 - [`multimodal.md`](./multimodal.md) covers multimodal media selectors, helper
   APIs, examples, and subagent scoping.
 
@@ -39,6 +40,8 @@ context sharing, selectors, transports, testing, and advanced agent workflows.
 - [`transports.md`](./transports.md) compares built-in SSE, WebSocket, and
   custom adapter options.
 - [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  implementing custom transport layers.
+  pointing `useStream` at a custom backend — `HttpAgentServerAdapter`,
+  server-side protocol handling, lazy thread binding, and implementing
+  `AgentServerAdapter` directly.
 - [`v1-migration.md`](./v1-migration.md) explains how to migrate to
   `@langchain/vue` v1.

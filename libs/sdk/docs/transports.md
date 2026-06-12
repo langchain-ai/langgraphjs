@@ -98,6 +98,11 @@ interface AgentServerAdapter extends TransportAdapter {
 
 interface TransportAdapter {
   readonly threadId: string;
+  // Optional. `client.threads.stream(threadId, …)` calls this to bind /
+  // re-bind the adapter to a thread (including the id minted on the first
+  // submit of a `threadId: null` stream). Omit to stay pinned to the
+  // thread the adapter was constructed with.
+  setThreadId?(threadId: string): void;
   open(): Promise<void>;
   send(command: Command): Promise<CommandResponse | ErrorResponse | void>;
   events(): AsyncIterable<Message>;
@@ -143,6 +148,27 @@ const thread = client.threads.stream({
 
 Supply `webSocketFactory` to flip it into WebSocket mode; otherwise
 it delegates to the SSE transport internally.
+
+`threadId` is optional. `client.threads.stream(threadId, { transport })`
+calls `transport.setThreadId(threadId)` before each run — including the
+id the SDK mints on the first `submit()` of a `threadId: null` controller
+— so a single adapter can follow **lazy thread creation** instead of
+being pinned at construction. Write `paths` as functions of the thread id
+when you rely on this (each entry is `string | (threadId) => string`):
+
+```ts
+const adapter = new HttpAgentServerAdapter({
+  apiUrl: "https://agent.example.com",
+  // No `threadId` — bound by the framework via `setThreadId`.
+  paths: {
+    commands: (threadId) => `/threads/${threadId}/commands`,
+    stream: (threadId) => `/threads/${threadId}/stream/events`,
+  },
+});
+
+// A brand-new thread: the SDK mints the id on the first run and binds it.
+const thread = client.threads.stream({ assistantId: "agent", transport: adapter });
+```
 
 ### When to implement `getState` / `getHistory`
 

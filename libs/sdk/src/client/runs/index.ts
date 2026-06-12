@@ -13,6 +13,7 @@ import type {
   StreamEvent,
 } from "../../types.js";
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
+import type { IdleReconnectMode } from "../../utils/stream.js";
 
 import { BaseClient, getRunMetadataFromResponse } from "../base.js";
 
@@ -105,6 +106,7 @@ export class RunsClient<
       method: "POST",
       json,
       signal: payload?.signal,
+      idleReconnect: payload?.streamIdleReconnect,
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
         if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -408,6 +410,20 @@ export class RunsClient<
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
+          /**
+           * Idle-reconnect policy.
+           *
+           * Guards against half-open sockets that hang with no
+           * error or close; on idle the read re-joins with the last seen
+           * `Last-Event-ID`.
+           *
+           * - `"auto"` (default): arms only once the
+           * server's keep-alive heartbeats are observed and sizes the window
+           * from their cadence;
+           * - a `number`: a fixed idle window in ms;
+           * - `0`: disables it.
+           */
+          streamIdleReconnect?: IdleReconnectMode;
         }
       | AbortSignal
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -427,6 +443,7 @@ export class RunsClient<
           : `/runs/${runId}/stream`,
       method: "GET",
       signal: opts?.signal,
+      idleReconnect: opts?.streamIdleReconnect,
       headers: opts?.lastEventId
         ? { "Last-Event-ID": opts.lastEventId }
         : undefined,

@@ -29,6 +29,17 @@ import type {
 
 export { STREAM_EVENTS_V3_MODES };
 
+/** Wire prefix for user-defined {@link StreamChannel} auto-forwards. */
+const EXTENSION_CHANNEL_PREFIX = "custom:";
+
+/**
+ * Protocol method for a user-defined (extension) {@link StreamChannel}.
+ * Matches Python's `StreamMux._bind_and_wire` (`f"custom:{value.name}"`).
+ */
+function extensionChannelMethod(channelName: string): ProtocolEvent["method"] {
+  return `${EXTENSION_CHANNEL_PREFIX}${channelName}`;
+}
+
 /**
  * Structural `PromiseLike<T>` predicate — true for thenables including
  * native promises, user-constructed `{ then }` objects, and helper
@@ -210,8 +221,8 @@ export class StreamMux {
    * Two projection shapes are recognised:
    *
    *   - {@link StreamChannel} values — named channels forward each `push()`
-   *     immediately as a protocol event on the channel's declared
-   *     `channelName` method. Unnamed channels remain in-process-only.
+   *     immediately as a `custom:<channelName>` protocol event. Unnamed
+   *     channels remain in-process-only.
    *
    *   - `PromiseLike<unknown>` values — tracked as final-value
    *     projections and flushed on {@link close} as a single
@@ -232,11 +243,12 @@ export class StreamMux {
         if (typeof value.channelName !== "string") {
           continue;
         }
+        const method = extensionChannelMethod(value.channelName);
         value._wire((item: unknown) => {
           this._events.push({
             type: "event",
             seq: this.#nextEmitSeq++,
-            method: value.channelName as ProtocolEvent["method"],
+            method,
             params: {
               namespace: this.#currentNamespace,
               timestamp: Date.now(),
@@ -474,7 +486,7 @@ export async function pump(
   let seq = 0;
   try {
     for await (const chunk of source) {
-      const [ns, mode, payload, meta] = chunk;
+      const [ns, mode, payload] = chunk;
 
       // Detect interrupt payloads attached to values-mode chunks.
       if (mode === "values" && isInterrupted(payload)) {
@@ -492,7 +504,6 @@ export async function pump(
         mode,
         payload,
         seq,
-        meta,
       });
       seq += events.length;
       for (const event of events) {

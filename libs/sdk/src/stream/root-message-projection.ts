@@ -168,6 +168,51 @@ export class RootMessageProjection<
   #flushScheduled = false;
 
   /**
+   * Highest checkpoint `step` whose `values` snapshot has been applied.
+   * Seeded by {@link StreamController.hydrate} from `getState()` and
+   * advanced by live `values` events. A snapshot arriving with a lower
+   * step is an older checkpoint replayed by the content pump on
+   * reconnect; it is reconciled in add-only mode so it cannot remove
+   * the seeded message tail (the final assistant turn). `undefined`
+   * until the first step-bearing snapshot, where the legacy
+   * remove-on-absence behavior is preserved.
+   */
+  #maxStep: number | undefined = undefined;
+
+  /**
+   * Message ids seeded as complete-and-final from an idle thread's
+   * `getState()` snapshot. An idle thread defers its root SSE pump, and
+   * the first `submit()` brings it up — at which point the transport
+   * replays the finished run from `seq=0`. Unlike the `values` channel
+   * (guarded by {@link #maxStep}), `messages`-channel deltas carry no
+   * step, so that replay would otherwise rebuild each already-complete
+   * message from an empty `message-start` and re-stream the whole turn
+   * token-by-token, clobbering the seeded tail (a visible "messages
+   * replay" on the first submit). Deltas for a sealed id are dropped in
+   * {@link handleMessage}. The seal is lifted once a checkpoint advances
+   * strictly past {@link #sealStep} (see {@link applyValues}) or on
+   * thread rebind ({@link reset}). New ids from the next run are never
+   * sealed, so they stream normally.
+   */
+  readonly #sealedMessageIds = new Set<string>();
+
+  /**
+   * High-water {@link #maxStep} captured when {@link sealMessageIds} ran,
+   * i.e. the seed checkpoint's step (or `undefined` when `getState()`
+   * carried no `metadata.step`). It is the boundary between the replayed
+   * idle history (steps `<= #sealStep`, emitted by the deferred pump's
+   * `seq=0` replay) and the new run (steps `> #sealStep`); only a
+   * checkpoint strictly past it lifts the seal. Without this boundary the
+   * replayed old-run checkpoints — which themselves carry increasing
+   * steps — would advance {@link #maxStep} and lift the seal mid-replay,
+   * reopening the clobber. When the seed step is unknown the boundary
+   * stays `undefined` and the seal holds until {@link reset}; the
+   * `values` channel (which ignores the seal) still reconciles any
+   * genuine change to a sealed id, only its streamed deltas are dropped.
+   */
+  #sealStep: number | undefined = undefined;
+
+  /**
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
@@ -196,6 +241,30 @@ export class RootMessageProjection<
     this.#pendingMessages = null;
     this.#pendingValues = null;
     this.#flushScheduled = false;
+    this.#maxStep = undefined;
+    this.#sealedMessageIds.clear();
+    this.#sealStep = undefined;
+  }
+
+  /**
+   * Seal message ids so the streamed `messages` channel cannot downgrade
+   * them to partial re-streams. Called by {@link StreamController.hydrate}
+   * after seeding an idle thread, whose deferred pump replays the finished
+   * run from `seq=0` on the first submit.
+   *
+   * Captures the current {@link #maxStep} as the lift boundary
+   * ({@link #sealStep}). The seal is applied immediately after the seed's
+   * `getState()` snapshot is reconciled, so `#maxStep` here is the seed
+   * step (or `undefined` when `getState()` carried no `metadata.step`).
+   * The seal is lifted once a checkpoint advances strictly past that
+   * boundary (see {@link applyValues}) or on thread rebind
+   * ({@link reset}).
+   *
+   * @param ids - Complete message ids from the idle `getState()` seed.
+   */
+  sealMessageIds(ids: Iterable<string>): void {
+    for (const id of ids) this.#sealedMessageIds.add(id);
+    if (this.#sealStep == null) this.#sealStep = this.#maxStep;
   }
 
   /**
@@ -261,6 +330,12 @@ export class RootMessageProjection<
     if (update == null) return;
     const id = update.message.id;
     if (id == null) return;
+    // A sealed id belongs to a message seeded complete from an idle
+    // thread's `getState()`; the deferred pump's `seq=0` replay would
+    // otherwise rebuild it from an empty start and re-stream the whole
+    // turn. Drop the replayed delta — the authoritative seed already
+    // holds the final content (see {@link #sealedMessageIds}).
+    if (this.#sealedMessageIds.has(id)) return;
     const captured = this.#roles.get(id) ?? { role: "ai" as const };
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
       toolCallId: captured.toolCallId,
@@ -317,11 +392,45 @@ export class RootMessageProjection<
    * @param nextValues   - Full values snapshot from the `values` event.
    * @param nextMessages - The messages array extracted from
    *   `values[messagesKey]` and coerced to `BaseMessage` instances.
+   * @param opts.step    - Checkpoint superstep for this snapshot, when
+   *   known. A snapshot whose step is below the highest applied step is
+   *   treated as a stale reconnect replay and reconciled add-only.
    */
-  applyValues(nextValues: StateType, nextMessages: BaseMessage[]): void {
+  applyValues(
+    nextValues: StateType,
+    nextMessages: BaseMessage[],
+    opts?: { step?: number }
+  ): void {
     const baselineSnapshot = this.#store.getSnapshot();
     const baselineMessages = this.#pendingMessages ?? baselineSnapshot.messages;
     const baselineValues = this.#pendingValues ?? baselineSnapshot.values;
+
+    const step = opts?.step;
+    // Stale only when we have both a prior high-water step and a lower
+    // incoming step. A missing step preserves the legacy semantics.
+    const addOnly =
+      step != null && this.#maxStep != null && step < this.#maxStep;
+    if (step != null && (this.#maxStep == null || step > this.#maxStep)) {
+      this.#maxStep = step;
+    }
+    // Lift the replay seal only when a checkpoint advances strictly past
+    // the step captured when the ids were sealed (the seed step). That
+    // boundary separates the replayed idle history (steps <= #sealStep,
+    // emitted by the deferred pump's seq=0 replay) from the new run
+    // (steps > #sealStep), so crossing it means seeded ids may now take
+    // genuine streamed updates. Replayed old-run checkpoints advance
+    // #maxStep but never reach past #sealStep, so they can't lift it. A
+    // `null` boundary (the seed step was unknown) keeps the seal until
+    // reset() — we can't tell replay from live, and the values channel
+    // still reconciles a sealed id even while its streamed deltas drop.
+    if (
+      this.#sealedMessageIds.size > 0 &&
+      step != null &&
+      this.#sealStep != null &&
+      step > this.#sealStep
+    ) {
+      this.#sealedMessageIds.clear();
+    }
 
     if (nextMessages.length === 0) {
       if (
@@ -347,8 +456,12 @@ export class RootMessageProjection<
       currentIndexById: this.#indexById,
       previousValueMessageIds: this.#valuesMessageIds,
       preferValuesMessage: shouldPreferValuesMessageForToolCalls,
+      addOnly,
     });
-    this.#valuesMessageIds = reconciliation.valueMessageIds;
+    // A stale replay snapshot must not shrink the authoritative id set:
+    // keep the (larger) seeded set so a genuinely-newer removal is still
+    // detected once the timeline advances past the seed.
+    if (!addOnly) this.#valuesMessageIds = reconciliation.valueMessageIds;
     const messages = reconciliation.messages as BaseMessage[];
     const values = {
       ...(nextValues as Record<string, unknown>),
@@ -369,6 +482,137 @@ export class RootMessageProjection<
     }
     this.#pendingMessages = messages;
     this.#pendingValues = values;
+    this.#scheduleFlush();
+  }
+
+  /**
+   * Append messages applied optimistically by a local `submit()`,
+   * keyed by id so the eventual server echo reconciles cleanly.
+   *
+   * Unlike {@link applyValues}, the supplied messages are *not* treated
+   * as an authoritative ordered snapshot: they are appended to the end
+   * of the current projection (or replaced in place when the id already
+   * exists), preserving prior history ordering. When the server later
+   * emits a `values` snapshot containing the same ids,
+   * {@link applyValues} → {@link reconcileMessagesFromValues} takes over
+   * (server ordering wins, the echoed message replaces the optimistic
+   * one).
+   *
+   * Non-message input keys are shallow-merged into `values` via
+   * `extraValues`; they are dropped/overwritten automatically by the
+   * first server `values` event (which rebuilds `values` from the
+   * server snapshot), or rolled back via {@link restoreValueKeys} when
+   * the run fails before any echo.
+   *
+   * @param messages    - Optimistic messages (already coerced to
+   *   `BaseMessage` instances, each carrying a stable id).
+   * @param extraValues - Non-message input keys to shallow-merge into
+   *   `values`.
+   */
+  appendOptimistic(
+    messages: BaseMessage[],
+    extraValues?: Record<string, unknown>
+  ): void {
+    let working = this.#pendingMessages ?? this.#store.getSnapshot().messages;
+    let mutated = false;
+    for (const message of messages) {
+      const id = message.id;
+      if (id == null) continue;
+      const existingIdx = this.#indexById.get(id);
+      if (existingIdx == null) {
+        if (!mutated) {
+          working = working.slice();
+          mutated = true;
+        }
+        this.#indexById.set(id, working.length);
+        working.push(message);
+      } else if (!messagesEqual(working[existingIdx], message)) {
+        if (!mutated) {
+          working = working.slice();
+          mutated = true;
+        }
+        working[existingIdx] = message;
+      }
+    }
+
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    let values = baselineValues;
+    if (extraValues != null && Object.keys(extraValues).length > 0) {
+      values = { ...(baselineValues as object), ...extraValues } as StateType;
+    }
+    values = syncMessagesIntoValues(values, this.#messagesKey, working);
+    if (!mutated && values === baselineValues) return;
+    this.#pendingMessages = working;
+    if (values !== baselineValues) this.#pendingValues = values;
+    this.#scheduleFlush();
+  }
+
+  /**
+   * Drop optimistic messages by id without disturbing the rest of the
+   * projection. Used by {@link StreamController.hydrate} to remove
+   * never-persisted optimistic messages (`pending` / `failed`) so a
+   * reload converges to server truth.
+   *
+   * @param ids - Message ids to remove.
+   */
+  dropOptimisticMessages(ids: ReadonlySet<string>): void {
+    if (ids.size === 0) return;
+    const baselineMessages =
+      this.#pendingMessages ?? this.#store.getSnapshot().messages;
+    const next = baselineMessages.filter((m) => m.id == null || !ids.has(m.id));
+    if (next.length === baselineMessages.length) return;
+    this.#indexById.clear();
+    for (const [id, idx] of buildMessageIndex(next)) {
+      this.#indexById.set(id, idx);
+    }
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    this.#pendingMessages = next;
+    this.#pendingValues = syncMessagesIntoValues(
+      baselineValues,
+      this.#messagesKey,
+      next
+    );
+    this.#scheduleFlush();
+  }
+
+  /**
+   * Restore (or delete) `values` keys that were optimistically merged
+   * by {@link appendOptimistic} but never echoed by the server — i.e.
+   * roll back non-message optimistic state when the run fails before
+   * any `values` event lands. Messages are left untouched (kept on
+   * failure per the optimistic contract).
+   *
+   * @param restore - Per-key pre-submit snapshot: when `hadKey` is
+   *   false the key is deleted, otherwise it is reset to `prevValue`.
+   */
+  restoreValueKeys(
+    restore: ReadonlyArray<{
+      key: string;
+      hadKey: boolean;
+      prevValue: unknown;
+    }>
+  ): void {
+    if (restore.length === 0) return;
+    const baselineValues =
+      this.#pendingValues ?? this.#store.getSnapshot().values;
+    const next = { ...(baselineValues as Record<string, unknown>) };
+    let changed = false;
+    for (const { key, hadKey, prevValue } of restore) {
+      if (key === this.#messagesKey) continue;
+      if (hadKey) {
+        if (!Object.is(next[key], prevValue)) {
+          next[key] = prevValue;
+          changed = true;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(next, key)) {
+        delete next[key];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    this.#pendingValues = next as StateType;
     this.#scheduleFlush();
   }
 

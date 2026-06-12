@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import type { Run } from "../../storage/types.mjs";

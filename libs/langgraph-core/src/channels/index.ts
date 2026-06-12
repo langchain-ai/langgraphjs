@@ -2,7 +2,12 @@ export {
   BaseChannel,
   createCheckpoint,
   emptyChannels as empty,
+  channelsFromCheckpoint,
+  deltaChannelsToSnapshot,
+  isDeltaChannel,
 } from "./base.js";
+export { DeltaChannel } from "./delta.js";
+export type { DeltaReducer } from "./delta.js";
 export type { BinaryOperator } from "./binop.js";
 export { AnyValue } from "./any_value.js";
 export { LastValue, LastValueAfterFinish } from "./last_value.js";

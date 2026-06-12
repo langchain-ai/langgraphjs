@@ -15,11 +15,12 @@ import type {
   SubscribeParams,
 } from "@langchain/protocol";
 
+import type { IdleReconnectMode } from "../../utils/stream.js";
 import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 
 export interface ExtendedRunStartParams extends RunStartParams {
-  forkFrom?: { checkpointId: string };
+  forkFrom?: string;
   multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
 }
 
@@ -126,6 +127,33 @@ export interface ThreadStreamOptions {
    * for the SSE transport and for custom {@link AgentServerAdapter}s.
    */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in `"sse"` / `"websocket"` transports only: max reconnect
+   * attempts after an unexpected disconnect. Defaults to 5.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in `"sse"` transport only: idle-reconnect policy guarding against
+   * half-open sockets that hang with no error or close (e.g. a platform
+   * revision rollover).
+   *
+   * - `"auto"` (default): arm only once the server's SSE keep-alive
+   *   heartbeats are observed (LangGraph Platform emits `: heartbeat` every
+   *   ~5s), sizing the window from their cadence. Independent of agent
+   *   activity; stays dormant on heartbeat-less servers.
+   * - a `number`: a fixed idle window in milliseconds.
+   * - `0`: disables it.
+   */
+  streamIdleReconnect?: IdleReconnectMode;
+  /**
+   * Built-in transports only: delay before each reconnect attempt.
+   * Defaults to exponential backoff with jitter.
+   */
+  reconnectDelayMs?: (attempt: number) => number;
+  /**
+   * Built-in transports only: invoked before each reconnect attempt.
+   */
+  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
 }
 
 export interface SessionOrderingState {
@@ -185,10 +213,17 @@ export interface ThreadModules {
 /**
  * Human-in-the-loop interrupt payload surfaced from lifecycle events.
  * Matches the in-process `InterruptPayload` type.
+ *
+ * {@link ThreadStream.interrupts} collects these entries in arrival order.
+ * Use them (via {@link StreamController.getThread `getThread()`}) when
+ * you need the protocol `namespace` tuple for
+ * {@link StreamController.respond `respond()`} — for example subgraph
+ * interrupts that are not mirrored on {@link RootSnapshot.interrupts}.
  */
 export interface InterruptPayload<TPayload = unknown> {
   interruptId: string;
   payload: TPayload;
+  /** Protocol namespace tuple the server validates on resume (`[]` at root). */
   namespace: string[];
 }
 

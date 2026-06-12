@@ -58,6 +58,48 @@ describe("channelProjection", () => {
     });
   });
 
+  it("resumes the subscription across paused runs", async () => {
+    const firstRun = lifecycleEvent(["worker:run"], "started");
+    const secondRun = lifecycleEvent(["worker:run"], "started");
+    let resumeRun: (() => void) | undefined;
+    const resumed = new Promise<void>((resolve) => {
+      resumeRun = resolve;
+    });
+    let batch = 0;
+    const subscription = {
+      // First run pauses on its terminal event; flips to unpaused once the
+      // second (final) batch has been delivered so the resume loop exits.
+      isPaused: true,
+      async unsubscribe() {},
+      waitForResume: () => resumed,
+      async *[Symbol.asyncIterator]() {
+        batch += 1;
+        if (batch === 1) {
+          yield firstRun;
+          return;
+        }
+        yield secondRun;
+        this.isPaused = false;
+      },
+    };
+    const thread = {
+      subscribe: vi.fn(async () => subscription),
+    } as unknown as ThreadStream;
+    const rootBus = makeRootBus();
+    const projection = channelProjection(["lifecycle"], []);
+    const store = new StreamStore(projection.initial);
+
+    projection.open({ thread, store, rootBus });
+
+    await vi.waitFor(() => expect(store.getSnapshot()).toEqual([firstRun]));
+
+    resumeRun?.();
+
+    await vi.waitFor(() =>
+      expect(store.getSnapshot()).toEqual([firstRun, secondRun]),
+    );
+  });
+
   it("uses the root bus for covered root channels when replay is disabled", () => {
     const rootBus = makeRootBus();
     const projection = channelProjection(["lifecycle"], [], { replay: false });

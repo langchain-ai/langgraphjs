@@ -11,12 +11,6 @@ import { apiUrl, cleanupRender } from "./test-utils.js";
  * `multitaskStrategy: "enqueue"` while another run is in flight so
  * consumers can render pending submissions and give users cancel /
  * clear affordances before the controller drains them.
- *
- * Ported 1:1 from the legacy `sdk-react/src/tests/stream.test.tsx`
- * queue suite. Once the server emits a dedicated queue channel
- * (roadmap A0.3) the controller will switch to mirroring the
- * server-driven state directly; these tests continue to apply
- * because the public hook shape is unchanged.
  */
 
 it("records rapid submits in the submission queue", async () => {

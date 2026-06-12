@@ -24,7 +24,10 @@ export {
   userFacingInterruptsFromValuesArray,
   userFacingInterruptsFromThreadTasks,
 } from "./interrupts.js";
-export { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
+export {
+  normalizeHitlInterruptPayload,
+  normalizeHitlResponseForServer,
+} from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
 export {
   unique,

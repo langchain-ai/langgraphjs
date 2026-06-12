@@ -22,7 +22,7 @@
  * ``config.configurable.checkpoint_id`` into the protocol command —
  * LangGraph's Pregel reads that and starts the run from the selected
  * checkpoint's state. The protocol does not yet have a first-class
- * ``state.fork`` command (roadmap §1.2), but the configurable override
+ * ``state.fork`` command, but the configurable override
  * is spec-compliant and works today.
  *
  * Observation uses a *fresh* ``thread.subscribe(...)`` per run. The
@@ -191,8 +191,7 @@ async function main() {
         `\n⚠ Expected parent_id=${short(forkTarget.id)} on the forked run's first`
       );
       console.log(
-        `  checkpoint; got parent_id=${
-          forkRoot.parent_id ? short(forkRoot.parent_id) : "∅"
+        `  checkpoint; got parent_id=${forkRoot.parent_id ? short(forkRoot.parent_id) : "∅"
         }. The fork may have coalesced into a different superstep.`
       );
     }

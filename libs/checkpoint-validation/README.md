@@ -2,6 +2,8 @@
 
 The checkpointer validation tool is used to validate that custom checkpointer implementations conform to LangGraph's requirements. LangGraph uses [checkpointers](https://langchain-ai.github.io/langgraphjs/concepts/persistence/#checkpointer-libraries) for persisting workflow state, providing the ability to "rewind" your workflow to some earlier point in time, and continue execution from there.
 
+The tool requires Node.js 20, 22, or 24 and later.
+
 The overall process for using this tool is as follows:
 
 1. Write your custom checkpointer implementation.
@@ -94,4 +96,3 @@ import { validate } from "@langchain/langgraph-validation";
 
 validate(MyCheckpointerInitializer);
 ```
-

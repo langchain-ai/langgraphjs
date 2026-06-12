@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 import { RunnableConfig } from "@langchain/core/runnables";
 

@@ -11,7 +11,7 @@ import { MongoDBSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
-  id: uuid6(-1),
+  id: uuid6(0),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue1",
@@ -146,6 +146,10 @@ describe("MongoDBSaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+
+    // list() should include pendingWrites, matching getTuple()
+    expect(checkpointTuple1.pendingWrites).toEqual([]);
+    expect(checkpointTuple2.pendingWrites).toEqual([["foo", "bar", "baz"]]);
   });
 
   describe("enableTimestamps", () => {

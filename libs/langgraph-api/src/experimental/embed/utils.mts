@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import type { MultitaskStrategy, Run } from "../../storage/types.mjs";

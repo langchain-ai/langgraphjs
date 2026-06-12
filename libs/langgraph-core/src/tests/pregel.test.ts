@@ -10,7 +10,6 @@ import {
   expect,
   vi,
   describe,
-  beforeAll,
   beforeEach,
   test,
   afterAll,
@@ -113,8 +112,8 @@ import {
   TASKS,
 } from "../constants.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
+import { StateSchema, MessagesValue } from "../state/index.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
 import { interrupt } from "../interrupt.js";
 import {
   getConfigTypeSchema,
@@ -151,11 +150,6 @@ export function runPregelTests(
   if (teardown !== undefined) {
     afterAll(teardown);
   }
-
-  beforeAll(() => {
-    // Will occur naturally if user imports from main `@langchain/langgraph` endpoint.
-    initializeAsyncLocalStorageSingleton();
-  });
 
   describe("Channel", () => {
     it("obtain correct channel values from checkpointer", async () => {
@@ -577,7 +571,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -615,7 +609,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -649,7 +643,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -687,7 +681,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -727,7 +721,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -772,7 +766,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 0,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "",
         channel_values: {},
         channel_versions: {},
@@ -822,7 +816,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -874,7 +868,7 @@ export function runPregelTests(
       // set up test
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: "channel1value",
@@ -1005,7 +999,7 @@ export function runPregelTests(
 
       const checkpoint: Checkpoint = {
         v: 1,
-        id: uuid6(-1),
+        id: uuid6(0),
         ts: "2024-04-19T17:19:07.952Z",
         channel_values: {
           channel1: 1,
@@ -3192,9 +3186,9 @@ graph TD;
         ).toEqual([
           cachePolicy
             ? {
-                rewrite_query: { query: "query: what is weather in sf" },
-                __metadata__: { cached: true },
-              }
+              rewrite_query: { query: "query: what is weather in sf" },
+              __metadata__: { cached: true },
+            }
             : { rewrite_query: { query: "query: what is weather in sf" } },
           {
             analyzer_one: { query: "analyzed: query: what is weather in sf" },
@@ -3204,16 +3198,16 @@ graph TD;
           { decider: {} },
           cachePolicy
             ? {
-                rewrite_query: {
-                  query: "query: analyzed: query: what is weather in sf",
-                },
-                __metadata__: { cached: true },
-              }
-            : {
-                rewrite_query: {
-                  query: "query: analyzed: query: what is weather in sf",
-                },
+              rewrite_query: {
+                query: "query: analyzed: query: what is weather in sf",
               },
+              __metadata__: { cached: true },
+            }
+            : {
+              rewrite_query: {
+                query: "query: analyzed: query: what is weather in sf",
+              },
+            },
           {
             analyzer_one: {
               query: "analyzed: query: analyzed: query: what is weather in sf",
@@ -3774,7 +3768,7 @@ graph TD;
       expect(console.warn).toHaveBeenCalledTimes(1);
       expect(console.warn).toHaveBeenCalledWith(
         "[WARN]: 'NodeInterrupt' thrown in conditional edge. This is likely a bug in your graph implementation.\n" +
-          "NodeInterrupt should only be thrown inside a node, not in edge conditions."
+        "NodeInterrupt should only be thrown inside a node, not in edge conditions."
       );
       // Restore console.warn
       console.warn = originalWarn;
@@ -4073,7 +4067,7 @@ graph TD;
       // modify ai message
       const lastMessage =
         appWithInterruptState!.values.messages[
-          appWithInterruptState!.values.messages.length - 1
+        appWithInterruptState!.values.messages.length - 1
         ];
       lastMessage.tool_calls[0].args.query = "a different query";
       await appWithInterrupt.updateState(config, {
@@ -6742,12 +6736,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
 
@@ -6796,12 +6790,12 @@ graph TD;
               parentConfig:
                 durability !== "exit"
                   ? {
-                      configurable: {
-                        thread_id: "1",
-                        checkpoint_ns: expect.stringMatching(/^inner:/),
-                        checkpoint_id: expect.any(String),
-                      },
-                    }
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringMatching(/^inner:/),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
                   : undefined,
             },
           },
@@ -6824,12 +6818,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
 
@@ -6870,12 +6864,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: "",
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
           },
 
@@ -6973,12 +6967,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: expect.stringMatching(/^inner:/),
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: expect.stringMatching(/^inner:/),
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
             tasks: [
               {
@@ -7194,12 +7188,12 @@ graph TD;
           parentConfig:
             durability !== "exit"
               ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: "",
-                    checkpoint_id: expect.any(String),
-                  },
-                }
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
               : undefined,
         },
         durability !== "exit" && {
@@ -7467,12 +7461,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
       const childState = await app.getState(
@@ -7526,12 +7520,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.any(String),
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.any(String),
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
 
@@ -7585,12 +7579,12 @@ graph TD;
                     parentConfig:
                       durability !== "exit"
                         ? {
-                            configurable: {
-                              thread_id: "1",
-                              checkpoint_ns: expect.any(String),
-                              checkpoint_id: expect.any(String),
-                            },
-                          }
+                          configurable: {
+                            thread_id: "1",
+                            checkpoint_ns: expect.any(String),
+                            checkpoint_id: expect.any(String),
+                          },
+                        }
                         : undefined,
                   },
                 },
@@ -7616,12 +7610,12 @@ graph TD;
               parentConfig:
                 durability !== "exit"
                   ? {
-                      configurable: {
-                        thread_id: "1",
-                        checkpoint_ns: expect.stringMatching(/^child:/),
-                        checkpoint_id: expect.any(String),
-                      },
-                    }
+                    configurable: {
+                      thread_id: "1",
+                      checkpoint_ns: expect.stringMatching(/^child:/),
+                      checkpoint_id: expect.any(String),
+                    },
+                  }
                   : undefined,
             },
           },
@@ -7644,12 +7638,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
 
@@ -7807,12 +7801,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: "",
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
           },
 
@@ -7944,12 +7938,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: expect.stringContaining("child:"),
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: expect.stringContaining("child:"),
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
             tasks: [
               {
@@ -8069,12 +8063,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: expect.any(String),
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: expect.any(String),
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
             tasks: [
               {
@@ -8184,7 +8178,13 @@ graph TD;
             ],
             { grandchild1: { myKey: "hi my value here" } },
           ],
-          [[""], { [INTERRUPT]: [] }],
+          [
+            [
+              expect.stringMatching(/^child:/),
+              expect.stringMatching(/^child1:/),
+            ],
+            { [INTERRUPT]: [] },
+          ],
         ]);
       }
     });
@@ -8293,12 +8293,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: "",
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: "",
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
       });
 
@@ -8328,12 +8328,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringContaining("generateJoke:"),
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
         tasks: [
           {
@@ -8370,12 +8370,12 @@ graph TD;
         parentConfig:
           durability !== "exit"
             ? {
-                configurable: {
-                  thread_id: "1",
-                  checkpoint_ns: expect.stringContaining("generateJoke:"),
-                  checkpoint_id: expect.any(String),
-                },
-              }
+              configurable: {
+                thread_id: "1",
+                checkpoint_ns: expect.stringContaining("generateJoke:"),
+                checkpoint_id: expect.any(String),
+              },
+            }
             : undefined,
         tasks: [
           {
@@ -8522,12 +8522,12 @@ graph TD;
           parentConfig:
             durability !== "exit"
               ? {
-                  configurable: {
-                    thread_id: "1",
-                    checkpoint_ns: "",
-                    checkpoint_id: expect.any(String),
-                  },
-                }
+                configurable: {
+                  thread_id: "1",
+                  checkpoint_ns: "",
+                  checkpoint_id: expect.any(String),
+                },
+              }
               : undefined,
         },
         durability !== "exit" && {
@@ -8926,12 +8926,12 @@ graph TD;
             parentConfig:
               durability !== "exit"
                 ? {
-                    configurable: {
-                      thread_id: "1",
-                      checkpoint_ns: "inner",
-                      checkpoint_id: expect.any(String),
-                    },
-                  }
+                  configurable: {
+                    thread_id: "1",
+                    checkpoint_ns: "inner",
+                    checkpoint_id: expect.any(String),
+                  },
+                }
                 : undefined,
           },
           durability !== "exit" && {
@@ -9138,207 +9138,67 @@ graph TD;
     });
   });
 
-  it("should work with streamMode messages and custom from within a subgraph", async () => {
-    const child = new StateGraph(MessagesAnnotation)
-      .addNode("c_one", () => ({
-        messages: [new HumanMessage("f"), new AIMessage("b")],
-      }))
-      .addNode("c_two", async (_, config) => {
-        const model = new FakeChatModel({
-          responses: [new AIMessage("1"), new AIMessage("2")],
-        }).withConfig({ tags: ["c_two_chat_model"] });
+  /**
+   * skip in browser
+   */
+  it.skipIf(typeof window !== "undefined")(
+    "should work with streamMode messages and custom from within a subgraph",
+    async () => {
+      const child = new StateGraph(MessagesAnnotation)
+        .addNode("c_one", () => ({
+          messages: [new HumanMessage("f"), new AIMessage("b")],
+        }))
+        .addNode("c_two", async (_, config) => {
+          const model = new FakeChatModel({
+            responses: [new AIMessage("1"), new AIMessage("2")],
+          }).withConfig({ tags: ["c_two_chat_model"] });
 
-        const stream = await model.stream("yo", {
-          ...config,
-          runName: "c_two_chat_model_stream",
-        });
+          const stream = await model.stream("yo", {
+            ...config,
+            runName: "c_two_chat_model_stream",
+          });
 
-        for await (const chunk of stream) {
-          config.writer?.({ content: chunk.content, from: "subgraph" });
-        }
-        return { messages: [await model.invoke("hey", config)] };
-      })
-      .addEdge(START, "c_one")
-      .addEdge("c_one", "c_two")
-      .addEdge("c_two", END);
+          for await (const chunk of stream) {
+            config.writer?.({ content: chunk.content, from: "subgraph" });
+          }
+          return { messages: [await model.invoke("hey", config)] };
+        })
+        .addEdge(START, "c_one")
+        .addEdge("c_one", "c_two")
+        .addEdge("c_two", END);
 
-    const parent = new StateGraph(MessagesAnnotation)
-      .addNode("p_one", async (_, config) => {
-        const toolExecutor = RunnableLambda.from(async () => {
-          return [new ToolMessage({ content: "q", tool_call_id: "test" })];
-        });
-        config.writer?.({ from: "parent" });
-        return { messages: await toolExecutor.invoke({}, config) };
-      })
-      .addNode("p_two", child.compile())
-      .addNode("p_three", async (_, config) => {
-        const model = new FakeChatModel({ responses: [new AIMessage("x")] });
-        await model.invoke("hey", config);
-        return { messages: [] };
-      })
-      .addEdge(START, "p_one")
-      .addEdge("p_one", "p_two")
-      .addEdge("p_two", "p_three")
-      .addEdge("p_three", END);
+      const parent = new StateGraph(MessagesAnnotation)
+        .addNode("p_one", async (_, config) => {
+          const toolExecutor = RunnableLambda.from(async () => {
+            return [new ToolMessage({ content: "q", tool_call_id: "test" })];
+          });
+          config.writer?.({ from: "parent" });
+          return { messages: await toolExecutor.invoke({}, config) };
+        })
+        .addNode("p_two", child.compile())
+        .addNode("p_three", async (_, config) => {
+          const model = new FakeChatModel({ responses: [new AIMessage("x")] });
+          await model.invoke("hey", config);
+          return { messages: [] };
+        })
+        .addEdge(START, "p_one")
+        .addEdge("p_one", "p_two")
+        .addEdge("p_two", "p_three")
+        .addEdge("p_three", END);
 
-    const graph = parent.compile({});
-    const config = {};
+      const graph = parent.compile({});
+      const config = {};
 
-    const streamedEvents = await gatherIterator(
-      graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
-    );
-
-    expect(streamedEvents).toMatchObject([
-      [
-        new _AnyIdToolMessage({
-          tool_call_id: "test",
-          content: "q",
-        }),
-        {
-          langgraph_step: 1,
-          langgraph_node: "p_one",
-          langgraph_triggers: ["branch:to:p_one"],
-          langgraph_path: [PULL, "p_one"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
-          checkpoint_ns: expect.stringMatching(/^p_one:/),
-          ls_integration: "langgraph",
-          name: "p_one",
-          tags: ["graph:step:1"],
-        },
-      ],
-      [
-        new _AnyIdHumanMessage({
-          content: "f",
-        }),
-        {
-          langgraph_step: 1,
-          langgraph_node: "c_one",
-          langgraph_triggers: ["branch:to:c_one"],
-          langgraph_path: [PULL, "c_one"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langgraph",
-          name: "c_one",
-          tags: ["graph:step:1"],
-        },
-      ],
-      [
-        new _AnyIdAIMessage({
-          content: "b",
-        }),
-        {
-          langgraph_step: 1,
-          langgraph_node: "c_one",
-          langgraph_triggers: ["branch:to:c_one"],
-          langgraph_path: [PULL, "c_one"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langgraph",
-          name: "c_one",
-          tags: ["graph:step:1"],
-        },
-      ],
-      [
-        new _AnyIdAIMessageChunk({
-          content: "1",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["branch:to:c_two"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langchain_chat_model",
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          tags: ["c_two_chat_model"],
-          name: "c_two_chat_model_stream",
-          versions: expect.objectContaining({}),
-        },
-      ],
-      [
-        new _AnyIdAIMessageChunk({
-          content: "2",
-        }),
-        {
-          langgraph_step: 2,
-          langgraph_node: "c_two",
-          langgraph_triggers: ["branch:to:c_two"],
-          langgraph_path: [PULL, "c_two"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
-          checkpoint_ns: expect.stringMatching(/^p_two:/),
-          ls_integration: "langchain_chat_model",
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          name: undefined,
-          tags: ["c_two_chat_model"],
-          versions: expect.objectContaining({}),
-        },
-      ],
-      [
-        new _AnyIdAIMessageChunk({
-          content: "x",
-        }),
-        {
-          langgraph_step: 3,
-          langgraph_node: "p_three",
-          langgraph_triggers: ["branch:to:p_three"],
-          langgraph_path: [PULL, "p_three"],
-          langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
-          checkpoint_ns: expect.stringMatching(/^p_three/),
-          ls_integration: "langchain_chat_model",
-          ls_model_type: "chat",
-          ls_provider: "FakeChatModel",
-          ls_stop: undefined,
-          name: undefined,
-          tags: [],
-          versions: expect.objectContaining({}),
-        },
-      ],
-    ]);
-
-    const streamedCustomEvents: [string[], StateSnapshot][] =
-      await gatherIterator(
-        graph.stream(
-          { messages: [] },
-          { ...config, subgraphs: true, streamMode: "custom" }
-        )
+      const streamedEvents = await gatherIterator(
+        graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
       );
 
-    expect(streamedCustomEvents).toEqual([
-      [[], { from: "parent" }],
-      [[expect.stringMatching(/^p_two:/)], { content: "1", from: "subgraph" }],
-    ]);
-
-    const streamedCombinedEvents = await gatherIterator(
-      graph.stream(
-        { messages: [] },
-        { ...config, streamMode: ["custom", "messages"] }
-      )
-    );
-
-    // The relative ordering of "custom" and "messages" events for the same
-    // chunk is non-deterministic across Node.js versions, so sort by mode
-    // before asserting (custom < messages alphabetically).
-    const sortedCombinedEvents = [...streamedCombinedEvents].sort((a, b) => {
-      const aMode = a[0] as string;
-      const bMode = b[0] as string;
-      if (aMode !== bMode) return aMode < bMode ? -1 : 1;
-      // within same mode, preserve original order by index
-      return (
-        streamedCombinedEvents.indexOf(a) - streamedCombinedEvents.indexOf(b)
-      );
-    });
-    expect(sortedCombinedEvents).toMatchObject([
-      ["custom", { from: "parent" }],
-      ["custom", { from: "subgraph", content: "1" }],
-      [
-        "messages",
+      expect(streamedEvents).toMatchObject([
         [
-          new _AnyIdToolMessage({ tool_call_id: "test", content: "q" }),
+          new _AnyIdToolMessage({
+            tool_call_id: "test",
+            content: "q",
+          }),
           {
             langgraph_step: 1,
             langgraph_node: "p_one",
@@ -9351,54 +9211,48 @@ graph TD;
             tags: ["graph:step:1"],
           },
         ],
-      ],
-      [
-        "messages",
         [
-          new _AnyIdHumanMessage({ content: "f" }),
+          new _AnyIdHumanMessage({
+            content: "f",
+          }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
             langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_one:.*/),
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
         ],
-      ],
-      [
-        "messages",
         [
-          new _AnyIdAIMessage({ content: "b" }),
+          new _AnyIdAIMessage({
+            content: "b",
+          }),
           {
             langgraph_step: 1,
             langgraph_node: "c_one",
             langgraph_triggers: ["branch:to:c_one"],
             langgraph_path: [PULL, "c_one"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_one:.*/),
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_one:.*/),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_integration: "langgraph",
             name: "c_one",
             tags: ["graph:step:1"],
           },
         ],
-      ],
-      [
-        "messages",
         [
-          new _AnyIdAIMessageChunk({ content: "1" }),
+          new _AnyIdAIMessageChunk({
+            content: "1",
+          }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
             langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
@@ -9406,33 +9260,33 @@ graph TD;
             ls_stop: undefined,
             tags: ["c_two_chat_model"],
             name: "c_two_chat_model_stream",
+            versions: expect.objectContaining({}),
           },
         ],
-      ],
-      [
-        "messages",
         [
-          new _AnyIdAIMessageChunk({ content: "2" }),
+          new _AnyIdAIMessageChunk({
+            content: "2",
+          }),
           {
             langgraph_step: 2,
             langgraph_node: "c_two",
             langgraph_triggers: ["branch:to:c_two"],
             langgraph_path: [PULL, "c_two"],
-            langgraph_checkpoint_ns:
-              expect.stringMatching(/^p_two:.*\|c_two:.*/),
+            langgraph_checkpoint_ns: expect.stringMatching(/^p_two:.*\|c_two:.*/),
             checkpoint_ns: expect.stringMatching(/^p_two:/),
             ls_integration: "langchain_chat_model",
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
+            name: undefined,
             tags: ["c_two_chat_model"],
+            versions: expect.objectContaining({}),
           },
         ],
-      ],
-      [
-        "messages",
         [
-          new _AnyIdAIMessageChunk({ content: "x" }),
+          new _AnyIdAIMessageChunk({
+            content: "x",
+          }),
           {
             langgraph_step: 3,
             langgraph_node: "p_three",
@@ -9444,12 +9298,164 @@ graph TD;
             ls_model_type: "chat",
             ls_provider: "FakeChatModel",
             ls_stop: undefined,
+            name: undefined,
             tags: [],
+            versions: expect.objectContaining({}),
           },
         ],
-      ],
-    ]);
-  });
+      ]);
+
+      const streamedCustomEvents: [string[], StateSnapshot][] =
+        await gatherIterator(
+          graph.stream(
+            { messages: [] },
+            { ...config, subgraphs: true, streamMode: "custom" }
+          )
+        );
+
+      expect(streamedCustomEvents).toEqual([
+        [[], { from: "parent" }],
+        [[expect.stringMatching(/^p_two:/)], { content: "1", from: "subgraph" }],
+      ]);
+
+      const streamedCombinedEvents = await gatherIterator(
+        graph.stream(
+          { messages: [] },
+          { ...config, streamMode: ["custom", "messages"] }
+        )
+      );
+
+      // The relative ordering of "custom" and "messages" events for the same
+      // chunk is non-deterministic across Node.js versions, so sort by mode
+      // before asserting (custom < messages alphabetically).
+      const sortedCombinedEvents = [...streamedCombinedEvents].sort((a, b) => {
+        const aMode = a[0] as string;
+        const bMode = b[0] as string;
+        if (aMode !== bMode) return aMode < bMode ? -1 : 1;
+        // within same mode, preserve original order by index
+        return (
+          streamedCombinedEvents.indexOf(a) - streamedCombinedEvents.indexOf(b)
+        );
+      });
+      expect(sortedCombinedEvents).toMatchObject([
+        ["custom", { from: "parent" }],
+        ["custom", { from: "subgraph", content: "1" }],
+        [
+          "messages",
+          [
+            new _AnyIdToolMessage({ tool_call_id: "test", content: "q" }),
+            {
+              langgraph_step: 1,
+              langgraph_node: "p_one",
+              langgraph_triggers: ["branch:to:p_one"],
+              langgraph_path: [PULL, "p_one"],
+              langgraph_checkpoint_ns: expect.stringMatching(/^p_one:/),
+              checkpoint_ns: expect.stringMatching(/^p_one:/),
+              ls_integration: "langgraph",
+              name: "p_one",
+              tags: ["graph:step:1"],
+            },
+          ],
+        ],
+        [
+          "messages",
+          [
+            new _AnyIdHumanMessage({ content: "f" }),
+            {
+              langgraph_step: 1,
+              langgraph_node: "c_one",
+              langgraph_triggers: ["branch:to:c_one"],
+              langgraph_path: [PULL, "c_one"],
+              langgraph_checkpoint_ns:
+                expect.stringMatching(/^p_two:.*\|c_one:.*/),
+              checkpoint_ns: expect.stringMatching(/^p_two:/),
+              ls_integration: "langgraph",
+              name: "c_one",
+              tags: ["graph:step:1"],
+            },
+          ],
+        ],
+        [
+          "messages",
+          [
+            new _AnyIdAIMessage({ content: "b" }),
+            {
+              langgraph_step: 1,
+              langgraph_node: "c_one",
+              langgraph_triggers: ["branch:to:c_one"],
+              langgraph_path: [PULL, "c_one"],
+              langgraph_checkpoint_ns:
+                expect.stringMatching(/^p_two:.*\|c_one:.*/),
+              checkpoint_ns: expect.stringMatching(/^p_two:/),
+              ls_integration: "langgraph",
+              name: "c_one",
+              tags: ["graph:step:1"],
+            },
+          ],
+        ],
+        [
+          "messages",
+          [
+            new _AnyIdAIMessageChunk({ content: "1" }),
+            {
+              langgraph_step: 2,
+              langgraph_node: "c_two",
+              langgraph_triggers: ["branch:to:c_two"],
+              langgraph_path: [PULL, "c_two"],
+              langgraph_checkpoint_ns:
+                expect.stringMatching(/^p_two:.*\|c_two:.*/),
+              checkpoint_ns: expect.stringMatching(/^p_two:/),
+              ls_integration: "langchain_chat_model",
+              ls_model_type: "chat",
+              ls_provider: "FakeChatModel",
+              ls_stop: undefined,
+              tags: ["c_two_chat_model"],
+              name: "c_two_chat_model_stream",
+            },
+          ],
+        ],
+        [
+          "messages",
+          [
+            new _AnyIdAIMessageChunk({ content: "2" }),
+            {
+              langgraph_step: 2,
+              langgraph_node: "c_two",
+              langgraph_triggers: ["branch:to:c_two"],
+              langgraph_path: [PULL, "c_two"],
+              langgraph_checkpoint_ns:
+                expect.stringMatching(/^p_two:.*\|c_two:.*/),
+              checkpoint_ns: expect.stringMatching(/^p_two:/),
+              ls_integration: "langchain_chat_model",
+              ls_model_type: "chat",
+              ls_provider: "FakeChatModel",
+              ls_stop: undefined,
+              tags: ["c_two_chat_model"],
+            },
+          ],
+        ],
+        [
+          "messages",
+          [
+            new _AnyIdAIMessageChunk({ content: "x" }),
+            {
+              langgraph_step: 3,
+              langgraph_node: "p_three",
+              langgraph_triggers: ["branch:to:p_three"],
+              langgraph_path: [PULL, "p_three"],
+              langgraph_checkpoint_ns: expect.stringMatching(/^p_three/),
+              checkpoint_ns: expect.stringMatching(/^p_three/),
+              ls_integration: "langchain_chat_model",
+              ls_model_type: "chat",
+              ls_provider: "FakeChatModel",
+              ls_stop: undefined,
+              tags: [],
+            },
+          ],
+        ],
+      ]);
+    }
+  );
 
   it("debug retry", async () => {
     const state = Annotation.Root({
@@ -11457,6 +11463,79 @@ graph TD;
 
         expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
       });
+
+      it("with StateSchema and zod context", async () => {
+        const state = new StateSchema({
+          messages: MessagesValue,
+          agentId: z4.string().describe("Agent ID from the dashboard"),
+        });
+        const config = z4.object({
+          prompt: withLangGraph(z4.string().min(1), {
+            jsonSchemaExtra: {
+              langgraph_nodes: ["agent"],
+              langgraph_type: "prompt",
+            },
+          }),
+        });
+
+        const graph = new StateGraph(state, config)
+          .addNode("agent", () => ({
+            messages: [{ role: "assistant", content: "Hi" }],
+          }))
+          .addEdge("__start__", "agent")
+          .compile();
+
+        expect(
+          await graph.invoke(
+            { agentId: "agent-1" },
+            { configurable: { thread_id: "1", prompt: "user input" } }
+          )
+        ).toMatchObject({ agentId: "agent-1" });
+
+        expect(getStateTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+          required: ["agentId"],
+        });
+        expect(getInputTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+        });
+        expect(getUpdateTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+        });
+        expect(getOutputTypeSchema(graph)).toMatchObject({
+          type: "object",
+          properties: {
+            messages: { langgraph_type: "messages" },
+            agentId: {
+              type: "string",
+              description: "Agent ID from the dashboard",
+            },
+          },
+          required: ["agentId"],
+        });
+        expect(getConfigTypeSchema(graph)).toStrictEqual(expectedConfigSchema);
+      });
     });
 
     describe("overlap schema", () => {
@@ -11831,12 +11910,12 @@ graph TD;
     const node = <T extends string>(
       name: T
     ): [T, (state: typeof State.State | number) => typeof State.Update] => [
-      name,
-      (state) => {
-        if (typeof state === "number") return { foo: [`${name}|${state}`] };
-        return { foo: [name] };
-      },
-    ];
+        name,
+        (state) => {
+          if (typeof state === "number") return { foo: [`${name}|${state}`] };
+          return { foo: [name] };
+        },
+      ];
 
     const graph = new StateGraph(State)
       .addNode([node("1"), node("1.1"), node("2"), node("3"), node("3.1")])
@@ -11927,47 +12006,47 @@ graph TD;
     expect(history.map(mapSnapshot)).toEqual(
       durability !== "exit"
         ? [
-            {
-              source: "loop",
-              step: 4,
-              values: { steps: ["start", "node1", "node2"], attempt: 2 },
-            },
-            {
-              source: "loop",
-              step: 3,
-              values: { steps: ["start", "node1"], attempt: 2 },
-            },
-            {
-              source: "loop",
-              step: 2,
-              values: { steps: ["start"], attempt: 2 },
-            },
-            {
-              source: "input",
-              step: 1,
-              values: { steps: ["start"], attempt: 1 },
-            },
-            {
-              source: "loop",
-              values: { steps: ["start"], attempt: 1 },
-              error: { message: "Simulated failure", name: "Error" },
-              step: 0,
-            },
-            { source: "input", values: { steps: [] }, step: -1 },
-          ]
+          {
+            source: "loop",
+            step: 4,
+            values: { steps: ["start", "node1", "node2"], attempt: 2 },
+          },
+          {
+            source: "loop",
+            step: 3,
+            values: { steps: ["start", "node1"], attempt: 2 },
+          },
+          {
+            source: "loop",
+            step: 2,
+            values: { steps: ["start"], attempt: 2 },
+          },
+          {
+            source: "input",
+            step: 1,
+            values: { steps: ["start"], attempt: 1 },
+          },
+          {
+            source: "loop",
+            values: { steps: ["start"], attempt: 1 },
+            error: { message: "Simulated failure", name: "Error" },
+            step: 0,
+          },
+          { source: "input", values: { steps: [] }, step: -1 },
+        ]
         : [
-            {
-              source: "loop",
-              step: 4,
-              values: { steps: ["start", "node1", "node2"], attempt: 2 },
-            },
-            {
-              source: "loop",
-              values: { steps: ["start"], attempt: 1 },
-              error: { message: "Simulated failure", name: "Error" },
-              step: 0,
-            },
-          ]
+          {
+            source: "loop",
+            step: 4,
+            values: { steps: ["start", "node1", "node2"], attempt: 2 },
+          },
+          {
+            source: "loop",
+            values: { steps: ["start"], attempt: 1 },
+            error: { message: "Simulated failure", name: "Error" },
+            step: 0,
+          },
+        ]
     );
   });
 

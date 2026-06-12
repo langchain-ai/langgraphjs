@@ -30,8 +30,10 @@ const CONFIG_KEYS = [
   "checkpointDuring",
   "durability",
   "signal",
+  "heartbeat",
   "executionInfo",
   "serverInfo",
+  "control",
 ];
 
 const DEFAULT_RECURSION_LIMIT = 25;
@@ -185,8 +187,22 @@ export function getConfig(): LangGraphRunnableConfig {
 }
 
 /**
- * A helper utility function that returns the input for the currently executing task
+ * A helper utility function that returns the input for the currently executing
+ * task.
  *
+ * Note: When called without arguments, this relies on `node:async_hooks` /
+ * `AsyncLocalStorage`, which is available in many JavaScript environments
+ * (Node.js, Deno, Cloudflare Workers) but not in web browsers. In environments
+ * without `AsyncLocalStorage` support, pass the `config` that your node/tool
+ * function receives directly, e.g. `getCurrentTaskInput(config)`.
+ *
+ * Tip: Inside a tool run by a `ToolNode`, prefer reading graph state from
+ * `runtime.state` on the second tool argument (typed as `ToolRuntime` from
+ * `@langchain/core/tools`). It works in every runtime, including web browsers.
+ *
+ * @param config - Optional {@link LangGraphRunnableConfig} to read the task
+ * input from. Provide this when running in an environment without
+ * `AsyncLocalStorage` support (e.g. web browsers).
  * @returns the input for the currently executing task
  */
 export function getCurrentTaskInput<T = unknown>(

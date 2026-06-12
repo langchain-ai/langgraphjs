@@ -1,8 +1,8 @@
 # Migrating to `@langchain/angular` v1
 
 This guide walks application authors through the jump from the pre-v1
-`injectStream` / `useStream` API to the v2-native `injectStream` that
-ships with `@langchain/angular@^1.0.0`.
+`injectStream` / `useStream` API to the `injectStream` injector built for
+**new event-based streaming**, which ships with `@langchain/angular@^1.0.0`.
 
 Short version: **the `injectStream` import name does not change, but
 the return shape, option bag, and protocol semantics do.** Most chat
@@ -33,14 +33,14 @@ covered in their own sections.
 
 ## 1. Why the breaking change?
 
-The legacy `injectStream` was built against the v1 streaming protocol
+The legacy `injectStream` was built against the legacy streaming protocol
 and accreted a large surface of opt-in callbacks (`onUpdateEvent`,
 `onCustomEvent`, `onMetadataEvent`, `onStop`, …) plus derived state
 (`history`, `branch`, `experimental_branchTree`,
 `getMessagesMetadata`, `joinStream`) that had to be recomputed on every
 change-detection cycle.
 
-The v1 injector targets **protocol v2**. In practice that means:
+The v1 package injector uses **new event-based streaming**. In practice that means:
 
 - **Selector-based subscriptions.** Namespaced data (subagent
   messages, subgraph tool calls, media) is opened *only* when a
@@ -55,8 +55,8 @@ The v1 injector targets **protocol v2**. In practice that means:
   route navigations.
 - **Discriminated option bag.** The LangGraph Platform path and the
   custom-adapter path are two arms of a discriminated union; passing
-  both `assistantId` and a non-string `transport` is a compile-time
-  error.
+  LGP-only options like `apiUrl`, `client`, or `fetch` alongside a
+  non-string `transport` is a compile-time error.
 - **Signals end-to-end.** Every reactive field on the return handle is
   an Angular `Signal` that composes with `computed` / `effect` and
   plays nicely with zoneless / OnPush components.
@@ -70,11 +70,15 @@ The net effect is a smaller, faster, more predictable API.
 For the typical chat app, this is the whole migration. Deeper changes
 are flagged in the later sections.
 
-- [ ] **Upgrade** `@langchain/angular` to `^1.0.0`.
+- [ ] **Upgrade** `@langchain/angular` to `^1.0.0` and
+      `@langchain/langgraph-sdk` to the matching new event-based streaming
+      runtime.
 - [ ] **Imports stay the same** — `import { injectStream } from "@langchain/angular"`
-      now resolves to the v2-native injector. A framework-agnostic
-      `useStream` factory is also exported for library code / advanced
-      callers (see §11); prefer `injectStream` in component code.
+      now resolves to the injector built for new event-based streaming.
+      `useStreamExperimental` is
+      not exported from this package. A framework-agnostic `useStream`
+      factory is also exported for library code / advanced callers (see §11);
+      prefer `injectStream` in component code.
 - [ ] **Remove these option-bag fields** (see §3):
       `onError`, `onFinish`, `onUpdateEvent`, `onCustomEvent`,
       `onMetadataEvent`, `onStop`, `fetchStateHistory`,
@@ -95,8 +99,12 @@ are flagged in the later sections.
       rather than reading `subagent.messages` off the discovery
       snapshot.
 - [ ] **Swap `FetchStreamTransport`** for
-      `HttpAgentServerAdapter` from `@langchain/langgraph-sdk`
-      (see §9).
+      `HttpAgentServerAdapter` from `@langchain/angular` (or
+      `@langchain/langgraph-sdk`). The adapter is bound to a concrete
+      `threadId` (see §9).
+- [ ] **Replace `submit(..., { onDisconnect, streamResumable })`** with
+      `stream.stop()` (cancel, default) or `stream.disconnect()`
+      (join/rejoin) on the stream handle (see §5.3).
 - [ ] **Re-run `tsc`**. The option bag and return type are now
       discriminated and strongly typed; most remaining issues will
       surface as type errors that map to one of the sections below.
@@ -117,7 +125,8 @@ are flagged in the later sections.
 | `threadId`, `onThreadId` | Unchanged. Pass `null` to detach; passing a new string reloads the thread. `threadId` now also accepts `Signal<string \| null>`. |
 | `initialValues` | Unchanged. |
 | `messagesKey` | Unchanged — defaults to `"messages"`. |
-| `onCreated` | Still fires with `{ run_id, thread_id }`. |
+| `onCreated` | Fires with `{ runId }`; read the current thread from `stream.threadId()` when needed. |
+| `onCompleted` | Convenience callback with `{ runId?, reason }` when active streaming ends. |
 | `tools`, `onTool` | Unchanged semantics — see §8. |
 
 ### 3.2 New options
@@ -132,10 +141,10 @@ are flagged in the later sections.
 
 | Legacy option | v1 replacement |
 |---|---|
-| `onError` | Read `stream.error()` directly, or drive a `computed` / `effect` off it. |
+| `onError` | Read `stream.error()` directly, drive a `computed` / `effect` off it, or pass a per-submit `onError` via `submit(input, { onError })`. |
 | `onFinish` | Derive from `stream.isLoading()` transitioning `true → false`. |
-| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events. |
-| `onStop` | Drop. `stop()` aborts the in-flight run; observe `isLoading()` for UI effects. |
+| `onUpdateEvent`, `onCustomEvent`, `onMetadataEvent`, `onLangChainEvent` | Drop. Use `injectChannel` / `injectExtension` for raw events, or `injectChannelEffect(stream, channels, { onEvent })` for per-event side effects like analytics. |
+| `onStop` | Drop. Use `stream.stop()` to cancel the active run (default) or `stream.disconnect()` for join/rejoin. See §5.3. |
 | `fetchStateHistory` | Drop. Fork flows use `injectMessageMetadata` + `submit({}, { forkFrom })` (see §5 / §6). |
 | `reconnectOnMount` | Drop. Re-attach is automatic. |
 | `throttle` | Drop. The injector batches state updates natively. |
@@ -171,7 +180,7 @@ effect(() => {
 | `isLoading()` / `isThreadLoading()` | `isLoading` is `true` while a run is in flight or hydration hasn't completed; `isThreadLoading` tracks only initial hydration. |
 | `error()` | Unchanged. |
 | `threadId()` | `Signal<string \| null>`. |
-| `submit()`, `stop()` | Same high-level semantics; `submit`'s argument types are wider (§5). A new `respond(response, target)` is available for targeted interrupt replies. |
+| `submit()`, `stop()`, `disconnect()` | `submit` argument types are wider (§5). `stop(options?)` cancels server-side by default; `disconnect()` is join/rejoin client-only (§5.3). `respond(response, options?)` is available for targeted interrupt replies, and `respondAll(responsesById, options?)` resumes several interrupts pending at the same checkpoint. |
 | `client` | Resolved `Client` when the LGP branch is in use. |
 
 ### 4.2 Still there — different shape
@@ -184,7 +193,7 @@ effect(() => {
 
 | Legacy field | v1 replacement |
 |---|---|
-| `branch`, `setBranch`, `experimental_branchTree` | Fork from a checkpoint: `injectMessageMetadata(stream, msg.id)` → `submit(input, { forkFrom: { checkpointId } })`. |
+| `branch`, `setBranch`, `experimental_branchTree` | Fork from a checkpoint: `injectMessageMetadata(stream, msg.id)` → `submit(input, { forkFrom })`. |
 | `history`, `fetchStateHistory` | Dropped. Fetch explicitly with `client.threads.getHistory(threadId)` if required. |
 | `getMessagesMetadata(msg, i)` | `injectMessageMetadata(stream, msg.id)` returns `Signal<{ parentCheckpointId } \| undefined>` (§6). |
 | `toolProgress` | Dropped. Each `AssembledToolCall` carries its own `status`. |
@@ -200,7 +209,8 @@ effect(() => {
 | `subgraphs()` | `Signal<ReadonlyMap<string, SubgraphDiscoverySnapshot>>` — subgraphs discovered on the thread. |
 | `subgraphsByNode()` | Same data keyed by graph node. |
 | `hydrationPromise()` | Resolves once initial thread load finishes. Useful for SSR / `await`-before-render pipelines. |
-| `respond(response, target)` | Reply to a specific interrupt id. |
+| `respond(response, options?)` | Reply to a single interrupt (target via `options.interruptId` / `namespace`). |
+| `respondAll(responsesById, options?)` | Resume several interrupts pending at the same checkpoint in one command. |
 
 ### 4.5 Worked example — minimal diff
 
@@ -259,12 +269,43 @@ await this.stream.submit({ messages: new HumanMessage("hi") });
 |---|---|
 | `config.configurable` | `config.configurable` (unchanged) |
 | `context` | Fold into `config.configurable`. |
-| `checkpoint: { checkpoint_id }` | `forkFrom: { checkpointId }`. |
-| `command: { resume }` | Same. `{ goto, update }` also accepted for forward compatibility. |
-| `interruptBefore`, `interruptAfter` | Drop — not supported in v2. |
+| `checkpoint: { checkpoint_id }` | `forkFrom: "cp_123"` (direct checkpoint id string). The earlier non-functional `forkFrom: { checkpointId }` object form was removed. |
+| `command: { resume }` | Use `stream.respond()` instead. |
+| `interruptBefore`, `interruptAfter` | Drop — not supported with new event-based streaming. |
 | `metadata` | Unchanged. |
-| `multitaskStrategy` | Unchanged. |
-| `onCompletion`, `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop. These map to protocol-v2 defaults. |
+| `multitaskStrategy` | Unchanged. `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side today; `"interrupt"` falls back to `"rollback"` pending server support. |
+| `onCompletion` | Use the hook-level `onCompleted` option for run-completion side effects. |
+| `onDisconnect`, `feedbackKeys`, `streamMode`, `runId`, `optimisticValues`, `streamSubgraphs`, `streamResumable`, `checkpointDuring` | Drop from submit. Disconnect/cancel policy now lives on `stop()` / `disconnect()` instead of per-submit options (§5.3). Other fields map to new event-based streaming defaults. |
+| **(new submit option)** `onError` | Per-submit fire-and-forget error callback. There is no hook-level `onError` option; transport-level `stream.error()` updates still happen in parallel. |
+| **(new)** `threadId` | Per-submit thread override. Rebinds the controller to that thread before dispatching and keeps it bound until the `threadId` option changes again. |
+
+### 5.3 Stop / disconnect
+
+Legacy `stop()` only aborted the client transport. Per-submit
+`onDisconnect: "continue" | "cancel"` (often paired with
+`streamResumable: true`) decided whether the agent kept running when
+that transport dropped.
+
+v1 makes the split explicit on the stream handle:
+
+| Legacy pattern | v1 replacement |
+| --- | --- |
+| Stop button in a normal chat (cancel the agent) | `await stream.stop()` — default `{ cancel: true }` calls `client.runs.cancel`, then disconnects the client |
+| Join/rejoin — leave the agent running | `await stream.disconnect()` or `await stream.stop({ cancel: false })` |
+| `submit(..., { onDisconnect: "cancel" })` | Drop from submit — call `stream.stop()` when the user cancels |
+| `submit(..., { onDisconnect: "continue", streamResumable: true })` | Drop from submit — call `stream.disconnect()` when navigating away; reattach by reconstructing the injector with the same `threadId` |
+
+```typescript
+// Before
+await stream.submit(input, { onDisconnect: "continue", streamResumable: true });
+
+// After
+await stream.submit(input);
+await stream.stop();        // chat cancel (server + client)
+await stream.disconnect();  // join/rejoin (client only)
+```
+
+`runs.cancel` is issued only once `onCreated` has provided a `runId`.
 
 ---
 
@@ -286,7 +327,8 @@ All of these are exported from `@langchain/angular`:
 | `injectMessageMetadata(stream, msgId)` | `stream.getMessagesMetadata(msg, i)` | Returns `Signal<{ parentCheckpointId } \| undefined>`. Drives fork-from-checkpoint. |
 | `injectSubmissionQueue(stream)` | `stream.queue` | Returns `{ entries, size, cancel(id), clear() }`. |
 | `injectExtension(stream, name, …)` | Per-event callbacks | Read a named protocol extension. |
-| `injectChannel(stream, channels, …)` | Raw event callbacks | Low-level escape hatch. |
+| `injectChannel(stream, channels, …)` | Raw event callbacks | Low-level escape hatch (buffered, for rendering). |
+| `injectChannelEffect(stream, channels, { onEvent })` | `onLangChainEvent`, `onCustomEvent` | Per-event side-effect callback (analytics, logging). No change detection. |
 | `injectAudio`, `injectImages`, `injectVideo`, `injectFiles` | — | Multimodal streaming. |
 | `injectMediaUrl(media)` | — | Creates and revokes an object URL for a media item. |
 
@@ -318,7 +360,7 @@ export class EditButton {
     if (!checkpointId) return;
     void this.stream.submit(
       { messages: [new HumanMessage("…revised prompt…")] },
-      { forkFrom: { checkpointId } },
+      { forkFrom: checkpointId },
     );
   }
 }
@@ -444,10 +486,13 @@ injectStream({
 v1:
 
 ```typescript
-import { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
+import { HttpAgentServerAdapter } from "@langchain/angular";
 
 injectStream({
-  transport: new HttpAgentServerAdapter({ apiUrl: "…" }),
+  transport: new HttpAgentServerAdapter({
+    apiUrl: "…",
+    threadId: "thread-123",
+  }),
 });
 ```
 
@@ -516,13 +561,15 @@ It returns the same `StreamApi` shape as `injectStream`.
 
 ## 12. Type helpers
 
-| Legacy | v1 |
-|---|---|
-| `UseStream<T>` | `StreamApi<T>` for Angular code. |
-| `UseStreamOptions<T>` | `UseStreamOptions<T>` — now a discriminated union of the LGP and custom-adapter branches. |
-| `UseStreamTransport` | `AgentServerAdapter` (re-exported from `@langchain/langgraph-sdk`). |
-| `CustomStreamTransport` | Dropped. |
-| `StreamOrchestrator` | Dropped. |
+| Legacy                         | v1                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `UseStream<T>`                 | `StreamApi<T>` / `UseStreamReturn<T>` for Angular code (prefer `StreamApi<T>`).         |
+| `UseStreamOptions<State, Bag>` | `UseStreamOptions<State>` — discriminated union of the LGP and custom-adapter branches. |
+| `UseStreamTransport`           | `AgentServerAdapter` (re-exported from `@langchain/angular` and `@langchain/langgraph-sdk`). |
+| `CustomStreamTransport`        | Dropped.                                                                                |
+| `StreamOrchestrator`           | Dropped.                                                                                |
+| —                              | `AnyStream` — type-erased handle (`UseStreamReturn<any, any, any>`) for prop-drilling. |
+| —                              | `InjectSubmissionQueueReturn` — return shape of `injectSubmissionQueue(stream)`.        |
 
 `StreamApi<T>` and `UseStreamResult<T>` are aliases for the same stream
 handle. Prefer `StreamApi<T>` when writing Angular components,
@@ -552,8 +599,9 @@ function readSharedMessages(stream: UseStreamResult<ChatState>) {
 
 ## 13. Known gaps
 
-- `multitaskStrategy: "reject"` / `"enqueue"` / `"interrupt"` compile
-  but require the matching server release to be fully honoured.
+- `multitaskStrategy: "rollback"`, `"reject"`, and `"enqueue"` are
+  honoured client-side. `"interrupt"` currently falls back to
+  `"rollback"` until server-side interrupt semantics land.
 - `fetchStateHistory`-style history lists are no longer surfaced on
   the injector. If you had custom history UI, call
   `client.threads.getHistory(threadId)` directly; most apps can delete

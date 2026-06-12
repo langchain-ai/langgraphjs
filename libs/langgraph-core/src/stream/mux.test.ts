@@ -118,7 +118,7 @@ describe("StreamMux", () => {
     expect(events).toHaveLength(2);
     // Channel-forwarded events appear during process(), before the
     // original event is appended by the mux.
-    expect(events[0].method).toBe("tools");
+    expect(events[0].method).toBe("custom:tools");
     expect(events[0].params.data).toEqual({
       event: "tool-started",
       tool_name: "search",
@@ -195,8 +195,8 @@ describe("StreamMux", () => {
     // happen during process().  The mux re-stamps every event with
     // its monotonic counter so the log is always strictly increasing.
     expect(events.map((e) => e.method)).toEqual([
-      "tools",
-      "custom",
+      "custom:tools",
+      "custom:custom",
       "messages",
     ]);
     for (let i = 1; i < events.length; i++) {
@@ -376,7 +376,7 @@ describe("StreamMux", () => {
 
     const events = await collect(mux._events.iterate());
     const methods = events.map((e) => e.method);
-    expect(methods).toContain("activity");
+    expect(methods).toContain("custom:activity");
     expect(methods).toContain("custom");
     const finalEvent = events.find(
       (e) =>

@@ -1,4 +1,8 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
+import {
+  coerceTimeoutPolicy,
+  type TimeoutPolicy,
+} from "./pregel/utils/timeout.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -7,9 +11,41 @@ export const END = "__end__";
 export const INPUT = "__input__";
 export const COPY = "__copy__";
 export const ERROR = "__error__";
+/**
+ * Special reserved write key recording the name of the node whose execution
+ * failed, so node-level error handlers see the same failure provenance after a
+ * checkpoint resume. Value format in pending writes:
+ * `[taskId, ERROR_SOURCE_NODE, nodeName: string]`.
+ */
+export const ERROR_SOURCE_NODE = "__error_source_node__";
 
 /** Special reserved cache namespaces */
 export const CACHE_NS_WRITES = "__pregel_ns_writes";
+
+/**
+ * System-wide upper bound on how many supersteps a {@link DeltaChannel} may go
+ * without writing a {@link DeltaSnapshot} blob. Once a channel's
+ * supersteps-since-snapshot counter reaches this value, a snapshot is forced
+ * even if the channel's own `snapshotFrequency` has not been reached — this
+ * prevents unbounded ancestor walks on threads where a delta channel exists
+ * but is no longer being updated.
+ *
+ * Overridable via the `LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`
+ * environment variable. Read lazily so test/runtime overrides take effect.
+ *
+ * @remarks Beta.
+ */
+export function getDeltaMaxSuperstepsSinceSnapshot(): number {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT
+      : undefined;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 5000;
+}
 
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
@@ -30,8 +66,17 @@ export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
 
+/**
+ * Config key holding a {@link NodeError} (failed source node + error) for the
+ * current node-level error handler invocation. Injected when an error handler
+ * task is prepared after the failing node's retry policy is exhausted.
+ */
+export const CONFIG_KEY_NODE_ERROR = "__pregel_node_error";
+
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
+
+export const CONFIG_KEY_REPLAY_STATE = "__pregel_replay_state";
 
 export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 
@@ -65,6 +110,7 @@ export const RESERVED = [
   INTERRUPT,
   RESUME,
   ERROR,
+  ERROR_SOURCE_NODE,
   NO_WRITES,
 
   // reserved config.configurable keys
@@ -82,6 +128,7 @@ export const RESERVED = [
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_CHECKPOINT_NS,
   CONFIG_KEY_CHECKPOINT_ID,
+  CONFIG_KEY_REPLAY_STATE,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
@@ -119,7 +166,21 @@ export class CommandInstance<
 export interface SendInterface<Node extends string = string, Args = any> {
   node: Node;
   args: Args;
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task.
+   */
+  timeout?: TimeoutPolicy;
 }
+
+/** Keyword options for {@link Send}. */
+export type SendOptions = {
+  /**
+   * Per-task timeout policy overriding the target node's timeout for this
+   * pushed task. A bare number is treated as `runTimeout` (milliseconds).
+   */
+  timeout?: number | TimeoutPolicy;
+};
 
 export function _isSendInterface(x: unknown): x is SendInterface {
   const operation = x as SendInterface;
@@ -162,6 +223,14 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  *   });
  * };
  *
+ * @remarks
+ * A per-task timeout can be supplied via the third argument's `timeout` option
+ * to override the target node's configured timeout for this specific pushed task:
+ *
+ * ```typescript
+ * new Send("generate_joke", { subjects: [subject] }, { timeout: { idleTimeout: 5000 } });
+ * ```
+ *
  * const graph = new StateGraph(ChainState)
  *   .addNode("generate_joke", (state) => ({
  *     jokes: [`Joke about ${state.subjects}`],
@@ -188,13 +257,26 @@ export class Send<
 
   public args: Args;
 
-  constructor(node: Node, args: Args) {
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task. A bare number is treated as a hard
+   * `runTimeout` (in milliseconds).
+   */
+  public timeout?: TimeoutPolicy;
+
+  constructor(node: Node, args: Args, options?: SendOptions) {
     this.node = node;
     this.args = _deserializeCommandSendObjectGraph(args) as Args;
+    this.timeout = coerceTimeoutPolicy(options?.timeout);
   }
 
   toJSON() {
-    return { lg_name: this.lg_name, node: this.node, args: this.args };
+    return {
+      lg_name: this.lg_name,
+      node: this.node,
+      args: this.args,
+      timeout: this.timeout,
+    };
   }
 }
 
@@ -570,6 +652,11 @@ export function isCommand(x: unknown): x is Command {
   return false;
 }
 
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
  * matching their interfaces.
@@ -609,15 +696,18 @@ export function _deserializeCommandSendObjectGraph(
         );
       });
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (isCommand(x) && !(x instanceof Command)) {
+    } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
+      result = x;
+      seen.set(x, result);
+    } else if (isCommand(x)) {
       result = new Command(x);
       seen.set(x, result);
-      // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (_isSendInterface(x) && !(x instanceof Send)) {
-      result = new Send(x.node, x.args);
-      seen.set(x, result);
-    } else if (isCommand(x) || _isSend(x)) {
-      result = x;
+    } else if (_isSendInterface(x)) {
+      result = new Send(
+        x.node,
+        x.args,
+        x.timeout !== undefined ? { timeout: x.timeout } : undefined
+      );
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;

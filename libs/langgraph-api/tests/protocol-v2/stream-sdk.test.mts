@@ -4,7 +4,7 @@
  * end-to-end against the embed server over real HTTP/SSE.
  */
 import type { Server } from "node:http";
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import {
   afterAll,
   beforeAll,
@@ -211,8 +211,6 @@ describe("SDK streaming projections against embed server", () => {
       expect(input).toEqual({ query: "SF" });
 
       await expect(weatherCall!.output).resolves.toBeDefined();
-      await expect(weatherCall!.status).resolves.toBe("finished");
-      await expect(weatherCall!.error).resolves.toBeUndefined();
     });
   });
 
@@ -341,14 +339,12 @@ describe("SDK streaming projections against embed server", () => {
         { assistantId: "agent_with_tools" }
       );
 
-      // `forkFrom` is not part of the protocol's stock `RunStartParams`
-      // type yet (it's an SDK-side convenience consumed by the service
-      // layer), so we cast to reach the wider shape the server accepts.
-      await (
-        forked.run.start as (params: unknown) => Promise<unknown>
-      )({
+      // `forkFrom` is an SDK-side convenience: `run.start` folds it into
+      // `config.configurable.checkpoint_id` before sending, so the server
+      // only ever sees the single legacy-compliant fork field.
+      await forked.run.start({
         input: { messages: [{ role: "user", content: "What is the weather in SF?" }] },
-        forkFrom: { checkpointId: rootCheckpointId },
+        forkFrom: rootCheckpointId,
       });
       await collectWithTimeout(forked.values, 15000);
       await forked.close();

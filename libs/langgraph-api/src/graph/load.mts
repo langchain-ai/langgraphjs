@@ -1,6 +1,6 @@
 import { z } from "zod/v3";
 
-import * as uuid from "uuid";
+import * as uuid from "@langchain/core/utils/uuid";
 import type { AssistantsRepo } from "../storage/types.mjs";
 import type {
   BaseCheckpointSaver,

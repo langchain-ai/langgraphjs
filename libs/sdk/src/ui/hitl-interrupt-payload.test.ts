@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
+import { normalizeHitlInterruptPayload, normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
 import { normalizeInterruptForClient } from "./interrupts.js";
 import {
   filterOutHeadlessToolInterrupts,
@@ -87,6 +87,54 @@ describe("normalizeHitlInterruptPayload", () => {
     expect(normalizeHitlInterruptPayload({ foo: 1 })).toEqual({ foo: 1 });
     expect(normalizeHitlInterruptPayload(null)).toBeNull();
     expect(normalizeHitlInterruptPayload("x")).toBe("x");
+  });
+});
+
+describe("normalizeHitlResponseForServer", () => {
+  it("adds edited_action alias for camelCase edit decisions", () => {
+    const raw = {
+      decisions: [
+        { type: "approve" },
+        {
+          type: "edit",
+          editedAction: { name: "send_email", args: { to: "a@b.com" } },
+        },
+      ],
+    };
+    const out = normalizeHitlResponseForServer(raw) as {
+      decisions: Record<string, unknown>[];
+    };
+    expect(out.decisions[1]).toEqual({
+      type: "edit",
+      editedAction: { name: "send_email", args: { to: "a@b.com" } },
+      edited_action: { name: "send_email", args: { to: "a@b.com" } },
+    });
+  });
+
+  it("adds editedAction alias for snake_case edit decisions", () => {
+    const raw = {
+      decisions: [
+        {
+          type: "edit",
+          edited_action: { name: "send_email", args: { to: "a@b.com" } },
+        },
+      ],
+    };
+    const out = normalizeHitlResponseForServer(raw) as {
+      decisions: Record<string, unknown>[];
+    };
+    expect(out.decisions[0]).toEqual({
+      type: "edit",
+      editedAction: { name: "send_email", args: { to: "a@b.com" } },
+      edited_action: { name: "send_email", args: { to: "a@b.com" } },
+    });
+  });
+
+  it("passes through non-HITL responses", () => {
+    expect(normalizeHitlResponseForServer({ approved: true })).toEqual({
+      approved: true,
+    });
+    expect(normalizeHitlResponseForServer(null)).toBeNull();
   });
 });
 
@@ -201,6 +249,7 @@ describe("headless tool interrupt helpers", () => {
       resume: {
         "call-1": { latitude: 1, longitude: 2 },
       },
+      keyedByInterruptId: false,
     });
   });
 
@@ -247,8 +296,11 @@ describe("headless tool interrupt helpers", () => {
 
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
-        "call-1": { latitude: 1, longitude: 2 },
+        "headless-1": {
+          "call-1": { latitude: 1, longitude: 2 },
+        },
       },
+      keyedByInterruptId: true,
     });
 
     expect(handled.has("headless-1")).toBe(true);
@@ -322,10 +374,131 @@ describe("headless tool interrupt helpers", () => {
 
     expect(resumeSubmit).toHaveBeenCalledWith({
       resume: {
-        "call-1": { latitude: 1, longitude: 2 },
+        "py-headless": {
+          "call-1": { latitude: 1, longitude: 2 },
+        },
       },
+      keyedByInterruptId: true,
     });
     expect(handled.has("py-headless")).toBe(true);
     expect(onTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("flushes each headless tool call only once when mirrored under different interrupt ids", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+                name: "memory_put",
+                args: { key: "user_name", value: "Alex" },
+              },
+            },
+          },
+          {
+            id: "4bce9f26f79f6a609d77589681d8813f",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+                name: "memory_put",
+                args: { key: "user_name", value: "Alex" },
+              },
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "memory_put" },
+          execute: async () => ({
+            success: true,
+            action: "updated",
+            key: "user_name",
+            message: 'Memory "user_name" updated',
+          }),
+        },
+      ],
+      handled,
+      { onTool, resumeSubmit }
+    );
+
+    await flushMicrotasks();
+
+    expect(resumeSubmit).toHaveBeenCalledTimes(1);
+    expect(resumeSubmit).toHaveBeenCalledWith({
+      resume: {
+        "toolu_01H47Bw9B8ut1dGRASjDpN1K": {
+          "toolu_01H47Bw9B8ut1dGRASjDpN1K": {
+            success: true,
+            action: "updated",
+            key: "user_name",
+            message: 'Memory "user_name" updated',
+          },
+        },
+      },
+      keyedByInterruptId: true,
+    });
+    expect(onTool).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not re-flush the same tool call after resume clears a mirrored interrupt id", async () => {
+    const handled = new Set<string>();
+    const onTool = vi.fn();
+    const resumeSubmit = vi.fn();
+    const tool = {
+      tool: { name: "memory_put" },
+      execute: async () => ({
+        success: true,
+        action: "updated",
+        key: "user_name",
+        message: 'Memory "user_name" updated',
+      }),
+    };
+    const protocolInterrupt = {
+      id: "4bce9f26f79f6a609d77589681d8813f",
+      value: {
+        type: "tool",
+        toolCall: {
+          id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+          name: "memory_put",
+          args: { key: "user_name", value: "Alex" },
+        },
+      },
+    };
+    const valuesInterrupt = {
+      id: "toolu_01H47Bw9B8ut1dGRASjDpN1K",
+      value: protocolInterrupt.value,
+    };
+
+    flushPendingHeadlessToolInterrupts(
+      { __interrupt__: [protocolInterrupt] },
+      [tool],
+      handled,
+      { onTool, resumeSubmit }
+    );
+    await flushMicrotasks();
+
+    resumeSubmit.mockClear();
+    onTool.mockClear();
+
+    flushPendingHeadlessToolInterrupts(
+      { __interrupt__: [valuesInterrupt] },
+      [tool],
+      handled,
+      { onTool, resumeSubmit }
+    );
+    await flushMicrotasks();
+
+    expect(resumeSubmit).not.toHaveBeenCalled();
+    expect(onTool).not.toHaveBeenCalled();
   });
 });

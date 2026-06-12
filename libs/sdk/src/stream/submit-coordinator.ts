@@ -19,8 +19,7 @@
  *      otherwise we could miss replayed events).
  *   4. Apply the {@link StreamSubmitOptions.multitaskStrategy} to
  *      decide whether to abort, enqueue, reject, or proceed.
- *   5. Race the dispatch promise (`thread.submitRun()` or
- *      `thread.respondInput()` for resumes) against the next root
+ *   5. Race the dispatch promise (`thread.submitRun()`) against the next root
  *      terminal lifecycle event.
  *   6. Settle the resulting state (loading flag, error slot) and
  *      drain the next queued submission, if any.
@@ -54,33 +53,33 @@
  *
  * @see StreamController - The owner; injects every collaborator dep.
  */
-import { v7 as uuidv7 } from "uuid";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import type { ThreadStream } from "../client/stream/index.js";
 import { StreamStore } from "./store.js";
+import type { OptimisticHandle } from "./optimistic-input.js";
 import type {
   RootSnapshot,
+  RunExecutionReason,
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
 
 /**
- * Pointer to a pending root protocol interrupt. Used to target
- * `respondInput` for resume submissions.
- */
-interface ResolvedInterrupt {
-  interruptId: string;
-  namespace: string[];
-}
-
-/**
  * Result of awaiting the next root terminal lifecycle event. Mirrors
- * the four terminal lifecycle states the protocol surfaces, plus a
+ * the three terminal lifecycle states the protocol surfaces, plus a
  * synthetic `"aborted"` for client-side cancellation.
  */
 type TerminalResult = {
   event: "completed" | "failed" | "interrupted" | "aborted";
   error?: string;
 };
+
+function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
+  if (event === "completed") return "success";
+  if (event === "failed") return "error";
+  if (event === "interrupted") return "interrupt";
+  return "stopped";
+}
 
 /**
  * Queued submission entry mirrored from the server-side run queue.
@@ -172,12 +171,40 @@ export class SubmitCoordinator<
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
   readonly #awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-  /** Returns the most recent unresolved root interrupt, for resumes. */
-  readonly #latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
-  /** Marks an interrupt id as resolved so it isn't re-targeted. */
-  readonly #markInterruptResolved: (interruptId: string) => void;
+  /**
+   * Resolves on the resumed run's terminal, skipping stale `interrupted`
+   * events from the run being resumed (see {@link dispatchResume}).
+   */
+  readonly #awaitResumedRunTerminal: (
+    signal: AbortSignal
+  ) => Promise<TerminalResult>;
   /** Called once at the start of every {@link submit} invocation. */
   readonly #onSubmitStart: () => void;
+  /** Marks that a local run dispatch is now active. */
+  readonly #onRunStart: () => void;
+  /** Records a server-accepted local run id and fires `onCreated`. */
+  readonly #onRunCreated: (runId: string) => void;
+  /** Fires `onCompleted` for the local run lifecycle. */
+  readonly #onRunCompleted: (
+    reason: RunExecutionReason,
+    runId?: string
+  ) => void;
+  /** Marks the local run dispatch lifecycle as settled. */
+  readonly #onRunEnd: () => void;
+  /**
+   * Apply a submit input optimistically before dispatch. Returns the
+   * id-injected payload to dispatch plus a handle for terminal
+   * reconciliation, or `undefined` when optimistic UI is disabled / no
+   * echo applies (dispatch the raw input).
+   */
+  readonly #beginOptimistic: (
+    input: unknown
+  ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+  /** Reconcile optimistic state when a run terminates. */
+  readonly #settleOptimistic: (
+    handle: OptimisticHandle,
+    event: TerminalResult["event"]
+  ) => void;
 
   /**
    * Active submission's abort controller. `undefined` between submits.
@@ -203,9 +230,19 @@ export class SubmitCoordinator<
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-    latestUnresolvedInterrupt: () => ResolvedInterrupt | null;
-    markInterruptResolved: (interruptId: string) => void;
+    awaitResumedRunTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     onSubmitStart?: () => void;
+    onRunStart?: () => void;
+    onRunCreated?: (runId: string) => void;
+    onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
+    onRunEnd?: () => void;
+    beginOptimistic?: (
+      input: unknown
+    ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
+    settleOptimistic?: (
+      handle: OptimisticHandle,
+      event: TerminalResult["event"]
+    ) => void;
   }) {
     this.#options = params.options;
     this.#rootStore = params.rootStore;
@@ -221,13 +258,18 @@ export class SubmitCoordinator<
     this.#abandonDeferredRootPump = params.abandonDeferredRootPump;
     this.#waitForRootPumpReady = params.waitForRootPumpReady;
     this.#awaitNextTerminal = params.awaitNextTerminal;
-    this.#latestUnresolvedInterrupt = params.latestUnresolvedInterrupt;
-    this.#markInterruptResolved = params.markInterruptResolved;
+    this.#awaitResumedRunTerminal = params.awaitResumedRunTerminal;
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
+    this.#onRunStart = params.onRunStart ?? (() => undefined);
+    this.#onRunCreated = params.onRunCreated ?? (() => undefined);
+    this.#onRunCompleted = params.onRunCompleted ?? (() => undefined);
+    this.#onRunEnd = params.onRunEnd ?? (() => undefined);
+    this.#beginOptimistic = params.beginOptimistic ?? (() => undefined);
+    this.#settleOptimistic = params.settleOptimistic ?? (() => undefined);
   }
 
   /**
-   * Submit input or a resume command to the active thread.
+   * Submit input to the active thread.
    *
    * Honours {@link StreamSubmitOptions.multitaskStrategy}:
    *
@@ -238,14 +280,15 @@ export class SubmitCoordinator<
    *   - `"enqueue"`             — defers via {@link #enqueueSubmission};
    *     the call returns without dispatching.
    *   - `"interrupt"`           — falls through to the default path
-   *     (server-side cancellation lands with roadmap A0.3).
    *
    * Errors are routed through both the per-submit `onError` callback
    * and `rootStore.error`. Aborts (controller dispose / rollback) are
    * silently dropped.
    *
-   * @param input   - Input payload, or `null`/`undefined` for no input
-   *   (typical for resume commands).
+   * To resume a pending interrupt, use {@link StreamController.respond}
+   * instead of `submit()`.
+   *
+   * @param input   - Input payload for the run.
    * @param options - Per-submit options (config, metadata, callbacks,
    *   strategy, etc).
    */
@@ -292,10 +335,6 @@ export class SubmitCoordinator<
     // returns (see `#startDeferredRootPump` calls below).
     const thread = this.#ensureThread(currentThreadId, wasSelfCreated);
     const activeThreadId = currentThreadId;
-    // Wait for the root subscription to be live; otherwise the
-    // dispatch could resolve before we're listening for events and
-    // we'd miss the terminal that ends the run.
-    await this.#waitForRootPumpReady();
 
     const strategy = options?.multitaskStrategy ?? "rollback";
     // `wasSelfCreated` short-circuit: when this submit just minted a
@@ -326,12 +365,9 @@ export class SubmitCoordinator<
     const abort = new AbortController();
     this.#runAbort = abort;
 
-    const resumeCommand = options?.command?.resume;
-    const isResume = resumeCommand !== undefined;
-
-    // Optimistically clear interrupts/error and flip loading. The
-    // root pump's lifecycle listener will re-flip these as the run
-    // terminates.
+    // Claim the in-flight slot before awaiting the root pump so
+    // concurrent `enqueue` submits in the same tick observe
+    // `hasActiveRun` and land in {@link queueStore}.
     this.#rootStore.setState((s) => ({
       ...s,
       interrupts: [],
@@ -340,12 +376,24 @@ export class SubmitCoordinator<
       isLoading: true,
     }));
 
-    const boundConfig = bindThreadConfig(options?.config, currentThreadId);
-    // Subscribe to the next terminal *before* dispatching so a fast
-    // run's terminal can't race us.
-    const terminalPromise = this.#awaitNextTerminal(abort.signal);
-
-    let terminalSettled = false;
+    // Declared before the try so the catch/finally can settle the
+    // submit lifecycle (loading flag, abort slot, optimistic state)
+    // even if optimistic preparation or the pump wait throws.
+    let optimisticHandle: OptimisticHandle | undefined;
+    let dispatchInput: unknown = input;
+    let createdRunId: string | undefined;
+    let pendingCompletionReason: RunExecutionReason | undefined;
+    let completionNotified = false;
+    let settleEvent: TerminalResult["event"] | undefined;
+    const notifyCompletion = (reason: RunExecutionReason): void => {
+      if (completionNotified) return;
+      if (createdRunId == null) {
+        pendingCompletionReason = reason;
+        return;
+      }
+      completionNotified = true;
+      this.#onRunCompleted(reason, createdRunId);
+    };
     const reportError = (error: unknown): void => {
       if (abort.signal.aborted) return;
       this.#rootStore.setState((s) => ({ ...s, error }));
@@ -357,137 +405,114 @@ export class SubmitCoordinator<
     };
 
     try {
+      // Apply the input optimistically *before* the first await so the
+      // user's message (and any merged state) paints without waiting for
+      // the server round-trip. Kept as the first statement in the try so
+      // the synchronous paint still precedes the first `await`, while a
+      // synchronous coercion failure (e.g. a malformed message entry)
+      // settles the submit lifecycle through the catch/finally below —
+      // exactly like a dispatch failure — instead of wedging `isLoading`
+      // / `#runAbort` and stranding later enqueue/reject submits behind a
+      // phantom in-flight run. Runs only on the dispatched path — an
+      // `"enqueue"`d submission returns above and echoes when it drains,
+      // keeping one optimistic batch bound to exactly one run lifecycle.
+      // `dispatchInput` carries the minted ids the server must echo for
+      // reconciliation, so the run is dispatched with it (not raw input).
+      const prepared = this.#beginOptimistic(input);
+      if (prepared != null) {
+        optimisticHandle = prepared.handle;
+        dispatchInput = prepared.dispatchInput;
+      }
+
+      // Wait for the root subscription to be live; otherwise the
+      // dispatch could resolve before we're listening for events and
+      // we'd miss the terminal that ends the run.
+      await this.#waitForRootPumpReady();
+
+      const boundConfig = bindThreadConfig(options?.config, currentThreadId);
+      // Subscribe to the next terminal *before* dispatching so a fast
+      // run's terminal can't race us.
+      const terminalPromise = this.#awaitNextTerminal(abort.signal);
+      this.#onRunStart();
+
+      let terminalSettled = false;
       let terminal: TerminalResult | undefined;
 
-      if (isResume) {
-        const target = this.#latestUnresolvedInterrupt();
-        if (target == null) {
-          throw new Error(
-            "submit({ command: { resume } }) called but no pending protocol interrupt is available."
-          );
-        }
-        const commandPromise = thread.respondInput({
-          namespace: target.namespace,
-          interrupt_id: target.interruptId,
-          response: resumeCommand,
-          config: boundConfig,
-          metadata: options?.metadata,
-        });
-        // Defer the pump start until the dispatch HTTP response
-        // lands — see the analogous block in the non-resume path
-        // below for the rationale (thread row not committed
-        // synchronously). For a resume the thread exists already
-        // (it must, since `latestUnresolvedInterrupt()` was non-null),
-        // so `#startDeferredRootPump` is typically a no-op here, but
-        // we keep the same shape to avoid a future regression.
-        //
-        // Asymmetry with the non-resume path: we don't call
-        // `#forgetSelfCreatedThreadId` because a resume implies the
-        // thread already committed, so the self-created marker was
-        // already cleared on the original submit. Same reason we
-        // don't call `#abandonDeferredRootPump` on failure here.
-        void commandPromise.then(
-          () => this.#startDeferredRootPump(),
-          () => {}
-        );
-        // Mark resolved synchronously: even if the response races and
-        // the command settles after the terminal, we don't want to
-        // re-target this same interrupt on the next submit.
-        this.#markInterruptResolved(target.interruptId);
-        const first = await Promise.race([
-          terminalPromise.then((value) => ({
-            type: "terminal" as const,
-            value,
-          })),
-          commandPromise.then(
-            () => ({ type: "command" as const }),
-            (error) => ({ type: "error" as const, error })
-          ),
-        ]);
-        if (first.type === "error") throw first.error;
-        if (first.type === "terminal") {
-          terminal = first.value;
-          terminalSettled = true;
-          // Stale command response — surface as error only if it
-          // arrives with a real failure (not just our own abort).
-          void commandPromise.catch((error) => {
-            if (!terminalSettled) reportError(error);
-          });
-        }
-      } else {
-        const commandPromise = thread.submitRun({
-          input: input ?? null,
-          config: boundConfig,
-          metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
-          forkFrom: options?.forkFrom,
-          multitaskStrategy:
-            options?.multitaskStrategy === "enqueue"
-              ? "enqueue"
-              : options?.multitaskStrategy,
-        });
-        // Start the deferred root pump *after* the dispatch HTTP
-        // response lands — that's when the thread row exists server-
-        // side. Doing it synchronously here would race the response
-        // and the pump's `subscription.subscribe` would 404. Same
-        // reason we drop the self-created flag only after dispatch:
-        // future hydrates need the thread to exist before they fetch
-        // state.
-        //
-        // Fire-and-forget: we don't want to gate Promise.race on this,
-        // and `commandPromise.catch` is already handled below. A
-        // dispatch failure means there's no thread to pump anyway.
-        void commandPromise.then(
-          () => {
-            this.#startDeferredRootPump();
+      const commandPromise = thread.submitRun({
+        input: dispatchInput ?? null,
+        config: boundConfig,
+        metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
+        forkFrom: options?.forkFrom,
+        multitaskStrategy:
+          options?.multitaskStrategy === "enqueue"
+            ? "enqueue"
+            : options?.multitaskStrategy,
+      });
+      // Start the deferred root pump *after* the dispatch HTTP
+      // response lands — that's when the thread row exists server-
+      // side. Doing it synchronously here would race the response
+      // and the pump's `subscription.subscribe` would 404. Same
+      // reason we drop the self-created flag only after dispatch:
+      // future hydrates need the thread to exist before they fetch
+      // state.
+      //
+      // Fire-and-forget: we don't want to gate Promise.race on this,
+      // and `commandPromise.catch` is already handled below. A
+      // dispatch failure means there's no thread to pump anyway.
+      void commandPromise.then(
+        () => {
+          this.#startDeferredRootPump();
+          this.#forgetSelfCreatedThreadId(activeThreadId);
+        },
+        () => {
+          // Dispatch failed. Without abandoning, `#rootPumpDeferred`
+          // stays armed and `selfCreatedThreadIds` still holds this
+          // id — a retry submit would see `wasSelfCreated=false`
+          // (currentThreadId is no longer null), `#ensureThread`
+          // would early-return because `#thread != null`, and the
+          // root pump would never start. Tear down so the next
+          // submit re-runs `#ensureThread` from scratch.
+          if (wasSelfCreated) {
+            this.#abandonDeferredRootPump();
             this.#forgetSelfCreatedThreadId(activeThreadId);
-          },
-          () => {
-            // Dispatch failed. Without abandoning, `#rootPumpDeferred`
-            // stays armed and `selfCreatedThreadIds` still holds this
-            // id — a retry submit would see `wasSelfCreated=false`
-            // (currentThreadId is no longer null), `#ensureThread`
-            // would early-return because `#thread != null`, and the
-            // root pump would never start. Tear down so the next
-            // submit re-runs `#ensureThread` from scratch.
-            if (wasSelfCreated) {
-              this.#abandonDeferredRootPump();
-              this.#forgetSelfCreatedThreadId(activeThreadId);
-            }
           }
-        );
-        const notifyCreated = (result: { run_id?: unknown }) => {
-          this.#options.onCreated?.({
-            run_id: result.run_id as string,
-            thread_id: activeThreadId,
-          });
-        };
-        const first = await Promise.race([
-          terminalPromise.then((value) => ({
-            type: "terminal" as const,
-            value,
-          })),
-          commandPromise.then(
-            (result) => ({ type: "command" as const, result }),
-            (error) => ({ type: "error" as const, error })
-          ),
-        ]);
-        if (first.type === "error") throw first.error;
-        if (first.type === "command") {
-          notifyCreated(first.result);
-        } else {
-          // Terminal landed first (very fast runs). Wait for the
-          // dispatch response in the background so onCreated fires
-          // and dispatch errors still surface.
-          terminal = first.value;
-          terminalSettled = true;
-          void commandPromise.then(notifyCreated).catch((error) => {
-            if (!terminalSettled) reportError(error);
-          });
         }
+      );
+      const notifyCreated = (result: { run_id?: unknown }) => {
+        if (typeof result.run_id !== "string") return;
+        createdRunId = result.run_id;
+        this.#onRunCreated(createdRunId);
+        if (pendingCompletionReason != null) {
+          notifyCompletion(pendingCompletionReason);
+        }
+      };
+      const first = await Promise.race([
+        terminalPromise.then((value) => ({
+          type: "terminal" as const,
+          value,
+        })),
+        commandPromise.then(
+          (result) => ({ type: "command" as const, result }),
+          (error) => ({ type: "error" as const, error })
+        ),
+      ]);
+      if (first.type === "error") throw first.error;
+      if (first.type === "command") {
+        notifyCreated(first.result);
+      } else {
+        // Terminal landed first (very fast runs). Wait for the
+        // dispatch response in the background so onCreated fires
+        // and dispatch errors still surface.
+        terminal = first.value;
+        terminalSettled = true;
+        void commandPromise.then(notifyCreated).catch((error) => {
+          if (!terminalSettled) reportError(error);
+        });
       }
 
       terminal ??= await terminalPromise;
       terminalSettled = true;
+      settleEvent = terminal.event;
       if (terminal.event === "failed" && !abort.signal.aborted) {
         const runError = new Error(
           terminal.error ?? "Run failed with no error message"
@@ -499,7 +524,9 @@ export class SubmitCoordinator<
           /* caller-supplied callback errors must not crash the submit */
         }
       }
+      notifyCompletion(terminalReason(terminal.event));
     } catch (error) {
+      if (!abort.signal.aborted) settleEvent = "failed";
       reportError(error);
     } finally {
       // Always settle loading and clear our slot of the abort
@@ -507,18 +534,110 @@ export class SubmitCoordinator<
       // late state updates from this run finish flushing first.
       this.#rootStore.setState((s) => ({ ...s, isLoading: false }));
       if (this.#runAbort === abort) this.#runAbort = undefined;
+      // Reconcile optimistic state: flip pending messages to sent/failed
+      // and roll back un-echoed non-message keys. `aborted` covers a
+      // rollback-resubmit or `stop()` cancelling this run.
+      if (optimisticHandle != null) {
+        this.#settleOptimistic(
+          optimisticHandle,
+          abort.signal.aborted ? "aborted" : (settleEvent ?? "failed")
+        );
+      }
+      this.#onRunEnd();
       setTimeout(() => this.#drainQueue(), 0);
+    }
+  }
+
+  /**
+   * Surface a *resumed* run's failure the same way {@link submit} surfaces
+   * a fresh run's failure — by writing it to the reactive
+   * {@link RootSnapshot.error} slot.
+   *
+   * `respond()` / `respondAll()` dispatch their `input.respond` command on
+   * the controller directly (they target a specific interrupt, so they
+   * cannot go through {@link submit}, which only does `run.start`). The
+   * resumed run therefore never passed through the submit lifecycle that
+   * populates `rootStore.error` — only the persistent lifecycle listener
+   * observed it, and that listener drives `isLoading` alone. Without this,
+   * a resumed run that fails (e.g. a missing model key surfaced after the
+   * user approves an interrupt) would flip `isLoading` back to `false`
+   * with `error` left untouched, so `stream.error`-driven UIs (error
+   * banners, API-key retry prompts) would silently miss it.
+   *
+   * The `dispatch` thunk is awaited, so a dispatch failure rejects the
+   * caller's `respond()` *and* lands in `rootStore.error`. The resumed
+   * run's terminal is watched in the **background** so the returned promise
+   * still settles on dispatch — preserving the resume command's
+   * resolve-on-dispatch contract (and avoiding a hang when no terminal is
+   * ever emitted, e.g. in unit tests).
+   *
+   * Reuses the shared {@link #runAbort} slot, so `stop()`, `dispose()`, and
+   * a rollback `submit()` all cancel the terminal watch (no spurious error
+   * on user-initiated cancel) and treat the resumed run as the active run.
+   *
+   * The terminal watch uses {@link #awaitResumedRunTerminal}, which skips
+   * stale `interrupted` terminals from the run being resumed (they can reach
+   * the pump after `input.requested` but before `respondInput` calls
+   * `#prepareForNextRun`) and only accepts a later `interrupted` once a
+   * root `running` lifecycle for the resumed run has been observed.
+   *
+   * @param dispatch - Sends the `input.respond` command (and marks the
+   *   targeted interrupt resolved). Invoked after the terminal watch is
+   *   armed.
+   */
+  async dispatchResume(dispatch: () => Promise<void>): Promise<void> {
+    if (this.#getDisposed()) return;
+
+    // Rollback any run still tracked as active (mirrors submit()), then
+    // claim the in-flight slot so stop()/dispose()/a concurrent submit
+    // cancels the terminal watch armed below.
+    this.#runAbort?.abort();
+    const abort = new AbortController();
+    this.#runAbort = abort;
+
+    // Optimistically clear a stale error from a previous run, matching
+    // submit()'s reset, so the resume starts from a clean error slot.
+    this.#rootStore.setState((s) =>
+      s.error === undefined ? s : { ...s, error: undefined }
+    );
+
+    const reportError = (error: unknown): void => {
+      if (abort.signal.aborted) return;
+      this.#rootStore.setState((s) => ({ ...s, error }));
+    };
+
+    // Subscribe to the resumed run's terminal *before* dispatching so a fast
+    // `failed` can't race us. Unlike `#awaitNextTerminal`, the resume watcher
+    // ignores stale `interrupted` events until root `running` is seen.
+    // Watched in the background — we never gate the returned promise on the
+    // resumed run's terminal.
+    const terminalPromise = this.#awaitResumedRunTerminal(abort.signal);
+    void terminalPromise.then((terminal) => {
+      if (this.#runAbort === abort) this.#runAbort = undefined;
+      if (terminal.event === "failed" && !abort.signal.aborted) {
+        reportError(
+          new Error(terminal.error ?? "Run failed with no error message")
+        );
+      }
+      // Drain any submission enqueued while the resumed run was active.
+      setTimeout(() => this.#drainQueue(), 0);
+    });
+
+    try {
+      await dispatch();
+    } catch (error) {
+      // The `input.respond` send itself failed, before any run started.
+      reportError(error);
+      if (this.#runAbort === abort) this.#runAbort = undefined;
+      throw error;
     }
   }
 
   /**
    * Abort the current run (if any) and force `isLoading=false`.
    *
-   * Does NOT issue a server-side cancel — that lands with roadmap
-   * A0.3. Today this is a client-side stop only: subsequent events
-   * for the aborted run are ignored by the controller's pump because
-   * the abort signal is the same one `#awaitNextTerminal` is wired
-   * to.
+   * Client-side only — server-side cancel is handled by
+   * {@link StreamController.stop} before this is invoked.
    */
   async stop(): Promise<void> {
     this.abortActiveRun();

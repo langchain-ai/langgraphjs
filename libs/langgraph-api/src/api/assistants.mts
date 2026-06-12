@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
-import { v7 as uuid } from "uuid";
+import { v7 as uuid } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import {

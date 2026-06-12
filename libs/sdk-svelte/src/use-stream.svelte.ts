@@ -2,13 +2,16 @@ import { onDestroy } from "svelte";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Client, Interrupt } from "@langchain/langgraph-sdk";
 import {
+  applyHeadlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
+  scheduleCoalescedHeadlessToolFlush,
   type AnyHeadlessToolImplementation,
   type OnToolCallback,
 } from "@langchain/langgraph-sdk";
 import {
   Client as ClientCtor,
   type ClientConfig,
+  resolveClientApiUrl,
   type ThreadStream,
 } from "@langchain/langgraph-sdk/client";
 import {
@@ -19,9 +22,14 @@ import {
   type ChannelRegistry,
   type CustomAdapterOptions as StreamCustomAdapterOptions,
   type InferStateType,
+  type InferToolCalls,
   type InferSubagentStates,
   type RootSnapshot,
-  type StateOf as StreamStateOf,
+  type RunCompletedInfo,
+  type RunExecutionInfo,
+  type StreamRespondAllOptions,
+  type StreamRespondOptions,
+  type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubagentMap,
@@ -31,9 +39,6 @@ import {
   type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
-
-/** @deprecated Prefer {@link InferStateType}. */
-export type StateOf<T> = StreamStateOf<T>;
 
 /**
  * A value that may be either a plain `T` or a getter `() => T`. Used
@@ -96,49 +101,246 @@ export interface UseStreamReturn<
   StateType extends object = InferStateType<T>,
   SubagentStates = InferSubagentStates<T>,
 > {
+  // ----- always-on root projections -----
+  /**
+   * The most recent `values`-channel snapshot emitted at the root
+   * namespace — i.e. the thread-level state as the server sees it
+   * after each superstep. Updated on every root `values` event, not
+   * on token-level deltas: if you render `stream.values.messages`
+   * directly you'll see full turns appear at once instead of
+   * streaming token-by-token. Use {@link messages} (or
+   * `useMessages`) for the token-streamed view.
+   *
+   * Equivalent to calling `useValues(stream)`.
+   */
   readonly values: StateType;
+  /**
+   * The root message projection. Assembled from two sources and
+   * merged in real time:
+   *
+   *  1. `messages`-channel deltas — token-level streaming events
+   *     (`message-start`, `content-block-delta`, `message-finish`)
+   *     emitted by the runtime. These drive live, token-by-token
+   *     updates.
+   *  2. `values.messages` snapshots — the authoritative ordering
+   *     and any messages the agent produces without token streaming
+   *     (human turns, tool results, echoes from subagents).
+   *
+   * If the backend only emits `values` events (no `messages`
+   * channel), every message will appear fully-formed on each
+   * values update rather than streaming. This is a backend/runtime
+   * concern — the Svelte layer faithfully renders whatever the
+   * server sends.
+   *
+   * Equivalent to calling `useMessages(stream)` with no target.
+   */
   readonly messages: BaseMessage[];
-  readonly toolCalls: AssembledToolCall[];
+  /**
+   * Root-namespace tool calls assembled from the `tools` channel.
+   * Each entry is a fully parsed {@link AssembledToolCall} with
+   * name, args, and id — suitable for rendering approval UIs or
+   * forwarding to headless tool handlers.
+   *
+   * When the stream is typed with an agent brand or tool list,
+   * entries are narrowed via {@link InferToolCalls}. Equivalent to
+   * calling `useToolCalls(stream)` with no target.
+   */
+  readonly toolCalls: InferToolCalls<T>[];
+  /**
+   * All unresolved protocol interrupts observed on the root
+   * namespace during the active thread. Populated from lifecycle /
+   * input events and seeded on hydration from `thread.getState()`.
+   * Cleared optimistically when a new run starts or an interrupt is
+   * resolved via {@link respond}.
+   */
   readonly interrupts: Interrupt<InterruptType>[];
+  /**
+   * Convenience alias for {@link interrupts}[0] — the primary
+   * interrupt most UIs should act on when only one is pending.
+   * `undefined` when no interrupt is active.
+   */
   readonly interrupt: Interrupt<InterruptType> | undefined;
+  /**
+   * `true` while a run is active or being started on the current
+   * thread. Driven by root-namespace lifecycle events (`running` →
+   * `true`, terminal phases → `false`). Use this to disable submit
+   * buttons and show in-flight spinners.
+   */
   readonly isLoading: boolean;
+  /**
+   * `true` while the initial `thread.getState()` hydration for the
+   * active thread is in flight. Distinct from {@link isLoading} —
+   * thread loading covers the one-time fetch that seeds
+   * {@link values} / {@link messages} before any user submit.
+   */
   readonly isThreadLoading: boolean;
+  /**
+   * The last error observed on the active run or hydration attempt.
+   * `undefined` when no error has occurred. Cleared optimistically
+   * when a new {@link submit} starts.
+   */
   readonly error: unknown;
+  /**
+   * Id of the thread the controller is bound to. `null` until the
+   * first {@link submit} creates or selects a thread (or until an
+   * explicit `threadId` option is provided and hydrated).
+   */
   readonly threadId: string | null;
   /**
    * Promise that settles when the current thread's initial hydration
    * completes. Useful in SvelteKit `load()` handlers (or any
    * async-init site) to block until the controller has reconciled
-   * with server-held state.
+   * with server-held state. A fresh promise is installed on every
+   * `threadId` change.
    */
   readonly hydrationPromise: Promise<void>;
 
+  // ----- always-on discovery -----
+  /**
+   * Subagents discovered on the root run. For DeepAgent-typed
+   * streams the key set is narrowed to the subagent names declared
+   * on the agent brand (`keyof InferSubagentStates<T>`).
+   */
   readonly subagents: ReadonlyMap<
     keyof SubagentStates & string extends never
       ? string
       : keyof SubagentStates & string,
     SubagentDiscoverySnapshot
   >;
+  /**
+   * Subgraphs discovered on the root run.
+   *
+   * A namespace is classified as a subgraph iff at least one
+   * strictly-deeper namespace has been observed with it as a prefix.
+   * This is inferred from the lifecycle event stream — plain function
+   * nodes (`orchestrator`, `writer` in the nested-stategraph example)
+   * never appear here even though the server emits namespaced
+   * lifecycle events for them. Promotion is monotonic and retroactive;
+   * an entry appears as soon as the first descendant event lands.
+   */
   readonly subgraphs: ReadonlyMap<string, SubgraphDiscoverySnapshot>;
+  /**
+   * Subgraphs indexed by the graph node that produced them
+   * (`addNode("visualizer_0", …)`). Each value is an array because
+   * parallel fan-outs and loops can spawn multiple invocations of
+   * the same node; arrays preserve insertion order. Updates in
+   * lock-step with {@link subgraphs}.
+   */
   readonly subgraphsByNode: ReadonlyMap<
     string,
     readonly SubgraphDiscoverySnapshot[]
   >;
 
+  // ----- imperatives -----
+  /**
+   * Dispatch a new run on the bound thread.
+   *
+   * `input` is typed as `Partial<StateType>` so IDE autocompletion
+   * surfaces the state keys declared on the root composable.
+   */
   submit(
     input: WidenUpdateMessages<Partial<StateType>> | null | undefined,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void>;
-  stop(): Promise<void>;
+  /**
+   * Stop the active run on the current thread. By default cancels the
+   * run server-side and disconnects the client; pass `{ cancel: false }`
+   * or use {@link disconnect} for join/rejoin. Sets {@link isLoading} to
+   * `false` immediately; {@link values} and {@link messages} are preserved.
+   */
+  stop(options?: StreamStopOptions): Promise<void>;
+  /**
+   * Disconnect the client without cancelling the run server-side.
+   * Alias for `stop({ cancel: false })`.
+   */
+  disconnect(): Promise<void>;
+  /**
+   * Resume a pending protocol interrupt by sending a response payload
+   * back to the interrupted namespace.
+   *
+   * When `options.interruptId` is omitted, walks `getThread()?.interrupts`
+   * from newest to oldest and resumes the first not yet resolved by a prior
+   * `respond()` call. That may be a root or subgraph interrupt and is
+   * **not** necessarily {@link interrupt} (`interrupts[0]`, root-only).
+   * Safe when exactly one interrupt is pending; otherwise pass an explicit
+   * `options.interruptId` (and `options.namespace` for subgraph
+   * interrupts).
+   *
+   * The server validates `namespace` against the pending interrupt. Root
+   * interrupts use `namespace: []` (default when omitted). For subgraph
+   * interrupts, copy `namespace` from `getThread()?.interrupts`.
+   *
+   * @example
+   * ```ts
+   * // Single pending interrupt
+   * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```svelte
+   * // Multiple root interrupts
+   * {#each stream.interrupts as intr (intr.id)}
+   *   <button onclick={() => stream.respond(decide(intr.value), { interruptId: intr.id! })}>
+   *     Resolve
+   *   </button>
+   * {/each}
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Subgraph interrupt — namespace from `getThread()`
+   * const thread = stream.getThread();
+   * for (const entry of thread?.interrupts ?? []) {
+   *   await stream.respond(buildResponse(entry.payload), {
+   *     interruptId: entry.interruptId,
+   *     namespace: entry.namespace,
+   *   });
+   * }
+   * ```
+   *
+   * To resume several interrupts pending at the same checkpoint in one
+   * command, use {@link respondAll}.
+   */
   respond(
     response: unknown,
-    target?: { interruptId: string; namespace?: string[] }
+    options?: StreamRespondOptions<ConfigurableType>
   ): Promise<void>;
 
+  /**
+   * Resume several pending interrupts at the same checkpoint in a single
+   * command — required when a run pauses on multiple interrupts at once
+   * (e.g. parallel tool-authorization prompts), which sequential
+   * {@link respond} calls cannot handle. `responsesById` maps each pending
+   * `interruptId` to its response, so different interrupts can receive
+   * different payloads. Pass `options.config` / `options.metadata` to fold
+   * run-level config and metadata into the resumed run, mirroring
+   * `submit()`.
+   *
+   * @example
+   * ```ts
+   * await stream.respondAll({
+   *   [interruptA.id]: { approved: true },
+   *   [interruptB.id]: { approved: false },
+   * });
+   * ```
+   */
+  respondAll(
+    responsesById: Record<string, unknown>,
+    options?: StreamRespondAllOptions<ConfigurableType>
+  ): Promise<void>;
+
+  // ----- identity -----
+  /** LangGraph SDK client used to construct thread streams. */
   readonly client: Client;
+  /** Assistant id the thread is bound to for its lifetime. */
   readonly assistantId: string;
 
-  /** v2 escape hatch — returns the bound {@link ThreadStream}. */
+  /**
+   * Returns the bound {@link ThreadStream}, if one exists (`undefined`
+   * until the thread is hydrated or the first submit completes). Prefer
+   * the projections and selector composables for UI work; use this for
+   * low-level protocol access (raw subscriptions, state commands, etc.).
+   */
   getThread(): ThreadStream | undefined;
 
   /** @internal Used by selector composables. */
@@ -154,9 +356,25 @@ export interface UseStreamReturn<
  * components that pass a `stream` through to selector composables
  * without reading `values` directly. Mirrors the React
  * `AnyStream` alias.
+ *
+ * Widening the generic slots to `any` is **not** enough on its own:
+ * members computed from `T` in covariant positions don't collapse to a
+ * top type under `any`. `toolCalls: InferToolCalls<any>[]` resolves to
+ * `AssembledToolCall<…, never>[]` — the `never` output slot is narrower
+ * than a concrete handle's `AssembledToolCall<…, unknown>[]`, so a
+ * fully-typed `useStream<typeof agent>()` handle would fail to assign
+ * and every `useToolCalls(stream)` call would need an `as AnyStream`
+ * cast. Override `toolCalls` / `values` with their widest forms so the
+ * erased handle is a true supertype of every concrete `UseStreamReturn`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyStream = UseStreamReturn<any, any, any>;
+export type AnyStream = Omit<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  UseStreamReturn<any, any, any>,
+  "toolCalls" | "values"
+> & {
+  readonly toolCalls: AssembledToolCall[];
+  readonly values: unknown;
+};
 
 /**
  * Svelte 5 binding for the v2-native stream runtime.
@@ -212,11 +430,13 @@ export function useStream<
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
     onThreadId?: (threadId: string) => void;
-    onCreated?: (meta: { run_id: string; thread_id: string }) => void;
+    onCreated?: (info: RunExecutionInfo) => void;
+    onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
     tools?: AnyHeadlessToolImplementation[];
     onTool?: OnToolCallback;
+    optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
 
@@ -229,7 +449,10 @@ export function useStream<
   const client: Client =
     asBag.client ??
     (new ClientCtor({
-      apiUrl: asBag.apiUrl,
+      apiUrl: resolveClientApiUrl({
+        apiUrl: asBag.apiUrl,
+        transport: hasCustomAdapter ? transport : asBag.transport,
+      }),
       apiKey: asBag.apiKey,
       callerOptions: asBag.callerOptions,
       defaultHeaders: asBag.defaultHeaders,
@@ -261,8 +484,10 @@ export function useStream<
     webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
     onThreadId: options.onThreadId,
     onCreated: options.onCreated,
+    onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
+    optimistic: asBag.optimistic,
   });
 
   // Deferred dispose: mirrors React's activate/dispose pattern so HMR
@@ -346,33 +571,33 @@ export function useStream<
         handledForThreadId = currentThreadId;
       }
 
-      const valuesBag = rootSnapshot.values as unknown as Record<
-        string,
-        unknown
-      >;
-      const existing = Array.isArray(valuesBag?.__interrupt__)
-        ? (valuesBag.__interrupt__ as Interrupt[])
-        : [];
-      const combined: Interrupt[] = [
-        ...existing,
-        ...(rootSnapshot.interrupts as unknown as Interrupt[]),
-      ];
-      if (combined.length === 0) return;
-      flushPendingHeadlessToolInterrupts(
-        { ...valuesBag, __interrupt__: combined },
-        tools,
-        handledTools,
-        {
-          onTool,
-          defer: (run) => {
-            void Promise.resolve().then(run);
-          },
-          resumeSubmit: (command) =>
-            controller.submit(null, {
-              command,
-            } as StreamSubmitOptions<StateType, ConfigurableType>),
-        }
-      );
+      scheduleCoalescedHeadlessToolFlush(handledTools, () => {
+        const valuesBag = rootSnapshot.values as unknown as Record<
+          string,
+          unknown
+        >;
+        const protocolInterrupts =
+          rootSnapshot.interrupts as unknown as Interrupt[];
+        const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
+          ? (valuesBag.__interrupt__ as Interrupt[])
+          : [];
+        const headlessInterrupts =
+          protocolInterrupts.length > 0 ? protocolInterrupts : valuesInterrupts;
+        if (headlessInterrupts.length === 0) return;
+        flushPendingHeadlessToolInterrupts(
+          { ...valuesBag, __interrupt__: headlessInterrupts },
+          tools,
+          handledTools,
+          {
+            onTool,
+            defer: (run) => {
+              void Promise.resolve().then(run);
+            },
+            resumeSubmit: (command) =>
+              applyHeadlessToolResumeCommand(controller, command),
+          }
+        );
+      });
     });
   }
 
@@ -388,7 +613,7 @@ export function useStream<
       return rootSnapshot.messages;
     },
     get toolCalls() {
-      return rootSnapshot.toolCalls;
+      return rootSnapshot.toolCalls as InferToolCalls<T>[];
     },
     get interrupts() {
       return rootSnapshot.interrupts;
@@ -425,8 +650,11 @@ export function useStream<
       return subgraphByNodeSnapshot;
     },
     submit: (input, submitOptions) => controller.submit(input, submitOptions),
-    stop: () => controller.stop(),
-    respond: (response, target) => controller.respond(response, target),
+    stop: (options) => controller.stop(options),
+    disconnect: () => controller.disconnect(),
+    respond: (response, options) => controller.respond(response, options),
+    respondAll: (responsesById, options) =>
+      controller.respondAll(responsesById, options),
     getThread: () => controller.getThread(),
     client,
     assistantId,
@@ -450,10 +678,7 @@ export type UseStreamResult<
  *
  * @internal
  */
-export function getRegistry(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stream: UseStreamReturn<any, any, any>
-): ChannelRegistry {
+export function getRegistry(stream: AnyStream): ChannelRegistry {
   return stream[STREAM_CONTROLLER].registry;
 }
 

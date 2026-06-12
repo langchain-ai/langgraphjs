@@ -1,5 +1,23 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.4
+
+### Patch Changes
+
+- [#2517](https://github.com/langchain-ai/langgraphjs/pull/2517) [`67a4f8d`](https://github.com/langchain-ai/langgraphjs/commit/67a4f8da580eb527fa6f201a4c72895754fe37f7) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: `MongoDBSaver.putWrites` now honors `WRITES_IDX_MAP`, pinning special channels (`__error__`, `__scheduled__`, `__interrupt__`, `__resume__`) to fixed negative indices instead of the call-local ordinal. Previously a mixed `putWrites([[...regular...], [INTERRUPT, …]], taskId)` placed the INTERRUPT at a positive idx that could collide with a regular write at the same `(task_id, idx)`, and the unconditional `$set` upsert silently overwrote whichever row landed there first. The conflict-resolution clause now matches the Postgres / SQLite (TS and Python) checkpointers: `$set` only when every channel is a special one, `$setOnInsert` otherwise.
+
+## 1.3.3
+
+### Patch Changes
+
+- [#2260](https://github.com/langchain-ai/langgraphjs/pull/2260) [`4d03dcb`](https://github.com/langchain-ai/langgraphjs/commit/4d03dcbc28bbfdf4c0f0ac065b9853652836d2f9) Thanks [@venkat22022202](https://github.com/venkat22022202)! - fix(mongodb): include pendingWrites in list() results
+
+## 1.3.2
+
+### Patch Changes
+
+- [#2186](https://github.com/langchain-ai/langgraphjs/pull/2186) [`26c2e32`](https://github.com/langchain-ai/langgraphjs/commit/26c2e325f435a2c061d6b78a7bd6af089cb1e0e6) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: metadata filter in list() now works by querying a plain JSON shadow copy instead of the serialized binary blob
+
 ## 1.3.1
 
 ### Patch Changes

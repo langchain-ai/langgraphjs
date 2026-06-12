@@ -89,6 +89,27 @@ app uses this shape: the React tree uses `HttpAgentServerAdapter`, while
 the Hono backend implements `/commands` and `/stream` with a
 `LocalThreadSession`.
 
+`threadId` is optional. Omit it (and write `paths` as functions of the
+thread id) to let the framework bind the thread — including the id
+minted on the first `submit()` of a `threadId: null` stream — so a
+custom backend gets the same lazy thread-creation flow as the built-in
+transports:
+
+```tsx
+const transport = new HttpAgentServerAdapter({
+  apiUrl: window.location.origin,
+  paths: {
+    commands: (threadId) => `/api/threads/${threadId}/commands`,
+    stream: (threadId) => `/api/threads/${threadId}/stream`,
+  },
+});
+
+const stream = useStream({ transport, threadId: null });
+```
+
+See [Binding to a thread](./custom-transport.md#binding-to-a-thread) for
+the full re-bind and thread-switching rules.
+
 On the custom-adapter branch, `assistantId` is optional (defaults to `"_"`) and server-only options (`apiUrl`, `apiKey`, `fetch`, `webSocketFactory`) are rejected at compile time.
 
 ## Custom `AgentServerAdapter`
@@ -107,7 +128,9 @@ interface AgentServerAdapter {
   openEventStream?(params: SubscribeParams): EventStreamHandle;
   close(): Promise<void>;
 
-  // Optional:
+  // Optional: bind / re-bind the adapter to a thread (lazy creation,
+  // thread switches). Omit to stay pinned to the constructed thread.
+  setThreadId?(threadId: string): void;
   getState?<S = unknown>(): Promise<{
     values: S;
     checkpoint?: { checkpoint_id?: string } | null;
