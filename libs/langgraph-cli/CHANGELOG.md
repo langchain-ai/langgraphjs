@@ -1,5 +1,18 @@
 # @langchain/langgraph-cli
 
+## 1.3.1
+
+### Patch Changes
+
+- [#2527](https://github.com/langchain-ai/langgraphjs/pull/2527) [`9e114e5`](https://github.com/langchain-ai/langgraphjs/commit/9e114e55d362a874878a817740de42fd62ae9db7) Thanks [@christian-bromann](https://github.com/christian-bromann)! - chore(deps): remove uuid dependency in favor of embedded uuid in core
+
+  Replace direct `uuid` package imports with `@langchain/core/utils/uuid` across
+  langgraph packages to deduplicate dependencies and align with @langchain/core's
+  embedded UUID utilities.
+
+- Updated dependencies [[`9e114e5`](https://github.com/langchain-ai/langgraphjs/commit/9e114e55d362a874878a817740de42fd62ae9db7)]:
+  - @langchain/langgraph-api@1.3.1
+
 ## 1.3.0
 
 ### Patch Changes
