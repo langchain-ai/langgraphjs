@@ -2,6 +2,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   CheckpointMetadata,
   CheckpointPendingWrite,
+  EXCLUDED_METADATA_KEYS,
   PendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
@@ -20,7 +21,7 @@ import {
 } from "./types.js";
 import { readChannels } from "./io.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
-import { EXCLUDED_METADATA_KEYS, filterToUserTags } from "./utils/config.js";
+import { filterToUserTags } from "./utils/config.js";
 
 type ConsoleColors = {
   start: string;
