@@ -1,0 +1,20 @@
+.github/actions/setup-and-build/action.yml
+  s_5a194b10c39958::t_f6ff0cd9d6708c 18,20
+  s_5a194b10c39958::t_3efe122ca98724 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "582dec0309c0d7ab4d27cf79782e106bad545ca9",
+  "prompts": {},
+  "sessions": {
+    "s_5a194b10c39958": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb81bb9a-daf8-4c40-90b5-e7adb181e6ee",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Mason Daugherty <github@mdrxy.com>"
+    }
+  }
+}
