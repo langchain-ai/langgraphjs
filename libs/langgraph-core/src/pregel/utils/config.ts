@@ -1,5 +1,10 @@
 import { RunnableConfig } from "@langchain/core/runnables";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
+import {
+  CallbackManager,
+  ensureHandler,
+  type Callbacks,
+} from "@langchain/core/callbacks/manager";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
@@ -67,6 +72,56 @@ export function propagateConfigurableToMetadata(
   return result;
 }
 
+/**
+ * Merge two `callbacks` values across configs.
+ *
+ * A `callbacks` value may be `undefined`, an array of handlers, or a
+ * {@link CallbackManager}, so merging two of them has six cases. This
+ * mirrors the callbacks branch of langchain-core's `mergeConfigs` and
+ * langgraph's `_merge_callbacks`, so a handler bound via
+ * `.withConfig({ callbacks: [...] })` is preserved when a later config
+ * (e.g. `streamEvents` injecting its own internal handler) is merged on
+ * top instead of overwriting it.
+ */
+function mergeCallbacks(
+  base: Callbacks | undefined,
+  provided: Callbacks | undefined
+): Callbacks | undefined {
+  if (provided === undefined) return base;
+  if (base === undefined) {
+    return Array.isArray(provided) ? [...provided] : provided.copy();
+  }
+  if (Array.isArray(provided)) {
+    if (Array.isArray(base)) return base.concat(provided);
+    // base is a manager
+    const manager = base.copy();
+    for (const callback of provided) {
+      manager.addHandler(ensureHandler(callback), true);
+    }
+    return manager;
+  }
+  // provided is a manager
+  if (Array.isArray(base)) {
+    const manager = provided.copy();
+    for (const callback of base) {
+      manager.addHandler(ensureHandler(callback), true);
+    }
+    return manager;
+  }
+  // both are managers
+  return new CallbackManager(provided._parentRunId, {
+    handlers: base.handlers.concat(provided.handlers),
+    inheritableHandlers: base.inheritableHandlers.concat(
+      provided.inheritableHandlers
+    ),
+    tags: Array.from(new Set(base.tags.concat(provided.tags))),
+    inheritableTags: Array.from(
+      new Set(base.inheritableTags.concat(provided.inheritableTags))
+    ),
+    metadata: { ...base.metadata, ...provided.metadata },
+  });
+}
+
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
 ): RunnableConfig {
@@ -114,7 +169,37 @@ export function ensureLangGraphConfig(
     }
 
     for (const [k, v] of Object.entries(config)) {
-      if (v !== undefined && CONFIG_KEYS.includes(k)) {
+      if (v === undefined || !CONFIG_KEYS.includes(k)) {
+        continue;
+      }
+
+      // Merge (rather than overwrite) the fields that compose across
+      // multiple configs, matching langgraph's `merge_configs` /
+      // langchain-core's `mergeConfigs`. Without this, a value bound via
+      // `.withConfig({...})` is silently dropped whenever a later config
+      // (e.g. invoke-time, or `streamEvents`' internal handler) supplies
+      // any other key in the same field. Later configs still win per key
+      // on collision.
+      if (k === "configurable") {
+        empty.configurable = {
+          ...(empty.configurable as Record<string, unknown> | undefined),
+          ...(v as Record<string, unknown>),
+        };
+      } else if (k === "metadata") {
+        empty.metadata = {
+          ...(empty.metadata as Record<string, unknown> | undefined),
+          ...(v as Record<string, unknown>),
+        };
+      } else if (k === "tags") {
+        // Plain concat (matches langgraph's `merge_configs`): no dedup,
+        // no sort.
+        empty.tags = [
+          ...((empty.tags as string[] | undefined) ?? []),
+          ...(v as string[]),
+        ];
+      } else if (k === "callbacks") {
+        empty.callbacks = mergeCallbacks(empty.callbacks, v as Callbacks);
+      } else {
         empty[k as keyof LangGraphRunnableConfig] = v;
       }
     }
