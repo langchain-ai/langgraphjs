@@ -13,6 +13,7 @@ import type {
   InferStateType,
   StreamRespondAllOptions,
   StreamRespondOptions,
+  StreamStatus,
   StreamStopOptions,
   StreamSubmitOptions,
   SubgraphDiscoverySnapshot,
@@ -95,6 +96,10 @@ export class StreamService<
 
   get isLoading(): Signal<boolean> {
     return this.stream.isLoading;
+  }
+
+  get status(): Signal<StreamStatus> {
+    return this.stream.status;
   }
 
   get isThreadLoading(): Signal<boolean> {
