@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@langchain/core": "^1.1.41",
+    "@langchain/langgraph": "latest",
+    "@langchain/langgraph-sdk": "latest",
+    "zod": "^4.3.6",
+    "jose": "^6.2.2",
+    "hono": "^4.12.18"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.2.4"
+  }
+}

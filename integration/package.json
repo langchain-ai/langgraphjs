@@ -1,0 +1,20 @@
+{
+  "name": "@langchain/langgraph-integration",
+  "private": true,
+  "type": "module",
+  "description": "Integration tests: JS graphs running on the real managed langgraph-api server (ported from langgraph-api/api/langgraph_api/js/tests).",
+  "scripts": {
+    "configure": "python3 graphs/configure-langgraph.py --node-version 20 --output graphs/langgraph.json",
+    "build": "cd graphs && uv run langgraph build --no-pull -c langgraph.json --tag langgraphjs-tests-api",
+    "up": "docker compose -f compose-postgres.yml up -V --force-recreate --wait",
+    "down": "docker compose -f compose-postgres.yml down -v",
+    "test": "vitest run --fileParallelism=false",
+    "test:streaming": "vitest run --fileParallelism=false streaming.test.ts",
+    "int": "pnpm configure && pnpm build && pnpm up && (pnpm test; ec=$?; pnpm down; exit $ec)"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "latest",
+    "postgres": "^3.4.4",
+    "vitest": "^3.2.4"
+  }
+}
