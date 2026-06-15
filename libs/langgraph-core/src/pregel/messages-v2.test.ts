@@ -7,6 +7,19 @@ import type { ChatModelStreamEvent } from "@langchain/core/language_models/event
 import { StreamProtocolMessagesHandler } from "./messages-v2.js";
 
 describe("StreamProtocolMessagesHandler", () => {
+  it("dispatches its callbacks inline (awaitHandlers) so stream pushes are not deferred", () => {
+    // Regression: the handler's only side effect is a synchronous `push()` onto
+    // the run stream. If its callbacks were dispatched on LangChain's background
+    // queue (the default `awaitHandlers === false`), a model/tool call in a
+    // nested or parallel task could flush its `messages` chunk after the Pregel
+    // loop sealed the stream, where `push()` silently drops it — surfacing as
+    // empty per-message streams (`sub.messages`) for subagents dispatched in
+    // parallel from a single tools step. Dispatching inline keeps every push
+    // ordered within the originating call, while the stream is still open.
+    const handler = new StreamProtocolMessagesHandler(() => {});
+    expect(handler.awaitHandlers).toBe(true);
+  });
+
   it("forwards Core stream events with run metadata", () => {
     const streamFn = vi.fn();
     const handler = new StreamProtocolMessagesHandler(streamFn);
