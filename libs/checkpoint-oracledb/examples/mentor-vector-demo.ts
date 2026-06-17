@@ -161,8 +161,7 @@ async function main(): Promise<void> {
   const namespace = ["mentor-vector-demo", options.threadId, "memories"];
   const indexConfig: IndexConfig = {
     dims: 4,
-    embeddings:
-      deterministicEmbeddings as unknown as IndexConfig["embeddings"],
+    embeddings: deterministicEmbeddings as unknown as IndexConfig["embeddings"],
     fields: ["text", "metadata.summary", "chapters[*].content"],
   };
   const store = new OracleStore({
@@ -240,7 +239,9 @@ async function main(): Promise<void> {
 
     section("Demo Result");
     console.log("OracleStore created vector rows from configured fields.");
-    console.log("Oracle VECTOR search returned scored and scoreless memory rows.");
+    console.log(
+      "Oracle VECTOR search returned scored and scoreless memory rows."
+    );
   } catch (error) {
     if (isVectorUnsupportedError(error)) {
       console.log("\nOracle VECTOR demo skipped.");

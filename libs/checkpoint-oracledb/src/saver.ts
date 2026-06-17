@@ -173,11 +173,7 @@ function validateCheckpointKeyFields({
     encodedCheckpointNs,
     CHECKPOINT_KEY_MAX_BYTES
   );
-  validateByteLength(
-    "checkpoint_id",
-    checkpointId,
-    CHECKPOINT_KEY_MAX_BYTES
-  );
+  validateByteLength("checkpoint_id", checkpointId, CHECKPOINT_KEY_MAX_BYTES);
   validateByteLength(
     "parent_checkpoint_id",
     parentCheckpointId,
@@ -201,11 +197,7 @@ function validateCheckpointListFields(
       CHECKPOINT_KEY_MAX_BYTES
     );
   }
-  validateByteLength(
-    "checkpoint_id",
-    checkpointId,
-    CHECKPOINT_KEY_MAX_BYTES
-  );
+  validateByteLength("checkpoint_id", checkpointId, CHECKPOINT_KEY_MAX_BYTES);
   validateByteLength(
     "before.checkpoint_id",
     beforeCheckpointId,
@@ -213,7 +205,9 @@ function validateCheckpointListFields(
   );
 }
 
-async function closeConnection(connection: OracleConnectionLike): Promise<void> {
+async function closeConnection(
+  connection: OracleConnectionLike
+): Promise<void> {
   if (connection.close) {
     await connection.close();
   } else if (connection.release) {
@@ -232,8 +226,7 @@ async function valueToUint8Array(value: unknown): Promise<Uint8Array> {
     typeof value === "object" &&
     value !== null &&
     "getData" in value &&
-    typeof (value as { getData: () => Promise<unknown> }).getData ===
-      "function"
+    typeof (value as { getData: () => Promise<unknown> }).getData === "function"
   ) {
     return valueToUint8Array(
       await (value as { getData: () => Promise<unknown> }).getData()
@@ -346,9 +339,8 @@ export class OracleCheckpointSaver extends BaseCheckpointSaver {
         }
       }
 
-      this.checkpointStorageMode = await this.detectCheckpointStorageMode(
-        connection
-      );
+      this.checkpointStorageMode =
+        await this.detectCheckpointStorageMode(connection);
     }).catch((error) => {
       this.setupPromise = undefined;
       throw error;
@@ -425,9 +417,10 @@ export class OracleCheckpointSaver extends BaseCheckpointSaver {
 
     const rows = await this.selectCheckpointRows(query.sql, query.binds);
     let yielded = 0;
-    const limit = options?.limit !== undefined
-      ? Number.parseInt(options.limit.toString(), 10)
-      : undefined;
+    const limit =
+      options?.limit !== undefined
+        ? Number.parseInt(options.limit.toString(), 10)
+        : undefined;
     if (limit !== undefined && limit <= 0) return;
 
     for (const row of rows) {
@@ -646,7 +639,9 @@ export class OracleCheckpointSaver extends BaseCheckpointSaver {
     return run();
   }
 
-  private async withRawConnectionLock<T>(callback: () => Promise<T>): Promise<T> {
+  private async withRawConnectionLock<T>(
+    callback: () => Promise<T>
+  ): Promise<T> {
     const previous = this.rawConnectionLock;
     let release!: () => void;
     this.rawConnectionLock = new Promise<void>((resolve) => {
@@ -856,9 +851,7 @@ WHERE table_name = UPPER(:table_name)
     ) as Promise<CheckpointMetadata>;
   }
 
-  private async loadBlobs(
-    rows: OracleRow[]
-  ): Promise<Record<string, unknown>> {
+  private async loadBlobs(rows: OracleRow[]): Promise<Record<string, unknown>> {
     const entries = await Promise.all(
       rows
         .filter((row) => rowValue<string>(row, "type") !== "empty")
@@ -877,14 +870,17 @@ WHERE table_name = UPPER(:table_name)
     rows: OracleRow[]
   ): Promise<[string, string, unknown][]> {
     return Promise.all(
-      rows.map(async (row) => [
-        rowValue<string>(row, "task_id"),
-        rowValue<string>(row, "channel"),
-        await this.serde.loadsTyped(
-          rowValue<string | null | undefined>(row, "type") ?? "json",
-          await valueToUint8Array(rowValue(row, "blob"))
-        ),
-      ] as [string, string, unknown])
+      rows.map(
+        async (row) =>
+          [
+            rowValue<string>(row, "task_id"),
+            rowValue<string>(row, "channel"),
+            await this.serde.loadsTyped(
+              rowValue<string | null | undefined>(row, "type") ?? "json",
+              await valueToUint8Array(rowValue(row, "blob"))
+            ),
+          ] as [string, string, unknown]
+      )
     );
   }
 
@@ -927,7 +923,9 @@ WHERE table_name = UPPER(:table_name)
     return [type, Buffer.from(bytes)];
   }
 
-  private async dumpCheckpoint(checkpoint: Checkpoint): Promise<SerializedBytes> {
+  private async dumpCheckpoint(
+    checkpoint: Checkpoint
+  ): Promise<SerializedBytes> {
     const serialized: Partial<Checkpoint> = copyCheckpoint(checkpoint);
     delete serialized.channel_values;
     return this.dumpValue(serialized);

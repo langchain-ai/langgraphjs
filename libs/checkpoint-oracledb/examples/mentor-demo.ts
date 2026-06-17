@@ -193,7 +193,9 @@ async function runCheckpointDemo({
 
   section("OracleCheckpointSaver");
   console.log(`thread_id: ${threadId}`);
-  console.log(`previous checkpoint before demo: ${previousTuple ? "yes" : "no"}`);
+  console.log(
+    `previous checkpoint before demo: ${previousTuple ? "yes" : "no"}`
+  );
   console.log(`first invoke checkpoint_id: ${firstCheckpoint?.checkpoint.id}`);
   console.log(`latest checkpoint_id: ${latestTuple?.checkpoint.id}`);
   console.log(`checkpoints listed: ${checkpoints.length}`);
@@ -283,7 +285,9 @@ async function runStoreDemo({
   console.log(compact(summarizeItems(exactFilter)));
   console.log("search $eq filter { topic: { $eq: 'database' } }:");
   console.log(compact(summarizeItems(eqFilter)));
-  console.log("search $in filter { kind: { $in: ['profile', 'preference'] } }:");
+  console.log(
+    "search $in filter { kind: { $in: ['profile', 'preference'] } }:"
+  );
   console.log(compact(summarizeItems(inFilter)));
   console.log("search range filter { score: { $gte: 7 } }:");
   console.log(compact(summarizeItems(rangeFilter)));
@@ -335,8 +339,12 @@ async function main(): Promise<void> {
     });
 
     section("Demo Result");
-    console.log("OracleCheckpointSaver persisted and resumed a real StateGraph.");
-    console.log("OracleStore persisted JSON memories, filters, namespaces, empty keys, and deletes.");
+    console.log(
+      "OracleCheckpointSaver persisted and resumed a real StateGraph."
+    );
+    console.log(
+      "OracleStore persisted JSON memories, filters, namespaces, empty keys, and deletes."
+    );
   } finally {
     await store.stop();
     await checkpointer.end();

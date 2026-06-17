@@ -17,7 +17,9 @@ type DemoMemory = {
 
 function readArg(name: string): string | undefined {
   const prefix = `--${name}=`;
-  return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+  return process.argv
+    .find((arg) => arg.startsWith(prefix))
+    ?.slice(prefix.length);
 }
 
 function hasFlag(name: string): boolean {
@@ -69,7 +71,10 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-function memorySortValue(memory: { key: string; value: Record<string, unknown> }): number {
+function memorySortValue(memory: {
+  key: string;
+  value: Record<string, unknown>;
+}): number {
   const value = memory.value as DemoMemory;
   if (typeof value.turn === "number") return value.turn;
   if (typeof value.createdAt === "string") {
@@ -158,7 +163,8 @@ async function main(): Promise<void> {
     .addEdge("normalize", "count_words")
     .addConditionalEdges(
       "count_words",
-      (state): DemoRoute => (state.wordCount > 6 ? "long_reply" : "short_reply"),
+      (state): DemoRoute =>
+        state.wordCount > 6 ? "long_reply" : "short_reply",
       {
         short_reply: "short_reply",
         long_reply: "long_reply",
@@ -202,7 +208,9 @@ async function main(): Promise<void> {
     console.log("--------------------------------");
     console.log(`thread_id: ${threadId}`);
     console.log(`tablePrefix: ${tablePrefix}`);
-    console.log(`had checkpoint before invoke: ${previousTuple ? "yes" : "no"}`);
+    console.log(
+      `had checkpoint before invoke: ${previousTuple ? "yes" : "no"}`
+    );
     console.log(`checkpoints listed: ${checkpoints.length}`);
     console.log(`store memory rows: ${memories.length}`);
     console.log("\nGraph result:");

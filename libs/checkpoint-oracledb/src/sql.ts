@@ -182,7 +182,10 @@ export const getListTablesParams = (
 ): OracleBindParams => ({ ...getOracleCheckpointTables(tablePrefix) });
 
 export const getTableExistsParams = (
-  tableName: keyof OracleCheckpointTables | OracleCheckpointTableSuffix | string,
+  tableName:
+    | keyof OracleCheckpointTables
+    | OracleCheckpointTableSuffix
+    | string,
   tablePrefix: string = DEFAULT_TABLE_PREFIX
 ): OracleBindParams => {
   const tables = getOracleCheckpointTables(tablePrefix);
@@ -423,7 +426,9 @@ const buildFetchFirstClause = (limit?: number): string => {
 
   const parsedLimit = Number.parseInt(limit.toString(), 10);
   if (!Number.isFinite(parsedLimit) || parsedLimit < 0) {
-    throw new Error("Oracle checkpoint SELECT limit must be a non-negative integer.");
+    throw new Error(
+      "Oracle checkpoint SELECT limit must be a non-negative integer."
+    );
   }
 
   return ` FETCH FIRST ${parsedLimit} ROWS ONLY`;

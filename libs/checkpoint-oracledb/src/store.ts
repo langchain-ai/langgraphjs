@@ -450,10 +450,11 @@ function isFilterOperators(value: unknown): value is FilterOperators {
   return (
     typeof value === "object" &&
     value !== null &&
-    Object.keys(value).every((key) =>
-      ["$eq", "$ne", "$gt", "$gte", "$lt", "$lte", "$in", "$nin"].includes(
-        key
-      ) || key === "$exists"
+    Object.keys(value).every(
+      (key) =>
+        ["$eq", "$ne", "$gt", "$gte", "$lt", "$lte", "$in", "$nin"].includes(
+          key
+        ) || key === "$exists"
     )
   );
 }
@@ -720,9 +721,7 @@ export class OracleStore extends BaseStore {
       } else if ("namespacePrefix" in op) {
         results[i] = await this.searchOp(op as SearchOperation);
       } else {
-        results[i] = await this.listNamespacesOp(
-          op as ListNamespacesOperation
-        );
+        results[i] = await this.listNamespacesOp(op as ListNamespacesOperation);
       }
       i += 1;
     }
@@ -846,9 +845,7 @@ export class OracleStore extends BaseStore {
   ): Promise<void> {
     if (!this.indexConfig) return;
 
-    const namespacePathValue = namespacePath([
-      "__langgraph_dimension_probe__",
-    ]);
+    const namespacePathValue = namespacePath(["__langgraph_dimension_probe__"]);
     const key = `__probe_${Date.now()}_${Math.random()
       .toString(36)
       .slice(2)}__`;
@@ -927,7 +924,9 @@ WHERE namespace_path = :namespacePath AND item_key = :key AND field_path = :fiel
     }
   }
 
-  private async executeManyWithDuplicateRetry<T extends Record<string, unknown>>(
+  private async executeManyWithDuplicateRetry<
+    T extends Record<string, unknown>,
+  >(
     connection: Connection,
     sql: string,
     binds: T[],
@@ -950,10 +949,7 @@ WHERE namespace_path = :namespacePath AND item_key = :key AND field_path = :fiel
       validateNamespace(op.namespace);
       validateNamespacePathLength(op.namespace);
       validateStoreKey(op.key);
-      deduped.set(
-        JSON.stringify({ namespace: op.namespace, key: op.key }),
-        op
-      );
+      deduped.set(JSON.stringify({ namespace: op.namespace, key: op.key }), op);
     }
 
     const puts: BoundPut[] = [];
@@ -1159,7 +1155,11 @@ WHERE namespace_path = :namespacePath AND item_key = :key`,
     const textRows: Array<{ fieldPath: string; text: string }> = [];
 
     for (const field of fields) {
-      validateByteLength("vector field path", field, STORE_FIELD_PATH_MAX_BYTES);
+      validateByteLength(
+        "vector field path",
+        field,
+        STORE_FIELD_PATH_MAX_BYTES
+      );
       const texts = getTextAtPath(value, field);
       texts.forEach((text, i) => {
         const trimmed = text.trim();
@@ -1211,7 +1211,8 @@ WHERE namespace_path = :namespacePath AND item_key = :key`,
     const offset = op.offset ?? 0;
     const limit = op.limit ?? 10;
     const sqlFilter = buildSqlFilter(op.filter);
-    const hasFilter = op.filter !== undefined && Object.keys(op.filter).length > 0;
+    const hasFilter =
+      op.filter !== undefined && Object.keys(op.filter).length > 0;
     if (sqlFilter && hasFilter) {
       return this.filteredSearchOp(op, sqlFilter, offset, limit);
     }
@@ -1476,10 +1477,9 @@ ORDER BY namespace_path${pagination}`,
       namespaceSet.set(JSON.stringify(projected), projected);
     }
 
-    const namespaces = Array.from(namespaceSet.values())
-      .filter((namespace) => {
-        return op.maxDepth === undefined || namespace.length <= op.maxDepth;
-      });
+    const namespaces = Array.from(namespaceSet.values()).filter((namespace) => {
+      return op.maxDepth === undefined || namespace.length <= op.maxDepth;
+    });
 
     namespaces.sort((left, right) =>
       JSON.stringify(left).localeCompare(JSON.stringify(right))

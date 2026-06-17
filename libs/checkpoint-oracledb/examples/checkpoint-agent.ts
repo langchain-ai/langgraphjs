@@ -18,7 +18,9 @@ const CHANNEL = "agent_state";
 
 function readArg(name: string): string | undefined {
   const prefix = `--${name}=`;
-  return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+  return process.argv
+    .find((arg) => arg.startsWith(prefix))
+    ?.slice(prefix.length);
 }
 
 function hasFlag(name: string): boolean {
@@ -28,7 +30,9 @@ function hasFlag(name: string): boolean {
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    throw new Error(`Missing ${name}. Set it in .env or export it before running.`);
+    throw new Error(
+      `Missing ${name}. Set it in .env or export it before running.`
+    );
   }
   return value;
 }
@@ -41,7 +45,10 @@ function initialState(): AgentState {
 }
 
 function getState(checkpoint: Checkpoint | undefined): AgentState {
-  return (checkpoint?.channel_values[CHANNEL] as AgentState | undefined) ?? initialState();
+  return (
+    (checkpoint?.channel_values[CHANNEL] as AgentState | undefined) ??
+    initialState()
+  );
 }
 
 function nextVersion(checkpoint: Checkpoint | undefined): number {
@@ -161,15 +168,25 @@ async function main(): Promise<void> {
   console.log(`checkpoint_ns: ${checkpointNs || "<root>"}`);
   console.log(`tablePrefix: ${tablePrefix}`);
   console.log(`had checkpoint before invoke: ${previousTuple ? "yes" : "no"}`);
-  console.log(`saved checkpoint id: ${savedConfig.configurable?.checkpoint_id}`);
-  console.log(`latest checkpoint id: ${latestTuple?.checkpoint.id ?? "<none>"}`);
+  console.log(
+    `saved checkpoint id: ${savedConfig.configurable?.checkpoint_id}`
+  );
+  console.log(
+    `latest checkpoint id: ${latestTuple?.checkpoint.id ?? "<none>"}`
+  );
   console.log(`stored checkpoints listed: ${checkpoints.length}`);
   console.log("\nLatest agent state:");
-  console.log(JSON.stringify(latestTuple?.checkpoint.channel_values[CHANNEL], null, 2));
+  console.log(
+    JSON.stringify(latestTuple?.checkpoint.channel_values[CHANNEL], null, 2)
+  );
   console.log("\nPending writes on latest checkpoint:");
   console.log(JSON.stringify(latestTuple?.pendingWrites ?? [], null, 2));
-  console.log("\nRun the same command again with the same --thread value to verify resume.");
-  console.log("Use --reset to delete that thread's checkpoints before invoking.\n");
+  console.log(
+    "\nRun the same command again with the same --thread value to verify resume."
+  );
+  console.log(
+    "Use --reset to delete that thread's checkpoints before invoking.\n"
+  );
 
   await checkpointer.end();
 }
