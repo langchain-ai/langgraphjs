@@ -1,5 +1,12 @@
 # @examples/ui-react
 
+## 0.0.26
+
+### Patch Changes
+
+- Updated dependencies [[`d662cbb`](https://github.com/langchain-ai/langgraphjs/commit/d662cbbc63eebdf1312e57d41908da1b9018e783), [`1c2aa5b`](https://github.com/langchain-ai/langgraphjs/commit/1c2aa5bfeacd8b7463e3d5b6010daee26e9217e0)]:
+  - @langchain/langgraph@1.4.4
+
 ## 0.0.25
 
 ### Patch Changes

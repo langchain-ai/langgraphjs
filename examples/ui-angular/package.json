@@ -1,6 +1,6 @@
 {
   "name": "@examples/ui-angular",
-  "version": "0.0.49",
+  "version": "0.0.50",
   "scripts": {
     "dev": "turbo dev:client dev:server",
     "dev:client": "NG_CLI_ANALYTICS=false ng serve",
