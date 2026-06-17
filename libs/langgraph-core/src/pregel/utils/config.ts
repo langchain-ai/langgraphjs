@@ -177,9 +177,7 @@ function isRootLevelExplicitInvoke(
   const hasAmbientNesting =
     ambientConfigurable?.[CONFIG_KEY_READ] !== undefined;
 
-  return (
-    hasInvokeTimeThreadId && !hasExplicitNesting && !hasAmbientNesting
-  );
+  return hasInvokeTimeThreadId && !hasExplicitNesting && !hasAmbientNesting;
 }
 
 export function ensureLangGraphConfig(

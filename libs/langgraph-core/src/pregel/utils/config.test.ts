@@ -428,7 +428,7 @@ describe("getStore, getWriter, getConfig", () => {
   });
 
   it("getWriter should return writer from configurable", () => {
-    const mockWriter = () => {};
+    const mockWriter = () => { };
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue({
