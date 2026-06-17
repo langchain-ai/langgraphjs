@@ -408,11 +408,12 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
 
   // Reconstruction from a checkpoint must EXACTLY reproduce the live state when
   // a plain write and an Overwrite are applied concurrently in one super-step.
-  // Live `_applyWrites` now orders concurrent DeltaChannel writes by
-  // task id — the same canonical order both MemorySaver and PostgresSaver replay
-  // them in — so the hard-reset point lands identically on both paths. Each
-  // iteration uses a fresh thread (and therefore fresh task ids), which also
-  // guards against ordering nondeterminism across runs.
+  // Under option A the Overwrite wins the entire super-step: the concurrent
+  // "plain" write is discarded along with the pre-overwrite "start" input, so
+  // the result is deterministically `["over"]` on both the live and replay
+  // paths — independent of task ordering. Each iteration uses a fresh thread
+  // (and therefore fresh task ids) to also guard against ordering
+  // nondeterminism across runs and across savers (MemorySaver vs PostgresSaver).
   for (const durability of durabilities) {
     it(`reconstruction exactly matches live for concurrent plain+Overwrite writes (durability=${durability})`, async () => {
       for (let i = 0; i < 5; i += 1) {
@@ -428,9 +429,10 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
         expect(contents(messagesOf(cold.values))).toEqual(
           contents(messagesOf(live))
         );
-        // The Overwrite is a hard reset: "start" is always dropped and "over"
-        // always survives, regardless of task ordering.
-        expect(contents(messagesOf(live))).toContain("over");
+        // The Overwrite wins the whole super-step: only "over" survives, while
+        // both the concurrent "plain" write and the "start" input are dropped.
+        expect(contents(messagesOf(live))).toEqual(["over"]);
+        expect(contents(messagesOf(live))).not.toContain("plain");
         expect(contents(messagesOf(live))).not.toContain("start");
       }
     });

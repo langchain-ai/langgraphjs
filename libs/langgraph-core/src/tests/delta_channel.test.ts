@@ -77,26 +77,28 @@ describe("DeltaChannel (unit)", () => {
     expect(fromPlain.get()).toEqual([9, 8]);
   });
 
-  it("replayWrites folds ancestor writes oldest-to-newest", () => {
+  it("replayWrites folds per-super-step writes oldest-to-newest", () => {
     const ch = new DeltaChannel<number[], number[]>(listReducer).fromCheckpoint(
       undefined
     );
+    // Each inner array is a separate super-step.
     ch.replayWrites([
-      ["t1", "messages", [1]],
-      ["t2", "messages", [2, 3]],
-      ["t3", "messages", [4]],
+      [["t1", "messages", [1]]],
+      [["t2", "messages", [2, 3]]],
+      [["t3", "messages", [4]]],
     ]);
     expect(ch.get()).toEqual([1, 2, 3, 4]);
   });
 
-  it("replayWrites honors a trailing Overwrite as a reset point", () => {
+  it("replayWrites treats an Overwrite super-step as a reset point", () => {
     const ch = new DeltaChannel<number[], number[]>(listReducer).fromCheckpoint(
       [100]
     );
+    // Step 1 appends [1]; step 2 overwrites to [50]; step 3 appends [4].
     ch.replayWrites([
-      ["t1", "messages", [1]],
-      ["t2", "messages", { __overwrite__: [50] }],
-      ["t3", "messages", [4]],
+      [["t1", "messages", [1]]],
+      [["t2", "messages", { __overwrite__: [50] }]],
+      [["t3", "messages", [4]]],
     ]);
     expect(ch.get()).toEqual([50, 4]);
   });
@@ -108,21 +110,50 @@ describe("DeltaChannel (unit)", () => {
     ).toThrow();
   });
 
-  it("reload reproduces live state when a plain write precedes an Overwrite in one step", () => {
-    // Live: a single super-step receives [1] then Overwrite([50]).
-    const live = new DeltaChannel<number[], number[]>(listReducer);
-    live.update([[1], { __overwrite__: [50] }]);
+  it("update: an Overwrite wins the whole super-step (option A)", () => {
+    // A plain write precedes AND follows the Overwrite within one step.
+    const ch = new DeltaChannel<number[], number[]>(listReducer).fromCheckpoint(
+      [100]
+    );
+    ch.update([[1], { __overwrite__: [50] }, [4]]);
+    // Both siblings ([1] and [4]) are discarded; only the overwrite survives.
+    expect(ch.get()).toEqual([50]);
+  });
 
-    // Reload: the same two writes are replayed from the checkpoint.
+  it("update: Overwrite result is independent of intra-step order", () => {
+    for (const order of [
+      [[1], { __overwrite__: [50] }, [4]],
+      [{ __overwrite__: [50] }, [1], [4]],
+      [[1], [4], { __overwrite__: [50] }],
+    ] as number[][][]) {
+      const ch = new DeltaChannel<number[], number[]>(
+        listReducer
+      ).fromCheckpoint([100]);
+      ch.update(order);
+      expect(ch.get()).toEqual([50]);
+    }
+  });
+
+  it("reload reproduces live state for an Overwrite + siblings in one step", () => {
+    // Live: a single super-step receives [1], Overwrite([50]), then [4].
+    const live = new DeltaChannel<number[], number[]>(listReducer).fromCheckpoint(
+      [100]
+    );
+    live.update([[1], { __overwrite__: [50] }, [4]]);
+
+    // Reload: the same step's writes are replayed as one super-step group.
     const replayed = new DeltaChannel<number[], number[]>(
       listReducer
-    ).fromCheckpoint(undefined);
+    ).fromCheckpoint([100]);
     replayed.replayWrites([
-      ["t1", "messages", [1]],
-      ["t2", "messages", { __overwrite__: [50] }],
+      [
+        ["t1", "messages", [1]],
+        ["t2", "messages", { __overwrite__: [50] }],
+        ["t3", "messages", [4]],
+      ],
     ]);
 
-    // Overwrite is a hard reset: the pre-overwrite [1] is dropped on both paths.
+    // Overwrite wins the step: both [1] and [4] are dropped on both paths.
     expect(live.get()).toEqual([50]);
     // Invariant: reconstructed state must equal live state.
     expect(replayed.get()).toEqual(live.get());
@@ -289,8 +320,68 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     });
     expect(isDeltaSnapshot(hist.messages.seed)).toBe(true);
     expect((hist.messages.seed as DeltaSnapshot).value).toEqual([0]);
-    // writes collected from cp0 (seed ancestor) and cp1, oldest→newest
-    expect(hist.messages.writes.map((w) => w[2])).toEqual([[1], [2]]);
+    // writes collected from cp0 (seed ancestor) and cp1, grouped per
+    // super-step, oldest→newest
+    expect(hist.messages.writes).toEqual([
+      [["task0", "messages", [1]]],
+      [["task1", "messages", [2]]],
+    ]);
+  });
+
+  it("groups concurrent same-super-step writes and separates distinct steps", async () => {
+    const saver = new MemorySaver();
+    const cfg = { configurable: { thread_id: "t-group", checkpoint_ns: "" } };
+    const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
+
+    // cp0: snapshot seed [0], with two concurrent writes in the same step.
+    const cp0: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: "00000000-0000-0000-0000-0000000000c0",
+      channel_values: { messages: new DeltaSnapshot([0]) },
+      channel_versions: { messages: 1 },
+    };
+    const c0 = await saver.put(cfg, cp0, meta);
+    // Persist out of task-id order to prove each group is sorted by task id.
+    await saver.putWrites(c0, [["messages", [2]]], "task-b");
+    await saver.putWrites(c0, [["messages", [1]]], "task-a");
+
+    // cp1: a single later-step write.
+    const cp1: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: "00000000-0000-0000-0000-0000000000c1",
+      channel_values: {},
+      channel_versions: { messages: 2 },
+    };
+    const c1 = await saver.put(c0, cp1, meta);
+    await saver.putWrites(c1, [["messages", [3]]], "task-c");
+
+    const cp2: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: "00000000-0000-0000-0000-0000000000c2",
+      channel_values: {},
+      channel_versions: { messages: 3 },
+    };
+    const c2 = await saver.put(c1, cp2, meta);
+
+    const hist = await saver.getDeltaChannelHistory({
+      config: c2,
+      channels: ["messages"],
+    });
+    // cp0's two concurrent writes form one group ordered by task id; cp1 is a
+    // separate group.
+    expect(hist.messages.writes).toEqual([
+      [
+        ["task-a", "messages", [1]],
+        ["task-b", "messages", [2]],
+      ],
+      [["task-c", "messages", [3]]],
+    ]);
+
+    // The base default implementation must agree with the override.
+    const base = await Object.getPrototypeOf(
+      Object.getPrototypeOf(saver)
+    ).getDeltaChannelHistory.call(saver, { config: c2, channels: ["messages"] });
+    expect(base.messages.writes).toEqual(hist.messages.writes);
   });
 
   it("replays on-path writes when the seed is a plain (migration) value", async () => {
@@ -332,16 +423,14 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     // Plain seed retained as-is, and the migration-boundary write is replayed.
     expect(isDeltaSnapshot(hist.messages.seed)).toBe(false);
     expect(hist.messages.seed).toEqual([0, 1]);
-    expect(hist.messages.writes.map((w) => w[2])).toEqual([[2]]);
+    expect(hist.messages.writes).toEqual([[["task0", "messages", [2]]]]);
 
     // The optimized override must agree with the base implementation.
     const base = await Object.getPrototypeOf(
       Object.getPrototypeOf(saver)
     ).getDeltaChannelHistory.call(saver, { config: c1, channels: ["messages"] });
     expect(base.messages.seed).toEqual(hist.messages.seed);
-    expect(base.messages.writes.map((w: [string, string, unknown]) => w[2])).toEqual(
-      hist.messages.writes.map((w) => w[2])
-    );
+    expect(base.messages.writes).toEqual(hist.messages.writes);
   });
 
   it("base default implementation agrees with the override for snapshots", async () => {
@@ -378,9 +467,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     expect((override.messages.seed as DeltaSnapshot).value).toEqual(
       (base.messages.seed as DeltaSnapshot).value
     );
-    expect(override.messages.writes.map((w) => w[2])).toEqual(
-      base.messages.writes.map((w: [string, string, unknown]) => w[2])
-    );
+    expect(override.messages.writes).toEqual(base.messages.writes);
   });
 });
 
@@ -515,12 +602,12 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   });
 
   // When a plain write and an Overwrite are applied concurrently in one
-  // super-step, the live value (built by `_applyWrites`) and the value
-  // reconstructed from the checkpoint (replayed by the saver) must be identical.
-  // `_applyWrites` orders concurrent DeltaChannel writes by task id — the same
-  // order the saver replays them in — so the hard reset lands at the same point
-  // on both paths. Each iteration uses a fresh thread (fresh task ids)
-  // to also guard against ordering nondeterminism across runs.
+  // super-step, the Overwrite wins the entire step (option A): the concurrent
+  // plain write is discarded regardless of task ordering, so the live value
+  // (built by `_applyWrites`) and the value reconstructed from the checkpoint
+  // (replayed by the saver) are identical and deterministic. Each iteration
+  // uses a fresh thread (fresh task ids) to guard against any ordering
+  // nondeterminism across runs.
   it("reconstructs concurrent plain + Overwrite writes consistently with live", async () => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
@@ -559,9 +646,11 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
       ).messages.map((m) => m.content);
 
       expect(coldContents).toEqual(liveContents);
-      // The Overwrite is a hard reset regardless of task ordering: the
-      // pre-overwrite "start" input is always dropped, "over" always survives.
-      expect(liveContents).toContain("over");
+      // The Overwrite wins the whole super-step: "over" always survives while
+      // both the pre-overwrite "start" input and the concurrent "plain" write
+      // are always discarded — deterministically, for any task ordering.
+      expect(liveContents).toEqual(["over"]);
+      expect(liveContents).not.toContain("plain");
       expect(liveContents).not.toContain("start");
     }
   });
@@ -569,8 +658,9 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   // The same invariant must hold for savers that rely on the base
   // `getDeltaChannelHistory` walk. SqliteSaver is the strongest test: its
   // pending-writes query has no ORDER BY, so writes come back in arbitrary
-  // storage order. The canonical (task_id, idx) ordering enforced inside the
-  // base walk is what makes reconstruction match live here.
+  // storage order. Grouping each super-step's writes and applying the
+  // Overwrite-wins rule per step is what makes reconstruction match live here,
+  // independent of storage order.
   it("reconstructs concurrent plain + Overwrite writes consistently with live via the base walk (SqliteSaver)", async () => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
@@ -608,7 +698,8 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
       ).messages.map((m) => m.content);
 
       expect(coldContents).toEqual(liveContents);
-      expect(liveContents).toContain("over");
+      expect(liveContents).toEqual(["over"]);
+      expect(liveContents).not.toContain("plain");
       expect(liveContents).not.toContain("start");
     }
   });

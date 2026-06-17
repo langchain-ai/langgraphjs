@@ -189,10 +189,13 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
     const { config, channels } = options;
     if (channels.length === 0) return {};
 
-    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
+    // Per channel, a list of super-step groups collected newest→oldest; each
+    // group holds one ancestor checkpoint's writes for the channel. The group
+    // list is reversed once at the end to yield oldest→newest super-steps.
+    const collectedGroupsByCh: Record<string, CheckpointPendingWrite[][]> = {};
     const seedByCh: Record<string, unknown> = {};
     const remaining = new Set(channels);
-    for (const ch of channels) collectedByCh[ch] = [];
+    for (const ch of channels) collectedGroupsByCh[ch] = [];
 
     const targetTuple = await this.getTuple(config);
     let cursorConfig: RunnableConfig | undefined = targetTuple?.parentConfig;
@@ -202,16 +205,16 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
         await this.getTuple(cursorConfig);
       if (tup === undefined) break;
       if (tup.pendingWrites && tup.pendingWrites.length > 0) {
-        // Group this checkpoint's writes per channel in their stored order, then
-        // stable-sort by task id. DeltaChannel reconstruction must replay
-        // concurrent same-superstep writes in the canonical (task_id, idx) order
-        // that live execution applies them in (see `_applyWrites`), otherwise the
-        // reconstructed value can diverge from the live value — e.g. an
-        // `Overwrite` hard reset landing at a different point. Within a task the
+        // One super-step's writes form a single group, stable-sorted by
+        // (task_id, idx). DeltaChannel reconstruction must replay concurrent
+        // same-superstep writes in the canonical (task_id, idx) order that live
+        // execution applies them in (see `_applyWrites`), otherwise the
+        // reconstructed value can diverge from the live value. Within a task the
         // stored order is the persisted `idx` order, which the stable sort
         // preserves; this makes reconstruction independent of how a given saver
         // happens to order `pendingWrites` (insertion order, locale collation,
-        // etc.).
+        // etc.). Grouping by super-step also lets the consumer apply per-step
+        // `Overwrite` semantics (an Overwrite wins its whole super-step).
         const perChannel: Record<string, CheckpointPendingWrite[]> = {};
         for (const write of tup.pendingWrites) {
           const ch = write[1];
@@ -227,12 +230,7 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
                 : 1
               : a.i - b.i
           );
-          // Pushed reversed so the final `.reverse()` below yields oldest→newest
-          // checkpoints with each checkpoint's writes in ascending (task_id, idx)
-          // order.
-          for (let i = indexed.length - 1; i >= 0; i -= 1) {
-            collectedByCh[ch].push(indexed[i].write);
-          }
+          collectedGroupsByCh[ch].push(indexed.map((entry) => entry.write));
         }
       }
       for (const ch of Array.from(remaining)) {
@@ -252,7 +250,7 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
     const result: Record<string, DeltaChannelHistory> = {};
     for (const ch of channels) {
       const entry: DeltaChannelHistory = {
-        writes: collectedByCh[ch].slice().reverse(),
+        writes: collectedGroupsByCh[ch].slice().reverse(),
       };
       if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
         entry.seed = seedByCh[ch];

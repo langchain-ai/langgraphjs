@@ -576,10 +576,14 @@ export class MemorySaver extends BaseCheckpointSaver {
       current = entry[2];
     }
 
-    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
+    // Per channel, a list of super-step groups collected newest→oldest; each
+    // group holds that checkpoint's writes for the channel ordered by
+    // `(task_id, idx)`. The group list is reversed once at the end to yield
+    // oldest→newest super-steps.
+    const collectedGroupsByCh: Record<string, CheckpointPendingWrite[][]> = {};
     const seedByCh: Record<string, unknown> = {};
     const remaining = new Set(channels);
-    for (const ch of channels) collectedByCh[ch] = [];
+    for (const ch of channels) collectedGroupsByCh[ch] = [];
 
     for (const cpId of chain) {
       if (remaining.size === 0) break;
@@ -605,14 +609,16 @@ export class MemorySaver extends BaseCheckpointSaver {
 
       const stepWritesKey = _generateKey(threadId, checkpointNs, cpId);
       const stepWrites = Object.entries(this.writes[stepWritesKey] ?? {});
-      // Sort by [taskId, idx] descending to mirror the Python walk order;
-      // the full list is reversed once at the end to get oldest→newest.
+      // Sort ascending by [taskId, idx] so each super-step group is in stable
+      // (task_id, idx) order; the group list is reversed at the end for
+      // oldest→newest steps.
       stepWrites.sort(([a], [b]) => {
         const [aTask, aIdx] = a.split(",");
         const [bTask, bIdx] = b.split(",");
-        if (aTask !== bTask) return aTask < bTask ? 1 : -1;
-        return Number(bIdx) - Number(aIdx);
+        if (aTask !== bTask) return aTask < bTask ? -1 : 1;
+        return Number(aIdx) - Number(bIdx);
       });
+      const groupByCh: Record<string, CheckpointPendingWrite[]> = {};
       for (const [, [tid, ch, serialized]] of stepWrites) {
         if (!remaining.has(ch)) continue;
         // Collect on-path writes regardless of seed type. A plain (pre-delta
@@ -620,11 +626,14 @@ export class MemorySaver extends BaseCheckpointSaver {
         // pending writes produce the child and must still be replayed, just
         // like a `DeltaSnapshot` seed. Skipping them would drop post-migration
         // writes saved under the migration boundary checkpoint.
-        collectedByCh[ch].push([
+        (groupByCh[ch] ??= []).push([
           tid,
           ch,
           await this.serde.loadsTyped("json", serialized),
         ]);
+      }
+      for (const ch of Object.keys(groupByCh)) {
+        collectedGroupsByCh[ch].push(groupByCh[ch]);
       }
 
       for (const ch of terminatedHere) {
@@ -636,7 +645,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     const result: Record<string, DeltaChannelHistory> = {};
     for (const ch of channels) {
       const entryH: DeltaChannelHistory = {
-        writes: collectedByCh[ch].slice().reverse(),
+        writes: collectedGroupsByCh[ch].slice().reverse(),
       };
       if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
         entryH.seed = seedByCh[ch];

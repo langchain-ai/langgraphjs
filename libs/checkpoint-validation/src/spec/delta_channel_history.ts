@@ -26,10 +26,11 @@ const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
  *
  * The scenarios target the per-backend behaviours the walk depends on:
  * round-tripping `DeltaSnapshot` and plain-array seed blobs, following
- * `parentConfig` up the ancestor chain, and — critically — replaying concurrent
- * same-superstep writes in the canonical (task_id, idx) order regardless of how
- * a given store happens to return `pendingWrites` (insertion order, locale
- * collation, etc.).
+ * `parentConfig` up the ancestor chain, grouping each ancestor checkpoint's
+ * writes into its own super-step, and — critically — ordering concurrent
+ * same-superstep writes by the canonical (task_id, idx) within each group
+ * regardless of how a given store happens to return `pendingWrites` (insertion
+ * order, locale collation, etc.).
  */
 export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
   initializer: CheckpointerTestInitializer<T>
@@ -95,8 +96,12 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
 
         expect(isDeltaSnapshot(hist.messages.seed)).toBe(true);
         expect((hist.messages.seed as DeltaSnapshot).value).toEqual([0]);
-        // The target's own writes are excluded; c0 + c1 deltas, oldest→newest.
-        expect(hist.messages.writes.map((w) => w[2])).toEqual([[1], [2]]);
+        // The target's own writes are excluded; c0 + c1 deltas are distinct
+        // super-steps, grouped oldest→newest.
+        expect(hist.messages.writes).toEqual([
+          [["task0", "messages", [1]]],
+          [["task1", "messages", [2]]],
+        ]);
       });
 
       it("retains a plain (migration) seed and replays boundary writes", async () => {
@@ -115,18 +120,19 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
 
         expect(isDeltaSnapshot(hist.messages.seed)).toBe(false);
         expect(hist.messages.seed).toEqual([0, 1]);
-        expect(hist.messages.writes.map((w) => w[2])).toEqual([[2]]);
+        expect(hist.messages.writes).toEqual([[["task0", "messages", [2]]]]);
       });
 
-      it("orders concurrent same-superstep writes by task id", async () => {
+      it("groups concurrent same-superstep writes and orders them by task id", async () => {
         const root = rootConfig(uuid6(3));
 
         const c0 = await putCheckpoint(root, uuid6(3), {
           messages: new DeltaSnapshot([]),
         });
         // Persist the two tasks' writes in reverse task-id order. The walk must
-        // re-sort them to (task_id, idx) so the reconstructed value matches live
-        // execution regardless of the store's pending-writes return order.
+        // keep them in a single super-step group, re-sorted to (task_id, idx),
+        // so the consumer reconstructs the same value (and can apply per-step
+        // Overwrite semantics) regardless of the store's pending-writes order.
         await checkpointer.putWrites(c0, [["messages", ["b"]]], "task-b");
         await checkpointer.putWrites(c0, [["messages", ["a"]]], "task-a");
         const c1 = await putCheckpoint(c0, uuid6(3), {});
@@ -136,11 +142,44 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
           channels: ["messages"],
         });
 
-        expect(hist.messages.writes.map((w) => w[0])).toEqual([
-          "task-a",
-          "task-b",
+        // One super-step group holding both concurrent writes, task-id ordered.
+        expect(hist.messages.writes).toEqual([
+          [
+            ["task-a", "messages", ["a"]],
+            ["task-b", "messages", ["b"]],
+          ],
         ]);
-        expect(hist.messages.writes.map((w) => w[2])).toEqual([["a"], ["b"]]);
+      });
+
+      it("keeps a concurrent plain write and Overwrite in the same super-step group", async () => {
+        const root = rootConfig(uuid6(3));
+
+        const c0 = await putCheckpoint(root, uuid6(3), {
+          messages: new DeltaSnapshot([]),
+        });
+        // A plain write and an Overwrite produced concurrently in one step must
+        // land in a single group so the consumer can apply option-A semantics
+        // (the Overwrite wins the whole step). The walk only groups/orders; it
+        // does not interpret the Overwrite sentinel itself.
+        await checkpointer.putWrites(c0, [["messages", ["plain"]]], "task-a");
+        await checkpointer.putWrites(
+          c0,
+          [["messages", { __overwrite__: ["over"] }]],
+          "task-b"
+        );
+        const c1 = await putCheckpoint(c0, uuid6(3), {});
+
+        const hist = await checkpointer.getDeltaChannelHistory({
+          config: c1,
+          channels: ["messages"],
+        });
+
+        expect(hist.messages.writes).toEqual([
+          [
+            ["task-a", "messages", ["plain"]],
+            ["task-b", "messages", { __overwrite__: ["over"] }],
+          ],
+        ]);
       });
 
       it("omits the seed when no ancestor stored a value", async () => {
@@ -157,7 +196,7 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
 
         // Reaching the root without a stored value => "start empty".
         expect(hist.messages.seed).toBeUndefined();
-        expect(hist.messages.writes.map((w) => w[2])).toEqual([[1]]);
+        expect(hist.messages.writes).toEqual([[["task0", "messages", [1]]]]);
       });
     });
   });

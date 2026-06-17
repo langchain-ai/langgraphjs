@@ -69,10 +69,14 @@ export type CheckpointMetadata<ExtraProperties extends object = object> = {
  * Storage-level view of what one channel contributed across the ancestor
  * chain of a target checkpoint:
  *
- * - `writes` — on-path deltas oldest→newest as {@link CheckpointPendingWrite}
- *   tuples. Always present; possibly empty. Already filtered to one channel.
- *   Writes stored at the target checkpoint itself are pending for the next
- *   super-step and are excluded.
+ * - `writes` — on-path deltas grouped by super-step, oldest→newest. Each inner
+ *   array holds the {@link CheckpointPendingWrite} tuples produced in a single
+ *   super-step (one ancestor checkpoint), already filtered to one channel and
+ *   ordered within the step by `(task_id, idx)`. Grouping is required so the
+ *   consumer can apply per-step `Overwrite` semantics (an Overwrite wins its
+ *   whole super-step). Always present; possibly empty. Writes stored at the
+ *   target checkpoint itself are pending for the next super-step and are
+ *   excluded.
  * - `seed` — the stored value at the nearest ancestor whose
  *   `channel_values[ch]` is populated. Omitted if the walk reached the root
  *   without finding any stored value (the consumer treats absence as "start
@@ -83,6 +87,6 @@ export type CheckpointMetadata<ExtraProperties extends object = object> = {
  * @remarks Beta. Field names and semantics may change.
  */
 export type DeltaChannelHistory = {
-  writes: CheckpointPendingWrite[];
+  writes: CheckpointPendingWrite[][];
   seed?: unknown;
 };
