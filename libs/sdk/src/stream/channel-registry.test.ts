@@ -82,7 +82,7 @@ describe("ChannelRegistry", () => {
     expect(trace.threads[0]).toBe(thread);
   });
 
-  it("disposes the runtime only after the last consumer releases", () => {
+  it("disposes the runtime only after the last consumer releases", async () => {
     const registry = new ChannelRegistry(makeRootBus());
     const trace = makeTrace();
     registry.bind(makeThread());
@@ -95,11 +95,43 @@ describe("ChannelRegistry", () => {
     expect(registry.size).toBe(1);
 
     b.release();
+    expect(trace.disposes).toBe(0);
+    expect(registry.size).toBe(0);
+
+    await Promise.resolve();
+
     expect(trace.disposes).toBe(1);
     expect(registry.size).toBe(0);
   });
 
-  it("treats double release as a no-op", () => {
+  it("cancels last-release disposal when the same projection is reacquired", async () => {
+    const registry = new ChannelRegistry(makeRootBus());
+    const trace = makeTrace();
+    registry.bind(makeThread());
+
+    const a = registry.acquire(makeSpec("k", "init", trace));
+    a.store.setValue("evolved");
+    a.release();
+
+    expect(trace.disposes).toBe(0);
+    expect(registry.size).toBe(0);
+
+    const b = registry.acquire(makeSpec("k", "init", trace));
+    await Promise.resolve();
+
+    expect(trace.opens).toBe(1);
+    expect(trace.disposes).toBe(0);
+    expect(b.store.getSnapshot()).toBe("evolved");
+    expect(registry.size).toBe(1);
+
+    b.release();
+    await Promise.resolve();
+
+    expect(trace.disposes).toBe(1);
+    expect(registry.size).toBe(0);
+  });
+
+  it("treats double release as a no-op", async () => {
     const registry = new ChannelRegistry(makeRootBus());
     const trace = makeTrace();
     registry.bind(makeThread());
@@ -109,6 +141,8 @@ describe("ChannelRegistry", () => {
     a.release();
 
     // Second release must not crash and must not double-decrement.
+    await Promise.resolve();
+
     expect(trace.disposes).toBe(1);
     expect(registry.size).toBe(0);
   });
