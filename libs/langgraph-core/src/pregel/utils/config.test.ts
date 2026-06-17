@@ -346,6 +346,96 @@ describe("ensureLangGraphConfig", () => {
       ls_agent_type: "chatbot",
       thread_id: "fresh-thread",
     });
+    expect(
+      (result.configurable as Record<string, unknown>).__pregel_scratchpad__
+    ).toBeUndefined();
+  });
+
+  it("preserves user custom implicit configurable keys on root-level invoke", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+          tenant_id: "tenant-42",
+        },
+      });
+
+    const result = ensureLangGraphConfig(
+      { configurable: { ls_agent_type: "chatbot" } },
+      { configurable: { thread_id: "fresh-thread" } }
+    );
+
+    expect(result.configurable).toEqual({
+      tenant_id: "tenant-42",
+      ls_agent_type: "chatbot",
+      thread_id: "fresh-thread",
+    });
+  });
+
+  it("does not strip implicit configurable during RunnableCallable node execution", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+        },
+      });
+
+    const taskConfig = {
+      configurable: {
+        thread_id: "task-thread",
+        __pregel_read__: () => null,
+        __pregel_scratchpad__: { currentTaskInput: { ok: true } },
+      },
+    };
+
+    const result = ensureLangGraphConfig(taskConfig);
+
+    expect(result.configurable).toEqual({
+      thread_id: "task-thread",
+      __pregel_read__: expect.any(Function),
+      __pregel_scratchpad__: { currentTaskInput: { ok: true } },
+    });
+  });
+
+  it("does not strip when streamEvents-style options include ambient nesting keys", () => {
+    const ambientRead = () => null;
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: ambientRead,
+          checkpoint_ns: "parent:1",
+          __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        },
+      });
+
+    const bound = { configurable: { thread_id: "bound-thread" } };
+    // Mirrors Pregel.stream(): ambient nesting keys are merged into options
+    // before _streamIterator → ensureLangGraphConfig(this.config, options).
+    const streamEventsOptions = {
+      configurable: {
+        __pregel_read__: ambientRead,
+        checkpoint_ns: "parent:1",
+        __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        ...bound.configurable,
+        ls_agent_type: "sub-agent",
+      },
+    };
+
+    const result = ensureLangGraphConfig(bound, streamEventsOptions);
+
+    expect(result.configurable).toEqual({
+      thread_id: "bound-thread",
+      __pregel_read__: ambientRead,
+      checkpoint_ns: "parent:1",
+      __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+      ls_agent_type: "sub-agent",
+    });
   });
 
   it("should inherit ambient nesting when bound config has thread_id but invoke does not", () => {
