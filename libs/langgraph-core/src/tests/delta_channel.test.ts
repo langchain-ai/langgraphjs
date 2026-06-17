@@ -24,8 +24,9 @@ import {
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
 import { StateGraph } from "../graph/state.js";
-import { START, END } from "../constants.js";
+import { START, END, Overwrite } from "../constants.js";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
+import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 
 // A simple associative batch reducer over arrays.
 const listReducer = (state: number[], writes: number[][]): number[] => {
@@ -511,6 +512,105 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
     expect((second.values as { messages: BaseMessage[] }).messages.map((m) => m.id)).toEqual(
       (state.values as { messages: BaseMessage[] }).messages.map((m) => m.id)
     );
+  });
+
+  // When a plain write and an Overwrite are applied concurrently in one
+  // super-step, the live value (built by `_applyWrites`) and the value
+  // reconstructed from the checkpoint (replayed by the saver) must be identical.
+  // `_applyWrites` orders concurrent DeltaChannel writes by task id — the same
+  // order the saver replays them in — so the hard reset lands at the same point
+  // on both paths. Each iteration uses a fresh thread (fresh task ids)
+  // to also guard against ordering nondeterminism across runs.
+  it("reconstructs concurrent plain + Overwrite writes consistently with live (#7956)", async () => {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    });
+    const makeGraph = (saver: MemorySaver) =>
+      new StateGraph(State)
+        .addNode("plain", () => ({
+          messages: [new AIMessage({ id: "plain-msg", content: "plain" })],
+        }))
+        .addNode("reset", () => ({
+          messages: new Overwrite([
+            new AIMessage({ id: "over-msg", content: "over" }),
+          ]),
+        }))
+        .addEdge(START, "plain")
+        .addEdge(START, "reset")
+        .addEdge("plain", END)
+        .addEdge("reset", END)
+        .compile({ checkpointer: saver });
+
+    for (let i = 0; i < 8; i += 1) {
+      const saver = new MemorySaver();
+      const config = { configurable: { thread_id: `fanin-${i}` } };
+      const live = await makeGraph(saver).invoke(
+        { messages: [new HumanMessage({ id: "start-msg", content: "start" })] },
+        config
+      );
+      // A brand-new graph instance reconstructs purely from the saver.
+      const cold = await makeGraph(saver).getState(config);
+
+      const liveContents = (live as { messages: BaseMessage[] }).messages.map(
+        (m) => m.content
+      );
+      const coldContents = (
+        cold.values as { messages: BaseMessage[] }
+      ).messages.map((m) => m.content);
+
+      expect(coldContents).toEqual(liveContents);
+      // The Overwrite is a hard reset regardless of task ordering: the
+      // pre-overwrite "start" input is always dropped, "over" always survives.
+      expect(liveContents).toContain("over");
+      expect(liveContents).not.toContain("start");
+    }
+  });
+
+  // The same invariant must hold for savers that rely on the base
+  // `getDeltaChannelHistory` walk. SqliteSaver is the strongest test: its
+  // pending-writes query has no ORDER BY, so writes come back in arbitrary
+  // storage order. The canonical (task_id, idx) ordering enforced inside the
+  // base walk is what makes reconstruction match live here.
+  it("reconstructs concurrent plain + Overwrite writes consistently with live via the base walk (SqliteSaver, #7956)", async () => {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    });
+    const makeGraph = (saver: SqliteSaver) =>
+      new StateGraph(State)
+        .addNode("plain", () => ({
+          messages: [new AIMessage({ id: "plain-msg", content: "plain" })],
+        }))
+        .addNode("reset", () => ({
+          messages: new Overwrite([
+            new AIMessage({ id: "over-msg", content: "over" }),
+          ]),
+        }))
+        .addEdge(START, "plain")
+        .addEdge(START, "reset")
+        .addEdge("plain", END)
+        .addEdge("reset", END)
+        .compile({ checkpointer: saver });
+
+    for (let i = 0; i < 8; i += 1) {
+      const saver = SqliteSaver.fromConnString(":memory:");
+      const config = { configurable: { thread_id: `fanin-${i}` } };
+      const live = await makeGraph(saver).invoke(
+        { messages: [new HumanMessage({ id: "start-msg", content: "start" })] },
+        config
+      );
+      const cold = await makeGraph(saver).getState(config);
+
+      const liveContents = (live as { messages: BaseMessage[] }).messages.map(
+        (m) => m.content
+      );
+      const coldContents = (
+        cold.values as { messages: BaseMessage[] }
+      ).messages.map((m) => m.content);
+
+      expect(coldContents).toEqual(liveContents);
+      expect(liveContents).toContain("over");
+      expect(liveContents).not.toContain("start");
+    }
   });
 });
 
