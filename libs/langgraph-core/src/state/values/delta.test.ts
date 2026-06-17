@@ -1,12 +1,19 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod/v4";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import {
+  AIMessage,
+  HumanMessage,
+  RemoveMessage,
+} from "@langchain/core/messages";
 import { DeltaValue } from "./delta.js";
 import { ReducedValue } from "./reduced.js";
 import { UntrackedValue } from "./untracked.js";
 import { DeltaChannel } from "../../channels/index.js";
 import { StateGraph } from "../../graph/state.js";
 import { StateSchema } from "../schema.js";
+import { MessagesDeltaValue } from "../prebuilt/messages.js";
+import { REMOVE_ALL_MESSAGES } from "../../graph/messages_reducer.js";
 import {
   END,
   Overwrite,
@@ -209,6 +216,89 @@ describe("DeltaValue", () => {
       expect(result.emails).toEqual(["test@example.com"]);
 
       await expect(graph.invoke({ emails: "not-an-email" })).rejects.toThrow();
+    });
+
+    it("clears history on REMOVE_ALL_MESSAGES via MessagesDeltaValue", async () => {
+      const AgentState = new StateSchema({ messages: MessagesDeltaValue });
+
+      const checkpointer = new MemorySaver();
+      const graph = new StateGraph(AgentState)
+        .addNode("clear", () => ({
+          messages: [
+            new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+            new HumanMessage({ id: "fresh", content: "fresh start" }),
+          ],
+        }))
+        .addEdge(START, "clear")
+        .addEdge("clear", END)
+        .compile({ checkpointer });
+
+      const config = { configurable: { thread_id: "clear-all" } };
+      const result = await graph.invoke(
+        {
+          messages: [
+            new HumanMessage({ id: "1", content: "old question" }),
+            new AIMessage({ id: "2", content: "old answer" }),
+          ],
+        },
+        config
+      );
+
+      // Prior history must be wiped, keeping only what follows the sentinel.
+      expect(result.messages.map((m) => m.id)).toEqual(["fresh"]);
+      expect(result.messages.map((m) => m.content)).toEqual(["fresh start"]);
+
+      // Cold read from a fresh graph reconstructs the same cleared state.
+      const cold = await new StateGraph(AgentState)
+        .addNode("noop", () => ({}))
+        .addEdge(START, "noop")
+        .addEdge("noop", END)
+        .compile({ checkpointer })
+        .getState(config);
+      expect(cold.values.messages.map((m: { id?: string }) => m.id)).toEqual([
+        "fresh",
+      ]);
+    });
+
+    it("clears history on Overwrite via MessagesDeltaValue", async () => {
+      // Overwrite is handled by DeltaChannel before the reducer runs, so it is
+      // a channel-level reset that is orthogonal to REMOVE_ALL_MESSAGES.
+      const AgentState = new StateSchema({ messages: MessagesDeltaValue });
+
+      const checkpointer = new MemorySaver();
+      const graph = new StateGraph(AgentState)
+        .addNode("reset", () => ({
+          messages: new Overwrite([
+            new HumanMessage({ id: "fresh", content: "fresh start" }),
+          ]),
+        }))
+        .addEdge(START, "reset")
+        .addEdge("reset", END)
+        .compile({ checkpointer });
+
+      const config = { configurable: { thread_id: "overwrite" } };
+      const result = await graph.invoke(
+        {
+          messages: [
+            new HumanMessage({ id: "1", content: "old question" }),
+            new AIMessage({ id: "2", content: "old answer" }),
+          ],
+        },
+        config
+      );
+
+      expect(result.messages.map((m) => m.id)).toEqual(["fresh"]);
+
+      // Cold read reconstructs the overwritten state from the saver alone.
+      const cold = await new StateGraph(AgentState)
+        .addNode("noop", () => ({}))
+        .addEdge(START, "noop")
+        .addEdge("noop", END)
+        .compile({ checkpointer })
+        .getState(config);
+      expect(cold.values.messages.map((m: { id?: string }) => m.id)).toEqual([
+        "fresh",
+      ]);
     });
 
     it("should correctly type state vs update", () => {

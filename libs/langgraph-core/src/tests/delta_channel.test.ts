@@ -20,6 +20,7 @@ import {
 } from "../channels/base.js";
 import {
   messagesDeltaReducer,
+  REMOVE_ALL_MESSAGES,
   type Messages,
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
@@ -196,6 +197,60 @@ describe("messagesDeltaReducer", () => {
     const b = new AIMessage({ id: "b", content: "y" });
     const out = messagesDeltaReducer([], [[a, b], b]);
     expect(out.map((m) => m.id)).toEqual(["a", "b"]);
+  });
+
+  it("clears prior state on REMOVE_ALL_MESSAGES sentinel", () => {
+    const m1 = new HumanMessage({ id: "1", content: "a" });
+    const m2 = new AIMessage({ id: "2", content: "b" });
+    const out = messagesDeltaReducer(
+      [m1, m2],
+      [[new RemoveMessage({ id: REMOVE_ALL_MESSAGES })]]
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("keeps messages following the REMOVE_ALL_MESSAGES sentinel", () => {
+    const m1 = new HumanMessage({ id: "1", content: "a" });
+    const m2 = new AIMessage({ id: "2", content: "b" });
+    const fresh = new HumanMessage({ id: "3", content: "c" });
+    const out = messagesDeltaReducer(
+      [m1, m2],
+      [[new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), fresh]]
+    );
+    expect(out.map((m) => m.id)).toEqual(["3"]);
+    expect(out.map((m) => m.content)).toEqual(["c"]);
+  });
+
+  it("clears earlier writes in the same batch as the sentinel", () => {
+    const existing = new HumanMessage({ id: "1", content: "old" });
+    const stale = new AIMessage({ id: "2", content: "stale" });
+    const kept = new HumanMessage({ id: "3", content: "kept" });
+    const out = messagesDeltaReducer(
+      [existing],
+      [[stale, new RemoveMessage({ id: REMOVE_ALL_MESSAGES }), kept]]
+    );
+    expect(out.map((m) => m.id)).toEqual(["3"]);
+  });
+
+  it("is batching-invariant across the REMOVE_ALL_MESSAGES sentinel", () => {
+    const m1 = new HumanMessage({ id: "1", content: "a" });
+    const m2 = new AIMessage({ id: "2", content: "b" });
+    const fresh = new HumanMessage({ id: "3", content: "c" });
+    const writes: Messages[] = [
+      [m1],
+      [new RemoveMessage({ id: REMOVE_ALL_MESSAGES })],
+      [m2],
+      [fresh],
+    ];
+
+    const once = messagesDeltaReducer([], writes);
+    const split = messagesDeltaReducer(
+      messagesDeltaReducer([], writes.slice(0, 2)),
+      writes.slice(2)
+    );
+    expect(once.map((m) => m.id)).toEqual(["2", "3"]);
+    expect(split.map((m) => m.id)).toEqual(once.map((m) => m.id));
+    expect(split.map((m) => m.content)).toEqual(once.map((m) => m.content));
   });
 });
 
