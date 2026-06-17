@@ -182,14 +182,10 @@ export class DeltaChannel<
     }
 
     if (hasOverwrite) {
-      // An Overwrite wins the entire super-step: every sibling write in the
-      // same step — before AND after the Overwrite — is discarded, so the
-      // result is independent of the (arbitrary) order of concurrent writes
-      // within the step. This mirrors `BinaryOperatorAggregate` and is why
-      // only one Overwrite per step is allowed. The loop force-snapshots any
-      // delta channel that saw an Overwrite (see `_putCheckpoint` /
-      // `_putExitDeltaWrites`), so reconstruction starts from this
-      // post-overwrite value and never replays across the reset.
+      // An Overwrite wins the entire super-step: every sibling write (before
+      // AND after) is discarded, mirroring `BinaryOperatorAggregate` — hence
+      // only one Overwrite per step. The loop force-snapshots channels that saw
+      // an Overwrite, so reconstruction seeds from this value without replaying.
       this.value =
         overwriteValue !== undefined && overwriteValue !== null
           ? overwriteValue

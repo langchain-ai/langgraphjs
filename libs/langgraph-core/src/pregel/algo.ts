@@ -332,12 +332,8 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // Group writes by channel
   const pendingWritesByChannel = {} as Record<keyof Cc, PendingWriteValue[]>;
-  // Track the originating task id for each grouped write so DeltaChannel writes
-  // can be reordered below. A DeltaChannel reconstructs its value by replaying
-  // persisted writes in the checkpointer's (task_id, idx) order, so concurrent
-  // same-superstep writes must be applied here in that same order for the live
-  // value to match state reconstructed from a checkpoint (see
-  // BaseCheckpointSaver.getDeltaChannelHistory).
+  // Originating task id per grouped write, used to reorder DeltaChannel writes
+  // below.
   const pendingWriteTaskIdsByChannel = {} as Record<keyof Cc, string[]>;
   for (const task of tasks) {
     const taskId = (task as { id?: string }).id ?? "";
@@ -353,30 +349,20 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
     }
   }
 
-  // Reorder DeltaChannel writes contributed by concurrent tasks to match the
-  // checkpointer replay order: task id ascending (byte/string order, matching
-  // both MemorySaver and the Postgres `COLLATE "C"` sort), then original write
-  // order. A stable sort keeps each task's writes in their persisted `idx`
-  // order. Only the multi-task fan-in case is reordered; single-task steps keep
-  // their existing order.
+  // Reorder concurrent DeltaChannel writes to match the checkpointer replay
+  // order: task id ascending (byte/string order, matching both MemorySaver and
+  // the Postgres `COLLATE "C"` sort). A stable sort keeps each task's writes in
+  // their original `idx` order, so reconstruction (see
+  // `BaseCheckpointSaver.getDeltaChannelHistory`) matches the live value.
   for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
+    if (vals.length < 2) continue;
     if (onlyChannels[chan]?.lc_graph_name !== "DeltaChannel") continue;
     const taskIds = pendingWriteTaskIdsByChannel[chan as keyof Cc];
-    let multipleTasks = false;
-    for (let i = 1; i < taskIds.length; i += 1) {
-      if (taskIds[i] !== taskIds[0]) {
-        multipleTasks = true;
-        break;
-      }
-    }
-    if (!multipleTasks) continue;
-    const indexed = vals.map((val, i) => ({ val, taskId: taskIds[i], i }));
-    indexed.sort((a, b) =>
-      a.taskId !== b.taskId ? (a.taskId < b.taskId ? -1 : 1) : a.i - b.i
+    const paired = vals.map((val, i) => ({ val, taskId: taskIds[i] }));
+    paired.sort((a, b) =>
+      a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0
     );
-    pendingWritesByChannel[chan as keyof Cc] = indexed.map(
-      (entry) => entry.val
-    );
+    pendingWritesByChannel[chan as keyof Cc] = paired.map((p) => p.val);
   }
 
   // Find the highest version of all channels
