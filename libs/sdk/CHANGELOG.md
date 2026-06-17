@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.9.23
+
+### Patch Changes
+
+- [#2545](https://github.com/langchain-ai/langgraphjs/pull/2545) [`2134c8a`](https://github.com/langchain-ai/langgraphjs/commit/2134c8a2c0bc8dd2ebea33e1191c8dd0c4b83236) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): avoid scoped stream resubscribe churn
+
+  Defer final projection disposal by one microtask so framework bindings that release and immediately reacquire the same scoped projection during reactive updates keep the existing stream subscription instead of rotating through root-only and scoped SSE filters.
+
 ## 1.9.22
 
 ### Patch Changes
