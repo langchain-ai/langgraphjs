@@ -73,6 +73,22 @@ export function propagateConfigurableToMetadata(
 }
 
 /**
+ * Drop langgraph's internal `seq:step*` bookkeeping tags.
+ *
+ * `seq:step:N` tags are added internally to mark sequence steps; everything
+ * else (user-supplied tags and any other framework tags) is kept. Returns the
+ * surviving tags, or `undefined` if none remain. Shared by the stream handlers
+ * (e.g. {@link mapDebugTasks}) so the same tag set is surfaced consistently.
+ */
+export function filterToUserTags(
+  tags: readonly string[] | undefined
+): string[] | undefined {
+  if (tags == null || tags.length === 0) return undefined;
+  const filtered = tags.filter((tag) => !tag.startsWith("seq:step"));
+  return filtered.length > 0 ? filtered : undefined;
+}
+
+/**
  * Merge two `callbacks` values across configs.
  *
  * A `callbacks` value may be `undefined`, an array of handlers, or a
