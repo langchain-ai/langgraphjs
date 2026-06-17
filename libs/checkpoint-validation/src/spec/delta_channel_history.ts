@@ -65,7 +65,12 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
           channel_values: values,
           channel_versions,
         };
-        return checkpointer.put(parentConfig, checkpoint, meta, channel_versions);
+        return checkpointer.put(
+          parentConfig,
+          checkpoint,
+          meta,
+          channel_versions
+        );
       }
 
       const rootConfig = (thread_id: string): RunnableConfig => ({
