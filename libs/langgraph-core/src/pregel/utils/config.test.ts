@@ -326,6 +326,47 @@ describe("ensureLangGraphConfig", () => {
       checkpoint_ns: "",
     });
   });
+
+  it("should not inherit implicit configurable on root-level invoke with thread_id", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+          __pregel_read__: null,
+        },
+      });
+
+    const result = ensureLangGraphConfig({
+      configurable: { thread_id: "fresh-thread" },
+    });
+
+    expect(result.configurable).toEqual({ thread_id: "fresh-thread" });
+  });
+
+  it("should still inherit implicit configurable for nested invokes", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: () => null,
+          checkpoint_ns: "parent:1",
+        },
+      });
+
+    const result = ensureLangGraphConfig({
+      configurable: { ls_agent_type: "sub-agent" },
+    });
+
+    expect(result.configurable).toEqual({
+      thread_id: "parent-thread",
+      __pregel_read__: expect.any(Function),
+      checkpoint_ns: "parent:1",
+      ls_agent_type: "sub-agent",
+    });
+  });
 });
 
 describe("getStore, getWriter, getConfig", () => {

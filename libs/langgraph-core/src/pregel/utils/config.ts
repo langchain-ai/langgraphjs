@@ -10,6 +10,7 @@ import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_READ,
   CONFIG_KEY_SCRATCHPAD,
 } from "../../constants.js";
 
@@ -142,6 +143,25 @@ function mergeCallbacks(
   });
 }
 
+/**
+ * True when the caller is starting a fresh top-level run (explicit
+ * `thread_id`, no active nesting keys). In that case we must not inherit
+ * langgraph-internal `configurable` entries from `AsyncLocalStorage`, which
+ * may still carry scratchpad/state from another concurrent invocation on a
+ * shared singleton agent.
+ */
+function isRootLevelExplicitInvoke(
+  configs: (LangGraphRunnableConfig | undefined)[]
+): boolean {
+  const hasExplicitThreadId = configs.some(
+    (c) => c?.configurable?.thread_id !== undefined
+  );
+  const hasExplicitNesting = configs.some(
+    (c) => c?.configurable?.[CONFIG_KEY_READ] !== undefined
+  );
+  return hasExplicitThreadId && !hasExplicitNesting;
+}
+
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
 ): RunnableConfig {
@@ -153,11 +173,16 @@ export function ensureLangGraphConfig(
     configurable: {},
   };
 
+  const skipImplicitConfigurable = isRootLevelExplicitInvoke(configs);
+
   const implicitConfig: RunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
+        if (k === "configurable" && skipImplicitConfigurable) {
+          continue;
+        }
         if (COPIABLE_KEYS.includes(k)) {
           let copiedValue;
           if (Array.isArray(v)) {
