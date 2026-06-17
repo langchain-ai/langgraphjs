@@ -360,6 +360,11 @@ export class Overwrite<ValueType = any> implements OverwriteValue<ValueType> {
  *
  * - If the value is an Overwrite instance (preferred API), return its `.value`.
  * - If the value is a wire-format object ({ [OVERWRITE]: value }), extract it.
+ * - If the value is the discriminator form ({ type: OVERWRITE, value }) that
+ *   results from JSON-serializing a typed `Overwrite` in another runtime (e.g.
+ *   a Python dataclass routed through the LangGraph API server, where the typed
+ *   instance is erased), extract it. Keeps Overwrite semantics intact across
+ *   cross-runtime JSON boundaries.
  * - Otherwise, returns undefined.
  *
  * @template ValueType - The expected type of the Overwrite value.
@@ -370,8 +375,14 @@ export class Overwrite<ValueType = any> implements OverwriteValue<ValueType> {
 export function _getOverwriteValue<ValueType>(
   value: unknown
 ): [true, ValueType] | [false, undefined] {
-  if (typeof value === "object" && value !== null && OVERWRITE in value) {
-    return [true, (value as Record<string, ValueType>)[OVERWRITE]];
+  if (typeof value === "object" && value !== null) {
+    if (OVERWRITE in value) {
+      return [true, (value as Record<string, ValueType>)[OVERWRITE]];
+    }
+    const rec = value as Record<string, unknown>;
+    if (rec.type === OVERWRITE && "value" in rec) {
+      return [true, rec.value as ValueType];
+    }
   }
   return [false, undefined];
 }
