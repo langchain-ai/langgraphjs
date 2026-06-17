@@ -521,7 +521,7 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   // order the saver replays them in — so the hard reset lands at the same point
   // on both paths. Each iteration uses a fresh thread (fresh task ids)
   // to also guard against ordering nondeterminism across runs.
-  it("reconstructs concurrent plain + Overwrite writes consistently with live (#7956)", async () => {
+  it("reconstructs concurrent plain + Overwrite writes consistently with live", async () => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
     });
@@ -571,7 +571,7 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   // pending-writes query has no ORDER BY, so writes come back in arbitrary
   // storage order. The canonical (task_id, idx) ordering enforced inside the
   // base walk is what makes reconstruction match live here.
-  it("reconstructs concurrent plain + Overwrite writes consistently with live via the base walk (SqliteSaver, #7956)", async () => {
+  it("reconstructs concurrent plain + Overwrite writes consistently with live via the base walk (SqliteSaver)", async () => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
     });

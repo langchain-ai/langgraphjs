@@ -144,8 +144,10 @@ function compactingGraph(saver: PostgresSaver) {
     .compile({ checkpointer: saver });
 }
 
-// A graph where two nodes write to the same DeltaChannel in one super-step: a
-// plain write and an Overwrite. Exercises the #7956 hard-reset invariant.
+/**
+ * A graph where two nodes write to the same DeltaChannel in one super-step: a
+ * plain write and an Overwrite.
+ */
 function fanInOverwriteGraph(saver: PostgresSaver) {
   const State = Annotation.Root({
     messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
@@ -412,7 +414,7 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
   // iteration uses a fresh thread (and therefore fresh task ids), which also
   // guards against ordering nondeterminism across runs.
   for (const durability of durabilities) {
-    it(`reconstruction exactly matches live for concurrent plain+Overwrite writes (#7956, durability=${durability})`, async () => {
+    it(`reconstruction exactly matches live for concurrent plain+Overwrite writes (durability=${durability})`, async () => {
       for (let i = 0; i < 5; i += 1) {
         const config = {
           configurable: { thread_id: `fanin-${durability}-${i}` },

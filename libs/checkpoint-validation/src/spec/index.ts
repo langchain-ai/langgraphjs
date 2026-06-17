@@ -6,6 +6,7 @@ import { putWritesTests } from "./put_writes.js";
 import { getTupleTests } from "./get_tuple.js";
 import { listTests } from "./list.js";
 import { deleteThreadTests } from "./delete_thread.js";
+import { deltaChannelHistoryTests } from "./delta_channel_history.js";
 
 const testTypeMap = {
   getTuple: getTupleTests,
@@ -50,4 +51,10 @@ export function specTest<T extends BaseCheckpointSaver>(
   });
 }
 
-export { getTupleTests, listTests, putTests, putWritesTests };
+export {
+  getTupleTests,
+  listTests,
+  putTests,
+  putWritesTests,
+  deltaChannelHistoryTests,
+};
