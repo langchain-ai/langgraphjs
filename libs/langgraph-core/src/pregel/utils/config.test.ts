@@ -326,6 +326,170 @@ describe("ensureLangGraphConfig", () => {
       checkpoint_ns: "",
     });
   });
+
+  it("should not inherit implicit configurable on root-level invoke with thread_id", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+        },
+      });
+
+    const bound = { configurable: { ls_agent_type: "chatbot" } };
+    const result = ensureLangGraphConfig(bound, {
+      configurable: { thread_id: "fresh-thread" },
+    });
+
+    expect(result.configurable).toEqual({
+      ls_agent_type: "chatbot",
+      thread_id: "fresh-thread",
+    });
+    expect(
+      (result.configurable as Record<string, unknown>).__pregel_scratchpad__
+    ).toBeUndefined();
+  });
+
+  it("drops stale user custom implicit configurable keys on root-level invoke", () => {
+    // The ambient `configurable` may belong to another concurrent invocation,
+    // so arbitrary user keys (tenant_id/user_id) must NOT leak into run B.
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+          tenant_id: "tenant-42",
+          user_id: "user-A",
+        },
+      });
+
+    const result = ensureLangGraphConfig(
+      { configurable: { ls_agent_type: "chatbot" } },
+      { configurable: { thread_id: "fresh-thread" } }
+    );
+
+    // Only the bound (`ls_agent_type`) and invoke-time (`thread_id`) keys
+    // survive — nothing from the stale ambient configurable.
+    expect(result.configurable).toEqual({
+      ls_agent_type: "chatbot",
+      thread_id: "fresh-thread",
+    });
+  });
+
+  it("does not strip implicit configurable during RunnableCallable node execution", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "stale-thread",
+          __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
+        },
+      });
+
+    const taskConfig = {
+      configurable: {
+        thread_id: "task-thread",
+        __pregel_read__: () => null,
+        __pregel_scratchpad__: { currentTaskInput: { ok: true } },
+      },
+    };
+
+    const result = ensureLangGraphConfig(taskConfig);
+
+    expect(result.configurable).toEqual({
+      thread_id: "task-thread",
+      __pregel_read__: expect.any(Function),
+      __pregel_scratchpad__: { currentTaskInput: { ok: true } },
+    });
+  });
+
+  it("does not strip when streamEvents-style options include ambient nesting keys", () => {
+    const ambientRead = () => null;
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: ambientRead,
+          checkpoint_ns: "parent:1",
+          __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        },
+      });
+
+    const bound = { configurable: { thread_id: "bound-thread" } };
+    // Mirrors Pregel.stream(): ambient nesting keys are merged into options
+    // before _streamIterator → ensureLangGraphConfig(this.config, options).
+    const streamEventsOptions = {
+      configurable: {
+        __pregel_read__: ambientRead,
+        checkpoint_ns: "parent:1",
+        __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        ...bound.configurable,
+        ls_agent_type: "sub-agent",
+      },
+    };
+
+    const result = ensureLangGraphConfig(bound, streamEventsOptions);
+
+    expect(result.configurable).toEqual({
+      thread_id: "bound-thread",
+      __pregel_read__: ambientRead,
+      checkpoint_ns: "parent:1",
+      __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+      ls_agent_type: "sub-agent",
+    });
+  });
+
+  it("should inherit ambient nesting when bound config has thread_id but invoke does not", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: () => null,
+          checkpoint_ns: "parent:1",
+          __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        },
+      });
+
+    const bound = { configurable: { thread_id: "bound-thread" } };
+    const result = ensureLangGraphConfig(bound, {
+      configurable: { ls_agent_type: "sub-agent" },
+    });
+
+    expect(result.configurable).toEqual({
+      thread_id: "bound-thread",
+      __pregel_read__: expect.any(Function),
+      checkpoint_ns: "parent:1",
+      __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+      ls_agent_type: "sub-agent",
+    });
+  });
+
+  it("should still inherit implicit configurable for nested invokes", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: () => null,
+          checkpoint_ns: "parent:1",
+        },
+      });
+
+    const result = ensureLangGraphConfig({
+      configurable: { ls_agent_type: "sub-agent" },
+    });
+
+    expect(result.configurable).toEqual({
+      thread_id: "parent-thread",
+      __pregel_read__: expect.any(Function),
+      checkpoint_ns: "parent:1",
+      ls_agent_type: "sub-agent",
+    });
+  });
 });
 
 describe("getStore, getWriter, getConfig", () => {
@@ -358,7 +522,7 @@ describe("getStore, getWriter, getConfig", () => {
   });
 
   it("getWriter should return writer from configurable", () => {
-    const mockWriter = () => {};
+    const mockWriter = () => { };
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue({

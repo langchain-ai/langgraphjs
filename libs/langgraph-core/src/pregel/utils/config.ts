@@ -10,6 +10,7 @@ import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_READ,
   CONFIG_KEY_SCRATCHPAD,
 } from "../../constants.js";
 
@@ -142,6 +143,45 @@ function mergeCallbacks(
   });
 }
 
+/**
+ * True when the caller is starting a fresh top-level run (invoke-time
+ * `thread_id`, no active nesting keys). In that case the ambient `configurable`
+ * from `AsyncLocalStorage` cannot be trusted per-key — it may belong to another
+ * concurrent invocation on a shared singleton agent (scratchpad/task-input as
+ * well as arbitrary user keys like `tenant_id`/`user_id`). The whole ambient
+ * `configurable` is therefore ignored; any value the caller actually wants for
+ * this run arrives through the explicit (bound + invoke-time) configs instead.
+ *
+ * Only the last caller-supplied config is treated as invoke-time options.
+ * Earlier entries are graph-bound defaults from `.withConfig()` / compile and
+ * must not count — a child graph bound with `thread_id` and invoked from a
+ * parent task without a fresh config still needs ambient nesting keys from ALS.
+ */
+function isRootLevelExplicitInvoke(
+  configs: (LangGraphRunnableConfig | undefined)[]
+): boolean {
+  let invokeConfig: LangGraphRunnableConfig | undefined;
+  for (let i = configs.length - 1; i >= 0; i -= 1) {
+    if (configs[i] !== undefined) {
+      invokeConfig = configs[i];
+      break;
+    }
+  }
+  const hasInvokeTimeThreadId =
+    invokeConfig?.configurable?.thread_id !== undefined;
+
+  const hasExplicitNesting = configs.some(
+    (c) => c?.configurable?.[CONFIG_KEY_READ] !== undefined
+  );
+
+  const ambientConfigurable =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig()?.configurable;
+  const hasAmbientNesting =
+    ambientConfigurable?.[CONFIG_KEY_READ] !== undefined;
+
+  return hasInvokeTimeThreadId && !hasExplicitNesting && !hasAmbientNesting;
+}
+
 export function ensureLangGraphConfig(
   ...configs: (LangGraphRunnableConfig | undefined)[]
 ): RunnableConfig {
@@ -153,11 +193,18 @@ export function ensureLangGraphConfig(
     configurable: {},
   };
 
+  const skipImplicitConfigurable = isRootLevelExplicitInvoke(configs);
+
   const implicitConfig: RunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
+        // Stale-ALS root invoke: ignore the ambient `configurable` entirely,
+        // since its keys may belong to another concurrent invocation.
+        if (k === "configurable" && skipImplicitConfigurable) {
+          continue;
+        }
         if (COPIABLE_KEYS.includes(k)) {
           let copiedValue;
           if (Array.isArray(v)) {
