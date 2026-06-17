@@ -101,26 +101,49 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Creates TTL indexes on the checkpoint collections if a `ttl` is configured.
-   * This method is idempotent and safe to call multiple times (and concurrently).
-   * Returns an array of errors (empty if successful) so the caller can decide
-   * how to handle failures. No-op when `ttl` is not configured.
+   * Creates the indexes required by the checkpoint saver.
+   *
+   * Always creates compound indexes on the `checkpoints` and
+   * `checkpoint_writes` collections matching the query and upsert patterns so
+   * that lookups don't degrade into full collection scans as the collections
+   * grow. When a `ttl` is configured, additionally creates MongoDB TTL indexes
+   * on `upserted_at` so documents expire after the configured period of
+   * inactivity.
+   *
+   * This method is idempotent and safe to call on every application start (and
+   * concurrently). It returns an array of errors (empty if successful) so the
+   * caller can decide how to handle failures.
    */
   async setup(): Promise<Error[]> {
-    if (this.ttl == null) return [];
-
-    const ttlIndex = { upserted_at: 1 };
-    const options = { expireAfterSeconds: this.ttl };
-
-    const results = await Promise.allSettled([
+    const operations: Promise<unknown>[] = [
       this.db
         .collection(this.checkpointCollectionName)
-        .createIndex(ttlIndex, options),
+        .createIndex(
+          { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+          { name: "thread_ns_checkpoint_idx" }
+        ),
       this.db
         .collection(this.checkpointWritesCollectionName)
-        .createIndex(ttlIndex, options),
-    ]);
+        .createIndex(
+          { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+          { name: "thread_ns_checkpoint_idx" }
+        ),
+    ];
 
+    if (this.ttl != null) {
+      const ttlIndex = { upserted_at: 1 };
+      const options = { expireAfterSeconds: this.ttl };
+      operations.push(
+        this.db
+          .collection(this.checkpointCollectionName)
+          .createIndex(ttlIndex, options),
+        this.db
+          .collection(this.checkpointWritesCollectionName)
+          .createIndex(ttlIndex, options)
+      );
+    }
+
+    const results = await Promise.allSettled(operations);
     return results
       .filter((r): r is PromiseRejectedResult => r.status === "rejected")
       .map((r) => r.reason as Error);
