@@ -351,7 +351,9 @@ describe("ensureLangGraphConfig", () => {
     ).toBeUndefined();
   });
 
-  it("preserves user custom implicit configurable keys on root-level invoke", () => {
+  it("drops stale user custom implicit configurable keys on root-level invoke", () => {
+    // The ambient `configurable` may belong to another concurrent invocation,
+    // so arbitrary user keys (tenant_id/user_id) must NOT leak into run B.
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
       .mockReturnValue({
@@ -359,6 +361,7 @@ describe("ensureLangGraphConfig", () => {
           thread_id: "stale-thread",
           __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
           tenant_id: "tenant-42",
+          user_id: "user-A",
         },
       });
 
@@ -367,8 +370,9 @@ describe("ensureLangGraphConfig", () => {
       { configurable: { thread_id: "fresh-thread" } }
     );
 
+    // Only the bound (`ls_agent_type`) and invoke-time (`thread_id`) keys
+    // survive — nothing from the stale ambient configurable.
     expect(result.configurable).toEqual({
-      tenant_id: "tenant-42",
       ls_agent_type: "chatbot",
       thread_id: "fresh-thread",
     });

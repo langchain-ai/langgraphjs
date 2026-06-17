@@ -144,33 +144,13 @@ function mergeCallbacks(
 }
 
 /**
- * Ambient configurable keys to drop on root-level invokes. These are either
- * langgraph-internal runtime keys or checkpoint identifiers that may be stale
- * when another concurrent invocation's ALS context bleeds through. User-supplied
- * custom configurable keys (e.g. `ls_agent_type`, tenant ids) are preserved.
- */
-function stripStaleImplicitConfigurable(
-  configurable: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(configurable)) {
-    if (key.startsWith("__pregel_")) {
-      continue;
-    }
-    if (PROPAGATE_TO_METADATA.has(key) || key === "checkpoint_map") {
-      continue;
-    }
-    result[key] = value;
-  }
-  return result;
-}
-
-/**
  * True when the caller is starting a fresh top-level run (invoke-time
- * `thread_id`, no active nesting keys). In that case we strip stale
- * langgraph-internal `configurable` entries from `AsyncLocalStorage` rather
- * than inheriting them wholesale — scratchpad/task-input from another
- * concurrent invocation on a shared singleton agent must not leak through.
+ * `thread_id`, no active nesting keys). In that case the ambient `configurable`
+ * from `AsyncLocalStorage` cannot be trusted per-key — it may belong to another
+ * concurrent invocation on a shared singleton agent (scratchpad/task-input as
+ * well as arbitrary user keys like `tenant_id`/`user_id`). The whole ambient
+ * `configurable` is therefore ignored; any value the caller actually wants for
+ * this run arrives through the explicit (bound + invoke-time) configs instead.
  *
  * Only the last caller-supplied config is treated as invoke-time options.
  * Earlier entries are graph-bound defaults from `.withConfig()` / compile and
@@ -213,14 +193,18 @@ export function ensureLangGraphConfig(
     configurable: {},
   };
 
-  const shouldStripStaleImplicitConfigurable =
-    isRootLevelExplicitInvoke(configs);
+  const skipImplicitConfigurable = isRootLevelExplicitInvoke(configs);
 
   const implicitConfig: RunnableConfig =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (implicitConfig !== undefined) {
     for (const [k, v] of Object.entries(implicitConfig)) {
       if (v !== undefined) {
+        // Stale-ALS root invoke: ignore the ambient `configurable` entirely,
+        // since its keys may belong to another concurrent invocation.
+        if (k === "configurable" && skipImplicitConfigurable) {
+          continue;
+        }
         if (COPIABLE_KEYS.includes(k)) {
           let copiedValue;
           if (Array.isArray(v)) {
@@ -234,14 +218,6 @@ export function ensureLangGraphConfig(
               copiedValue = v.copy();
             } else {
               copiedValue = { ...v };
-              if (
-                k === "configurable" &&
-                shouldStripStaleImplicitConfigurable
-              ) {
-                copiedValue = stripStaleImplicitConfigurable(
-                  copiedValue as Record<string, unknown>
-                );
-              }
             }
           } else {
             copiedValue = v;
