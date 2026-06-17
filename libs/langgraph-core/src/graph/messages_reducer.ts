@@ -139,11 +139,16 @@ export function messagesStateReducer(
  * This reducer is batching-invariant, as required by `DeltaChannel`:
  * `reducer(reducer(state, xs), ys) === reducer(state, xs.concat(ys))`.
  *
+ * A `RemoveMessage` carrying the {@link REMOVE_ALL_MESSAGES} sentinel id
+ * clears all messages accumulated so far (prior state plus earlier writes in
+ * the same batch) and keeps only the messages that follow it, mirroring
+ * {@link messagesStateReducer}. Clearing happens in the same single linear
+ * pass, so the batching-invariant still holds.
+ *
  * Raw object / string inputs are coerced to typed `BaseMessage` objects so
  * that HTTP-driven graphs work without a separate coercion step. This is not
- * full {@link messagesStateReducer} parity — `REMOVE_ALL_MESSAGES`,
- * unknown-id `RemoveMessage` errors, and missing-id UUID assignment are not
- * handled here.
+ * full {@link messagesStateReducer} parity — unknown-id `RemoveMessage`
+ * errors and missing-id UUID assignment are not handled here.
  *
  * @param state - The current accumulated list of messages.
  * @param writes - Batch of writes, each a single message-like or an array.
@@ -189,7 +194,13 @@ export function messagesDeltaReducer(
   const result: (BaseMessage | null)[] = [...stateMsgs];
   for (const msg of msgs) {
     const mid = msg.id;
-    if (mid == null) {
+    if (RemoveMessage.isInstance(msg) && mid === REMOVE_ALL_MESSAGES) {
+      // Discard everything accumulated so far (prior state and earlier writes
+      // in this batch); only messages following the sentinel are kept. Doing
+      // this inline keeps the reducer batching-invariant.
+      result.length = 0;
+      index.clear();
+    } else if (mid == null) {
       result.push(msg);
     } else if (RemoveMessage.isInstance(msg)) {
       if (index.has(mid)) {
