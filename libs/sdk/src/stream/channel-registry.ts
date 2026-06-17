@@ -73,6 +73,12 @@ interface Entry {
    * (no thread bound yet, or a rebind is in progress).
    */
   runtime: ProjectionRuntime | undefined;
+  /**
+   * Token for a deferred last-release disposal. Re-acquiring the same
+   * projection before the microtask runs clears the token and keeps the
+   * runtime alive.
+   */
+  pendingDispose: object | undefined;
 }
 
 /**
@@ -198,6 +204,7 @@ export class ChannelRegistry {
         open: spec.open as ProjectionSpec<unknown>["open"],
         refCount: 0,
         runtime: undefined,
+        pendingDispose: undefined,
       };
       // Open the runtime immediately when a thread is already bound.
       // Otherwise it will be opened lazily by the next `bind()` call.
@@ -211,6 +218,7 @@ export class ChannelRegistry {
       this.#entries.set(spec.key, newEntry);
       entry = newEntry;
     }
+    entry.pendingDispose = undefined;
     entry.refCount += 1;
 
     let released = false;
@@ -223,8 +231,23 @@ export class ChannelRegistry {
         if (current == null) return;
         current.refCount -= 1;
         if (current.refCount <= 0) {
-          this.#entries.delete(spec.key);
-          if (current.runtime != null) void tryDispose(current.runtime);
+          current.refCount = 0;
+          const token = {};
+          current.pendingDispose = token;
+          queueMicrotask(() => {
+            const latest = this.#entries.get(spec.key);
+            if (
+              latest == null ||
+              latest !== current ||
+              latest.pendingDispose !== token ||
+              latest.refCount > 0
+            ) {
+              return;
+            }
+            this.#entries.delete(spec.key);
+            latest.pendingDispose = undefined;
+            if (latest.runtime != null) void tryDispose(latest.runtime);
+          });
         }
       },
     };
@@ -250,12 +273,17 @@ export class ChannelRegistry {
   }
 
   /**
-   * Number of live entries. Diagnostic-only — callers should not
-   * branch on this value at runtime; it exists for tests asserting
-   * that consumers properly release their projections.
+   * Number of actively-held entries. Diagnostic-only — callers should
+   * not branch on this value at runtime; it exists for tests asserting
+   * that consumers properly release their projections. Entries waiting
+   * on cancellable microtask disposal do not count as active.
    */
   get size(): number {
-    return this.#entries.size;
+    let count = 0;
+    for (const entry of this.#entries.values()) {
+      if (entry.refCount > 0) count += 1;
+    }
+    return count;
   }
 }
 
