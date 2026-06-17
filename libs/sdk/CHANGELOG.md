@@ -1,5 +1,21 @@
 # @langchain/langgraph-sdk
 
+## 1.9.22
+
+### Patch Changes
+
+- [#2529](https://github.com/langchain-ai/langgraphjs/pull/2529) [`ba31f04`](https://github.com/langchain-ai/langgraphjs/commit/ba31f045d1d458a456c6f6441e8ee81d32c5c700) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): reconnect SSE streams when heartbeat idle is detected
+
+  Detect half-open SSE connections by watching for server keep-alive heartbeats (`: heartbeat`) and reconnecting with Last-Event-ID or `since` when they stop. `"auto"` mode arms only after heartbeats are observed, so long tool calls and HITL pauses do not false-fire on heartbeat-emitting servers.
+
+- [#2528](https://github.com/langchain-ai/langgraphjs/pull/2528) [`e7e8035`](https://github.com/langchain-ai/langgraphjs/commit/e7e8035fadca5f0d4cbc55bbbb77e65878ab2952) Thanks [@christian-bromann](https://github.com/christian-bromann)! - Allow custom `AgentServerAdapter`s to be late-bound and re-bound to a thread. Adapters can now implement an optional `setThreadId(threadId)`, which `client.threads.stream(threadId, { transport })` calls when binding the active thread — including the lazily-minted id from the first `submit()` on a `threadId: null` controller. The built-in `ProtocolSseTransportAdapter`, `ProtocolWebSocketTransportAdapter`, and `HttpAgentServerAdapter` implement it: `threadId` is now optional at construction, request URLs derive from the currently-bound thread, and `paths` entries may be functions of the thread id (`(threadId) => string`). This lets a single custom transport back a lazy thread-creation flow instead of being pinned to one thread at construction.
+
+- [#2527](https://github.com/langchain-ai/langgraphjs/pull/2527) [`9e114e5`](https://github.com/langchain-ai/langgraphjs/commit/9e114e55d362a874878a817740de42fd62ae9db7) Thanks [@christian-bromann](https://github.com/christian-bromann)! - chore(deps): remove uuid dependency in favor of embedded uuid in core
+
+  Replace direct `uuid` package imports with `@langchain/core/utils/uuid` across
+  langgraph packages to deduplicate dependencies and align with @langchain/core's
+  embedded UUID utilities.
+
 ## 1.9.21
 
 ### Patch Changes

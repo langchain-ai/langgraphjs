@@ -104,6 +104,12 @@ guide walks through the current `examples/ui-react-transport` setup,
 where the UI uses `HttpAgentServerAdapter` and the Hono backend
 implements `/commands` and `/stream` with a `LocalThreadSession`.
 
+`threadId` is optional on `HttpAgentServerAdapter`. Omit it (and write
+`paths` as functions of the thread id) to let the framework bind the
+thread via the adapter's optional `setThreadId` — including the id the
+SDK mints on the first submit of a `threadId: null` stream. See
+[Binding to a thread](./custom-transport.md#binding-to-a-thread).
+
 ## Related
 
 - [`injectStream` options](./inject-stream.md#options)

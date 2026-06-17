@@ -12,11 +12,13 @@ import {
   isRecord,
   hasHeaders,
   toError,
+  resolveProtocolPath,
 } from "./utils.js";
 import type {
   HeaderValue,
   ProtocolRequestHook,
   PendingResponse,
+  ProtocolTransportPaths,
   ProtocolWebSocketTransportOptions,
 } from "./types.js";
 import type { TransportAdapter } from "../transport.js";
@@ -55,8 +57,9 @@ export function webSocketReconnectDelayMs(attempt: number): number {
 
 /**
  * Transport adapter that speaks the thread-centric protocol over a
- * bidirectional WebSocket. Bound to a specific `threadId` — the socket
- * connects to `ws://.../threads/:thread_id/stream/events`.
+ * bidirectional WebSocket. Bound to a `threadId` at construction or later
+ * via {@link setThreadId} — the socket connects to
+ * `ws://.../threads/:thread_id/stream/events`.
  *
  * On unexpected disconnect the adapter reconnects with exponential
  * backoff (see {@link ProtocolWebSocketTransportOptions.maxReconnectAttempts}).
@@ -66,7 +69,7 @@ export function webSocketReconnectDelayMs(attempt: number): number {
  * `subscription.subscribe` commands.
  */
 export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
-  readonly threadId: string;
+  threadId: string;
 
   private readonly queue = new AsyncQueue<Message>();
 
@@ -78,7 +81,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
   private readonly webSocketFactory: (url: string) => WebSocket;
 
-  private readonly streamUrl: string;
+  private readonly paths?: Pick<ProtocolTransportPaths, "stream">;
 
   private readonly maxReconnectAttempts: number;
 
@@ -100,18 +103,46 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
   constructor(options: ProtocolWebSocketTransportOptions) {
     this.apiUrl = options.apiUrl;
-    this.threadId = options.threadId;
+    this.threadId = options.threadId ?? "";
     this.defaultHeaders = options.defaultHeaders;
     this.onRequest = options.onRequest;
     this.webSocketFactory =
       options.webSocketFactory ?? ((url) => new WebSocket(url));
-    this.streamUrl =
-      options.paths?.stream ?? `/threads/${this.threadId}/stream/events`;
+    this.paths = options.paths;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
     this.onReconnect = options.onReconnect;
     this.onReconnected = options.onReconnected;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;
+  }
+
+  /** {@inheritDoc TransportAdapter.setThreadId} */
+  setThreadId(threadId: string): void {
+    if (threadId === this.threadId) {
+      return;
+    }
+    if (
+      this.reconnectInFlight != null ||
+      (this.socket != null && this.socket.readyState !== WEB_SOCKET_CLOSED)
+    ) {
+      throw new Error(
+        "Protocol WebSocket transport cannot be rebound to a different thread while the socket is open. Close the current stream and create a new WebSocket transport for the new thread."
+      );
+    }
+    this.threadId = threadId;
+  }
+
+  /**
+   * Socket URL derives from the currently-bound thread so a single adapter
+   * can follow {@link setThreadId} re-binds; the next {@link open} connects
+   * to the new thread. A fixed `paths.stream` string overrides the default.
+   */
+  private get streamUrl(): string {
+    return resolveProtocolPath(
+      this.paths?.stream,
+      this.threadId,
+      (id) => `/threads/${id}/stream/events`
+    );
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "@examples/ui-angular",
-  "version": "0.0.47",
+  "version": "0.0.48",
   "scripts": {
     "dev": "turbo dev:client dev:server",
     "dev:client": "NG_CLI_ANALYTICS=false ng serve",
@@ -12,9 +12,9 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^22.0.0",
-    "@angular/compiler": "^22.0.0",
-    "@angular/core": "^22.0.0",
+    "@angular/common": "^22.0.1",
+    "@angular/compiler": "^22.0.1",
+    "@angular/core": "^22.0.1",
     "@angular/forms": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",

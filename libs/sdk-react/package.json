@@ -1,6 +1,6 @@
 {
   "name": "@langchain/react",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "React integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -30,10 +30,10 @@
     "@types/node": "^25.4.0",
     "@types/react": "^19.2.16",
     "@vitejs/plugin-react": "^6.0.2",
-    "@vitest/browser": "^4.1.8",
+    "@vitest/browser": "^4.1.9",
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.8.3",
-    "hono": "^4.12.21",
+    "hono": "^4.12.25",
     "langchain": "^1.4.4",
     "react": "^19.2.7",
     "typescript": "^5.9.3",

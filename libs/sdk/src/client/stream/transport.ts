@@ -24,14 +24,31 @@ export interface EventStreamHandle {
  * Transport abstraction implemented by concrete client transports such as
  * WebSocket or SSE adapters.
  *
- * In the thread-centric protocol, transports are bound to a specific
- * thread at construction time — the thread ID is part of the connection URL.
+ * In the thread-centric protocol the thread ID is part of the request
+ * URLs. Transports may be bound at construction time, or left unbound and
+ * bound later via {@link setThreadId} (see that method) — which lets a
+ * single instance follow a lazily-created thread.
  */
 export interface TransportAdapter {
   /**
-   * Thread ID this transport is bound to.
+   * Thread ID this transport currently targets.
    */
   readonly threadId: string;
+  /**
+   * Rebind this transport to a different thread.
+   *
+   * `client.threads.stream(threadId, { transport })` calls this (when
+   * implemented) whenever the framework binds or re-binds the active
+   * thread — including the lazily-minted id from the first `submit()` on
+   * a `threadId: null` controller. Implementing it lets an adapter be
+   * constructed once (optionally with no `threadId`) and reused as the
+   * active thread becomes known, so the framework doesn't have to tear
+   * down and rebuild a custom transport when the thread id appears.
+   *
+   * Optional: adapters that bake `threadId` at construction can omit it,
+   * in which case the per-call `threadId` is ignored (prior behaviour).
+   */
+  setThreadId?(threadId: string): void;
   /**
    * Opens the underlying connection (e.g. WebSocket handshake).
    * For HTTP/SSE transports this is a no-op.

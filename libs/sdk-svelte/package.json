@@ -1,6 +1,6 @@
 {
   "name": "@langchain/svelte",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Svelte integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -29,10 +29,10 @@
     "@langchain/langgraph-checkpoint": "workspace:^",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^25.4.0",
-    "@vitest/browser": "^4.1.8",
+    "@vitest/browser": "^4.1.9",
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.8.3",
-    "hono": "^4.12.21",
+    "hono": "^4.12.25",
     "langchain": "^1.4.4",
     "svelte": "^5.56.1",
     "typescript": "^5.9.3",

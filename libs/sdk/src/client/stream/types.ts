@@ -15,6 +15,7 @@ import type {
   SubscribeParams,
 } from "@langchain/protocol";
 
+import type { IdleReconnectMode } from "../../utils/stream.js";
 import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 
@@ -131,6 +132,19 @@ export interface ThreadStreamOptions {
    * attempts after an unexpected disconnect. Defaults to 5.
    */
   maxReconnectAttempts?: number;
+  /**
+   * Built-in `"sse"` transport only: idle-reconnect policy guarding against
+   * half-open sockets that hang with no error or close (e.g. a platform
+   * revision rollover).
+   *
+   * - `"auto"` (default): arm only once the server's SSE keep-alive
+   *   heartbeats are observed (LangGraph Platform emits `: heartbeat` every
+   *   ~5s), sizing the window from their cadence. Independent of agent
+   *   activity; stays dormant on heartbeat-less servers.
+   * - a `number`: a fixed idle window in milliseconds.
+   * - `0`: disables it.
+   */
+  streamIdleReconnect?: IdleReconnectMode;
   /**
    * Built-in transports only: delay before each reconnect attempt.
    * Defaults to exponential backoff with jitter.

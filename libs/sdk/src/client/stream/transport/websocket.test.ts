@@ -133,6 +133,40 @@ describe("ProtocolWebSocketTransportAdapter URL resolution", () => {
   });
 });
 
+describe("ProtocolWebSocketTransportAdapter thread binding", () => {
+  it("rejects rebinding to another thread while the socket is open", async () => {
+    const urls: string[] = [];
+    const sockets: FakeWebSocket[] = [];
+    const transport = new ProtocolWebSocketTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: "thread-a",
+      webSocketFactory: (url) => {
+        urls.push(url);
+        const socket = new FakeWebSocket(url);
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+    });
+
+    await transport.open();
+
+    expect(() => transport.setThreadId("thread-a")).not.toThrow();
+    expect(() => transport.setThreadId("thread-b")).toThrow(
+      /cannot be rebound/
+    );
+    expect(transport.threadId).toBe("thread-a");
+
+    await transport.open();
+
+    expect(urls).toEqual([
+      "ws://localhost:8123/threads/thread-a/stream/events",
+    ]);
+    expect(sockets[0].readyState).toBe(FakeWebSocket.OPEN);
+
+    await transport.close();
+  });
+});
+
 describe("webSocketReconnectDelayMs", () => {
   it("caps exponential backoff", () => {
     expect(webSocketReconnectDelayMs(1)).toBeLessThanOrEqual(6000);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Client } from "./index.js";
 import { ThreadStream } from "./stream/index.js";
+import { HttpAgentServerAdapter } from "./stream/transport/agent-server.js";
 import { ProtocolSseTransportAdapter } from "./stream/transport/http.js";
 import {
   PROXIED_API_URL,
@@ -157,5 +158,45 @@ describe("Client", () => {
     expect(calls[0]).toBe(
       `ws://localhost:4100/api/chat-langchain/threads/${THREAD_ID}/stream/events`
     );
+  });
+
+  it("threads.stream binds a custom adapter to the requested thread via setThreadId", () => {
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+    });
+
+    // Constructed unbound — the framework binds it to the thread passed to
+    // threads.stream (the lazy-create seam).
+    const adapter = new HttpAgentServerAdapter({
+      apiUrl: "http://localhost:9999",
+    });
+    const thread = client.threads.stream("late-thread", {
+      assistantId: "my-agent",
+      transport: adapter,
+    });
+
+    expect(adapter.threadId).toBe("late-thread");
+    expect(thread.threadId).toBe("late-thread");
+  });
+
+  it("threads.stream binds a custom adapter to an auto-generated thread id", () => {
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+    });
+
+    const adapter = new HttpAgentServerAdapter({
+      apiUrl: "http://localhost:9999",
+    });
+    const thread = client.threads.stream({
+      assistantId: "my-agent",
+      transport: adapter,
+    });
+
+    expect(adapter.threadId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+    expect(thread.threadId).toBe(adapter.threadId);
   });
 });

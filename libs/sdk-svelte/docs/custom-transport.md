@@ -87,6 +87,59 @@ For a single component, call `useStream` directly:
 Construct the adapter at component initialization time. Recreating it
 inside a hot `$effect` closes the old stream and opens a new one.
 
+## Binding To A Thread
+
+The examples above bake a fixed `threadId` into the adapter and its
+`paths`. That is fine for a single-thread local demo, but a real
+multi-thread backend should let the framework **bind the thread**
+instead.
+
+`HttpAgentServerAdapter` — and any `AgentServerAdapter` that implements
+the optional `setThreadId` — can be constructed **without** a `threadId`.
+When you pass it to `useStream` / `provideStream`, the framework calls
+`transport.setThreadId(threadId)` before each run, including the id the
+SDK mints on the first `submit()` of a brand-new thread (`threadId:
+null`). To make a re-bound adapter target the right thread, write `paths`
+as **functions of the thread id** rather than fixed strings:
+
+```svelte
+<script lang="ts">
+  import { HttpAgentServerAdapter, useStream } from "@langchain/svelte";
+
+  const transport = new HttpAgentServerAdapter({
+    apiUrl: window.location.origin,
+    // No `threadId` — the framework binds it via `setThreadId`.
+    paths: {
+      commands: (id) => `/api/threads/${id}/commands`,
+      stream: (id) => `/api/threads/${id}/stream`,
+    },
+  });
+
+  // Start at `null`; the SDK mints the id on the first submit and reports
+  // it via `onThreadId`, which you store so later renders stay bound.
+  let threadId = $state<string | null>(null);
+  const stream = useStream<GraphType>({
+    transport,
+    threadId: () => threadId,
+    onThreadId: (id) => (threadId = id),
+  });
+</script>
+```
+
+A fixed-string path (the form used in
+[Client Setup In Svelte](#client-setup-in-svelte)) is still honored
+verbatim and is independent of the bound thread — use it only when the
+adapter never moves off a single thread.
+
+### Switching Between Existing Threads
+
+Lazy binding covers the create-a-new-thread flow. Switching a single
+provider between **different existing** threads tears down the previous
+stream — which closes the transport — so one long-lived instance cannot
+be reused across an existing-thread switch; give the adapter a fresh
+identity per thread instead. Creating a thread and staying on it never
+tears down, so lazy creation is unaffected.
+
 ## Updated Example Architecture
 
 On the server, `CustomGraphServer` owns a `LocalThreadSession` per
@@ -308,14 +361,19 @@ custom browser adapter that knows how to reverse that transformation.
 
 ## `HttpAgentServerAdapter` Options
 
-Use `paths` when your backend routes do not live at the default
-`/threads/:threadId/...` paths:
+`threadId` is optional. Omit it to let the framework bind the thread via
+`setThreadId` (see [Binding To A Thread](#binding-to-a-thread)). Use
+`paths` when your backend routes do not live at the default
+`/threads/:threadId/...` paths. Each path is `string | (threadId =>
+string)` — pass a function when the adapter is bound lazily so the URL
+follows the bound thread:
 
 ```ts
 const transport = new HttpAgentServerAdapter({
   apiUrl: window.location.origin,
-  threadId: "local",
+  threadId: "local", // optional — omit for lazy binding
   paths: {
+    // string for a fixed thread, or (id) => string when bound lazily
     commands: "/api/threads/local/commands",
     stream: "/api/threads/local/stream",
   },
@@ -348,6 +406,11 @@ adapter cannot describe your transport.
 ```ts
 interface AgentServerAdapter {
   readonly threadId: string;
+  // Optional. The framework calls this to bind / re-bind the adapter to
+  // a thread before each run — including the id minted on the first
+  // submit of a `threadId: null` stream. Omit it to stay pinned to the
+  // thread the adapter was constructed with.
+  setThreadId?(threadId: string): void;
   open(): Promise<void>;
   close(): Promise<void>;
   send(command: Command): Promise<CommandResponse | ErrorResponse | void>;
@@ -359,6 +422,10 @@ interface AgentServerAdapter {
   } | null>;
 }
 ```
+
+Implement `setThreadId` if a single instance should follow lazy thread
+creation or re-binds, and derive your connection URLs from the
+currently-bound `threadId` rather than capturing it at construction.
 
 Direct adapters are useful for in-memory tests, browser-native
 transports, a shared socket that multiplexes many logical threads, or
@@ -382,6 +449,9 @@ If your backend can expose command and stream endpoints, prefer
   `custom:a2a`.
 - **Recreating the adapter in reactive code.** Construct at script
   initialization time or inside an explicitly keyed lifecycle path.
+- **Baking a fixed `threadId` / fixed string `paths` into a lazily
+  bound adapter.** Omit `threadId` and use function `paths`
+  (`(id) => …`) so `setThreadId` can re-point the connection URLs.
 - **Treating the example session as production persistence.**
   `LocalThreadSession` is process-local and in-memory by design.
 

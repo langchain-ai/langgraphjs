@@ -127,6 +127,86 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
   });
 });
 
+describe("ProtocolSseTransportAdapter thread binding", () => {
+  it("binds lazily via setThreadId when constructed without a threadId", async () => {
+    const { calls, fetch } = createFetchRecorder();
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      fetch,
+    });
+
+    transport.setThreadId(THREAD_ID);
+    await transport.send({ id: 1, method: "state.get", params: { namespace: [] } });
+
+    expect(transport.threadId).toBe(THREAD_ID);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].href).toBe(
+      `${PROXIED_API_URL}/threads/${THREAD_ID}/commands`
+    );
+  });
+
+  it("follows setThreadId re-binds for commands and state", async () => {
+    const calls: Array<string> = [];
+    const fetch: typeof globalThis.fetch = (input) => {
+      const href = typeof input === "string" ? input : input.toString();
+      calls.push(href);
+      // `/commands` expects a protocol response; `/state` a state body.
+      if (href.endsWith("/state")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ values: { messages: [] }, next: [], tasks: [] }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          )
+        );
+      }
+      return Promise.resolve(protocolSuccessResponse());
+    };
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: "thread-a",
+      fetch,
+    });
+
+    await transport.send({ id: 1, method: "state.get", params: { namespace: [] } });
+    transport.setThreadId("thread-b");
+    await transport.send({ id: 2, method: "state.get", params: { namespace: [] } });
+    await transport.getState();
+
+    expect(calls).toEqual([
+      `${PROXIED_API_URL}/threads/thread-a/commands`,
+      `${PROXIED_API_URL}/threads/thread-b/commands`,
+      `${PROXIED_API_URL}/threads/thread-b/state`,
+    ]);
+  });
+
+  it("resolves function paths against the currently-bound thread", async () => {
+    const { calls, fetch } = createFetchRecorder();
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      fetch,
+      paths: { commands: (id) => `/sessions/${id}/cmd` },
+    });
+
+    transport.setThreadId("thread-z");
+    await transport.send({ id: 1, method: "state.get", params: { namespace: [] } });
+
+    expect(calls[0].href).toBe(`${PROXIED_API_URL}/sessions/thread-z/cmd`);
+  });
+
+  it("throws a helpful error when a command is sent before binding a thread", async () => {
+    const { calls, fetch } = createFetchRecorder();
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      fetch,
+    });
+
+    await expect(
+      transport.send({ id: 1, method: "state.get", params: { namespace: [] } })
+    ).rejects.toThrow(/no bound threadId/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("ProtocolSseTransportAdapter AsyncCaller", () => {
   it("retries transient command failures when asyncCaller is provided", async () => {
     let attempts = 0;

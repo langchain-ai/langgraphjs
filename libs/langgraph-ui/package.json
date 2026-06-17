@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-ui",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -28,7 +28,7 @@
   "dependencies": {
     "@commander-js/extra-typings": "^13.0.0",
     "commander": "^13.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "esbuild-plugin-tailwindcss": "^2.0.1",
     "zod": "^3.25.76 || ^4"
   },

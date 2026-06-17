@@ -17,7 +17,7 @@
     "@langchain/openai": "^1.4.7",
     "@langchain/protocol": "^0.0.16",
     "@langchain/react": "workspace:*",
-    "hono": "^4.12.21",
+    "hono": "^4.12.25",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zod": "^3.25.76"
@@ -28,6 +28,6 @@
     "@vitejs/plugin-react": "^6.0.2",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
-    "vite": "^8.0.5"
+    "vite": "^8.0.16"
   }
 }

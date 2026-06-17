@@ -1,6 +1,6 @@
 {
   "name": "@langchain/vue",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Vue integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -31,10 +31,10 @@
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vitejs/plugin-vue-jsx": "^5.1.5",
-    "@vitest/browser": "^4.1.8",
+    "@vitest/browser": "^4.1.9",
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.8.3",
-    "hono": "^4.12.21",
+    "hono": "^4.12.25",
     "langchain": "^1.4.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8",

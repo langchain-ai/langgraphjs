@@ -15,9 +15,9 @@ runs:
   using: "composite"
   steps:
     - name: Install pnpm
-      uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+      uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v4
     - name: Use Node.js ${{ inputs.node-version }}
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
         node-version: ${{ inputs.node-version }}
         cache: "pnpm"
@@ -26,7 +26,7 @@ runs:
       shell: bash
     - name: Download build artifacts
       if: inputs.artifact-name != ''
-      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
       with:
         name: ${{ inputs.artifact-name }}
     - name: Extract build artifacts
