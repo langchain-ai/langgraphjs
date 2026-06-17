@@ -16,7 +16,9 @@ import {
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
 import { StateGraph } from "../graph/state.js";
-import { START, END, Overwrite } from "../constants.js";
+import { START, END, Overwrite, Command } from "../constants.js";
+import { interrupt } from "../interrupt.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 
 const { Pool } = pg;
 
@@ -164,10 +166,95 @@ function fanInOverwriteGraph(saver: PostgresSaver) {
     .compile({ checkpointer: saver });
 }
 
+// A graph mixing a DeltaChannel (`messages`) with a reducer channel (`count`)
+// and a LastValue channel (`status`). Verifies delta reconstruction coexists
+// with ordinary channels stored in full in `channel_values`.
+function mixedStateGraph(saver: PostgresSaver) {
+  const State = Annotation.Root({
+    messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    count: Annotation<number>({ reducer: (a, b) => a + b, default: () => 0 }),
+    status: Annotation<string>,
+  });
+  return new StateGraph(State)
+    .addNode("chat", (state) => {
+      const last = state.messages[state.messages.length - 1];
+      return {
+        messages: [
+          new AIMessage({ id: `ai-${idCounter++}`, content: `reply:${last.content}` }),
+        ],
+        count: 1,
+        status: `seen:${last.content}`,
+      };
+    })
+    .addEdge(START, "chat")
+    .addEdge("chat", END)
+    .compile({ checkpointer: saver });
+}
+
+// A graph that pauses on `interrupt()` and, when resumed via Command, appends a
+// message derived from the resume value. Exercises the HITL persist/reconstruct
+// path for a DeltaChannel across the interrupt boundary.
+function hitlGraph(saver: PostgresSaver) {
+  const State = Annotation.Root({
+    messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+  });
+  return new StateGraph(State)
+    .addNode("ask", () => {
+      const answer = interrupt<string, string>("need input");
+      return {
+        messages: [
+          new AIMessage({ id: `ai-${idCounter++}`, content: `answered:${answer}` }),
+        ],
+      };
+    })
+    .addEdge(START, "ask")
+    .addEdge("ask", END)
+    .compile({ checkpointer: saver });
+}
+
+// A parent graph that delegates to a compiled subgraph sharing the same
+// DeltaChannel-backed `messages` state. The subgraph runs under a child
+// checkpoint namespace; reconstruction must walk the parent namespace correctly.
+function subgraphParentGraph(saver: PostgresSaver) {
+  const State = Annotation.Root({
+    messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+  });
+  const sub = new StateGraph(State)
+    .addNode("inner", (state) => {
+      const last = state.messages[state.messages.length - 1];
+      return {
+        messages: [
+          new AIMessage({ id: `sub-${idCounter++}`, content: `sub:${last.content}` }),
+        ],
+      };
+    })
+    .addEdge(START, "inner")
+    .addEdge("inner", END)
+    .compile();
+  return new StateGraph(State)
+    .addNode("outer", (state) => {
+      const last = state.messages[state.messages.length - 1];
+      return {
+        messages: [
+          new AIMessage({ id: `out-${idCounter++}`, content: `out:${last.content}` }),
+        ],
+      };
+    })
+    .addNode("child", sub)
+    .addEdge(START, "outer")
+    .addEdge("outer", "child")
+    .addEdge("child", END)
+    .compile({ checkpointer: saver });
+}
+
 describe("DeltaChannel end-to-end with PostgresSaver", () => {
   let checkpointer: PostgresSaver;
 
   beforeAll(async () => {
+    // The `int` vitest mode does not load the unit setup file, so the
+    // AsyncLocalStorage singleton that `interrupt()` relies on must be
+    // initialized explicitly (mirrors chatbot.int.test.ts / prebuilt.int.test.ts).
+    initializeAsyncLocalStorageSingleton();
     checkpointer = await createPostgresSaver();
   }, 60_000);
 
@@ -411,6 +498,146 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
       ...expected,
       "d",
       "reply:d",
+    ]);
+  });
+
+  it("reconstructs a DeltaChannel alongside reducer and LastValue channels", async () => {
+    const config = { configurable: { thread_id: "mixed" } };
+    for (let i = 0; i < 3; i += 1) {
+      await mixedStateGraph(checkpointer).invoke(
+        { messages: [human(`q${i}`)] },
+        config
+      );
+    }
+
+    // Cold read through a fresh graph: the delta channel is replayed from its
+    // persisted writes while `count`/`status` come straight from the blob.
+    const state = await mixedStateGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(state.values))).toEqual([
+      "q0",
+      "reply:q0",
+      "q1",
+      "reply:q1",
+      "q2",
+      "reply:q2",
+    ]);
+    const values = state.values as {
+      messages: BaseMessage[];
+      count: number;
+      status: string;
+    };
+    expect(values.count).toBe(3);
+    expect(values.status).toBe("seen:q2");
+  });
+
+  it("persists and reconstructs a DeltaChannel across an interrupt + resume (HITL)", async () => {
+    const config = { configurable: { thread_id: "hitl" } };
+
+    // First invocation pauses at interrupt(); the input is already committed to
+    // the delta channel before the node yields.
+    await hitlGraph(checkpointer).invoke({ messages: [human("hello")] }, config);
+    const paused = await hitlGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(paused.values))).toEqual(["hello"]);
+    expect(paused.next).toEqual(["ask"]);
+
+    // Resume on a fresh graph instance: the node completes and appends a reply
+    // derived from the resume value. Reconstruction must include both writes.
+    await hitlGraph(checkpointer).invoke(
+      new Command({ resume: "yes" }),
+      config
+    );
+    const resumed = await hitlGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(resumed.values))).toEqual([
+      "hello",
+      "answered:yes",
+    ]);
+    expect(resumed.next).toEqual([]);
+  });
+
+  it("reconstructs a DeltaChannel written across a subgraph boundary", async () => {
+    const config = { configurable: { thread_id: "subgraph" } };
+    const live = await subgraphParentGraph(checkpointer).invoke(
+      { messages: [human("hi")] },
+      config
+    );
+    expect(contents(messagesOf(live))).toEqual([
+      "hi",
+      "out:hi",
+      "sub:out:hi",
+    ]);
+
+    // Cold read through a fresh graph reconstructs the parent-namespace deltas,
+    // including the message contributed by the child subgraph.
+    const cold = await subgraphParentGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(cold.values))).toEqual(
+      contents(messagesOf(live))
+    );
+  });
+
+  it("reconstructs a DeltaChannel at a historical checkpoint and on a fork", async () => {
+    const config = { configurable: { thread_id: "fork" } };
+
+    await deltaChatGraph(checkpointer).invoke({ messages: [human("a")] }, config);
+    const afterA = await deltaChatGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(afterA.values))).toEqual(["a", "reply:a"]);
+    const forkPoint = afterA.config;
+
+    await deltaChatGraph(checkpointer).invoke({ messages: [human("b")] }, config);
+    await deltaChatGraph(checkpointer).invoke({ messages: [human("c")] }, config);
+    const latest = await deltaChatGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(latest.values))).toEqual([
+      "a",
+      "reply:a",
+      "b",
+      "reply:b",
+      "c",
+      "reply:c",
+    ]);
+
+    // Time-travel read: reconstructing AT the historical checkpoint must yield
+    // only the deltas up to that point, not the latest accumulated value.
+    const atFork = await deltaChatGraph(checkpointer).getState(forkPoint);
+    expect(contents(messagesOf(atFork.values))).toEqual(["a", "reply:a"]);
+
+    // Forking a new run from that checkpoint reconstructs the historical delta
+    // state as its base, so the new branch excludes b/c entirely.
+    const forked = await deltaChatGraph(checkpointer).invoke(
+      { messages: [human("z")] },
+      forkPoint
+    );
+    expect(contents(messagesOf(forked))).toEqual([
+      "a",
+      "reply:a",
+      "z",
+      "reply:z",
+    ]);
+  });
+
+  it("persists and reconstructs manual updateState writes to a DeltaChannel", async () => {
+    const config = { configurable: { thread_id: "update" } };
+    await deltaChatGraph(checkpointer).invoke({ messages: [human("a")] }, config);
+
+    // A manual update writes to the delta channel just like a node would.
+    await deltaChatGraph(checkpointer).updateState(config, {
+      messages: [new AIMessage({ id: `u-${idCounter++}`, content: "manual" })],
+    });
+
+    const state = await deltaChatGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(state.values))).toEqual([
+      "a",
+      "reply:a",
+      "manual",
+    ]);
+
+    // The manual write survives a subsequent normal run and a cold read.
+    await deltaChatGraph(checkpointer).invoke({ messages: [human("b")] }, config);
+    const cold = await deltaChatGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(cold.values))).toEqual([
+      "a",
+      "reply:a",
+      "manual",
+      "b",
+      "reply:b",
     ]);
   });
 });
