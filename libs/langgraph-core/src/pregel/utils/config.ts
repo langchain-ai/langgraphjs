@@ -144,22 +144,42 @@ function mergeCallbacks(
 }
 
 /**
- * True when the caller is starting a fresh top-level run (explicit
+ * True when the caller is starting a fresh top-level run (invoke-time
  * `thread_id`, no active nesting keys). In that case we must not inherit
  * langgraph-internal `configurable` entries from `AsyncLocalStorage`, which
  * may still carry scratchpad/state from another concurrent invocation on a
  * shared singleton agent.
+ *
+ * Only the last caller-supplied config is treated as invoke-time options.
+ * Earlier entries are graph-bound defaults from `.withConfig()` / compile and
+ * must not count — a child graph bound with `thread_id` and invoked from a
+ * parent task without a fresh config still needs ambient nesting keys from ALS.
  */
 function isRootLevelExplicitInvoke(
   configs: (LangGraphRunnableConfig | undefined)[]
 ): boolean {
-  const hasExplicitThreadId = configs.some(
-    (c) => c?.configurable?.thread_id !== undefined
-  );
+  let invokeConfig: LangGraphRunnableConfig | undefined;
+  for (let i = configs.length - 1; i >= 0; i -= 1) {
+    if (configs[i] !== undefined) {
+      invokeConfig = configs[i];
+      break;
+    }
+  }
+  const hasInvokeTimeThreadId =
+    invokeConfig?.configurable?.thread_id !== undefined;
+
   const hasExplicitNesting = configs.some(
     (c) => c?.configurable?.[CONFIG_KEY_READ] !== undefined
   );
-  return hasExplicitThreadId && !hasExplicitNesting;
+
+  const ambientConfigurable =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig()?.configurable;
+  const hasAmbientNesting =
+    ambientConfigurable?.[CONFIG_KEY_READ] !== undefined;
+
+  return (
+    hasInvokeTimeThreadId && !hasExplicitNesting && !hasAmbientNesting
+  );
 }
 
 export function ensureLangGraphConfig(

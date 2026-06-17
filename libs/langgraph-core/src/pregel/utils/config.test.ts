@@ -334,15 +334,44 @@ describe("ensureLangGraphConfig", () => {
         configurable: {
           thread_id: "stale-thread",
           __pregel_scratchpad__: { currentTaskInput: { secret: "leaked" } },
-          __pregel_read__: null,
         },
       });
 
-    const result = ensureLangGraphConfig({
+    const bound = { configurable: { ls_agent_type: "chatbot" } };
+    const result = ensureLangGraphConfig(bound, {
       configurable: { thread_id: "fresh-thread" },
     });
 
-    expect(result.configurable).toEqual({ thread_id: "fresh-thread" });
+    expect(result.configurable).toEqual({
+      ls_agent_type: "chatbot",
+      thread_id: "fresh-thread",
+    });
+  });
+
+  it("should inherit ambient nesting when bound config has thread_id but invoke does not", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: {
+          thread_id: "parent-thread",
+          __pregel_read__: () => null,
+          checkpoint_ns: "parent:1",
+          __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+        },
+      });
+
+    const bound = { configurable: { thread_id: "bound-thread" } };
+    const result = ensureLangGraphConfig(bound, {
+      configurable: { ls_agent_type: "sub-agent" },
+    });
+
+    expect(result.configurable).toEqual({
+      thread_id: "bound-thread",
+      __pregel_read__: expect.any(Function),
+      checkpoint_ns: "parent:1",
+      __pregel_scratchpad__: { currentTaskInput: { from: "parent" } },
+      ls_agent_type: "sub-agent",
+    });
   });
 
   it("should still inherit implicit configurable for nested invokes", () => {
