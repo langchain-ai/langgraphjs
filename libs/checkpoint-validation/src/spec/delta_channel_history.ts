@@ -2,6 +2,7 @@ import {
   type BaseCheckpointSaver,
   type Checkpoint,
   type CheckpointMetadata,
+  deltaExitStepTaskId,
   DeltaSnapshot,
   emptyCheckpoint,
   isDeltaSnapshot,
@@ -179,6 +180,38 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
             ["task-a", "messages", ["plain"]],
             ["task-b", "messages", { __overwrite__: ["over"] }],
           ],
+        ]);
+      });
+
+      it("splits exit-mode supersteps stored under one anchor checkpoint", async () => {
+        const root = rootConfig(uuid6(3));
+
+        const c0 = await putCheckpoint(root, uuid6(3), {
+          messages: new DeltaSnapshot([]),
+        });
+        // "exit" durability persists writes from several supersteps under one
+        // anchor checkpoint, tagged with step-prefixed synthetic task ids. The
+        // walk must re-split them into separate super-step groups so that an
+        // Overwrite in an earlier step does not swallow a later step's append.
+        const tidA = deltaExitStepTaskId(0, "taskA");
+        const tidB = deltaExitStepTaskId(1, "taskB");
+        await checkpointer.putWrites(
+          c0,
+          [["messages", { __overwrite__: ["a"] }]],
+          tidA
+        );
+        await checkpointer.putWrites(c0, [["messages", ["b"]]], tidB);
+        const c1 = await putCheckpoint(c0, uuid6(3), {});
+
+        const hist = await checkpointer.getDeltaChannelHistory({
+          config: c1,
+          channels: ["messages"],
+        });
+
+        // Two distinct super-step groups, chronological, NOT one merged group.
+        expect(hist.messages.writes).toEqual([
+          [[tidA, "messages", { __overwrite__: ["a"] }]],
+          [[tidB, "messages", ["b"]]],
         ]);
       });
 

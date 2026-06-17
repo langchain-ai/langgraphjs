@@ -7,6 +7,7 @@ import {
   Checkpoint,
   CheckpointTuple,
   copyCheckpoint,
+  deltaExitStepTaskId,
   emptyCheckpoint,
   PendingWrite,
   CheckpointPendingWrite,
@@ -1860,8 +1861,11 @@ export class PregelLoop {
         anchorConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID],
     });
 
-    // Group by [step, taskId]; a step-prefixed synthetic task id preserves
-    // chronological super-step order under the saver's (task_id, idx) sort.
+    // Group by [step, taskId]; a step-prefixed synthetic task id (see
+    // `deltaExitStepTaskId`) preserves chronological super-step order under the
+    // saver's (task_id, idx) sort AND lets `getDeltaChannelHistory` re-split
+    // these supersteps into separate replay groups (so an Overwrite in one
+    // exit-mode step does not discard a later step's writes on reconstruction).
     const grouped = new Map<string, PendingWrite<string>[]>();
     const order: { key: string; step: number; tid: string }[] = [];
     for (const [step, tid, ch, v] of pending) {
@@ -1875,12 +1879,11 @@ export class PregelLoop {
       group.push([ch, v]);
     }
     for (const { key, step, tid } of order) {
-      const synthTid = `${String(step).padStart(8, "0")}-${tid}`;
       this._trackCheckpointerPromise(
         this.checkpointer.putWrites(
           anchorWriteConfig,
           grouped.get(key)!,
-          synthTid
+          deltaExitStepTaskId(step, tid)
         )
       );
     }

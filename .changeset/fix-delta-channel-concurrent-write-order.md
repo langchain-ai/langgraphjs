@@ -23,4 +23,8 @@ divergence in two complementary ways:
 To support the per-step `Overwrite` rule, `BaseCheckpointSaver.getDeltaChannelHistory`
 now returns `writes` grouped by super-step (`CheckpointPendingWrite[][]`) instead
 of a flat list, and `DeltaChannel.replayWrites` applies the rule per group so a
-cold read always reproduces live state. These delta-channel APIs remain Beta.
+cold read always reproduces live state. Under `"exit"` durability several
+supersteps are persisted under a single anchor checkpoint, so the history walk
+re-splits them by super-step (preserving step boundaries) to ensure an
+`Overwrite` in one exit-mode step does not discard a later step's writes on
+reload. These delta-channel APIs remain Beta.

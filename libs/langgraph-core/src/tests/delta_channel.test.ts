@@ -705,6 +705,131 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   });
 });
 
+// Cross-language parity with the Python PR that aligns DeltaChannel Overwrite
+// semantics (langchain-ai/langgraph#8124). These mirror that PR's graph-level
+// tests exactly so JS and Python agree on the *observable* result for live
+// execution AND checkpoint replay. The parallel case is the one an automated
+// reviewer flagged on the Python PR: live returns ["b", "d"] but a flat replay
+// that keeps the discarded same-step write reconstructs ["b", "c", "d"]. JS
+// groups history by super-step and applies the Overwrite-wins rule per step, so
+// reload matches live here.
+describe("DeltaChannel Overwrite parity (langgraph#8124)", () => {
+  const strListReducer = (state: string[], writes: string[][]): string[] => {
+    const out = [...state];
+    for (const w of writes) out.push(...w);
+    return out;
+  };
+  const State = Annotation.Root({
+    messages: new DeltaChannel<string[], string[]>(strListReducer),
+  });
+  const messages = (v: unknown) => (v as { messages: string[] }).messages;
+
+  it("sequential Overwrite bypasses the whole prior history", async () => {
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => ({ messages: ["a"] }))
+      .addNode("b", () => ({ messages: new Overwrite(["b"]) }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "seq" } };
+
+    const live = await graph.invoke({ messages: ["START"] }, config);
+    const cold = await graph.getState(config);
+    expect(messages(live)).toEqual(["b"]);
+    expect(messages(cold.values)).toEqual(["b"]);
+  });
+
+  it("parallel Overwrite + plain wins its super-step; reload == live", async () => {
+    // a -> (b: Overwrite["b"], c: ["c"]) -> d: ["d"]. The Overwrite wins step 2,
+    // discarding the concurrent "c"; "d" appends in step 3 => ["b", "d"].
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => ({ messages: ["a"] }))
+      .addNode("b", () => ({ messages: new Overwrite(["b"]) }))
+      .addNode("c", () => ({ messages: ["c"] }))
+      .addNode("d", () => ({ messages: ["d"] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("a", "c")
+      .addEdge("b", "d")
+      .addEdge("c", "d")
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "par" } };
+
+    const live = await graph.invoke({ messages: ["START"] }, config);
+    // Reconstruct purely from the saver with a fresh graph instance.
+    const cold = await new StateGraph(State)
+      .addNode("a", () => ({ messages: ["a"] }))
+      .addNode("b", () => ({ messages: new Overwrite(["b"]) }))
+      .addNode("c", () => ({ messages: ["c"] }))
+      .addNode("d", () => ({ messages: ["d"] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("a", "c")
+      .addEdge("b", "d")
+      .addEdge("c", "d")
+      .compile({ checkpointer: saver })
+      .getState(config);
+
+    expect(messages(live)).toEqual(["b", "d"]);
+    // The invariant Python's flat replay breaks: reload must equal live.
+    expect(messages(cold.values)).toEqual(["b", "d"]);
+  });
+
+  it("two concurrent Overwrites in one super-step throw", async () => {
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => ({ messages: ["a"] }))
+      .addNode("b", () => ({ messages: new Overwrite(["b"]) }))
+      .addNode("c", () => ({ messages: new Overwrite(["c"]) }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("a", "c")
+      .addEdge("b", END)
+      .addEdge("c", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "par-err" } };
+
+    await expect(
+      graph.invoke({ messages: ["START"] }, config)
+    ).rejects.toThrow(/only one Overwrite/i);
+  });
+
+  // "exit" durability emits a single checkpoint per run, so a DeltaChannel's
+  // writes from multiple supersteps are persisted together under one anchor
+  // checkpoint (via step-prefixed synthetic task ids). Reconstruction must keep
+  // those supersteps separate: an Overwrite in an earlier step must NOT discard
+  // a later step's append. This is the exit-mode analogue of the parallel case.
+  it("exit durability: an Overwrite keeps later-superstep appends on reload", async () => {
+    const saver = new MemorySaver();
+    const makeGraph = () =>
+      new StateGraph(State)
+        .addNode("a", () => ({ messages: new Overwrite(["x"]) }))
+        .addNode("b", () => ({ messages: ["y"] }))
+        .addEdge(START, "a")
+        .addEdge("a", "b")
+        .addEdge("b", END)
+        .compile({ checkpointer: saver });
+    const config = {
+      configurable: { thread_id: "exit-ow" },
+      durability: "exit" as const,
+    };
+
+    // a overwrites to ["x"] (dropping the "start" input); b appends "y" in the
+    // next super-step => ["x", "y"].
+    const live = await makeGraph().invoke({ messages: ["start"] }, config);
+    // Fresh graph reconstructs purely from the single exit-mode checkpoint.
+    const cold = await makeGraph().getState(config);
+
+    expect(messages(live)).toEqual(["x", "y"]);
+    // The bug this guards against: merging the two exit-mode supersteps into one
+    // replay group makes the Overwrite swallow "y", yielding ["x"] on reload.
+    expect(messages(cold.values)).toEqual(["x", "y"]);
+  });
+});
+
 describe("channelsFromCheckpoint", () => {
   it("replays writes for absent delta channels using the saver", async () => {
     const saver = new MemorySaver();

@@ -6,6 +6,7 @@ import {
   CheckpointTuple,
   copyCheckpoint,
   getCheckpointId,
+  groupWritesBySuperstep,
   maxChannelVersion,
   WRITES_IDX_MAP,
 } from "./base.js";
@@ -633,7 +634,16 @@ export class MemorySaver extends BaseCheckpointSaver {
         ]);
       }
       for (const ch of Object.keys(groupByCh)) {
-        collectedGroupsByCh[ch].push(groupByCh[ch]);
+        // Normally one checkpoint is one super-step, but "exit" durability packs
+        // several supersteps under one anchor checkpoint via synthetic
+        // step-prefixed task ids; re-split them here so the consumer applies
+        // per-step `Overwrite` semantics on the right boundaries. Push the
+        // groups newest-step-first so the final outer `.reverse()` restores
+        // chronological (oldest→newest) order across steps and checkpoints.
+        const groups = groupWritesBySuperstep(groupByCh[ch]);
+        for (let i = groups.length - 1; i >= 0; i -= 1) {
+          collectedGroupsByCh[ch].push(groups[i]);
+        }
       }
 
       for (const ch of terminatedHere) {
