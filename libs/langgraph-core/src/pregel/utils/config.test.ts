@@ -1,6 +1,7 @@
 import { describe, beforeEach, afterAll, it, expect, vi } from "vitest";
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import {
   ensureLangGraphConfig,
@@ -144,6 +145,49 @@ describe("ensureLangGraphConfig", () => {
     );
 
     expect(result.callbacks).toEqual([cbA, cbB]);
+  });
+
+  it("should merge tags and metadata (incl. inheritable) when both callbacks are managers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const baseManager = new CallbackManager();
+    baseManager.addTags(["base-inheritable"], true);
+    baseManager.addTags(["base-local"], false);
+    baseManager.addMetadata({ base_inheritable: "base" }, true);
+    baseManager.addMetadata({ base_local: "base" }, false);
+
+    const providedManager = new CallbackManager();
+    providedManager.addTags(["provided-inheritable"], true);
+    providedManager.addTags(["provided-local"], false);
+    providedManager.addMetadata({ provided_inheritable: "provided" }, true);
+    providedManager.addMetadata({ provided_local: "provided" }, false);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged).toBeInstanceOf(CallbackManager);
+
+    // inheritableMetadata must be carried over so child managers (nested
+    // graph/tool/model runs) keep inheriting it.
+    expect(merged.inheritableMetadata).toEqual({
+      base_inheritable: "base",
+      provided_inheritable: "provided",
+    });
+    expect(merged.metadata).toEqual({
+      base_inheritable: "base",
+      base_local: "base",
+      provided_inheritable: "provided",
+      provided_local: "provided",
+    });
+    expect(merged.inheritableTags).toEqual([
+      "base-inheritable",
+      "provided-inheritable",
+    ]);
   });
 
   it("should not mutate the input configs when merging", () => {
