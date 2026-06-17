@@ -1,5 +1,35 @@
 # @langchain/langgraph
 
+## 1.4.4
+
+### Patch Changes
+
+- [#2552](https://github.com/langchain-ai/langgraphjs/pull/2552) [`d662cbb`](https://github.com/langchain-ai/langgraphjs/commit/d662cbbc63eebdf1312e57d41908da1b9018e783) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): isolate concurrent singleton-agent invocations by thread
+
+  `ensureLangGraphConfig` ignores the ambient `AsyncLocalStorage` `configurable`
+  on root-level invokes that supply an invoke-time `thread_id` and have no nesting
+  keys (ignoring graph-bound `.withConfig()` defaults). On a fresh top-level run
+  the ambient `configurable` can belong to another concurrent invocation, so its
+  keys — internal scratchpad/task-input as well as user keys like
+  `tenant_id`/`user_id` — must not leak in; values the caller wants arrive through
+  the explicit (bound + invoke-time) configs. Ambient nesting (`__pregel_read__`)
+  and bound child graphs invoked from parent tasks are unaffected. This prevents
+  cross-invocation leakage between concurrent `invoke()` calls on a shared compiled
+  graph (e.g. BullMQ workers with `concurrency > 1`). Complements the config-merge
+  fix that stopped shared graph-bound `metadata`/`configurable` objects from being
+  mutated across invocations
+  ([#2040](https://github.com/langchain-ai/langgraphjs/issues/2040)).
+
+- [#2553](https://github.com/langchain-ai/langgraphjs/pull/2553) [`1c2aa5b`](https://github.com/langchain-ai/langgraphjs/commit/1c2aa5bfeacd8b7463e3d5b6010daee26e9217e0) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): recognize JSON-erased `Overwrite` values across runtimes
+
+  `Overwrite` already survives JSON serialization in JS because `Overwrite.toJSON()`
+  emits the canonical `{ "__overwrite__": value }` sentinel. `_getOverwriteValue`
+  now additionally recognizes the discriminator form `{ "type": "__overwrite__",
+value }` produced when a typed `Overwrite` from another runtime (e.g. a Python
+  dataclass routed through the LangGraph API server) is serialized and its type is
+  erased. This keeps `Overwrite` (and `DeltaChannel`) semantics intact across
+  cross-runtime JSON boundaries. These delta-channel APIs remain Beta.
+
 ## 1.4.3
 
 ### Patch Changes
