@@ -22,7 +22,7 @@
     "demo:mentor:vector": "tsx examples/mentor-vector-demo.ts",
     "example:agent": "tsx examples/checkpoint-agent.ts",
     "example:graph": "tsx examples/oracle-graph-demo.ts",
-    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:eslint": "oxlint src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "prepublish": "pnpm build",
     "test": "vitest run",
