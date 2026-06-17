@@ -20,11 +20,10 @@ divergence in two complementary ways:
   ordering of concurrent fan-in writes; previously a plain write that landed
   after an `Overwrite` in the same step was still folded in.
 
-To support the per-step `Overwrite` rule, `BaseCheckpointSaver.getDeltaChannelHistory`
-now returns `writes` grouped by super-step (`CheckpointPendingWrite[][]`) instead
-of a flat list, and `DeltaChannel.replayWrites` applies the rule per group so a
-cold read always reproduces live state. Under `"exit"` durability several
-supersteps are persisted under a single anchor checkpoint, so the history walk
-re-splits them by super-step (preserving step boundaries) to ensure an
-`Overwrite` in one exit-mode step does not discard a later step's writes on
-reload. These delta-channel APIs remain Beta.
+To keep reconstruction in sync with this `Overwrite` rule, any `DeltaChannel`
+that sees an `Overwrite` in a super-step is now force-snapshotted at the next
+checkpoint (and, under `"exit"` durability, in the final checkpoint). The
+post-overwrite value is materialized into `channel_values`, so a cold read seeds
+from that snapshot and never has to replay across the reset — making live and
+reconstructed state identical without changing the sparse-replay history shape.
+These delta-channel APIs remain Beta.

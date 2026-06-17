@@ -6,7 +6,6 @@ import {
   CheckpointTuple,
   copyCheckpoint,
   getCheckpointId,
-  groupWritesBySuperstep,
   maxChannelVersion,
   WRITES_IDX_MAP,
 } from "./base.js";
@@ -577,14 +576,10 @@ export class MemorySaver extends BaseCheckpointSaver {
       current = entry[2];
     }
 
-    // Per channel, a list of super-step groups collected newest→oldest; each
-    // group holds that checkpoint's writes for the channel ordered by
-    // `(task_id, idx)`. The group list is reversed once at the end to yield
-    // oldest→newest super-steps.
-    const collectedGroupsByCh: Record<string, CheckpointPendingWrite[][]> = {};
+    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
     const seedByCh: Record<string, unknown> = {};
     const remaining = new Set(channels);
-    for (const ch of channels) collectedGroupsByCh[ch] = [];
+    for (const ch of channels) collectedByCh[ch] = [];
 
     for (const cpId of chain) {
       if (remaining.size === 0) break;
@@ -610,16 +605,14 @@ export class MemorySaver extends BaseCheckpointSaver {
 
       const stepWritesKey = _generateKey(threadId, checkpointNs, cpId);
       const stepWrites = Object.entries(this.writes[stepWritesKey] ?? {});
-      // Sort ascending by [taskId, idx] so each super-step group is in stable
-      // (task_id, idx) order; the group list is reversed at the end for
-      // oldest→newest steps.
+      // Sort by [taskId, idx] descending to mirror the Python walk order;
+      // the full list is reversed once at the end to get oldest→newest.
       stepWrites.sort(([a], [b]) => {
         const [aTask, aIdx] = a.split(",");
         const [bTask, bIdx] = b.split(",");
-        if (aTask !== bTask) return aTask < bTask ? -1 : 1;
-        return Number(aIdx) - Number(bIdx);
+        if (aTask !== bTask) return aTask < bTask ? 1 : -1;
+        return Number(bIdx) - Number(aIdx);
       });
-      const groupByCh: Record<string, CheckpointPendingWrite[]> = {};
       for (const [, [tid, ch, serialized]] of stepWrites) {
         if (!remaining.has(ch)) continue;
         // Collect on-path writes regardless of seed type. A plain (pre-delta
@@ -627,23 +620,11 @@ export class MemorySaver extends BaseCheckpointSaver {
         // pending writes produce the child and must still be replayed, just
         // like a `DeltaSnapshot` seed. Skipping them would drop post-migration
         // writes saved under the migration boundary checkpoint.
-        (groupByCh[ch] ??= []).push([
+        collectedByCh[ch].push([
           tid,
           ch,
           await this.serde.loadsTyped("json", serialized),
         ]);
-      }
-      for (const ch of Object.keys(groupByCh)) {
-        // Normally one checkpoint is one super-step, but "exit" durability packs
-        // several supersteps under one anchor checkpoint via synthetic
-        // step-prefixed task ids; re-split them here so the consumer applies
-        // per-step `Overwrite` semantics on the right boundaries. Push the
-        // groups newest-step-first so the final outer `.reverse()` restores
-        // chronological (oldest→newest) order across steps and checkpoints.
-        const groups = groupWritesBySuperstep(groupByCh[ch]);
-        for (let i = groups.length - 1; i >= 0; i -= 1) {
-          collectedGroupsByCh[ch].push(groups[i]);
-        }
       }
 
       for (const ch of terminatedHere) {
@@ -655,7 +636,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     const result: Record<string, DeltaChannelHistory> = {};
     for (const ch of channels) {
       const entryH: DeltaChannelHistory = {
-        writes: collectedGroupsByCh[ch].slice().reverse(),
+        writes: collectedByCh[ch].slice().reverse(),
       };
       if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
         entryH.seed = seedByCh[ch];

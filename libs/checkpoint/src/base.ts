@@ -110,82 +110,6 @@ export type CheckpointListOptions = {
   filter?: Record<string, any>;
 };
 
-/**
- * Marks a synthetic task id used to persist a `DeltaChannel` write produced in
- * a specific super-step under a single anchor checkpoint (see the Pregel loop's
- * exit-durability path). In "exit" durability the whole run emits one
- * checkpoint, so deltas from multiple supersteps are stored together; this
- * prefix carries the originating super-step so reconstruction can re-split them
- * into separate replay groups.
- *
- * Chosen to be collision-free with real (UUID) task ids: it contains characters
- * (`_`, `g`, `s`, `t`, `p`, ...) that never appear in a hex UUID, so a normal
- * task id can never be misread as carrying a super-step.
- *
- * @remarks Beta. Part of the `DeltaChannel` support surface.
- */
-const DELTA_EXIT_STEP_TASK_PREFIX = "__lg_delta_step_";
-
-/** Width of the zero-padded super-step number embedded in a synthetic id. */
-const DELTA_EXIT_STEP_WIDTH = 8;
-
-/**
- * Build the synthetic task id for an exit-mode `DeltaChannel` write produced at
- * `step`. The zero-padded step keeps the saver's `(task_id, idx)` sort in
- * chronological super-step order.
- *
- * @remarks Beta. Part of the `DeltaChannel` support surface.
- */
-export function deltaExitStepTaskId(step: number, taskId: string): string {
-  return `${DELTA_EXIT_STEP_TASK_PREFIX}${String(step).padStart(
-    DELTA_EXIT_STEP_WIDTH,
-    "0"
-  )}_${taskId}`;
-}
-
-/**
- * Extract the (zero-padded) super-step key from a synthetic exit-mode delta task
- * id, or `undefined` for a normal task id. Used by `getDeltaChannelHistory` to
- * split an exit-anchor checkpoint's writes back into per-super-step groups.
- *
- * @remarks Beta. Part of the `DeltaChannel` support surface.
- */
-export function deltaExitStepKey(taskId: string): string | undefined {
-  if (!taskId.startsWith(DELTA_EXIT_STEP_TASK_PREFIX)) return undefined;
-  return taskId.slice(
-    DELTA_EXIT_STEP_TASK_PREFIX.length,
-    DELTA_EXIT_STEP_TASK_PREFIX.length + DELTA_EXIT_STEP_WIDTH
-  );
-}
-
-/**
- * Split one checkpoint's writes (already ordered by `(task_id, idx)`) into
- * super-step groups, oldest→newest. Normal writes (one checkpoint = one
- * super-step) collapse to a single group; exit-mode writes carry a super-step
- * key in their synthetic task id and split into one group per step. Used by
- * every {@link BaseCheckpointSaver.getDeltaChannelHistory} implementation so the
- * Overwrite-wins-per-step replay rule lands on the correct boundaries even when
- * "exit" durability packs several supersteps under one anchor checkpoint.
- *
- * @remarks Beta. Part of the `DeltaChannel` support surface.
- */
-export function groupWritesBySuperstep(
-  sorted: CheckpointPendingWrite[]
-): CheckpointPendingWrite[][] {
-  const NORMAL_KEY = "\u0000normal";
-  const byStep = new Map<string, CheckpointPendingWrite[]>();
-  for (const write of sorted) {
-    const key = deltaExitStepKey(write[0]) ?? NORMAL_KEY;
-    let group = byStep.get(key);
-    if (group === undefined) {
-      group = [];
-      byStep.set(key, group);
-    }
-    group.push(write);
-  }
-  return Array.from(byStep.values());
-}
-
 export abstract class BaseCheckpointSaver<V extends string | number = number> {
   serde: SerializerProtocol = new JsonPlusSerializer();
 
@@ -265,13 +189,10 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
     const { config, channels } = options;
     if (channels.length === 0) return {};
 
-    // Per channel, a list of super-step groups collected newest→oldest; each
-    // group holds one ancestor checkpoint's writes for the channel. The group
-    // list is reversed once at the end to yield oldest→newest super-steps.
-    const collectedGroupsByCh: Record<string, CheckpointPendingWrite[][]> = {};
+    const collectedByCh: Record<string, CheckpointPendingWrite[]> = {};
     const seedByCh: Record<string, unknown> = {};
     const remaining = new Set(channels);
-    for (const ch of channels) collectedGroupsByCh[ch] = [];
+    for (const ch of channels) collectedByCh[ch] = [];
 
     const targetTuple = await this.getTuple(config);
     let cursorConfig: RunnableConfig | undefined = targetTuple?.parentConfig;
@@ -281,19 +202,16 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
         await this.getTuple(cursorConfig);
       if (tup === undefined) break;
       if (tup.pendingWrites && tup.pendingWrites.length > 0) {
-        // Stable-sort this checkpoint's writes by (task_id, idx), then split
-        // into super-step groups. DeltaChannel reconstruction must replay
+        // Group this checkpoint's writes per channel in their stored order, then
+        // stable-sort by task id. DeltaChannel reconstruction must replay
         // concurrent same-superstep writes in the canonical (task_id, idx) order
-        // that live execution applies them in (see `_applyWrites`), otherwise
-        // the reconstructed value can diverge from the live value. Within a task
-        // the stored order is the persisted `idx` order, which the stable sort
+        // that live execution applies them in (see `_applyWrites`), otherwise the
+        // reconstructed value can diverge from the live value — e.g. an
+        // `Overwrite` hard reset landing at a different point. Within a task the
+        // stored order is the persisted `idx` order, which the stable sort
         // preserves; this makes reconstruction independent of how a given saver
-        // happens to order `pendingWrites`. Normally one checkpoint is one
-        // super-step, but "exit" durability packs several supersteps under one
-        // anchor checkpoint (synthetic step-prefixed task ids), so
-        // `groupWritesBySuperstep` re-splits them; grouping is what lets the
-        // consumer apply per-step `Overwrite` semantics (an Overwrite wins its
-        // whole super-step but not later steps stored on the same anchor).
+        // happens to order `pendingWrites` (insertion order, locale collation,
+        // etc.).
         const perChannel: Record<string, CheckpointPendingWrite[]> = {};
         for (const write of tup.pendingWrites) {
           const ch = write[1];
@@ -309,14 +227,11 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
                 : 1
               : a.i - b.i
           );
-          // Push the checkpoint's super-step groups newest-first so the final
-          // outer `.reverse()` restores chronological (oldest→newest) order
-          // across both checkpoints and steps-within-an-exit-anchor.
-          const groups = groupWritesBySuperstep(
-            indexed.map((entry) => entry.write)
-          );
-          for (let i = groups.length - 1; i >= 0; i -= 1) {
-            collectedGroupsByCh[ch].push(groups[i]);
+          // Pushed reversed so the final `.reverse()` below yields oldest→newest
+          // checkpoints with each checkpoint's writes in ascending (task_id, idx)
+          // order.
+          for (let i = indexed.length - 1; i >= 0; i -= 1) {
+            collectedByCh[ch].push(indexed[i].write);
           }
         }
       }
@@ -337,7 +252,7 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
     const result: Record<string, DeltaChannelHistory> = {};
     for (const ch of channels) {
       const entry: DeltaChannelHistory = {
-        writes: collectedGroupsByCh[ch].slice().reverse(),
+        writes: collectedByCh[ch].slice().reverse(),
       };
       if (Object.prototype.hasOwnProperty.call(seedByCh, ch)) {
         entry.seed = seedByCh[ch];

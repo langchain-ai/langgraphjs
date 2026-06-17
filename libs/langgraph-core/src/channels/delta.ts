@@ -137,44 +137,31 @@ export class DeltaChannel<
   }
 
   /**
-   * Replay ancestor writes grouped by super-step, oldest-to-newest.
+   * Apply ancestor writes oldest-to-newest via a single reducer call.
    *
-   * Each inner array holds the writes produced in a single super-step (as
-   * returned by {@link BaseCheckpointSaver.getDeltaChannelHistory}). An
-   * Overwrite anywhere in a super-step wins that whole step: its value becomes
-   * the new base and every sibling write in the same step (before AND after)
-   * is discarded. Steps without an Overwrite fold their writes through the
-   * reducer. This mirrors {@link DeltaChannel.update} exactly, so a
-   * reconstruction reproduces the live state for any per-step write order —
-   * including concurrent (fan-in) writes whose ordering is not stable.
+   * If any write is an Overwrite, the last one in the sequence acts as the
+   * reset point: its value becomes the new base and only writes after it are
+   * passed to the reducer.
    */
-  public replayWrites(steps: CheckpointPendingWrite[][]): void {
-    let base =
-      this.value === undefined ? this.initialValueFactory() : this.value;
-    for (const step of steps) {
-      if (step.length === 0) continue;
-      let overwriteValue: ValueType | undefined;
-      let hasOverwrite = false;
-      const plain: UpdateType[] = [];
-      for (const write of step) {
-        const [isOverwrite, value] = _getOverwriteValue<ValueType>(write[2]);
-        if (isOverwrite) {
-          hasOverwrite = true;
-          overwriteValue = value;
-        } else {
-          plain.push(write[2] as UpdateType);
-        }
-      }
-      if (hasOverwrite) {
+  public replayWrites(writes: CheckpointPendingWrite[]): void {
+    const values = writes.map((w) => w[2]);
+    if (values.length === 0) return;
+    let base = this.value as ValueType;
+    let start = 0;
+    for (let i = 0; i < values.length; i += 1) {
+      const [isOverwrite, overwriteValue] = _getOverwriteValue<ValueType>(
+        values[i]
+      );
+      if (isOverwrite) {
         base =
           overwriteValue !== undefined && overwriteValue !== null
             ? overwriteValue
             : this.initialValueFactory();
-      } else if (plain.length > 0) {
-        base = this.reducer(base, plain);
+        start = i + 1;
       }
     }
-    this.value = base;
+    const remaining = values.slice(start) as UpdateType[];
+    this.value = remaining.length > 0 ? this.reducer(base, remaining) : base;
   }
 
   public update(values: OverwriteOrValue<ValueType, UpdateType>[]): boolean {
@@ -195,11 +182,14 @@ export class DeltaChannel<
     }
 
     if (hasOverwrite) {
-      // Option A: an Overwrite wins the entire super-step. Every sibling write
-      // in the same step — before AND after the Overwrite — is discarded, so
-      // the result is independent of the (arbitrary) order of concurrent
-      // writes within the step. This mirrors `BinaryOperatorAggregate` and is
-      // why only one Overwrite per step is allowed.
+      // An Overwrite wins the entire super-step: every sibling write in the
+      // same step — before AND after the Overwrite — is discarded, so the
+      // result is independent of the (arbitrary) order of concurrent writes
+      // within the step. This mirrors `BinaryOperatorAggregate` and is why
+      // only one Overwrite per step is allowed. The loop force-snapshots any
+      // delta channel that saw an Overwrite (see `_putCheckpoint` /
+      // `_putExitDeltaWrites`), so reconstruction starts from this
+      // post-overwrite value and never replays across the reset.
       this.value =
         overwriteValue !== undefined && overwriteValue !== null
           ? overwriteValue
