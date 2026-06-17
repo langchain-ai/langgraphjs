@@ -29,7 +29,7 @@
     "@langchain/langgraph-checkpoint": "workspace:^",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^25.4.0",
-    "@vitest/browser": "^4.1.8",
+    "@vitest/browser": "^4.1.9",
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.8.3",
     "hono": "^4.12.25",
