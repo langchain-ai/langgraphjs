@@ -2,7 +2,7 @@
   "name": "@examples/ui-react",
   "private": true,
   "type": "module",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "scripts": {
     "dev": "turbo dev:client dev:server",
     "dev:client": "vite",
