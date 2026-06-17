@@ -119,6 +119,10 @@ function mergeCallbacks(
       new Set(base.inheritableTags.concat(provided.inheritableTags))
     ),
     metadata: { ...base.metadata, ...provided.metadata },
+    inheritableMetadata: {
+      ...base.inheritableMetadata,
+      ...provided.inheritableMetadata,
+    },
   });
 }
 
