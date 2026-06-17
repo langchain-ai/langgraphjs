@@ -8,12 +8,12 @@
     "build": "cd graphs && uv run langgraph build --no-pull -c langgraph.json --tag langgraphjs-tests-api",
     "up": "docker compose -f compose-postgres.yml up -V --force-recreate --wait",
     "down": "docker compose -f compose-postgres.yml down -v",
-    "test": "vitest run --fileParallelism=false",
+    "test:managed": "vitest run --fileParallelism=false",
     "test:streaming": "vitest run --fileParallelism=false streaming.test.ts",
-    "int": "pnpm configure && pnpm build && pnpm up && (pnpm test; ec=$?; pnpm down; exit $ec)"
+    "int": "pnpm configure && pnpm build && pnpm up && (pnpm test:managed; ec=$?; pnpm down; exit $ec)"
   },
   "devDependencies": {
-    "@langchain/langgraph-sdk": "latest",
+    "@langchain/langgraph-sdk": "workspace:*",
     "postgres": "^3.4.4",
     "vitest": "^3.2.4"
   }

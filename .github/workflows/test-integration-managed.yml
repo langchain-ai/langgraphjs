@@ -1,11 +1,12 @@
 name: Integration (managed langgraph-api)
 
-# Runs the integration/ framework: the in-repo @langchain/langgraph AND
-# @langchain/langgraph-sdk, built into a deployment image on the published
-# managed langgraph-api server and exercised over HTTP by the SDK. Catches JS
-# changes that break the *managed* runtime (e.g. the raw StreamChunk arity the
-# Python orchestrator unpacks at stream.py:324) — which the in-repo JS server
-# cannot catch, since it strips that field before the wire.
+# Runs the integration/ framework: the in-repo @langchain/langgraph (packed into
+# the deployment image) and @langchain/langgraph-sdk (linked to the test runner
+# via the pnpm workspace), exercised over HTTP against the published managed
+# langgraph-api server. Catches JS changes that break the *managed* runtime
+# (e.g. the raw StreamChunk arity the Python orchestrator unpacks at
+# stream.py:324) — which the in-repo JS server cannot catch, since it strips
+# that field before the wire.
 #
 # SECURITY: the managed-server license secret is injected only for same-repo
 # branches via the fork gate below — fork PRs never receive it. This matches the
@@ -90,17 +91,16 @@ jobs:
           pnpm --filter @langchain/langgraph build:internal
           pnpm --filter @langchain/langgraph-sdk build:internal
 
-      - name: Pack in-repo packages
+      - name: Pack in-repo @langchain/langgraph (for the deployment image)
         if: steps.guard.outputs.run == 'true'
         run: |
-          mkdir -p integration/graphs/vendor integration/vendor
+          mkdir -p integration/graphs/vendor
           pnpm --filter @langchain/langgraph pack \
             --pack-destination "$GITHUB_WORKSPACE/integration/graphs/vendor"
-          pnpm --filter @langchain/langgraph-sdk pack \
-            --pack-destination "$GITHUB_WORKSPACE/integration/vendor"
 
       # The deployment graph runs the in-repo langgraph core (where the raw
-      # StreamChunk lives).
+      # StreamChunk lives). The test runner gets the in-repo SDK via the
+      # `workspace:*` link resolved by the root `pnpm install` above.
       - name: Point graphs at in-repo @langchain/langgraph
         if: steps.guard.outputs.run == 'true'
         working-directory: integration/graphs
@@ -108,16 +108,6 @@ jobs:
           tgz="vendor/$(ls vendor | grep '^langchain-langgraph-[0-9].*\.tgz$' | head -1)"
           node -e "const fs=require('fs');const p=require('./package.json');p.dependencies['@langchain/langgraph']='file:./'+process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tgz"
           echo "graph @langchain/langgraph -> $tgz"
-
-      # The test runner (the SDK client driving the suite) runs the in-repo SDK,
-      # so SDK-only PRs are actually covered.
-      - name: Point test runner at in-repo @langchain/langgraph-sdk
-        if: steps.guard.outputs.run == 'true'
-        working-directory: integration
-        run: |
-          tgz="vendor/$(ls vendor | grep '^langchain-langgraph-sdk-.*\.tgz$' | head -1)"
-          node -e "const fs=require('fs');const p=require('./package.json');p.devDependencies['@langchain/langgraph-sdk']='file:./'+process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tgz"
-          echo "runner @langchain/langgraph-sdk -> $tgz"
 
       # --- Build the deployment image on the published managed base & run ---
       - name: Install langgraph CLI
@@ -143,15 +133,10 @@ jobs:
         working-directory: integration
         run: docker compose -f compose-postgres.yml up -V --force-recreate --wait
 
-      - name: Install test-runner deps
-        if: steps.guard.outputs.run == 'true'
-        working-directory: integration
-        run: npm install --no-save --no-package-lock
-
       - name: Run integration tests
         if: steps.guard.outputs.run == 'true'
         working-directory: integration
-        run: npm test
+        run: pnpm test:managed
 
       - name: Dump server logs on failure
         if: failure() && steps.guard.outputs.run == 'true'
