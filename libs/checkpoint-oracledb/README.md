@@ -221,54 +221,6 @@ Store tables:
 
 Setup is idempotent and records migrations in the migration table. Transient setup failures clear the in-memory setup promise so a later setup call can retry.
 
-## Examples
-
-This package includes two local examples:
-
-```sh
-pnpm --filter @oracle/langgraph-oracledb example:agent
-pnpm --filter @oracle/langgraph-oracledb example:graph
-```
-
-Both examples require `ORACLE_USER`, `ORACLE_PASSWORD`, and `ORACLE_CONNECT_STRING`.
-
-## End-to-End Mentor Demo
-
-The mentor demos are deterministic and do not call external LLM APIs. They
-require only Oracle Database connectivity:
-
-```sh
-export ORACLE_USER="your_user"
-export ORACLE_PASSWORD="your_password"
-export ORACLE_CONNECT_STRING="host:port/service_name"
-# Optional: export ORACLE_LANGGRAPH_TABLE_PREFIX="LG_MENTOR_DEMO_"
-```
-
-Run the main demo from the workspace root:
-
-```sh
-pnpm --filter @oracle/langgraph-oracledb demo:mentor:reset
-pnpm --filter @oracle/langgraph-oracledb demo:mentor
-```
-
-The main demo proves that `OracleCheckpointSaver` persists and resumes a real
-LangGraph `StateGraph`, then exercises `OracleStore` `put`, `get`, repeated
-put/last-write-wins, empty-key round trip, search filters, namespace listing,
-and delete behavior.
-
-Run the optional VECTOR demo on Oracle versions that support VECTOR:
-
-```sh
-pnpm --filter @oracle/langgraph-oracledb demo:mentor:vector
-```
-
-The VECTOR demo uses a tiny deterministic embedding model, indexes configured
-fields such as `text`, `metadata.summary`, and `chapters[*].content`, shows
-scored vector search results, includes scoreless unindexed rows when limit
-capacity remains, and combines vector search with filters. If the connected
-database does not support VECTOR operations, the script prints a skip message
-and exits successfully.
-
 ## Validation
 
 Run the package checks with:
