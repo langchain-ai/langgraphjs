@@ -122,6 +122,17 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
 
   lc_prefer_chat_model_stream_events = true;
 
+  // Dispatch this handler's callbacks inline rather than on LangChain's
+  // background callback queue. The handler's only side effect is a synchronous
+  // `push()` onto the run's stream, so running it inline guarantees those
+  // pushes happen *during* the model/chain call — while the stream is still
+  // open — instead of after the Pregel loop has returned and sealed the
+  // stream. Background dispatch let a model/tool call in a nested or parallel
+  // task flush its `messages` chunk after close, where `push()` silently drops
+  // it; this surfaced as empty per-message streams (`sub.messages`) for
+  // subagents dispatched in parallel from a single tools step.
+  awaitHandlers = true;
+
   constructor(streamFn: (streamChunk: StreamChunk) => void) {
     super();
     this.streamFn = streamFn;
