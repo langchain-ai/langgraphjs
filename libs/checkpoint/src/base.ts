@@ -202,10 +202,25 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
         await this.getTuple(cursorConfig);
       if (tup === undefined) break;
       if (tup.pendingWrites && tup.pendingWrites.length > 0) {
-        for (let i = tup.pendingWrites.length - 1; i >= 0; i -= 1) {
-          const write = tup.pendingWrites[i];
+        // DeltaChannel reconstruction must replay concurrent same-superstep
+        // writes in the canonical (task_id, idx) order that live execution uses
+        // (see `_applyWrites`), or the reconstructed value can diverge from the
+        // live one. Group per channel and stable-sort by task id: a stable sort
+        // keeps each task's writes in their stored `idx` order, making the
+        // result independent of how a saver returns `pendingWrites`.
+        const perChannel: Record<string, CheckpointPendingWrite[]> = {};
+        for (const write of tup.pendingWrites) {
           const ch = write[1];
-          if (remaining.has(ch)) collectedByCh[ch].push(write);
+          if (remaining.has(ch)) (perChannel[ch] ??= []).push(write);
+        }
+        for (const ch of Object.keys(perChannel)) {
+          const block = perChannel[ch];
+          block.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+          // Pushed reversed so the final `.reverse()` below yields oldest→newest
+          // checkpoints with each checkpoint's writes ascending by (task_id, idx).
+          for (let i = block.length - 1; i >= 0; i -= 1) {
+            collectedByCh[ch].push(block[i]);
+          }
         }
       }
       for (const ch of Array.from(remaining)) {
