@@ -4,8 +4,47 @@ import {
   Command,
   Send,
   CommandParams,
+  Overwrite,
+  OVERWRITE,
   _deserializeCommandSendObjectGraph,
+  _getOverwriteValue,
 } from "../constants.js";
+
+// Cross-language parity with langgraph#8127: an Overwrite must survive a JSON
+// boundary so the channel reducer still recognizes it after the typed instance
+// is erased (e.g. routed through the LangGraph API server).
+describe("_getOverwriteValue", () => {
+  it("recognizes an Overwrite instance", () => {
+    expect(_getOverwriteValue(new Overwrite(["b"]))).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes the canonical sentinel wire form", () => {
+    expect(_getOverwriteValue({ [OVERWRITE]: ["b"] })).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes an Overwrite after a JSON round-trip", () => {
+    const erased = JSON.parse(JSON.stringify(new Overwrite(["b"])));
+    expect(_getOverwriteValue(erased)).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes the discriminator form from another runtime", () => {
+    // Python's Overwrite dataclass JSON-serializes to { value, type }.
+    expect(_getOverwriteValue({ type: OVERWRITE, value: ["b"] })).toEqual([
+      true,
+      ["b"],
+    ]);
+  });
+
+  it("does not misclassify look-alike dicts", () => {
+    expect(_getOverwriteValue({ value: ["b"] })).toEqual([false, undefined]);
+    expect(_getOverwriteValue({ type: "human", value: "hi" })).toEqual([
+      false,
+      undefined,
+    ]);
+    expect(_getOverwriteValue(["b"])).toEqual([false, undefined]);
+    expect(_getOverwriteValue(null)).toEqual([false, undefined]);
+  });
+});
 
 describe("_deserializeCommandSendObjectGraph", () => {
   it("handles primitive values", () => {

@@ -1,5 +1,101 @@
 # @langchain/langgraph
 
+## 1.4.3
+
+### Patch Changes
+
+- [#2544](https://github.com/langchain-ai/langgraphjs/pull/2544) [`4487214`](https://github.com/langchain-ai/langgraphjs/commit/448721449f0801009ba76b03dd2e9c16f900bbba) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): make concurrent DeltaChannel writes deterministic on replay
+
+  Concurrent same-superstep writes to a `DeltaChannel` could reconstruct from a
+  checkpoint differently than they were applied live, because live execution
+  ordered them by task path while savers replayed them by task id. This fixes that
+  divergence in two complementary ways:
+
+  - Plain concurrent writes are now applied in the canonical `(task_id, idx)`
+    order on both paths: `_applyWrites` orders them that way live, and the
+    `getDeltaChannelHistory` walk enforces the same order so reconstruction
+    matches live for every saver (Postgres, SQLite, MongoDB, Redis, and custom).
+  - An `Overwrite` now wins its entire super-step: every sibling write in the same
+    step — before AND after the `Overwrite` — is discarded, matching
+    `BinaryOperatorAggregate`. This makes the result independent of the (unstable)
+    ordering of concurrent fan-in writes; previously a plain write that landed
+    after an `Overwrite` in the same step was still folded in.
+
+  To keep reconstruction in sync with this `Overwrite` rule, any `DeltaChannel`
+  that sees an `Overwrite` in a super-step is now force-snapshotted at the next
+  checkpoint (and, under `"exit"` durability, in the final checkpoint). The
+  post-overwrite value is materialized into `channel_values`, so a cold read seeds
+  from that snapshot and never has to replay across the reset — making live and
+  reconstructed state identical without changing the sparse-replay history shape.
+  These delta-channel APIs remain Beta.
+
+- [#2531](https://github.com/langchain-ai/langgraphjs/pull/2531) [`38cfe01`](https://github.com/langchain-ai/langgraphjs/commit/38cfe01ff02490ff6bcc86c66708ef671f2e0d4b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): merge instead of overwrite in `ensureLangGraphConfig`
+
+  `ensureLangGraphConfig` now per-key merges `callbacks`, `tags`, `metadata`,
+  and `configurable` across configs instead of last-write-wins, so values
+  bound via `.withConfig({...})` survive when a later (e.g. invoke-time)
+  config supplies other keys. The merged dicts are fresh objects, fixing a
+  by-reference mutation of shared base configs. Also drops the now-redundant
+  `combineCallbacks` workaround in `streamEvents`, which double-registered and
+  double-fired graph-bound callbacks.
+
+- [#2531](https://github.com/langchain-ai/langgraphjs/pull/2531) [`38cfe01`](https://github.com/langchain-ai/langgraphjs/commit/38cfe01ff02490ff6bcc86c66708ef671f2e0d4b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): preserve namespace nesting for imperative graph invokes
+
+  When a compiled graph is invoked from inside another graph's running task
+  (e.g. a tool body calling `subAgent.invoke(...)`), the surrounding task
+  context — including the langgraph-internal nesting keys (`__pregel_read`,
+  `__pregel_stream`, `checkpoint_ns`, the checkpoint map) — is propagated
+  implicitly via `AsyncLocalStorage`. The base `Runnable.stream` calls
+  langchain-core's `ensureConfig`, which replaces the ambient `configurable`
+  wholesale whenever the caller passes its own. Because `createAgent` always
+  supplies a `configurable`, every tool-invoked sub-agent lost those keys, ran
+  as a fresh root run, and had its streamed events flattened to the root
+  namespace instead of nesting under the triggering task.
+
+  `Pregel.stream` now merges the ambient `configurable` underneath the caller's
+  (caller keys win per-key) when the ambient marks an active task
+  (`__pregel_read` present) but the explicit `configurable` is missing it.
+  Declared subgraph nodes (which already carry their own `__pregel_read`) and
+  top-level runs are unaffected.
+
+- [#2537](https://github.com/langchain-ai/langgraphjs/pull/2537) [`be09666`](https://github.com/langchain-ai/langgraphjs/commit/be096663f42fe7ea9355d6c0def4854e657866d8) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): dispatch stream messages handler inline
+
+  The v3 `messages` handler (`StreamProtocolMessagesHandler`, which powers
+  `run.messages`) only performs a synchronous `push()` onto the run's stream, but
+  its callbacks were dispatched on LangChain's background callback queue (the
+  default `awaitHandlers === false`). A model or tool call inside a nested or
+  parallel task could therefore flush its `messages` chunk _after_ the Pregel
+  loop returned and sealed the stream, where `IterableReadableWritableStream.push`
+  silently drops chunks once closed. This surfaced as empty per-message streams
+  (`sub.messages`) for subagents dispatched in parallel from a single tools step.
+
+  The handler now sets `awaitHandlers = true` so its callbacks run inline — every
+  push happens during the originating model/chain call while the stream is still
+  open. This avoids the global over-wait, fake-timer deadlock, and error-path
+  unhandled rejections that a blanket `awaitAllCallbacks()` drain before close
+  would have introduced.
+
+- [#2531](https://github.com/langchain-ai/langgraphjs/pull/2531) [`38cfe01`](https://github.com/langchain-ai/langgraphjs/commit/38cfe01ff02490ff6bcc86c66708ef671f2e0d4b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): forward task metadata and name subagents via lc_agent_name
+
+  `mapDebugTasks` now forwards filtered user-meaningful task config metadata
+  (including `lc_agent_name`) onto `tasks` stream payloads. The lifecycle
+  transformer uses that metadata to set subagent `graph_name` from
+  `lc_agent_name` and recover `cause: { type: "toolCall", tool_call_id }`
+  from parent tool-dispatch tasks. Adds the shared `EXCLUDED_METADATA_KEYS`
+  constant to `@langchain/langgraph-checkpoint`. Ports langgraph#7928.
+
+- [#2549](https://github.com/langchain-ai/langgraphjs/pull/2549) [`bc667a9`](https://github.com/langchain-ai/langgraphjs/commit/bc667a998ae9909d15795387dad45048e8947219) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): support DeltaChannel fields in StateSchema
+
+  Add a `DeltaValue` state field (and a `MessagesDeltaValue` prebuilt) so a
+  `DeltaChannel` can be declared via `StateSchema`, not just `Annotation.Root` or
+  a raw channel map. `StateSchema` now maps `DeltaValue` to a `DeltaChannel`
+  (forwarding `snapshotFrequency` and the value-schema default) and validates its
+  inputs/`Overwrite` updates like `ReducedValue`.
+
+- Updated dependencies [[`4487214`](https://github.com/langchain-ai/langgraphjs/commit/448721449f0801009ba76b03dd2e9c16f900bbba), [`2134c8a`](https://github.com/langchain-ai/langgraphjs/commit/2134c8a2c0bc8dd2ebea33e1191c8dd0c4b83236), [`38cfe01`](https://github.com/langchain-ai/langgraphjs/commit/38cfe01ff02490ff6bcc86c66708ef671f2e0d4b)]:
+  - @langchain/langgraph-checkpoint@1.1.2
+  - @langchain/langgraph-sdk@1.9.23
+
 ## 1.4.2
 
 ### Patch Changes

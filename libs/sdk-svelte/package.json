@@ -1,6 +1,6 @@
 {
   "name": "@langchain/svelte",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Svelte integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
