@@ -190,6 +190,23 @@ export function createLifecycleTransformer(
   const log = StreamChannel.local<LifecycleEntry>();
   const namespaces = new Map<string, NamespaceRecord>();
   const namespaceCause = new Map<string, LifecycleCause>();
+  /**
+   * `lc_agent_name` observed at each namespace (first task event wins). A
+   * nested run carrying an `lc_agent_name` (set by `createAgent`) is treated
+   * as a named subagent: its `graph_name` becomes that name and a tool-call
+   * `cause` is recovered (see {@link deriveToolCallCause}). Namespaces without
+   * one fall back to the parsed namespace segment, preserving the prior
+   * product-agnostic behavior for plain subgraphs.
+   */
+  const lcByNs = new Map<string, string | undefined>();
+  /**
+   * Pregel task id -> triggering LLM `tool_call_id`, harvested from a task
+   * whose `input` is a `tool_call_with_context` dict (current shape) or a list
+   * of tool-call dicts (legacy shape). The child subgraph's namespace segment
+   * `node:<task_id>` shares this task id, so a named subagent recovers the tool
+   * call that spawned it across payloads.
+   */
+  const pendingToolCalls = new Map<string, string>();
   const pendingInterruptIds = new Set<string>();
   /**
    * Child namespaces whose parent just saw an `updates` event with a
@@ -204,8 +221,87 @@ export function createLifecycleTransformer(
   let inSelfEmit = 0;
   let finalized = false;
 
-  const resolveGraphName = (ns: Namespace): string =>
-    ns.length === 0 ? rootGraphName : getGraphName(ns);
+  const resolveGraphName = (ns: Namespace): string => {
+    if (ns.length === 0) return rootGraphName;
+    // A nested run that carried an `lc_agent_name` is a named subagent; its
+    // agent name wins over the parsed namespace segment.
+    const lc = lcByNs.get(nsKey(ns));
+    if (typeof lc === "string" && lc.length > 0) return lc;
+    return getGraphName(ns);
+  };
+
+  /**
+   * Record a namespace's `lc_agent_name` from a task-start payload (first
+   * event wins). The presence of a name is what marks the namespace a named
+   * subagent; the value may be `undefined` for unnamed runs (still recorded so
+   * a later event doesn't re-evaluate it).
+   */
+  const recordIdentity = (ns: Namespace, data: unknown): void => {
+    const key = nsKey(ns);
+    if (lcByNs.has(key)) return;
+    const metadata =
+      isRecord(data) && isRecord(data.metadata) ? data.metadata : undefined;
+    const lc = metadata?.lc_agent_name;
+    lcByNs.set(key, typeof lc === "string" ? lc : undefined);
+  };
+
+  /**
+   * Harvest a task's triggering `tool_call_id` keyed by its task id. The
+   * spawned subgraph's namespace segment `node:<task_id>` shares that id, so a
+   * subagent can later recover the tool call that caused it. Two input shapes
+   * are handled: a `tool_call_with_context` object (`input.tool_call.id`) and a
+   * legacy list of tool-call objects (first with a string `id`).
+   */
+  const recordPendingToolCalls = (data: unknown): void => {
+    if (!isRecord(data)) return;
+    const taskId = data.id;
+    if (typeof taskId !== "string") return;
+    const input = data.input;
+    let toolCallId: string | undefined;
+    if (isRecord(input) && isRecord(input.tool_call)) {
+      const candidate = input.tool_call.id;
+      if (typeof candidate === "string") toolCallId = candidate;
+    } else if (Array.isArray(input)) {
+      for (const toolCall of input) {
+        if (isRecord(toolCall) && typeof toolCall.id === "string") {
+          toolCallId = toolCall.id;
+          break;
+        }
+      }
+    }
+    if (toolCallId != null) pendingToolCalls.set(taskId, toolCallId);
+  };
+
+  /**
+   * Derive a `toolCall` cause for a named subagent namespace by joining the
+   * namespace segment's task id (`node:<task_id>`) to a previously harvested
+   * `tool_call_id`. Only fires for namespaces carrying an `lc_agent_name`, so
+   * plain subgraphs never get a spurious cause.
+   */
+  const deriveToolCallCause = (ns: Namespace): LifecycleCause | undefined => {
+    if (ns.length === 0) return undefined;
+    const lc = lcByNs.get(nsKey(ns));
+    if (typeof lc !== "string" || lc.length === 0) return undefined;
+    const segment = ns[ns.length - 1];
+    const colon = segment.indexOf(":");
+    if (colon === -1) return undefined;
+    const triggerCallId = segment.slice(colon + 1);
+    if (triggerCallId.length === 0) return undefined;
+    const toolCallId = pendingToolCalls.get(triggerCallId);
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) {
+      return undefined;
+    }
+    return { type: "toolCall", tool_call_id: toolCallId };
+  };
+
+  /**
+   * Resolve the `cause` to attach to a namespace's `started`. An upstream
+   * `cause` stashed from a product-specific transformer (e.g. deepagents'
+   * SubagentTransformer) wins; otherwise a tool-call cause is recovered for
+   * named subagents.
+   */
+  const resolveStartCause = (ns: Namespace): LifecycleCause | undefined =>
+    namespaceCause.get(nsKey(ns)) ?? deriveToolCallCause(ns);
 
   const emit = (
     ns: Namespace,
@@ -326,7 +422,7 @@ export function createLifecycleTransformer(
       const key = nsKey(prefix);
       if (namespaces.has(key)) continue;
       trackNamespace(prefix);
-      const cause = namespaceCause.get(key);
+      const cause = resolveStartCause(prefix);
       emit(prefix, "started", cause != null ? { cause } : undefined);
     }
   };
@@ -413,6 +509,14 @@ export function createLifecycleTransformer(
         // Prefer exact task-result attribution over any ambiguous
         // `updates.node` completion deferred from the previous event.
         removePendingNodeCompletions(ns, taskCompletion.name);
+      } else if (event.method === "tasks") {
+        // Task-start event: record the namespace's subagent identity and any
+        // triggering tool call *before* `ensureStarted` synthesizes `started`,
+        // so a named subagent's `graph_name`/`cause` are resolved in time.
+        // Pregel emits parent-namespace tasks before child-namespace tasks, so
+        // the parent's tool-call seed is in place when the child is evaluated.
+        recordIdentity(ns, event.params.data);
+        recordPendingToolCalls(event.params.data);
       }
 
       // Flush any completions deferred by the previous event so the

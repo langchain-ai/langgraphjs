@@ -285,6 +285,27 @@ export const WRITES_IDX_MAP: Record<string, number> = {
   [RESUME]: -4,
 };
 
+/**
+ * Metadata keys that are LangGraph's internal framework bookkeeping and
+ * should not be surfaced as user-meaningful metadata.
+ *
+ * Consumed by stream handlers (e.g. the `tasks` debug stream) to drop
+ * framework keys — which are redundant with a task's own fields and
+ * namespace — while keeping keys like `lc_agent_name`, `ls_integration`,
+ * and user-supplied metadata.
+ */
+export const EXCLUDED_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "thread_id",
+  "checkpoint_id",
+  "checkpoint_ns",
+  "checkpoint_map",
+  "langgraph_step",
+  "langgraph_node",
+  "langgraph_triggers",
+  "langgraph_path",
+  "langgraph_checkpoint_ns",
+]);
+
 export function getCheckpointId(config: RunnableConfig): string {
   return (
     config.configurable?.checkpoint_id || config.configurable?.thread_ts || ""

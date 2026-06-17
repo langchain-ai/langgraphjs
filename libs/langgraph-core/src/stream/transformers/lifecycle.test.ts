@@ -362,6 +362,222 @@ describe("createLifecycleTransformer", () => {
     expect(interrupted.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("falls through to the parsed segment when a tasks-start has no metadata", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(
+      ["agent:abc"],
+      makeEvent("tasks", ["agent:abc"], {
+        id: "t1",
+        name: "tool",
+        input: null,
+        triggers: [],
+      })
+    );
+    transformer.finalize?.();
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const started = events.find(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "agent:abc" &&
+        lifecyclePayload(e).event === "started"
+    );
+    expect(started).toBeDefined();
+    expect(lifecyclePayload(started!).graph_name).toBe("agent");
+    expect(lifecyclePayload(started!).cause).toBeUndefined();
+  });
+
+  it("treats an explicit empty metadata dict like no metadata", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(
+      ["agent:abc"],
+      makeEvent("tasks", ["agent:abc"], {
+        id: "t1",
+        name: "tool",
+        input: null,
+        triggers: [],
+        metadata: {},
+      })
+    );
+    transformer.finalize?.();
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const started = events.find(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "agent:abc" &&
+        lifecyclePayload(e).event === "started"
+    );
+    expect(started).toBeDefined();
+    expect(lifecyclePayload(started!).graph_name).toBe("agent");
+    expect(lifecyclePayload(started!).cause).toBeUndefined();
+  });
+
+  it("names a subagent from lc_agent_name and recovers the tool-call cause", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    // Supervisor's `tools` push task at scope ns: carries its own
+    // lc_agent_name and a `tool_call_with_context` dict as `input`. The task
+    // id seeds the child segment.
+    mux.push(
+      [],
+      makeEvent("tasks", [], {
+        id: "tools_task_1",
+        name: "tools",
+        triggers: [],
+        metadata: { lc_agent_name: "supervisor" },
+        input: {
+          __type: "tool_call_with_context",
+          tool_call: {
+            name: "call_weather",
+            args: { city: "Boston" },
+            id: "call_w",
+            type: "tool_call",
+          },
+          state: {},
+        },
+      })
+    );
+    // Inner weather_agent's first node task streams under the parent `tools`
+    // task's namespace segment (shared task id) with its own lc_agent_name.
+    mux.push(
+      ["tools:tools_task_1"],
+      makeEvent("tasks", ["tools:tools_task_1"], {
+        id: "inner_model_1",
+        name: "model",
+        input: null,
+        triggers: [],
+        metadata: { lc_agent_name: "weather_agent" },
+      })
+    );
+    transformer.finalize?.();
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const started = events.find(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "tools:tools_task_1" &&
+        lifecyclePayload(e).event === "started"
+    );
+    expect(started).toBeDefined();
+    expect(lifecyclePayload(started!).graph_name).toBe("weather_agent");
+    expect(lifecyclePayload(started!).cause).toEqual({
+      type: "toolCall",
+      tool_call_id: "call_w",
+    });
+  });
+
+  it("recovers the tool-call cause from a legacy list input shape", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(
+      [],
+      makeEvent("tasks", [], {
+        id: "tools_task_1",
+        name: "tools",
+        triggers: [],
+        metadata: { lc_agent_name: "supervisor" },
+        input: [{ name: "call_weather", args: { city: "SF" }, id: "call_w" }],
+      })
+    );
+    mux.push(
+      ["tools:tools_task_1"],
+      makeEvent("tasks", ["tools:tools_task_1"], {
+        id: "inner_model_1",
+        name: "model",
+        input: null,
+        triggers: [],
+        metadata: { lc_agent_name: "weather_agent" },
+      })
+    );
+    transformer.finalize?.();
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const started = events.find(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "tools:tools_task_1" &&
+        lifecyclePayload(e).event === "started"
+    );
+    expect(started).toBeDefined();
+    expect(lifecyclePayload(started!).graph_name).toBe("weather_agent");
+    expect(lifecyclePayload(started!).cause).toEqual({
+      type: "toolCall",
+      tool_call_id: "call_w",
+    });
+  });
+
+  it("surfaces a same-named recursive subagent with its tool-call cause", async () => {
+    const mux = new StreamMux();
+    const transformer = createLifecycleTransformer({
+      emitRootOnRegister: false,
+    });
+    installTransformer(mux, transformer);
+
+    mux.push(
+      [],
+      makeEvent("tasks", [], {
+        id: "tools_task_1",
+        name: "tools",
+        triggers: [],
+        metadata: { lc_agent_name: "weather_agent" },
+        input: {
+          __type: "tool_call_with_context",
+          tool_call: { name: "recurse", args: {}, id: "call_x", type: "tool_call" },
+          state: {},
+        },
+      })
+    );
+    mux.push(
+      ["tools:tools_task_1"],
+      makeEvent("tasks", ["tools:tools_task_1"], {
+        id: "inner_model_1",
+        name: "model",
+        input: null,
+        triggers: [],
+        metadata: { lc_agent_name: "weather_agent" },
+      })
+    );
+    transformer.finalize?.();
+    mux.close();
+
+    const events = await drainEvents(mux);
+    const started = events.find(
+      (e) =>
+        isLifecycle(e) &&
+        e.params.namespace[0] === "tools:tools_task_1" &&
+        lifecyclePayload(e).event === "started"
+    );
+    expect(started).toBeDefined();
+    expect(lifecyclePayload(started!).graph_name).toBe("weather_agent");
+    expect(lifecyclePayload(started!).cause).toEqual({
+      type: "toolCall",
+      tool_call_id: "call_x",
+    });
+  });
+
   it("exposes a _lifecycleLog projection iterable by consumers", async () => {
     const mux = new StreamMux();
     const transformer = createLifecycleTransformer({ rootGraphName: "g" });

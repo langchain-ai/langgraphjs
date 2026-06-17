@@ -1,9 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
-import { wrap, tasksWithWrites, _readChannels } from "./debug.js";
+import { wrap, tasksWithWrites, _readChannels, mapDebugTasks } from "./debug.js";
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError } from "../errors.js";
 import { ERROR, INTERRUPT, PULL } from "../constants.js";
+import type { PregelExecutableTask } from "./types.js";
+import type { LangGraphRunnableConfig } from "./runnable_types.js";
+
+function makeTask(overrides: {
+  id?: string;
+  name?: string;
+  input?: unknown;
+  triggers?: string[];
+  config?: LangGraphRunnableConfig;
+}): PregelExecutableTask<string, string> {
+  return {
+    id: overrides.id ?? "t1",
+    name: overrides.name ?? "tools",
+    input: overrides.input ?? [],
+    triggers: overrides.triggers ?? ["x"],
+    config: overrides.config,
+    writes: [],
+  } as unknown as PregelExecutableTask<string, string>;
+}
 
 describe("wrap", () => {
   it("should wrap text with color codes", () => {
@@ -291,5 +310,98 @@ describe("tasksWithWrites", () => {
         result: undefined,
       },
     ]);
+  });
+});
+
+describe("mapDebugTasks", () => {
+  it("forwards user-meaningful metadata when present", () => {
+    const task = makeTask({
+      config: { metadata: { lc_agent_name: "weather_agent" } },
+    });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload.id).toBe("t1");
+    expect(payload.name).toBe("tools");
+    expect(payload.metadata).toEqual({ lc_agent_name: "weather_agent" });
+  });
+
+  it("omits metadata when the config metadata dict is empty", () => {
+    const task = makeTask({ config: { metadata: {} } });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload).not.toHaveProperty("metadata");
+  });
+
+  it("omits metadata when config has no metadata key", () => {
+    const task = makeTask({ config: {} });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload).not.toHaveProperty("metadata");
+  });
+
+  it("handles an undefined config without crashing", () => {
+    const task = makeTask({ config: undefined });
+    const payloads = Array.from(mapDebugTasks([task]));
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).not.toHaveProperty("metadata");
+  });
+
+  it("drops internal framework metadata keys, keeping user-meaningful ones", () => {
+    const task = makeTask({
+      config: {
+        metadata: {
+          lc_agent_name: "weather_agent",
+          ls_integration: "langchain_create_agent",
+          my_user_key: "x",
+          thread_id: "thread-1",
+          langgraph_step: 1,
+          langgraph_node: "tools",
+          langgraph_path: ["__pregel_pull", "tools"],
+          langgraph_checkpoint_ns: "tools:abc",
+          checkpoint_ns: "",
+        },
+      },
+    });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload.metadata).toEqual({
+      lc_agent_name: "weather_agent",
+      ls_integration: "langchain_create_agent",
+      my_user_key: "x",
+    });
+  });
+
+  it("does not mutate the source config metadata", () => {
+    const metadata = { lc_agent_name: "a" };
+    const task = makeTask({ config: { metadata } });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    (metadata as Record<string, unknown>).lc_agent_name = "MUTATED";
+    expect((payload.metadata as Record<string, unknown>).lc_agent_name).toBe(
+      "a"
+    );
+  });
+
+  it("folds filtered config tags into metadata under `tags`", () => {
+    const task = makeTask({
+      config: {
+        metadata: { lc_agent_name: "weather_agent" },
+        tags: ["seq:step:1", "user-tag", "session-123"],
+      },
+    });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload.metadata).toEqual({
+      lc_agent_name: "weather_agent",
+      tags: ["user-tag", "session-123"],
+    });
+  });
+
+  it("omits tags when the only tags are internal seq:step markers", () => {
+    const task = makeTask({
+      config: { metadata: { lc_agent_name: "a" }, tags: ["seq:step:1"] },
+    });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload.metadata).toEqual({ lc_agent_name: "a" });
+  });
+
+  it("surfaces filtered tags even without other metadata", () => {
+    const task = makeTask({ config: { tags: ["user-tag"] } });
+    const [payload] = Array.from(mapDebugTasks([task]));
+    expect(payload.metadata).toEqual({ tags: ["user-tag"] });
   });
 });

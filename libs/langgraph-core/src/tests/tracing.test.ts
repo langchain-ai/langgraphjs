@@ -3,12 +3,61 @@ import { z } from "zod";
 import { tool } from "@langchain/core/tools";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { _AnyIdAIMessage, _AnyIdAIMessageChunk } from "./utils.js";
 import { FakeToolCallingChatModel } from "./utils.models.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { END, START, StateGraph } from "../web.js";
 import { gatherIterator } from "../utils.js";
 import { createReactAgent } from "../prebuilt/react_agent_executor.js";
+
+it("merges graph-bound callbacks with invoke-time callbacks in streamEvents (no double-firing)", async () => {
+  class CountingHandler extends BaseCallbackHandler {
+    name: string;
+
+    chainStarts = 0;
+
+    constructor(name: string) {
+      super();
+      this.name = name;
+    }
+
+    handleChainStart() {
+      this.chainStarts += 1;
+    }
+  }
+
+  const boundCb = new CountingHandler("bound_handler");
+  const userCb = new CountingHandler("user_handler");
+
+  const graph = new StateGraph<{ messages: BaseMessage[] }>({
+    channels: { messages: null },
+  })
+    .addNode("testnode", async () => ({ messages: [new AIMessage("hi")] }))
+    .addEdge(START, "testnode")
+    .addEdge("testnode", END)
+    .compile();
+
+  // Bind a callback on the graph itself (as `.withConfig({ callbacks })`
+  // does), then supply a different callback at call time.
+  const boundGraph = graph.withConfig({ callbacks: [boundCb] });
+
+  await gatherIterator(
+    boundGraph.streamEvents(
+      { messages: [] },
+      { version: "v2", callbacks: [userCb] }
+    )
+  );
+
+  // Both handlers should be registered exactly once, so each sees the same
+  // set of runs. Before the `ensureLangGraphConfig` merge fix, the
+  // graph-bound handler was injected twice (once by the `streamEvents`
+  // `combineCallbacks` workaround and again by the config merge), firing
+  // for every run twice.
+  expect(boundCb.chainStarts).toBeGreaterThan(0);
+  expect(userCb.chainStarts).toBeGreaterThan(0);
+  expect(boundCb.chainStarts).toBe(userCb.chainStarts);
+});
 
 it("stream events for a multi-node graph", async () => {
   const stateGraph = new StateGraph<{

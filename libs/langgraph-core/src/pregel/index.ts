@@ -126,7 +126,6 @@ import {
 import {
   _coerceToDict,
   combineAbortSignals,
-  combineCallbacks,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -1996,6 +1995,33 @@ export class Pregel<
     // and override if it is passed as an explicit param in `options`.
     const abortController = new AbortController();
 
+    // Preserve nesting when a compiled graph is invoked imperatively from
+    // inside another graph's running task (e.g. a tool body calling
+    // `subAgent.invoke(...)`). The surrounding task config — including the
+    // langgraph-internal nesting keys (`CONFIG_KEY_READ`, `CONFIG_KEY_STREAM`,
+    // `checkpoint_ns`, the checkpoint map, ...) — is propagated implicitly via
+    // `AsyncLocalStorage`, so a no-config `invoke()` nests correctly. But the
+    // base `Runnable.stream` calls langchain-core's `ensureConfig`, which
+    // replaces the ambient `configurable` wholesale whenever the caller passes
+    // its own. `createAgent`/`ReactAgent` always passes a `configurable`, so
+    // without this every tool-invoked sub-agent would lose the nesting keys,
+    // run as a fresh root, and flatten its streamed events to the root
+    // namespace. When the ambient marks an active task (`CONFIG_KEY_READ`
+    // present) but the caller's `configurable` is missing it, merge the ambient
+    // `configurable` underneath the caller's (caller keys still win per-key).
+    // Declared subgraph nodes already carry their own `CONFIG_KEY_READ` and are
+    // left untouched; top-level runs (no ambient task) are unaffected.
+    const ambientConfigurable = getConfig()?.configurable;
+    if (
+      ambientConfigurable?.[CONFIG_KEY_READ] !== undefined &&
+      options?.configurable?.[CONFIG_KEY_READ] === undefined
+    ) {
+      options = {
+        ...options,
+        configurable: { ...ambientConfigurable, ...options?.configurable },
+      } as typeof options;
+    }
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
@@ -2171,11 +2197,8 @@ export class Pregel<
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
-      // Similar to `stream`, we need to pass the `config.callbacks` here,
-      // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-
-      // extend the callbacks with the ones from the config
-      callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
+      // `_streamIterator` runs `ensureLangGraphConfig(this.config, options)`,
+      // which merges callbacks.
       signal: combineAbortSignals(options?.signal, abortController.signal)
         .signal,
     };
