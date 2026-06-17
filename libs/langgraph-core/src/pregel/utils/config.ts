@@ -234,7 +234,10 @@ export function ensureLangGraphConfig(
               copiedValue = v.copy();
             } else {
               copiedValue = { ...v };
-              if (k === "configurable" && shouldStripStaleImplicitConfigurable) {
+              if (
+                k === "configurable" &&
+                shouldStripStaleImplicitConfigurable
+              ) {
                 copiedValue = stripStaleImplicitConfigurable(
                   copiedValue as Record<string, unknown>
                 );
