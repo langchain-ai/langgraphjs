@@ -1,12 +1,18 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { z } from "zod/v4";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import {
+  type BaseMessage,
+  AIMessage,
+  HumanMessage,
+} from "@langchain/core/messages";
 import { StateSchema } from "./schema.js";
-import { ReducedValue, UntrackedValue } from "./values/index.js";
-import { MessagesValue } from "./prebuilt/index.js";
+import { ReducedValue, UntrackedValue, DeltaValue } from "./values/index.js";
+import { MessagesValue, MessagesDeltaValue } from "./prebuilt/index.js";
 import type { SerializableSchema } from "./types.js";
 import {
   BinaryOperatorAggregate,
+  DeltaChannel,
   LastValue,
   UntrackedValueChannel,
 } from "../channels/index.js";
@@ -14,6 +20,7 @@ import { StateGraph } from "../graph/index.js";
 import {
   Command,
   END,
+  Overwrite,
   Send,
   START,
   type OverwriteValue,
@@ -105,6 +112,47 @@ describe("StateSchema", () => {
 
         expectTypeOf<typeof state.Update>().toEqualTypeOf<{
           totals?: number | OverwriteValue<{ sum: number; count: number }>;
+        }>();
+      });
+    });
+
+    describe("DeltaValue types", () => {
+      it("should infer different value vs input types", () => {
+        const state = new StateSchema({
+          // State gets string[], Update takes string (or an Overwrite)
+          history: new DeltaValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string(),
+              reducer: (current: string[], writes: string[]) => [
+                ...current,
+                ...writes,
+              ],
+            }
+          ),
+        });
+
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          history: string[];
+        }>();
+
+        expectTypeOf<typeof state.Update>().toEqualTypeOf<{
+          history?: string | OverwriteValue<string[]>;
+        }>();
+      });
+
+      it("should use value schema type when input schema not provided", () => {
+        const state = new StateSchema({
+          items: new DeltaValue(
+            z.array(z.number()).default(() => []),
+            {
+              reducer: (current, writes) => [...current, ...writes.flat()],
+            }
+          ),
+        });
+
+        expectTypeOf<typeof state.State>().toEqualTypeOf<{
+          items: number[];
         }>();
       });
     });
@@ -292,6 +340,40 @@ describe("StateSchema", () => {
 
       expect(channels.temp).toBeInstanceOf(UntrackedValueChannel);
     });
+
+    it("should return DeltaChannel for DeltaValue", () => {
+      const state = new StateSchema({
+        history: new DeltaValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], writes: string[]) => [
+              ...current,
+              ...writes,
+            ],
+            snapshotFrequency: 7,
+          }
+        ),
+      });
+
+      const channels = state.getChannels();
+
+      expect(channels.history).toBeInstanceOf(DeltaChannel);
+      // snapshotFrequency is forwarded to the channel, and the value schema's
+      // default seeds the channel's initial value factory. (A DeltaChannel only
+      // materializes its value on fromCheckpoint/update, so isAvailable() is
+      // false until then.)
+      const channel = channels.history as DeltaChannel<string[], string>;
+      expect(channel.snapshotFrequency).toBe(7);
+      expect(channel.initialValueFactory()).toEqual([]);
+      expect(channel.fromCheckpoint(undefined).get()).toEqual([]);
+    });
+
+    it("should return DeltaChannel for the MessagesDeltaValue prebuilt", () => {
+      const state = new StateSchema({ messages: MessagesDeltaValue });
+      const channels = state.getChannels();
+      expect(channels.messages).toBeInstanceOf(DeltaChannel);
+    });
   });
 
   describe("JSON schema generation", () => {
@@ -358,6 +440,56 @@ describe("StateSchema", () => {
       expect(schema.properties?.history).toMatchObject({
         langgraph_type: "custom_type",
         description: "Custom history field",
+      });
+    });
+
+    it("should preserve custom jsonSchemaExtra on DeltaValue", () => {
+      const state = new StateSchema({
+        history: new DeltaValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], writes: string[]) => [
+              ...current,
+              ...writes,
+            ],
+            jsonSchemaExtra: {
+              langgraph_type: "custom_type",
+              description: "Custom delta field",
+            },
+          }
+        ),
+      });
+
+      const schema = state.getJsonSchema() as {
+        type: string;
+        properties?: Record<
+          string,
+          { langgraph_type?: string; description?: string }
+        >;
+      };
+
+      expect(schema.properties?.history).toMatchObject({
+        langgraph_type: "custom_type",
+        description: "Custom delta field",
+      });
+    });
+
+    it("should preserve langgraph_type metadata when using MessagesDeltaValue", () => {
+      const state = new StateSchema({ messages: MessagesDeltaValue });
+
+      const schema = state.getJsonSchema() as {
+        properties?: Record<string, { langgraph_type?: string }>;
+      };
+      const inputSchema = state.getInputJsonSchema() as {
+        properties?: Record<string, { langgraph_type?: string }>;
+      };
+
+      expect(schema.properties?.messages).toMatchObject({
+        langgraph_type: "messages",
+      });
+      expect(inputSchema.properties?.messages).toMatchObject({
+        langgraph_type: "messages",
       });
     });
 
@@ -806,6 +938,163 @@ describe("StateSchema", () => {
         // After checkpoint restore, UntrackedValue should be reset
         const state = await graph.getState(config);
         expect(state.values.cache).toBeUndefined();
+      });
+    });
+
+    describe("DeltaValue", () => {
+      let aiCounter = 0;
+      const contentsOf = (msgs: BaseMessage[]) => msgs.map((m) => m.content);
+
+      it("accumulates and reconstructs messages via MessagesDeltaValue", async () => {
+        const State = new StateSchema({ messages: MessagesDeltaValue });
+        const checkpointer = new MemorySaver();
+        const makeGraph = () =>
+          new StateGraph(State)
+            .addNode("chat", (state) => {
+              const last = state.messages[state.messages.length - 1];
+              return {
+                messages: [
+                  new AIMessage({
+                    id: `ai-${aiCounter++}`,
+                    content: `reply:${last.content}`,
+                  }),
+                ],
+              };
+            })
+            .addEdge(START, "chat")
+            .addEdge("chat", END)
+            .compile({ checkpointer });
+
+        const config = { configurable: { thread_id: "delta-msgs" } };
+        await makeGraph().invoke(
+          { messages: [new HumanMessage({ id: "h0", content: "q0" })] },
+          config
+        );
+        await makeGraph().invoke(
+          { messages: [new HumanMessage({ id: "h1", content: "q1" })] },
+          config
+        );
+
+        // Cold read through a brand-new graph instance reconstructs from the
+        // saver by replaying the persisted deltas.
+        const state = await makeGraph().getState(config);
+        expect(contentsOf(state.values.messages)).toEqual([
+          "q0",
+          "reply:q0",
+          "q1",
+          "reply:q1",
+        ]);
+      });
+
+      it("applies Overwrite as a hard reset through a DeltaValue field", async () => {
+        const State = new StateSchema({ messages: MessagesDeltaValue });
+        const checkpointer = new MemorySaver();
+        const makeGraph = () =>
+          new StateGraph(State)
+            .addNode("agent", (state, config) => {
+              const compact = Boolean(
+                (config?.configurable as Record<string, unknown> | undefined)
+                  ?.compact
+              );
+              if (compact) {
+                return {
+                  messages: new Overwrite([
+                    new AIMessage({ id: "sum", content: "summary" }),
+                  ]),
+                };
+              }
+              const last = state.messages[state.messages.length - 1];
+              return {
+                messages: [
+                  new AIMessage({
+                    id: `ai-${aiCounter++}`,
+                    content: `reply:${last.content}`,
+                  }),
+                ],
+              };
+            })
+            .addEdge(START, "agent")
+            .addEdge("agent", END)
+            .compile({ checkpointer });
+
+        const config = { configurable: { thread_id: "delta-overwrite" } };
+        await makeGraph().invoke(
+          { messages: [new HumanMessage({ id: "h0", content: "a" })] },
+          config
+        );
+
+        // Compaction run: the agent overwrites the channel (hard reset).
+        await makeGraph().invoke(
+          { messages: [new HumanMessage({ id: "h1", content: "b" })] },
+          {
+            configurable: { thread_id: "delta-overwrite", compact: true },
+          }
+        );
+
+        const state = await makeGraph().getState(config);
+        expect(contentsOf(state.values.messages)).toEqual(["summary"]);
+      });
+
+      it("accumulates and reconstructs a generic (non-messages) DeltaValue", async () => {
+        const State = new StateSchema({
+          history: new DeltaValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string(),
+              reducer: (current: string[], writes: string[]) => [
+                ...current,
+                ...writes,
+              ],
+            }
+          ),
+        });
+        const checkpointer = new MemorySaver();
+        const makeGraph = () =>
+          new StateGraph(State)
+            .addNode("step", (state) => ({
+              history: `n${state.history.length}`,
+            }))
+            .addEdge(START, "step")
+            .addEdge("step", END)
+            .compile({ checkpointer });
+
+        const config = { configurable: { thread_id: "delta-generic" } };
+        await makeGraph().invoke({ history: "a" }, config);
+        await makeGraph().invoke({ history: "b" }, config);
+
+        const state = await makeGraph().getState(config);
+        expect(state.values.history).toEqual(["a", "n1", "b", "n3"]);
+      });
+
+      it("persists manual updateState writes to a DeltaValue field", async () => {
+        const State = new StateSchema({
+          history: new DeltaValue(
+            z.array(z.string()).default(() => []),
+            {
+              inputSchema: z.string(),
+              reducer: (current: string[], writes: string[]) => [
+                ...current,
+                ...writes,
+              ],
+            }
+          ),
+        });
+        const checkpointer = new MemorySaver();
+        const makeGraph = () =>
+          new StateGraph(State)
+            .addNode("step", (state) => ({
+              history: `n${state.history.length}`,
+            }))
+            .addEdge(START, "step")
+            .addEdge("step", END)
+            .compile({ checkpointer });
+
+        const config = { configurable: { thread_id: "delta-update" } };
+        await makeGraph().invoke({ history: "a" }, config);
+        await makeGraph().updateState(config, { history: "manual" });
+
+        const state = await makeGraph().getState(config);
+        expect(state.values.history).toEqual(["a", "n1", "manual"]);
       });
     });
   });
