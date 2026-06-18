@@ -360,11 +360,34 @@ export function registerProtocolRoutes(
       });
     }
 
+    // `update` / `goto` are the optional state mutation and directed jump
+    // the SDK's `respond({ update, goto })` forwards on `input.respond`
+    // (`InputRespondOne` / `InputRespondMany`). Fold them into the same
+    // `Command(resume, update, goto)` as the resume so the resumed run
+    // produces a single checkpoint reflecting all of them — the HITL
+    // "push card into state + resume" flow. Read leniently (update: object
+    // or `[key, value][]` tuples; goto: node name, Send object, or a list
+    // of either), same posture as `config` / `metadata`.
+    const update =
+      isRecord(params.update) || Array.isArray(params.update)
+        ? params.update
+        : undefined;
+    const goto =
+      typeof params.goto === "string" ||
+      Array.isArray(params.goto) ||
+      isRecord(params.goto)
+        ? params.goto
+        : undefined;
+
     const run = createStubRun(thread.threadId, {
       assistant_id: assistantId,
       on_disconnect: "cancel",
       input: null,
-      command: { resume: resumeInput },
+      command: {
+        resume: resumeInput,
+        ...(update != null ? { update } : {}),
+        ...(goto != null ? { goto } : {}),
+      },
       // Carry the SDK's `respond({ config, metadata })` onto the resumed
       // run so it applies the same run config / metadata a fresh
       // `run.start` would (both are part of the `input.respond` params).

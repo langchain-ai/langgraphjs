@@ -1,4 +1,5 @@
 import type { Event } from "@langchain/protocol";
+import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
@@ -1547,6 +1548,207 @@ describe("StreamController", () => {
       response: { approved: true },
       config: { configurable: { model: "gpt-4o" } },
       metadata: { source: "ui" },
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() forwards update and goto on the same input.respond as the resume", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond(
+      { approved: true },
+      {
+        update: { messages: [{ type: "ai", content: "Approved." }] },
+        goto: "next_node",
+      }
+    );
+    // update / goto ride the SAME input.respond as the resume so the server
+    // folds them into one Command(resume, update, goto) — single checkpoint.
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-1",
+      response: { approved: true },
+      update: { messages: [{ type: "ai", content: "Approved." }] },
+      goto: "next_node",
+      config: undefined,
+      metadata: undefined,
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() omits update/goto when not provided", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond({ approved: true });
+    const sent = (respondInput.mock.calls[0] as unknown[])[0] as Record<
+      string,
+      unknown
+    >;
+    expect(sent).not.toHaveProperty("update");
+    expect(sent).not.toHaveProperty("goto");
+
+    await controller.dispose();
+  });
+
+  it("respond() serializes BaseMessage instances in update.messages to dicts", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond(
+      { approved: true },
+      { update: { messages: [new AIMessage("Approved by reviewer.")] } }
+    );
+
+    // The BaseMessage instance must arrive as a plain `{ type, content }`
+    // dict — its default JSON form is the `lc`-constructor envelope the
+    // server's `add_messages` reducer would not coerce.
+    const sent = (respondInput.mock.calls[0] as unknown[])[0] as {
+      update: { messages: Array<Record<string, unknown>> };
+    };
+    expect(sent.update.messages[0]).toMatchObject({
+      type: "ai",
+      content: "Approved by reviewer.",
+    });
+    expect(sent.update.messages[0]).not.toHaveProperty("lc");
+    expect(sent.update.messages[0]).not.toHaveProperty("kwargs");
+
+    await controller.dispose();
+  });
+
+  it("respondAll() forwards run-level update and goto for the batched resume", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "First?" }, namespace: [] },
+        { interruptId: "int-2", payload: { prompt: "Second?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "First?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "Second?" }));
+
+    await controller.respondAll(
+      {
+        "int-1": { approved: true },
+        "int-2": { approved: false },
+      },
+      { update: { reviewed: true } }
+    );
+
+    expect(respondInput).toHaveBeenCalledWith({
+      responses: [
+        { interrupt_id: "int-1", response: { approved: true }, namespace: [] },
+        { interrupt_id: "int-2", response: { approved: false }, namespace: [] },
+      ],
+      update: { reviewed: true },
+      config: undefined,
+      metadata: undefined,
     });
 
     await controller.dispose();

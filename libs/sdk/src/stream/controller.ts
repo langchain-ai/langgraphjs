@@ -72,6 +72,7 @@ import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import {
   prepareOptimisticInput,
+  serializeUpdateMessages,
   type OptimisticHandle,
 } from "./optimistic-input.js";
 import {
@@ -1289,6 +1290,20 @@ export class StreamController<
           namespace: resolved.namespace,
           interrupt_id: resolved.interruptId,
           response: normalizeHitlResponseForServer(response),
+          // Fold an optional state update / directed jump into the same
+          // superstep as the resume (HITL "push card into state + resume").
+          // Omitted when absent so the server still sees a plain resume.
+          // `BaseMessage` instances under the messages key are serialized to
+          // plain dicts (like `submit()`) so they coerce server-side.
+          ...(options?.update != null
+            ? {
+                update: serializeUpdateMessages(
+                  options.update,
+                  this.#messagesKey
+                ),
+              }
+            : {}),
+          ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
         });
@@ -1369,6 +1384,20 @@ export class StreamController<
       await this.#submitter.dispatchResume(async () => {
         await thread.respondInput({
           responses,
+          // A batched resume services every targeted interrupt in one run, so
+          // the update / jump are run-level (not per-entry) — applied once in
+          // that run's superstep alongside all the resumes. `BaseMessage`
+          // instances under the messages key are serialized to plain dicts
+          // (like `submit()`) so they coerce server-side.
+          ...(options?.update != null
+            ? {
+                update: serializeUpdateMessages(
+                  options.update,
+                  this.#messagesKey
+                ),
+              }
+            : {}),
+          ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
         });
