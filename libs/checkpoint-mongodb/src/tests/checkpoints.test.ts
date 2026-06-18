@@ -102,6 +102,10 @@ describe("MongoDBSaver", () => {
         { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
         { name: "thread_ns_checkpoint_idx" }
       );
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: 1, task_id: 1, idx: 1 },
+        { name: "thread_ns_checkpoint_task_idx" }
+      );
     });
 
     it("should create TTL indexes in addition to compound indexes when ttl is configured", async () => {

@@ -52,6 +52,14 @@ function getStringConfigValue(
 
 /**
  * A LangGraph checkpoint saver backed by a MongoDB database.
+ *
+ * NOTE: you need to call .setup() the first time you're using your checkpointer.
+ *
+ * @example
+ * ```typescript
+ * const checkpointer = new MongoDBSaver({ client });
+ * await checkpointer.setup();
+ * ```
  */
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
@@ -122,12 +130,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
           { name: "thread_ns_checkpoint_idx" }
         ),
-      this.db
-        .collection(this.checkpointWritesCollectionName)
-        .createIndex(
-          { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
-          { name: "thread_ns_checkpoint_idx" }
-        ),
+      this.db.collection(this.checkpointWritesCollectionName).createIndex(
+        {
+          thread_id: 1,
+          checkpoint_ns: 1,
+          checkpoint_id: 1,
+          task_id: 1,
+          idx: 1,
+        },
+        { name: "thread_ns_checkpoint_task_idx" }
+      ),
     ];
 
     if (this.ttl != null) {
