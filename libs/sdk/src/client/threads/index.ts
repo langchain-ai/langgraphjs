@@ -502,7 +502,6 @@ export class ThreadsClient<
       const transportKind: ThreadStreamTransportKind =
         options.transport ??
         (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
-      const maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
 
       /**
        * Common options for both transports.
@@ -512,7 +511,7 @@ export class ThreadsClient<
         threadId,
         defaultHeaders: this.defaultHeaders,
         onRequest: this.onRequest,
-        maxReconnectAttempts,
+        maxReconnectAttempts: options.maxReconnectAttempts,
         reconnectDelayMs: options.reconnectDelayMs,
         onReconnect: options.onReconnect,
       };

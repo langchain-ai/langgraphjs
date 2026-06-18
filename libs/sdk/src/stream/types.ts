@@ -166,6 +166,34 @@ export interface UseStreamCommonOptions<
 }
 
 /**
+ * Reconnect/idle-watchdog knobs for the built-in `"sse"` / `"websocket"`
+ * transports, shared by every options surface that forwards to
+ * `client.threads.stream` (the public {@link AgentServerOptions} and the
+ * internal {@link StreamControllerOptions}). Field types are sourced from
+ * {@link ThreadStreamOptions} so they stay in lockstep with the transport.
+ *
+ * All default to durable-on (`5` attempts, `"auto"` idle watchdog), except
+ * when a custom `fetch` is supplied without an explicit value — then they
+ * default off, and setting them here is how a custom-`fetch` integration
+ * (auth/tenant headers) opts back into the durability contract across
+ * deploys/edge timeouts.
+ */
+export interface TransportReconnectOptions {
+  /** Max reconnect attempts after an unexpected disconnect. */
+  maxReconnectAttempts?: ThreadStreamOptions["maxReconnectAttempts"];
+  /**
+   * Built-in `"sse"` transport only: idle-reconnect policy guarding against
+   * half-open sockets (e.g. a platform revision rollover that hard-kills the
+   * serving pod).
+   */
+  streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
+  /** Backoff before each reconnect attempt. */
+  reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
+  /** Invoked before each reconnect attempt. */
+  onReconnect?: ThreadStreamOptions["onReconnect"];
+}
+
+/**
  * Agent-server branch: caller points `useStream` at an assistant on a
  * LangGraph-Platform-compatible server. Discriminated against
  * {@link CustomAdapterOptions} by `transport` being absent or a string.
@@ -175,7 +203,8 @@ export interface AgentServerOptions<
   ThreadIdType = string | null,
   ApiUrlType = string | undefined,
   ApiKeyType = string | undefined,
-> extends UseStreamCommonOptions<StateType, ThreadIdType> {
+> extends UseStreamCommonOptions<StateType, ThreadIdType>,
+    TransportReconnectOptions {
   assistantId: string;
   client?: Client;
   apiUrl?: ApiUrlType;
@@ -218,6 +247,10 @@ export interface CustomAdapterOptions<
   defaultHeaders?: never;
   fetch?: never;
   webSocketFactory?: never;
+  maxReconnectAttempts?: never;
+  streamIdleReconnect?: never;
+  reconnectDelayMs?: never;
+  onReconnect?: never;
 }
 
 /**
@@ -298,7 +331,7 @@ export interface RootSnapshot<
 
 export interface StreamControllerOptions<
   StateType extends object = Record<string, unknown>,
-> {
+> extends TransportReconnectOptions {
   /** Assistant the thread is bound to for its lifetime. */
   assistantId: string;
   /** Client used to construct `ThreadStream`s. */

@@ -207,6 +207,54 @@ describe("ProtocolSseTransportAdapter thread binding", () => {
   });
 });
 
+describe("ProtocolSseTransportAdapter reconnect policy", () => {
+  it("does not reconnect with a custom fetch when no attempts are configured", async () => {
+    // Back-compat: a custom fetch (tests/mocks) defaults to no reconnect.
+    const sentinel = new Error("stream-open");
+    const { calls, fetch } = createFetchRecorder({ error: sentinel });
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await expect(handle.ready).rejects.toBe(sentinel);
+
+    expect(calls).toHaveLength(1);
+    handle.close();
+  });
+
+  it("reconnects with a custom fetch when maxReconnectAttempts is set", async () => {
+    // The durability contract: real integrations supply a custom fetch for
+    // auth/tenant headers and must still be able to opt back into reconnect.
+    const sentinel = new Error("stream-open");
+    const { calls, fetch } = createFetchRecorder({ error: sentinel });
+    const onReconnect = vi.fn();
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+      maxReconnectAttempts: 2,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    // `ready` also rejects once the budget is exhausted; consume it so the
+    // rejection isn't reported as unhandled.
+    handle.ready.catch(() => {});
+    const iterator = handle.events[Symbol.asyncIterator]();
+    // Drains to completion once the reconnect budget is exhausted.
+    await expect(iterator.next()).rejects.toBe(sentinel);
+
+    // Initial attempt + 2 reconnects = 3 fetches; onReconnect fires per retry.
+    expect(calls).toHaveLength(3);
+    expect(onReconnect).toHaveBeenCalledTimes(2);
+    handle.close();
+  });
+});
+
 describe("ProtocolSseTransportAdapter AsyncCaller", () => {
   it("retries transient command failures when asyncCaller is provided", async () => {
     let attempts = 0;

@@ -79,16 +79,19 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
     this.asyncCaller = options.asyncCaller;
-    // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
+    // Reconnect/idle-watchdog policy is decoupled from the presence of a
+    // custom `fetch`: an explicitly-provided option always wins. A custom
+    // fetch only changes the *default* — tests/mocks that pass `fetch`
+    // without asking for reconnect stay disabled (a tripped watchdog would
+    // have nothing to reconnect to), but real integrations that supply a
+    // custom fetch for auth/tenant headers can opt back into the durability
+    // contract (reconnect with `since` + heartbeat-adaptive idle watchdog).
     this.maxReconnectAttempts =
-      options.fetch != null ? 0 : (options.maxReconnectAttempts ?? 5);
-    // Custom fetch (tests/mocks) also disables the idle watchdog, matching the
-    // no-auto-reconnect policy above — a tripped watchdog would have nothing to
-    // reconnect to and would surface spurious errors in those harnesses.
-    // Otherwise default to heartbeat-adaptive `"auto"`, which stays dormant
-    // unless the server actually emits keep-alive heartbeats.
+      options.maxReconnectAttempts ?? (options.fetch != null ? 0 : 5);
+    // `"auto"` stays dormant unless the server actually emits keep-alive
+    // heartbeats, so enabling it is safe even on heartbeat-less backends.
     this.idleReconnect =
-      options.fetch != null ? null : (options.idleReconnect ?? "auto");
+      options.idleReconnect ?? (options.fetch != null ? null : "auto");
     this.onReconnect = options.onReconnect;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;
