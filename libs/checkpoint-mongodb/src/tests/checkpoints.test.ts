@@ -576,6 +576,35 @@ describe("MongoDBSaver", () => {
       );
     });
 
+    it("should no-op without calling bulkWrite when writes is empty", async () => {
+      // Regression test: an empty `writes` array used to reach `bulkWrite([])`,
+      // which the MongoDB driver rejects with "Invalid BulkOperation, Batch
+      // cannot be empty" (hit by human-in-the-loop / interrupt() flows).
+      const bulkWriteMock = vi.fn(() => Promise.resolve({}));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: vi.fn(() => ({ bulkWrite: bulkWriteMock })),
+        })),
+      };
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const config = {
+        configurable: {
+          thread_id: "t",
+          checkpoint_ns: "",
+          checkpoint_id: "c",
+        },
+      };
+
+      await expect(
+        saver.putWrites(config, [], "task_A")
+      ).resolves.toBeUndefined();
+      // Load-bearing assertion: before the fix, putWrites called bulkWrite([]).
+      expect(bulkWriteMock).not.toHaveBeenCalled();
+    });
+
     it("should reject non-string thread_id in putWrites", async () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
