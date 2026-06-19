@@ -6,8 +6,7 @@
  */
 
 /** Whether ANSI colors should be suppressed (no TTY or `NO_COLOR` set). */
-const NO_COLOR =
-  process.env.NO_COLOR != null || !process.stdout.isTTY;
+const NO_COLOR = process.env.NO_COLOR != null || !process.stdout.isTTY;
 
 /** Supported text colors for human-readable output. */
 type Color = "cyan" | "green" | "yellow" | "red";
@@ -42,9 +41,7 @@ function formatElapsed(seconds: number): string {
   const total = Math.trunc(seconds);
   const mins = Math.trunc(total / 60);
   const secs = total % 60;
-  return mins
-    ? `${mins}m ${String(secs).padStart(2, "0")}s`
-    : `${secs}s`;
+  return mins ? `${mins}m ${String(secs).padStart(2, "0")}s` : `${secs}s`;
 }
 
 /** Terminal outcome of a deploy operation. */
@@ -130,7 +127,11 @@ export class Emitter {
    */
   warn(message: string, extra?: Record<string, unknown>): void {
     if (this.json) {
-      this.write({ event: "warn", message: message.replace(/^\s+/, ""), ...extra });
+      this.write({
+        event: "warn",
+        message: message.replace(/^\s+/, ""),
+        ...extra,
+      });
     } else {
       this.echo(colorize(`   ${message}`, "yellow"));
     }

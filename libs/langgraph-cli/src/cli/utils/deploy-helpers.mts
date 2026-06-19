@@ -19,6 +19,7 @@ export const RESERVED_ENV_VARS: ReadonlySet<string> = new Set([
   "LANGSMITH_LANGGRAPH_GIT_REPO",
   "LANGGRAPH_GIT_REPO_PATH",
   "LANGCHAIN_API_KEY",
+  "LANGGRAPH_HOST_API_KEY",
   "LANGSMITH_CONTROL_PLANE_API_KEY",
   "POSTGRES_URI",
   "POSTGRES_PASSWORD",
@@ -345,7 +346,9 @@ export function levelColor(level: unknown): LogColor {
  * @param hostUrl - The host backend API URL, may be nullish.
  * @returns The dashboard base URL (no trailing slash).
  */
-export function smithDashboardBaseUrl(hostUrl: string | null | undefined): string {
+export function smithDashboardBaseUrl(
+  hostUrl: string | null | undefined
+): string {
   if (!hostUrl) return "https://smith.langchain.com";
   let parsed: URL;
   try {

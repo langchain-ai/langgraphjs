@@ -106,10 +106,7 @@ export class HostBackendClient {
    * @param params - Optional query parameters; nullish values are omitted.
    * @returns The absolute URL string.
    */
-  private buildUrl(
-    path: string,
-    params?: RequestOptions["params"]
-  ): string {
+  private buildUrl(path: string, params?: RequestOptions["params"]): string {
     const url = new URL(`${this.baseUrl}${path}`);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
@@ -151,10 +148,7 @@ export class HostBackendClient {
     let lastError: unknown;
     for (let attempt = 0; attempt <= TRANSPORT_RETRIES; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(
-        () => controller.abort(),
-        REQUEST_TIMEOUT_MS
-      );
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       let response: Response;
       try {
         response = await fetch(url, { ...init, signal: controller.signal });
@@ -171,8 +165,7 @@ export class HostBackendClient {
 
       if (!response.ok) {
         const detail =
-          (await response.text().catch(() => "")) ||
-          String(response.status);
+          (await response.text().catch(() => "")) || String(response.status);
         throw new HostBackendError(
           `${method} ${path} failed with status ${response.status}: ${detail}`,
           response.status
@@ -272,10 +265,7 @@ export class HostBackendClient {
    * @returns A response containing the push `token` and `registry_url`.
    */
   requestPushToken(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request(
-      "POST",
-      `/v2/deployments/${deploymentId}/push-token`
-    );
+    return this.request("POST", `/v2/deployments/${deploymentId}/push-token`);
   }
 
   /**
@@ -286,10 +276,7 @@ export class HostBackendClient {
    * @returns A response containing the `upload_url` and `object_path`.
    */
   requestUploadUrl(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request(
-      "POST",
-      `/v2/deployments/${deploymentId}/upload-url`
-    );
+    return this.request("POST", `/v2/deployments/${deploymentId}/upload-url`);
   }
 
   /**
@@ -390,11 +377,9 @@ export class HostBackendClient {
     deploymentId: string,
     limit = 1
   ): Promise<Record<string, unknown>> {
-    return this.request(
-      "GET",
-      `/v2/deployments/${deploymentId}/revisions`,
-      { params: { limit } }
-    );
+    return this.request("GET", `/v2/deployments/${deploymentId}/revisions`, {
+      params: { limit },
+    });
   }
 
   /**

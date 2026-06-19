@@ -11,7 +11,7 @@ import { $ } from "execa";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import * as readline from "node:readline";
+import readline from "node:readline";
 import dotenv from "dotenv";
 import { gracefulExit } from "exit-hook";
 
@@ -95,6 +95,22 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Return `true` only if `child` resolves to a location inside `parent`.
+ *
+ * Used to keep configuration-supplied paths (e.g. the `env` file referenced
+ * from `langgraph.json`) contained within the project directory, preventing
+ * traversal (`../`) or absolute paths from reaching files outside the project.
+ *
+ * @param parent - Absolute path to the directory that must contain `child`.
+ * @param child - Absolute path to validate.
+ * @returns `true` when `child` is strictly inside `parent`.
+ */
+function isPathWithin(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
 // ---------------------------------------------------------------------------
 // Interactive prompts
 // ---------------------------------------------------------------------------
@@ -124,7 +140,8 @@ function promptHidden(question: string): Promise<string> {
     let muted = false;
     // @ts-expect-error -- override internal writer to suppress echo
     rl._writeToOutput = (chunk: string) => {
-      if (!muted) (rl as unknown as { output: NodeJS.WriteStream }).output.write(chunk);
+      if (!muted)
+        (rl as unknown as { output: NodeJS.WriteStream }).output.write(chunk);
     };
     rl.question(`${question}: `, (answer) => {
       rl.close();
@@ -172,10 +189,14 @@ function validateDeployCommands(
   buildCommand: string | undefined
 ): void {
   if (installCommand && hasDisallowedBuildCommandContent(installCommand)) {
-    throw new Error("install_command contains disallowed characters or patterns.");
+    throw new Error(
+      "install_command contains disallowed characters or patterns."
+    );
   }
   if (buildCommand && hasDisallowedBuildCommandContent(buildCommand)) {
-    throw new Error("build_command contains disallowed characters or patterns.");
+    throw new Error(
+      "build_command contains disallowed characters or patterns."
+    );
   }
 }
 
@@ -200,7 +221,15 @@ async function resolveEnvPath(
   const envField = rawConfig.env;
   if (isPlainObject(envField) && Object.keys(envField).length) return null;
   if (typeof envField === "string") {
-    const envPath = path.resolve(path.dirname(configPath), envField);
+    const projectRoot = path.dirname(configPath);
+    const envPath = path.resolve(projectRoot, envField);
+    if (!isPathWithin(projectRoot, envPath)) {
+      emitter.note(
+        `Ignoring env file '${envField}' specified in langgraph.json: ` +
+          "the path escapes the project directory."
+      );
+      return null;
+    }
     if (!(await exists(envPath))) {
       emitter.note(
         `Warning: env file '${envField}' specified in langgraph.json not found.`
@@ -349,7 +378,10 @@ async function callWithOptionalTenant<T>(
         promptedForTenant = true;
         continue;
       }
-      if (error.statusCode === 403 && error.message.toLowerCase().includes("not enabled")) {
+      if (
+        error.statusCode === 403 &&
+        error.message.toLowerCase().includes("not enabled")
+      ) {
         const smithBase = smithDashboardBaseUrl(client.baseUrl);
         throw new HostBackendError(
           "LangSmith Deployment is not enabled for this organization. " +
@@ -620,7 +652,9 @@ async function printDeploymentResult(
       url: customUrl,
       statusUrl: options.statusUrl,
     });
-  } else if (["BUILD_FAILED", "DEPLOY_FAILED", "CREATE_FAILED"].includes(lastStatus)) {
+  } else if (
+    ["BUILD_FAILED", "DEPLOY_FAILED", "CREATE_FAILED"].includes(lastStatus)
+  ) {
     emitter.result("failed", { deploymentId, statusUrl: options.statusUrl });
     gracefulExit(1);
   } else {
@@ -668,7 +702,10 @@ async function resolvePushedImageDigest(
     digests = [];
   }
   for (const digest of digests) {
-    if (typeof digest === "string" && digest.startsWith(`${repoNoTag}@sha256:`)) {
+    if (
+      typeof digest === "string" &&
+      digest.startsWith(`${repoNoTag}@sha256:`)
+    ) {
       return digest;
     }
   }
@@ -721,6 +758,7 @@ interface LocalBuildArgs {
   verbose: boolean;
   pull: boolean;
   apiVersion: string | undefined;
+  baseImage: string | undefined;
   imageName: string | undefined;
   name: string | undefined;
   tag: string;
@@ -731,10 +769,29 @@ interface LocalBuildArgs {
 async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
   const projectDir = path.dirname(args.configPath);
   const localDeps = await assembleLocalDeps(args.configPath, args.config);
-  const dockerfile = await configToDocker(args.configPath, args.config, localDeps, {
-    watch: false,
-    dockerCommand: "build",
-  });
+
+  // Resolve the base image, honoring `--base-image` / `--api-version`. When
+  // neither is supplied this equals the config's own base image, so the
+  // rewrite below is a no-op.
+  const baseImageRef =
+    args.baseImage ?? getBaseImage(args.config, args.apiVersion);
+
+  const generatedDockerfile = await configToDocker(
+    args.configPath,
+    args.config,
+    localDeps,
+    {
+      watch: false,
+      dockerCommand: "build",
+    }
+  );
+  // `configToDocker` emits `FROM ${getBaseImage(config)}` using the config's
+  // own base image; rewrite the first FROM instruction so the resolved base
+  // image (including any override) is what gets built.
+  const dockerfile = generatedDockerfile.replace(
+    /^FROM .*$/m,
+    `FROM ${baseImageRef}`
+  );
 
   const needsBuildx = os.arch() !== "x64";
   const localTag = `langgraph-deploy-tmp:${Math.floor(Date.now() / 1000)}`;
@@ -747,10 +804,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
 
   // -- Pull base image --
   if (args.pull) {
-    await $({ ...baseOpts, ...stdio })`docker pull ${getBaseImage(
-      args.config,
-      args.apiVersion
-    )}`;
+    await $({ ...baseOpts, ...stdio })`docker pull ${baseImageRef}`;
   }
 
   // -- Build image --
@@ -809,7 +863,9 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
   const deploymentToken =
     typeof pushData.token === "string" ? pushData.token : undefined;
   const registryUrl =
-    typeof pushData.registry_url === "string" ? pushData.registry_url : undefined;
+    typeof pushData.registry_url === "string"
+      ? pushData.registry_url
+      : undefined;
   if (!deploymentToken || !registryUrl) {
     throw new Error("Push token response missing token or registry_url");
   }
@@ -927,7 +983,9 @@ async function runRemoteBuild(args: RemoteBuildArgs): Promise<BuildResult> {
     emitter.step(step, "Requesting upload URL");
     const uploadData = await args.client.requestUploadUrl(args.deploymentId);
     const signedUrl =
-      typeof uploadData.upload_url === "string" ? uploadData.upload_url : undefined;
+      typeof uploadData.upload_url === "string"
+        ? uploadData.upload_url
+        : undefined;
     const objectPath =
       typeof uploadData.object_path === "string"
         ? uploadData.object_path
@@ -961,7 +1019,12 @@ async function runRemoteBuild(args: RemoteBuildArgs): Promise<BuildResult> {
       revisionId,
       setProgress
     ) => {
-      if (!(args.verbose && (status === "AWAITING_BUILD" || status === "BUILDING"))) {
+      if (
+        !(
+          args.verbose &&
+          (status === "AWAITING_BUILD" || status === "BUILDING")
+        )
+      ) {
         return;
       }
       try {
@@ -1078,7 +1141,9 @@ async function runDeploy(
   }
   if (!deploymentId && !name) {
     const defaultName = normalizeName(path.basename(process.cwd()));
-    name = noInput ? defaultName : await promptText("Deployment name", defaultName);
+    name = noInput
+      ? defaultName
+      : await promptText("Deployment name", defaultName);
   }
   if (name && !deploymentId) {
     name = normalizeName(name);
@@ -1095,16 +1160,19 @@ async function runDeploy(
     emitter.note(`Skipping reserved env var: ${skipped}`)
   );
 
-  const [useRemoteBuild, localBuildError] = await resolveBuildMode(
-    remoteBuildFlag
-  );
+  const [useRemoteBuild, localBuildError] =
+    await resolveBuildMode(remoteBuildFlag);
   if (useRemoteBuild && remoteBuildFlag === undefined && localBuildError) {
     emitter.note(`${localBuildError}\nUsing remote build instead.`);
     if (!opts.json) process.stdout.write("\n");
   }
 
   // -- 2. Resolve / create deployment --
-  const client = await createHostBackendClient(opts.hostUrl, opts.apiKey, envVars);
+  const client = await createHostBackendClient(
+    opts.hostUrl,
+    opts.apiKey,
+    envVars
+  );
   let step = 1;
 
   const resolved = await resolveDeployment(
@@ -1155,6 +1223,7 @@ async function runDeploy(
         verbose: opts.verbose,
         pull: opts.pull,
         apiVersion: opts.apiVersion,
+        baseImage: opts.baseImage,
         imageName: opts.imageName,
         name,
         tag: opts.tag,
@@ -1263,9 +1332,14 @@ async function runRevisionsList(
   const resources = Array.isArray(rec(response).resources)
     ? (rec(response).resources as unknown[])
     : [];
-  const revisions = resources.filter(isPlainObject) as Record<string, unknown>[];
+  const revisions = resources.filter(isPlainObject) as Record<
+    string,
+    unknown
+  >[];
   if (!revisions.length) {
-    process.stdout.write(`No revisions found for deployment ${deploymentId}.\n`);
+    process.stdout.write(
+      `No revisions found for deployment ${deploymentId}.\n`
+    );
     return;
   }
   process.stdout.write(`${formatRevisionsTable(revisions)}\n`);
@@ -1318,7 +1392,11 @@ async function runLogs(opts: LogsOptions): Promise<void> {
     {},
     path.join(process.cwd(), "langgraph.json")
   );
-  const client = await createHostBackendClient(opts.hostUrl, opts.apiKey, envVars);
+  const client = await createHostBackendClient(
+    opts.hostUrl,
+    opts.apiKey,
+    envVars
+  );
 
   let name = opts.name;
   if (!opts.deploymentId && !name) {
@@ -1352,7 +1430,9 @@ async function runLogs(opts: LogsOptions): Promise<void> {
       );
     }
     revisionId = String(rec(resources[0]).id);
-    process.stdout.write(paint(`Using latest revision: ${revisionId}\n`, "cyan"));
+    process.stdout.write(
+      paint(`Using latest revision: ${revisionId}\n`, "cyan")
+    );
   }
 
   const limit = Number.parseInt(opts.limit, 10) || 100;
@@ -1463,7 +1543,11 @@ const deploy = builder
   .option("--verbose", "Show more output from the server logs.", false)
   .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
   .option("--image-name <name>", "Image repository name for the pushed image.")
-  .option("-t, --tag <tag>", "Tag to use for the pushed deployment image.", "latest")
+  .option(
+    "-t, --tag <tag>",
+    "Tag to use for the pushed deployment image.",
+    "latest"
+  )
   .option(
     "--no-pull",
     "Do not pull the latest base image before building locally."
@@ -1483,7 +1567,10 @@ const deploy = builder
     "--no-input",
     "Never prompt for input; fail with an error if a required value is missing."
   )
-  .argument("[dockerBuildArgs...]", "Extra arguments passed through to docker build")
+  .argument(
+    "[dockerBuildArgs...]",
+    "Extra arguments passed through to docker build"
+  )
   .passThroughOptions()
   .allowUnknownOption()
   .exitOverride((error) => gracefulExit(error.exitCode))
