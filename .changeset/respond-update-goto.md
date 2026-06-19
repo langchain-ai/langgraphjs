@@ -18,3 +18,11 @@ the resume — one checkpoint, no separate `updateState` write, no flicker.
 and `@langchain/core` message instances in `update` are serialized to dicts
 before transport, exactly like `submit()`. Bumps `@langchain/protocol` to
 `^0.0.18` for the `Goto` type.
+
+`respond`/`respondAll` also apply `update` **optimistically** (mirroring
+`submit()`): the pushed messages paint immediately, with stable ids minted so
+the resumed run's echo reconciles them in place. Without this the interrupt is
+cleared the instant `respond()` dispatches while the pushed card only reappears
+a server round-trip later — so the card would flicker in that gap. The
+optimistic state settles on the resumed run's terminal (pending → sent, or
+rolled back on a failure before any echo).

@@ -1278,13 +1278,27 @@ export class StreamController<
       throw new Error("No pending interrupt to respond to.");
     }
     const thread = this.#thread;
+
+    // Apply the state `update` optimistically, mirroring `submit()`: append its
+    // messages to the root projection and mint stable ids so the resumed run's
+    // echo reconciles by id. Without this the interrupt is cleared the instant
+    // `respond()` dispatches while the pushed messages only reappear after a
+    // server round-trip — so a HITL "card" pushed via `update` would vanish for
+    // that window (the flicker). The id-injected payload is what we dispatch,
+    // so the server echoes the same ids back and `#applyValues` flips them
+    // `pending` → `sent` in place (no duplicate, no gap).
+    const prepared =
+      options?.update != null ? this.#beginOptimistic(options.update) : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(options?.update, prepared);
+
     try {
       // Route through the coordinator so a resumed run that fails (e.g. a
       // missing model key surfaced after the user answers) lands in the
       // reactive `rootStore.error` slot, exactly like a `submit()` failure.
       // The dispatch (`respondInput` + interrupt-resolved bookkeeping) is
       // what's awaited; the resumed run's terminal is watched in the
-      // background (see {@link SubmitCoordinator.dispatchResume}).
+      // background (see {@link SubmitCoordinator.dispatchResume}), which also
+      // settles the optimistic handle (rolls back un-echoed keys on failure).
       await this.#submitter.dispatchResume(async () => {
         await thread.respondInput({
           namespace: resolved.namespace,
@@ -1295,20 +1309,13 @@ export class StreamController<
           // Omitted when absent so the server still sees a plain resume.
           // `BaseMessage` instances under the messages key are serialized to
           // plain dicts (like `submit()`) so they coerce server-side.
-          ...(options?.update != null
-            ? {
-                update: serializeUpdateMessages(
-                  options.update,
-                  this.#messagesKey
-                ),
-              }
-            : {}),
+          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
         });
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
-      });
+      }, prepared?.handle);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1377,10 +1384,17 @@ export class StreamController<
       namespace: pending.find((entry) => entry.interruptId === interruptId)
         ?.namespace ?? [...ROOT_NAMESPACE],
     }));
+    // Apply the run-level `update` optimistically (see `respond()` for the
+    // rationale): the batched resume's pushed messages paint immediately and
+    // reconcile by id when the single servicing run echoes them back.
+    const prepared =
+      options?.update != null ? this.#beginOptimistic(options.update) : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(options?.update, prepared);
+
     try {
       // See `respond()` — route through the coordinator so the single run
       // that services the batched resume surfaces failures on the reactive
-      // `rootStore.error` slot.
+      // `rootStore.error` slot and settles the optimistic handle.
       await this.#submitter.dispatchResume(async () => {
         await thread.respondInput({
           responses,
@@ -1389,14 +1403,7 @@ export class StreamController<
           // that run's superstep alongside all the resumes. `BaseMessage`
           // instances under the messages key are serialized to plain dicts
           // (like `submit()`) so they coerce server-side.
-          ...(options?.update != null
-            ? {
-                update: serializeUpdateMessages(
-                  options.update,
-                  this.#messagesKey
-                ),
-              }
-            : {}),
+          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
@@ -1404,7 +1411,7 @@ export class StreamController<
         for (const { interrupt_id: interruptId } of responses) {
           this.#markInterruptResolvedInRootStore(interruptId);
         }
-      });
+      }, prepared?.handle);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -2084,6 +2091,30 @@ export class StreamController<
       dispatchInput: prepared.dispatchInput,
       handle: { echoedIds: prepared.echoedIds, restoreKeys },
     };
+  }
+
+  /**
+   * Pick the `update` payload to dispatch on a resume (`respond` /
+   * `respondAll`).
+   *
+   * When the optimistic path ran ({@link #beginOptimistic} returned a handle),
+   * its `dispatchInput` already carries the minted message ids the server must
+   * echo back, so dispatch that — the echo reconciles the optimistic messages
+   * by id (no duplicate). Otherwise (optimistic UI disabled, or an `update`
+   * with no echoable messages — e.g. the tuple-entry form) fall back to
+   * serializing `BaseMessage` instances to dicts, exactly as before. Returns
+   * `undefined` when there is no `update`, so the server still sees a plain
+   * resume.
+   */
+  #resolveDispatchUpdate(
+    update: Record<string, unknown> | [string, unknown][] | undefined,
+    prepared: { dispatchInput: unknown; handle: OptimisticHandle } | undefined
+  ): Record<string, unknown> | [string, unknown][] | undefined {
+    if (prepared != null) {
+      return prepared.dispatchInput as Record<string, unknown>;
+    }
+    if (update == null) return undefined;
+    return serializeUpdateMessages(update, this.#messagesKey);
   }
 
   /**
