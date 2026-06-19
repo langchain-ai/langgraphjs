@@ -24,6 +24,10 @@ const readConfig = {
 const client = new MongoClient(process.env.MONGODB_URL);
 
 const checkpointer = new MongoDBSaver({ client });
+
+// NOTE: you need to call .setup() the first time you're using your checkpointer
+await checkpointer.setup();
+
 const checkpoint = {
   v: 1,
   ts: "2024-07-31T20:14:19.804150+00:00",
