@@ -7,6 +7,7 @@ import {
   BaseStore,
 } from "@langchain/langgraph-checkpoint";
 import {
+  getInteropZodObjectShape,
   type InteropZodObject,
   interopParse,
   interopZodObjectPartial,
@@ -17,13 +18,14 @@ import type {
   LangGraphRunnableConfig,
   Runtime,
 } from "../pregel/runnable_types.js";
-import { BaseChannel, isBaseChannel } from "../channels/base.js";
+import { BaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
   Graph,
   Branch,
   AddNodeOptions,
   NodeSpec,
+  NodeErrorHandler,
 } from "./graph.js";
 import {
   ChannelWrite,
@@ -44,40 +46,72 @@ import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
-  END,
   SELF,
   Send,
   START,
+  END,
   TAG_HIDDEN,
   CommandInstance,
   isInterrupted,
   Interrupt,
   INTERRUPT,
+  CONFIG_KEY_NODE_ERROR,
+  _getOverwriteValue,
+  OVERWRITE,
 } from "../constants.js";
-import { InvalidUpdateError, ParentCommand } from "../errors.js";
+import {
+  InvalidUpdateError,
+  NodeError,
+  ParentCommand,
+  StateGraphInputError,
+} from "../errors.js";
 import {
   AnnotationRoot,
   getChannel,
   SingleReducer,
   StateDefinition,
   StateType,
-  UpdateType,
 } from "./annotation.js";
-import type { CachePolicy, RetryPolicy } from "../pregel/utils/index.js";
+import { StateSchema } from "../state/index.js";
+import type {
+  CachePolicy,
+  RetryPolicy,
+  TimeoutPolicy,
+} from "../pregel/utils/index.js";
+import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
-import {
-  type SchemaMetaRegistry,
-  InteropZodToStateDefinition,
-  schemaMetaRegistry,
-} from "./zod/meta.js";
+import { type SchemaMetaRegistry, schemaMetaRegistry } from "./zod/meta.js";
 import type {
   InferInterruptResumeType,
   InferInterruptInputType,
 } from "../interrupt.js";
 import type { InferWriterType } from "../writer.js";
+import type { AnyStateSchema } from "../state/schema.js";
+import {
+  ContextSchemaInit,
+  ExtractStateType,
+  ExtractUpdateType,
+  isStateDefinitionInit,
+  isStateGraphInit,
+  StateGraphInit,
+  StateGraphOptions,
+  ToStateDefinition,
+  type StateDefinitionInit,
+} from "./types.js";
+import type { StreamTransformer } from "../stream/types.js";
+import type { Pregel } from "../pregel/index.js";
 
 const ROOT = "__root__";
+
+/**
+ * Reserved node name for the single shared error handler that is materialized
+ * when a graph-wide default error handler is set via
+ * {@link StateGraph.setNodeDefaults}. Every regular node that lacks its own
+ * `errorHandler` routes failures to this node. Mirrors Python's
+ * `__default_error_handler__`.
+ */
+const DEFAULT_ERROR_HANDLER_NODE = "__default_error_handler__";
 
 export type ChannelReducers<Channels extends object> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,27 +126,126 @@ export interface StateGraphArgs<Channels extends object | unknown> {
     : ChannelReducers<{ __root__: Channels }>;
 }
 
+/**
+ * Retry and cache policies configurable on graph nodes.
+ *
+ * Use with {@link StateGraph.addNode} for per-node overrides, or with
+ * {@link StateGraph.setNodeDefaults} for graph-wide defaults applied at
+ * `compile()` time. Per-node values always take precedence over defaults.
+ * `setNodeDefaults` may be called before or after `addNode`, including as the
+ * last step before `compile()`.
+ */
+export type NodePolicyOptions = {
+  /**
+   * Retry policy controlling backoff, max attempts, and which errors trigger
+   * a retry.
+   *
+   * @see {@link RetryPolicy}
+   */
+  retryPolicy?: RetryPolicy;
+  /**
+   * Cache policy controlling how node results are keyed and how long they
+   * persist.
+   *
+   * - Pass a {@link CachePolicy} object for fine-grained control (e.g. custom
+   *   `keyFunc`, `ttl`).
+   * - Pass `true` to enable caching with default settings.
+   * - Pass `false` to disable caching.
+   *
+   * @see {@link CachePolicy}
+   */
+  cachePolicy?: CachePolicy | boolean;
+  /**
+   * Maximum duration for a single attempt of this node. Accepts a number of
+   * milliseconds (a hard wall-clock cap) or a {@link TimeoutPolicy} for finer
+   * control over run / idle timeouts. When exceeded, a {@link NodeTimeoutError}
+   * is raised and the node's retry policy (if any) decides whether to retry.
+   *
+   * @see {@link TimeoutPolicy}
+   */
+  timeout?: number | TimeoutPolicy;
+};
+
+/**
+ * Resolved retry and cache policies stored on a node after boolean
+ * `cachePolicy` shorthand is normalized.
+ *
+ * @internal
+ */
+export type NodePolicies = {
+  retryPolicy?: RetryPolicy;
+  /** `false` opts out of graph defaults set via {@link StateGraph.setNodeDefaults}. */
+  cachePolicy?: CachePolicy | false;
+  /** Resolved timeout policy after the `number` shorthand is normalized. */
+  timeout?: TimeoutPolicy;
+};
+
+/**
+ * Graph-wide node defaults captured by {@link StateGraph.setNodeDefaults} and
+ * resolved at {@link StateGraph.compile} time.
+ *
+ * @internal
+ */
+type ResolvedNodeDefaults = NodePolicies & {
+  /**
+   * Default error handler applied to every regular node that does not set its
+   * own via `addNode(..., { errorHandler })`. Never applied to error-handler
+   * nodes themselves — handlers must not catch their own failures.
+   */
+  errorHandler?: NodeErrorHandler;
+};
+
 export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
   RunInput,
   RunOutput
-> & {
-  input?: StateDefinition;
-  retryPolicy?: RetryPolicy;
-  cachePolicy?: CachePolicy;
-};
+> &
+  NodePolicies & {
+    input?: StateDefinition;
+  };
 
-export type StateGraphAddNodeOptions<Nodes extends string = string> = {
-  retryPolicy?: RetryPolicy;
-  cachePolicy?: CachePolicy | boolean;
-  // TODO: Fix generic typing for annotations
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  input?: AnnotationRoot<any> | InteropZodObject;
-} & AddNodeOptions<Nodes>;
+/**
+ * Options for StateGraph.addNode() method.
+ *
+ * @template Nodes - Node name constraints
+ * @template InputSchema - Per-node input schema type (inferred from options.input)
+ * @template HandlerState - State type passed to the node-level error handler
+ * @template Update - The update type the error handler may return
+ */
+export type StateGraphAddNodeOptions<
+  Nodes extends string = string,
+  InputSchema extends StateDefinitionInit | undefined =
+    | StateDefinitionInit
+    | undefined,
+  HandlerState = InputSchema extends StateDefinitionInit
+    ? ExtractStateType<InputSchema>
+    : unknown,
+  Update = unknown,
+> = {
+  input?: InputSchema;
+  /**
+   * Optional node-level error handler. Runs only after this node's
+   * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
+   * failed node name and error, and may return a state update or `Command`.
+   */
+  errorHandler?: NodeErrorHandler<HandlerState, Update, Nodes>;
+} & NodePolicyOptions &
+  AddNodeOptions<Nodes>;
+
+type StateGraphAddNodeOptionsWithNodeInput<
+  Nodes extends string,
+  NodeInput,
+  Update = unknown,
+> = StateGraphAddNodeOptions<
+  Nodes,
+  StateDefinitionInit | undefined,
+  NodeInput,
+  Update
+>;
 
 export type StateGraphArgsWithStateSchema<
   SD extends StateDefinition,
   I extends StateDefinition,
-  O extends StateDefinition
+  O extends StateDefinition,
 > = {
   stateSchema: AnnotationRoot<SD>;
   input?: AnnotationRoot<I>;
@@ -121,32 +254,24 @@ export type StateGraphArgsWithStateSchema<
 
 export type StateGraphArgsWithInputOutputSchemas<
   SD extends StateDefinition,
-  O extends StateDefinition = SD
+  O extends StateDefinition = SD,
 > = {
   input: AnnotationRoot<SD>;
   output: AnnotationRoot<O>;
 };
 
-type ZodStateGraphArgsWithStateSchema<
-  SD extends InteropZodObject,
-  I extends SDZod,
-  O extends SDZod
-> = { state: SD; input?: I; output?: O };
-
-type SDZod = StateDefinition | InteropZodObject;
-
-type ToStateDefinition<T> = T extends InteropZodObject
-  ? InteropZodToStateDefinition<T>
-  : T extends StateDefinition
-  ? T
-  : never;
+type ExtractStateDefinition<T> = T extends AnyStateSchema
+  ? T // Keep StateSchema as-is to preserve type information
+  : T extends StateDefinitionInit
+    ? ToStateDefinition<T>
+    : StateDefinition;
 
 type NodeAction<
   S,
   U,
-  C extends SDZod,
+  C extends StateDefinitionInit,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   S,
   U extends object ? U & Record<string, any> : U, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -156,10 +281,10 @@ type NodeAction<
 type StrictNodeAction<
   S,
   U,
-  C extends SDZod,
+  C extends StateDefinitionInit,
   Nodes extends string,
   InterruptType,
-  WriterType
+  WriterType,
 > = RunnableLike<
   Prettify<S>,
   | U
@@ -196,6 +321,36 @@ type Prettify<T> = {
  *
  * After adding nodes and edges to your graph, you must call `.compile()` on it before
  * you can use it.
+ *
+ * @typeParam SD - The state definition used to construct the graph. Can be an
+ *   {@link AnnotationRoot}, {@link StateSchema}, or Zod object schema. This is the
+ *   primary generic from which `S` and `U` are derived.
+ *
+ * @typeParam S - The full state type representing the complete shape of your graph's
+ *   state after all reducers have been applied. Automatically inferred from `SD`.
+ *
+ * @typeParam U - The update type representing what nodes can return to modify state.
+ *   Typically a partial of the state type. Automatically inferred from `SD`.
+ *
+ * @typeParam N - Union of all node names in the graph (e.g., `"agent" | "tool"`).
+ *   Accumulated as you call `.addNode()`. Used for type-safe routing.
+ *
+ * @typeParam I - The input schema definition. Set via the `input` option in the
+ *   constructor to restrict what data the graph accepts when invoked.
+ *
+ * @typeParam O - The output schema definition. Set via the `output` option in the
+ *   constructor to restrict what data the graph returns after execution.
+ *
+ * @typeParam C - The config/context schema definition. Set via the `context` option
+ *   to define additional configuration passed at runtime.
+ *
+ * @typeParam NodeReturnType - Constrains what types nodes in this graph can return.
+ *
+ * @typeParam InterruptType - The type for {@link interrupt} resume values. Set via
+ *   the `interrupt` option for typed human-in-the-loop patterns.
+ *
+ * @typeParam WriterType - The type for custom stream writers. Set via the `writer`
+ *   option to enable typed custom streaming from within nodes.
  *
  * @example
  * ```ts
@@ -247,16 +402,16 @@ type Prettify<T> = {
  * ```
  */
 export class StateGraph<
-  SD extends SDZod | unknown,
-  S = SD extends SDZod ? StateType<ToStateDefinition<SD>> : SD,
-  U = SD extends SDZod ? UpdateType<ToStateDefinition<SD>> : Partial<S>,
+  SD extends StateDefinitionInit | unknown,
+  S = ExtractStateType<SD>,
+  U = ExtractUpdateType<SD, S>,
   N extends string = typeof START,
-  I extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
-  O extends SDZod = SD extends SDZod ? ToStateDefinition<SD> : StateDefinition,
-  C extends SDZod = StateDefinition,
+  I extends StateDefinitionInit = ExtractStateDefinition<SD>,
+  O extends StateDefinitionInit = ExtractStateDefinition<SD>,
+  C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
@@ -267,19 +422,23 @@ export class StateGraph<
   _schemaDefinition: StateDefinition;
 
   /** @internal */
-  _schemaRuntimeDefinition: InteropZodObject | undefined;
+  _schemaRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /** @internal */
   _inputDefinition: I;
 
   /** @internal */
-  _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
+  _inputRuntimeDefinition:
+    | InteropZodObject
+    | AnyStateSchema
+    | PartialStateSchema
+    | undefined;
 
   /** @internal */
   _outputDefinition: O;
 
   /** @internal */
-  _outputRuntimeDefinition: InteropZodObject | undefined;
+  _outputRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
 
   /**
    * Map schemas to managed values
@@ -302,34 +461,58 @@ export class StateGraph<
   /** @internal */
   _writer: WriterType;
 
+  /**
+   * Graph-wide default node policies, resolved at `compile()` time.
+   * @internal
+   */
+  _nodeDefaults: ResolvedNodeDefaults = {};
+
   declare Node: StrictNodeAction<S, U, C, N, InterruptType, WriterType>;
 
+  /**
+   * Create a new StateGraph for building stateful, multi-step workflows.
+   *
+   * Accepts state definitions via `Annotation.Root`, `StateSchema`, or Zod schemas.
+   *
+   * @example Direct schema
+   * ```ts
+   * const StateAnnotation = Annotation.Root({
+   *   messages: Annotation<string[]>({ reducer: (a, b) => [...a, ...b] }),
+   * });
+   * const graph = new StateGraph(StateAnnotation);
+   * ```
+   *
+   * @example Direct schema with input/output filtering
+   * ```ts
+   * const graph = new StateGraph(StateAnnotation, {
+   *   input: InputSchema,
+   *   output: OutputSchema,
+   * });
+   * ```
+   *
+   * @example Object pattern with state, input, output
+   * ```ts
+   * const graph = new StateGraph({
+   *   state: FullStateSchema,
+   *   input: InputSchema,
+   *   output: OutputSchema,
+   * });
+   * ```
+   *
+   * @example Input/output only (state inferred from input)
+   * ```ts
+   * const graph = new StateGraph({
+   *   input: InputAnnotation,
+   *   output: OutputAnnotation,
+   * });
+   * ```
+   */
   constructor(
-    state: SD extends StateDefinition ? AnnotationRoot<SD> : never,
-    options?: {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-
-      interrupt?: InterruptType;
-      writer?: WriterType;
-
-      nodes?: N[];
-    }
-  );
-
-  constructor(
-    state: SD extends InteropZodObject ? SD : never,
-    options?: {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-
-      interrupt?: InterruptType;
-      writer?: WriterType;
-
-      nodes?: N[];
-    }
+    state: SD extends StateDefinitionInit ? SD : never,
+    options?:
+      | C
+      | AnnotationRoot<ToStateDefinition<C>>
+      | StateGraphOptions<I, O, C, N, InterruptType, WriterType>
   );
 
   constructor(
@@ -352,140 +535,363 @@ export class StateGraph<
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
-  /** @deprecated Use `Annotation.Root` or `zod` for state definition instead. */
   constructor(
-    fields: SD extends StateDefinition
-      ? SD | StateGraphArgs<S>
-      : StateGraphArgs<S>,
+    init: Omit<
+      StateGraphInit<
+        SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+        SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+        O,
+        C extends ContextSchemaInit ? C : undefined,
+        N,
+        InterruptType,
+        WriterType
+      >,
+      "state" | "stateSchema" | "input"
+    > & {
+      input: SD extends StateDefinitionInit ? SD : never;
+      state?: never;
+      stateSchema?: never;
+    },
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
-    fields: SD extends InteropZodObject
-      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
-      : never,
+    init: StateGraphInit<
+      SD extends StateDefinitionInit ? SD : StateDefinitionInit,
+      I,
+      O,
+      C extends ContextSchemaInit ? C : undefined,
+      N,
+      InterruptType,
+      WriterType
+    >
+  );
+
+  /** @deprecated Use `Annotation.Root`, `StateSchema`, or Zod schemas instead. */
+  constructor(
+    fields: StateGraphArgs<S>,
     contextSchema?: C | AnnotationRoot<ToStateDefinition<C>>
   );
 
   constructor(
-    fields: SD extends InteropZodObject
-      ? SD | ZodStateGraphArgsWithStateSchema<SD, I, O>
-      : SD extends StateDefinition
-      ?
-          | SD
-          | AnnotationRoot<SD>
-          | StateGraphArgs<S>
-          | StateGraphArgsWithStateSchema<
-              SD,
-              ToStateDefinition<I>,
-              ToStateDefinition<O>
-            >
-          | StateGraphArgsWithInputOutputSchemas<SD, ToStateDefinition<O>>
-      : StateGraphArgs<S>,
-    contextSchema?:
+    stateOrInit:
+      | StateDefinitionInit
+      | StateGraphInit<StateDefinitionInit, I, O>
+      | StateGraphArgs<S>,
+    options?:
       | C
       | AnnotationRoot<ToStateDefinition<C>>
-      | {
-          input?: I | AnnotationRoot<ToStateDefinition<I>>;
-          output?: O | AnnotationRoot<ToStateDefinition<O>>;
-          context?: C | AnnotationRoot<ToStateDefinition<C>>;
-          interrupt?: InterruptType;
-          writer?: WriterType;
-          nodes?: N[];
-        }
+      | StateGraphOptions<
+          I,
+          O,
+          C extends ContextSchemaInit ? C : undefined,
+          N,
+          InterruptType,
+          WriterType
+        >
   ) {
     super();
 
-    if (isZodStateGraphArgsWithStateSchema(fields)) {
-      const stateDef = this._metaRegistry.getChannelsForSchema(fields.state);
-      const inputDef =
-        fields.input != null
-          ? this._metaRegistry.getChannelsForSchema(fields.input)
-          : stateDef;
-      const outputDef =
-        fields.output != null
-          ? this._metaRegistry.getChannelsForSchema(fields.output)
-          : stateDef;
+    // Normalize all input patterns to StateGraphInit format
+    const init = this._normalizeToStateGraphInit(stateOrInit, options);
 
-      this._schemaDefinition = stateDef;
-      this._schemaRuntimeDefinition = fields.state;
-
-      this._inputDefinition = inputDef as I;
-      this._inputRuntimeDefinition = fields.input ?? PartialStateSchema;
-
-      this._outputDefinition = outputDef as O;
-      this._outputRuntimeDefinition = fields.output ?? fields.state;
-    } else if (isInteropZodObject(fields)) {
-      const stateDef = this._metaRegistry.getChannelsForSchema(fields);
-
-      this._schemaDefinition = stateDef;
-      this._schemaRuntimeDefinition = fields;
-
-      this._inputDefinition = stateDef as I;
-      this._inputRuntimeDefinition = PartialStateSchema;
-
-      this._outputDefinition = stateDef as O;
-      this._outputRuntimeDefinition = fields;
-    } else if (
-      isStateGraphArgsWithInputOutputSchemas<
-        SD extends StateDefinition ? SD : never,
-        O extends StateDefinition ? O : never
-      >(fields)
-    ) {
-      this._schemaDefinition = fields.input.spec;
-      this._inputDefinition = fields.input.spec as unknown as I;
-      this._outputDefinition = fields.output.spec;
-    } else if (isStateGraphArgsWithStateSchema(fields)) {
-      this._schemaDefinition = fields.stateSchema.spec;
-      this._inputDefinition = (fields.input?.spec ??
-        this._schemaDefinition) as I;
-      this._outputDefinition = (fields.output?.spec ??
-        this._schemaDefinition) as O;
-    } else if (isStateDefinition(fields) || isAnnotationRoot(fields)) {
-      const spec = isAnnotationRoot(fields) ? fields.spec : fields;
-      this._schemaDefinition = spec;
-    } else if (isStateGraphArgs(fields)) {
-      const spec = _getChannels(fields.channels);
-      this._schemaDefinition = spec;
-    } else {
-      throw new Error(
-        "Invalid StateGraph input. Make sure to pass a valid Annotation.Root or Zod schema."
-      );
+    // Resolve state schema: state > stateSchema (deprecated) > input
+    const stateSchema = init.state ?? init.stateSchema ?? init.input;
+    if (!stateSchema) {
+      throw new StateGraphInputError();
     }
 
-    this._inputDefinition ??= this._schemaDefinition as I;
-    this._outputDefinition ??= this._schemaDefinition as O;
+    // Get channel definitions from the schema (may contain channel factories)
+    const stateChannelDef = this._getChannelsFromSchema(stateSchema);
 
+    // Set schema definitions (these may contain channel factories)
+    this._schemaDefinition = stateChannelDef;
+
+    // Set runtime definitions for validation
+    if (StateSchema.isInstance(stateSchema)) {
+      this._schemaRuntimeDefinition = stateSchema;
+    } else if (isInteropZodObject(stateSchema)) {
+      this._schemaRuntimeDefinition = stateSchema;
+    }
+
+    // Set input runtime definition
+    if (init.input) {
+      if (StateSchema.isInstance(init.input)) {
+        this._inputRuntimeDefinition = init.input;
+      } else if (isInteropZodObject(init.input)) {
+        this._inputRuntimeDefinition = init.input;
+      } else {
+        this._inputRuntimeDefinition = PartialStateSchema;
+      }
+    } else {
+      this._inputRuntimeDefinition = PartialStateSchema;
+    }
+
+    // Set output runtime definition
+    if (init.output) {
+      if (StateSchema.isInstance(init.output)) {
+        this._outputRuntimeDefinition = init.output;
+      } else if (isInteropZodObject(init.output)) {
+        this._outputRuntimeDefinition = init.output;
+      } else {
+        this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
+      }
+    } else {
+      this._outputRuntimeDefinition = this._schemaRuntimeDefinition;
+    }
+
+    // Set input/output definitions (default to state)
+    const inputChannelDef = init.input
+      ? this._getChannelsFromSchema(init.input)
+      : stateChannelDef;
+    const outputChannelDef = init.output
+      ? (this._getChannelsFromSchema(init.output) as O)
+      : stateChannelDef;
+    this._inputDefinition = inputChannelDef as I;
+    this._outputDefinition = outputChannelDef as O;
+
+    // Add all schemas (_addSchema instantiates channel factories and populates this.channels)
     this._addSchema(this._schemaDefinition);
     this._addSchema(this._inputDefinition);
     this._addSchema(this._outputDefinition);
 
-    function isOptions(options: unknown): options is {
-      context?: C | AnnotationRoot<ToStateDefinition<C>>;
-      input?: I | AnnotationRoot<ToStateDefinition<I>>;
-      output?: O | AnnotationRoot<ToStateDefinition<O>>;
-      interrupt?: InterruptType;
-      writer?: WriterType;
-      nodes?: N[];
-    } {
-      return (
-        typeof options === "object" &&
-        options != null &&
-        !("spec" in options) &&
-        !isInteropZodObject(options)
-      );
+    // Handle context schema
+    if (init.context) {
+      if (isInteropZodObject(init.context)) {
+        this._configRuntimeSchema = init.context;
+      }
     }
 
-    // Handle runtime config options
-    if (isOptions(contextSchema)) {
-      if (isInteropZodObject(contextSchema.context)) {
-        this._configRuntimeSchema = contextSchema.context;
-      }
-      this._interrupt = contextSchema.interrupt as InterruptType;
-      this._writer = contextSchema.writer as WriterType;
-    } else if (isInteropZodObject(contextSchema)) {
-      this._configRuntimeSchema = contextSchema;
+    // Handle interrupt and writer
+    this._interrupt = init.interrupt as InterruptType;
+    this._writer = init.writer as WriterType;
+  }
+
+  /**
+   * Set graph-wide default node policies that apply to every node in this
+   * graph.
+   *
+   * Per-node values passed to {@link addNode} always take precedence over these
+   * defaults. Defaults are resolved at {@link compile} time, so call order does
+   * not matter — you may call this before or after `addNode`, including as the
+   * last step before `compile()`. Calling it multiple times merges the provided
+   * fields, with later calls overriding earlier ones on a per-field basis.
+   *
+   * Policies set here are **not** inherited by subgraphs.
+   *
+   * `retryPolicy` and `timeout` defaults apply to **all** nodes, including
+   * auto-generated error-handler nodes. `cachePolicy` and `errorHandler`
+   * defaults apply to **regular nodes only** — caching an error-handler result
+   * is unsafe, and a handler must never catch its own (or another handler's)
+   * failure.
+   *
+   * @param defaults - The default node policies to apply.
+   * @returns The builder instance, for chaining.
+   *
+   * @example Call before `addNode`
+   * ```ts
+   * const graph = new StateGraph(State)
+   *   .setNodeDefaults({
+   *     retryPolicy: { maxAttempts: 3 },
+   *     cachePolicy: { ttl: 60 },
+   *     timeout: 60_000,
+   *     errorHandler: (state, { node, error }) => ({ lastError: error.message }),
+   *   })
+   *   .addNode("a", nodeA)
+   *   .addNode("b", nodeB, { retryPolicy: { maxAttempts: 5 } }) // overrides default
+   *   .addEdge(START, "a")
+   *   .compile();
+   * ```
+   *
+   * @example Call after `addNode`, immediately before `compile()`
+   * ```ts
+   * const graph = new StateGraph(State)
+   *   .addNode("a", nodeA)
+   *   .addNode("b", nodeB, { retryPolicy: { maxAttempts: 5 } }) // overrides default
+   *   .addEdge(START, "a")
+   *   .setNodeDefaults({
+   *     retryPolicy: { maxAttempts: 3 },
+   *     cachePolicy: { ttl: 60 },
+   *   })
+   *   .compile();
+   * ```
+   */
+  setNodeDefaults(
+    defaults: NodePolicyOptions & {
+      /**
+       * Default node-level error handler invoked when any **regular** node
+       * raises and does not have its own handler set via
+       * `addNode(..., { errorHandler })`. Runs only after the failing node's
+       * retry policy is exhausted. It is never invoked when an error-handler
+       * node itself raises — handler failures fail the run.
+       *
+       * Because a single shared handler serves every node, its `state`
+       * argument is typed as `unknown`: at runtime it receives the **failing
+       * node's input** (see `addNode(..., { input })`), which may be a subset
+       * of the graph state and differs per node. Narrow it yourself before
+       * reading fields. The handler may still return a graph-level update (`U`)
+       * or route via `new Command({ goto })` to any node (`N`).
+       */
+      errorHandler?: NodeErrorHandler<unknown, U, N>;
     }
+  ): this {
+    if (defaults.retryPolicy !== undefined) {
+      this._nodeDefaults.retryPolicy = defaults.retryPolicy;
+    }
+    if (defaults.cachePolicy !== undefined) {
+      this._nodeDefaults.cachePolicy =
+        typeof defaults.cachePolicy === "boolean"
+          ? defaults.cachePolicy
+            ? {}
+            : undefined
+          : defaults.cachePolicy;
+    }
+    if (defaults.timeout !== undefined) {
+      this._nodeDefaults.timeout = coerceTimeoutPolicy(defaults.timeout);
+    }
+    if (defaults.errorHandler !== undefined) {
+      this._nodeDefaults.errorHandler =
+        defaults.errorHandler as NodeErrorHandler;
+    }
+    return this;
+  }
+
+  /**
+   * Build the shared spec for a graph-wide default error handler, or
+   * `undefined` when {@link setNodeDefaults} did not configure one. The spec is
+   * installed under {@link DEFAULT_ERROR_HANDLER_NODE} for the duration of a
+   * single {@link compile} call and routes failures from every regular node
+   * that lacks its own handler.
+   * @internal
+   */
+  protected _createDefaultErrorHandlerSpec():
+    | StateGraphNodeSpec<S, U>
+    | undefined {
+    const userHandler = this._nodeDefaults.errorHandler;
+    if (userHandler === undefined) {
+      return undefined;
+    }
+    const handlerRunnable = new RunnableCallable({
+      func: (state: unknown, config: LangGraphRunnableConfig) => {
+        // Per-task failure context, injected when the handler task is prepared
+        // (see _prepareNodeErrorHandlerTask). `state` is the failing node's
+        // input, which may be a per-node subset of the graph state — hence the
+        // handler's `state` parameter is typed `unknown`.
+        const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
+          | NodeError
+          | undefined;
+        return userHandler(state, nodeError as NodeError, config);
+      },
+      name: DEFAULT_ERROR_HANDLER_NODE,
+      trace: false,
+    });
+    return {
+      runnable: handlerRunnable as unknown as Runnable<S, U>,
+      metadata: undefined,
+      input: this._schemaDefinition,
+      retryPolicy: undefined,
+      cachePolicy: undefined,
+      isErrorHandler: true,
+    };
+  }
+
+  /**
+   * Normalize all constructor input patterns to a unified StateGraphInit object.
+   * @internal
+   */
+  private _normalizeToStateGraphInit(
+    stateOrInit: unknown,
+    options?: unknown
+  ): StateGraphInit<StateDefinitionInit, I, O, C> {
+    // Check if already StateGraphInit format
+    if (isStateGraphInit(stateOrInit)) {
+      // Second arg can be either a direct context schema or an options object
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
+        return {
+          ...stateOrInit,
+          context: options as C,
+        };
+      }
+      // Merge any 2nd arg options
+      const opts = options as StateGraphOptions<I, O> | undefined;
+      return {
+        ...stateOrInit,
+        input: stateOrInit.input ?? opts?.input,
+        output: stateOrInit.output ?? opts?.output,
+        context: stateOrInit.context ?? opts?.context,
+        interrupt: stateOrInit.interrupt ?? opts?.interrupt,
+        writer: stateOrInit.writer ?? opts?.writer,
+        nodes: stateOrInit.nodes ?? opts?.nodes,
+      } as StateGraphInit<StateDefinitionInit, I, O, C>;
+    }
+
+    // Check if direct schema (StateSchema, Zod, Annotation, StateDefinition)
+    if (isStateDefinitionInit(stateOrInit)) {
+      // Second arg can be either a direct context schema or an options object
+      if (isInteropZodObject(options) || AnnotationRoot.isInstance(options)) {
+        return {
+          state: stateOrInit,
+          context: options as C,
+        };
+      }
+      const opts = options as StateGraphOptions<I, O> | undefined;
+      return {
+        state: stateOrInit as StateDefinitionInit,
+        input: opts?.input as I,
+        output: opts?.output as O,
+        context: opts?.context,
+        interrupt: opts?.interrupt,
+        writer: opts?.writer,
+        nodes: opts?.nodes,
+      };
+    }
+
+    // Check for legacy { channels } format
+    if (isStateGraphArgs(stateOrInit as StateGraphArgs<S>)) {
+      const legacyArgs = stateOrInit as StateGraphArgs<S>;
+      const spec = _getChannels(legacyArgs.channels);
+      return {
+        state: spec as StateDefinitionInit,
+      };
+    }
+
+    throw new StateGraphInputError();
+  }
+
+  /**
+   * Convert any supported schema type to a StateDefinition (channel map).
+   * @internal
+   */
+  private _getChannelsFromSchema(schema: StateDefinitionInit): StateDefinition {
+    if (StateSchema.isInstance(schema)) {
+      return schema.getChannels();
+    }
+
+    if (isInteropZodObject(schema)) {
+      return this._metaRegistry.getChannelsForSchema(schema);
+    }
+
+    // AnnotationRoot - has .spec property that is the StateDefinition
+    if (
+      typeof schema === "object" &&
+      "lc_graph_name" in schema &&
+      (schema as { lc_graph_name: unknown }).lc_graph_name === "AnnotationRoot"
+    ) {
+      return (schema as AnnotationRoot<StateDefinition>).spec;
+    }
+
+    // StateDefinition (raw channel map) - return as-is
+    if (
+      typeof schema === "object" &&
+      !Array.isArray(schema) &&
+      Object.keys(schema).length > 0
+    ) {
+      return schema as StateDefinition;
+    }
+
+    throw new StateGraphInputError(
+      "Invalid schema type. Expected StateSchema, Zod object, AnnotationRoot, or StateDefinition."
+    );
   }
 
   get allEdges(): Set<[string, string]> {
@@ -497,7 +903,7 @@ export class StateGraph<
     ]);
   }
 
-  _addSchema(stateDefinition: SDZod) {
+  _addSchema(stateDefinition: StateDefinitionInit) {
     if (this._schemaDefinitions.has(stateDefinition)) {
       return;
     }
@@ -511,7 +917,7 @@ export class StateGraph<
         channel = val;
       }
       if (this.channels[key] !== undefined) {
-        if (this.channels[key] !== channel) {
+        if (!this.channels[key].equals(channel)) {
           if (channel.lc_graph_name !== "LastValue") {
             throw new Error(
               `Channel "${key}" already exists with a different type.`
@@ -526,7 +932,7 @@ export class StateGraph<
 
   override addNode<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -554,18 +960,71 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    nodes:
-      | [
-          key: K,
-          action: NodeAction<
-            NodeInput,
-            NodeOutput,
-            C,
-            InterruptType,
-            WriterType
-          >,
-          options?: StateGraphAddNodeOptions
-        ][]
+    nodes: [
+      key: K,
+      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
+    ][]
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<
+    K extends string,
+    InputSchema extends StateDefinitionInit,
+    NodeOutput extends U = U,
+  >(
+    key: K,
+    action: NodeAction<
+      ExtractStateType<InputSchema>,
+      NodeOutput,
+      C,
+      InterruptType,
+      WriterType
+    >,
+    options: StateGraphAddNodeOptions<
+      N | K,
+      InputSchema,
+      ExtractStateType<InputSchema>,
+      U
+    >
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<
+    K extends string,
+    InputSchema extends StateDefinitionInit,
+    NodeOutput extends U = U,
+  >(
+    key: K,
+    action: NodeAction<
+      ExtractStateType<InputSchema>,
+      NodeOutput,
+      C,
+      InterruptType,
+      WriterType
+    >,
+    options: StateGraphAddNodeOptions<
+      N | K,
+      InputSchema,
+      ExtractStateType<InputSchema>,
+      U
+    >
   ): StateGraph<
     SD,
     S,
@@ -580,7 +1039,7 @@ export class StateGraph<
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     key: K,
     action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptions
+    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<
     SD,
     S,
@@ -595,7 +1054,7 @@ export class StateGraph<
   override addNode<K extends string, NodeInput = S>(
     key: K,
     action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptions
+    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
@@ -609,7 +1068,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
         ]
       | [
           nodes:
@@ -617,8 +1076,12 @@ export class StateGraph<
             | [
                 key: K,
                 action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-                options?: StateGraphAddNodeOptions
-              ][]
+                options?: StateGraphAddNodeOptionsWithNodeInput<
+                  N | K,
+                  NodeInput,
+                  U
+                >,
+              ][],
         ]
   ): StateGraph<SD, S, U, N | K, I, O, C> {
     function isMultipleNodes(
@@ -629,8 +1092,12 @@ export class StateGraph<
         | [
             key: K,
             action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-            options?: AddNodeOptions
-          ][]
+            options?: StateGraphAddNodeOptionsWithNodeInput<
+              N | K,
+              NodeInput,
+              U
+            >,
+          ][],
     ] {
       return args.length >= 1 && typeof args[0] !== "string";
     }
@@ -644,7 +1111,7 @@ export class StateGraph<
     ) as [
       K,
       NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-      StateGraphAddNodeOptions | undefined
+      StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U> | undefined,
     ][];
 
     if (nodes.length === 0) {
@@ -679,17 +1146,11 @@ export class StateGraph<
         throw new Error(`Node \`${key}\` is reserved.`);
       }
 
-      let inputSpec = this._schemaDefinition;
+      let inputSpec: StateDefinition = this._schemaDefinition;
       if (options?.input !== undefined) {
-        if (isInteropZodObject(options.input)) {
-          inputSpec = this._metaRegistry.getChannelsForSchema(options.input);
-        } else if (options.input.spec !== undefined) {
-          inputSpec = options.input.spec;
-        }
+        inputSpec = this._getChannelsFromSchema(options.input);
       }
-      if (inputSpec !== undefined) {
-        this._addSchema(inputSpec);
-      }
+      this._addSchema(inputSpec);
 
       let runnable;
       if (Runnable.isRunnable(action)) {
@@ -704,23 +1165,71 @@ export class StateGraph<
         runnable = _coerceToRunnable(action);
       }
 
-      let cachePolicy = options?.cachePolicy;
-      if (typeof cachePolicy === "boolean") {
-        cachePolicy = cachePolicy ? {} : undefined;
+      const rawCachePolicy = options?.cachePolicy;
+      let cachePolicy: CachePolicy | false | undefined;
+      if (rawCachePolicy !== undefined) {
+        cachePolicy =
+          typeof rawCachePolicy === "boolean"
+            ? rawCachePolicy
+              ? {}
+              : false
+            : rawCachePolicy;
+      }
+
+      // If an error handler is provided, register an auto-generated handler
+      // node that runs only after this node's retry policy is exhausted.
+      let errorHandlerNode: string | undefined;
+      if (options?.errorHandler !== undefined) {
+        errorHandlerNode = `__error_handler__${key}`;
+        if (errorHandlerNode in this.nodes) {
+          throw new Error(
+            `Cannot add error handler to node \`${key}\`: the reserved name \`${errorHandlerNode}\` is already in use. ` +
+              `StateGraph registers \`__error_handler__<nodeName>\` when you pass \`errorHandler\` in addNode options. ` +
+              `Remove or rename the existing node with that name (for example, you may have added it manually).`
+          );
+        }
+        const userHandler = options.errorHandler;
+        const handlerRunnable = new RunnableCallable({
+          func: (state: unknown, config: LangGraphRunnableConfig) => {
+            // Per-task failure context, injected when the handler task is
+            // prepared (see _prepareNodeErrorHandlerTask).
+            const nodeError = config?.configurable?.[CONFIG_KEY_NODE_ERROR] as
+              | NodeError
+              | undefined;
+            return userHandler(
+              state as NodeInput,
+              nodeError as NodeError,
+              config
+            );
+          },
+          name: errorHandlerNode,
+          trace: false,
+        });
+        const handlerSpec: StateGraphNodeSpec<S, U> = {
+          runnable: handlerRunnable as unknown as Runnable<S, U>,
+          metadata: undefined,
+          input: inputSpec ?? this._schemaDefinition,
+          retryPolicy: undefined,
+          cachePolicy: undefined,
+          isErrorHandler: true,
+        };
+        this.nodes[errorHandlerNode as N] = handlerSpec;
       }
 
       const nodeSpec: StateGraphNodeSpec<S, U> = {
         runnable: runnable as unknown as Runnable<S, U>,
         retryPolicy: options?.retryPolicy,
         cachePolicy,
+        timeout: coerceTimeoutPolicy(options?.timeout),
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
           ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            [runnable as any]
+            [runnable as Pregel<any, any>]
           : options?.subgraphs,
         ends: options?.ends,
         defer: options?.defer,
+        errorHandlerNode,
       };
 
       this.nodes[key as unknown as N] = nodeSpec;
@@ -768,7 +1277,7 @@ export class StateGraph<
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptions
+      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
     ][]
   ): StateGraph<
     SD,
@@ -783,7 +1292,7 @@ export class StateGraph<
 
   addSequence<
     K extends string,
-    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>
+    NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
   ): StateGraph<
@@ -821,7 +1330,7 @@ export class StateGraph<
             InterruptType,
             WriterType
           >,
-          options?: StateGraphAddNodeOptions
+          options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
         ][]
       | Record<
           K,
@@ -853,8 +1362,14 @@ export class StateGraph<
 
       const validKey = key as unknown as N;
       this.addNode(
-        validKey,
-        action as NodeAction<S, U, C, InterruptType, WriterType>,
+        key as K,
+        action as NodeAction<
+          NodeInput,
+          NodeOutput,
+          C,
+          InterruptType,
+          WriterType
+        >,
         options
       );
       if (previousNode != null) {
@@ -876,7 +1391,11 @@ export class StateGraph<
     >;
   }
 
-  override compile({
+  override compile<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
     checkpointer,
     store,
     cache,
@@ -884,6 +1403,7 @@ export class StateGraph<
     interruptAfter,
     name,
     description,
+    transformers,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
@@ -892,6 +1412,12 @@ export class StateGraph<
     interruptAfter?: N[] | All;
     name?: string;
     description?: string;
+    /**
+     * Stream transformer factories baked into the compiled graph.  These run
+     * automatically for every `streamEvents(..., { version: "v3" })` call,
+     * before any call-site transformers.
+     */
+    transformers?: TTransformers;
   } = {}): CompiledStateGraph<
     Prettify<S>,
     Prettify<U>,
@@ -901,7 +1427,85 @@ export class StateGraph<
     C,
     NodeReturnType,
     InterruptType,
-    WriterType
+    WriterType,
+    TTransformers
+  > {
+    // Materialize the single shared default error-handler node (when
+    // `setNodeDefaults({ errorHandler })` configured one) BEFORE validation so
+    // reachability and `Command({ goto })` target checks treat it like any
+    // other error-handler node. It is removed in `finally` so the builder stays
+    // immutable across repeated `compile()` calls.
+    const defaultErrorHandlerSpec = this._createDefaultErrorHandlerSpec();
+    if (defaultErrorHandlerSpec !== undefined) {
+      if (DEFAULT_ERROR_HANDLER_NODE in this.nodes) {
+        throw new Error(
+          `Cannot apply a default error handler: the reserved node name ` +
+            `\`${DEFAULT_ERROR_HANDLER_NODE}\` is already in use. ` +
+            `setNodeDefaults({ errorHandler }) registers a node with that name; ` +
+            `rename the conflicting node.`
+        );
+      }
+      this.nodes[DEFAULT_ERROR_HANDLER_NODE as N] = defaultErrorHandlerSpec;
+    }
+
+    try {
+      return this._compileResolved({
+        checkpointer,
+        store,
+        cache,
+        interruptBefore,
+        interruptAfter,
+        name,
+        description,
+        transformers,
+        defaultErrorHandlerNode:
+          defaultErrorHandlerSpec !== undefined
+            ? DEFAULT_ERROR_HANDLER_NODE
+            : undefined,
+      });
+    } finally {
+      if (defaultErrorHandlerSpec !== undefined) {
+        delete this.nodes[DEFAULT_ERROR_HANDLER_NODE as N];
+      }
+    }
+  }
+
+  /** @internal */
+  protected _compileResolved<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >({
+    checkpointer,
+    store,
+    cache,
+    interruptBefore,
+    interruptAfter,
+    name,
+    description,
+    transformers,
+    defaultErrorHandlerNode,
+  }: {
+    checkpointer?: BaseCheckpointSaver | boolean;
+    store?: BaseStore;
+    cache?: BaseCache;
+    interruptBefore?: N[] | All;
+    interruptAfter?: N[] | All;
+    name?: string;
+    description?: string;
+    transformers?: TTransformers;
+    defaultErrorHandlerNode?: string;
+  }): CompiledStateGraph<
+    Prettify<S>,
+    Prettify<U>,
+    N,
+    I,
+    O,
+    C,
+    NodeReturnType,
+    InterruptType,
+    WriterType,
+    TTransformers
   > {
     // validate the graph
     this.validate([
@@ -931,7 +1535,8 @@ export class StateGraph<
       C,
       NodeReturnType,
       InterruptType,
-      WriterType
+      WriterType,
+      TTransformers
     >({
       builder: this,
       checkpointer,
@@ -952,14 +1557,50 @@ export class StateGraph<
       name,
       description,
       userInterrupt,
+      streamTransformers: transformers,
     });
 
     // attach nodes, edges and branches
     compiled.attachNode(START);
+    // Resolve graph-wide node defaults. Per-node values always win. Defaults
+    // are merged into a copy of each spec so repeated `compile()` calls remain
+    // stable (the builder's node specs are never mutated).
+    //
+    //  - `retryPolicy` / `timeout` apply to all nodes, including error-handler
+    //    nodes (a stuck or transiently-failing handler is treated like any
+    //    other node).
+    //  - `cachePolicy` and the default `errorHandler` apply to regular nodes
+    //    only — caching a handler result is unsafe, and a handler must never
+    //    catch its own (or another handler's) failure.
+    const nodeDefaults = this._nodeDefaults;
+    const hasNodeDefaults =
+      nodeDefaults.retryPolicy !== undefined ||
+      nodeDefaults.cachePolicy !== undefined ||
+      nodeDefaults.timeout !== undefined ||
+      defaultErrorHandlerNode !== undefined;
     for (const [key, node] of Object.entries<StateGraphNodeSpec<S, U>>(
       this.nodes
     )) {
-      compiled.attachNode(key as N, node);
+      const isErrorHandlerNode = node.isErrorHandler === true;
+      const resolvedNode = hasNodeDefaults
+        ? {
+            ...node,
+            retryPolicy: node.retryPolicy ?? nodeDefaults.retryPolicy,
+            cachePolicy: isErrorHandlerNode
+              ? undefined
+              : node.cachePolicy === false
+                ? undefined
+                : (node.cachePolicy ?? nodeDefaults.cachePolicy),
+            timeout: node.timeout ?? nodeDefaults.timeout,
+            errorHandlerNode:
+              !isErrorHandlerNode &&
+              defaultErrorHandlerNode !== undefined &&
+              node.errorHandlerNode === undefined
+                ? defaultErrorHandlerNode
+                : node.errorHandlerNode,
+          }
+        : node;
+      compiled.attachNode(key as N, resolvedNode);
     }
     compiled.attachBranch(START, SELF, _getControlBranch() as Branch<S, N>, {
       withReader: false,
@@ -1011,27 +1652,63 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
  * Final result from building and compiling a {@link StateGraph}.
  * Should not be instantiated directly, only using the StateGraph `.compile()`
  * instance method.
+ *
+ * @typeParam S - The full state type representing the complete shape of your graph's
+ *   state after all reducers have been applied. This is the type you receive when
+ *   reading state in nodes or after invoking the graph.
+ *
+ * @typeParam U - The update type representing what nodes can return to modify state.
+ *   Typically a partial of the state type, allowing nodes to update only specific fields.
+ *   Can also include {@link Command} objects for advanced control flow.
+ *
+ * @typeParam N - Union of all node names in the graph (e.g., `"agent" | "tool"`).
+ *   Used for type-safe routing with {@link Command.goto} and edge definitions.
+ *
+ * @typeParam I - The input schema definition. Determines what shape of data the graph
+ *   accepts when invoked. Defaults to the main state schema if not explicitly set.
+ *
+ * @typeParam O - The output schema definition. Determines what shape of data the graph
+ *   returns after execution. Defaults to the main state schema if not explicitly set.
+ *
+ * @typeParam C - The config/context schema definition. Defines additional configuration
+ *   that can be passed to the graph at runtime via {@link LangGraphRunnableConfig}.
+ *
+ * @typeParam NodeReturnType - Constrains what types nodes in this graph can return.
+ *   Useful for enforcing consistent return patterns across all nodes.
+ *
+ * @typeParam InterruptType - The type of values that can be passed when resuming from
+ *   an {@link interrupt}. Used with human-in-the-loop patterns.
+ *
+ * @typeParam WriterType - The type for custom stream writers. Used with the `writer`
+ *   option to enable typed custom streaming from within nodes.
+ *
+ * @typeParam TStreamTransformers - Stream transformer factories registered at
+ *   compile time via the `transformers` option. Used to type extensions on
+ *   `streamEvents(..., { version: "v3" })`.
  */
 export class CompiledStateGraph<
   S,
   U,
   N extends string = typeof START,
-  I extends SDZod = StateDefinition,
-  O extends SDZod = StateDefinition,
-  C extends SDZod = StateDefinition,
+  I extends StateDefinitionInit = StateDefinition,
+  O extends StateDefinitionInit = StateDefinition,
+  C extends StateDefinitionInit = StateDefinition,
   NodeReturnType = unknown,
   InterruptType = unknown,
-  WriterType = unknown
+  WriterType = unknown,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 > extends CompiledGraph<
   N,
   S,
   U,
-  StateType<ToStateDefinition<C>>,
-  UpdateType<ToStateDefinition<I>>,
-  StateType<ToStateDefinition<O>>,
+  ExtractStateType<C>,
+  ExtractUpdateType<I, ExtractStateType<I>>,
+  ExtractStateType<O>,
   NodeReturnType,
   CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-  InferWriterType<WriterType>
+  InferWriterType<WriterType>,
+  TStreamTransformers
 > {
   declare builder: StateGraph<unknown, S, U, N, I, O, C, NodeReturnType>;
 
@@ -1052,12 +1729,13 @@ export class CompiledStateGraph<
       N,
       S,
       U,
-      StateType<ToStateDefinition<C>>,
-      UpdateType<ToStateDefinition<I>>,
-      StateType<ToStateDefinition<O>>,
+      ExtractStateType<C>,
+      ExtractUpdateType<I, ExtractStateType<I>>,
+      ExtractStateType<O>,
       NodeReturnType,
       CommandInstance<InferInterruptResumeType<InterruptType>, Prettify<U>, N>,
-      InferWriterType<WriterType>
+      InferWriterType<WriterType>,
+      TStreamTransformers
     >
   >[0]) {
     super(rest);
@@ -1113,14 +1791,78 @@ export class CompiledStateGraph<
     const nodeKey = key;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function _getUpdates(input: U): [string, any][] | null {
+    const validateStateUpdates = async (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      updates: [string, any][] | null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ): Promise<[string, any][] | null> => {
+      if (updates == null || updates.length === 0) return updates;
+
+      const schemaDef = this.builder._schemaRuntimeDefinition;
+      if (StateSchema.isInstance(schemaDef)) {
+        const schemaKeys = new Set(schemaDef.getChannelKeys());
+        return Promise.all(
+          updates.map(async ([k, v]) => {
+            if (!schemaKeys.has(k)) return [k, v];
+
+            const parsed = await schemaDef.validateInput({ [k]: v });
+            return [
+              k,
+              Object.prototype.hasOwnProperty.call(parsed, k) ? parsed[k] : v,
+            ];
+          })
+        );
+      }
+
+      if (isInteropZodObject(schemaDef)) {
+        const schemaKeys = new Set(
+          Object.keys(getInteropZodObjectShape(schemaDef))
+        );
+        const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
+        if (schemaUpdates.length === 0) return updates;
+
+        const updateSchema = interopZodObjectPartial(
+          this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
+            withReducerSchema: true,
+          })
+        );
+        const valueSchema = interopZodObjectPartial(schemaDef);
+        return updates.map(([k, v]) => {
+          if (!schemaKeys.has(k)) return [k, v];
+
+          const [isOverwrite, overwriteValue] = _getOverwriteValue(v);
+          if (isOverwrite) {
+            const parsed = interopParse(valueSchema, { [k]: overwriteValue });
+            return [
+              k,
+              Object.prototype.hasOwnProperty.call(parsed, k)
+                ? { [OVERWRITE]: parsed[k] }
+                : v,
+            ];
+          }
+
+          const parsed = interopParse(updateSchema, { [k]: v });
+          return [
+            k,
+            Object.prototype.hasOwnProperty.call(parsed, k) ? parsed[k] : v,
+          ];
+        });
+      }
+
+      return updates;
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async function _getUpdates(input: U): Promise<[string, any][] | null> {
       if (!input) {
         return null;
       } else if (isCommand(input)) {
         if (input.graph === Command.PARENT) {
           return null;
         }
-        return input._updateAsTuples().filter(([k]) => outputKeys.includes(k));
+        return validateStateUpdates(
+          input._updateAsTuples().filter(([k]) => outputKeys.includes(k))
+        );
       } else if (
         Array.isArray(input) &&
         input.length > 0 &&
@@ -1136,15 +1878,17 @@ export class CompiledStateGraph<
               ...item._updateAsTuples().filter(([k]) => outputKeys.includes(k))
             );
           } else {
-            const itemUpdates = _getUpdates(item);
+            const itemUpdates = await _getUpdates(item);
             if (itemUpdates) {
               updates.push(...(itemUpdates ?? []));
             }
           }
         }
-        return updates;
+        return validateStateUpdates(updates);
       } else if (typeof input === "object" && !Array.isArray(input)) {
-        return Object.entries(input).filter(([k]) => outputKeys.includes(k));
+        return validateStateUpdates(
+          Object.entries(input).filter(([k]) => outputKeys.includes(k))
+        );
       } else {
         const typeofInput = Array.isArray(input) ? "array" : typeof input;
         throw new InvalidUpdateError(
@@ -1191,6 +1935,9 @@ export class CompiledStateGraph<
       this.channels[branchChannel] = node?.defer
         ? new LastValueAfterFinish()
         : new EphemeralValue(false);
+      const nodeCachePolicy = node?.cachePolicy;
+      const cachePolicy =
+        nodeCachePolicy === false ? undefined : nodeCachePolicy;
       this.nodes[key] = new PregelNode<S, U>({
         triggers: [branchChannel],
         // read state keys
@@ -1208,9 +1955,12 @@ export class CompiledStateGraph<
         bound: node?.runnable,
         metadata: node?.metadata,
         retryPolicy: node?.retryPolicy,
-        cachePolicy: node?.cachePolicy,
+        cachePolicy,
+        timeout: node?.timeout,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
+        isErrorHandler: node?.isErrorHandler,
+        errorHandlerNode: node?.errorHandlerNode,
       });
     }
   }
@@ -1284,14 +2034,50 @@ export class CompiledStateGraph<
   }
 
   protected async _validateInput(
-    input: UpdateType<ToStateDefinition<I>>
-  ): Promise<UpdateType<ToStateDefinition<I>>> {
+    input: ExtractUpdateType<I, ExtractStateType<I>>
+  ): Promise<ExtractUpdateType<I, ExtractStateType<I>>> {
     if (input == null) return input;
 
-    const schema = (() => {
-      const input = this.builder._inputRuntimeDefinition;
-      const schema = this.builder._schemaRuntimeDefinition;
+    const inputDef = this.builder._inputRuntimeDefinition;
+    const schemaDef = this.builder._schemaRuntimeDefinition;
 
+    // Determine which schema to use for validation
+    // Priority: inputDef (if it's a validatable schema), otherwise fall back to schemaDef
+
+    // Handle StateSchema validation for input schema
+    if (StateSchema.isInstance(inputDef)) {
+      if (isCommand(input)) {
+        const parsedInput = input;
+        if (input.update) {
+          parsedInput.update = await inputDef.validateInput(
+            Array.isArray(input.update)
+              ? Object.fromEntries(input.update)
+              : input.update
+          );
+        }
+        return parsedInput;
+      }
+      return await inputDef.validateInput(input);
+    }
+
+    // Handle StateSchema validation for state schema (when input is partial state)
+    if (inputDef === PartialStateSchema && StateSchema.isInstance(schemaDef)) {
+      if (isCommand(input)) {
+        const parsedInput = input;
+        if (input.update) {
+          parsedInput.update = await schemaDef.validateInput(
+            Array.isArray(input.update)
+              ? Object.fromEntries(input.update)
+              : input.update
+          );
+        }
+        return parsedInput;
+      }
+      return await schemaDef.validateInput(input);
+    }
+
+    // Handle InteropZodObject validation
+    const schema = (() => {
       const apply = (schema: InteropZodObject | undefined) => {
         if (schema == null) return undefined;
         return this._metaRegistry.getExtendedChannelSchemas(schema, {
@@ -1299,17 +2085,27 @@ export class CompiledStateGraph<
         });
       };
 
-      if (isInteropZodObject(input)) return apply(input);
-      if (input === PartialStateSchema) {
-        return interopZodObjectPartial(apply(schema)!);
+      if (isInteropZodObject(inputDef)) return apply(inputDef);
+      if (inputDef === PartialStateSchema) {
+        if (isInteropZodObject(schemaDef)) {
+          return interopZodObjectPartial(apply(schemaDef)!);
+        }
+        return undefined;
       }
       return undefined;
     })();
 
     if (isCommand(input)) {
       const parsedInput = input;
-      if (input.update && schema != null)
-        parsedInput.update = interopParse(schema, input.update);
+      if (input.update && schema != null) {
+        const updateObj = Array.isArray(input.update)
+          ? Object.fromEntries(input.update)
+          : input.update;
+        const parsed = interopParse(schema, updateObj);
+        parsedInput.update = Object.fromEntries(
+          Object.keys(updateObj).map((k) => [k, parsed[k]])
+        );
+      }
       return parsedInput;
     }
     if (schema != null) return interopParse(schema, input);
@@ -1331,27 +2127,11 @@ export class CompiledStateGraph<
   }
 }
 
-function isStateDefinition(obj: unknown): obj is StateDefinition {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    !Array.isArray(obj) &&
-    Object.keys(obj).length > 0 &&
-    Object.values(obj).every((v) => typeof v === "function" || isBaseChannel(v))
-  );
-}
-
-function isAnnotationRoot<SD extends StateDefinition>(
-  obj: unknown | AnnotationRoot<SD>
-): obj is AnnotationRoot<SD> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    "lc_graph_name" in obj &&
-    obj.lc_graph_name === "AnnotationRoot"
-  );
-}
-
+/**
+ * Check if value is a legacy StateGraphArgs with channels.
+ * @internal
+ * @deprecated Use StateGraphInit instead
+ */
 function isStateGraphArgs<Channels extends object | unknown>(
   obj: unknown | StateGraphArgs<Channels>
 ): obj is StateGraphArgs<Channels> {
@@ -1360,60 +2140,6 @@ function isStateGraphArgs<Channels extends object | unknown>(
     obj !== null &&
     (obj as StateGraphArgs<Channels>).channels !== undefined
   );
-}
-
-function isStateGraphArgsWithStateSchema<
-  SD extends StateDefinition,
-  I extends StateDefinition,
-  O extends StateDefinition
->(
-  obj: unknown | StateGraphArgsWithStateSchema<SD, I, O>
-): obj is StateGraphArgsWithStateSchema<SD, I, O> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    (obj as StateGraphArgsWithStateSchema<SD, I, O>).stateSchema !== undefined
-  );
-}
-
-function isStateGraphArgsWithInputOutputSchemas<
-  SD extends StateDefinition,
-  O extends StateDefinition
->(
-  obj: unknown | StateGraphArgsWithInputOutputSchemas<SD, O>
-): obj is StateGraphArgsWithInputOutputSchemas<SD, O> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (obj as any).stateSchema === undefined &&
-    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).input !== undefined &&
-    (obj as StateGraphArgsWithInputOutputSchemas<SD, O>).output !== undefined
-  );
-}
-
-function isZodStateGraphArgsWithStateSchema<
-  SD extends InteropZodObject,
-  I extends InteropZodObject,
-  O extends InteropZodObject
->(value: unknown): value is ZodStateGraphArgsWithStateSchema<SD, I, O> {
-  if (typeof value !== "object" || value == null) {
-    return false;
-  }
-
-  if (!("state" in value) || !isInteropZodObject(value.state)) {
-    return false;
-  }
-
-  if ("input" in value && !isInteropZodObject(value.input)) {
-    return false;
-  }
-
-  if ("output" in value && !isInteropZodObject(value.output)) {
-    return false;
-  }
-
-  return true;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -7,19 +7,8 @@
       "outputs": ["dist/**"]
     },
     "build:internal": {
-      "dependsOn": ["^build:internal"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "lint:fix": {
-      "dependsOn": ["^lint:fix"]
-    },
-    "format": {
-      "dependsOn": ["^format"]
-    },
-    "format:check": {
-      "dependsOn": ["^format:check"]
+      "dependsOn": ["^build:internal"],
+      "outputs": ["dist/**"]
     },
     "test": {
       "cache": false,

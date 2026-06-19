@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 
-import { v4 as uuid } from "uuid";
+import { v7 as uuid } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import {
@@ -137,7 +137,10 @@ api.get("/assistants/:assistant_id", async (c) => {
 api.delete("/assistants/:assistant_id", async (c) => {
   // Delete Assistant
   const assistantId = getAssistantId(c.req.param("assistant_id"));
-  return c.json(await assistants().delete(assistantId, c.var.auth));
+  const deleteThreads = c.req.query("delete_threads") === "true";
+  return c.json(
+    await assistants().delete(assistantId, deleteThreads, c.var.auth)
+  );
 });
 
 api.patch(
@@ -186,7 +189,6 @@ api.get(
     const schema = await (async () => {
       const runtimeSchema = await getRuntimeGraphSchema(graph);
       if (runtimeSchema) return runtimeSchema;
-
       const graphSchema = await getCachedStaticGraphSchema(assistant.graph_id);
       const rootGraphId = Object.keys(graphSchema).find(
         (i) => !i.includes("|")

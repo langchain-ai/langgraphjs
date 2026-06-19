@@ -10,9 +10,11 @@ import type { CompilePackageOptions } from "./types.js";
 
 const execAsync = promisify(exec);
 
-interface YarnWorkspace {
+interface PnpmWorkspace {
   name: string;
-  location: string;
+  path: string;
+  version: string;
+  private?: boolean;
 }
 
 export interface WorkspacePackage {
@@ -21,7 +23,7 @@ export interface WorkspacePackage {
 }
 
 /**
- * Find all packages in the yarn workspace that match the package query and are not excluded.
+ * Find all packages in the pnpm workspace that match the package query and are not excluded.
  *
  * @param rootDir - The root directory of the workspace
  * @param opts - Options for filtering packages including packageQuery and exclude patterns
@@ -31,23 +33,19 @@ export async function findWorkspacePackages(
   rootDir: string,
   opts: CompilePackageOptions
 ) {
-  const result = await execAsync("yarn workspaces list --json");
-  // Yarn outputs newline-delimited JSON, so we need to parse each line separately
-  const workspacesArray: YarnWorkspace[] = result.stdout
-    .trim()
-    .split('\n')
-    .filter(line => line)
-    .map(line => JSON.parse(line));
+  const result = await execAsync("pnpm list --recursive --json --depth -1");
+  // pnpm outputs a JSON array directly
+  const workspacesArray: PnpmWorkspace[] = JSON.parse(result.stdout);
   const workspaces = (
     await Promise.all(
-      workspacesArray.map(async (workspace: YarnWorkspace) => {
+      workspacesArray.map(async (workspace: PnpmWorkspace) => {
         try {
-          // Skip the root workspace (yarn lists it as ".")
-          if (workspace.location === ".") {
+          // Skip the root workspace (pnpm lists it with the root path)
+          if (workspace.path === rootDir) {
             return null;
           }
-          // Yarn provides relative paths, so we need to resolve them
-          const workspacePath = resolve(rootDir, workspace.location);
+          // pnpm provides absolute paths directly
+          const workspacePath = workspace.path;
           const pkgPath = resolve(workspacePath, "package.json");
           const pkg = JSON.parse(
             await readFile(pkgPath, "utf-8")

@@ -1,0 +1,39 @@
+name: "Setup and Build"
+description: "Checkout, install pnpm/node, install deps, and restore or create build artifacts"
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    required: false
+    default: "22.14.0"
+  artifact-name:
+    description: "Name of the build artifact to download (skips build if provided)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v4
+    - name: Use Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "pnpm"
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      shell: bash
+    - name: Download build artifacts
+      if: inputs.artifact-name != ''
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
+      with:
+        name: ${{ inputs.artifact-name }}
+    - name: Extract build artifacts
+      if: inputs.artifact-name != ''
+      run: tar -xzf build-artifacts.tar.gz
+      shell: bash
+    - name: Build dependencies
+      if: inputs.artifact-name == ''
+      run: pnpm build
+      shell: bash

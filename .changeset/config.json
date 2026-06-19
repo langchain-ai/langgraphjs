@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
-  "changelog": "@changesets/cli/changelog",
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "langchain-ai/langgraphjs"
+    }
+  ],
   "commit": false,
   "fixed": [
     [
@@ -14,7 +19,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@langchain/langgraph-sdk-validation",
     "@langchain/langgraph-benchmark"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {

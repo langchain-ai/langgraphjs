@@ -54,31 +54,28 @@ a developer and published to [npm](https://www.npmjs.com/package/@angchain/langg
 LangChain follows the [semver](https://semver.org/) versioning standard. However, as pre-1.0 software,
 even patch releases may contain [non-backwards-compatible changes](https://semver.org/#spec-item-4).
 
-If your contribution has made its way into a release, we will want to give you credit on Twitter (only if you want though)!
-If you have a Twitter account you would like us to mention, please let us know in the PR or in another manner.
-
 #### Integration releases
 
-You can invoke the release flow by calling `yarn release` from the package root.
+You can invoke the release flow by calling `pnpm release` from the package root.
 
 There are three parameters which can be passed to this script, one required and two optional.
 
-- **Required**: `--workspace <workspace name>`. eg: `--workspace @langchain/langgraph` (always appended as the first flag when running `yarn release`)
-- **Optional**: `--bump-deps` eg `--bump-deps` Will find all packages in the repo which depend on this workspace and checkout a new branch, update the dep version, run yarn install, commit & push to new branch.
+- **Required**: `--workspace <workspace name>`. eg: `--workspace @langchain/langgraph` (always appended as the first flag when running `pnpm release`)
+- **Optional**: `--bump-deps` eg `--bump-deps` Will find all packages in the repo which depend on this workspace and checkout a new branch, update the dep version, run pnpm install, commit & push to new branch.
 - **Optional**: `--tag <tag>` eg `--tag beta` Add a tag to the NPM release.
 
 This script automatically bumps the package version, creates a new release branch with the changes, pushes the branch to GitHub, uses `release-it` to automatically release to NPM, and more depending on the flags passed.
 
 Halfway through this script, you'll be prompted to enter an NPM OTP (typically from an authenticator app). This value is not stored anywhere and is only used to authenticate the NPM release.
 
-Full example: `yarn release @langchain/langgraph --bump-deps --tag beta`.
+Full example: `pnpm release @langchain/langgraph --bump-deps --tag beta`.
 
 ### 🛠️ Tooling
 
 This project uses the following tools, which are worth getting familiar
 with if you plan to contribute:
 
-- **[yarn](https://yarnpkg.com/) (v4.9.1)** - dependency management
+- **[pnpm](https://pnpm.io/)** - dependency management
 - **[eslint](https://eslint.org/)** - enforcing standard lint rules
 - **[prettier](https://prettier.io/)** - enforcing standard code formatting
 - **[jest](https://jestjs.io/)** - testing code
@@ -107,13 +104,13 @@ cd langgraph
 To get started, you will need to install the dependencies for the project. To do so, run:
 
 ```bash
-yarn
+pnpm install
 ```
 
 Then you can build the project with:
 
 ```bash
-yarn build
+pnpm build
 ```
 
 ### Linting
@@ -122,13 +119,13 @@ We use [eslint](https://eslint.org/) to enforce standard lint rules.
 To run the linter, run:
 
 ```bash
-yarn lint
+pnpm lint
 ```
 
 or to automatically fix linting errors, run:
 
 ```bash
-yarn lint:fix
+pnpm lint:fix
 ```
 
 ### Formatting
@@ -137,13 +134,13 @@ We use [prettier](https://prettier.io) to enforce code formatting style.
 To run the formatter, run:
 
 ```bash
-yarn format
+pnpm format
 ```
 
 To just check for formatting differences, without fixing them, run:
 
 ```bash
-yarn format:check
+pnpm format:check
 ```
 
 ### Testing
@@ -159,7 +156,7 @@ Unit tests should be called `*.test.ts`.
 To run only unit tests, run:
 
 ```bash
-yarn test
+pnpm test
 ```
 
 #### Running a single test
@@ -167,7 +164,7 @@ yarn test
 To run a single test, run the following from within a workspace:
 
 ```bash
-yarn test:single /path/to/yourtest.test.ts
+pnpm test:single /path/to/yourtest.test.ts
 ```
 
 This is useful for developing individual features.
@@ -180,10 +177,10 @@ Integration tests should be called `*.int.test.ts`.
 Note that most integration tests require credentials or other setup. You will likely need to set up a `libs/langgraph/.env` file
 like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph/.env.example).
 
-We generally recommend only running integration tests with `yarn test:single`, but if you want to run all integration tests, run:
+We generally recommend only running integration tests with `pnpm test:single`, but if you want to run all integration tests, run:
 
 ```bash
-yarn test:int
+pnpm test:int
 ```
 
 ### Building
@@ -191,7 +188,7 @@ yarn test:int
 To build the project, run:
 
 ```bash
-yarn build
+pnpm build
 ```
 
 ### Adding an Entrypoint
@@ -366,6 +363,6 @@ Some concepts about channels:
 - It implements a way to `checkpoint` or "snapshot" the current state of the channel. This enables persistence across a graph.
 - It implements a way to `empty` or "restore" a channel from a checkpoint/snapshot. This enables us to create a new channel from a checkpoint variable stored in a database.
 
-3. `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all types of channels.
-4. In Pregel, there is no limitation on the number of channels a node can subscribe to or write to. In LangGraph, however, currently every node maps to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to.
-5. `src/pregel/index.ts` holds all the business logic that uses channels and nodes in a pregel graph. `async *_transform` holds some of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly.
+1. `channels/base.ts` is the base class for a channel and it can be extended to create any kind of channel. For example, `last_value.ts`, `binop.ts` are all types of channels.
+2. In Pregel, there is no limitation on the number of channels a node can subscribe to or write to. In LangGraph, however, currently every node maps to two channels. (1) A channel's value that it is subscribes to, i.e - is dependent on. (2) The channel that it writes to.
+3. `src/pregel/index.ts` holds all the business logic that uses channels and nodes in a pregel graph. `async *_transform` holds some of the most important logic because it is responsible for updating the channel's value and updating the checkpoint accordingly.

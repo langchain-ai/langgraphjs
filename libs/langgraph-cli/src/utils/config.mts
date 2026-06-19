@@ -1,6 +1,9 @@
 import { z } from "zod/v3";
 import { extname } from "node:path";
 
+const API_VERSION_PATTERN =
+  /^\d+(?:\.\d+){0,2}(?:(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)|(?:[A-Za-z][0-9A-Za-z.-]*))?$/;
+
 const GraphPathSchema = z.string().refine((i) => i.includes(":"), {
   message: "Import string must be in format '<file>:<export>'",
 });
@@ -20,6 +23,13 @@ const BaseConfigSchema = z.object({
   ui: z.record(z.string()).optional(),
   ui_config: z.object({ shared: z.array(z.string()).optional() }).optional(),
   _INTERNAL_docker_tag: z.string().optional(),
+  api_version: z
+    .string()
+    .refine((v) => API_VERSION_PATTERN.test(v), {
+      message:
+        "api_version must be in format major, major.minor, or major.minor.patch with optional prerelease suffix",
+    })
+    .optional(),
   env: z
     .union([z.array(z.string()), z.record(z.string()), z.string()])
     .default({}),
@@ -94,6 +104,13 @@ export type Config = z.infer<typeof ConfigSchema>;
 // TODO: implement this in Python CLI
 export const getConfig = (config: z.input<typeof ConfigSchema> | string) => {
   let input = typeof config === "string" ? JSON.parse(config) : config;
+
+  if (input.api_version && input._INTERNAL_docker_tag) {
+    throw new Error(
+      "Cannot specify both _INTERNAL_docker_tag and api_version."
+    );
+  }
+
   const { graphs } = BaseConfigSchema.parse(input);
 
   const isPython = Object.values(graphs).map((graphDef) => {

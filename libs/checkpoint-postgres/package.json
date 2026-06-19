@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-postgres",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -10,22 +10,19 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git@github.com:langchain-ai/langgraphjs.git"
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/checkpoint-postgres"
   },
   "scripts": {
-    "build": "yarn turbo:command build:internal --filter=@langchain/langgraph-checkpoint-postgres",
-    "build:internal": "yarn workspace @langchain/build compile @langchain/langgraph-checkpoint-postgres",
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-postgres",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-postgres",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
     "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
-    "lint": "yarn lint:eslint && yarn lint:dpdm",
-    "lint:fix": "yarn lint:eslint --fix && yarn lint:dpdm",
-    "prepublish": "yarn build",
+    "prepublish": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:int": "vitest run --mode int",
-    "format": "prettier --config .prettierrc --write \"src\"",
-    "format:check": "prettier --config .prettierrc --check \"src\""
+    "test:int": "vitest run --mode int"
   },
   "author": "LangChain",
   "license": "MIT",
@@ -33,7 +30,7 @@
     "pg": "^8.12.0"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.0.1",
+    "@langchain/core": "^1.1.44",
     "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
@@ -41,22 +38,12 @@
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/pg": "^8.11.8",
-    "@types/uuid": "^10",
-    "@typescript-eslint/eslint-plugin": "^6.12.0",
-    "@typescript-eslint/parser": "^6.12.0",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
-    "eslint": "^8.33.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-config-prettier": "^8.6.0",
-    "eslint-plugin-import": "^2.29.1",
-    "eslint-plugin-no-instanceof": "^1.0.1",
-    "eslint-plugin-prettier": "^4.2.1",
-    "prettier": "^2.8.3",
     "rollup": "^4.37.0",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",

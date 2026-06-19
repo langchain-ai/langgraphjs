@@ -40,7 +40,7 @@ import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { ToolNode } from "./tool_node.js";
 import { LangGraphRunnableConfig, Runtime } from "../pregel/runnable_types.js";
 import { Annotation } from "../graph/annotation.js";
-import { Messages, messagesStateReducer } from "../graph/message.js";
+import { Messages, messagesStateReducer } from "../graph/messages_reducer.js";
 import { END, Send, START } from "../constants.js";
 import { withAgentName } from "./agentName.js";
 import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
@@ -51,7 +51,7 @@ import type { InteropZodToStateDefinition } from "../graph/zod/meta.js";
  */
 export interface AgentState<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseType extends Record<string, any> = Record<string, any>
+  StructuredResponseType extends Record<string, any> = Record<string, any>,
 > {
   messages: BaseMessage[];
   // TODO: This won't be set until we
@@ -436,7 +436,7 @@ export type MessageModifier =
 
 export const createReactAgentAnnotation = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends Record<string, any> = Record<string, any>
+  T extends Record<string, any> = Record<string, any>,
 >() =>
   Annotation.Root({
     messages: Annotation<BaseMessage[], Messages>({
@@ -446,17 +446,18 @@ export const createReactAgentAnnotation = <
     structuredResponse: Annotation<T>,
   });
 
-type WithStateGraphNodes<K extends string, Graph> = Graph extends StateGraph<
-  infer SD,
-  infer S,
-  infer U,
-  infer N,
-  infer I,
-  infer O,
-  infer C
->
-  ? StateGraph<SD, S, U, N | K, I, O, C>
-  : never;
+type WithStateGraphNodes<K extends string, Graph> =
+  Graph extends StateGraph<
+    infer SD,
+    infer S,
+    infer U,
+    infer N,
+    infer I,
+    infer O,
+    infer C
+  >
+    ? StateGraph<SD, S, U, N | K, I, O, C>
+    : never;
 
 const PreHookAnnotation = Annotation.Root({
   llmInputMessages: Annotation<BaseMessage[], Messages>({
@@ -474,8 +475,8 @@ type ToAnnotationRoot<A extends AnyAnnotationRoot | InteropZodObject> =
   A extends AnyAnnotationRoot
     ? A
     : A extends InteropZodObject
-    ? AnnotationRoot<InteropZodToStateDefinition<A>>
-    : never;
+      ? AnnotationRoot<InteropZodToStateDefinition<A>>
+      : never;
 
 /**
  * @deprecated `CreateReactAgentParams` has been moved to {@link https://www.npmjs.com/package/langchain langchain} package.
@@ -485,7 +486,7 @@ export type CreateReactAgentParams<
   A extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseType extends Record<string, any> = Record<string, any>,
-  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot
+  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
 > = {
   /** The chat model that can utilize OpenAI-style tool calling. */
   llm:
@@ -669,7 +670,7 @@ export function createReactAgent<
   A extends AnyAnnotationRoot | InteropZodObject = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   StructuredResponseFormat extends Record<string, any> = Record<string, any>,
-  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot
+  C extends AnyAnnotationRoot | InteropZodObject = AnyAnnotationRoot,
 >(
   params: CreateReactAgentParams<A, StructuredResponseFormat, C>
 ): CompiledStateGraph<
@@ -810,6 +811,18 @@ export function createReactAgent<
     }
 
     const response = await modelWithStructuredOutput.invoke(messages, config);
+
+    // Some `withStructuredOutput` parsers return null/undefined instead of
+    // throwing when the model output does not satisfy the schema. Surface
+    // this as an explicit error so it does not silently propagate as
+    // `structuredResponse: undefined`.
+    if (response == null) {
+      throw new Error(
+        "Failed to parse structured response against the provided `responseFormat` schema: " +
+          "the structured-output parser returned null/undefined, which usually means the model output did not satisfy the schema."
+      );
+    }
+
     return { structuredResponse: response };
   };
 
@@ -888,8 +901,8 @@ export function createReactAgent<
       .addEdge("agent", "post_model_hook")
       .addConditionalEdges(
         "post_model_hook",
-        (state: AgentState<StructuredResponseFormat>) => {
-          const { messages } = state;
+        (state) => {
+          const { messages } = state as AgentState<StructuredResponseFormat>;
 
           const toolMessageIds: Set<string> = new Set(
             messages.filter(isToolMessage).map((msg) => msg.tool_call_id)
@@ -909,7 +922,7 @@ export function createReactAgent<
               (i) => i.id == null || !toolMessageIds.has(i.id)
             ) ?? [];
 
-          const lastMessage = messages.at(-1);
+          const lastMessage = messages[messages.length - 1];
           if (pendingToolCalls.length > 0) {
             if (version === "v2") {
               return pendingToolCalls.map(
@@ -943,7 +956,7 @@ export function createReactAgent<
   if (postModelHook == null) {
     allNodeWorkflows.addConditionalEdges(
       "agent",
-      (state: AgentState<StructuredResponseFormat>) => {
+      (state) => {
         const { messages } = state;
         const lastMessage = messages[messages.length - 1];
 
@@ -975,10 +988,11 @@ export function createReactAgent<
   if (shouldReturnDirect.size > 0) {
     allNodeWorkflows.addConditionalEdges(
       "tools",
-      (state: AgentState<StructuredResponseFormat>) => {
+      (state) => {
+        const agentState = state;
         // Check the last consecutive tool calls
-        for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-          const message = state.messages[i];
+        for (let i = agentState.messages.length - 1; i >= 0; i -= 1) {
+          const message = agentState.messages[i];
           if (!isToolMessage(message)) break;
 
           // Check if this tool is configured to return directly

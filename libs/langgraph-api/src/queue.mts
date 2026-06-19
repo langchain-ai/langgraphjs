@@ -75,8 +75,14 @@ const worker = async (
         ...(!temporary ? { onCheckpoint, onTaskResult } : undefined),
       });
 
-      for await (const { event, data } of stream) {
-        await ops.runs.stream.publish({ runId, resumable, event, data });
+      for await (const { event, data, normalized } of stream) {
+        await ops.runs.stream.publish({
+          runId,
+          resumable,
+          event,
+          data,
+          ...(normalized != null ? { normalized } : {}),
+        });
       }
     } catch (error) {
       await ops.runs.stream.publish({

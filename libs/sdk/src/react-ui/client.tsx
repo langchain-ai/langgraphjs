@@ -3,8 +3,9 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import * as JsxRuntime from "react/jsx-runtime";
-import type { UIMessage } from "./types.js";
+import type { BagTemplate } from "@langchain/langgraph-sdk";
 import { useStream } from "../react/index.js";
+import type { UIMessage } from "./types.js";
 import type { UseStream } from "../react/types.js";
 
 const UseStreamContext = React.createContext<{
@@ -12,34 +13,20 @@ const UseStreamContext = React.createContext<{
   meta: unknown;
 }>(null!);
 
-type BagTemplate = {
-  ConfigurableType?: Record<string, unknown>;
-  InterruptType?: unknown;
-  CustomEventType?: unknown;
-  UpdateType?: unknown;
-  MetaType?: unknown;
-};
-
 type GetMetaType<Bag extends BagTemplate> = Bag extends { MetaType: unknown }
   ? Bag["MetaType"]
   : unknown;
 
 interface UseStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > extends UseStream<StateType, Bag> {
   meta?: GetMetaType<Bag>;
 }
 
 export function useStreamContext<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-    MetaType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(): UseStreamContext<StateType, Bag> {
   const ctx = React.useContext(UseStreamContext);
   if (!ctx) {
@@ -51,7 +38,7 @@ export function useStreamContext<
   return new Proxy(ctx, {
     get(target, prop: keyof UseStreamContext<StateType, Bag>) {
       if (prop === "meta") return target.meta;
-      return target.stream[prop];
+      return target.stream[prop as keyof typeof target.stream];
     },
   }) as unknown as UseStreamContext<StateType, Bag>;
 }
@@ -112,27 +99,15 @@ const EXT_STORE_SYMBOL = Symbol.for("LGUI_EXT_STORE");
 const REQUIRE_SYMBOL = Symbol.for("LGUI_REQUIRE");
 const REQUIRE_EXTRA_SYMBOL = Symbol.for("LGUI_REQUIRE_EXTRA");
 
-interface LoadExternalComponentProps
-  extends Pick<React.HTMLAttributes<HTMLDivElement>, "style" | "className"> {
-  /** Stream of the assistant */
+interface LoadExternalComponentProps extends Pick<
+  React.HTMLAttributes<HTMLDivElement>,
+  "style" | "className"
+> {
   stream: ReturnType<typeof useStream>;
-
-  /** Namespace of UI components. Defaults to assistant ID. */
   namespace?: string;
-
-  /** UI message to be rendered */
   message: UIMessage;
-
-  /** Additional context to be passed to the child component */
   meta?: unknown;
-
-  /** Fallback to be rendered when the component is loading */
   fallback?: React.ReactNode | Record<string, React.ReactNode>;
-
-  /**
-   * Map of components that can be rendered directly without fetching the UI code
-   * from the server.
-   */
   components?: Record<string, React.FunctionComponent | React.ComponentClass>;
 }
 

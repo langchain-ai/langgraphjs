@@ -30,19 +30,23 @@ const WeatherSchema = z.object({
   condition: z.string(),
   location: z.string(),
 });
+type Weather = z.infer<typeof WeatherSchema>;
 
+// @ts-ignore - zod version mismatch between test and @langchain/core
 const WeatherGraphState = z.object({
   messages: z.array(z.any()),
+  // @ts-ignore - zod version mismatch between test and @langchain/core
   weather: withLangGraph(WeatherSchema, {
+    default: () => ({ temperature: 0, condition: "unknown", location: "" }),
     reducer: {
-      schema: WeatherSchema,
-      fn: (a, b) => b,
+      fn: (_: Weather, b: Weather): Weather => b,
     },
   }),
 });
 
 type WeatherGraphStateType = z.infer<typeof WeatherGraphState>;
 
+// @ts-ignore - zod version mismatch between test and @langchain/core
 const weatherGraph = new StateGraph(WeatherGraphState)
   .addNode("get_weather", async (state: WeatherGraphStateType) => {
     return {

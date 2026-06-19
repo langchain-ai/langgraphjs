@@ -1,5 +1,104 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.3.4
+
+### Patch Changes
+
+- [#2517](https://github.com/langchain-ai/langgraphjs/pull/2517) [`67a4f8d`](https://github.com/langchain-ai/langgraphjs/commit/67a4f8da580eb527fa6f201a4c72895754fe37f7) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: `MongoDBSaver.putWrites` now honors `WRITES_IDX_MAP`, pinning special channels (`__error__`, `__scheduled__`, `__interrupt__`, `__resume__`) to fixed negative indices instead of the call-local ordinal. Previously a mixed `putWrites([[...regular...], [INTERRUPT, …]], taskId)` placed the INTERRUPT at a positive idx that could collide with a regular write at the same `(task_id, idx)`, and the unconditional `$set` upsert silently overwrote whichever row landed there first. The conflict-resolution clause now matches the Postgres / SQLite (TS and Python) checkpointers: `$set` only when every channel is a special one, `$setOnInsert` otherwise.
+
+## 1.3.3
+
+### Patch Changes
+
+- [#2260](https://github.com/langchain-ai/langgraphjs/pull/2260) [`4d03dcb`](https://github.com/langchain-ai/langgraphjs/commit/4d03dcbc28bbfdf4c0f0ac065b9853652836d2f9) Thanks [@venkat22022202](https://github.com/venkat22022202)! - fix(mongodb): include pendingWrites in list() results
+
+## 1.3.2
+
+### Patch Changes
+
+- [#2186](https://github.com/langchain-ai/langgraphjs/pull/2186) [`26c2e32`](https://github.com/langchain-ai/langgraphjs/commit/26c2e325f435a2c061d6b78a7bd6af089cb1e0e6) Thanks [@jackjin1997](https://github.com/jackjin1997)! - fix: metadata filter in list() now works by querying a plain JSON shadow copy instead of the serialized binary blob
+
+## 1.3.1
+
+### Patch Changes
+
+- [#2397](https://github.com/langchain-ai/langgraphjs/pull/2397) [`284226c`](https://github.com/langchain-ai/langgraphjs/commit/284226c7ca164b3c81fe2d9e32b10f1fc6b99a3c) Thanks [@hntrl](https://github.com/hntrl)! - fix(checkpoint-mongodb): validate configurable checkpoint identifiers before queries
+
+  Add runtime validation for `thread_id`, `checkpoint_ns`, and `checkpoint_id` in
+  `MongoDBSaver` methods that read and write checkpoints. This prevents object-based
+  operator payloads from being passed into MongoDB query filters and ensures invalid
+  configurable values fail fast with explicit errors.
+
+## 1.3.0
+
+### Minor Changes
+
+- [#2326](https://github.com/langchain-ai/langgraphjs/pull/2326) [`36916ed`](https://github.com/langchain-ai/langgraphjs/commit/36916ed86e63eb07249a68ecf0508e3b986ba587) Thanks [@tadjik1](https://github.com/tadjik1)! - feat: add MongoDBStore for long-term memory
+
+  New `MongoDBStore` class for persisting data across threads and sessions — user preferences, learned facts, agent memory, and more.
+
+  - Store and retrieve JSON documents organized by hierarchical namespaces
+  - Search with field-based filtering and comparison operators
+  - Vector similarity search with manual embedding (bring your own embedding model) or auto embedding (MongoDB generates embeddings via Voyage AI)
+  - Automatic document expiration via configurable TTL
+
+## 1.2.0
+
+### Minor Changes
+
+- [#1991](https://github.com/langchain-ai/langgraphjs/pull/1991) [`38db67f`](https://github.com/langchain-ai/langgraphjs/commit/38db67f3599daffcbec5d04f16f36e69abe22e08) Thanks [@vanb](https://github.com/vanb)! - Add optional `enableTimestamps` parameter to `MongoDBSaver` that sets an `upserted_at` date via MongoDB's `$currentDate` operator on every upsert. Useful for MongoDB TTL indexes, auditing, or debugging.
+
+## 1.1.7
+
+### Patch Changes
+
+- [#1943](https://github.com/langchain-ai/langgraphjs/pull/1943) [`814c76d`](https://github.com/langchain-ai/langgraphjs/commit/814c76dc3938d0f6f7e17ca3bc11d6a12270b2a1) Thanks [@hntrl](https://github.com/hntrl)! - fix(mongodb): validate filter values are primitives
+
+  Added validation to ensure filter values in the `list()` method are primitive types
+  (string, number, boolean, or null).
+
+## 1.1.6
+
+### Patch Changes
+
+- [#1862](https://github.com/langchain-ai/langgraphjs/pull/1862) [`e7aeffe`](https://github.com/langchain-ai/langgraphjs/commit/e7aeffeb72aaccd8c94f8e78708f747ce21bf23c) Thanks [@dqbd](https://github.com/dqbd)! - retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.5
+
+### Patch Changes
+
+- [#1856](https://github.com/langchain-ai/langgraphjs/pull/1856) [`a9fa28b`](https://github.com/langchain-ai/langgraphjs/commit/a9fa28b6adad16050fcf5d5876a3924253664217) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.4
+
+### Patch Changes
+
+- [#1853](https://github.com/langchain-ai/langgraphjs/pull/1853) [`a84c1ff`](https://github.com/langchain-ai/langgraphjs/commit/a84c1ff18289653ff4715bd0db4ac3d06600556e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.3
+
+### Patch Changes
+
+- [#1850](https://github.com/langchain-ai/langgraphjs/pull/1850) [`e9f7e8e`](https://github.com/langchain-ai/langgraphjs/commit/e9f7e8e9e6b8851cb7dd68e31d2f1867b62bd6bd) Thanks [@christian-bromann](https://github.com/christian-bromann)! - retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.2
+
+### Patch Changes
+
+- 3ec85a4: retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.1
+
+### Patch Changes
+
+- 3613386: retry release: Updates the checkpoint-mongodb to append client metadata
+
+## 1.1.0
+
+### Minor Changes
+
+- 4b7832e: Updates the checkpoint-mongodb to append client metadata
+
 ## 1.0.0
 
 ### Major Changes

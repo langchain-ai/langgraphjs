@@ -1,175 +1,92 @@
 name: Environment tests
 
 on:
-  push:
-    branches:
-      - main
-      - v1
-  pull_request:
-    branches:
-      - main
-      - v1
+  # Called from CI workflow after build completes
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: "Name of the build artifact to download"
+        required: true
+        type: string
+  # Allow manual triggering (will build from scratch)
   workflow_dispatch:
 
-# If another push to the same PR or branch happens while this workflow is still running,
-# cancel the earlier run in favor of the next run.
-#
-# There's no point in testing an outdated version of the code. GitHub only allows
-# a limited number of job runners to be active at the same time, so it's better to cancel
-# pointless jobs early so that more useful jobs can run sooner.
+permissions:
+  contents: read
+
 concurrency:
   group: exports-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  NODE_VERSION: "22.4.1"
 
 # Run a separate job for each check in the docker-compose file,
 # so that they run in parallel instead of overwhelming the default 2 CPU runner.
 jobs:
   exports-esbuild:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
+          artifact-name: ${{ inputs.artifact-name }}
       - name: Test esbuild exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-esbuild
 
   exports-esm:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test esm exports
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test ESM exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-esm
 
   exports-cjs:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test cjs exports
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test CJS exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-cjs
 
   exports-cf:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test cf exports
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test Cloudflare exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-cf
 
   exports-vercel:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-    
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test vercel exports
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test Vercel exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-vercel
 
   exports-vite:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-      
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test vite exports
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test Vite exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-vite
 
   exports-tsc:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
     steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "yarn"
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build dependencies
-        run: yarn build
-        shell: bash
-
-      - name: Test compiling exports with tsc
+          artifact-name: ${{ inputs.artifact-name }}
+      - name: Test TSC exports
         run: docker compose -f internal/environment_tests/docker-compose.yml run test-exports-tsc

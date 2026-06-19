@@ -24,7 +24,7 @@ import {
   BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
 import type { RemoteGraph } from "@langchain/langgraph/remote";
-import { v5 as uuidv5 } from "uuid";
+import { v5 as uuidv5 } from "@langchain/core/utils/uuid";
 import { createHandoffTool, createHandoffBackMessages } from "./handoff.js";
 
 export type { AgentNameMode };
@@ -119,10 +119,12 @@ export type CreateSupervisorParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 > = {
   /**
-   * List of agents to manage
+   * List of agents to manage.
+   * Accepts compiled graphs from both `createReactAgent` (`@langchain/langgraph`)
+   * and `createAgent` (`langchain`) via `.graph`.
    */
   agents: (
     | CompiledStateGraph<
@@ -132,6 +134,8 @@ export type CreateSupervisorParams<
         AnnotationRootT["spec"],
         AnnotationRootT["spec"]
       >
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | CompiledStateGraph<any, any, string, any, any>
     | RemoteGraph
   )[];
 
@@ -201,8 +205,19 @@ export type CreateSupervisorParams<
   outputMode?: OutputMode;
 
   /**
+   * Whether to add the supervisor-to-agent handoff messages (the supervisor
+   * `AIMessage` containing the handoff tool call and the handoff `ToolMessage`)
+   * to the message history forwarded to the expert agent. If `false`, those
+   * handoff bookkeeping messages are omitted from the expert agent's message
+   * history. This is useful for providers that strictly validate tool-call
+   * message sequences. Defaults to `true`.
+   */
+  addHandoffMessages?: boolean;
+
+  /**
    * Whether to add a pair of (AIMessage, ToolMessage) to the message history
    * when returning control to the supervisor to indicate that a handoff has occurred
+   * Defaults to the value of `addHandoffMessages`.
    */
   addHandoffBackMessages?: boolean;
 
@@ -266,7 +281,7 @@ const createSupervisor = <
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   AnnotationRootT extends AnnotationRoot<any> = typeof MessagesAnnotation,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StructuredResponseFormat extends Record<string, any> = Record<string, any>
+  StructuredResponseFormat extends Record<string, any> = Record<string, any>,
 >({
   agents,
   llm,
@@ -276,7 +291,8 @@ const createSupervisor = <
   stateSchema,
   contextSchema,
   outputMode = "last_message",
-  addHandoffBackMessages = true,
+  addHandoffMessages = true,
+  addHandoffBackMessages,
   supervisorName = "supervisor",
   includeAgentName,
   preModelHook,
@@ -292,6 +308,8 @@ const createSupervisor = <
   AnnotationRootT["spec"],
   AnnotationRootT["spec"]
 > => {
+  const resolvedAddHandoffBackMessages =
+    addHandoffBackMessages ?? addHandoffMessages;
   const agentNames = new Set<string>();
 
   for (const agent of agents) {
@@ -318,7 +336,11 @@ const createSupervisor = <
         ? agent.description
         : undefined;
 
-    return createHandoffTool({ agentName, agentDescription });
+    return createHandoffTool({
+      agentName,
+      description: agentDescription,
+      addHandoffMessages,
+    });
   });
   const allTools = [...(tools ?? []), ...handoffTools];
 
@@ -382,7 +404,12 @@ const createSupervisor = <
   for (const agent of agents) {
     builder = builder.addNode(
       agent.name!,
-      makeCallAgent(agent, outputMode, addHandoffBackMessages, supervisorName),
+      makeCallAgent(
+        agent,
+        outputMode,
+        resolvedAddHandoffBackMessages,
+        supervisorName
+      ),
       { subgraphs: isRemoteGraph(agent) ? undefined : [agent] }
     );
     builder = builder.addEdge(agent.name!, supervisorAgent.name!);

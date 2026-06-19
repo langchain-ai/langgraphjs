@@ -27,6 +27,9 @@ export class FakeToolCallingChatModel extends BaseChatModel {
   // Track messages passed to structured output calls
   structuredOutputMessages: BaseMessage[][] = [];
 
+  // Track messages passed to regular chat model calls
+  chatMessages: BaseMessage[][] = [];
+
   constructor(
     fields: {
       sleep?: number;
@@ -44,6 +47,7 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     this.toolStyle = fields.toolStyle ?? this.toolStyle;
     this.structuredResponse = fields.structuredResponse;
     this.structuredOutputMessages = [];
+    this.chatMessages = [];
   }
 
   _llmType() {
@@ -61,6 +65,8 @@ export class FakeToolCallingChatModel extends BaseChatModel {
     if (this.sleep !== undefined) {
       await new Promise((resolve) => setTimeout(resolve, this.sleep));
     }
+    this.chatMessages.push([...messages]);
+
     const responses = this.responses?.length ? this.responses : messages;
     const msg = responses[this.idx % responses.length];
     const generation: ChatResult = {

@@ -183,6 +183,7 @@ async function updateGraphPaths(
     const importStr = typeof graphDef === "string" ? graphDef : graphDef.path;
     const description =
       typeof graphDef === "string" ? undefined : graphDef.description;
+    // oxlint-disable-next-line prefer-const -- moduleStr is reassigned for local modules
     let [moduleStr, attrStr] = importStr.split(":", 2);
     if (!moduleStr || !attrStr) {
       throw new Error(
@@ -241,17 +242,27 @@ async function updateGraphPaths(
   }
 }
 
-export function getBaseImage(config: Config) {
+export function getBaseImage(config: Config, apiVersion?: string) {
+  const resolvedApiVersion = apiVersion ?? config.api_version;
+
   if ("node_version" in config) {
-    return `langchain/langgraphjs-api:${
-      config._INTERNAL_docker_tag || config.node_version
-    }`;
+    if (config._INTERNAL_docker_tag) {
+      return `langchain/langgraphjs-api:${config._INTERNAL_docker_tag}`;
+    }
+    if (resolvedApiVersion) {
+      return `langchain/langgraphjs-api:${resolvedApiVersion}-node${config.node_version}`;
+    }
+    return `langchain/langgraphjs-api:${config.node_version}`;
   }
 
   if ("python_version" in config) {
-    return `langchain/langgraph-api:${
-      config._INTERNAL_docker_tag || config.python_version
-    }`;
+    if (config._INTERNAL_docker_tag) {
+      return `langchain/langgraph-api:${config._INTERNAL_docker_tag}`;
+    }
+    if (resolvedApiVersion) {
+      return `langchain/langgraph-api:${resolvedApiVersion}-py${config.python_version}`;
+    }
+    return `langchain/langgraph-api:${config.python_version}`;
   }
 
   throw new Error("Invalid config type");
@@ -372,6 +383,7 @@ export async function configToDocker(
       `ENV LANGGRAPH_UI_CONFIG='${JSON.stringify(config.ui_config)}'`,
     !!config.store && `ENV LANGGRAPH_STORE='${JSON.stringify(config.store)}'`,
     !!config.auth && `ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`,
+    !!config.http && `ENV LANGGRAPH_HTTP='${JSON.stringify(config.http)}'`,
     !!localDeps.workingDir && `WORKDIR ${localDeps.workingDir}`,
     "node_version" in config
       ? [

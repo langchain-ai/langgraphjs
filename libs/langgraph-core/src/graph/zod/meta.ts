@@ -13,13 +13,14 @@ import {
 import { BaseChannel } from "../../channels/base.js";
 import { BinaryOperatorAggregate } from "../../channels/binop.js";
 import { LastValue } from "../../channels/last_value.js";
+import type { OverwriteValue } from "../../constants.js";
 
 export const META_EXTRAS_DESCRIPTION_PREFIX = "lg:";
 
 /** @internal */
 export type ReducedZodChannel<
   T extends InteropZodType,
-  TReducerSchema extends InteropZodType
+  TReducerSchema extends InteropZodType,
 > = T & {
   lg_reducer_schema: TReducerSchema;
 };
@@ -27,7 +28,7 @@ export type ReducedZodChannel<
 /** @internal */
 export type InteropZodToStateDefinition<
   T extends InteropZodObject,
-  TShape = InteropZodObjectShape<T>
+  TShape = InteropZodObjectShape<T>,
 > = {
   [key in keyof TShape]: TShape[key] extends ReducedZodChannel<
     infer Schema,
@@ -35,30 +36,30 @@ export type InteropZodToStateDefinition<
   >
     ? Schema extends InteropZodType<infer V>
       ? ReducerSchema extends InteropZodType<infer U>
-        ? BaseChannel<V, U>
+        ? BaseChannel<V, OverwriteValue<V> | U>
         : never
       : never
     : TShape[key] extends InteropZodType<infer V, infer U>
-    ? BaseChannel<V, U>
-    : never;
+      ? BaseChannel<V, U>
+      : never;
 };
 
 export type UpdateType<
   T extends InteropZodObject,
-  TShape = InteropZodObjectShape<T>
+  TShape = InteropZodObjectShape<T>,
 > = {
   [key in keyof TShape]?: TShape[key] extends ReducedZodChannel<
     infer Schema,
     infer ReducerSchema
   >
-    ? Schema extends InteropZodType<unknown>
+    ? Schema extends InteropZodType<infer V>
       ? ReducerSchema extends InteropZodType<infer U>
-        ? U
+        ? OverwriteValue<V> | U
         : never
       : never
     : TShape[key] extends InteropZodType<unknown, infer U>
-    ? U
-    : never;
+      ? U
+      : never;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,13 +85,13 @@ export class SchemaMetaRegistry {
    * Internal map storing schema metadata.
    * @internal
    */
-  _map = new WeakMap<InteropZodType, SchemaMeta>();
+  _map = new Map<InteropZodType, SchemaMeta>();
 
   /**
-   * Cache for extended schfemas.
+   * Cache for extended schemas.
    * @internal
    */
-  _extensionCache = new Map<string, WeakMap<InteropZodType, InteropZodType>>();
+  _extensionCache = new Map<string, Map<InteropZodType, InteropZodType>>();
 
   /**
    * Retrieves the metadata associated with a given schema.
@@ -163,7 +164,7 @@ export class SchemaMetaRegistry {
           InferInteropZodOutput<typeof channelSchema>
         >(meta.reducer.fn, meta.default);
       } else {
-        channels[key] = new LastValue();
+        channels[key] = new LastValue(meta?.default);
       }
     }
     return channels as InteropZodToStateDefinition<T>;
@@ -212,7 +213,7 @@ export class SchemaMetaRegistry {
       .map(([k, v]) => `${k}:${v}`)
       .join("|");
 
-    const cache = this._extensionCache.get(cacheKey) ?? new WeakMap();
+    const cache = this._extensionCache.get(cacheKey) ?? new Map();
     if (cache.has(schema)) return cache.get(schema)! as T;
 
     let modifiedSchema: InteropZodObject = schema;
@@ -226,7 +227,7 @@ export class SchemaMetaRegistry {
       ).map(([key, schema]) => {
         const meta = this.get(schema);
         let outputSchema = effects.withReducerSchema
-          ? meta?.reducer?.schema ?? schema
+          ? (meta?.reducer?.schema ?? schema)
           : schema;
         if (
           effects.withJsonSchemaExtrasAsDescription &&
@@ -267,7 +268,7 @@ export const schemaMetaRegistry = new SchemaMetaRegistry();
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate> & { reducer?: undefined }
@@ -275,7 +276,7 @@ export function withLangGraph<
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate>
@@ -283,7 +284,7 @@ export function withLangGraph<
 export function withLangGraph<
   TValue,
   TUpdate,
-  TSchema extends InteropZodType<TValue>
+  TSchema extends InteropZodType<TValue>,
 >(
   schema: TSchema,
   meta: SchemaMeta<TValue, TUpdate>

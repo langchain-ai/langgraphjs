@@ -108,6 +108,7 @@ describe("RedisSaver Basic", () => {
     let savedData: any;
 
     const mockClient = {
+      exists: async () => 0,
       json: {
         set: async (key: string, _path: string, data: any) => {
           savedKey = key;
@@ -300,8 +301,11 @@ describe("RedisSaver Basic", () => {
         if (pattern === "checkpoint:thread-1:*") {
           return ["checkpoint:thread-1:cp-1", "checkpoint:thread-1:cp-2"];
         }
-        if (pattern === "writes:thread-1:*") {
-          return ["writes:thread-1:cp-1:task-1"];
+        if (pattern === "checkpoint_write:thread-1:*") {
+          return ["checkpoint_write:thread-1::cp-1:task-1:0"];
+        }
+        if (pattern === "write_keys_zset:thread-1:*") {
+          return ["write_keys_zset:thread-1::cp-1"];
         }
         return [];
       },
@@ -316,7 +320,8 @@ describe("RedisSaver Basic", () => {
 
     expect(deletedKeys).toContain("checkpoint:thread-1:cp-1");
     expect(deletedKeys).toContain("checkpoint:thread-1:cp-2");
-    expect(deletedKeys).toContain("writes:thread-1:cp-1:task-1");
+    expect(deletedKeys).toContain("checkpoint_write:thread-1::cp-1:task-1:0");
+    expect(deletedKeys).toContain("write_keys_zset:thread-1::cp-1");
   });
 });
 
@@ -362,7 +367,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "integration" },
     };
 
@@ -395,7 +400,7 @@ describe("RedisSaver Integration Tests", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
       channel_values: { test: "fromUrl" },
     };
 
@@ -453,7 +458,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const saved = await saver.put(
@@ -491,12 +496,12 @@ describe("test_from_conn_string", () => {
 
     const checkpoint1: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     const checkpoint2: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save checkpoints with different savers
@@ -550,7 +555,7 @@ describe("test_from_conn_string", () => {
 
     const checkpoint: Checkpoint = {
       ...emptyCheckpoint(),
-      id: uuid6(-1),
+      id: uuid6(0),
     };
 
     // Save with saver1
@@ -942,7 +947,7 @@ describe("test_sync_redis_checkpointer", () => {
     }
     expect(allCps).toHaveLength(5);
 
-    // List checkpoints before the 3rd one
+    // List checkpoints before the 3rd one (checkpoint at index 2)
     const beforeCps = [];
     for await (const cp of saver.list(config, {
       before: {
@@ -959,6 +964,508 @@ describe("test_sync_redis_checkpointer", () => {
     expect(beforeCps).toHaveLength(2);
     expect(beforeCps[0].checkpoint.id).toBe(checkpoints[1].id);
     expect(beforeCps[1].checkpoint.id).toBe(checkpoints[0].id);
+
+    await saver.end();
+  });
+
+  it("should preserve pendingWrites when putWrites is called before put (interrupt flow)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "interrupt-flow-test",
+        checkpoint_ns: "",
+        checkpoint_id: checkpointId,
+      },
+    };
+
+    // putWrites BEFORE put - this is the interrupt flow
+    await saver.putWrites(
+      config,
+      [["__interrupt__", { value: "interrupted!", resumable: true }]],
+      "task-interrupt"
+    );
+
+    // Now put the checkpoint (this used to clobber has_writes to "false")
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    await saver.put(
+      { configurable: { thread_id: "interrupt-flow-test", checkpoint_ns: "" } },
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify pendingWrites are present
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][0]).toBe("task-interrupt");
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "interrupted!",
+      resumable: true,
+    });
+  });
+
+  it("should preserve pendingWrites when putWrites is called after put (normal flow)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "normal-flow-test",
+        checkpoint_ns: "",
+      },
+    };
+
+    // put first
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites after put
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "after-put", resumable: true }]],
+      "task-after"
+    );
+
+    // Retrieve and verify
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+  });
+
+  it("should preserve pendingWrites across put-putWrites-put (double-put)", async () => {
+    const saver = new RedisSaver(redisClient);
+
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "double-put-test",
+        checkpoint_ns: "",
+      },
+    };
+
+    // First put
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "survive-double-put", resumable: true }]],
+      "task-double"
+    );
+
+    // Second put for the same checkpoint ID (should NOT clobber has_writes)
+    await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify writes survived
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "survive-double-put",
+      resumable: true,
+    });
+  });
+
+  it("should reconstruct channel_values from blob storage when newVersions is a subset", async () => {
+    const saver = await RedisSaver.fromUrl(redisUrl);
+
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "blob-recon-thread",
+        checkpoint_ns: "",
+      },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [
+          { type: "human", content: "Hi there" },
+          { type: "ai", content: "Hello!" },
+        ],
+        status: "idle",
+        category: "",
+      },
+      channel_versions: { messages: "1", status: "1", category: "1" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      config,
+      checkpoint1,
+      { source: "loop", step: 1, parents: {} },
+      { messages: "1", status: "1", category: "1" }
+    );
+
+    // Simulate node B writing only status and category.
+    // The Pregel loop passes ALL channel_values in the checkpoint object,
+    // but newVersions only contains the channels written by the current node.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [
+          { type: "human", content: "Hi there" },
+          { type: "ai", content: "Hello!" },
+        ],
+        status: "completed",
+        category: "greeting",
+      },
+      channel_versions: { messages: "1", status: "2", category: "2" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2", category: "2" }
+    );
+
+    // Retrieve the latest checkpoint — messages must be reconstructed from blob storage
+    const latest = await saver.getTuple(config);
+    expect(latest).toBeDefined();
+    expect(latest?.checkpoint.channel_values.messages).toEqual([
+      { type: "human", content: "Hi there" },
+      { type: "ai", content: "Hello!" },
+    ]);
+    expect(latest?.checkpoint.channel_values.status).toBe("completed");
+    expect(latest?.checkpoint.channel_values.category).toBe("greeting");
+
+    await saver.end();
+  });
+
+  it("should delete channel blobs when deleting a thread", async () => {
+    const saver = await RedisSaver.fromUrl(redisUrl);
+
+    const threadId = "blob-delete-thread";
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: threadId,
+        checkpoint_ns: "",
+      },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status, leaving messages to live in blob storage.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Sanity check: blob keys for this thread were actually created.
+    const blobKeysBefore = (await redisClient.keys("*")).filter((k: string) =>
+      k.startsWith(`checkpoint_blob:${threadId}:`)
+    );
+    expect(blobKeysBefore.length).toBeGreaterThan(0);
+
+    await saver.deleteThread(threadId);
+
+    // No checkpoint, write, zset, or blob keys for the thread should remain.
+    const remaining = (await redisClient.keys("*")).filter((k: string) =>
+      k.includes(threadId)
+    );
+    expect(remaining).toHaveLength(0);
+
+    await saver.end();
+  });
+
+  it("should refresh channel blob TTL on read when refreshOnRead is enabled", async () => {
+    // Long TTL so nothing expires mid-test; we assert on the remaining TTL value
+    // rather than wall-clock expiry to avoid timing flakiness.
+    const defaultTTLMinutes = 60;
+    const ttlSeconds = defaultTTLMinutes * 60;
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: defaultTTLMinutes,
+      refreshOnRead: true,
+    });
+
+    const threadId = "blob-ttl-refresh-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status; messages now lives only in blob storage.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Locate the messages blob key (the channel reconstructed on read).
+    const blobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(blobKey).toBeDefined();
+
+    // Erode the blob's TTL so a successful refresh is observable: drop it well
+    // below the configured default.
+    await redisClient.expire(blobKey as string, 5);
+    const ttlBeforeRead = await redisClient.ttl(blobKey as string);
+    expect(ttlBeforeRead).toBeLessThanOrEqual(5);
+
+    // Reading reconstructs messages from the blob AND should refresh its TTL.
+    const tuple = await saver.getTuple(config);
+    expect(tuple?.checkpoint.channel_values.messages).toEqual([
+      { type: "human", content: "Hi there" },
+    ]);
+
+    // Blob TTL should be bumped back near the configured default, not left to expire.
+    const ttlAfterRead = await redisClient.ttl(blobKey as string);
+    expect(ttlAfterRead).toBeGreaterThan(ttlBeforeRead);
+    expect(ttlAfterRead).toBeGreaterThan(ttlSeconds - 60);
+
+    await saver.end();
+  });
+
+  it("should refresh carried-over channel blob TTL on write", async () => {
+    // Writing a new checkpoint should keep ALL blobs it depends on alive — not
+    // just the channels changed by the current node — so a carried-over blob
+    // does not expire while the fresh checkpoint is still alive.
+    const defaultTTLMinutes = 60;
+    const ttlSeconds = defaultTTLMinutes * 60;
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: defaultTTLMinutes,
+      refreshOnRead: false, // write-side refresh must work regardless
+    });
+
+    const threadId = "blob-ttl-write-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    // Node A writes messages + status.
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // The messages blob (carried over by the next write) — erode its TTL.
+    const messagesBlobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(messagesBlobKey).toBeDefined();
+    await redisClient.expire(messagesBlobKey as string, 5);
+    expect(await redisClient.ttl(messagesBlobKey as string)).toBeLessThanOrEqual(
+      5
+    );
+
+    // Node B writes only status. messages is carried over (in channel_versions
+    // but not newVersions) — its TTL should be refreshed by this write.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // The carried-over messages blob TTL should be bumped back near the default.
+    const ttlAfterWrite = await redisClient.ttl(messagesBlobKey as string);
+    expect(ttlAfterWrite).toBeGreaterThan(5);
+    expect(ttlAfterWrite).toBeGreaterThan(ttlSeconds - 60);
+
+    await saver.end();
+  });
+
+  it("should drop a channel cleanly when its blob has expired (no corruption)", async () => {
+    // Boundary case for the known TTL limitation: if a carried-over blob expires
+    // during an idle gap, reconstruction must skip the channel cleanly — the read
+    // returns without error and the channel is simply absent, not corrupt.
+    const saver = await RedisSaver.fromUrl(redisUrl, {
+      defaultTTL: 60,
+      refreshOnRead: true,
+    });
+
+    const threadId = "blob-expired-thread";
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+
+    const checkpoint1: Checkpoint = {
+      v: 1,
+      id: uuid6(0),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "idle",
+      },
+      channel_versions: { messages: "1", status: "1" },
+      versions_seen: {},
+    };
+    await saver.put(config, checkpoint1, { source: "loop", step: 1, parents: {} }, {
+      messages: "1",
+      status: "1",
+    });
+
+    // Second node writes only status; messages now lives only in its blob.
+    const checkpoint2: Checkpoint = {
+      v: 1,
+      id: uuid6(1),
+      ts: new Date().toISOString(),
+      channel_values: {
+        messages: [{ type: "human", content: "Hi there" }],
+        status: "completed",
+      },
+      channel_versions: { messages: "1", status: "2" },
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        ...config,
+        configurable: { ...config.configurable, checkpoint_id: checkpoint1.id },
+      },
+      checkpoint2,
+      { source: "loop", step: 2, parents: {} },
+      { status: "2" }
+    );
+
+    // Simulate the idle-gap expiry: delete the messages blob outright.
+    const messagesBlobKey = (await redisClient.keys("*")).find(
+      (k: string) =>
+        k.startsWith(`checkpoint_blob:${threadId}:`) && k.includes(":messages:")
+    );
+    expect(messagesBlobKey).toBeDefined();
+    await redisClient.del(messagesBlobKey as string);
+
+    // Read must not throw; status is still present, messages is cleanly absent.
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.checkpoint.channel_values.status).toBe("completed");
+    expect("messages" in (tuple?.checkpoint.channel_values ?? {})).toBe(false);
 
     await saver.end();
   });
@@ -1464,5 +1971,146 @@ describe("ShallowRedisSaver", () => {
     checkpointData = await client.json.get(checkpointKeys[0]);
     expect(checkpointData.checkpoint_id).toBe(checkpoint2.id);
     expect(checkpointData.checkpoint_id).not.toBe(checkpoint1.id);
+  });
+
+  it("should preserve pendingWrites when putWrites is called before put (interrupt flow)", async () => {
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-interrupt-flow",
+        checkpoint_ns: "",
+        checkpoint_id: checkpointId,
+      },
+    };
+
+    // putWrites BEFORE put - this is the interrupt flow
+    await saver.putWrites(
+      config,
+      [["__interrupt__", { value: "interrupted!", resumable: true }]],
+      "task-interrupt"
+    );
+
+    // Now put the checkpoint
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    await saver.put(
+      {
+        configurable: {
+          thread_id: "shallow-interrupt-flow",
+          checkpoint_ns: "",
+        },
+      },
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify pendingWrites are present
+    const tuple = await saver.getTuple(config);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][0]).toBe("task-interrupt");
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "interrupted!",
+      resumable: true,
+    });
+  });
+
+  it("should preserve pendingWrites when putWrites is called after put (normal flow)", async () => {
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-normal-flow",
+        checkpoint_ns: "",
+      },
+    };
+
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: uuid6(0),
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites after put
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "after-put", resumable: true }]],
+      "task-after"
+    );
+
+    // Retrieve and verify
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+  });
+
+  it("should preserve pendingWrites across put-putWrites-put (double-put)", async () => {
+    const checkpointId = uuid6(0);
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "shallow-double-put",
+        checkpoint_ns: "",
+      },
+    };
+
+    // First put
+    const checkpoint: Checkpoint = {
+      v: 1,
+      ts: new Date().toISOString(),
+      id: checkpointId,
+      channel_values: { messages: ["hello"] },
+      channel_versions: {},
+      versions_seen: {},
+    };
+    const savedConfig = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // putWrites
+    await saver.putWrites(
+      savedConfig,
+      [["__interrupt__", { value: "survive-double-put", resumable: true }]],
+      "task-double"
+    );
+
+    // Second put for the same checkpoint ID
+    await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} },
+      undefined as any
+    );
+
+    // Retrieve and verify writes survived
+    const tuple = await saver.getTuple(savedConfig);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites).toBeDefined();
+    expect(tuple?.pendingWrites).toHaveLength(1);
+    expect(tuple?.pendingWrites?.[0][1]).toBe("__interrupt__");
+    expect(tuple?.pendingWrites?.[0][2]).toEqual({
+      value: "survive-double-put",
+      resumable: true,
+    });
   });
 });

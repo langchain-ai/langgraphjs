@@ -4,8 +4,47 @@ import {
   Command,
   Send,
   CommandParams,
+  Overwrite,
+  OVERWRITE,
   _deserializeCommandSendObjectGraph,
+  _getOverwriteValue,
 } from "../constants.js";
+
+// Cross-language parity with langgraph#8127: an Overwrite must survive a JSON
+// boundary so the channel reducer still recognizes it after the typed instance
+// is erased (e.g. routed through the LangGraph API server).
+describe("_getOverwriteValue", () => {
+  it("recognizes an Overwrite instance", () => {
+    expect(_getOverwriteValue(new Overwrite(["b"]))).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes the canonical sentinel wire form", () => {
+    expect(_getOverwriteValue({ [OVERWRITE]: ["b"] })).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes an Overwrite after a JSON round-trip", () => {
+    const erased = JSON.parse(JSON.stringify(new Overwrite(["b"])));
+    expect(_getOverwriteValue(erased)).toEqual([true, ["b"]]);
+  });
+
+  it("recognizes the discriminator form from another runtime", () => {
+    // Python's Overwrite dataclass JSON-serializes to { value, type }.
+    expect(_getOverwriteValue({ type: OVERWRITE, value: ["b"] })).toEqual([
+      true,
+      ["b"],
+    ]);
+  });
+
+  it("does not misclassify look-alike dicts", () => {
+    expect(_getOverwriteValue({ value: ["b"] })).toEqual([false, undefined]);
+    expect(_getOverwriteValue({ type: "human", value: "hi" })).toEqual([
+      false,
+      undefined,
+    ]);
+    expect(_getOverwriteValue(["b"])).toEqual([false, undefined]);
+    expect(_getOverwriteValue(null)).toEqual([false, undefined]);
+  });
+});
 
 describe("_deserializeCommandSendObjectGraph", () => {
   it("handles primitive values", () => {
@@ -182,5 +221,37 @@ describe("_deserializeCommandSendObjectGraph", () => {
 
     const command = new Command({ goto: [send] });
     expect((command.goto as Send[])[0].args.messages[0]).toBe(message);
+  });
+
+  it("preserves non-plain objects in Send args", () => {
+    class TaskEnvelope {
+      constructor(readonly id: string) {}
+    }
+
+    const tags = new Set(["priority"]);
+    const metadata = new Map([["source", "queue"]]);
+    const createdAt = new Date("2025-09-26T00:00:00.000Z");
+    const task = new TaskEnvelope("task-1");
+
+    const send = new Send("worker", {
+      payload: {
+        tags,
+        metadata,
+        createdAt,
+        task,
+      },
+    });
+
+    expect(send.args.payload.tags).toBe(tags);
+    expect(send.args.payload.metadata).toBe(metadata);
+    expect(send.args.payload.createdAt).toBe(createdAt);
+    expect(send.args.payload.task).toBe(task);
+
+    const command = new Command({ goto: [send] });
+    const deserializedSend = (command.goto as Send[])[0];
+    expect(deserializedSend.args.payload.tags).toBe(tags);
+    expect(deserializedSend.args.payload.metadata).toBe(metadata);
+    expect(deserializedSend.args.payload.createdAt).toBe(createdAt);
+    expect(deserializedSend.args.payload.task).toBe(task);
   });
 });

@@ -14,8 +14,10 @@ import type { BaseMessage } from "@langchain/core/messages";
 import type { BaseChannel } from "../channels/base.js";
 import type { PregelNode } from "./read.js";
 import type { Interrupt } from "../constants.js";
-import { CachePolicy, RetryPolicy } from "./utils/index.js";
+import type { StreamTransformer } from "../stream/types.js";
+import { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
+import type { RunControl } from "./runtime.js";
 
 /**
  * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
@@ -27,7 +29,8 @@ export type StreamMode =
   | "messages"
   | "checkpoints"
   | "tasks"
-  | "custom";
+  | "custom"
+  | "tools";
 
 export type Durability = "exit" | "async" | "sync";
 
@@ -63,14 +66,42 @@ interface StreamTasksCreateOutput<StreamValues> extends StreamTasksOutputBase {
   triggers: string[];
 }
 
-interface StreamTasksResultOutput<Keys, StreamUpdates>
-  extends StreamTasksOutputBase {
+interface StreamTasksResultOutput<
+  Keys,
+  StreamUpdates,
+> extends StreamTasksOutputBase {
   result: [Keys, StreamUpdates][];
 }
 
 type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
   | StreamTasksCreateOutput<StreamValues>
   | StreamTasksResultOutput<Nodes, StreamUpdates>;
+
+export type StreamToolsOutput =
+  | {
+      event: "on_tool_start";
+      toolCallId?: string;
+      name: string;
+      input: unknown;
+    }
+  | {
+      event: "on_tool_event";
+      toolCallId?: string;
+      name: string;
+      data: unknown;
+    }
+  | {
+      event: "on_tool_end";
+      toolCallId?: string;
+      name: string;
+      output: unknown;
+    }
+  | {
+      event: "on_tool_error";
+      toolCallId?: string;
+      name: string;
+      error: unknown;
+    };
 
 type DefaultStreamMode = "updates";
 
@@ -88,91 +119,102 @@ export type StreamOutputMap<
   Nodes,
   NodeReturnType,
   StreamCustom,
-  TEncoding extends "text/event-stream" | undefined
-> = IsEventStream<TEncoding> extends true
-  ? Uint8Array
-  : (
-      undefined extends TStreamMode
-        ? []
-        : StreamMode | StreamMode[] extends TStreamMode
-        ? TStreamMode extends StreamMode[]
-          ? TStreamMode[number]
-          : TStreamMode
-        : TStreamMode extends StreamMode[]
-        ? TStreamMode[number]
-        : []
-    ) extends infer Multiple extends StreamMode
-  ? [TStreamSubgraphs] extends [true]
-    ? {
-        values: [string[], "values", StreamValues];
-        updates: [
-          string[],
-          "updates",
-          NodeReturnType extends Record<string, unknown>
-            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
-            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
-        messages: [string[], "messages", StreamMessageOutput];
-        custom: [string[], "custom", StreamCustom];
-        checkpoints: [
-          string[],
-          "checkpoints",
-          StreamCheckpointsOutput<StreamValues>
-        ];
-        tasks: [
-          string[],
-          "tasks",
-          StreamTasksOutput<StreamUpdates, StreamValues>
-        ];
-        debug: [string[], "debug", StreamDebugOutput];
-      }[Multiple]
-    : {
-        values: ["values", StreamValues];
-        updates: [
-          "updates",
-          NodeReturnType extends Record<string, unknown>
-            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
-            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
-        messages: ["messages", StreamMessageOutput];
-        custom: ["custom", StreamCustom];
-        checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
-        tasks: ["tasks", StreamTasksOutput<StreamUpdates, StreamValues, Nodes>];
-        debug: ["debug", StreamDebugOutput];
-      }[Multiple]
-  : (
-      undefined extends TStreamMode ? DefaultStreamMode : TStreamMode
-    ) extends infer Single extends StreamMode
-  ? [TStreamSubgraphs] extends [true]
-    ? {
-        values: [string[], StreamValues];
-        updates: [
-          string[],
-          NodeReturnType extends Record<string, unknown>
-            ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
-            : Record<Nodes extends string ? Nodes : string, StreamUpdates>
-        ];
-        messages: [string[], StreamMessageOutput];
-        custom: [string[], StreamCustom];
-        checkpoints: [string[], StreamCheckpointsOutput<StreamValues>];
-        tasks: [
-          string[],
-          StreamTasksOutput<StreamUpdates, StreamValues, Nodes>
-        ];
-        debug: [string[], StreamDebugOutput];
-      }[Single]
-    : {
-        values: StreamValues;
-        updates: NodeReturnType extends Record<string, unknown>
-          ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
-          : Record<Nodes extends string ? Nodes : string, StreamUpdates>;
-        messages: StreamMessageOutput;
-        custom: StreamCustom;
-        checkpoints: StreamCheckpointsOutput<StreamValues>;
-        tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
-        debug: StreamDebugOutput;
-      }[Single]
-  : never;
+  TEncoding extends "text/event-stream" | undefined,
+> =
+  IsEventStream<TEncoding> extends true
+    ? Uint8Array
+    : (
+          undefined extends TStreamMode
+            ? []
+            : StreamMode | StreamMode[] extends TStreamMode
+              ? TStreamMode extends StreamMode[]
+                ? TStreamMode[number]
+                : TStreamMode
+              : TStreamMode extends StreamMode[]
+                ? TStreamMode[number]
+                : []
+        ) extends infer Multiple extends StreamMode
+      ? [TStreamSubgraphs] extends [true]
+        ? {
+            values: [string[], "values", StreamValues];
+            updates: [
+              string[],
+              "updates",
+              NodeReturnType extends Record<string, unknown>
+                ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+                : Record<Nodes extends string ? Nodes : string, StreamUpdates>,
+            ];
+            messages: [string[], "messages", StreamMessageOutput];
+            custom: [string[], "custom", StreamCustom];
+            checkpoints: [
+              string[],
+              "checkpoints",
+              StreamCheckpointsOutput<StreamValues>,
+            ];
+            tasks: [
+              string[],
+              "tasks",
+              StreamTasksOutput<StreamUpdates, StreamValues>,
+            ];
+            tools: [string[], "tools", StreamToolsOutput];
+            debug: [string[], "debug", StreamDebugOutput];
+          }[Multiple]
+        : {
+            values: ["values", StreamValues];
+            updates: [
+              "updates",
+              NodeReturnType extends Record<string, unknown>
+                ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+                : Record<Nodes extends string ? Nodes : string, StreamUpdates>,
+            ];
+            messages: ["messages", StreamMessageOutput];
+            custom: ["custom", StreamCustom];
+            checkpoints: ["checkpoints", StreamCheckpointsOutput<StreamValues>];
+            tasks: [
+              "tasks",
+              StreamTasksOutput<StreamUpdates, StreamValues, Nodes>,
+            ];
+            tools: ["tools", StreamToolsOutput];
+            debug: ["debug", StreamDebugOutput];
+          }[Multiple]
+      : (
+            undefined extends TStreamMode ? DefaultStreamMode : TStreamMode
+          ) extends infer Single extends StreamMode
+        ? [TStreamSubgraphs] extends [true]
+          ? {
+              values: [string[], StreamValues];
+              updates: [
+                string[],
+                NodeReturnType extends Record<string, unknown>
+                  ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+                  : Record<
+                      Nodes extends string ? Nodes : string,
+                      StreamUpdates
+                    >,
+              ];
+              messages: [string[], StreamMessageOutput];
+              custom: [string[], StreamCustom];
+              checkpoints: [string[], StreamCheckpointsOutput<StreamValues>];
+              tasks: [
+                string[],
+                StreamTasksOutput<StreamUpdates, StreamValues, Nodes>,
+              ];
+              tools: [string[], StreamToolsOutput];
+              debug: [string[], StreamDebugOutput];
+            }[Single]
+          : {
+              values: StreamValues;
+              updates: NodeReturnType extends Record<string, unknown>
+                ? { [K in keyof NodeReturnType]?: NodeReturnType[K] }
+                : Record<Nodes extends string ? Nodes : string, StreamUpdates>;
+              messages: StreamMessageOutput;
+              custom: StreamCustom;
+              checkpoints: StreamCheckpointsOutput<StreamValues>;
+              tasks: StreamTasksOutput<StreamUpdates, StreamValues, Nodes>;
+              tools: StreamToolsOutput;
+              debug: StreamDebugOutput;
+            }[Single]
+        : never;
 
 /**
  * Configuration options for executing a Pregel graph.
@@ -194,8 +236,8 @@ export interface PregelOptions<
   TSubgraphs extends boolean = boolean,
   TEncoding extends "text/event-stream" | undefined =
     | "text/event-stream"
-    | undefined
-> extends RunnableConfig<ContextType> {
+    | undefined,
+> extends RunnableConfig {
   /**
    * Controls what information is streamed during graph execution.
    * Multiple modes can be enabled simultaneously.
@@ -330,6 +372,15 @@ export interface PregelOptions<
   context?: ContextType;
 
   /**
+   * Optional run control used to request cooperative drain. When
+   * {@link RunControl#requestDrain} is called (e.g. from a SIGTERM handler or
+   * a node), the graph stops at the next superstep boundary, persists its
+   * checkpoint, and throws {@link GraphDrained}. The run can then be resumed
+   * later from the saved checkpoint.
+   */
+  control?: RunControl;
+
+  /**
    * The encoding to use for the stream.
    * - `undefined`: Use the default format.
    * - `"text/event-stream"`: Use the Server-Sent Events format.
@@ -349,7 +400,7 @@ export interface PregelInterface<
   Nodes extends StrRecord<string, PregelNode>,
   Channels extends StrRecord<string, BaseChannel>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ContextType extends Record<string, any> = StrRecord<string, any>
+  ContextType extends Record<string, any> = StrRecord<string, any>,
 > {
   lg_is_pregel: boolean;
 
@@ -405,7 +456,9 @@ export interface PregelInterface<
  */
 export type PregelParams<
   Nodes extends StrRecord<string, PregelNode>,
-  Channels extends StrRecord<string, BaseChannel>
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
 > = {
   /**
    * The name of the graph. @see {@link Runnable.name}
@@ -510,6 +563,13 @@ export type PregelParams<
    * @internal
    */
   userInterrupt?: unknown;
+
+  /**
+   * Stream transformer factories registered at compile time.  These run
+   * automatically for every `streamEvents(..., { version: "v3" })` call,
+   * before any call-site transformers.
+   */
+  streamTransformers?: TStreamTransformers;
 };
 
 export interface PregelTaskDescription {
@@ -530,7 +590,7 @@ interface CacheKey {
 
 export interface PregelExecutableTask<
   NodeKey extends PropertyKey,
-  ChannelKey extends PropertyKey
+  ChannelKey extends PropertyKey,
 > {
   readonly name: NodeKey;
   readonly input: unknown;
@@ -545,6 +605,12 @@ export interface PregelExecutableTask<
   readonly path?: TaskPath;
   readonly subgraphs?: Runnable[];
   readonly writers: Runnable[];
+  /**
+   * The (already coerced) timeout policy to enforce for each attempt of this
+   * task. Resolved from the node's `timeout`, or overridden by a per-task
+   * {@link Send} timeout / functional `Call` timeout.
+   */
+  readonly timeout?: TimeoutPolicy;
 }
 
 export interface StateSnapshot {
@@ -664,6 +730,7 @@ export type CallOptions = {
   input: unknown;
   cache?: CachePolicy;
   retry?: RetryPolicy;
+  timeout?: TimeoutPolicy;
   callbacks?: unknown;
 };
 
@@ -678,16 +745,27 @@ export class Call {
 
   cache?: CachePolicy;
 
+  timeout?: TimeoutPolicy;
+
   callbacks?: unknown;
 
   readonly __lg_type = "call";
 
-  constructor({ func, name, input, retry, cache, callbacks }: CallOptions) {
+  constructor({
+    func,
+    name,
+    input,
+    retry,
+    cache,
+    timeout,
+    callbacks,
+  }: CallOptions) {
     this.func = func;
     this.name = name;
     this.input = input;
     this.retry = retry;
     this.cache = cache;
+    this.timeout = timeout;
     this.callbacks = callbacks;
   }
 }

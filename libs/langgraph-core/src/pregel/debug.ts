@@ -2,6 +2,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import {
   CheckpointMetadata,
   CheckpointPendingWrite,
+  EXCLUDED_METADATA_KEYS,
   PendingWrite,
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
@@ -20,6 +21,7 @@ import {
 } from "./types.js";
 import { readChannels } from "./io.js";
 import { findSubgraphPregel } from "./utils/subgraph.js";
+import { filterToUserTags } from "./utils/config.js";
 
 type ConsoleColors = {
   start: string;
@@ -87,6 +89,30 @@ export function* _readChannels<Value>(
   }
 }
 
+/**
+ * Build the user-meaningful metadata to forward on a task's stream payload.
+ *
+ * Drops langgraph's internal framework keys ({@link EXCLUDED_METADATA_KEYS}) —
+ * which are redundant with the task's own fields and namespace — while keeping
+ * keys like `lc_agent_name`, `ls_integration`, and any user-supplied metadata.
+ * Filtered config tags are folded in under `tags`, mirroring the messages
+ * stream handler. Returns `undefined` when there is nothing to forward.
+ */
+function buildTaskMetadata(
+  config: RunnableConfig | undefined
+): Record<string, unknown> | undefined {
+  if (config == null) return undefined;
+  const metadata: Record<string, unknown> = {};
+  if (config.metadata != null) {
+    for (const [key, value] of Object.entries(config.metadata)) {
+      if (!EXCLUDED_METADATA_KEYS.has(key)) metadata[key] = value;
+    }
+  }
+  const filteredTags = filterToUserTags(config.tags);
+  if (filteredTags != null) metadata.tags = filteredTags;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
   tasks: readonly PregelExecutableTask<N, C>[]
 ) {
@@ -100,7 +126,17 @@ export function* mapDebugTasks<N extends PropertyKey, C extends PropertyKey>(
       .map(([, v]) => {
         return v;
       });
-    yield { id, name, input, triggers, interrupts };
+    const payload: {
+      id: string;
+      name: N;
+      input: unknown;
+      triggers: string[];
+      interrupts: unknown[];
+      metadata?: Record<string, unknown>;
+    } = { id, name, input, triggers, interrupts };
+    const metadata = buildTaskMetadata(config);
+    if (metadata != null) payload.metadata = metadata;
+    yield payload;
   }
 }
 
@@ -133,7 +169,7 @@ function mapTaskResultWrites(writes: PendingWrite<unknown>[]) {
 
 export function* mapDebugTaskResults<
   N extends PropertyKey,
-  C extends PropertyKey
+  C extends PropertyKey,
 >(
   tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
   streamChannels: PropertyKey | Array<PropertyKey>
@@ -159,7 +195,7 @@ type ChannelKey = string | number | symbol;
 
 export function* mapDebugCheckpoint<
   N extends PropertyKey,
-  C extends PropertyKey
+  C extends PropertyKey,
 >(
   config: RunnableConfig,
   channels: Record<string, BaseChannel>,
@@ -174,7 +210,7 @@ export function* mapDebugCheckpoint<
     // https://stackoverflow.com/a/78298178
     type CamelToSnake<
       T extends string,
-      A extends string = ""
+      A extends string = "",
     > = T extends `${infer F}${infer R}`
       ? CamelToSnake<
           R,

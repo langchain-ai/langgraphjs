@@ -1,4 +1,8 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
+import {
+  coerceTimeoutPolicy,
+  type TimeoutPolicy,
+} from "./pregel/utils/timeout.js";
 
 /** Special reserved node name denoting the start of a graph. */
 export const START = "__start__";
@@ -7,9 +11,41 @@ export const END = "__end__";
 export const INPUT = "__input__";
 export const COPY = "__copy__";
 export const ERROR = "__error__";
+/**
+ * Special reserved write key recording the name of the node whose execution
+ * failed, so node-level error handlers see the same failure provenance after a
+ * checkpoint resume. Value format in pending writes:
+ * `[taskId, ERROR_SOURCE_NODE, nodeName: string]`.
+ */
+export const ERROR_SOURCE_NODE = "__error_source_node__";
 
 /** Special reserved cache namespaces */
 export const CACHE_NS_WRITES = "__pregel_ns_writes";
+
+/**
+ * System-wide upper bound on how many supersteps a {@link DeltaChannel} may go
+ * without writing a {@link DeltaSnapshot} blob. Once a channel's
+ * supersteps-since-snapshot counter reaches this value, a snapshot is forced
+ * even if the channel's own `snapshotFrequency` has not been reached — this
+ * prevents unbounded ancestor walks on threads where a delta channel exists
+ * but is no longer being updated.
+ *
+ * Overridable via the `LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`
+ * environment variable. Read lazily so test/runtime overrides take effect.
+ *
+ * @remarks Beta.
+ */
+export function getDeltaMaxSuperstepsSinceSnapshot(): number {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.LANGGRAPH_DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT
+      : undefined;
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 5000;
+}
 
 export const CONFIG_KEY_SEND = "__pregel_send";
 /** config key containing function used to call a node (push task) */
@@ -30,8 +66,17 @@ export const CONFIG_KEY_CHECKPOINT_NS = "checkpoint_ns";
 
 export const CONFIG_KEY_NODE_FINISHED = "__pregel_node_finished";
 
+/**
+ * Config key holding a {@link NodeError} (failed source node + error) for the
+ * current node-level error handler invocation. Injected when an error handler
+ * task is prepared after the failing node's retry policy is exhausted.
+ */
+export const CONFIG_KEY_NODE_ERROR = "__pregel_node_error";
+
 // this one is part of public API
 export const CONFIG_KEY_CHECKPOINT_MAP = "checkpoint_map";
+
+export const CONFIG_KEY_REPLAY_STATE = "__pregel_replay_state";
 
 export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 
@@ -65,6 +110,7 @@ export const RESERVED = [
   INTERRUPT,
   RESUME,
   ERROR,
+  ERROR_SOURCE_NODE,
   NO_WRITES,
 
   // reserved config.configurable keys
@@ -82,13 +128,18 @@ export const RESERVED = [
   CONFIG_KEY_CHECKPOINT_MAP,
   CONFIG_KEY_CHECKPOINT_NS,
   CONFIG_KEY_CHECKPOINT_ID,
+  CONFIG_KEY_REPLAY_STATE,
 ];
 
 export const CHECKPOINT_NAMESPACE_SEPARATOR = "|";
 export const CHECKPOINT_NAMESPACE_END = ":";
 
-/** @internal */
-const COMMAND_SYMBOL = Symbol.for("langgraph.command");
+/**
+ * Symbol used internally to identify Command instances.
+ * Exported to support cross-version type compatibility.
+ * @internal
+ */
+export const COMMAND_SYMBOL = Symbol.for("langgraph.command");
 
 /**
  * Instance of a {@link Command} class.
@@ -101,8 +152,8 @@ const COMMAND_SYMBOL = Symbol.for("langgraph.command");
  */
 export class CommandInstance<
   Resume = unknown,
-  Update extends Record<string, unknown> = Record<string, unknown>,
-  Nodes extends string = string
+  Update = Record<string, unknown>,
+  Nodes extends string = string,
 > {
   [COMMAND_SYMBOL]: CommandParams<Resume, Update, Nodes>;
 
@@ -115,7 +166,21 @@ export class CommandInstance<
 export interface SendInterface<Node extends string = string, Args = any> {
   node: Node;
   args: Args;
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task.
+   */
+  timeout?: TimeoutPolicy;
 }
+
+/** Keyword options for {@link Send}. */
+export type SendOptions = {
+  /**
+   * Per-task timeout policy overriding the target node's timeout for this
+   * pushed task. A bare number is treated as `runTimeout` (milliseconds).
+   */
+  timeout?: number | TimeoutPolicy;
+};
 
 export function _isSendInterface(x: unknown): x is SendInterface {
   const operation = x as SendInterface;
@@ -158,6 +223,14 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  *   });
  * };
  *
+ * @remarks
+ * A per-task timeout can be supplied via the third argument's `timeout` option
+ * to override the target node's configured timeout for this specific pushed task:
+ *
+ * ```typescript
+ * new Send("generate_joke", { subjects: [subject] }, { timeout: { idleTimeout: 5000 } });
+ * ```
+ *
  * const graph = new StateGraph(ChainState)
  *   .addNode("generate_joke", (state) => ({
  *     jokes: [`Joke about ${state.subjects}`],
@@ -174,28 +247,159 @@ export function _isSendInterface(x: unknown): x is SendInterface {
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class Send<Node extends string = string, Args = any>
-  implements SendInterface<Node, Args>
-{
+export class Send<
+  Node extends string = string,
+  Args = any,
+> implements SendInterface<Node, Args> {
   lg_name = "Send";
 
   public node: Node;
 
   public args: Args;
 
-  constructor(node: Node, args: Args) {
+  /**
+   * Optional per-task timeout policy that overrides the target node's timeout
+   * for this specific pushed task. A bare number is treated as a hard
+   * `runTimeout` (in milliseconds).
+   */
+  public timeout?: TimeoutPolicy;
+
+  constructor(node: Node, args: Args, options?: SendOptions) {
     this.node = node;
     this.args = _deserializeCommandSendObjectGraph(args) as Args;
+    this.timeout = coerceTimeoutPolicy(options?.timeout);
   }
 
   toJSON() {
-    return { lg_name: this.lg_name, node: this.node, args: this.args };
+    return {
+      lg_name: this.lg_name,
+      node: this.node,
+      args: this.args,
+      timeout: this.timeout,
+    };
   }
 }
 
 export function _isSend(x: unknown): x is Send {
   // eslint-disable-next-line no-instanceof/no-instanceof
   return x instanceof Send;
+}
+
+export const OVERWRITE = "__overwrite__";
+
+/**
+ * An object representing a direct overwrite of a value for a channel.
+ * Used to signal that the channel value should be replaced with the given value,
+ * bypassing any reducer or binary operator logic.
+ *
+ * @template ValueType - The type of the value being overwritten.
+ * @property {ValueType} [OVERWRITE] - The value to directly set.
+ *
+ * @example
+ * const overwriteObj: OverwriteValue<number> = { __overwrite__: 123 };
+ */
+export interface OverwriteValue<ValueType> {
+  [OVERWRITE]: ValueType;
+}
+
+/**
+ * Bypass a reducer and write the wrapped value directly to a
+ * {@link BinaryOperatorAggregate} channel.
+ *
+ * Receiving multiple `Overwrite` values for the same channel in a single
+ * super-step will raise an {@link InvalidUpdateError}.
+ *
+ * @example
+ * ```typescript
+ * import { Annotation, StateGraph, Overwrite } from "@langchain/langgraph";
+ *
+ * const State = Annotation.Root({
+ *   messages: Annotation<string[]>({
+ *     reducer: (a, b) => a.concat(b),
+ *     default: () => [],
+ *   }),
+ * });
+ *
+ * const replaceMessages = (_state: typeof State.State) => {
+ *   return { messages: new Overwrite(["replacement"]) };
+ * };
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Overwrite<ValueType = any> implements OverwriteValue<ValueType> {
+  lg_name = "Overwrite";
+
+  readonly [OVERWRITE]: ValueType;
+
+  constructor(value: ValueType) {
+    this[OVERWRITE] = value;
+  }
+
+  get value(): ValueType {
+    return this[OVERWRITE];
+  }
+
+  toJSON() {
+    return { [OVERWRITE]: this[OVERWRITE] };
+  }
+
+  static isInstance<ValueType>(value: unknown): value is Overwrite<ValueType> {
+    if (!value || typeof value !== "object") return false;
+    if (OVERWRITE in value) return true;
+    if ("lg_name" in value && value.lg_name === "Overwrite") return true;
+    return false;
+  }
+}
+
+/**
+ * Helper function to detect and extract the value from an Overwrite wrapper,
+ * supporting both the Overwrite class instance and the serialized object format.
+ *
+ * Use to check if a provided value represents an Overwrite: returns the
+ * unwrapped value if so, or undefined otherwise.
+ *
+ * - If the value is an Overwrite instance (preferred API), return its `.value`.
+ * - If the value is a wire-format object ({ [OVERWRITE]: value }), extract it.
+ * - If the value is the discriminator form ({ type: OVERWRITE, value }) that
+ *   results from JSON-serializing a typed `Overwrite` in another runtime (e.g.
+ *   a Python dataclass routed through the LangGraph API server, where the typed
+ *   instance is erased), extract it. Keeps Overwrite semantics intact across
+ *   cross-runtime JSON boundaries.
+ * - Otherwise, returns undefined.
+ *
+ * @template ValueType - The expected type of the Overwrite value.
+ * @param value - The value to check (may be anything).
+ * @returns The unwrapped value if value is an Overwrite, or undefined otherwise.
+ * @internal
+ */
+export function _getOverwriteValue<ValueType>(
+  value: unknown
+): [true, ValueType] | [false, undefined] {
+  if (typeof value === "object" && value !== null) {
+    if (OVERWRITE in value) {
+      return [true, (value as Record<string, ValueType>)[OVERWRITE]];
+    }
+    const rec = value as Record<string, unknown>;
+    if (rec.type === OVERWRITE && "value" in rec) {
+      return [true, rec.value as ValueType];
+    }
+  }
+  return [false, undefined];
+}
+
+/**
+ * Type guard to check if a value is an Overwrite value -- either the class
+ * instance or the wire format object.
+ *
+ * @template ValueType - The expected type of the Overwrite value.
+ * @param value - The value to check (may be anything).
+ * @returns `true` if the value is an Overwrite value, `false` otherwise.
+ * @internal
+ */
+export function _isOverwriteValue<ValueType>(
+  value: unknown
+): value is OverwriteValue<ValueType> {
+  return _getOverwriteValue<ValueType>(value)[0];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -230,8 +434,8 @@ export function isInterrupted<Value = unknown>(
 
 export type CommandParams<
   Resume = unknown,
-  Update extends Record<string, unknown> = Record<string, unknown>,
-  Nodes extends string = string
+  Update = Record<string, unknown>,
+  Nodes extends string = string,
 > = {
   /**
    * A discriminator field used to identify the type of object. Must be populated when serializing.
@@ -336,7 +540,7 @@ export type CommandParams<
 export class Command<
   Resume = unknown,
   Update extends Record<string, unknown> = Record<string, unknown>,
-  Nodes extends string = string
+  Nodes extends string = string,
 > extends CommandInstance<Resume, Update, Nodes> {
   readonly lg_name = "Command";
 
@@ -459,6 +663,11 @@ export function isCommand(x: unknown): x is Command {
   return false;
 }
 
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /**
  * Reconstructs Command and Send objects from a deeply nested tree of anonymous objects
  * matching their interfaces.
@@ -498,15 +707,18 @@ export function _deserializeCommandSendObjectGraph(
         );
       });
       // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (isCommand(x) && !(x instanceof Command)) {
+    } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
+      result = x;
+      seen.set(x, result);
+    } else if (isCommand(x)) {
       result = new Command(x);
       seen.set(x, result);
-      // eslint-disable-next-line no-instanceof/no-instanceof
-    } else if (_isSendInterface(x) && !(x instanceof Send)) {
-      result = new Send(x.node, x.args);
-      seen.set(x, result);
-    } else if (isCommand(x) || _isSend(x)) {
-      result = x;
+    } else if (_isSendInterface(x)) {
+      result = new Send(
+        x.node,
+        x.args,
+        x.timeout !== undefined ? { timeout: x.timeout } : undefined
+      );
       seen.set(x, result);
     } else if ("lc_serializable" in x && x.lc_serializable) {
       result = x;

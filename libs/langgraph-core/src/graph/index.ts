@@ -7,17 +7,44 @@ export {
   type StateDefinition,
   type SingleReducer,
 } from "./annotation.js";
-export { Graph, type CompiledGraph } from "./graph.js";
+export {
+  Graph,
+  type CompiledGraph,
+  type CompiledGraphType,
+  type NodeSpec,
+  type AddNodeOptions,
+  type NodeErrorHandler,
+  type NodeErrorHandlerReturnValue,
+} from "./graph.js";
 export {
   type StateGraphArgs,
   StateGraph,
   CompiledStateGraph,
+  type StateGraphNodeSpec,
+  type StateGraphAddNodeOptions,
+  type NodePolicyOptions,
+  type StateGraphArgsWithStateSchema,
+  type StateGraphArgsWithInputOutputSchemas,
 } from "./state.js";
+export { MessageGraph, pushMessage } from "./message.js";
 export {
-  MessageGraph,
   messagesStateReducer,
-  pushMessage,
+  messagesDeltaReducer,
   REMOVE_ALL_MESSAGES,
   type Messages,
-} from "./message.js";
-export { CommandInstance, CommandParams } from "../constants.js";
+} from "./messages_reducer.js";
+export { CommandInstance, type CommandParams } from "../constants.js";
+export type {
+  StateDefinitionInit,
+  ContextSchemaInit,
+  StateGraphInit,
+  StateGraphOptions,
+  ExtractStateType,
+  ExtractUpdateType,
+  ToStateDefinition,
+  GraphNode,
+  GraphNodeTypes,
+  GraphNodeReturnValue,
+  ConditionalEdgeRouter,
+  ConditionalEdgeRouterTypes,
+} from "./types.js";

@@ -3,6 +3,8 @@ import {
   Checkpoint,
   CheckpointTuple,
   emptyCheckpoint,
+  INTERRUPT,
+  RESUME,
   TASKS,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -11,7 +13,7 @@ import { SqliteSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
   v: 1,
-  id: uuid6(-1),
+  id: uuid6(0),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue1",
@@ -145,6 +147,122 @@ describe("SqliteSaver", () => {
 
     const checkpointTuple1 = checkpointTuples[0];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
+  });
+
+  it("should preserve INTERRUPT/RESUME writes at fixed negative indices and not clobber prior regular writes", async () => {
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+    // Persist a checkpoint first so that getTuple can resolve and dump back
+    // the writes we attached to it via putWrites.
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      id: uuid6(1),
+      ts: "2024-04-19T17:19:07.952Z",
+    };
+    const savedConfig = await sqliteSaver.put(
+      { configurable: { thread_id: "t1" } },
+      checkpoint,
+      {
+        source: "input",
+        step: -1,
+        parents: {},
+      } as Parameters<typeof sqliteSaver.put>[2]
+    );
+    const config: RunnableConfig = {
+      configurable: {
+        thread_id: "t1",
+        checkpoint_ns: savedConfig.configurable!.checkpoint_ns,
+        checkpoint_id: checkpoint.id,
+      },
+    };
+
+    // 1. Task A stores two regular writes (idx 0 and 1).
+    await sqliteSaver.putWrites(
+      config,
+      [
+        ["foo", "val_foo"],
+        ["bar", "val_bar"],
+      ],
+      "task_A"
+    );
+
+    // 2. Task A then signals an INTERRUPT for the same checkpoint.
+    //    Previously this would have been stored at idx=0 (it's the first write
+    //    in the new putWrites call) and silently REPLACEd the row above, since
+    //    the table is keyed by (thread_id, checkpoint_ns, checkpoint_id,
+    //    task_id, idx). With WRITES_IDX_MAP it lands at idx=-3 instead.
+    await sqliteSaver.putWrites(config, [[INTERRUPT, "paused"]], "task_A");
+
+    // 3. Task A is later resumed; RESUME also has a fixed idx (-4) and is
+    //    allowed to overwrite the prior RESUME for the same task — but it
+    //    must not collide with anything else.
+    await sqliteSaver.putWrites(config, [[RESUME, "carry_on"]], "task_A");
+
+    // 4. A concurrent Task B stores a regular write of its own. Its idx=0
+    //    must not overwrite Task A's INTERRUPT/RESUME, and conversely it
+    //    must not be ignored just because some other task happened to use
+    //    idx=0.
+    await sqliteSaver.putWrites(config, [["baz", "val_baz"]], "task_B");
+
+    // Round-trip through getTuple so we exercise the same row layout consumers
+    // see; pendingWrites is [taskId, channel, value][] in put order.
+    const tuple = await sqliteSaver.getTuple(config);
+    const writes = tuple?.pendingWrites?.map(
+      ([taskId, channel]) => `${taskId}:${channel}`
+    );
+
+    // All four logical writes from Task A plus Task B's write must survive.
+    expect(new Set(writes)).toEqual(
+      new Set([
+        "task_A:foo",
+        "task_A:bar",
+        "task_A:__interrupt__",
+        "task_A:__resume__",
+        "task_B:baz",
+      ])
+    );
+  });
+
+  it("should filter on arbitrary metadata keys, not just CheckpointMetadata keys", async () => {
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+
+    const put = (id: string, tenant: string, env: string) =>
+      sqliteSaver.put(
+        { configurable: { thread_id: id } },
+        {
+          ...emptyCheckpoint(),
+          id: uuid6(parseInt(id, 10)),
+          ts: `2024-06-08T0${id}:00:00.000Z`,
+        },
+        {
+          source: "update",
+          step: 0,
+          parents: {},
+          // arbitrary user-defined keys that other checkpointers
+          // (MongoDB / Postgres / Redis) all support
+          tenant_id: tenant,
+          env,
+        } as Parameters<typeof sqliteSaver.put>[2]
+      );
+
+    await put("1", "acme", "prod");
+    await put("2", "acme", "dev");
+    await put("3", "globex", "prod");
+
+    const collect = async (
+      filter: Record<string, unknown>
+    ): Promise<CheckpointTuple[]> => {
+      const tuples: CheckpointTuple[] = [];
+      for await (const t of sqliteSaver.list({} as RunnableConfig, { filter })) {
+        tuples.push(t);
+      }
+      return tuples;
+    };
+
+    const ids = (tuples) => tuples.map(t => t.config.configurable?.thread_id).sort();
+    expect(ids(await collect({ tenant_id: "acme" }))).toEqual(["1", "2"]);
+    expect((await collect({ env: "prod" })).length).toBe(2);
+    expect((await collect({ tenant_id: "acme", env: "prod" })).length).toBe(1);
+    expect((await collect({ tenant_id: "missing" })).length).toBe(0);
   });
 
   it("should delete thread", async () => {

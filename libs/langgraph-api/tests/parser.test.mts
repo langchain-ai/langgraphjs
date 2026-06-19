@@ -1,7 +1,191 @@
 import { describe, expect, test } from "vitest";
+import { z } from "zod/v4";
+import { z as z3 } from "zod/v3";
 
 import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
+import { getRuntimeGraphSchema } from "../src/graph/parser/index.mjs";
 import dedent from "dedent";
+import { StateGraph, StateSchema, ReducedValue } from "@langchain/langgraph";
+import { withLangGraph } from "@langchain/langgraph/zod";
+
+describe("getRuntimeGraphSchema", () => {
+  describe("StateSchema extraction", () => {
+    test("extracts schema from StateSchema with plain fields", async () => {
+      const AgentState = new StateSchema({
+        name: z.string(),
+        count: z.number().default(0),
+      });
+
+      const graph = new StateGraph(AgentState)
+        .addNode("node", () => ({ count: 1 }))
+        .addEdge("__start__", "node")
+        .addEdge("node", "__end__")
+        .compile();
+
+      const schema = await getRuntimeGraphSchema(graph);
+
+      expect(schema).toBeDefined();
+      expect(schema?.state).toMatchObject({
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          count: { type: "number" },
+        },
+      });
+      expect(schema?.input).toMatchObject({
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          count: { type: "number" },
+        },
+      });
+    });
+
+    test("extracts schema from StateSchema with ReducedValue and jsonSchemaExtra", async () => {
+      const AgentState = new StateSchema({
+        messages: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+            jsonSchemaExtra: {
+              langgraph_type: "messages",
+            },
+          }
+        ),
+        count: z.number().default(0),
+      });
+
+      const graph = new StateGraph(AgentState)
+        .addNode("node", () => ({ count: 1 }))
+        .addEdge("__start__", "node")
+        .addEdge("node", "__end__")
+        .compile();
+
+      const schema = await getRuntimeGraphSchema(graph);
+
+      expect(schema).toBeDefined();
+      // State schema should have the full output type (array)
+      expect(schema?.state?.properties?.messages).toMatchObject({
+        type: "array",
+        items: { type: "string" },
+        langgraph_type: "messages",
+      });
+      // Input schema should have the reducer input type (string)
+      expect(schema?.input?.properties?.messages).toMatchObject({
+        type: "string",
+      });
+    });
+  });
+
+  describe("Zod registry extraction", () => {
+    test("extracts schema from Zod with withLangGraph", async () => {
+      // Note: withLangGraph stores metadata in a global schemaMetaRegistry.
+      // In test environments, module instance isolation may prevent the registry
+      // from being shared, causing fallback to direct Zod extraction.
+      // This test verifies that we still get a valid schema either way.
+      const schema = z3.object({
+        messages: withLangGraph(z3.array(z3.string()), {
+          reducer: {
+            schema: z3.string(),
+            fn: (a: string[], b: string) => [...a, b],
+          },
+          default: () => [],
+          jsonSchemaExtra: {
+            langgraph_type: "messages",
+          },
+        }),
+        count: z3.number().default(0),
+      });
+
+      const graph = new StateGraph(schema)
+        .addNode("node", () => ({ count: 1 }))
+        .addEdge("__start__", "node")
+        .addEdge("node", "__end__")
+        .compile();
+
+      // Verify schema is stored on the graph
+      const builder = (
+        graph as unknown as { builder: { _schemaRuntimeDefinition: unknown } }
+      ).builder;
+      expect(builder._schemaRuntimeDefinition).toBeDefined();
+
+      const result = await getRuntimeGraphSchema(graph);
+
+      // We should get a schema from either Zod registry or direct extraction
+      expect(result).toBeDefined();
+      expect(result?.state?.type).toBe("object");
+      expect(result?.state?.properties?.messages).toBeDefined();
+      expect(result?.state?.properties?.count).toBeDefined();
+    });
+  });
+
+  describe("Direct Zod extraction fallback", () => {
+    test("extracts schema from plain Zod without registry", async () => {
+      // Create a graph with plain Zod schema (no withLangGraph)
+      const schema = z.object({
+        name: z.string(),
+        value: z.number(),
+      });
+
+      const graph = new StateGraph(schema)
+        .addNode("node", () => ({ value: 42 }))
+        .addEdge("__start__", "node")
+        .addEdge("node", "__end__")
+        .compile();
+
+      const result = await getRuntimeGraphSchema(graph);
+
+      expect(result).toBeDefined();
+      expect(result?.state).toMatchObject({
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          value: { type: "number" },
+        },
+      });
+    });
+  });
+
+  describe("priority order", () => {
+    test("prefers StateSchema over Zod", async () => {
+      // StateSchema should be detected first
+      const AgentState = new StateSchema({
+        messages: new ReducedValue(
+          z.array(z.string()).default(() => []),
+          {
+            inputSchema: z.string(),
+            reducer: (current: string[], next: string) => [...current, next],
+            jsonSchemaExtra: {
+              langgraph_type: "messages",
+              source: "stateschema",
+            },
+          }
+        ),
+      });
+
+      const graph = new StateGraph(AgentState)
+        .addNode("node", () => ({}))
+        .addEdge("__start__", "node")
+        .addEdge("node", "__end__")
+        .compile();
+
+      const result = await getRuntimeGraphSchema(graph);
+
+      expect(result).toBeDefined();
+      // Should have the StateSchema's jsonSchemaExtra
+      expect(result?.state?.properties?.messages).toMatchObject({
+        langgraph_type: "messages",
+        source: "stateschema",
+      });
+    });
+  });
+
+  test("returns undefined for graph without builder", async () => {
+    const result = await getRuntimeGraphSchema({} as any);
+    expect(result).toBeUndefined();
+  });
+});
 
 test.concurrent("graph factories", { timeout: 30_000 }, () => {
   const MessagesSchema = {
@@ -10,12 +194,14 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
       messages: {
         type: "array",
         items: {
-          $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+          $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
         },
       },
     },
     definitions: {
-      "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+      "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+        type: "object",
+      },
     },
     $schema: "http://json-schema.org/draft-07/schema#",
   };
@@ -137,12 +323,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+            type: "object",
+          },
         },
         $schema: "http://json-schema.org/draft-07/schema#",
       });
@@ -157,12 +345,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": {
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
             type: "object",
           },
         },
@@ -179,12 +367,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
             },
           },
         },
         definitions: {
-          "BaseMessage<MessageStructure,MessageType>": {
+          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
             type: "object",
           },
         },
@@ -267,12 +455,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -289,12 +477,14 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": { type: "object" },
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
+          type: "object",
+        },
       },
       $schema: "http://json-schema.org/draft-07/schema#",
     });
@@ -309,12 +499,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -460,12 +650,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -482,12 +672,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -504,12 +694,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -592,12 +782,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -614,12 +804,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -636,12 +826,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -714,12 +904,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -736,12 +926,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -758,12 +948,12 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
       },
       definitions: {
-        "BaseMessage<MessageStructure,MessageType>": {
+        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
           type: "object",
         },
       },
@@ -1026,7 +1216,7 @@ test.concurrent("`strictFunctionTypes: false`", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure,MessageType>",
+            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
           },
         },
         state: { type: "string" },

@@ -1,5 +1,4 @@
-import { configDefaults, defineConfig } from "vitest/config";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig(() => {
   /** @type {import("vitest/config").UserConfigExport} */

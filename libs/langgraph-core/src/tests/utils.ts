@@ -24,7 +24,7 @@ import {
   CacheFullKey,
   InMemoryCache,
 } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { BaseTracer, Run } from "@langchain/core/tracers/base";
 import { Pregel, PregelInputType, PregelOutputType } from "../pregel/index.js";
 import { StrRecord } from "../pregel/algo.js";
@@ -245,6 +245,13 @@ export class _AnyIdToolMessage extends ToolMessage {
     super({
       id: expect.any(String) as unknown as string,
       ...fields,
+      ...(fields.metadata != null
+        ? {
+            metadata: expect.objectContaining(
+              fields.metadata
+            ) as unknown as Record<string, unknown>,
+          }
+        : {}),
     });
   }
 }

@@ -394,6 +394,7 @@ Under the hood, checkpointing is powered by checkpointer objects that conform to
 * `@langchain/langgraph-checkpoint`: The base interface for checkpointer savers ([BaseCheckpointSaver](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html)) and serialization/deserialization interface ([SerializerProtocol](/langgraphjs/reference/interfaces/checkpoint.SerializerProtocol.html)). Includes in-memory checkpointer implementation ([MemorySaver](/langgraphjs/reference/classes/checkpoint.MemorySaver.html)) for experimentation. LangGraph comes with `@langchain/langgraph-checkpoint` included.
 * `@langchain/langgraph-checkpoint-sqlite`: An implementation of LangGraph checkpointer that uses SQLite database ([SqliteSaver](/langgraphjs/reference/classes/checkpoint_sqlite.SqliteSaver.html)). Ideal for experimentation and local workflows. Needs to be installed separately.
 * `@langchain/langgraph-checkpoint-postgres`: An advanced checkpointer that uses a Postgres database ([PostgresSaver](/langgraphjs/reference/classes/checkpoint_postgres.PostgresSaver.html)), used in LangGraph Cloud. Ideal for using in production. Needs to be installed separately.
+* `@langchain/langgraph-checkpoint-mongodb`: Another advanced checkpointer that uses a MongoDB database ([MongoDBSaver](/langgraphjs/reference/classes/checkpoint_mongodb.MongoDBSaver.html)). Can be used with [MongoDB Atlas](https://www.mongodb.com/products/platform/atlas-database) in production. Needs to be installed separately.
 
 ### Checkpointer interface
 

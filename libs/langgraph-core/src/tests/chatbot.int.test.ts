@@ -10,7 +10,7 @@ import {
 import { z } from "zod/v3";
 import { tool } from "@langchain/core/tools";
 import { END, MessageGraph, START } from "../index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 
 const calculator = tool((args) => args.a + args.b, {
   name: "calculator",

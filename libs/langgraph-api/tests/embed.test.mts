@@ -94,6 +94,9 @@ const threads = (() => {
 const server = createEmbedServer({
   graph: {
     agent: await import("./graphs/agent.mjs").then((m) => m.graph),
+    agent_with_tools: await import("./graphs/agent_with_tools.mjs").then(
+      (m) => m.graph
+    ),
     nested: await import("./graphs/nested.mjs").then((m) => m.graph),
     weather: await import("./graphs/weather.mjs").then((m) => m.graph),
     error: await import("./graphs/error.mjs").then((m) => m.graph),
@@ -579,7 +582,7 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    let chunks = await gatherIterator(
+    const chunks = await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         input: {
           messages: [{ role: "human", content: "SF", id: "initial-message" }],
@@ -642,7 +645,7 @@ describe("subgraphs", () => {
       },
     ]);
 
-    let state = await client.threads.getState(thread.thread_id);
+    const state = await client.threads.getState(thread.thread_id);
     expect(state.next).toEqual(["weather_graph"]);
     expect(state.tasks).toEqual([
       {
@@ -732,10 +735,20 @@ describe("subgraphs", () => {
     expect(continueMessages.length).toBe(2);
     expect(continueMessages[0].content).toBe("SF");
     expect(continueMessages[1].content).toBe("It's sunny in San Francisco!");
+    const checkpointEnvelope = {
+      id: expect.any(String),
+      parent_id: expect.any(String),
+      step: expect.any(Number),
+      source: expect.any(String),
+    };
     expect(chunksSubgraph).toEqual([
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
+      },
+      {
+        event: "checkpoints",
+        data: checkpointEnvelope,
       },
       {
         event: "values",
@@ -751,6 +764,10 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
+      },
+      {
+        event: expect.stringMatching(/^checkpoints\|weather_graph:/),
+        data: checkpointEnvelope,
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -784,6 +801,10 @@ describe("subgraphs", () => {
             ],
           },
         },
+      },
+      {
+        event: expect.stringMatching(/^checkpoints\|weather_graph:/),
+        data: checkpointEnvelope,
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -833,6 +854,10 @@ describe("subgraphs", () => {
             ],
           },
         },
+      },
+      {
+        event: "checkpoints",
+        data: checkpointEnvelope,
       },
       {
         event: "values",
@@ -963,7 +988,7 @@ describe("subgraphs", () => {
   it.concurrent("interrupt inside node", async () => {
     const graphId = "agent";
 
-    let thread = await client.threads.create();
+    const thread = await client.threads.create();
     await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         input: {
@@ -1025,7 +1050,7 @@ describe("command update state", () => {
       })
     );
 
-    let stream = await gatherIterator(
+    const stream = await gatherIterator(
       client.runs.stream(thread.thread_id, graphId, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
         config: globalConfig,
@@ -1033,7 +1058,7 @@ describe("command update state", () => {
     );
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    let state = await client.threads.getState<StateSchema>(thread.thread_id);
+    const state = await client.threads.getState<StateSchema>(thread.thread_id);
     expect(state.values).toMatchObject({ keyOne: "value3", keyTwo: "value4" });
   });
 
@@ -1327,6 +1352,31 @@ it("tasks / checkpoints stream mode", async () => {
       },
     },
   ]);
+});
+
+it("tools stream mode emits tool lifecycle events", async () => {
+  const thread = await client.threads.create();
+
+  const stream = await gatherIterator(
+    client.runs.stream(thread.thread_id, "agent_with_tools", {
+      input: { messages: [{ role: "human", content: "input" }] },
+      streamMode: ["values", "tools"],
+      config: globalConfig,
+    })
+  );
+
+  const toolsEvents = stream.filter(
+    (e) =>
+      (e.event === "tools" || String(e.event).startsWith("tools|")) &&
+      typeof e.data === "object" &&
+      e.data != null &&
+      "event" in e.data
+  );
+
+  expect(toolsEvents.length).toBeGreaterThanOrEqual(1);
+  const events = toolsEvents.map((e) => (e.data as { event: string }).event);
+  expect(events).toContain("on_tool_start");
+  expect(events).toContain("on_tool_end");
 });
 
 describe("runtime API", () => {

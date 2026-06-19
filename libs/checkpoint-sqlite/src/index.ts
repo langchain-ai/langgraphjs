@@ -9,6 +9,7 @@ import {
   type PendingWrite,
   type CheckpointMetadata,
   TASKS,
+  WRITES_IDX_MAP,
   copyCheckpoint,
   maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
@@ -35,33 +36,6 @@ interface PendingSendColumn {
   type: string;
   value: string;
 }
-
-// In the `SqliteSaver.list` method, we need to sanitize the `options.filter` argument to ensure it only contains keys
-// that are part of the `CheckpointMetadata` type. The lines below ensure that we get compile-time errors if the list
-// of keys that we use is out of sync with the `CheckpointMetadata` type.
-const checkpointMetadataKeys = ["source", "step", "parents"] as const;
-
-type CheckKeys<T, K extends readonly (keyof T)[]> = [K[number]] extends [
-  keyof T
-]
-  ? [keyof T] extends [K[number]]
-    ? K
-    : never
-  : never;
-
-function validateKeys<T, K extends readonly (keyof T)[]>(
-  keys: CheckKeys<T, K>
-): K {
-  return keys;
-}
-
-// If this line fails to compile, the list of keys that we use in the `SqliteSaver.list` method is out of sync with the
-// `CheckpointMetadata` type. In that case, just update `checkpointMetadataKeys` to contain all the keys in
-// `CheckpointMetadata`
-const validCheckpointMetadataKeys = validateKeys<
-  CheckpointMetadata,
-  typeof checkpointMetadataKeys
->(checkpointMetadataKeys);
 
 function prepareSql(db: DatabaseType, checkpointId: boolean) {
   const sql = `
@@ -314,16 +288,12 @@ CREATE TABLE IF NOT EXISTS writes (
     }
 
     const sanitizedFilter = Object.fromEntries(
-      Object.entries(filter ?? {}).filter(
-        ([key, value]) =>
-          value !== undefined &&
-          validCheckpointMetadataKeys.includes(key as keyof CheckpointMetadata)
-      )
+      Object.entries(filter ?? {}).filter(([, value]) => value !== undefined)
     );
 
     whereClause.push(
-      ...Object.entries(sanitizedFilter).map(
-        ([key]) => `jsonb(CAST(metadata AS TEXT))->'$.${key}' = ?`
+      ...Object.keys(sanitizedFilter).map(
+        () => `jsonb(CAST(metadata AS TEXT))->? = ?`
       )
     );
 
@@ -342,7 +312,10 @@ CREATE TABLE IF NOT EXISTS writes (
       thread_id,
       checkpoint_ns,
       before?.configurable?.checkpoint_id,
-      ...Object.values(sanitizedFilter).map((value) => JSON.stringify(value)),
+      ...Object.entries(sanitizedFilter).flatMap(([key, value]) => [
+        `$.${key}`,
+        JSON.stringify(value),
+      ]),
     ].filter((value) => value !== undefined && value !== null);
 
     const rows: CheckpointRow[] = this.db
@@ -485,9 +458,19 @@ CREATE TABLE IF NOT EXISTS writes (
       throw new Error("Missing checkpoint_id field in config.configurable.");
     }
 
+    // Conflict resolution matches the Python SQLite checkpointer and the
+    // langgraph-checkpoint contract (BaseCheckpointSaver.put_writes):
+    //   - When every write targets a special channel (ERROR / SCHEDULED /
+    //     INTERRUPT / RESUME, each pinned to a negative `idx` by
+    //     WRITES_IDX_MAP), we REPLACE so e.g. INTERRUPT can be overwritten on
+    //     RESUME.
+    //   - Otherwise we IGNORE so a regular write from one task can never
+    //     clobber a regular write that another concurrent task already stored
+    //     at the same (task_id, idx).
+    const allSpecial = writes.every(([channel]) => channel in WRITES_IDX_MAP);
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO writes 
-      (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value) 
+      INSERT ${allSpecial ? "OR REPLACE" : "OR IGNORE"} INTO writes
+      (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
@@ -505,7 +488,10 @@ CREATE TABLE IF NOT EXISTS writes (
           config.configurable?.checkpoint_ns,
           config.configurable?.checkpoint_id,
           taskId,
-          idx,
+          // Special channels are stored at fixed negative indices so they
+          // never collide with regular per-step writes (whose `idx` is the
+          // ordinal within `writes`).
+          WRITES_IDX_MAP[write[0]] ?? idx,
           write[0],
           type,
           serializedWrite,

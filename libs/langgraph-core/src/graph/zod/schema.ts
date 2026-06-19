@@ -8,15 +8,20 @@ import {
   SchemaMetaRegistry,
   schemaMetaRegistry,
 } from "./meta.js";
+import { StateSchema, type AnyStateSchema } from "../../state/schema.js";
 
 const PartialStateSchema = Symbol.for("langgraph.state.partial");
 type PartialStateSchema = typeof PartialStateSchema;
 
 interface GraphWithZodLike {
   builder: {
-    _schemaRuntimeDefinition: InteropZodObject | undefined;
-    _inputRuntimeDefinition: InteropZodObject | PartialStateSchema | undefined;
-    _outputRuntimeDefinition: InteropZodObject | undefined;
+    _schemaRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
+    _inputRuntimeDefinition:
+      | InteropZodObject
+      | AnyStateSchema
+      | PartialStateSchema
+      | undefined;
+    _outputRuntimeDefinition: InteropZodObject | AnyStateSchema | undefined;
     _configRuntimeSchema: InteropZodObject | undefined;
   };
 }
@@ -80,6 +85,7 @@ export function getStateTypeSchema(
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
+  if (StateSchema.isInstance(schemaDef)) return schemaDef.getJsonSchema();
 
   return toJsonSchema(
     registry.getExtendedChannelSchemas(schemaDef, {
@@ -100,6 +106,7 @@ export function getUpdateTypeSchema(
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._schemaRuntimeDefinition;
   if (!schemaDef) return undefined;
+  if (StateSchema.isInstance(schemaDef)) return schemaDef.getInputJsonSchema();
 
   return toJsonSchema(
     registry.getExtendedChannelSchemas(schemaDef, {
@@ -126,6 +133,7 @@ export function getInputTypeSchema(
     schemaDef = graph.builder._schemaRuntimeDefinition;
   }
   if (!schemaDef) return undefined;
+  if (StateSchema.isInstance(schemaDef)) return schemaDef.getInputJsonSchema();
 
   return toJsonSchema(
     registry.getExtendedChannelSchemas(schemaDef, {
@@ -148,6 +156,7 @@ export function getOutputTypeSchema(
   if (!isGraphWithZodLike(graph)) return undefined;
   const schemaDef = graph.builder._outputRuntimeDefinition;
   if (!schemaDef) return undefined;
+  if (StateSchema.isInstance(schemaDef)) return schemaDef.getJsonSchema();
 
   return toJsonSchema(
     registry.getExtendedChannelSchemas(schemaDef, {

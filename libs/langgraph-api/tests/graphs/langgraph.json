@@ -8,7 +8,10 @@
     "delay": "./delay.mts:graph",
     "dynamic": "./dynamic.mts:graph",
     "agent_simple": "./agent_simple.mts:graph",
-    "simple_runtime": "./simple_runtime.mts:graph"
+    "simple_runtime": "./simple_runtime.mts:graph",
+    "state_schema_graph": "./state_schema_graph.mts:graph",
+    "zod_registry_graph": "./zod_registry_graph.mts:graph",
+    "plain_zod_graph": "./plain_zod_graph.mts:graph"
   },
   "ui": {
     "agent-alias": "./agent/ui.tsx"

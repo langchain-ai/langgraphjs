@@ -12,7 +12,7 @@ import { Annotation } from "../graph/annotation.js";
 import { gatherIterator } from "../utils.js";
 import { StreamMode } from "../pregel/types.js";
 import { task, entrypoint } from "../func/index.js";
-import { initializeAsyncLocalStorageSingleton } from "../setup/async_local_storage.js";
+import { initializeAsyncLocalStorageSingleton } from "../node.js";
 import { Command, END, INTERRUPT, isInterrupted, START } from "../constants.js";
 import { withLangGraph } from "../graph/zod/meta.js";
 import { Runtime } from "../pregel/runnable_types.js";
@@ -197,6 +197,7 @@ it("state graph annotation", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | ["tools", Record<string, unknown>]
     )[]
   >();
 
@@ -238,7 +239,6 @@ it("state graph configurable", async () => {
 
   await graph.invoke({ foo: "bar" }, { configurable: { modelName: "valid" } });
 
-  // @ts-expect-error - Invalid configurable value
   await graph.invoke({ foo: "bar" }, { configurable: { modelName: 123 } });
 
   const graphZod = new StateGraph(
@@ -273,7 +273,6 @@ it("state graph configurable", async () => {
   );
 
   await expect(
-    // @ts-expect-error - Invalid configurable value
     graphZod.invoke({ foo: "bar" }, { configurable: { modelName: 123 } })
   ).rejects.toThrow("Expected string, received number");
 });
@@ -493,6 +492,7 @@ it("state graph zod", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | ["tools", Record<string, unknown>]
     )[]
   >();
 
@@ -530,6 +530,7 @@ it("state graph zod", async () => {
             | { result: [string, unknown][] }
           )
         ]
+      | [string[], "tools", Record<string, unknown>]
     )[]
   >();
 });

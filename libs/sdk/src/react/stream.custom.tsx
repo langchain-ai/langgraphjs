@@ -5,24 +5,27 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
 import type {
-  BagTemplate,
   GetUpdateType,
   GetCustomEventType,
   GetInterruptType,
-  RunCallbackMeta,
+  GetToolCallsType,
   GetConfigurableType,
-  UseStreamCustomOptions,
-  UseStreamCustom,
   UseStreamTransport,
+  AnyStreamCustomOptions,
   CustomSubmitOptions,
-} from "./types.js";
-import type { Message } from "../types.messages.js";
+} from "../ui/types.js";
+import type { UseStreamCustom } from "./types.js";
+import { type Message } from "../types.messages.js";
+import { getToolCallsWithResults } from "../utils/tools.js";
 import { MessageTupleManager } from "../ui/messages.js";
-import { Interrupt } from "../schema.js";
+import { userFacingInterruptsFromValuesArray } from "../ui/interrupts.js";
+import { Interrupt, type ThreadState } from "../schema.js";
 import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
 import { IterableReadableStream } from "../utils/stream.js";
 import { useControllableThreadId } from "./thread.js";
 import { Command } from "../types.js";
+import type { BagTemplate } from "../types.template.js";
+import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 
 interface FetchStreamTransportOptions {
   /**
@@ -51,9 +54,8 @@ interface FetchStreamTransportOptions {
 
 export class FetchStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
-> implements UseStreamTransport<StateType, Bag>
-{
+  Bag extends BagTemplate = BagTemplate,
+> implements UseStreamTransport<StateType, Bag> {
   constructor(private readonly options: FetchStreamTransportOptions) {}
 
   async stream(payload: {
@@ -97,25 +99,45 @@ export class FetchStreamTransport<
   }
 }
 
+function createCustomTransportThreadState<
+  StateType extends Record<string, unknown>,
+>(values: StateType, threadId: string): ThreadState<StateType> {
+  return {
+    values,
+    next: [],
+    tasks: [],
+    metadata: undefined,
+    created_at: null,
+    checkpoint: {
+      thread_id: threadId,
+      checkpoint_id: null,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    },
+    parent_checkpoint: null,
+  };
+}
+
 export function useStreamCustom<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends {
-    ConfigurableType?: Record<string, unknown>;
-    InterruptType?: unknown;
-    CustomEventType?: unknown;
-    UpdateType?: unknown;
-  } = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 >(
-  options: UseStreamCustomOptions<StateType, Bag>
+  options: AnyStreamCustomOptions<StateType, Bag>
 ): UseStreamCustom<StateType, Bag> {
   type UpdateType = GetUpdateType<Bag, StateType>;
   type CustomType = GetCustomEventType<Bag>;
   type InterruptType = GetInterruptType<Bag>;
   type ConfigurableType = GetConfigurableType<Bag>;
+  type ToolCallType = GetToolCallsType<StateType>;
 
   const [messageManager] = useState(() => new MessageTupleManager());
   const [stream] = useState(
-    () => new StreamManager<StateType, Bag>(messageManager)
+    () =>
+      new StreamManager<StateType, Bag>(messageManager, {
+        throttle: options.throttle ?? false,
+        subagentToolNames: options.subagentToolNames,
+        filterSubagentMessages: options.filterSubagentMessages,
+      })
   );
 
   useSyncExternalStore(
@@ -137,7 +159,9 @@ export function useStreamCustom<
 
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
-    return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
+    return Array.isArray(value[messagesKey])
+      ? (value[messagesKey] as Message[])
+      : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
@@ -147,13 +171,33 @@ export function useStreamCustom<
 
   const historyValues = options.initialValues ?? ({} as StateType);
 
+  // Reconstruct subagents from initialValues when:
+  // 1. Subagent filtering is enabled
+  // 2. Not currently streaming
+  // 3. initialValues has messages
+  // This ensures subagent visualization works with cached/persisted state
+  const historyMessages = getMessages(historyValues);
+  const shouldReconstructSubagents =
+    options.filterSubagentMessages &&
+    !stream.isLoading &&
+    historyMessages.length > 0;
+
+  useEffect(() => {
+    if (shouldReconstructSubagents) {
+      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
+      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+    }
+    // We intentionally only run this when shouldReconstructSubagents changes
+    // to avoid unnecessary reconstructions during streaming
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldReconstructSubagents, historyMessages.length]);
+
   const stop = () => stream.stop(historyValues, { onStop: options.onStop });
 
   const submit = async (
     values: UpdateType | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, ConfigurableType>
   ) => {
-    let callbackMeta: RunCallbackMeta | undefined;
     let usableThreadId = threadId;
 
     stream.setStreamValues(() => {
@@ -205,13 +249,46 @@ export function useStreamCustom<
         initialValues: {} as StateType,
         callbacks: options,
 
-        onSuccess: () => undefined,
+        onSuccess: () => {
+          if (!usableThreadId) return undefined;
+
+          const finalValues = stream.values ?? historyValues;
+          options.onFinish?.(
+            createCustomTransportThreadState(finalValues, usableThreadId),
+            undefined
+          );
+
+          return undefined;
+        },
         onError(error) {
-          options.onError?.(error, callbackMeta);
+          options.onError?.(error, undefined);
         },
       }
     );
   };
+
+  const handledToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    handledToolsRef.current.clear();
+  }, [threadId]);
+
+  useEffect(() => {
+    flushPendingHeadlessToolInterrupts(
+      stream.values as Record<string, unknown> | null,
+      options.tools,
+      handledToolsRef.current,
+      {
+        onTool: options.onTool,
+        defer: (run) => {
+          void Promise.resolve().then(run);
+        },
+        resumeSubmit: (command) =>
+          submit(null, {
+            command,
+          }),
+      }
+    );
+  }, [options.onTool, options.tools, stream.values, submit]);
 
   return {
     get values() {
@@ -224,26 +301,65 @@ export function useStreamCustom<
     stop,
     submit,
 
-    get interrupt(): Interrupt<InterruptType> | undefined {
+    get interrupts(): Interrupt<InterruptType>[] {
       if (
         stream.values != null &&
         "__interrupt__" in stream.values &&
         Array.isArray(stream.values.__interrupt__)
       ) {
-        const valueInterrupts = stream.values.__interrupt__;
-        if (valueInterrupts.length === 0) return { when: "breakpoint" };
-        if (valueInterrupts.length === 1) return valueInterrupts[0];
-
-        // TODO: fix the typing of interrupts if multiple interrupts are returned
-        return valueInterrupts as Interrupt<InterruptType>;
+        return userFacingInterruptsFromValuesArray<InterruptType>(
+          stream.values.__interrupt__ as Interrupt<InterruptType>[]
+        );
       }
 
-      return undefined;
+      return [];
     },
 
-    get messages() {
+    get interrupt(): Interrupt<InterruptType> | undefined {
+      const all = this.interrupts;
+      if (all.length === 0) return undefined;
+      if (all.length === 1) return all[0];
+
+      // Multiple interrupts: return the array for backward compat
+      return all as Interrupt<InterruptType>;
+    },
+
+    get messages(): Message<ToolCallType>[] {
       if (!stream.values) return [];
       return getMessages(stream.values);
+    },
+
+    get toolCalls() {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values);
+      return getToolCallsWithResults<ToolCallType>(msgs);
+    },
+
+    getToolCalls(message) {
+      if (!stream.values) return [];
+      const msgs = getMessages(stream.values);
+      const allToolCalls = getToolCallsWithResults<ToolCallType>(msgs);
+      return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
+    },
+
+    get subagents() {
+      return stream.getSubagents();
+    },
+
+    get activeSubagents() {
+      return stream.getActiveSubagents();
+    },
+
+    getSubagent(toolCallId: string) {
+      return stream.getSubagent(toolCallId);
+    },
+
+    getSubagentsByType(type: string) {
+      return stream.getSubagentsByType(type);
+    },
+
+    getSubagentsByMessage(messageId: string) {
+      return stream.getSubagentsByMessage(messageId);
     },
   };
 }

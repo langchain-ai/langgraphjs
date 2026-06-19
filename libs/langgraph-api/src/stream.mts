@@ -7,9 +7,16 @@ import type {
   Interrupt,
   StateSnapshot,
 } from "@langchain/langgraph";
+import {
+  convertToProtocolEvent,
+  isCheckpointEnvelope,
+  STREAM_EVENTS_V3_MODES,
+} from "@langchain/langgraph/web";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import { getLangGraphCommand } from "./command.mjs";
+import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
+import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
@@ -155,7 +162,7 @@ export async function* streamState(
     onTaskResult?: (taskResult: StreamTaskResult) => void;
     signal?: AbortSignal;
   }
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SourceStreamEvent> {
   const kwargs = run.kwargs;
   const graphId = kwargs.config?.configurable?.graph_id;
 
@@ -166,6 +173,16 @@ export async function* streamState(
   const graph = await options.getGraph(graphId, kwargs.config, {
     checkpointer: kwargs.temporary ? null : undefined,
   });
+
+  // Only v2 protocol entrypoints opt into `streamStateV2`.
+  // Legacy run/stream endpoints stay on the existing `streamEvents`
+  // path even if a graph defines stream transformers, so they do not
+  // emit protocol-framed events on non-protocol transports.
+  const isProtocolV2Run = kwargs[PROTOCOL_STREAM_RUN_KEY] === true;
+  if (isProtocolV2Run) {
+    yield* streamStateV2(run, { ...options, graph });
+    return;
+  }
 
   const userStreamMode = kwargs.stream_mode ?? [];
 
@@ -222,7 +239,7 @@ export async function* streamState(
   const events = graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
-      : kwargs.input ?? null,
+      : (kwargs.input ?? null),
     {
       version: "v2" as const,
 
@@ -249,12 +266,17 @@ export async function* streamState(
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
 
-    if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
-      const [ns, mode, chunk] = (
+    if (
+      event.event === "on_chain_stream" &&
+      (kwargs.subgraphs || event.run_id === run.run_id)
+    ) {
+      // Pregel stream chunks are `[ns, mode, payload]`. Lightweight checkpoint
+      // envelopes arrive as a separate `checkpoints` chunk before `values`.
+      const rawTuple = (
         kwargs.subgraphs ? event.data.chunk : [null, ...event.data.chunk]
       ) as [string[] | null, LangGraphStreamMode, unknown];
+      const [ns, mode, chunk] = rawTuple;
 
-      // Listen for debug events and capture checkpoint
       let data: unknown = chunk;
       if (mode === "debug") {
         const debugChunk = chunk as LangGraphDebugChunk;
@@ -269,11 +291,27 @@ export async function* streamState(
           data = { ...debugChunk, payload: debugResult };
         }
       } else if (mode === "checkpoints") {
-        const debugCheckpoint = preprocessDebugCheckpoint(
-          chunk as DebugCheckpoint
-        );
+        if (isCheckpointEnvelope(chunk)) {
+          // Lightweight envelopes pair with `values` on the v3 path.
+          // Legacy `checkpoints` stream mode consumers expect full debug
+          // snapshots (`values` / `metadata` / `next`) from `mapDebugCheckpoint`.
+          if (!userStreamMode.includes("checkpoints")) {
+            const sseEvent =
+              kwargs.subgraphs && ns?.length
+                ? `checkpoints|${ns.join("|")}`
+                : "checkpoints";
+            yield { event: sseEvent, data: chunk };
+          }
+          continue;
+        }
+        const debugPayload = chunk as DebugCheckpoint;
+        const debugCheckpoint = preprocessDebugCheckpoint(debugPayload);
         options?.onCheckpoint?.(debugCheckpoint);
-        data = debugCheckpoint;
+        data = {
+          values: debugPayload.values,
+          metadata: debugPayload.metadata,
+          next: debugPayload.next,
+        };
       } else if (mode === "tasks") {
         const debugTask = preprocessDebugCheckpointTask(chunk as DebugTask);
         if ("result" in debugTask || "error" in debugTask) {
@@ -291,11 +329,9 @@ export async function* streamState(
           }
         }
       } else if (userStreamMode.includes(mode)) {
-        if (kwargs.subgraphs && ns?.length) {
-          yield { event: `${mode}|${ns.join("|")}`, data };
-        } else {
-          yield { event: mode, data };
-        }
+        const sseEvent =
+          kwargs.subgraphs && ns?.length ? `${mode}|${ns.join("|")}` : mode;
+        yield { event: sseEvent, data };
       }
     } else if (userStreamMode.includes("events")) {
       yield { event: "events", data: event };
@@ -309,7 +345,10 @@ export async function* streamState(
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
     if (userStreamMode.includes("messages")) {
-      if (event.event === "on_chain_stream" && event.run_id === run.run_id) {
+      if (
+        event.event === "on_chain_stream" &&
+        (kwargs.subgraphs || event.run_id === run.run_id)
+      ) {
         const newMessages: Array<BaseMessageChunk> = [];
         const [_, chunk]: [string, any] = event.data.chunk;
 
@@ -374,5 +413,223 @@ export async function* streamState(
     );
 
     yield { event: "feedback", data };
+  }
+}
+
+function isUnsupportedStreamEventsV3Error(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(
+      'Only versions "v1" and "v2" of the schema are currently supported'
+    )
+  );
+}
+
+async function* fallbackProtocolStreamFromGraphStream(
+  graph: Pregel<any, any, any, any, any>,
+  input: unknown,
+  options: Parameters<Pregel<any, any, any, any, any>["stream"]>[1]
+): AsyncGenerator<{
+  method: string;
+  params: { namespace: string[]; data: unknown };
+}> {
+  let seq = 0;
+  const stream = await graph.stream(input, options);
+  for await (const tuple of stream as AsyncIterable<
+    [string[] | [], LangGraphStreamMode, unknown]
+  >) {
+    const [namespace, mode, payload] = tuple;
+    const events = convertToProtocolEvent({
+      namespace: namespace ?? [],
+      mode,
+      payload,
+      seq,
+    });
+    seq += events.length;
+    for (const event of events) {
+      yield event;
+    }
+  }
+}
+
+/**
+ * Executes a graph run using `graph.streamEvents(..., { version: "v3" })`
+ * and maps the resulting `ProtocolEvent` objects into the `{ event, data }`
+ * shape consumed by both the legacy SSE path and the protocol v2 session.
+ *
+ * This path activates graph-level `streamTransformers` (registered via
+ * `.compile({ transformers })`) so that custom transformer output flows to
+ * clients automatically.
+ *
+ * @param run - The queued run to execute.
+ * @param options - Callbacks and graph-loading infrastructure.
+ * @returns Async generator of `{ event, data }` pairs.
+ */
+export async function* streamStateV2(
+  run: Run,
+  options: {
+    attempt: number;
+    graph: Pregel<any, any, any, any, any>;
+    getGraph: (
+      graphId: string,
+      config: LangGraphRunnableConfig | undefined,
+      options?: { checkpointer?: BaseCheckpointSaver | null }
+    ) => Promise<Pregel<any, any, any, any, any>>;
+    onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
+    onTaskResult?: (taskResult: StreamTaskResult) => void;
+    signal?: AbortSignal;
+  }
+): AsyncGenerator<SourceStreamEvent> {
+  const kwargs = run.kwargs;
+  const graph = options.graph;
+
+  yield {
+    event: "metadata",
+    data: { run_id: run.run_id, attempt: options.attempt },
+  };
+
+  if (!LANGGRAPH_VERSION) {
+    const version = await checkLangGraphSemver();
+    LANGGRAPH_VERSION = version.find((v) => v.name === "@langchain/langgraph");
+  }
+
+  const metadata = {
+    ...kwargs.config?.metadata,
+    run_attempt: options.attempt,
+    langgraph_version: LANGGRAPH_VERSION?.version ?? "0.0.0",
+    langgraph_plan: "developer",
+    langgraph_host: "self-hosted",
+    langgraph_api_url: process.env.LANGGRAPH_API_URL ?? undefined,
+  };
+
+  const tracer = run.kwargs?.config?.configurable?.langsmith_project
+    ? new LangChainTracer({
+        replicas: [
+          [
+            run.kwargs?.config?.configurable?.langsmith_project as string,
+            {
+              reference_example_id:
+                run.kwargs?.config?.configurable?.langsmith_example_id,
+            },
+          ],
+          [getDefaultProjectName(), undefined],
+        ],
+      })
+    : undefined;
+
+  const graphInput =
+    kwargs.command != null
+      ? getLangGraphCommand(kwargs.command)
+      : (kwargs.input ?? null);
+  const graphOptions = {
+    version: "v3",
+    interruptAfter: kwargs.interrupt_after,
+    interruptBefore: kwargs.interrupt_before,
+
+    tags: kwargs.config?.tags,
+    context: kwargs.context,
+    configurable: kwargs.config?.configurable,
+    recursionLimit: kwargs.config?.recursion_limit,
+    metadata: { ls_integration: "langgraph", ...metadata },
+
+    runId: run.run_id,
+    signal: options?.signal,
+    ...(tracer && { callbacks: [tracer] }),
+  } as const;
+
+  let graphRun: AsyncIterable<{
+    method: string;
+    params: { namespace: string[]; data: unknown };
+  }>;
+  try {
+    graphRun = await graph.streamEvents(graphInput, graphOptions);
+  } catch (error) {
+    if (!isUnsupportedStreamEventsV3Error(error)) {
+      throw error;
+    }
+    graphRun = fallbackProtocolStreamFromGraphStream(graph, graphInput, {
+      ...graphOptions,
+      streamMode: STREAM_EVENTS_V3_MODES,
+      subgraphs: true as const,
+    });
+  }
+
+  for await (const event of graphRun) {
+    const ns = event.params.namespace;
+    const mode = event.method;
+    const data = event.params.data;
+
+    if (mode === "debug") {
+      const debugChunk = data as LangGraphDebugChunk;
+      if (debugChunk.type === "checkpoint") {
+        const debugCheckpoint = preprocessDebugCheckpoint(debugChunk.payload);
+        options?.onCheckpoint?.(debugCheckpoint);
+        const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
+        yield {
+          event: sseEvent,
+          data: { ...debugChunk, payload: debugCheckpoint },
+        };
+        continue;
+      } else if (debugChunk.type === "task_result") {
+        const debugResult = preprocessDebugCheckpointTask(debugChunk.payload);
+        options?.onTaskResult?.(debugResult);
+        const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
+        yield {
+          event: sseEvent,
+          data: { ...debugChunk, payload: debugResult },
+        };
+        continue;
+      }
+    } else if (mode === "tasks") {
+      const debugTask = preprocessDebugCheckpointTask(data as DebugTask);
+      if ("result" in debugTask || "error" in debugTask) {
+        options?.onTaskResult?.(debugTask);
+      }
+      const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
+      yield { event: sseEvent, data: debugTask };
+      continue;
+    }
+
+    const sseEvent = ns.length > 0 ? `${mode}|${ns.join("|")}` : mode;
+
+    /**
+     * These modes have already been converted to their protocol shape by
+     * core's `convertToProtocolEvent`, so the session can skip
+     * re-normalization.  Other modes (values, debug, tasks) still
+     * require API-specific processing (interrupt stripping, state
+     * message normalization, checkpoint preprocessing). `checkpoints`
+     * is emitted by core as a standalone protocol event whose `data` is
+     * already the lightweight envelope; the session frames it on the
+     * dedicated `checkpoints` channel.  `lifecycle` events are
+     * synthesized by core's `LifecycleTransformer` and forwarded
+     * verbatim by the session.
+     */
+    const normalized =
+      mode === "tools" ||
+      mode === "updates" ||
+      mode === "custom" ||
+      mode.startsWith("custom:") ||
+      mode === "messages" ||
+      mode === "checkpoints" ||
+      mode === "lifecycle";
+
+    yield { event: sseEvent, data, normalized };
+  }
+
+  if (kwargs.feedback_keys) {
+    const client = new LangSmithClient();
+    const feedbackData = Object.fromEntries(
+      await Promise.all(
+        kwargs.feedback_keys.map(async (feedback) => {
+          const { url } = await client.createPresignedFeedbackToken(
+            run.run_id,
+            feedback
+          );
+          return [feedback, url];
+        })
+      )
+    );
+
+    yield { event: "feedback", data: feedbackData };
   }
 }

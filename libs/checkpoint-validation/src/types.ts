@@ -1,8 +1,8 @@
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { z } from "zod";
+import { z } from "zod/v3";
 
 export interface CheckpointerTestInitializer<
-  CheckpointerT extends BaseCheckpointSaver
+  CheckpointerT extends BaseCheckpointSaver,
 > {
   /**
    * The name of the checkpointer being tested. This will be used to identify the checkpointer in test output.

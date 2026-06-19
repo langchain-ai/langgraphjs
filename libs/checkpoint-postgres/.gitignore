@@ -1,11 +1,14 @@
+# Build outputs - JS/CJS files
 index.cjs
 index.js
-index.d.ts
-index.d.cts
 store.cjs
 store.js
-store.d.ts
-store.d.cts
+
+# Generated TypeScript declarations
+*.d.ts
+*.d.cts
+*.d.mts
+
 node_modules
 dist
 .yarn
