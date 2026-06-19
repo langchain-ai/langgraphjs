@@ -2090,9 +2090,17 @@ export class StreamController<
     }));
 
     this.#sawValuesForRun = false;
+    // Commit synchronously: this runs inside the user's `submit()` /
+    // `respond()` call (before the first await), so the optimistic
+    // message lands in the same tick — and therefore the same React /
+    // framework commit — as any local UI state the caller flips
+    // alongside it. A macrotask-deferred flush would paint the message
+    // one tick late, leaving a blink (e.g. a HITL card vanishing between
+    // "form hidden" and "resolved card shown").
     this.#rootMessages.appendOptimistic(
       prepared.optimisticMessages,
-      prepared.extraValues
+      prepared.extraValues,
+      { sync: true }
     );
     if (prepared.echoedIds.length > 0) {
       this.#messageMetadata.markPending(prepared.echoedIds);

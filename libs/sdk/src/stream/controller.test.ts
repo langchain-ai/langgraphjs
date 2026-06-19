@@ -1748,18 +1748,22 @@ describe("StreamController", () => {
     // card would vanish in that gap (the flicker this guards against). The
     // mock `respondInput` never streams a `values` echo, so any message in the
     // projection here came purely from the optimistic apply.
-    await controller.respond(
+    //
+    // The optimistic write commits *synchronously* inside `respond()` (before
+    // its first await), so the snapshot already carries the card without
+    // draining a macrotask. That synchronous commit is what lets a framework
+    // render the card in the *same* commit as any local state the caller flips
+    // alongside it (e.g. a HITL form hiding its inputs) — no one-tick blink.
+    const pending = controller.respond(
       { approved: true },
       { update: { messages: [{ type: "ai", content: "Pushed card." }] } }
     );
 
-    // The projection coalesces optimistic writes onto the next macrotask, so
-    // let that flush land before reading the snapshot.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
     const messages = controller.rootStore.getSnapshot().messages;
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ content: "Pushed card." });
+
+    await pending;
     // It carries the same minted id that was dispatched, so the server echo
     // reconciles in place instead of appending a duplicate.
     const dispatched = (
