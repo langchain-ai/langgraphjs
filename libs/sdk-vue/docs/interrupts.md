@@ -12,6 +12,7 @@ in-browser tool handler). `@langchain/vue` surfaces them on
 - [Human-in-the-loop (HITL)](#human-in-the-loop-hitl)
 - [Resuming an interrupt](#resuming-an-interrupt)
 - [`respond(response, options?)`](#respondresponse-options)
+- [Changing state while resuming](#changing-state-while-resuming)
 - [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
 - [Stopping a run](#stopping-a-run)
 - [Headless tools](#headless-tools)
@@ -238,6 +239,30 @@ await stream.respond({ approved: true }, {
   config: { configurable: { model: "gpt-4o" } },
   metadata: { source: "ui" },
 });
+```
+
+## Changing state while resuming
+
+Pass `options.update` to apply a state update in the **same superstep** as the resume — it maps to LangGraph's `Command(resume, update)`. The resumed run produces a single checkpoint reflecting both the resume value and the update: no separate `updateState` write, no intermediate checkpoint, no flicker.
+
+The canonical use case is a HITL flow where the UI pushes the interrupt card (e.g. an `AIMessage`) into state at the moment it answers the interrupt, so the card is committed before the resumed tool runs and stays rendered without the backend re-emitting it.
+
+`update` accepts a state-keys object (shallow-merged via the graph's channel reducers) or a list of `[key, value]` entries. Messages under the configured `messagesKey` may be plain dicts **or** `@langchain/core` `BaseMessage` instances — instances are serialized to dicts before transport, exactly like `submit()`. You can also pass `options.goto` for a directed jump (`Command(goto=...)`) in the same superstep.
+
+```ts
+import { AIMessage } from "@langchain/core/messages";
+
+// Approve the interrupt AND push a message into state in one atomic resume:
+await stream.respond(
+  { approved: true },
+  { update: { messages: [new AIMessage("Approved by reviewer.")] } },
+);
+
+// Equivalent with a plain message dict:
+await stream.respond(
+  { approved: true },
+  { update: { messages: [{ type: "ai", content: "Approved by reviewer." }] } },
+);
 ```
 
 ## `respondAll(responsesById, options?)`
