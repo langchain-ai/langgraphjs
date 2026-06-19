@@ -191,18 +191,24 @@ describe("MongoDBSaver", () => {
         .collection("checkpoint_writes")
         .findOne({ thread_id: "ts-1" });
 
+      // `$currentDate` is evaluated server-side and can drift from the client
+      // clock by a millisecond (e.g. under Docker Desktop on macOS), so allow a
+      // small tolerance around the client-captured bounds.
+      const TOLERANCE_MS = 1000;
       expect(cpDoc?.upserted_at).toBeInstanceOf(Date);
       expect(cpDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        before.getTime()
+        before.getTime() - TOLERANCE_MS
       );
-      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(after.getTime());
+      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
+        after.getTime() + TOLERANCE_MS
+      );
 
       expect(writeDoc?.upserted_at).toBeInstanceOf(Date);
       expect(writeDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        before.getTime()
+        before.getTime() - TOLERANCE_MS
       );
       expect(writeDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
-        after.getTime()
+        after.getTime() + TOLERANCE_MS
       );
     });
 
@@ -301,6 +307,11 @@ describe("MongoDBSaver", () => {
   describe("TTL support", () => {
     const ttlCheckpointCollection = "checkpoints_ttl";
     const ttlWritesCollection = "checkpoint_writes_ttl";
+    // Checkpoint timestamps come from MongoDB's server-side `$currentDate`,
+    // which can drift slightly from the client clock (notably under Docker
+    // Desktop on macOS), so compare against a tolerance window rather than
+    // exact client-captured bounds.
+    const CLOCK_SKEW_TOLERANCE_MS = 1000;
 
     afterEach(async () => {
       const db = client.db();
@@ -361,9 +372,11 @@ describe("MongoDBSaver", () => {
       expect(doc?.upserted_at).toBeDefined();
       expect(doc?.upserted_at).toBeInstanceOf(Date);
       expect(doc?.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        beforePut.getTime()
+        beforePut.getTime() - CLOCK_SKEW_TOLERANCE_MS
       );
-      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(afterPut.getTime());
+      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(
+        afterPut.getTime() + CLOCK_SKEW_TOLERANCE_MS
+      );
     });
 
     it("should add upserted_at field to writes when TTL is enabled", async () => {
@@ -396,9 +409,11 @@ describe("MongoDBSaver", () => {
       expect(doc?.upserted_at).toBeDefined();
       expect(doc?.upserted_at).toBeInstanceOf(Date);
       expect(doc?.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        beforePut.getTime()
+        beforePut.getTime() - CLOCK_SKEW_TOLERANCE_MS
       );
-      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(afterPut.getTime());
+      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(
+        afterPut.getTime() + CLOCK_SKEW_TOLERANCE_MS
+      );
     });
 
     it("should NOT add upserted_at field when TTL is not enabled", async () => {

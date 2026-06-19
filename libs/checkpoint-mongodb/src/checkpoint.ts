@@ -94,9 +94,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
     this.ttl = ttl;
-    // TTL expiry relies on the `upserted_at` timestamp, so enabling TTL
-    // implies timestamps even when `enableTimestamps` is not explicitly set.
-    this.enableTimestamps = enableTimestamps ?? ttl != null;
+    // TTL expiry relies on the `upserted_at` timestamp, so configuring a `ttl`
+    // forces timestamps on (otherwise the TTL index would never match any
+    // document and nothing would ever expire).
+    this.enableTimestamps = (enableTimestamps ?? false) || ttl != null;
   }
 
   /**
