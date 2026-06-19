@@ -11,7 +11,7 @@ import { MongoDBSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
-  id: uuid6(-1),
+  id: uuid6(0),
   ts: "2024-04-19T17:19:07.952Z",
   channel_values: {
     someKey1: "someValue1",
@@ -148,6 +148,96 @@ describe("MongoDBSaver", () => {
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+
+    // list() should include pendingWrites, matching getTuple()
+    expect(checkpointTuple1.pendingWrites).toEqual([]);
+    expect(checkpointTuple2.pendingWrites).toEqual([["foo", "bar", "baz"]]);
+  });
+
+  describe("enableTimestamps", () => {
+    it("should set upserted_at on checkpoint and write documents", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        enableTimestamps: true,
+      });
+
+      const before = new Date();
+
+      await saver.put({ configurable: { thread_id: "ts-1" } }, checkpoint1, {
+        source: "update",
+        step: -1,
+        parents: {},
+      });
+
+      await saver.putWrites(
+        {
+          configurable: {
+            thread_id: "ts-1",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [["chan", "val"]],
+        "task-1"
+      );
+
+      const after = new Date();
+
+      const db = client.db();
+      const cpDoc = await db
+        .collection("checkpoints")
+        .findOne({ thread_id: "ts-1" });
+      const writeDoc = await db
+        .collection("checkpoint_writes")
+        .findOne({ thread_id: "ts-1" });
+
+      expect(cpDoc?.upserted_at).toBeInstanceOf(Date);
+      expect(cpDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        before.getTime()
+      );
+      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(after.getTime());
+
+      expect(writeDoc?.upserted_at).toBeInstanceOf(Date);
+      expect(writeDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        before.getTime()
+      );
+      expect(writeDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
+        after.getTime()
+      );
+    });
+
+    it("should not set upserted_at when enableTimestamps is false", async () => {
+      const saver = new MongoDBSaver({ client });
+
+      await saver.put({ configurable: { thread_id: "ts-2" } }, checkpoint2, {
+        source: "update",
+        step: -1,
+        parents: {},
+      });
+
+      await saver.putWrites(
+        {
+          configurable: {
+            thread_id: "ts-2",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint2.id,
+          },
+        },
+        [["chan", "val"]],
+        "task-2"
+      );
+
+      const db = client.db();
+      const cpDoc = await db
+        .collection("checkpoints")
+        .findOne({ thread_id: "ts-2" });
+      const writeDoc = await db
+        .collection("checkpoint_writes")
+        .findOne({ thread_id: "ts-2" });
+
+      expect(cpDoc?.upserted_at).toBeUndefined();
+      expect(writeDoc?.upserted_at).toBeUndefined();
+    });
   });
 
   it("should delete thread", async () => {
@@ -172,6 +262,40 @@ describe("MongoDBSaver", () => {
     expect(
       await saver.getTuple({ configurable: { thread_id: "2" } })
     ).toBeDefined();
+  });
+
+  it("should no-op on empty writes without throwing", async () => {
+    // Regression test for the empty-batch crash against the real driver:
+    // bulkWrite([]) is rejected with "Invalid BulkOperation, Batch cannot be
+    // empty"; HITL / interrupt() flows can call putWrites with zero writes.
+    const saver = new MongoDBSaver({ client });
+
+    await saver.put(
+      { configurable: { thread_id: "empty-writes" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} }
+    );
+
+    await expect(
+      saver.putWrites(
+        {
+          configurable: {
+            thread_id: "empty-writes",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [],
+        "task-empty"
+      )
+    ).resolves.toBeUndefined();
+
+    // Nothing should have been persisted to the writes collection.
+    const writeDoc = await client
+      .db()
+      .collection("checkpoint_writes")
+      .findOne({ thread_id: "empty-writes" });
+    expect(writeDoc).toBeNull();
   });
 
   describe("TTL support", () => {

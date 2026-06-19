@@ -8,7 +8,7 @@ export type RedisClusterConnection = ReturnType<typeof createCluster>;
 
 /** A Redis connection, clustered or conventional. */
 export type RedisConnection = RedisClientConnection | RedisClusterConnection;
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   type GetOperation,
   InvalidNamespaceError,
@@ -17,6 +17,8 @@ import {
   type PutOperation,
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
+
+import { escapeRediSearchTagValue } from "./utils.js";
 
 // Type guard functions for operations
 export function isPutOperation(op: Operation): op is PutOperation {
@@ -85,7 +87,7 @@ class FilterBuilder {
     filter: Filter,
     prefix?: string
   ): { query: string; useClientFilter: boolean } {
-    let queryParts: string[] = [];
+    const queryParts: string[] = [];
     let useClientFilter = false;
 
     // Add prefix filter if provided
@@ -395,10 +397,10 @@ export class RedisStore {
         this.indexConfig.distanceType === "cosine"
           ? "COSINE"
           : this.indexConfig.distanceType === "l2"
-          ? "L2"
-          : this.indexConfig.distanceType === "ip"
-          ? "IP"
-          : "COSINE";
+            ? "L2"
+            : this.indexConfig.distanceType === "ip"
+              ? "IP"
+              : "COSINE";
 
       // Build schema with correct vector syntax
       const vectorSchema: Record<string, any> = {
@@ -558,12 +560,12 @@ export class RedisStore {
           const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
           try {
             await this.client.del(oldVectorKey);
-          } catch (error) {
+          } catch {
             // Vector might not exist
           }
         }
       }
-    } catch (error) {
+    } catch {
       // Index might not exist yet
     }
 
@@ -659,7 +661,7 @@ export class RedisStore {
 
       // Build KNN query
       // For prefix search, use wildcard since we want to match any document starting with this prefix
-      let queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
+      const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
 
       try {
@@ -799,7 +801,7 @@ export class RedisStore {
     limit?: number;
     offset?: number;
   }): Promise<string[][]> {
-    let query = "*";
+    const query = "*";
 
     try {
       const results = await this.client.ft.search("store", query, {
@@ -974,7 +976,7 @@ export class RedisStore {
             }
           );
           stats.vectorDocuments = vectorResult.total || 0;
-        } catch (error) {
+        } catch {
           // Vector index might not exist
           stats.vectorDocuments = 0;
         }
@@ -982,7 +984,7 @@ export class RedisStore {
         // Get index info
         try {
           stats.indexInfo = await this.client.ft.info("store");
-        } catch (error) {
+        } catch {
           // Index info might not be available
         }
       }
@@ -1038,25 +1040,15 @@ export class RedisStore {
       const vectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${docUuid}`;
       try {
         await this.client.expire(vectorKey, ttlSeconds);
-      } catch (error) {
+      } catch {
         // Vector key might not exist
       }
     }
   }
 
   private escapeTagValue(value: string): string {
-    // For TAG fields, we need to escape special characters
-    // Based on RediSearch documentation, these characters need escaping in TAG fields
-    // when used within curly braces: , . < > { } [ ] " ' : ; ! @ # $ % ^ & * ( ) - + = ~ | \ ? /
-    // Handle empty string as a special case - use a placeholder
-    if (value === "") {
-      // Use a special placeholder for empty strings
-      return "__EMPTY_STRING__";
-    }
-    // We'll escape the most common ones that appear in keys
-    return value
-      .replace(/\\/g, "\\\\")
-      .replace(/[-\s,.:<>{}[\]"';!@#$%^&*()+=~|?/]/g, "\\$&");
+    // Delegate to shared utility for RediSearch TAG field escaping
+    return escapeRediSearchTagValue(value);
   }
 
   /**

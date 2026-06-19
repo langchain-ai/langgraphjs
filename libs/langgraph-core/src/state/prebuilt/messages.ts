@@ -2,8 +2,10 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod/v4";
 
 import { ReducedValue } from "../values/reduced.js";
+import { DeltaValue } from "../values/delta.js";
 import {
   messagesStateReducer,
+  messagesDeltaReducer,
   type Messages,
 } from "../../graph/messages_reducer.js";
 
@@ -25,3 +27,27 @@ export const MessagesValue = new ReducedValue(
     },
   }
 );
+
+/**
+ * **Experimental.** A messages state field backed by a `DeltaChannel`.
+ *
+ * A drop-in alternative to {@link MessagesValue} that persists only per-step
+ * message deltas (plus periodic snapshots) instead of the full accumulated
+ * history in every checkpoint blob. Useful for long-running threads where
+ * re-serializing the entire message list on each step is costly.
+ *
+ * @example
+ * ```ts
+ * import { StateSchema, MessagesDeltaValue } from "@langchain/langgraph";
+ *
+ * const State = new StateSchema({ messages: MessagesDeltaValue });
+ * ```
+ */
+export const MessagesDeltaValue = new DeltaValue(messagesValueSchema, {
+  inputSchema: messagesInputSchema,
+  reducer: messagesDeltaReducer,
+  jsonSchemaExtra: {
+    langgraph_type: "messages",
+    description: "A list of chat messages",
+  },
+});

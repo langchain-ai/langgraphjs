@@ -14,7 +14,7 @@ const textEncoder = new TextEncoder();
 type WriteKey = [
   threadId: string,
   checkpointNamespace: string,
-  checkpointId: string
+  checkpointId: string,
 ];
 
 const WriteKey = {

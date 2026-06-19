@@ -1,7 +1,14 @@
 import type { InferInteropZodInput } from "@langchain/core/utils/types";
+import type { BaseMessage } from "@langchain/core/messages";
 
 import type { Client, ClientConfig } from "../client.js";
-import type { ThreadState, Config, Checkpoint, Metadata } from "../schema.js";
+import type {
+  ThreadState,
+  Config,
+  Checkpoint,
+  Metadata,
+  Interrupt,
+} from "../schema.js";
 import type {
   Command,
   MultitaskStrategy,
@@ -18,9 +25,351 @@ import type {
   CheckpointsStreamEvent,
   TasksStreamEvent,
   StreamMode,
+  ToolsStreamEvent,
 } from "../types.stream.js";
-import type { DefaultToolCall, AIMessage, Message } from "../types.messages.js";
+import type {
+  DefaultToolCall,
+  AIMessage,
+  Message,
+  ToolCallWithResult,
+} from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import type {
+  AnyHeadlessToolImplementation,
+  OnToolCallback,
+} from "../headless-tools.js";
+
+/**
+ * Represents a tool call that initiated a subagent.
+ *
+ * @template SubagentName - The subagent name type. When inferred from a
+ *   DeepAgent, this is a union of all subagent names (e.g. `"researcher" | "writer"`),
+ *   making `args.subagent_type` a typed discriminant.
+ */
+export interface SubagentToolCall<SubagentName extends string = string> {
+  /** The tool call ID */
+  id: string;
+  /** The name of the tool (typically "task") */
+  name: string;
+  /** The arguments passed to the tool */
+  args: {
+    /** The task description for the subagent */
+    description?: string;
+    /** The type of subagent to use */
+    subagent_type?: SubagentName;
+    /** Additional custom arguments */
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * The execution status of a subagent.
+ *
+ * - `"pending"` - The subagent has been invoked but hasn't started processing yet.
+ *   This is the initial state when a tool call is detected but before any
+ *   streaming events are received from the subgraph.
+ *
+ * - `"running"` - The subagent is actively executing and streaming updates.
+ *   The subagent transitions to this state when the first update event is
+ *   received from its namespace.
+ *
+ * - `"complete"` - The subagent has finished execution successfully.
+ *   A tool message with the result has been received, and the `result`
+ *   property contains the final output.
+ *
+ * - `"error"` - The subagent encountered an error during execution.
+ *   The `error` property on the SubagentStream contains error details.
+ */
+export type SubagentStatus = "pending" | "running" | "complete" | "error";
+
+/**
+ * Default subagent state map used when no specific subagent types are provided.
+ * Maps any string key to Record<string, unknown>.
+ */
+export type DefaultSubagentStates = Record<string, Record<string, unknown>>;
+
+/**
+ * Base interface for stream-like objects.
+ * Contains common properties shared between UseStream and SubagentStream.
+ *
+ * @template StateType - The type of the stream's state values.
+ * @template ToolCall - The type of tool calls in messages.
+ * @template InterruptType - The type of interrupt values.
+ * @template SubagentStates - A map of subagent names to their state types.
+ *   Use `SubagentStateMap<typeof agent>` to infer from a DeepAgent.
+ */
+export interface StreamBase<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  InterruptType = unknown,
+  SubagentStates extends Record<string, unknown> = DefaultSubagentStates,
+> {
+  /**
+   * The current state values of the stream.
+   */
+  values: StateType;
+
+  /**
+   * Last seen error from the stream.
+   */
+  error: unknown;
+
+  /**
+   * Whether the stream is currently running.
+   */
+  isLoading: boolean;
+
+  /**
+   * Messages accumulated during the stream.
+   */
+  messages: Message<ToolCall>[];
+
+  /**
+   * Tool calls paired with their results.
+   * Useful for rendering tool invocations and their outputs together.
+   */
+  toolCalls: ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get tool calls for a specific AI message.
+   *
+   * @param message - The AI message to get tool calls for.
+   * @returns Array of tool calls initiated by the message.
+   */
+  getToolCalls: (
+    message: AIMessage<ToolCall>
+  ) => ToolCallWithResult<ToolCall>[];
+
+  /**
+   * Get the interrupt value for the stream if interrupted.
+   * Convenience alias for `interrupts[0]`.
+   */
+  interrupt: Interrupt<InterruptType> | undefined;
+
+  /**
+   * All current interrupts from the stream.
+   * When using Send() fan-out with per-task interrupt() calls,
+   * multiple interrupts may be pending simultaneously.
+   */
+  interrupts: Interrupt<InterruptType>[];
+
+  /**
+   * All currently active and completed subagent streams.
+   * Keyed by tool call ID for easy lookup.
+   */
+  subagents: Map<
+    string,
+    SubagentStreamInterface<
+      SubagentStates[keyof SubagentStates],
+      ToolCall,
+      keyof SubagentStates & string
+    >
+  >;
+
+  /**
+   * Currently active subagents (where status === "running").
+   */
+  activeSubagents: SubagentStreamInterface<
+    SubagentStates[keyof SubagentStates],
+    ToolCall,
+    keyof SubagentStates & string
+  >[];
+
+  /**
+   * Get subagent stream by tool call ID.
+   *
+   * @param toolCallId - The tool call ID that initiated the subagent.
+   * @returns The subagent stream, or undefined if not found.
+   */
+  getSubagent: (
+    toolCallId: string
+  ) =>
+    | SubagentStreamInterface<
+        SubagentStates[keyof SubagentStates],
+        ToolCall,
+        keyof SubagentStates & string
+      >
+    | undefined;
+
+  /**
+   * Get all subagents of a specific type.
+   * When called with a literal type name that matches a key in SubagentStates,
+   * returns streams with properly inferred state types.
+   *
+   * @param type - The subagent_type to filter by.
+   * @returns Array of matching subagent streams with inferred state types.
+   *
+   * @example
+   * ```ts
+   * // With DeepAgent type inference
+   * const stream = useStream<typeof agent>(...);
+   * const researchers = stream.getSubagentsByType("researcher");
+   * // researchers[0].values is typed with ResearcherMiddleware state
+   * ```
+   */
+  getSubagentsByType: {
+    // Overload for known subagent names - returns typed streams
+    <TName extends keyof SubagentStates & string>(
+      type: TName
+    ): SubagentStreamInterface<SubagentStates[TName], ToolCall, TName>[];
+    // Overload for unknown names - returns untyped streams
+    (
+      type: string
+    ): SubagentStreamInterface<Record<string, unknown>, ToolCall>[];
+  };
+
+  /**
+   * Get all subagents triggered by a specific AI message.
+   *
+   * Useful for rendering subagent activities grouped by the AI message
+   * (and therefore conversation turn) that spawned them.
+   *
+   * @param messageId - The ID of the AI message that triggered the subagents.
+   * @returns Array of subagent streams triggered by that message.
+   *
+   * @example
+   * ```tsx
+   * // Render subagents after each AI message that triggered them
+   * {stream.messages.map((msg) => (
+   *   <div key={msg.id}>
+   *     <MessageBubble message={msg} />
+   *     {msg.type === "ai" && "tool_calls" in msg && (
+   *       <SubagentPipeline
+   *         subagents={stream.getSubagentsByMessage(msg.id)}
+   *       />
+   *     )}
+   *   </div>
+   * ))}
+   * ```
+   */
+  getSubagentsByMessage: (
+    messageId: string
+  ) => SubagentStreamInterface<
+    SubagentStates[keyof SubagentStates],
+    ToolCall,
+    keyof SubagentStates & string
+  >[];
+
+  /**
+   * Switch to a different thread, clearing the current stream state.
+   * Pass `null` to reset to no thread (a new thread will be created on next submit).
+   *
+   * @param newThreadId - The thread ID to switch to, or `null` to start fresh.
+   */
+  switchThread: (newThreadId: string | null) => void;
+}
+
+/**
+ * Subagent API surface parameterised by the subagent interface type.
+ *
+ * Framework adapters supply a class-message variant of
+ * `SubagentStreamInterface` (where `messages` is `BaseMessage[]`
+ * from `@langchain/core`) so that consumers always work with class
+ * instances.  The default parameter keeps the SDK's plain `Message`
+ * interface for direct SDK usage.
+ *
+ * @template Iface - The subagent stream interface to expose.
+ *   Defaults to {@link SubagentStreamInterface} with default generic
+ *   parameters.
+ */
+export interface SubagentApi<Iface = SubagentStreamInterface> {
+  subagents: Map<string, Iface>;
+  activeSubagents: Iface[];
+  getSubagent: (toolCallId: string) => Iface | undefined;
+  getSubagentsByType: (type: string) => Iface[];
+  getSubagentsByMessage: (messageId: string) => Iface[];
+}
+
+/**
+ * Base interface for a single subagent stream.
+ * Tracks the lifecycle of a subagent from invocation to completion.
+ *
+ * Extends StreamBase to share common properties with UseStream,
+ * allowing subagents to be treated similarly to the main stream.
+ *
+ * Prefer using {@link SubagentStream} which supports passing an agent type
+ * directly for automatic type inference.
+ *
+ * @template StateType - The state type of the subagent. Defaults to Record<string, unknown>
+ *   since different subagents may have different state types. Can be narrowed using
+ *   DeepAgent type helpers like `InferSubagentByName` when the specific subagent is known.
+ * @template ToolCall - The type of tool calls in messages.
+ * @template SubagentName - The subagent name union type. When inferred from a DeepAgent,
+ *   enables typed `toolCall.args.subagent_type`.
+ */
+export interface SubagentStreamInterface<
+  StateType = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+  SubagentName extends string = string,
+> extends StreamBase<StateType, ToolCall> {
+  /** Unique identifier (the tool call ID) */
+  id: string;
+
+  /** The tool call that invoked this subagent */
+  toolCall: SubagentToolCall<SubagentName>;
+
+  /** Current execution status */
+  status: SubagentStatus;
+
+  /** Final result content (when complete) */
+  result: string | null;
+
+  /** Namespace path for this subagent execution */
+  namespace: string[];
+
+  /** Tool call ID of parent subagent (for nested subagents) */
+  parentId: string | null;
+
+  /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
+  depth: number;
+
+  /** When the subagent started */
+  startedAt: Date | null;
+
+  /** When the subagent completed */
+  completedAt: Date | null;
+}
+
+/**
+ * Represents a single subagent stream.
+ *
+ * Supports two usage patterns:
+ *
+ * 1. **Agent type inference** (recommended): Pass a DeepAgent type directly and
+ *    let TypeScript infer the correct state and tool call types.
+ *
+ * ```typescript
+ * import type { agent } from "./agent";
+ *
+ * // Automatically infers state and tool call types from the agent
+ * const subagent: SubagentStream<typeof agent> = ...;
+ * ```
+ *
+ * 2. **Explicit generics**: Pass state and tool call types manually.
+ *
+ * ```typescript
+ * type ResearcherState = { research_notes: string };
+ * const researcher: SubagentStream<ResearcherState, MyToolCall> = ...;
+ * ```
+ *
+ * @template T - Either a DeepAgent/Agent type for automatic inference,
+ *   or a state type (Record) for explicit typing. Defaults to Record<string, unknown>.
+ * @template ToolCall - The type of tool calls in messages.
+ *   Only used when T is a state type. Defaults to DefaultToolCall.
+ */
+export type SubagentStream<
+  T = Record<string, unknown>,
+  ToolCall = DefaultToolCall,
+> =
+  IsDeepAgentLike<T> extends true
+    ? SubagentStreamInterface<
+        SubagentStateMap<T, InferAgentToolCalls<T>>[InferSubagentNames<T>],
+        InferAgentToolCalls<T>,
+        InferSubagentNames<T>
+      >
+    : IsAgentLike<T> extends true
+      ? SubagentStreamInterface<InferAgentState<T>, InferAgentToolCalls<T>>
+      : SubagentStreamInterface<T, ToolCall>;
 
 // ============================================================================
 // Agent Type Extraction Helpers
@@ -80,7 +429,7 @@ export interface AgentMiddlewareLike<
   TSchema = unknown,
   TContextSchema = unknown,
   TFullContext = unknown,
-  TTools = unknown
+  TTools = unknown,
 > {
   name: string;
   stateSchema?: TSchema;
@@ -97,19 +446,25 @@ export interface AgentMiddlewareLike<
  * Uses structural matching against AgentMiddleware to extract the state schema
  * type parameter, similar to how langchain's InferMiddlewareState works.
  */
+type SafeInferInteropZodInput<T> =
+  InferInteropZodInput<T> extends never
+    ? // eslint-disable-next-line @typescript-eslint/ban-types
+      {}
+    : InferInteropZodInput<T>;
+
 type InferMiddlewareState<T> =
   // Pattern 1: Match against AgentMiddlewareLike structure to extract TSchema
   T extends AgentMiddlewareLike<infer TSchema, unknown, unknown, unknown>
     ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
       TSchema extends Record<string, any>
-      ? InferInteropZodInput<TSchema>
+      ? SafeInferInteropZodInput<TSchema>
       : // eslint-disable-next-line @typescript-eslint/ban-types
         {}
     : // Pattern 2: Direct stateSchema property (for testing with MockMiddleware)
-    T extends { stateSchema: infer S }
-    ? InferInteropZodInput<S>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {};
+      T extends { stateSchema: infer S }
+      ? SafeInferInteropZodInput<S>
+      : // eslint-disable-next-line @typescript-eslint/ban-types
+        {};
 
 /**
  * Helper type to detect if a type is `any`.
@@ -135,31 +490,35 @@ export type InferMiddlewareStatesFromArray<T> =
     ? // eslint-disable-next-line @typescript-eslint/ban-types
       {}
     : // Handle undefined/null
-    T extends undefined | null
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle empty readonly array
-    T extends readonly []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle empty mutable array
-    T extends []
-    ? // eslint-disable-next-line @typescript-eslint/ban-types
-      {}
-    : // Handle readonly tuple [First, ...Rest]
-    T extends readonly [infer First, ...infer Rest extends readonly unknown[]]
-    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-    : // Handle mutable tuple [First, ...Rest]
-    T extends [infer First, ...infer Rest extends unknown[]]
-    ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
-    : // Handle readonly array of union type
-    T extends readonly (infer U)[]
-    ? InferMiddlewareState<U>
-    : // Handle mutable array of union type
-    T extends (infer U)[]
-    ? InferMiddlewareState<U>
-    : // eslint-disable-next-line @typescript-eslint/ban-types
-      {};
+      T extends undefined | null
+      ? // eslint-disable-next-line @typescript-eslint/ban-types
+        {}
+      : // Handle empty readonly array
+        T extends readonly []
+        ? // eslint-disable-next-line @typescript-eslint/ban-types
+          {}
+        : // Handle empty mutable array
+          T extends []
+          ? // eslint-disable-next-line @typescript-eslint/ban-types
+            {}
+          : // Handle readonly tuple [First, ...Rest]
+            T extends readonly [
+                infer First,
+                ...infer Rest extends readonly unknown[],
+              ]
+            ? InferMiddlewareState<First> & InferMiddlewareStatesFromArray<Rest>
+            : // Handle mutable tuple [First, ...Rest]
+              T extends [infer First, ...infer Rest extends unknown[]]
+              ? InferMiddlewareState<First> &
+                  InferMiddlewareStatesFromArray<Rest>
+              : // Handle readonly array of union type
+                T extends readonly (infer U)[]
+                ? InferMiddlewareState<U>
+                : // Handle mutable array of union type
+                  T extends (infer U)[]
+                  ? InferMiddlewareState<U>
+                  : // eslint-disable-next-line @typescript-eslint/ban-types
+                    {};
 
 /**
  * Infer the complete merged state from an agent, including:
@@ -188,6 +547,25 @@ type BaseAgentState<ToolCall = DefaultToolCall> = {
   messages: Message<ToolCall>[];
 };
 
+/**
+ * Conditionally adds `structuredResponse` to the agent state when
+ * `responseFormat` is provided to `createAgent`.
+ *
+ * The sentinel type `ResponseFormatUndefined` (from langchain) has a
+ * `__responseFormatUndefined` brand property. When the Response type
+ * carries that brand, no `structuredResponse` key is added.
+ */
+type InferStructuredResponse<Response> = Response extends {
+  __responseFormatUndefined: true;
+}
+  ? // eslint-disable-next-line @typescript-eslint/ban-types
+    {}
+  : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Response extends Record<string, any>
+    ? { structuredResponse: Response }
+    : // eslint-disable-next-line @typescript-eslint/ban-types
+      {};
+
 export type InferAgentState<T> = T extends { "~agentTypes": unknown }
   ? ExtractAgentConfig<T> extends never
     ? // eslint-disable-next-line @typescript-eslint/ban-types
@@ -196,19 +574,36 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
         (ExtractAgentConfig<T>["State"] extends undefined
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
-          : InferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
-        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
+          : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
+        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]> &
+        InferStructuredResponse<ExtractAgentConfig<T>["Response"]>
   : T extends { "~RunOutput": infer RunOutput }
-  ? RunOutput
-  : T extends { messages: unknown }
-  ? T
-  : // eslint-disable-next-line @typescript-eslint/ban-types
-    {};
+    ? RunOutput
+    : T extends { messages: unknown }
+      ? T
+      : // eslint-disable-next-line @typescript-eslint/ban-types
+        {};
 
 /**
- * Helper type to extract the input type from a DynamicStructuredTool's _call method.
- * This is more reliable than trying to infer from the schema directly because
- * DynamicStructuredTool has the input type baked into its _call signature.
+ * Helper type to infer schema input type, supporting both Zod v3 and v4.
+ * Self-contained to avoid cross-package type resolution issues with
+ * InferInteropZodInput from @langchain/core.
+ * - Zod v4 uses `_zod.input` property
+ * - Zod v3 uses `_input` property
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferToolSchemaInput<S> = S extends { _zod: { input: infer Args } }
+  ? Args
+  : S extends { _input: infer Args }
+    ? Args
+    : never;
+
+/**
+ * Helper type to extract the input type from a DynamicStructuredTool.
+ *
+ * Tries the following in order:
+ * 1. `_call` method signature (may fail when `_call` is `protected`)
+ * 2. `schema` property with self-contained Zod v3/v4 inference
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferToolInput<T> = T extends {
@@ -217,8 +612,18 @@ type InferToolInput<T> = T extends {
 }
   ? Args
   : T extends { schema: infer S }
-  ? InferInteropZodInput<S>
-  : never;
+    ? InferToolSchemaInput<S>
+    : never;
+
+/**
+ * Helper type to check if a type is a literal string (not generic `string`).
+ * Returns true only for literal types like "get_weather", false for `string`.
+ */
+type IsLiteralString<T> = string extends T
+  ? false
+  : T extends string
+    ? true
+    : false;
 
 /**
  * Extract a tool call type from a single tool.
@@ -226,17 +631,23 @@ type InferToolInput<T> = T extends {
  *
  * This extracts the literal name type from DynamicStructuredTool's NameT parameter
  * and the args type from the _call method or schema's input property.
+ *
+ * Note: Only tools with literal string names (e.g., "get_weather") are included.
+ * Tools with generic `name: string` are filtered out to ensure discriminated
+ * union narrowing works correctly in TypeScript.
  */
 type ToolCallFromAgentTool<T> = T extends { name: infer N }
   ? N extends string
-    ? InferToolInput<T> extends infer Args
-      ? Args extends never
-        ? never
-        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Args extends Record<string, any>
-        ? { name: N; args: Args; id?: string; type?: "tool_call" }
+    ? IsLiteralString<N> extends true
+      ? InferToolInput<T> extends infer Args
+        ? Args extends never
+          ? never
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            Args extends Record<string, any>
+            ? { name: N; args: Args; id?: string; type?: "tool_call" }
+            : never
         : never
-      : never
+      : never // Filter out generic `string` names
     : never
   : never;
 
@@ -265,6 +676,213 @@ export type InferAgentToolCalls<T> =
     : DefaultToolCall;
 
 // ============================================================================
+// DeepAgent Type Extraction Helpers
+// ============================================================================
+// These types enable extracting subagent type information from a DeepAgent instance
+// created with `createDeepAgent` from the deepagents package.
+// They are copied here to avoid circular dependencies (deepagents depends on this SDK).
+
+/**
+ * Minimal interface matching the structure of a SubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface SubAgentLike {
+  name: string;
+  description: string;
+  middleware?: readonly AgentMiddlewareLike[];
+}
+
+/**
+ * Minimal interface matching the structure of a CompiledSubAgent from deepagents.
+ * Used for structural type matching without importing deepagents.
+ */
+export interface CompiledSubAgentLike {
+  name: string;
+  description: string;
+  runnable: unknown;
+}
+
+/**
+ * Minimal interface matching the structure of DeepAgentTypeConfig from deepagents.
+ * Extends AgentTypeConfigLike to include subagent type information.
+ */
+export interface DeepAgentTypeConfigLike extends AgentTypeConfigLike {
+  Subagents: unknown;
+}
+
+/**
+ * Check if a type is a DeepAgent (has `~deepAgentTypes` phantom property).
+ * This property is present on DeepAgent instances created with `createDeepAgent`.
+ */
+export type IsDeepAgentLike<T> = T extends {
+  "~deepAgentTypes": DeepAgentTypeConfigLike;
+}
+  ? true
+  : false;
+
+/**
+ * Extract the DeepAgentTypeConfig from a DeepAgent-like type.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [...] });
+ * type Config = ExtractDeepAgentConfig<typeof agent>;
+ * // Config includes { Subagents: [...] }
+ * ```
+ */
+export type ExtractDeepAgentConfig<T> = T extends {
+  "~deepAgentTypes": infer Config;
+}
+  ? Config extends DeepAgentTypeConfigLike
+    ? Config
+    : never
+  : never;
+
+/**
+ * Helper type to extract middleware from a SubAgent definition.
+ * Handles both mutable and readonly middleware arrays.
+ */
+export type ExtractSubAgentMiddleware<T> = T extends {
+  middleware?: infer M;
+}
+  ? M extends readonly AgentMiddlewareLike[]
+    ? M
+    : M extends AgentMiddlewareLike[]
+      ? M
+      : readonly []
+  : readonly [];
+
+/**
+ * Extract the Subagents array type from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({ subagents: [researcher, writer] as const });
+ * type Subagents = InferDeepAgentSubagents<typeof agent>;
+ * // Subagents is the readonly tuple of subagent definitions
+ * ```
+ */
+export type InferDeepAgentSubagents<T> =
+  ExtractDeepAgentConfig<T> extends never
+    ? never
+    : ExtractDeepAgentConfig<T>["Subagents"];
+
+/**
+ * Helper type to extract a subagent by name from a DeepAgent.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent to extract
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", description: "...", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type Researcher = InferSubagentByName<typeof agent, "researcher">;
+ * ```
+ */
+export type InferSubagentByName<T, TName extends string> =
+  InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+    ? SA extends { name: TName }
+      ? SA
+      : never
+    : never;
+
+/**
+ * Base state type for subagents.
+ * All subagents have at least a messages array, similar to the main agent.
+ *
+ * @template ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ */
+export type BaseSubagentState<ToolCall = DefaultToolCall> = {
+  messages: Message<ToolCall>[];
+};
+
+/**
+ * Infer the state type for a specific subagent by extracting and merging
+ * its middleware state schemas, plus the base agent state (messages).
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam TName - The name of the subagent
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type ResearcherState = InferSubagentState<typeof agent, "researcher">;
+ * // ResearcherState includes { messages: Message<ToolCall>[], ...ResearchMiddleware state }
+ * ```
+ */
+export type InferSubagentState<
+  T,
+  TName extends string,
+  ToolCall = DefaultToolCall,
+> =
+  InferSubagentByName<T, TName> extends never
+    ? Record<string, unknown>
+    : InferSubagentByName<T, TName> extends infer SA
+      ? BaseSubagentState<ToolCall> &
+          InferMiddlewareStatesFromArray<ExtractSubAgentMiddleware<SA>>
+      : Record<string, unknown>;
+
+/**
+ * Extract all subagent names as a string union from a DeepAgent.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", ... },
+ *     { name: "writer", ... }
+ *   ] as const,
+ * });
+ *
+ * type SubagentNames = InferSubagentNames<typeof agent>;
+ * // SubagentNames = "researcher" | "writer"
+ * ```
+ */
+export type InferSubagentNames<T> =
+  InferDeepAgentSubagents<T> extends readonly (infer SA)[]
+    ? SA extends { name: infer N }
+      ? N extends string
+        ? N
+        : never
+      : never
+    : never;
+
+/**
+ * Create a map of subagent names to their state types.
+ * This is useful for type-safe `getSubagentsByType` calls.
+ *
+ * @typeParam T - The DeepAgent to extract from
+ * @typeParam ToolCall - The tool call type for messages. Defaults to DefaultToolCall.
+ *
+ * @example
+ * ```ts
+ * const agent = createDeepAgent({
+ *   subagents: [
+ *     { name: "researcher", middleware: [ResearchMiddleware] },
+ *     { name: "writer", middleware: [WriterMiddleware] }
+ *   ] as const,
+ * });
+ *
+ * type StateMap = SubagentStateMap<typeof agent>;
+ * // StateMap = { researcher: ResearchState; writer: WriterState }
+ * ```
+ */
+export type SubagentStateMap<T, ToolCall = DefaultToolCall> = {
+  [K in InferSubagentNames<T>]: InferSubagentState<T, K, ToolCall>;
+};
+
+// ============================================================================
 // StateType Tool Call Extraction Helpers
 // ============================================================================
 // These types enable extracting tool call types from the messages property
@@ -278,15 +896,16 @@ export type InferAgentToolCalls<T> =
  * while DefaultToolCall has `name: string`. We check if `string extends TC["name"]` -
  * if true, it's DefaultToolCall; if false, it's a custom type with literal names.
  */
-type ExtractToolCallFromMessageUnion<M> = M extends AIMessage<infer TC>
-  ? TC extends { name: infer N }
-    ? // If string extends N, then N is just `string` (DefaultToolCall)
-      // If not, N is a literal type like "get_weather" (custom type)
-      string extends N
-      ? never
-      : TC
-    : never
-  : never;
+type ExtractToolCallFromMessageUnion<M> =
+  M extends AIMessage<infer TC>
+    ? TC extends { name: infer N }
+      ? // If string extends N, then N is just `string` (DefaultToolCall)
+        // If not, N is a literal type like "get_weather" (custom type)
+        string extends N
+        ? never
+        : TC
+      : never
+    : never;
 
 /**
  * Extract the tool call type from a StateType's messages property.
@@ -307,13 +926,13 @@ type ExtractToolCallFromMessageUnion<M> = M extends AIMessage<infer TC>
  * ```
  */
 export type ExtractToolCallsFromState<
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 > = StateType extends { messages: infer Messages }
   ? Messages extends readonly (infer M)[]
     ? ExtractToolCallFromMessageUnion<M>
     : Messages extends (infer M)[]
-    ? ExtractToolCallFromMessageUnion<M>
-    : never
+      ? ExtractToolCallFromMessageUnion<M>
+      : never
   : never;
 
 export type MessageMetadata<StateType extends Record<string, unknown>> = {
@@ -347,10 +966,29 @@ export type MessageMetadata<StateType extends Record<string, unknown>> = {
 
 export type GetUpdateType<
   Bag extends BagTemplate,
-  StateType extends Record<string, unknown>
+  StateType extends Record<string, unknown>,
 > = Bag extends { UpdateType: unknown }
   ? Bag["UpdateType"]
   : Partial<StateType>;
+
+/**
+ * Widens an update type so that its `messages` field also accepts
+ * `@langchain/core` {@link BaseMessage} class instances (single or array).
+ *
+ * Framework SDKs apply this to `submit` so callers can write:
+ * ```ts
+ * stream.submit({ messages: new HumanMessage("hello") });
+ * stream.submit({ messages: [new HumanMessage("hello")] });
+ * ```
+ */
+export type AcceptBaseMessages<T> =
+  T extends Record<string, unknown>
+    ? {
+        [K in keyof T]: K extends "messages"
+          ? T[K] | BaseMessage | BaseMessage[]
+          : T[K];
+      }
+    : T;
 
 export type GetConfigurableType<Bag extends BagTemplate> = Bag extends {
   ConfigurableType: Record<string, unknown>;
@@ -412,7 +1050,7 @@ export interface UseStreamThread<StateType extends Record<string, unknown>> {
 
 export interface UseStreamOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
   /**
    * The ID of the assistant to use.
@@ -459,6 +1097,10 @@ export interface UseStreamOptions<
 
   /**
    * Callback that is called when the stream is finished.
+   *
+   * If you declare no parameters (side effects only), the SDK skips an extra
+   * post-stream `getHistory` when branching history is disabled, so loading
+   * ends as soon as the run stream completes.
    */
   onFinish?: (
     state: ThreadState<StateType>,
@@ -533,6 +1175,19 @@ export interface UseStreamOptions<
   ) => void;
 
   /**
+   * Callback that is called when a tool lifecycle event is received.
+   */
+  onToolEvent?: (
+    data: ToolsStreamEvent["data"],
+    options: {
+      namespace: string[] | undefined;
+      mutate: (
+        update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+      ) => void;
+    }
+  ) => void;
+
+  /**
    * Callback that is called when the stream is stopped by the user.
    * Provides a mutate function to update the stream state immediately
    * without requiring a server roundtrip.
@@ -602,7 +1257,44 @@ export interface UseStreamOptions<
    * @default true
    */
   throttle?: number | boolean;
+
+  /**
+   * Headless tool implementations to execute locally when the agent interrupts
+   * with a schema-only `tool({ ... })` call from LangChain.
+   */
+  tools?: AnyHeadlessToolImplementation[];
+
+  /**
+   * Callback for headless tool lifecycle events.
+   */
+  onTool?: OnToolCallback;
+
+  // Note: Agent-specific options are defined in their respective option interfaces:
+  // - UseAgentStreamOptions: subagentToolNames
+  // - UseDeepAgentStreamOptions: filterSubagentMessages
+  // See libs/sdk/src/ui/stream/agent.ts and libs/sdk/src/ui/stream/deep-agent.ts
 }
+
+/**
+ * Union of all stream options types.
+ *
+ * Used internally by the implementation to accept any options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> = UseStreamOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+  tools?: AnyHeadlessToolImplementation[];
+  onTool?: OnToolCallback;
+};
 
 interface RunMetadataStorage {
   getItem(key: `lg:stream:${string}`): string | null;
@@ -615,7 +1307,7 @@ type ConfigWithConfigurable<ConfigurableType extends Record<string, unknown>> =
 
 export interface SubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ContextType extends Record<string, unknown> = Record<string, unknown>
+  ContextType extends Record<string, unknown> = Record<string, unknown>,
 > {
   config?: ConfigWithConfigurable<ContextType>;
   context?: ContextType;
@@ -664,6 +1356,30 @@ export interface SubmitOptions<
    * before the thread is actually created.
    */
   threadId?: string;
+
+  /**
+   * Callback that is called when an error occurs during this specific submit call.
+   * Unlike the hook-level `onError`, this allows handling errors on a per-submit basis,
+   * e.g. to show a retry button or a specific error message to the user.
+   */
+  onError?: (error: unknown, run: RunCallbackMeta | undefined) => void;
+}
+
+/**
+ * Payload for the `stream` method of the `UseStreamTransport` interface.
+ * @template StateType - The type of the stream's state values.
+ * @template Bag - The type of the stream's bag values.
+ */
+export interface UseStreamTransportPayload<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> {
+  input: GetUpdateType<Bag, StateType> | null | undefined;
+  context: GetConfigurableType<Bag> | undefined;
+  command: Command | undefined;
+  config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
+  streamSubgraphs?: boolean;
+  signal: AbortSignal;
 }
 
 /**
@@ -672,26 +1388,23 @@ export interface SubmitOptions<
  */
 export interface UseStreamTransport<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > {
-  stream: (payload: {
-    input: GetUpdateType<Bag, StateType> | null | undefined;
-    context: GetConfigurableType<Bag> | undefined;
-    command: Command | undefined;
-    config: ConfigWithConfigurable<GetConfigurableType<Bag>> | undefined;
-    signal: AbortSignal;
-  }) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
+  stream: (
+    payload: UseStreamTransportPayload<StateType, Bag>
+  ) => Promise<AsyncGenerator<{ id?: string; event: string; data: unknown }>>;
 }
 
 export type UseStreamCustomOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  Bag extends BagTemplate = BagTemplate
+  Bag extends BagTemplate = BagTemplate,
 > = Pick<
   UseStreamOptions<StateType, Bag>,
   | "messagesKey"
   | "threadId"
   | "onThreadId"
   | "onError"
+  | "onFinish"
   | "onCreated"
   | "onUpdateEvent"
   | "onCustomEvent"
@@ -703,12 +1416,42 @@ export type UseStreamCustomOptions<
   | "onStop"
   | "initialValues"
   | "throttle"
+  | "onToolEvent"
+  | "tools"
+  | "onTool"
 > & { transport: UseStreamTransport<StateType, Bag> };
+
+/**
+ * Union of all custom stream options types.
+ *
+ * Used internally by the implementation to accept any custom options type.
+ * This allows the implementation functions to handle options from
+ * any agent type while maintaining type safety at the public API level.
+ *
+ * @internal
+ */
+export type AnyStreamCustomOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> = UseStreamCustomOptions<StateType, Bag> & {
+  // Agent-specific options (optional, only present for agent types)
+  subagentToolNames?: string[];
+  filterSubagentMessages?: boolean;
+  toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+  tools?: AnyHeadlessToolImplementation[];
+  onTool?: OnToolCallback;
+};
 
 export type CustomSubmitOptions<
   StateType extends Record<string, unknown> = Record<string, unknown>,
-  ConfigurableType extends Record<string, unknown> = Record<string, unknown>
+  ConfigurableType extends Record<string, unknown> = Record<string, unknown>,
 > = Pick<
   SubmitOptions<StateType, ConfigurableType>,
-  "optimisticValues" | "context" | "command" | "config"
+  | "optimisticValues"
+  | "context"
+  | "command"
+  | "config"
+  | "onError"
+  | "threadId"
+  | "streamSubgraphs"
 >;

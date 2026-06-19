@@ -7,14 +7,21 @@ import {
   BaseChannel,
   LastValue,
   BinaryOperatorAggregate,
+  DeltaChannel,
 } from "../channels/index.js";
 import { UntrackedValueChannel } from "../channels/untracked_value.js";
 
 import type { SerializableSchema } from "./types.js";
 import { isStandardSchema } from "./types.js";
 import { getJsonSchemaFromSchema, getSchemaDefaultGetter } from "./adapter.js";
+import {
+  _getOverwriteValue,
+  OVERWRITE,
+  type OverwriteValue,
+} from "../constants.js";
 import { ReducedValue } from "./values/reduced.js";
 import { UntrackedValue } from "./values/untracked.js";
+import { DeltaValue } from "./values/delta.js";
 
 const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
 
@@ -25,6 +32,8 @@ const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
  * `BaseChannel` type, parameterized with the state "value" and "input" types according to the field's shape.
  *
  * Rules:
+ * - If the field (`F`) is a `DeltaValue<V, I>`, the channel will store values of type `V`
+ *   and accept input of type `I` (or an `Overwrite`).
  * - If the field (`F`) is a `ReducedValue<V, I>`, the channel will store values of type `V`
  *   and accept input of type `I`.
  * - If the field is a `UntrackedValue<V>`, the channel will store and accept values of type `V`.
@@ -41,16 +50,16 @@ const STATE_SCHEMA_SYMBOL = Symbol.for("langgraph.state.state_schema");
  * // ChannelType is BaseChannel<number, string>
  * ```
  */
-export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
-  infer V,
-  infer I
->
-  ? BaseChannel<V, I>
-  : F extends UntrackedValue<infer V>
-  ? BaseChannel<V, V>
-  : F extends SerializableSchema<infer I, infer O>
-  ? BaseChannel<O, I>
-  : BaseChannel<unknown, unknown>;
+export type StateSchemaFieldToChannel<F> =
+  F extends DeltaValue<infer V, infer I>
+    ? BaseChannel<V, OverwriteValue<V> | I>
+    : F extends ReducedValue<infer V, infer I>
+      ? BaseChannel<V, OverwriteValue<V> | I>
+      : F extends UntrackedValue<infer V>
+        ? BaseChannel<V, V>
+        : F extends SerializableSchema<infer I, infer O>
+          ? BaseChannel<O, I>
+          : BaseChannel<unknown, unknown>;
 
 /**
  * Converts StateSchema fields into a strongly-typed
@@ -82,7 +91,7 @@ export type StateSchemaFieldToChannel<F> = F extends ReducedValue<
  * @see StateSchemaFieldToChannel
  */
 export type StateSchemaFieldsToStateDefinition<
-  TFields extends StateSchemaFields
+  TFields extends StateSchemaFields,
 > = {
   [K in keyof TFields]: StateSchemaFieldToChannel<TFields[K]>;
 };
@@ -92,6 +101,7 @@ export type StateSchemaFieldsToStateDefinition<
  * Either a LangGraph state value type or a raw schema (e.g., Zod schema).
  */
 export type StateSchemaField<Input = unknown, Output = Input> =
+  | DeltaValue<Input, Output>
   | ReducedValue<Input, Output>
   | UntrackedValue<Output>
   | SerializableSchema<Input, Output>;
@@ -113,13 +123,15 @@ export type StateSchemaFields = {
  * - SerializableSchema<Input, Output> → Output (the validated type)
  */
 export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
-  [K in keyof TFields]: TFields[K] extends ReducedValue<any, any>
+  [K in keyof TFields]: TFields[K] extends DeltaValue<any, any>
     ? TFields[K]["ValueType"]
-    : TFields[K] extends UntrackedValue<any>
-    ? TFields[K]["ValueType"]
-    : TFields[K] extends SerializableSchema<any, infer TOutput>
-    ? TOutput
-    : never;
+    : TFields[K] extends ReducedValue<any, any>
+      ? TFields[K]["ValueType"]
+      : TFields[K] extends UntrackedValue<any>
+        ? TFields[K]["ValueType"]
+        : TFields[K] extends SerializableSchema<any, infer TOutput>
+          ? TOutput
+          : never;
 };
 
 /**
@@ -131,13 +143,15 @@ export type InferStateSchemaValue<TFields extends StateSchemaFields> = {
  * - SerializableSchema<Input, Output> → Input (what you provide)
  */
 export type InferStateSchemaUpdate<TFields extends StateSchemaFields> = {
-  [K in keyof TFields]?: TFields[K] extends ReducedValue<any, any>
-    ? TFields[K]["InputType"]
-    : TFields[K] extends UntrackedValue<any>
-    ? TFields[K]["ValueType"]
-    : TFields[K] extends SerializableSchema<infer TInput, any>
-    ? TInput
-    : never;
+  [K in keyof TFields]?: TFields[K] extends DeltaValue<infer V, infer I>
+    ? OverwriteValue<V> | I
+    : TFields[K] extends ReducedValue<infer V, infer I>
+      ? OverwriteValue<V> | I
+      : TFields[K] extends UntrackedValue<any>
+        ? TFields[K]["ValueType"]
+        : TFields[K] extends SerializableSchema<infer TInput, any>
+          ? TInput
+          : never;
 };
 
 /**
@@ -223,7 +237,15 @@ export class StateSchema<TFields extends StateSchemaFields> {
     const channels: Record<string, BaseChannel> = {};
 
     for (const [key, value] of Object.entries(this.fields)) {
-      if (ReducedValue.isInstance(value)) {
+      if (DeltaValue.isInstance(value)) {
+        // DeltaValue -> DeltaChannel. The value schema's default (if any) seeds
+        // the channel's initial value; otherwise DeltaChannel falls back to [].
+        const defaultGetter = getSchemaDefaultGetter(value.valueSchema);
+        channels[key] = new DeltaChannel(value.reducer, {
+          snapshotFrequency: value.snapshotFrequency,
+          initialValueFactory: defaultGetter,
+        });
+      } else if (ReducedValue.isInstance(value)) {
         // ReducedValue -> BinaryOperatorAggregate
         const defaultGetter = getSchemaDefaultGetter(value.valueSchema);
         channels[key] = new BinaryOperatorAggregate(
@@ -245,7 +267,7 @@ export class StateSchema<TFields extends StateSchemaFields> {
         channels[key] = new LastValue(defaultGetter);
       } else {
         throw new Error(
-          `Invalid state field "${key}": must be a schema, ReducedValue, UntrackedValue, or ManagedValue`
+          `Invalid state field "${key}": must be a schema, ReducedValue, DeltaValue, UntrackedValue, or ManagedValue`
         );
       }
     }
@@ -264,10 +286,12 @@ export class StateSchema<TFields extends StateSchemaFields> {
     for (const [key, value] of Object.entries(this.fields)) {
       let fieldSchema: JSONSchema | undefined;
 
-      if (ReducedValue.isInstance(value)) {
+      if (DeltaValue.isInstance(value) || ReducedValue.isInstance(value)) {
         fieldSchema = getJsonSchemaFromSchema(value.valueSchema) as JSONSchema;
-        if (fieldSchema && value.jsonSchemaExtra) {
-          fieldSchema = { ...fieldSchema, ...value.jsonSchemaExtra };
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
+        if (value.jsonSchemaExtra) {
+          fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
         }
       } else if (UntrackedValue.isInstance(value)) {
         fieldSchema = value.schema
@@ -282,7 +306,7 @@ export class StateSchema<TFields extends StateSchemaFields> {
 
         // Field is required if it doesn't have a default
         let hasDefault = false;
-        if (ReducedValue.isInstance(value)) {
+        if (DeltaValue.isInstance(value) || ReducedValue.isInstance(value)) {
           hasDefault = getSchemaDefaultGetter(value.valueSchema) !== undefined;
         } else if (UntrackedValue.isInstance(value)) {
           hasDefault = value.schema
@@ -315,9 +339,14 @@ export class StateSchema<TFields extends StateSchemaFields> {
     for (const [key, value] of Object.entries(this.fields)) {
       let fieldSchema: JSONSchema | undefined;
 
-      if (ReducedValue.isInstance(value)) {
+      if (DeltaValue.isInstance(value) || ReducedValue.isInstance(value)) {
         // Use input schema for updates
         fieldSchema = getJsonSchemaFromSchema(value.inputSchema) as JSONSchema;
+        // Merge jsonSchemaExtra (e.g. langgraph_type) into the field schema,
+        // even if base schema is undefined
+        if (value.jsonSchemaExtra) {
+          fieldSchema = { ...(fieldSchema ?? {}), ...value.jsonSchemaExtra };
+        }
       } else if (UntrackedValue.isInstance(value)) {
         fieldSchema = value.schema
           ? (getJsonSchemaFromSchema(value.schema) as JSONSchema)
@@ -377,7 +406,26 @@ export class StateSchema<TFields extends StateSchemaFields> {
       // Get the schema to use for validation
       let schema: StandardSchemaV1 | undefined;
 
-      if (ReducedValue.isInstance(fieldDef)) {
+      if (
+        DeltaValue.isInstance(fieldDef) ||
+        ReducedValue.isInstance(fieldDef)
+      ) {
+        const [isOverwrite, overwriteValue] = _getOverwriteValue(value);
+        if (isOverwrite) {
+          schema = fieldDef.valueSchema;
+          const validationResult =
+            await schema["~standard"].validate(overwriteValue);
+          if (validationResult.issues) {
+            throw new Error(
+              `Validation failed for field "${key}": ${JSON.stringify(
+                validationResult.issues
+              )}`
+            );
+          }
+          result[key] = { [OVERWRITE]: validationResult.value };
+          continue;
+        }
+
         schema = fieldDef.inputSchema;
       } else if (UntrackedValue.isInstance(fieldDef)) {
         schema = fieldDef.schema;

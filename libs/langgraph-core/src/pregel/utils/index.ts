@@ -78,7 +78,10 @@ export type RetryPolicy = {
    */
   maxAttempts?: number;
 
-  /** Whether to add random jitter to the interval between retries. */
+  /**
+   * Whether to add random jitter to the interval between retries.
+   * @default true
+   */
   jitter?: boolean;
 
   /** A function that returns True for exceptions that should trigger a retry. */
@@ -87,6 +90,9 @@ export type RetryPolicy = {
   /** Whether to log a warning when a retry is attempted. Defaults to true. */
   logWarning?: boolean;
 };
+
+export type { TimeoutPolicy } from "./timeout.js";
+export { coerceTimeoutPolicy } from "./timeout.js";
 
 /**
  * Configuration for caching nodes.

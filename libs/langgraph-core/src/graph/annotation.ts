@@ -2,6 +2,7 @@ import { RunnableLike } from "../pregel/runnable_types.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperator, BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
+import type { OverwriteValue } from "../constants.js";
 
 export type SingleReducer<ValueType, UpdateType = ValueType> =
   | {
@@ -24,14 +25,14 @@ export interface StateDefinition {
 type ExtractValueType<C> = C extends BaseChannel
   ? C["ValueType"]
   : C extends () => BaseChannel
-  ? ReturnType<C>["ValueType"]
-  : never;
+    ? ReturnType<C>["ValueType"]
+    : never;
 
 type ExtractUpdateType<C> = C extends BaseChannel
   ? C["UpdateType"]
   : C extends () => BaseChannel
-  ? ReturnType<C>["UpdateType"]
-  : never;
+    ? ReturnType<C>["UpdateType"]
+    : never;
 
 export type StateType<SD extends StateDefinition> = {
   [key in keyof SD]: ExtractValueType<SD[key]>;
@@ -48,10 +49,10 @@ export type NodeType<SD extends StateDefinition> = RunnableLike<
 
 /** @ignore */
 export interface AnnotationFunction {
-  <ValueType>(): LastValue<ValueType>;
   <ValueType, UpdateType = ValueType>(
     annotation: SingleReducer<ValueType, UpdateType>
-  ): BinaryOperatorAggregate<ValueType, UpdateType>;
+  ): BaseChannel<ValueType, OverwriteValue<ValueType> | UpdateType>;
+  <ValueType>(): LastValue<ValueType>;
   Root: <S extends StateDefinition>(sd: S) => AnnotationRoot<S>;
 }
 
@@ -156,10 +157,10 @@ export class AnnotationRoot<SD extends StateDefinition> {
  */
 export const Annotation: AnnotationFunction = function <
   ValueType,
-  UpdateType = ValueType
+  UpdateType = ValueType,
 >(
   annotation?: SingleReducer<ValueType, UpdateType>
-): BaseChannel<ValueType, UpdateType> {
+): BaseChannel<ValueType, OverwriteValue<ValueType> | UpdateType> {
   if (annotation) {
     return getChannel<ValueType, UpdateType>(annotation);
   } else {
@@ -172,7 +173,7 @@ Annotation.Root = <S extends StateDefinition>(sd: S) => new AnnotationRoot(sd);
 
 export function getChannel<V, U = V>(
   reducer: SingleReducer<V, U>
-): BaseChannel<V, U> {
+): BaseChannel<V, OverwriteValue<V> | U> {
   if (
     typeof reducer === "object" &&
     reducer &&

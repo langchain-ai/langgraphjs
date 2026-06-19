@@ -10,7 +10,7 @@ import {
 } from "@langchain/langgraph";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ChatGenerationChunk } from "@langchain/core/outputs";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 const GraphAnnotationOutput = Annotation.Root({
   messages: Annotation<BaseMessage[]>({

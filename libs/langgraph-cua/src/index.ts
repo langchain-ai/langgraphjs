@@ -62,7 +62,7 @@ function reinvokeModelOrEnd(state: CUAState): "callModel" | typeof END {
  */
 interface CreateCuaParams<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
+  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation,
 > {
   /**
    * The API key to use for Scrapybara.
@@ -152,7 +152,7 @@ interface CreateCuaParams<
  */
 export function createCua<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation
+  StateModifier extends AnnotationRoot<any> = typeof CUAAnnotation,
 >({
   scrapybaraApiKey,
   timeoutHours = 1.0,

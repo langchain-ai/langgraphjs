@@ -200,6 +200,9 @@ export interface Thread<ValuesType = DefaultValues, TInterruptValue = unknown> {
   /** The last time the thread was updated. */
   updated_at: string;
 
+  /** The last time the thread state was updated. */
+  state_updated_at: string;
+
   /** The thread metadata. */
   metadata: Metadata;
 
@@ -217,6 +220,9 @@ export interface Thread<ValuesType = DefaultValues, TInterruptValue = unknown> {
 
   /** The error for the thread (if status == "error") */
   error?: Optional<string | Record<string, unknown>>;
+
+  /** Extracted values from thread data. Only present when `extract` is used in search. */
+  extracted?: Record<string, unknown>;
 }
 
 export interface Cron {
@@ -235,8 +241,11 @@ export interface Cron {
   /** The end date to stop running the cron. */
   end_time: Optional<string>;
 
-  /** The schedule to run, cron format. Schedules are interpreted in UTC. */
+  /** The schedule to run, cron format. */
   schedule: string;
+
+  /** The IANA timezone for interpreting the schedule. */
+  timezone: Optional<string>;
 
   /** The time the cron was created. */
   created_at: string;
@@ -255,6 +264,9 @@ export interface Cron {
 
   /** The metadata of the cron */
   metadata: Record<string, unknown>;
+
+  /** Whether the cron is enabled */
+  enabled: boolean;
 }
 
 export type DefaultValues = Record<string, unknown>[] | Record<string, unknown>;
@@ -286,7 +298,7 @@ export interface ThreadState<ValuesType = DefaultValues> {
 
 export interface ThreadTask<
   ValuesType = DefaultValues,
-  TInterruptValue = unknown
+  TInterruptValue = unknown,
 > {
   id: string;
   name: string;
@@ -363,8 +375,10 @@ export interface CronCreateResponse {
   metadata: Metadata;
 }
 
-export interface CronCreateForThreadResponse
-  extends Omit<CronCreateResponse, "thread_id"> {
+export interface CronCreateForThreadResponse extends Omit<
+  CronCreateResponse,
+  "thread_id"
+> {
   thread_id: string;
 }
 
@@ -375,7 +389,12 @@ export type AssistantSortBy =
   | "created_at"
   | "updated_at";
 
-export type ThreadSortBy = "thread_id" | "status" | "created_at" | "updated_at";
+export type ThreadSortBy =
+  | "thread_id"
+  | "status"
+  | "created_at"
+  | "updated_at"
+  | "state_updated_at";
 
 export type CronSortBy =
   | "cron_id"
@@ -406,6 +425,7 @@ export type ThreadSelectField =
   | "thread_id"
   | "created_at"
   | "updated_at"
+  | "state_updated_at"
   | "metadata"
   | "config"
   | "context"
@@ -436,4 +456,7 @@ export type CronSelectField =
   | "payload"
   | "next_run_date"
   | "metadata"
-  | "now";
+  | "now"
+  | "timezone"
+  | "enabled"
+  | "on_run_completed";

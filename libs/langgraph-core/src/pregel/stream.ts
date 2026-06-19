@@ -1,6 +1,31 @@
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import { Serialized } from "@langchain/core/load/serializable";
+import { isCheckpointEnvelope } from "../stream/convert.js";
+import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
+import { TAG_HIDDEN } from "../constants.js";
+
+/**
+ * Optional chunk-level metadata carried alongside the payload. Used by
+ * `streamEvents(..., { version: "v3" })` to emit a companion `checkpoints`
+ * protocol event adjacent to the `values` event for the same superstep, so
+ * clients can build branching / time-travel UIs without subscribing to a
+ * full-state `checkpoints` stream.
+ *
+ * Companion checkpoint envelopes are emitted as separate
+ * ``[namespace, "checkpoints", envelope]`` chunks (see
+ * ``PregelLoop._emitValuesWithCheckpointMeta``).
+ */
+export interface StreamChunkMeta {
+  /**
+   * Lightweight checkpoint envelope for the superstep that produced the
+   * paired `values` chunk. Shape matches the canonical {@link Checkpoint}
+   * generated from `protocol.cddl`.
+   */
+  checkpoint?: Checkpoint;
+}
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
@@ -27,12 +52,19 @@ type AnyStreamOutput = StreamOutputMap<
   undefined
 >;
 
+type ToolRunInfo = {
+  ns: string[];
+  toolCallId?: string;
+  toolName: string;
+  input: unknown;
+};
+
 /**
  * A wrapper around an IterableReadableStream that allows for aborting the stream when
  * {@link cancel} is called.
  */
 export class IterableReadableStreamWithAbortSignal<
-  T
+  T,
 > extends IterableReadableStream<T> {
   protected _abortController: AbortController;
 
@@ -129,14 +161,24 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
   }
 
   push(chunk: StreamChunk) {
+    // Prevent pushing to a closed stream to avoid race condition errors
+    if (this._closed || !this.controller) {
+      // Silently drop chunks when stream is closed - this is expected behavior
+      // when async operations try to push after stream termination
+      return;
+    }
+
+    // Forward chunk to passthrough function if provided
     this.passthroughFn?.(chunk);
+
+    // Attempt to enqueue the chunk to the underlying stream
     this.controller.enqueue(chunk);
   }
 
   close() {
     try {
       this.controller.close();
-    } catch (e) {
+    } catch {
       // pass
     } finally {
       this._closed = true;
@@ -145,7 +187,116 @@ export class IterableReadableWritableStream extends IterableReadableStream<Strea
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error(e: any) {
-    this.controller.error(e);
+    try {
+      this.controller?.error(e);
+    } finally {
+      // Mark the stream as closed so any late `push()` calls from in-flight
+      // parallel tasks are dropped instead of throwing on an errored controller.
+      this._closed = true;
+    }
+  }
+}
+
+/**
+ * A callback handler that implements stream_mode=tools.
+ * Emits on_tool_start, on_tool_event, on_tool_end, on_tool_error events.
+ */
+export class StreamToolsHandler extends BaseCallbackHandler {
+  name = "StreamToolsHandler";
+
+  /** Ensure tool lifecycle callbacks run before tool.invoke returns/errors. */
+  awaitHandlers = true;
+
+  streamFn: (streamChunk: StreamChunk) => void;
+
+  runs: Record<string, ToolRunInfo | undefined> = {};
+
+  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+    super();
+    this.streamFn = streamFn;
+  }
+
+  handleToolStart(
+    _tool: Serialized,
+    input: string,
+    runId: string,
+    _parentRunId?: string,
+    tags?: string[],
+    metadata?: Record<string, unknown>,
+    runName?: string,
+    toolCallId?: string
+  ) {
+    if (!metadata || (tags && tags.includes(TAG_HIDDEN))) return;
+
+    const ns = (metadata.langgraph_checkpoint_ns as string)?.split("|") ?? [];
+    const info: ToolRunInfo = {
+      ns,
+      toolCallId,
+      toolName: runName ?? "unknown",
+      input,
+    };
+    this.runs[runId] = info;
+
+    this.streamFn([
+      ns,
+      "tools",
+      {
+        event: "on_tool_start",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        input,
+      },
+    ]);
+  }
+
+  handleToolEvent(chunk: unknown, runId: string) {
+    const info = this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_event",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        data: chunk,
+      },
+    ]);
+  }
+
+  handleToolEnd(output: unknown, runId: string) {
+    const info = this.runs[runId];
+    delete this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_end",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        output,
+      },
+    ]);
+  }
+
+  handleToolError(err: unknown, runId: string) {
+    const info = this.runs[runId];
+    delete this.runs[runId];
+    if (!info) return;
+
+    this.streamFn([
+      info.ns,
+      "tools",
+      {
+        event: "on_tool_error",
+        toolCallId: info.toolCallId,
+        name: info.toolName,
+        error: err,
+      },
+    ]);
   }
 }
 
@@ -288,5 +439,23 @@ export function toEventStream(stream: AsyncGenerator) {
 
       controller.close();
     },
+  });
+}
+
+/** Multiplex subgraph stream chunks into the parent pregel stream. */
+export function createDuplexStream(
+  ...streams: IterableReadableWritableStream[]
+) {
+  return new IterableReadableWritableStream({
+    passthroughFn: (value: StreamChunk) => {
+      const isEnvelope =
+        value[1] === "checkpoints" && isCheckpointEnvelope(value[2]);
+      for (const stream of streams) {
+        if (stream.modes.has(value[1]) || isEnvelope) {
+          stream.push(value);
+        }
+      }
+    },
+    modes: new Set(streams.flatMap((s) => Array.from(s.modes))),
   });
 }

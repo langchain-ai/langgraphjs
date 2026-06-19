@@ -222,6 +222,7 @@ export const RunCreate = z
             "checkpoints",
             "debug",
             "custom",
+            "tools",
           ])
         ),
         z.enum([
@@ -234,6 +235,7 @@ export const RunCreate = z
           "checkpoints",
           "debug",
           "custom",
+          "tools",
         ]),
       ])
       .optional(),

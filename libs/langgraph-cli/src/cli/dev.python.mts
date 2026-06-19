@@ -28,7 +28,7 @@ function getPlatformInfo(): UvBinaryInfo {
   const platform = os.platform();
   const arch = os.arch();
 
-  let binaryName = "uv";
+  const binaryName = "uv";
   let extension = "";
 
   if (platform === "win32") {
@@ -143,6 +143,7 @@ export async function spawnPythonServer(
     port: string;
     nJobsPerWorker: string;
     browser: boolean;
+    reload: boolean;
     rest: string[];
   },
   context: {
@@ -177,6 +178,7 @@ export async function spawnPythonServer(
       "--config",
       context.configPath,
       ...(args.browser ? [] : ["--no-browser"]),
+      ...(args.reload ? [] : ["--no-reload"]),
       ...args.rest,
     ],
     {

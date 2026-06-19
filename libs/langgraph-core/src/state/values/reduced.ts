@@ -3,7 +3,9 @@ import type { SerializableSchema } from "../types.js";
 /**
  * Symbol for runtime identification of ReducedValue instances.
  */
-export const REDUCED_VALUE_SYMBOL = Symbol.for("langgraph.state.reduced_value");
+export const REDUCED_VALUE_SYMBOL: symbol = Symbol.for(
+  "langgraph.state.reduced_value"
+);
 
 interface ReducedValueInitBase<Value = unknown> {
   /**
@@ -193,7 +195,7 @@ export class ReducedValue<Value = unknown, Input = Value> {
       typeof value === "object" &&
       value !== null &&
       REDUCED_VALUE_SYMBOL in value &&
-      value[REDUCED_VALUE_SYMBOL] === true
+      (value as Record<symbol, unknown>)[REDUCED_VALUE_SYMBOL] === true
     );
   }
 }

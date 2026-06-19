@@ -173,6 +173,41 @@ describe("RemoteGraph", () => {
     });
   });
 
+  test("getState handles null checkpoint", async () => {
+    const client = new Client({});
+    vi.spyOn((client as any).threads, "getState").mockResolvedValue({
+      values: {},
+      next: [],
+      checkpoint: null,
+      metadata: {},
+      created_at: null,
+      parent_checkpoint: null,
+      tasks: [],
+    });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const config = { configurable: { thread_id: "thread1" } };
+    const stateSnapshot = await remotePregel.getState(config);
+
+    expect(stateSnapshot).toEqual({
+      values: {},
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "thread1",
+        },
+      },
+      metadata: {},
+      createdAt: undefined,
+      parentConfig: undefined,
+      tasks: [],
+    });
+  });
+
   test("getStateHistory", async () => {
     const client = new Client({});
     vi.spyOn((client as any).threads, "getHistory").mockResolvedValue([
@@ -198,7 +233,7 @@ describe("RemoteGraph", () => {
     });
     const config = { configurable: { thread_id: "thread1" } };
     const stateHistorySnapshots = await gatherIterator(
-      remotePregel.getStateHistory(config)
+      remotePregel.getStateHistory(config),
     );
 
     expect(stateHistorySnapshots.length).toEqual(1);
@@ -216,6 +251,46 @@ describe("RemoteGraph", () => {
       },
       metadata: {},
       createdAt: "timestamp",
+      parentConfig: undefined,
+      tasks: [],
+    });
+  });
+
+  test("getStateHistory handles null checkpoint", async () => {
+    const client = new Client({});
+    vi.spyOn((client as any).threads, "getHistory").mockResolvedValue([
+      {
+        values: {},
+        next: [],
+        checkpoint: null,
+        metadata: {},
+        created_at: null,
+        parent_checkpoint: null,
+        tasks: [],
+      },
+    ]);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+    const config = { configurable: { thread_id: "thread1" } };
+    const stateHistorySnapshots = await gatherIterator(
+      remotePregel.getStateHistory(config),
+    );
+
+    expect(stateHistorySnapshots.length).toEqual(1);
+
+    expect(stateHistorySnapshots[0]).toEqual({
+      values: {},
+      next: [],
+      config: {
+        configurable: {
+          thread_id: "thread1",
+        },
+      },
+      metadata: {},
+      createdAt: undefined,
       parentConfig: undefined,
       tasks: [],
     });
@@ -265,7 +340,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -280,7 +355,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: "values" }
+        { ...config, streamMode: "values" },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -306,7 +381,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     // default stream_mode is updates
@@ -315,7 +390,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config }
+        { ...config },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -333,7 +408,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: ["updates"] }
+        { ...config, streamMode: ["updates"] },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -354,7 +429,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, streamMode: ["updates"], subgraphs: true }
+        { ...config, streamMode: ["updates"], subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -375,7 +450,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true }
+        { ...config, subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -400,7 +475,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     // subgraphs + list modes
@@ -409,7 +484,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true, streamMode: ["updates"] }
+        { ...config, subgraphs: true, streamMode: ["updates"] },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -430,7 +505,7 @@ describe("RemoteGraph", () => {
     try {
       const stream = await remotePregel.stream(
         { input: "data" },
-        { ...config, subgraphs: true }
+        { ...config, subgraphs: true },
       );
       for await (const chunk of stream) {
         parts.push(chunk);
@@ -460,7 +535,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -471,7 +546,7 @@ describe("RemoteGraph", () => {
     const config = { configurable: { thread_id: "thread_1" } };
     const result = await remotePregel.invoke(
       { messages: [{ type: "human", content: "hello" }] },
-      config
+      config,
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
   });
@@ -493,7 +568,7 @@ describe("RemoteGraph", () => {
         for (const chunk of chunks) {
           yield chunk;
         }
-      }
+      },
     );
 
     const remotePregel = new RemoteGraph({
@@ -508,7 +583,7 @@ describe("RemoteGraph", () => {
         resume: "bar",
         update: { foo: "bar" },
       }),
-      config
+      config,
     );
     expect(result).toEqual({ messages: [{ type: "human", content: "world" }] });
     expect(streamArgs).toEqual([
@@ -570,9 +645,45 @@ describe("RemoteGraph", () => {
       expect.objectContaining({
         signal: config.signal,
         config: expect.objectContaining({
-          configurable: config.configurable,
+          configurable: { custom_key: "custom_value" },
           recursion_limit: config.recursionLimit,
           tags: config.tags,
+        }),
+      }),
+    ]);
+  });
+
+  test("stream passes context separately from config for stateful runs", async () => {
+    const client = new Client({});
+    let streamArgs: unknown[] | undefined;
+    vi.spyOn(client.runs, "stream").mockImplementation(async function* (
+      ...args
+    ) {
+      streamArgs = args;
+      yield { event: "values", data: { ok: true } };
+    });
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const context = { userId: "user-1", tenantId: "tenant-1" };
+    await remotePregel.invoke(
+      { messages: [{ type: "human", content: "hello" }] },
+      {
+        configurable: { thread_id: "thread_1" },
+        context,
+      }
+    );
+
+    expect(streamArgs).toEqual([
+      "thread_1",
+      "test_graph_id",
+      expect.objectContaining({
+        context,
+        config: expect.objectContaining({
+          configurable: {},
         }),
       }),
     ]);
@@ -611,7 +722,6 @@ describe("RemoteGraph", () => {
           configurable: {
             circular: "[Circular]",
             bigint: "123",
-            thread_id: "thread_1",
           },
           metadata: {
             source: "test",
@@ -634,7 +744,172 @@ describe("RemoteGraph", () => {
             },
           ],
         }),
-      })
+      }),
     );
   });
+
+  test("streamEvents v3 starts a remote ThreadStream run", async () => {
+    const client = new Client({});
+    const thread = makeRemoteV3Thread();
+    vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const run = await remotePregel.streamEvents(
+      { input: "data" },
+      {
+        version: "v3",
+        configurable: {
+          thread_id: "thread_1",
+          checkpoint_id: "checkpoint_1",
+          custom_key: "custom_value",
+        },
+        metadata: { source: "test" },
+        tags: ["remote"],
+        recursionLimit: 10,
+      },
+    );
+
+    expect(client.threads.stream).toHaveBeenCalledWith("thread_1", {
+      assistantId: "test_graph_id",
+    });
+    expect(thread.run.start).toHaveBeenCalledWith({
+      input: { input: "data" },
+      config: expect.objectContaining({
+        configurable: { custom_key: "custom_value" },
+        recursion_limit: 10,
+        tags: ["remote"],
+      }),
+    });
+    expect(run.thread).toBe(thread);
+  });
+
+  test("streamEvents v3 creates a thread when no thread_id is configured", async () => {
+    const client = new Client({});
+    const thread = makeRemoteV3Thread();
+    vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    await remotePregel.streamEvents({ input: "data" }, { version: "v3" });
+
+    expect(client.threads.stream).toHaveBeenCalledWith({
+      assistantId: "test_graph_id",
+    });
+  });
+
+  test("streamEvents v3 serializes Command input as a command", async () => {
+    const client = new Client({});
+    const thread = makeRemoteV3Thread();
+    vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    await remotePregel.streamEvents(
+      new Command({ update: { foo: "bar" }, resume: "yes" }),
+      { version: "v3", configurable: { thread_id: "thread_1" } },
+    );
+
+    expect(thread.run.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          lg_name: "Command",
+          update: { foo: "bar" },
+          resume: "yes",
+        }),
+      }),
+    );
+  });
+
+  test("streamEvents v3 rejects unsupported options", async () => {
+    const client = new Client({});
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    await expect(
+      remotePregel.streamEvents(
+        { input: "data" },
+        { version: "v3", transformers: [] } as any,
+      ),
+    ).rejects.toThrow("transformers");
+  });
+
+  test("streamEvents v3 iterates remote protocol events", async () => {
+    const client = new Client({});
+    const thread = makeRemoteV3Thread();
+    const events = [
+      {
+        type: "event",
+        seq: 0,
+        method: "values",
+        params: { namespace: [], timestamp: 1, data: { value: 1 } },
+      },
+    ];
+    const subscription = {
+      async *[Symbol.asyncIterator]() {
+        yield* events;
+      },
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    };
+    thread.subscribe.mockResolvedValue(subscription);
+    vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    const run = await remotePregel.streamEvents(
+      { input: "data" },
+      { version: "v3", configurable: { thread_id: "thread_1" } },
+    );
+    const chunks = await gatherIterator(run);
+
+    expect(thread.subscribe).toHaveBeenCalledWith({
+      channels: expect.arrayContaining(["values", "lifecycle"]),
+    });
+    expect(chunks).toEqual(events);
+    expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+  });
 });
+
+function emptyAsyncIterable() {
+  return {
+    async *[Symbol.asyncIterator]() {},
+  };
+}
+
+function makeRemoteV3Thread() {
+  const output = Promise.resolve({ value: "done" });
+  return {
+    threadId: "thread_1",
+    run: {
+      start: vi.fn().mockResolvedValue({ run_id: "run_1" }),
+    },
+    subscribe: vi.fn().mockResolvedValue({
+      async *[Symbol.asyncIterator]() {},
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+    }),
+    close: vi.fn().mockResolvedValue(undefined),
+    extensions: {},
+    values: Object.assign(emptyAsyncIterable(), {
+      then: output.then.bind(output),
+    }),
+    messages: emptyAsyncIterable(),
+    subgraphs: emptyAsyncIterable(),
+    output,
+    interrupted: false,
+    interrupts: [],
+  };
+}

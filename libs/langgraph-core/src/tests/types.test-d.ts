@@ -5,8 +5,15 @@ import { Annotation } from "../graph/annotation.js";
 import { StateGraph } from "../graph/state.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
-import { Command, Send, START, END } from "../constants.js";
+import {
+  Command,
+  Send,
+  START,
+  END,
+  type OverwriteValue,
+} from "../constants.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import type { NodeError } from "../errors.js";
 import type {
   GraphNode,
   ConditionalEdgeRouter,
@@ -107,7 +114,7 @@ describe("ExtractUpdateType", () => {
       expectTypeOf<Update>().toEqualTypeOf<{
         count?: number | undefined;
         name?: string | undefined;
-        items?: string | undefined;
+        items?: string | OverwriteValue<string[]> | undefined;
       }>();
     });
   });
@@ -125,7 +132,7 @@ describe("ExtractUpdateType", () => {
       type Update = ExtractUpdateType<typeof AgentAnnotation>;
 
       expectTypeOf<Update>().toEqualTypeOf<{
-        count?: number | undefined;
+        count?: number | OverwriteValue<number> | undefined;
         name?: string | undefined;
       }>();
     });
@@ -597,6 +604,77 @@ describe("GraphNode", () => {
         expect(node).toBeDefined();
       });
     });
+  });
+});
+
+describe("StateGraph.addNode errorHandler", () => {
+  it("accepts handlers with the typed graph state", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    const typedHandler = (state: typeof State.State, _error: NodeError) => {
+      expectTypeOf(state.count).toEqualTypeOf<number>();
+      expectTypeOf(state.name).toEqualTypeOf<string>();
+      return { count: state.count + 1 };
+    };
+
+    const graph = new StateGraph(State).addNode(
+      "fails",
+      (_state: typeof State.State) => {
+        throw new Error("boom");
+      },
+      { errorHandler: typedHandler }
+    );
+
+    expect(graph).toBeDefined();
+  });
+
+  it("accepts handlers with typed per-node input state", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+    const InputState = new StateSchema({
+      query: z.string(),
+    });
+
+    const typedHandler = (state: typeof InputState.State) => {
+      expectTypeOf(state.query).toEqualTypeOf<string>();
+      return { name: state.query };
+    };
+
+    const graph = new StateGraph(State).addNode(
+      "usesInput",
+      (state: typeof InputState.State) => ({ count: state.query.length }),
+      { input: InputState, errorHandler: typedHandler }
+    );
+
+    expect(graph).toBeDefined();
+  });
+
+  it("accepts handlers that return Command with typed goto and update", () => {
+    const State = new StateSchema({
+      count: z.number().default(0),
+      name: z.string(),
+    });
+
+    const graph = new StateGraph(State)
+      .addNode("recovery", (_state: typeof State.State) => ({ count: 0 }))
+      .addNode(
+        "fails",
+        (_state: typeof State.State) => {
+          throw new Error("boom");
+        },
+        {
+          ends: ["recovery"],
+          errorHandler: (_state, _error) =>
+            new Command({ update: { count: 1 }, goto: "recovery" }),
+        }
+      );
+
+    expect(graph).toBeDefined();
   });
 });
 
@@ -1294,7 +1372,7 @@ describe("Send", () => {
 
     expectTypeOf(packet.node).toEqualTypeOf<"process">();
     expectTypeOf(packet.args).toEqualTypeOf<{
-      count?: number | undefined;
+      count?: number | OverwriteValue<number> | undefined;
       name?: string | undefined;
     }>();
   });
@@ -1317,7 +1395,7 @@ describe("Schema type helpers", () => {
     it("provides .Update type helper", () => {
       type SchemaUpdate = typeof schema.Update;
       expectTypeOf<SchemaUpdate>().toEqualTypeOf<{
-        messages?: string[] | undefined;
+        messages?: string[] | OverwriteValue<string[]> | undefined;
       }>();
     });
 

@@ -1,7 +1,7 @@
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { build, type Format, type AttwOptions } from "tsdown";
+import { build, type Format } from "tsdown";
 import type { PackageJson } from "type-fest";
 import type { Options as UnusedOptions } from "unplugin-unused";
 
@@ -73,6 +73,7 @@ async function buildProject(
    */
   const buildChecks = {
     unused:
+      // oxlint-disable-next-line no-constant-condition
       !watch && !opts.skipUnused && false
         ? ({
             root: path,
@@ -80,9 +81,9 @@ async function buildProject(
           } as UnusedOptions)
         : false,
     attw: {
-      profile: exportsCJS ? "node16" : "esmOnly",
-      level: "error",
-    } as AttwOptions,
+      profile: (exportsCJS ? "node16" : "esm-only") as "node16" | "esm-only",
+      level: "error" as const,
+    },
     /**
      * skip publint if:
      * - watch is enabled, to avoid running publint on every change
@@ -91,7 +92,6 @@ async function buildProject(
     publint:
       !watch && !opts.noEmit
         ? ({
-            pkgDir: path,
             level: "error" as const,
             strict: true,
           } as const)
@@ -105,6 +105,8 @@ async function buildProject(
     dts,
     sourcemap,
     unbundle: true,
+    fixedExtension: false,
+    inlineOnly: false,
     platform: "node",
     target: "es2022",
     outDir: "./dist",

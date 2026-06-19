@@ -135,12 +135,15 @@ export function parentAndChildCheckpointTuplesWithWrites({
     {} as Record<string, PendingWrite>
   );
 
-  const childWriteCountByChannel = writesToChild.reduce((acc, { writes }) => {
-    writes.forEach(([channel, _]) => {
-      acc[channel] = (acc[channel] || 0) + 1;
-    });
-    return acc;
-  }, {} as Record<string, number>);
+  const childWriteCountByChannel = writesToChild.reduce(
+    (acc, { writes }) => {
+      writes.forEach(([channel, _]) => {
+        acc[channel] = (acc[channel] || 0) + 1;
+      });
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   const childChannelVersions = Object.fromEntries(
     Object.entries(parentChannelVersions).map(([key, value]) => [
@@ -242,10 +245,10 @@ export function* generateTuplePairs(
   newVersions: Record<string, number | string>;
 }> {
   for (let i = 0; i < countPerNamespace; i += 1) {
-    const thread_id = uuid6(-3);
+    const thread_id = uuid6(3);
     for (const checkpoint_ns of namespaces) {
-      const parentCheckpointId = uuid6(-3);
-      const childCheckpointId = uuid6(-3);
+      const parentCheckpointId = uuid6(3);
+      const childCheckpointId = uuid6(3);
 
       const writesToParent = [
         {

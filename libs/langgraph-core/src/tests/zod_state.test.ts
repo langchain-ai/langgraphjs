@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod/v3";
 import * as z4 from "zod/v4";
+import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/state.js";
-import { END, START } from "../constants.js";
+import { Command, END, START } from "../constants.js";
 import { _AnyIdAIMessage, _AnyIdHumanMessage } from "./utils.js";
 import {
   getOutputTypeSchema,
@@ -88,6 +89,40 @@ describe("StateGraph with Zod schemas", () => {
     });
   });
 
+  it("should validate Zod node updates against state schema constraints", async () => {
+    const stateSchema = z4.object({
+      count: z4.number().min(0).max(10),
+    });
+
+    const graph = new StateGraph(stateSchema)
+      .addNode("increment", (state) => ({ count: state.count + 15 }))
+      .addEdge(START, "increment")
+      .addEdge("increment", END)
+      .compile();
+
+    await expect(graph.invoke({ count: 0 })).rejects.toThrow(/count/);
+  });
+
+  it("should validate Zod Command updates against state schema constraints", async () => {
+    const stateSchema = z4.object({
+      count: z4.number().min(0).max(10),
+    });
+
+    const graph = new StateGraph(stateSchema)
+      .addNode(
+        "increment",
+        (state) =>
+          new Command({
+            update: { count: state.count + 15 },
+          })
+      )
+      .addEdge(START, "increment")
+      .addEdge("increment", END)
+      .compile();
+
+    await expect(graph.invoke({ count: 0 })).rejects.toThrow(/count/);
+  });
+
   it("should accept Zod messages schema & return tagged JSON schema", async () => {
     const schema = MessagesZodState.extend({ count: z.number() });
 
@@ -145,6 +180,86 @@ describe("StateGraph with Zod schemas", () => {
         count: { type: "number" },
       },
     });
+  });
+
+  it("should preserve langgraph_type metadata when using Zod v4 .register() with MessagesZodMeta", async () => {
+    // This test verifies the fix for the issue where Zod v4's .register() method
+    // wasn't properly storing MessagesZodMeta metadata, causing LangGraph Studio
+    // to not detect the messages key and disable the Chat tab.
+    // See: https://github.com/langchain-ai/langgraphjs/issues/1722
+
+    const { MessagesZodMeta } = await import("../graph/messages_annotation.js");
+    const customStateSchema = z4.object({
+      messages: z4.array(z4.any()).register(registry, MessagesZodMeta),
+      llmCalls: z4.number().optional(),
+    });
+
+    const graph = new StateGraph(customStateSchema)
+      .addNode("agent", () => ({
+        messages: [{ type: "ai", content: "response" }],
+      }))
+      .addEdge("__start__", "agent")
+      .compile();
+
+    // Verify the graph works correctly
+    expect(
+      await graph.invoke({
+        messages: [{ type: "human", content: "hello" }],
+      })
+    ).toMatchObject({
+      messages: [
+        new _AnyIdHumanMessage("hello"),
+        new _AnyIdAIMessage("response"),
+      ],
+    });
+
+    // "messages" must be present in the generated JSON Schema. This is what LangGraph
+    // Studio checks to determine if the Chat tab should be enabled.
+    const inputSchema = getInputTypeSchema(graph);
+    expect(inputSchema).toBeDefined();
+    expect(
+      (inputSchema as { properties?: Record<string, unknown> } | undefined)
+        ?.properties?.messages
+    ).toMatchObject({
+      langgraph_type: "messages",
+    });
+
+    // Also verify other schema types have the metadata
+    expect
+      .soft(
+        (
+          getStateTypeSchema(graph) as
+            | { properties?: Record<string, unknown> }
+            | undefined
+        )?.properties?.messages
+      )
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
+
+    expect
+      .soft(
+        (
+          getUpdateTypeSchema(graph) as
+            | { properties?: Record<string, unknown> }
+            | undefined
+        )?.properties?.messages
+      )
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
+
+    expect
+      .soft(
+        (
+          getOutputTypeSchema(graph) as
+            | { properties?: Record<string, unknown> }
+            | undefined
+        )?.properties?.messages
+      )
+      .toMatchObject({
+        langgraph_type: "messages",
+      });
   });
 
   describe("registry default values", () => {
@@ -367,6 +482,86 @@ describe("StateGraph with Zod schemas", () => {
           .addEdge("process", END)
           .compile();
       }).toThrow('Channel "numbers" already exists with a different type');
+    });
+  });
+
+  describe("Zod v4 schema with registry reducer", () => {
+    it("should use reducer defined via zod v4 registry", async () => {
+      const itemsReducer = (a: string[], b: string[]) => a.concat(b);
+
+      const stateSchema = z4.object({
+        items: z4.array(z4.string()).register(registry, {
+          default: () => [],
+          reducer: {
+            fn: itemsReducer,
+          },
+        }),
+        name: z4.string(),
+      });
+
+      const graph = new StateGraph(stateSchema)
+        .addNode("add", () => ({ items: ["a", "b"] }))
+        .addNode("append", () => ({ items: ["c", "d"] }))
+        .addEdge(START, "add")
+        .addEdge("add", "append")
+        .addEdge("append", END)
+        .compile();
+
+      const result = await graph.invoke({ name: "test" });
+      expect(result.items).toEqual(["a", "b", "c", "d"]);
+      expect(result.name).toBe("test");
+    });
+  });
+
+  describe("Command.update with Zod schema .default() fields", () => {
+    it("should not overwrite state with schema defaults when Command.update omits fields (zod v3)", async () => {
+      const StateSchema = z.object({
+        mode: z.enum(["foo", "bar"]).default("foo"),
+        data: z.record(z.unknown()).optional(),
+      });
+
+      const graph = new StateGraph(StateSchema)
+        .addNode("start", (state) => state)
+        .addEdge(START, "start")
+        .addEdge("start", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const config = { configurable: { thread_id: "test-zod-v3-default" } };
+
+      await graph.invoke({ mode: "bar", data: { x: 1 } }, config);
+
+      const result = await graph.invoke(
+        new Command({ update: { data: { y: 2 } } }),
+        config
+      );
+
+      expect(result.mode).toBe("bar");
+      expect(result.data).toEqual({ y: 2 });
+    });
+
+    it("should not overwrite state with schema defaults when Command.update omits fields (zod v4)", async () => {
+      const StateSchema = z4.object({
+        mode: z4.enum(["foo", "bar"]).default("foo"),
+        data: z4.record(z4.string(), z4.unknown()).optional(),
+      });
+
+      const graph = new StateGraph(StateSchema)
+        .addNode("start", (state) => state)
+        .addEdge(START, "start")
+        .addEdge("start", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const config = { configurable: { thread_id: "test-zod-v4-default" } };
+
+      await graph.invoke({ mode: "bar", data: { x: 1 } }, config);
+
+      const result = await graph.invoke(
+        new Command({ update: { data: { y: 2 } } }),
+        config
+      );
+
+      expect(result.mode).toBe("bar");
+      expect(result.data).toEqual({ y: 2 });
     });
   });
 });

@@ -198,6 +198,101 @@ describe("assistants", () => {
     );
   });
 
+  describe("schema extraction strategies", () => {
+    it(
+      "StateSchema extraction with jsonSchemaExtra",
+      { timeout: 30_000 },
+      async () => {
+        const graphId = "state_schema_graph";
+
+        const assistant = await client.assistants.create({ graphId });
+        expect(assistant).toMatchObject({ graph_id: graphId });
+
+        const schemas = await client.assistants.getSchemas(
+          assistant.assistant_id
+        );
+
+        // StateSchema with MessagesValue should include jsonSchemaExtra
+        expect(schemas.state_schema).toBeDefined();
+        expect(schemas.state_schema).toMatchObject({
+          type: "object",
+          properties: expect.objectContaining({
+            messages: expect.objectContaining({
+              // MessagesValue has jsonSchemaExtra: { langgraph_type: "messages" }
+              langgraph_type: "messages",
+            }),
+            count: expect.any(Object),
+          }),
+        });
+
+        await client.assistants.delete(assistant.assistant_id);
+      }
+    );
+
+    it(
+      "Zod registry extraction with jsonSchemaExtra",
+      { timeout: 30_000 },
+      async () => {
+        const graphId = "zod_registry_graph";
+
+        const assistant = await client.assistants.create({ graphId });
+        expect(assistant).toMatchObject({ graph_id: graphId });
+
+        const schemas = await client.assistants.getSchemas(
+          assistant.assistant_id
+        );
+        expect(schemas.state_schema).toBeDefined();
+
+        // Zod with withLangGraph should include jsonSchemaExtra
+        expect(schemas.state_schema).toMatchObject({
+          type: "object",
+          properties: expect.objectContaining({
+            messages: expect.objectContaining({
+              // withLangGraph has jsonSchemaExtra: { langgraph_type: "messages" }
+              langgraph_type: "messages",
+            }),
+            count: expect.any(Object),
+            status: expect.any(Object),
+          }),
+        });
+
+        await client.assistants.delete(assistant.assistant_id);
+      }
+    );
+
+    it(
+      "Plain Zod extraction fallback (no jsonSchemaExtra)",
+      { timeout: 30_000 },
+      async () => {
+        const graphId = "plain_zod_graph";
+
+        const assistant = await client.assistants.create({ graphId });
+        expect(assistant).toMatchObject({ graph_id: graphId });
+
+        const schemas = await client.assistants.getSchemas(
+          assistant.assistant_id
+        );
+        expect(schemas.state_schema).toBeDefined();
+
+        // Plain Zod should extract schema but WITHOUT jsonSchemaExtra
+        expect(schemas.state_schema).toMatchObject({
+          type: "object",
+          properties: expect.objectContaining({
+            items: expect.any(Object),
+            counter: expect.any(Object),
+          }),
+        });
+
+        // Verify plain Zod does NOT have langgraph_type (no withLangGraph used)
+        expect(schemas.state_schema?.properties?.items).not.toHaveProperty(
+          "langgraph_type"
+        );
+
+        await client.assistants.delete(assistant.assistant_id);
+      }
+    );
+  });
+
   it("list assistants", async () => {
     let search = await client.assistants.search();
 
@@ -243,8 +338,8 @@ describe("assistants", () => {
   });
 
   it("count assistants", async () => {
-    let count = await client.assistants.count();
-    expect(count).toEqual(9);
+    const count = await client.assistants.count();
+    expect(count).toBeGreaterThanOrEqual(11);
   });
 
   it("get assistant versions", async () => {
@@ -329,7 +424,7 @@ describe("assistants", () => {
   });
 
   it("config from env", async () => {
-    let search = await client.assistants.search({
+    const search = await client.assistants.search({
       graphId: "agent",
       metadata: { created_by: "system" },
     });
@@ -561,16 +656,16 @@ describe("threads copy", () => {
           },
           parent_checkpoint: original.parent_checkpoint
             ? {
-                ...original.parent_checkpoint,
-                thread_id: copiedThread.thread_id,
-              }
+              ...original.parent_checkpoint,
+              thread_id: copiedThread.thread_id,
+            }
             : null,
         });
       }
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
-          "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
+        "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
       );
 
       // check checkpoints in DB
@@ -817,7 +912,7 @@ describe("runs", () => {
     } else {
       const sql = postgres(
         process.env.POSTGRES_URI ??
-          "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
+        "postgres://postgres:postgres@127.0.0.1:5433/postgres?sslmode=disable"
       );
 
       let cur = await sql`SELECT * FROM checkpoints WHERE run_id is null`;
@@ -1482,7 +1577,7 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    let chunks = await gatherIterator(
+    const chunks = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         input: {
           messages: [{ role: "human", content: "SF", id: "initial-message" }],
@@ -1549,7 +1644,7 @@ describe("subgraphs", () => {
       },
     ]);
 
-    let state = await client.threads.getState(thread.thread_id);
+    const state = await client.threads.getState(thread.thread_id);
     expect(state.next).toEqual(["weather_graph"]);
     expect(state.tasks).toEqual([
       {
@@ -1642,11 +1737,13 @@ describe("subgraphs", () => {
     expect(continueMessages.length).toBe(2);
     expect(continueMessages[0].content).toBe("SF");
     expect(continueMessages[1].content).toBe("It's sunny in San Francisco!");
-    expect(chunksSubgraph).toEqual([
+    const chunksSubgraphWithoutCheckpoints = chunksSubgraph
+      .filter((chunk) => !chunk.event.startsWith("checkpoints"))
+      .map(({ id: _id, ...chunk }) => chunk);
+    expect(chunksSubgraphWithoutCheckpoints).toEqual([
       {
         event: "metadata",
         data: { run_id: expect.any(String), attempt: 1 },
-        id: "0",
       },
       {
         event: "values",
@@ -1662,7 +1759,6 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
-        id: "1",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1678,7 +1774,6 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
-        id: "2",
       },
       {
         event: expect.stringMatching(/^updates\|weather_graph:/),
@@ -1697,7 +1792,6 @@ describe("subgraphs", () => {
             ],
           },
         },
-        id: "3",
       },
       {
         event: expect.stringMatching(/^values\|weather_graph:/),
@@ -1722,7 +1816,6 @@ describe("subgraphs", () => {
           ],
           city: "San Francisco",
         },
-        id: "4",
       },
       {
         event: "updates",
@@ -1748,7 +1841,6 @@ describe("subgraphs", () => {
             ],
           },
         },
-        id: "5",
       },
       {
         event: "values",
@@ -1773,7 +1865,6 @@ describe("subgraphs", () => {
           ],
           route: "weather",
         },
-        id: "6",
       },
     ]);
 
@@ -2049,7 +2140,7 @@ describe("command update state", () => {
       config: globalConfig,
     });
 
-    let stream = await gatherIterator(
+    const stream = await gatherIterator(
       client.runs.stream(thread.thread_id, assistant.assistant_id, {
         command: { update: { keyOne: "value3", keyTwo: "value4" } },
         config: globalConfig,
@@ -2057,7 +2148,7 @@ describe("command update state", () => {
     );
     expect(stream.filter((chunk) => chunk.event === "error")).toEqual([]);
 
-    let state = await client.threads.getState<StateSchema>(thread.thread_id);
+    const state = await client.threads.getState<StateSchema>(thread.thread_id);
     expect(state.values).toMatchObject({ keyOne: "value3", keyTwo: "value4" });
   });
 

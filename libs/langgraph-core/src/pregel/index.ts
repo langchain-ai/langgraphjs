@@ -1,7 +1,7 @@
 /* eslint-disable no-param-reassign */
+import { CallbackManager } from "@langchain/core/callbacks/manager";
 import {
   _coerceToRunnable,
-  getCallbackManagerForConfig,
   mergeConfigs,
   patchConfig,
   Runnable,
@@ -31,7 +31,7 @@ import {
 import {
   BaseChannel,
   createCheckpoint,
-  emptyChannels,
+  channelsFromCheckpoint,
   getOnlyChannels,
 } from "../channels/base.js";
 import {
@@ -59,10 +59,12 @@ import {
   TASKS,
 } from "../constants.js";
 import {
+  GraphDrained,
   GraphRecursionError,
   GraphValueError,
   InvalidUpdateError,
 } from "../errors.js";
+import { RunControl } from "./runtime.js";
 import { gatherIterator, patchConfigurable } from "../utils.js";
 import {
   _applyWrites,
@@ -80,14 +82,27 @@ import {
 import { mapInput, readChannels } from "./io.js";
 import { PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
+import { StreamProtocolMessagesHandler } from "./messages-v2.js";
 import { PregelNode } from "./read.js";
-import { LangGraphRunnableConfig } from "./runnable_types.js";
+import { LangGraphRunnableConfig, type ServerInfo } from "./runnable_types.js";
 import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
+import {
+  createGraphRunStream,
+  GraphRunStream,
+  isCheckpointEnvelope,
+  STREAM_EVENTS_V3_MODES,
+} from "../stream/index.js";
+import type {
+  InferExtensions,
+  ProtocolEvent,
+  StreamTransformer,
+} from "../stream/index.js";
 import type {
   Durability,
   GetStateOptions,
@@ -111,7 +126,6 @@ import {
 import {
   _coerceToDict,
   combineAbortSignals,
-  combineCallbacks,
   getNewChannelVersions,
   patchCheckpointMap,
   RetryPolicy,
@@ -124,6 +138,53 @@ import { interrupt } from "../interrupt.js";
 
 type WriteValue = Runnable | RunnableFunc<unknown, unknown> | unknown;
 type StreamEventsOptions = Parameters<Runnable["streamEvents"]>[2];
+type StreamEventsV3Options<
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TTransformers extends ReadonlyArray<() => StreamTransformer<any>>,
+  TEncoding extends "text/event-stream" | undefined = undefined,
+> = Partial<
+  Omit<PregelOptions<Nodes, Channels, ContextType>, "encoding" | "subgraphs">
+> & {
+  version: "v3";
+  /** User-supplied transformer factories for custom projections. */
+  transformers?: TTransformers;
+} & (TEncoding extends "text/event-stream"
+    ? { encoding: "text/event-stream" }
+    : { encoding?: undefined });
+
+function protocolEventsToEventStream(run: AsyncIterable<ProtocolEvent>) {
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of run) {
+          const namespace = event.params.namespace;
+          const eventName = namespace.length
+            ? `${event.method}|${namespace.join("|")}`
+            : event.method;
+          controller.enqueue(
+            encoder.encode(
+              `event: ${eventName}\ndata: ${JSON.stringify(event.params.data ?? {})}\n\n`
+            )
+          );
+        }
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ message: String(error) })}\n\n`
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+}
 
 /**
  * Utility class for working with channels in the Pregel system.
@@ -294,7 +355,7 @@ export type { PregelInputType, PregelOptions, PregelOutputType };
 class PartialRunnable<
   RunInput,
   RunOutput,
-  CallOptions extends RunnableConfig
+  CallOptions extends RunnableConfig,
 > extends Runnable<RunInput, RunOutput, CallOptions> {
   lc_namespace = ["langgraph", "pregel"];
 
@@ -381,19 +442,21 @@ class PartialRunnable<
  * @typeParam OutputType - Type of output values produced by the graph
  */
 export class Pregel<
-    Nodes extends StrRecord<string, PregelNode>,
-    Channels extends StrRecord<string, BaseChannel>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ContextType extends Record<string, any> = StrRecord<string, any>,
-    InputType = PregelInputType,
-    OutputType = PregelOutputType,
-    StreamUpdatesType = InputType,
-    StreamValuesType = OutputType,
-    NodeReturnType = unknown,
-    CommandType = CommandInstance,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    StreamCustom = any
-  >
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any> = StrRecord<string, any>,
+  InputType = PregelInputType,
+  OutputType = PregelOutputType,
+  StreamUpdatesType = InputType,
+  StreamValuesType = OutputType,
+  NodeReturnType = unknown,
+  CommandType = CommandInstance,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  StreamCustom = any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  TStreamTransformers extends ReadonlyArray<() => StreamTransformer<any>> = [],
+>
   extends PartialRunnable<
     InputType | CommandType | null,
     OutputType,
@@ -449,6 +512,7 @@ export class Pregel<
    * - "updates": Streams state updates after each step
    * - "messages": Streams messages from within nodes
    * - "custom": Streams custom events from within nodes
+   * - "tools": Streams tool-call lifecycle events (on_tool_start, on_tool_event, on_tool_end, on_tool_error) from LLM tool execution
    * - "debug": Streams events related to the execution of the graph - useful for tracing & debugging graph execution
    */
   streamMode: StreamMode[] = ["values"];
@@ -507,6 +571,13 @@ export class Pregel<
   private userInterrupt?: unknown;
 
   /**
+   * Stream reducer factories registered at compile time.  These run
+   * automatically for every `streamEvents(..., { version: "v3" })` call,
+   * before any call-site transformers.
+   */
+  streamTransformers: TStreamTransformers;
+
+  /**
    * The trigger to node mapping for the graph run.
    * @internal
    */
@@ -517,7 +588,7 @@ export class Pregel<
    *
    * @internal
    */
-  constructor(fields: PregelParams<Nodes, Channels>) {
+  constructor(fields: PregelParams<Nodes, Channels, TStreamTransformers>) {
     super(fields);
 
     let { streamMode } = fields;
@@ -558,6 +629,8 @@ export class Pregel<
     this.name = fields.name;
     this.triggerToNodes = fields.triggerToNodes ?? this.triggerToNodes;
     this.userInterrupt = fields.userInterrupt;
+    this.streamTransformers = (fields.streamTransformers ??
+      []) as TStreamTransformers;
 
     if (this.autoValidate) {
       this.validate();
@@ -583,12 +656,51 @@ export class Pregel<
    * @param config - The configuration to merge with the current configuration
    * @returns A new Pregel instance with the merged configuration
    */
-  override withConfig(
-    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt">
-  ): typeof this {
-    const mergedConfig = mergeConfigs(this.config, config);
+  override withConfig<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new (this.constructor as any)({ ...this, config: mergedConfig });
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      streamTransformers: TTransformers;
+    }
+  ): Pregel<
+    Nodes,
+    Channels,
+    ContextType,
+    InputType,
+    OutputType,
+    StreamUpdatesType,
+    StreamValuesType,
+    NodeReturnType,
+    CommandType,
+    StreamCustom,
+    readonly [...TStreamTransformers, ...TTransformers]
+  >;
+
+  override withConfig(
+    config: PregelOptions<Nodes, Channels, ContextType>
+  ): this;
+
+  override withConfig(
+    config: Omit<LangGraphRunnableConfig, "store" | "writer" | "interrupt"> & {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      streamTransformers?: ReadonlyArray<() => StreamTransformer<any>>;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): any {
+    const { streamTransformers, ...restConfig } = config;
+    const mergedConfig = mergeConfigs(this.config, restConfig);
+    const mergedStreamTransformers = [
+      ...this.streamTransformers,
+      ...(streamTransformers ?? []),
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return new (this.constructor as any)({
+      ...this,
+      config: mergedConfig,
+      streamTransformers: mergedStreamTransformers,
+    });
   }
 
   /**
@@ -772,10 +884,16 @@ export class Pregel<
       };
     }
 
-    // Create all channels
-    const channels = emptyChannels(
+    // Create all channels, reconstructing any DeltaChannel from ancestor
+    // writes via the checkpointer.
+    const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
-      saved.checkpoint
+      saved.checkpoint,
+      {
+        saver:
+          typeof this.checkpointer === "object" ? this.checkpointer : undefined,
+        config: saved.config ?? config,
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -951,6 +1069,7 @@ export class Pregel<
       config.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      config.configurable?.[CONFIG_KEY_READ] === undefined &&
       config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
       // remove task_ids from checkpoint_ns
@@ -968,9 +1087,10 @@ export class Pregel<
           );
         }
       }
-      throw new Error(
-        `Subgraph with namespace "${recastNamespace}" not found.`
-      );
+      // No static subgraph found for this namespace (e.g. a dynamically-created
+      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
+      // checkpointer directly with the full checkpoint_ns so callers can still
+      // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
     const mergedConfig = mergeConfigs(this.config, config);
@@ -1032,9 +1152,10 @@ export class Pregel<
           return;
         }
       }
-      throw new Error(
-        `Subgraph with namespace "${recastNamespace}" not found.`
-      );
+      // No static subgraph found for this namespace (e.g. a dynamically-created
+      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
+      // checkpointer directly with the full checkpoint_ns so callers can still
+      // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
     const mergedConfig = mergeConfigs(this.config, config, {
@@ -1177,10 +1298,11 @@ export class Pregel<
         );
       }
 
-      // update channels
-      const channels = emptyChannels(
+      // update channels, reconstructing any DeltaChannel from ancestor writes
+      const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
-        checkpoint
+        checkpoint,
+        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
       );
 
       if (values === null && asNode === END) {
@@ -1720,7 +1842,7 @@ export class Pregel<
     BaseStore | undefined, // store
     boolean, // stream mode single
     BaseCache | undefined, // node cache
-    Durability // durability
+    Durability, // durability
   ] {
     const {
       debug,
@@ -1839,7 +1961,7 @@ export class Pregel<
   override async stream<
     TStreamMode extends StreamMode | StreamMode[] | undefined,
     TSubgraphs extends boolean,
-    TEncoding extends "text/event-stream" | undefined
+    TEncoding extends "text/event-stream" | undefined,
   >(
     input: InputType | CommandType | null,
     options?: Partial<
@@ -1873,6 +1995,33 @@ export class Pregel<
     // and override if it is passed as an explicit param in `options`.
     const abortController = new AbortController();
 
+    // Preserve nesting when a compiled graph is invoked imperatively from
+    // inside another graph's running task (e.g. a tool body calling
+    // `subAgent.invoke(...)`). The surrounding task config — including the
+    // langgraph-internal nesting keys (`CONFIG_KEY_READ`, `CONFIG_KEY_STREAM`,
+    // `checkpoint_ns`, the checkpoint map, ...) — is propagated implicitly via
+    // `AsyncLocalStorage`, so a no-config `invoke()` nests correctly. But the
+    // base `Runnable.stream` calls langchain-core's `ensureConfig`, which
+    // replaces the ambient `configurable` wholesale whenever the caller passes
+    // its own. `createAgent`/`ReactAgent` always passes a `configurable`, so
+    // without this every tool-invoked sub-agent would lose the nesting keys,
+    // run as a fresh root, and flatten its streamed events to the root
+    // namespace. When the ambient marks an active task (`CONFIG_KEY_READ`
+    // present) but the caller's `configurable` is missing it, merge the ambient
+    // `configurable` underneath the caller's (caller keys still win per-key).
+    // Declared subgraph nodes already carry their own `CONFIG_KEY_READ` and are
+    // left untouched; top-level runs (no ambient task) are unaffected.
+    const ambientConfigurable = getConfig()?.configurable;
+    if (
+      ambientConfigurable?.[CONFIG_KEY_READ] !== undefined &&
+      options?.configurable?.[CONFIG_KEY_READ] === undefined
+    ) {
+      options = {
+        ...options,
+        configurable: { ...ambientConfigurable, ...options?.configurable },
+      } as typeof options;
+    }
+
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
@@ -1889,9 +2038,121 @@ export class Pregel<
     );
   }
 
+  async #streamEventsV3<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+    TEncoding extends "text/event-stream" | undefined = undefined,
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<
+      Nodes,
+      Channels,
+      ContextType,
+      TTransformers,
+      TEncoding
+    >
+  ): Promise<
+    | GraphRunStream<
+        OutputType,
+        InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
+      >
+    | IterableReadableStream<Uint8Array>
+  > {
+    const {
+      version,
+      encoding,
+      transformers: userTransformers,
+      ...restOptions
+    } = options;
+
+    const streamOptions = {
+      recursionLimit: this.config?.recursionLimit,
+      ...restOptions,
+      configurable: {
+        ...this.config?.configurable,
+        ...restOptions?.configurable,
+      },
+      version,
+      streamMode: STREAM_EVENTS_V3_MODES,
+      subgraphs: true as const,
+      encoding: undefined,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sourcePromise = this.stream(input, streamOptions as any);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source: AsyncIterable<any> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [Symbol.asyncIterator]: async function* (): AsyncGenerator<any> {
+        const src = await sourcePromise;
+        for await (const chunk of src) {
+          yield chunk;
+        }
+      },
+    };
+
+    type TMerged = readonly [...TStreamTransformers, ...TTransformers];
+    const mergedTransformers = [
+      ...(this.streamTransformers ?? []),
+      ...(userTransformers ?? []),
+    ] as unknown as TMerged;
+
+    const graphRun = createGraphRunStream<OutputType, TMerged>(
+      source,
+      mergedTransformers
+    );
+
+    if (encoding === "text/event-stream") {
+      const abortController = new AbortController();
+      abortController.signal.addEventListener(
+        "abort",
+        () => graphRun.abort(abortController.signal.reason),
+        { once: true }
+      );
+
+      return new IterableReadableStreamWithAbortSignal(
+        protocolEventsToEventStream(graphRun),
+        abortController
+      );
+    }
+
+    return graphRun;
+  }
+
   /**
    * @inheritdoc
    */
+  override streamEvents<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<
+      Nodes,
+      Channels,
+      ContextType,
+      TTransformers,
+      "text/event-stream"
+    >
+  ): Promise<IterableReadableStream<Uint8Array>>;
+
+  override streamEvents<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TTransformers extends ReadonlyArray<() => StreamTransformer<any>> =
+      [],
+  >(
+    input: InputType | CommandType | null,
+    options: StreamEventsV3Options<Nodes, Channels, ContextType, TTransformers>
+  ): Promise<
+    GraphRunStream<
+      OutputType,
+      InferExtensions<readonly [...TStreamTransformers, ...TTransformers]>
+    >
+  >;
+
   override streamEvents(
     input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
@@ -1912,26 +2173,45 @@ export class Pregel<
   override streamEvents(
     input: InputType | CommandType | null,
     options: Partial<PregelOptions<Nodes, Channels, ContextType>> & {
-      version: "v1" | "v2";
+      version: "v1" | "v2" | "v3";
     },
     streamOptions?: StreamEventsOptions
-  ): IterableReadableStream<StreamEvent | Uint8Array> {
+  ):
+    | IterableReadableStream<StreamEvent | Uint8Array>
+    | Promise<
+        | GraphRunStream<
+            OutputType,
+            InferExtensions<readonly [...TStreamTransformers]>
+          >
+        | IterableReadableStream<Uint8Array>
+      > {
+    if (options.version === "v3") {
+      return this.#streamEventsV3(
+        input,
+        options as StreamEventsV3Options<Nodes, Channels, ContextType, []>
+      );
+    }
+
     const abortController = new AbortController();
 
     const config = {
       recursionLimit: this.config?.recursionLimit,
       ...options,
-      // Similar to `stream`, we need to pass the `config.callbacks` here,
-      // otherwise the user-provided callback will get lost in `ensureLangGraphConfig`.
-
-      // extend the callbacks with the ones from the config
-      callbacks: combineCallbacks(this.config?.callbacks, options?.callbacks),
+      // `_streamIterator` runs `ensureLangGraphConfig(this.config, options)`,
+      // which merges callbacks.
       signal: combineAbortSignals(options?.signal, abortController.signal)
         .signal,
     };
 
     return new IterableReadableStreamWithAbortSignal(
-      super.streamEvents(input, config, streamOptions),
+      super.streamEvents(
+        input,
+        config as Partial<PregelOptions<Nodes, Channels, ContextType>> & {
+          version: "v1" | "v2";
+          encoding?: "text/event-stream";
+        },
+        streamOptions
+      ),
       abortController
     );
   }
@@ -1973,8 +2253,12 @@ export class Pregel<
   ): AsyncGenerator<PregelOutputType> {
     // Skip LGP encoding option is `streamEvents` is used
     const streamEncoding =
-      "version" in (options ?? {}) ? undefined : options?.encoding ?? undefined;
+      "version" in (options ?? {})
+        ? undefined
+        : (options?.encoding ?? undefined);
     const streamSubgraphs = options?.subgraphs;
+    const isV3 =
+      (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
     if (
       inputConfig.recursionLimit === undefined ||
@@ -2010,6 +2294,10 @@ export class Pregel<
       durability,
     ] = this._defaults(restConfig);
 
+    // Tag root run with LangGraph integration metadata, but don't override
+    // if already set (e.g. by downstream frameworks like DeepAgents)
+    config.metadata = { ls_integration: "langgraph", ...config.metadata };
+
     // At entrypoint, `configurable` is an alias for `context`.
     if (typeof config.context !== "undefined") {
       config.context = await this._validateContext(config.context);
@@ -2033,9 +2321,9 @@ export class Pregel<
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
-      const messageStreamer = new StreamMessagesHandler((chunk) =>
-        stream.push(chunk)
-      );
+      const messageStreamer = isV3
+        ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
+        : new StreamMessagesHandler((chunk) => stream.push(chunk));
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];
@@ -2044,6 +2332,23 @@ export class Pregel<
       } else {
         const copiedCallbacks = callbacks.copy();
         copiedCallbacks.addHandler(messageStreamer, true);
+        config.callbacks = copiedCallbacks;
+      }
+    }
+
+    // set up tools stream mode
+    if (streamMode.includes("tools")) {
+      const toolStreamer = new StreamToolsHandler((chunk) =>
+        stream.push(chunk)
+      );
+      const { callbacks } = config;
+      if (callbacks === undefined) {
+        config.callbacks = [toolStreamer];
+      } else if (Array.isArray(callbacks)) {
+        config.callbacks = callbacks.concat(toolStreamer);
+      } else {
+        const copiedCallbacks = callbacks.copy();
+        copiedCallbacks.addHandler(toolStreamer, true);
         config.callbacks = copiedCallbacks;
       }
     }
@@ -2063,7 +2368,34 @@ export class Pregel<
 
     config.interrupt ??= (this.userInterrupt as typeof interrupt) ?? interrupt;
 
-    const callbackManager = await getCallbackManagerForConfig(config);
+    if (config.serverInfo == null) {
+      config.serverInfo = _buildServerInfo(config);
+    }
+
+    // Resolve the run-scoped control surface for cooperative draining.
+    // Precedence: an explicit `control` option, then a control propagated
+    // from a parent run (via `mergeConfigs` on task/subgraph configs), then a
+    // fresh `RunControl` so `runtime.control` is always available to nodes.
+    // Keep `control` on the top-level config only — not in `configurable` —
+    // so it is not persisted or emitted in checkpoint configs.
+    config.control ??= new RunControl();
+
+    const callbackManagerOptions: Parameters<
+      typeof CallbackManager._configureSync
+    >[6] & {
+      tracerInheritableMetadata?: Record<string, unknown>;
+    } = {
+      tracerInheritableMetadata: _getTracingMetadataDefaults(config),
+    };
+    const callbackManager = await CallbackManager._configureSync(
+      config?.callbacks,
+      undefined,
+      config?.tags,
+      undefined,
+      config?.metadata,
+      undefined,
+      callbackManagerOptions
+    );
     const runManager = await callbackManager?.handleChainStart(
       this.toJSON(), // chain
       _coerceToDict(input, "input"), // inputs
@@ -2138,6 +2470,12 @@ export class Pregel<
           loopError = loopError ?? e;
         }
         if (loopError) {
+          // LangChain invokes `handleToolError` via an async callback; yield one
+          // microtask so tool stream chunks are enqueued before the writable
+          // stream is sealed.
+          await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+          });
           // "Causes any future interactions with the associated stream to error".
           // Wraps ReadableStreamDefaultController#error:
           // https://developer.mozilla.org/en-US/docs/Web/API/ReadableStreamDefaultController/error
@@ -2159,7 +2497,16 @@ export class Pregel<
           throw new Error("Data structure error.");
         }
         const [namespace, mode, payload] = chunk;
-        if (streamMode.includes(mode)) {
+        const isStreamEvents = "version" in (options ?? {});
+        const includeChunk =
+          streamMode.includes(mode) ||
+          (mode === "checkpoints" &&
+            isCheckpointEnvelope(payload) &&
+            (isV3 ||
+              (isStreamEvents &&
+                streamSubgraphs &&
+                streamMode.includes("values"))));
+        if (includeChunk) {
           if (streamEncoding === "text/event-stream") {
             if (streamSubgraphs) {
               yield [namespace, mode, payload];
@@ -2286,6 +2633,12 @@ export class Pregel<
           signal: config.signal,
         });
       }
+      if (loop.status === "draining") {
+        if (loop.control == null) {
+          throw new Error("Draining status requires run control");
+        }
+        throw new GraphDrained(loop.control.drainReason ?? "shutdown");
+      }
       if (loop.status === "out_of_steps") {
         throw new GraphRecursionError(
           [
@@ -2314,4 +2667,77 @@ export class Pregel<
   async clearCache(): Promise<void> {
     await this.cache?.clear([]);
   }
+}
+
+function _buildServerInfo(
+  config: LangGraphRunnableConfig
+): ServerInfo | undefined {
+  const metadata = config.metadata ?? {};
+  const configurable = config.configurable ?? {};
+  const assistantId =
+    (configurable.assistant_id as string | undefined) ??
+    (metadata.assistant_id as string | undefined);
+  const graphId =
+    (configurable.graph_id as string | undefined) ??
+    (metadata.graph_id as string | undefined);
+
+  const authUserData = configurable.langgraph_auth_user as
+    | Record<string, any>
+    | undefined;
+  let user: Record<string, any> | undefined;
+  if (
+    authUserData != null &&
+    typeof authUserData === "object" &&
+    "identity" in authUserData
+  ) {
+    user = authUserData;
+  }
+
+  if (assistantId != null || graphId != null || user != null) {
+    return {
+      assistantId: assistantId != null ? String(assistantId) : "",
+      graphId: graphId != null ? String(graphId) : "",
+      user,
+    };
+  }
+  return undefined;
+}
+
+const OMITTED_KEYS = new Set(["key", "token", "secret", "password", "auth"]);
+
+function _excludeAsMetadata(key: string, value: unknown): boolean {
+  const keyLower = key.toLowerCase();
+  let hasOmittedSubstring = false;
+  for (const substr of OMITTED_KEYS) {
+    if (keyLower.includes(substr)) {
+      hasOmittedSubstring = true;
+      break;
+    }
+  }
+  return (
+    key.startsWith("__") ||
+    !(
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) ||
+    hasOmittedSubstring
+  );
+}
+
+function _getTracingMetadataDefaults(
+  config: RunnableConfig
+): Record<string, unknown> | undefined {
+  const configurable = config.configurable;
+  if (!configurable) {
+    return undefined;
+  }
+  const metadata: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(configurable)) {
+    if (_excludeAsMetadata(key, value)) {
+      continue;
+    }
+    metadata[key] = value;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import type { ComponentPropsWithoutRef, ElementType } from "react";
 import type { RemoveUIMessage, UIMessage } from "../types.js";
 
@@ -78,7 +78,7 @@ export const typedUi = <Decl extends Record<string, ElementType>>(
         tags: config.tags,
         name: config.runName,
         ...message?.metadata,
-        ...(options?.message ? { message_id: options.message.id } : null),
+        ...(options?.message ? { id: options.message.id } : null),
       },
     };
     items.push(evt);
