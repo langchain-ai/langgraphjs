@@ -1115,7 +1115,7 @@ async function runDeploy(
   noInput = !opts.input;
 
   emitter.note(
-    "Note: 'langgraph deploy' is in beta. Expect frequent updates and improvements."
+    "Note: 'langgraphjs deploy' is in beta. Expect frequent updates and improvements."
   );
   if (!opts.json) process.stdout.write("\n");
 
