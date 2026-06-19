@@ -424,9 +424,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       })
     );
 
-    await this.db
-      .collection(this.checkpointWritesCollectionName)
-      .bulkWrite(operations);
+    // The MongoDB driver rejects `bulkWrite([])` with "Invalid BulkOperation,
+    // Batch cannot be empty". `writes` can be empty in human-in-the-loop /
+    // `interrupt()` flows, so skip the call when there is nothing to persist.
+    if (operations.length > 0) {
+      await this.db
+        .collection(this.checkpointWritesCollectionName)
+        .bulkWrite(operations);
+    }
   }
 
   async deleteThread(threadId: string) {

@@ -261,4 +261,38 @@ describe("MongoDBSaver", () => {
       await saver.getTuple({ configurable: { thread_id: "2" } })
     ).toBeDefined();
   });
+
+  it("should no-op on empty writes without throwing", async () => {
+    // Regression test for the empty-batch crash against the real driver:
+    // bulkWrite([]) is rejected with "Invalid BulkOperation, Batch cannot be
+    // empty"; HITL / interrupt() flows can call putWrites with zero writes.
+    const saver = new MongoDBSaver({ client });
+
+    await saver.put(
+      { configurable: { thread_id: "empty-writes" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} }
+    );
+
+    await expect(
+      saver.putWrites(
+        {
+          configurable: {
+            thread_id: "empty-writes",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [],
+        "task-empty"
+      )
+    ).resolves.toBeUndefined();
+
+    // Nothing should have been persisted to the writes collection.
+    const writeDoc = await client
+      .db()
+      .collection("checkpoint_writes")
+      .findOne({ thread_id: "empty-writes" });
+    expect(writeDoc).toBeNull();
+  });
 });
