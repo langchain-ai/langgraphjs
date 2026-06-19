@@ -1288,8 +1288,13 @@ export class StreamController<
     // so the server echoes the same ids back and `#applyValues` flips them
     // `pending` → `sent` in place (no duplicate, no gap).
     const prepared =
-      options?.update != null ? this.#beginOptimistic(options.update) : undefined;
-    const dispatchUpdate = this.#resolveDispatchUpdate(options?.update, prepared);
+      options?.update != null
+        ? this.#beginOptimistic(options.update)
+        : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(
+      options?.update,
+      prepared
+    );
 
     try {
       // Route through the coordinator so a resumed run that fails (e.g. a
@@ -1388,8 +1393,13 @@ export class StreamController<
     // rationale): the batched resume's pushed messages paint immediately and
     // reconcile by id when the single servicing run echoes them back.
     const prepared =
-      options?.update != null ? this.#beginOptimistic(options.update) : undefined;
-    const dispatchUpdate = this.#resolveDispatchUpdate(options?.update, prepared);
+      options?.update != null
+        ? this.#beginOptimistic(options.update)
+        : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(
+      options?.update,
+      prepared
+    );
 
     try {
       // See `respond()` — route through the coordinator so the single run
