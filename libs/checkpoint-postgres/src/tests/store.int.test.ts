@@ -1569,6 +1569,9 @@ describe("PostgresStore with createSchema: false", () => {
     await store.put(["ns"], "key1", { data: "value1" });
     const item = await store.get(["ns"], "key1");
     expect(item?.value).toEqual({ data: "value1" });
+
+    // Re-running setup() must be idempotent against an already-migrated schema.
+    await expect(store.setup()).resolves.not.toThrow();
   });
 
   it("throws a clear error when the schema does not exist", async () => {
@@ -1580,7 +1583,11 @@ describe("PostgresStore with createSchema: false", () => {
     });
     testStores.push(store);
 
-    await expect(store.setup()).rejects.toThrow(customSchema);
+    // Match the schema-guard message specifically, not just any error that
+    // happens to mention the schema name.
+    await expect(store.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"createSchema" is false/
+    );
   });
 
   it("honors createSchema: false through lazy auto-setup (no explicit setup call)", async () => {

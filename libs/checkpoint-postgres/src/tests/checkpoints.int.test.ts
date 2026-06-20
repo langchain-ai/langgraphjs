@@ -596,7 +596,11 @@ describe("PostgresSaver with createSchema: false", () => {
     });
     postgresSavers.push(saver);
 
-    await expect(saver.setup()).rejects.toThrow(customSchema);
+    // Match the schema-guard message specifically, not just any error that
+    // happens to mention the schema name.
+    await expect(saver.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"createSchema" is false/
+    );
   });
 
   it("still creates the schema by default (regression)", async () => {
