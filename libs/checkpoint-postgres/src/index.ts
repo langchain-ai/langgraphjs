@@ -20,7 +20,7 @@ import {
   type SQL_TYPES,
   getSQLStatements,
   getTablesWithSchema,
-  schemaExistsSQL,
+  assertSchemaExists,
 } from "./sql.js";
 
 /** @inline */
@@ -160,14 +160,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
           `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
         );
       } else {
-        const result = await client.query(schemaExistsSQL(this.options.schema));
-        if (!result.rows[0]?.exists) {
-          throw new Error(
-            `Schema "${this.options.schema}" does not exist (or is not visible to the current role). ` +
-              `It was expected to already exist because "createSchema" is false. ` +
-              `Create the schema (or grant access to it) out-of-band, or set "createSchema" to true.`
-          );
-        }
+        await assertSchemaExists(client, this.options.schema);
       }
       let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);

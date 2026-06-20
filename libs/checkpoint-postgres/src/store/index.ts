@@ -28,7 +28,7 @@ import {
   StoreMigrationConfig,
 } from "./store-migrations.js";
 import { getStoreTablesWithSchema } from "./sql.js";
-import { schemaExistsSQL } from "../sql.js";
+import { assertSchemaExists } from "../sql.js";
 
 export type * from "./modules/types.js";
 
@@ -226,14 +226,7 @@ export class PostgresStore extends BaseStore {
       } else {
         // The flag is read from the constructor (not setup()), so the store's
         // lazy auto-setup paths honor it too.
-        const result = await client.query(schemaExistsSQL(this.core.schema));
-        if (!result.rows[0]?.exists) {
-          throw new Error(
-            `Schema "${this.core.schema}" does not exist (or is not visible to the current role). ` +
-              `It was expected to already exist because "createSchema" is false. ` +
-              `Create the schema (or grant access to it) out-of-band, or set "createSchema" to true.`
-          );
-        }
+        await assertSchemaExists(client, this.core.schema);
       }
 
       let version = -1;
