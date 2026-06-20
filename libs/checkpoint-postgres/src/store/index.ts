@@ -12,6 +12,8 @@ import {
 // Import types
 import type {
   PostgresStoreConfig,
+  PostgresStoreBaseConfig,
+  PostgresStoreSchemaOptions,
   SearchOptions,
   SearchItem,
   FilterOperators,
@@ -59,6 +61,18 @@ export class PostgresStore extends BaseStore {
 
   constructor(config: PostgresStoreConfig) {
     super();
+
+    // Compile-time, PostgresStoreConfig already forbids `createSchema` without
+    // `schema`. This runtime guard covers JS callers and dynamically-typed
+    // objects that bypass the types: `createSchema` is meaningless on the
+    // default `public` schema, which always exists.
+    if (config.createSchema !== undefined && config.schema === undefined) {
+      throw new Error(
+        `"createSchema" requires a custom "schema". The default "public" schema ` +
+          `always exists, so there is nothing to create or verify. Either set ` +
+          `"schema", or remove "createSchema".`
+      );
+    }
 
     // Create connection pool
     const pool =
@@ -190,7 +204,8 @@ export class PostgresStore extends BaseStore {
    */
   static fromConnString(
     connectionString: string,
-    options?: Omit<PostgresStoreConfig, "connectionOptions">
+    options?: Omit<PostgresStoreBaseConfig, "connectionOptions"> &
+      PostgresStoreSchemaOptions
   ): PostgresStore {
     return new PostgresStore({
       connectionOptions: connectionString,
