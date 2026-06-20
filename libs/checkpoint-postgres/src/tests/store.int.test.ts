@@ -1527,3 +1527,98 @@ describe("PostgresStore Migration System", () => {
     }
   });
 });
+
+describe("PostgresStore with createSchema: false", () => {
+  const customSchema = "preprovisioned_store_schema";
+
+  // Create a fresh, empty database and return its connection string.
+  const createFreshDb = async (): Promise<string> => {
+    const dbName = `crud_test_schema_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL!.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  const provisionSchema = async (connString: string): Promise<void> => {
+    const pool = new Pool({ connectionString: connString });
+    try {
+      await pool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await pool.end();
+    }
+  };
+
+  it("verifies and uses a pre-provisioned schema without creating it", async () => {
+    const connString = await createFreshDb();
+    await provisionSchema(connString);
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).resolves.not.toThrow();
+
+    await store.put(["ns"], "key1", { data: "value1" });
+    const item = await store.get(["ns"], "key1");
+    expect(item?.value).toEqual({ data: "value1" });
+  });
+
+  it("throws a clear error when the schema does not exist", async () => {
+    const connString = await createFreshDb();
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).rejects.toThrow(customSchema);
+  });
+
+  it("honors createSchema: false through lazy auto-setup (no explicit setup call)", async () => {
+    const connString = await createFreshDb();
+    await provisionSchema(connString);
+
+    // ensureTables defaults to true, so the first operation triggers
+    // auto-setup. With createSchema: false it must not issue CREATE SCHEMA.
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    testStores.push(store);
+
+    await store.put(["ns"], "lazy", { data: "ok" });
+    const item = await store.get(["ns"], "lazy");
+    expect(item?.value).toEqual({ data: "ok" });
+  });
+
+  it("still creates the schema by default (regression)", async () => {
+    const connString = await createFreshDb();
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).resolves.not.toThrow();
+
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query(
+        `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
+        [customSchema]
+      );
+      expect(result.rows.length).toBe(1);
+    } finally {
+      await pool.end();
+    }
+  });
+});

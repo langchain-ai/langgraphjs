@@ -28,6 +28,7 @@ import {
   StoreMigrationConfig,
 } from "./store-migrations.js";
 import { getStoreTablesWithSchema } from "./sql.js";
+import { schemaExistsSQL } from "../sql.js";
 
 export type * from "./modules/types.js";
 
@@ -54,6 +55,8 @@ export class PostgresStore extends BaseStore {
 
   private ensureTables: boolean;
 
+  private createSchema: boolean;
+
   constructor(config: PostgresStoreConfig) {
     super();
 
@@ -78,6 +81,7 @@ export class PostgresStore extends BaseStore {
     this.ttlManager = new TTLManager(this.core);
 
     this.ensureTables = config.ensureTables ?? true;
+    this.createSchema = config.createSchema ?? true;
   }
 
   /**
@@ -217,7 +221,20 @@ export class PostgresStore extends BaseStore {
     const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
 
     try {
-      await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
+      if (this.createSchema) {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
+      } else {
+        // The flag is read from the constructor (not setup()), so the store's
+        // lazy auto-setup paths honor it too.
+        const result = await client.query(schemaExistsSQL(this.core.schema));
+        if (!result.rows[0]?.exists) {
+          throw new Error(
+            `Schema "${this.core.schema}" does not exist (or is not visible to the current role). ` +
+              `It was expected to already exist because "createSchema" is false. ` +
+              `Create the schema (or grant access to it) out-of-band, or set "createSchema" to true.`
+          );
+        }
+      }
 
       let version = -1;
 
