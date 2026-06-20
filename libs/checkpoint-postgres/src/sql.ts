@@ -137,12 +137,10 @@ export const tableExistsSQL = (schema: string, table: string) => {
   );`;
 };
 
-export const schemaExistsSQL = (schema: string) => {
-  return `SELECT EXISTS (
+export const schemaExistsSQL = `SELECT EXISTS (
   SELECT FROM information_schema.schemata
-  WHERE  schema_name = '${schema}'
-  );`;
-};
+  WHERE  schema_name = $1
+);`;
 
 /**
  * Verify that the given schema already exists, throwing a clear error if not.
@@ -156,7 +154,7 @@ export const assertSchemaExists = async (
   client: pg.PoolClient,
   schema: string
 ): Promise<void> => {
-  const result = await client.query(schemaExistsSQL(schema));
+  const result = await client.query(schemaExistsSQL, [schema]);
   if (!result.rows[0]?.exists) {
     throw new Error(
       `Schema "${schema}" does not exist (or is not visible to the current role). ` +
