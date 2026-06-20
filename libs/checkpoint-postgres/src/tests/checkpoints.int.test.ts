@@ -534,3 +534,90 @@ describe.each([
     ).toBeDefined();
   });
 });
+
+describe("PostgresSaver with createSchema: false", () => {
+  const customSchema = "preprovisioned_schema";
+
+  // Create a fresh, empty database and return its connection string.
+  const createFreshDb = async (): Promise<string> => {
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    const dbName = `lg_test_db_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL?.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  it("verifies and uses a pre-provisioned schema without creating it", async () => {
+    const connString = await createFreshDb();
+
+    // Provision the schema out-of-band (as a DBA would).
+    const provisionPool = new Pool({ connectionString: connString });
+    try {
+      await provisionPool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await provisionPool.end();
+    }
+
+    const saver = PostgresSaver.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    postgresSavers.push(saver);
+
+    await expect(saver.setup()).resolves.not.toThrow();
+
+    // A full put/getTuple round-trip should work against the existing schema.
+    await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} },
+      checkpoint1.channel_versions
+    );
+    const tuple = await saver.getTuple({
+      configurable: { thread_id: "1" },
+    });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+
+    // Re-running setup() must be idempotent.
+    await expect(saver.setup()).resolves.not.toThrow();
+  });
+
+  it("throws a clear error when the schema does not exist", async () => {
+    const connString = await createFreshDb();
+
+    const saver = PostgresSaver.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    postgresSavers.push(saver);
+
+    await expect(saver.setup()).rejects.toThrow(customSchema);
+  });
+
+  it("still creates the schema by default (regression)", async () => {
+    const connString = await createFreshDb();
+
+    const saver = PostgresSaver.fromConnString(connString, {
+      schema: customSchema,
+    });
+    postgresSavers.push(saver);
+
+    await expect(saver.setup()).resolves.not.toThrow();
+
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query(
+        `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
+        [customSchema]
+      );
+      expect(result.rows.length).toBe(1);
+    } finally {
+      await pool.end();
+    }
+  });
+});

@@ -20,15 +20,28 @@ import {
   type SQL_TYPES,
   getSQLStatements,
   getTablesWithSchema,
+  schemaExistsSQL,
 } from "./sql.js";
 
 /** @inline */
 interface PostgresSaverOptions {
   schema: string;
+  /**
+   * Whether `setup()` should create the schema if it does not exist.
+   *
+   * When `true` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `false`, `setup()` instead verifies the schema already exists and
+   * throws if it does not — useful for least-privilege roles that are not
+   * permitted to create schemas. Table migrations still run either way.
+   *
+   * @default true
+   */
+  createSchema: boolean;
 }
 
 const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
+  createSchema: true,
 };
 
 const _ensureCompleteOptions = (
@@ -37,6 +50,7 @@ const _ensureCompleteOptions = (
   return {
     ...options,
     schema: options?.schema ?? _defaultOptions.schema,
+    createSchema: options?.createSchema ?? _defaultOptions.createSchema,
   };
 };
 
@@ -57,7 +71,8 @@ const { Pool } = pg;
  *   "postgresql://user:password@localhost:5432/db",
  *   // optional configuration object
  *   {
- *     schema: "custom_schema" // defaults to "public"
+ *     schema: "custom_schema", // defaults to "public"
+ *     createSchema: false // defaults to true; when false, setup() verifies the schema exists instead of creating it
  *   }
  * );
  *
@@ -130,14 +145,32 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * This method creates the necessary tables in the Postgres database if they don't
    * already exist and runs database migrations. It MUST be called directly by the user
    * the first time checkpointer is used.
+   *
+   * By default the target schema is created via `CREATE SCHEMA IF NOT EXISTS`. If the
+   * `createSchema` option was set to `false` (e.g. for least-privilege roles that may
+   * not create schemas), this method instead verifies the schema already exists and
+   * throws if it does not. Table migrations run either way.
    */
   async setup(): Promise<void> {
     const client = await this.pool.connect();
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
-      await client.query(
-        `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
-      );
+      if (this.options.createSchema) {
+        await client.query(
+          `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
+        );
+      } else {
+        const result = await client.query(
+          schemaExistsSQL(this.options.schema)
+        );
+        if (!result.rows[0]?.exists) {
+          throw new Error(
+            `Schema "${this.options.schema}" does not exist (or is not visible to the current role). ` +
+              `It was expected to already exist because "createSchema" is false. ` +
+              `Create the schema (or grant access to it) out-of-band, or set "createSchema" to true.`
+          );
+        }
+      }
       let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);
 
