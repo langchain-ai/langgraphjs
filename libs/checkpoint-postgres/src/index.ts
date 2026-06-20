@@ -160,9 +160,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
           `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
         );
       } else {
-        const result = await client.query(
-          schemaExistsSQL(this.options.schema)
-        );
+        const result = await client.query(schemaExistsSQL(this.options.schema));
         if (!result.rows[0]?.exists) {
           throw new Error(
             `Schema "${this.options.schema}" does not exist (or is not visible to the current role). ` +
