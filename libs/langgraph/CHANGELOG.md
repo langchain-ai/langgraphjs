@@ -1,5 +1,12 @@
 # langgraph
 
+## 1.0.45
+
+### Patch Changes
+
+- Updated dependencies [[`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e)]:
+  - @langchain/langgraph@1.4.5
+
 ## 1.0.44
 
 ### Patch Changes
