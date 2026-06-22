@@ -497,7 +497,18 @@ export async function configToCompose(
   const extendEnvIgnore = new Set<string>();
   if (typeof config.env === "string") {
     // try to parse out the env file
-    const envPath = path.resolve(path.dirname(configPath), config.env);
+    const projectRoot = path.dirname(configPath);
+    const envPath = path.resolve(projectRoot, config.env);
+
+    // Keep the config-supplied env path contained within the project so a
+    // malicious langgraph.json can't use `../` or an absolute path to read
+    // files outside the project (and surface them to docker compose).
+    const rel = path.relative(projectRoot, envPath);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(
+        `env file '${config.env}' specified in langgraph.json is outside the project directory.`
+      );
+    }
 
     try {
       const envFileKeys = (await fs.readFile(envPath, "utf-8"))
