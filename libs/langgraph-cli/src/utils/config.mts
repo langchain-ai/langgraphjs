@@ -95,7 +95,10 @@ const PythonConfigSchema = BaseConfigSchema.merge(
 );
 
 const NodeConfigSchema = BaseConfigSchema.merge(
-  z.object({ node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION) })
+  z.object({
+    node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION),
+    node_loader: z.string().optional(),
+  })
 );
 
 const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);
