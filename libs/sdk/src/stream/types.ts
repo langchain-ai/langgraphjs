@@ -22,7 +22,7 @@ import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
-import type { Channel, Event } from "@langchain/protocol";
+import type { Channel, Event, Goto } from "@langchain/protocol";
 import type { StreamStore } from "./store.js";
 
 /** Why a run's active streaming phase ended. */
@@ -71,6 +71,32 @@ export interface StreamRespondAllOptions<
     [key: string]: unknown;
   };
   metadata?: Record<string, unknown>;
+  /**
+   * State update applied in the **same superstep** as the resume, mapped to
+   * LangGraph's `Command(update=...)`. The resumed run produces a single
+   * checkpoint reflecting both the resume value and this update — no separate
+   * `updateState` write, no intermediate checkpoint, no flicker.
+   *
+   * The canonical use case is a HITL flow where the UI pushes the interrupt
+   * card (e.g. an `AIMessage`) into state at the moment it answers the
+   * interrupt, so the card is committed before the resumed tool runs and stays
+   * rendered without the backend re-emitting it.
+   *
+   * Accepts a state-keys object (shallow-merged via the graph's channel
+   * reducers) or a list of `[key, value]` entries.
+   *
+   * Messages under the configured `messagesKey` may be either plain
+   * message dicts (`{ type: "ai", content: "…" }`) or `@langchain/core`
+   * `BaseMessage` instances (`new AIMessage("…")`) — instances are
+   * serialized to dicts before transport, exactly like `submit()`.
+   */
+  update?: Record<string, unknown> | [string, unknown][];
+  /**
+   * Directed jump applied in the **same superstep** as the resume, mapped to
+   * LangGraph's `Command(goto=...)`. A target node name, a `Send`
+   * (`{ node, input }`), or a list mixing the two for fan-out.
+   */
+  goto?: Goto;
 }
 
 /**

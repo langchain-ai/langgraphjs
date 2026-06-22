@@ -423,6 +423,18 @@ export const normalizeProtocolStateMessage = (
   if (typeof value.name === "string") {
     message.name = value.name;
   }
+
+  // Preserve `response_metadata` when present. It is a first-class protocol
+  // message field, and HITL flows rely on it: an interrupt's card is carried
+  // on `AIMessage.response_metadata` (e.g. `{ cards: ... }`) and the frontend
+  // pushes that message into state via `respond(decision, { update })`. We
+  // only forward a non-empty record to keep the common (empty) case minimal.
+  if (
+    isRecord(value.response_metadata) &&
+    Object.keys(value.response_metadata).length > 0
+  ) {
+    message.response_metadata = value.response_metadata;
+  }
   if (
     (type === "ai" || type === "human") &&
     typeof value.example === "boolean"
