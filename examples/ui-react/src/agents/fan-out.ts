@@ -1,5 +1,5 @@
 import { MemorySaver } from "@langchain/langgraph";
-import { createQuickJSMiddleware } from "@langchain/quickjs";
+import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import { createDeepAgent, StoreBackend } from "deepagents";
 import { tool } from "langchain";
 import { z } from "zod/v4";
@@ -58,8 +58,7 @@ export async function agent() {
     backend,
     checkpointer,
     middleware: [
-      createQuickJSMiddleware({
-        backend,
+      createCodeInterpreterMiddleware({
         ptc: ["task"],
       }),
     ],
