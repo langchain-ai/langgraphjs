@@ -1,5 +1,52 @@
 # @langchain/langgraph-api
 
+## 1.4.0
+
+### Minor Changes
+
+- [#2559](https://github.com/langchain-ai/langgraphjs/pull/2559) [`48cbdd2`](https://github.com/langchain-ai/langgraphjs/commit/48cbdd23fdf29277530f6aa05c397c9902e81206) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(langgraph-cli): add `deploy` command for LangSmith Deployment
+
+  Port the Python CLI's `langgraph deploy` workflow to `@langchain/langgraph-cli`, including local and remote build paths, deployment lifecycle subcommands (`list`, `revisions list`, `delete`, `logs`), and host-backend client utilities with tests.
+
+### Patch Changes
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-api): preserve non-empty response_metadata on protocol-v2 state messages
+
+  The protocol-v2 state normalizer stripped `response_metadata` from messages,
+  dropping data that HITL flows rely on — an interrupt's card is carried on
+  `AIMessage.response_metadata` (e.g. `{ cards: ... }`). Non-empty
+  `response_metadata` is now retained so the card reaches the client.
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply state update and goto alongside interrupt resume
+
+  `respond(decision, { update, goto })` now maps to LangGraph's
+  `Command(resume, update, goto)`, so a human-in-the-loop UI can commit a state
+  update (e.g. push the interrupt card into state) in the **same superstep** as
+  the resume — one checkpoint, no separate `updateState` write, no flicker.
+  `@langchain/langgraph-api` forwards `update`/`goto` through `input.respond`,
+  and `@langchain/core` message instances in `update` are serialized to dicts
+  before transport, exactly like `submit()`. Bumps `@langchain/protocol` to
+  `^0.0.18` for the `Goto` type.
+
+  `respond`/`respondAll` also apply `update` **optimistically** (mirroring
+  `submit()`): the pushed messages paint immediately, with stable ids minted so
+  the resumed run's echo reconciles them in place. Without this the interrupt is
+  cleared the instant `respond()` dispatches while the pushed card only reappears
+  a server round-trip later — so the card would flicker in that gap. The
+  optimistic state settles on the resumed run's terminal (pending → sent, or
+  rolled back on a failure before any echo).
+
+  User-initiated optimistic writes (`submit()` / `respond()` / `respondAll()`) now
+  commit to the store **synchronously**, in the same tick as the triggering event,
+  instead of being coalesced onto the next macrotask. This lets a framework render
+  the pushed message in the **same commit** as any local UI state the caller flips
+  alongside it (e.g. a HITL form swapping its inputs for the resolved card), so the
+  card no longer blinks out for the one-macrotask window before the flush lands.
+  High-frequency streaming writes keep their macrotask coalescing.
+
+- Updated dependencies [[`48cbdd2`](https://github.com/langchain-ai/langgraphjs/commit/48cbdd23fdf29277530f6aa05c397c9902e81206)]:
+  - @langchain/langgraph-ui@1.4.0
+
 ## 1.3.1
 
 ### Patch Changes

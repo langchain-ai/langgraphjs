@@ -1,5 +1,22 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.4.0
+
+### Minor Changes
+
+- [#1928](https://github.com/langchain-ai/langgraphjs/pull/1928) [`3d7fcea`](https://github.com/langchain-ai/langgraphjs/commit/3d7fcea7d7ea7f1203d24be9df607d5a8e8717bc) Thanks [@Mihailoff](https://github.com/Mihailoff)! - Add TTL support for automatic checkpoint expiration
+
+  - Add optional `ttl` parameter to MongoDBSaver (value in seconds)
+  - Add `setup()` method to create TTL indexes on collections
+  - Add `upserted_at` timestamp to documents when TTL is enabled
+  - Each write refreshes TTL (expires after inactivity, not creation)
+
+### Patch Changes
+
+- [#2556](https://github.com/langchain-ai/langgraphjs/pull/2556) [`bee3c91`](https://github.com/langchain-ai/langgraphjs/commit/bee3c91d0adc315ebde0622d8c4b1fff041c1bfd) Thanks [@mohamedkhaled4053](https://github.com/mohamedkhaled4053)! - Fix `MongoDBSaver.putWrites` throwing `MongoServerError: Invalid BulkOperation, Batch cannot be empty` when called with an empty `writes` array. This is reached by human-in-the-loop / `interrupt()` flows, where a task can complete producing zero channel writes and LangGraph calls `putWrites(config, [], taskId)`. `putWrites` now no-ops on empty writes, matching the behavior of the postgres and sqlite savers (which iterate and naturally skip empty batches).
+
+- [#2550](https://github.com/langchain-ai/langgraphjs/pull/2550) [`2b8cc2f`](https://github.com/langchain-ai/langgraphjs/commit/2b8cc2f3fd5c9d3c33b56e013292daf5d936428e) Thanks [@lazydiv](https://github.com/lazydiv)! - feat(checkpoint-mongodb): add setup() to create required indexes
+
 ## 1.3.4
 
 ### Patch Changes
