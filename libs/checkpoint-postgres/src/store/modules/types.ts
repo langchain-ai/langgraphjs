@@ -180,44 +180,7 @@ export interface PutOptions {
   ttl?: number;
 }
 
-/**
- * Schema selection for the Postgres store, coupling `schema` and `createSchema`.
- *
- * `createSchema` is only meaningful alongside a custom `schema`: the default
- * `public` schema always exists, so there is nothing to create or verify. The
- * type therefore only permits `createSchema` when a `schema` is also provided.
- */
-export type PostgresStoreSchemaOptions =
-  | {
-      /**
-       * Database schema name to use for store tables.
-       * @default "public"
-       */
-      schema?: undefined;
-      createSchema?: undefined;
-    }
-  | {
-      /**
-       * Database schema name to use for store tables.
-       */
-      schema: string;
-
-      /**
-       * Whether `setup()` should create the schema if it does not exist.
-       *
-       * When `true` (default), setup runs `CREATE SCHEMA IF NOT EXISTS`.
-       * When `false`, setup instead verifies the schema already exists and
-       * throws if it does not — useful for least-privilege roles that are not
-       * permitted to create schemas. Because the flag is read once at
-       * construction (not per `setup()` call), the store's lazy auto-setup
-       * paths honor it too. Table migrations still run either way.
-       *
-       * @default true
-       */
-      createSchema?: boolean;
-    };
-
-export interface PostgresStoreBaseConfig {
+export interface PostgresStoreConfig {
   /**
    * PostgreSQL connection string or connection configuration object.
    *
@@ -237,10 +200,30 @@ export interface PostgresStoreBaseConfig {
   connectionOptions: string | pg.PoolConfig;
 
   /**
+   * Database schema name to use for store tables.
+   * @default "public"
+   */
+  schema?: string;
+
+  /**
    * Whether to automatically create tables if they don't exist.
    * @default true
    */
   ensureTables?: boolean;
+
+  /**
+   * Whether `setup()` should create the schema if it does not exist.
+   *
+   * When `true` (default), setup runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `false`, setup instead verifies the schema already exists and throws
+   * if it does not — useful for least-privilege roles that are not permitted to
+   * create schemas. Because the flag is read here (not per `setup()` call), the
+   * store's lazy auto-setup paths honor it too. Table migrations still run
+   * either way.
+   *
+   * @default true
+   */
+  createSchema?: boolean;
 
   /**
    * TTL configuration for automatic expiration of items.
@@ -260,6 +243,3 @@ export interface PostgresStoreBaseConfig {
    */
   textSearchLanguage?: string;
 }
-
-export type PostgresStoreConfig = PostgresStoreBaseConfig &
-  PostgresStoreSchemaOptions;

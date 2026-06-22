@@ -23,66 +23,34 @@ import {
   assertSchemaExists,
 } from "./sql.js";
 
-/**
- * Configuration options for {@link PostgresSaver}.
- *
- * `createSchema` is only meaningful alongside a custom `schema`: the default
- * `public` schema always exists, so there is nothing to create or verify. The
- * type therefore only permits `createSchema` when a `schema` is also provided.
- *
- * @inline
- */
-type PostgresSaverOptions =
-  | {
-      /**
-       * Database schema name to use for checkpoint tables.
-       * @default "public"
-       */
-      schema?: undefined;
-      createSchema?: undefined;
-    }
-  | {
-      /**
-       * Database schema name to use for checkpoint tables.
-       */
-      schema: string;
-      /**
-       * Whether `setup()` should create the schema if it does not exist.
-       *
-       * When `true` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
-       * When `false`, `setup()` instead verifies the schema already exists and
-       * throws if it does not — useful for least-privilege roles that are not
-       * permitted to create schemas. Table migrations still run either way.
-       *
-       * @default true
-       */
-      createSchema?: boolean;
-    };
-
-/** Fully-resolved options with defaults applied. */
-interface ResolvedPostgresSaverOptions {
+/** @inline */
+interface PostgresSaverOptions {
   schema: string;
+  /**
+   * Whether `setup()` should create the schema if it does not exist.
+   *
+   * When `true` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `false`, `setup()` instead verifies the schema already exists and
+   * throws if it does not — useful for least-privilege roles that are not
+   * permitted to create schemas. Table migrations still run either way.
+   *
+   * @default true
+   */
   createSchema: boolean;
 }
 
-const _ensureCompleteOptions = (
-  options?: PostgresSaverOptions
-): ResolvedPostgresSaverOptions => {
-  // Compile-time, the union above already forbids `createSchema` without
-  // `schema`. This runtime guard covers JS callers and dynamically-typed
-  // objects that bypass the types: `createSchema` is meaningless on the
-  // default `public` schema, which always exists.
-  if (options?.createSchema !== undefined && options.schema === undefined) {
-    throw new Error(
-      `"createSchema" requires a custom "schema". The default "public" schema ` +
-        `always exists, so there is nothing to create or verify. Either set ` +
-        `"schema", or remove "createSchema".`
-    );
-  }
+const _defaultOptions: PostgresSaverOptions = {
+  schema: "public",
+  createSchema: true,
+};
 
+const _ensureCompleteOptions = (
+  options?: Partial<PostgresSaverOptions>
+): PostgresSaverOptions => {
   return {
-    schema: options?.schema ?? "public",
-    createSchema: options?.createSchema ?? true,
+    ...options,
+    schema: options?.schema ?? _defaultOptions.schema,
+    createSchema: options?.createSchema ?? _defaultOptions.createSchema,
   };
 };
 
@@ -131,7 +99,7 @@ const { Pool } = pg;
 export class PostgresSaver extends BaseCheckpointSaver {
   private readonly pool: pg.Pool;
 
-  private readonly options: ResolvedPostgresSaverOptions;
+  private readonly options: PostgresSaverOptions;
 
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
 
@@ -140,7 +108,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   constructor(
     pool: pg.Pool,
     serde?: SerializerProtocol,
-    options?: PostgresSaverOptions
+    options?: Partial<PostgresSaverOptions>
   ) {
     super(serde);
     this.pool = pool;
@@ -165,7 +133,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   static fromConnString(
     connString: string,
-    options?: PostgresSaverOptions
+    options?: Partial<PostgresSaverOptions>
   ): PostgresSaver {
     const pool = new Pool({ connectionString: connString });
     return new PostgresSaver(pool, undefined, options);
