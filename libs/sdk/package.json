@@ -32,7 +32,7 @@
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
-    "deepagents": "^1.8.3",
+    "deepagents": "^1.10.5",
     "langchain": "^1.5.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
