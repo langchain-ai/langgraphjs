@@ -69,6 +69,9 @@ for pkg in libs/*/; do
     sed -i 's/"@langchain\/langgraph-checkpoint-postgres": "workspace:\*",*//g' "$pkg/package.json"
     sed -i 's/"@langchain\/langgraph-checkpoint-sqlite": "workspace:\*",*//g' "$pkg/package.json"
     sed -i 's/"@langchain\/langgraph-api": "workspace:[^"]*",*//g' "$pkg/package.json"
+    # `@langchain/build` is an internal build-only package (lives under internal/,
+    # not libs/) and is never executed here since the libs ship prebuilt dist/.
+    sed -i 's/"@langchain\/build": "workspace:[^"]*",*//g' "$pkg/package.json"
   fi
 done
 
