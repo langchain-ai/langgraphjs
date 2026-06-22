@@ -2263,6 +2263,9 @@ importers:
         specifier: ^7.1.1
         version: 7.1.1
     devDependencies:
+      '@langchain/build':
+        specifier: workspace:*
+        version: link:../../internal/build
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
