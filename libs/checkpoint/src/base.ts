@@ -89,9 +89,9 @@ export function copyCheckpoint(checkpoint: ReadonlyCheckpoint): Checkpoint {
     v: checkpoint.v,
     id: checkpoint.id,
     ts: checkpoint.ts,
-    channel_values: { ...checkpoint.channel_values },
-    channel_versions: { ...checkpoint.channel_versions },
-    versions_seen: deepCopy(checkpoint.versions_seen),
+    channel_values: { ...(checkpoint.channel_values ?? {}) },
+    channel_versions: { ...(checkpoint.channel_versions ?? {}) },
+    versions_seen: deepCopy(checkpoint.versions_seen ?? {}),
   };
 }
 
@@ -115,6 +115,14 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
 
   constructor(serde?: SerializerProtocol) {
     this.serde = serde || this.serde;
+  }
+
+  /**
+   * Prevent `JSON.stringify` from traversing backend clients (e.g. pg Pool
+   * timers) when a checkpointer is present in runnable `configurable`.
+   */
+  toJSON(): string {
+    return `[${this.constructor.name}]`;
   }
 
   async get(config: RunnableConfig): Promise<Checkpoint | undefined> {
