@@ -5,11 +5,11 @@ import {
   DEFAULT_NODE_LOADER,
   resolveLoaderImport,
   resolveNodeLoader,
-  type SpawnServerPayload,
   usesTsxCli,
 } from "../src/cli/spawn-args.mjs";
+import type { StartServerOptions } from "../src/server.mjs";
 
-const payload: SpawnServerPayload = {
+const payload: StartServerOptions = {
   port: 2024,
   nWorkers: 10,
   host: "localhost",

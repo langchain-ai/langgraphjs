@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 
+import { StartServerSchema, type StartServerOptions } from "../server.mjs";
 import {
   buildSpawnArgs,
   resolveNodeLoader,
-  type SpawnServerPayload,
 } from "./spawn-args.mjs";
 
 export async function spawnServer(
@@ -20,7 +20,7 @@ export async function spawnServer(
       ui_config?: { shared?: string[] };
       auth?: { path?: string; disable_studio_auth?: boolean };
       node_loader?: string;
-      http?: SpawnServerPayload["http"];
+      http?: StartServerOptions["http"];
     };
     env: NodeJS.ProcessEnv;
     hostUrl: string;
@@ -49,21 +49,22 @@ For production use, please use LangSmith Deployment.
 `);
 
   const nodeLoader = resolveNodeLoader(context.config.node_loader, context.env);
+  const payload: StartServerOptions = StartServerSchema.parse({
+    port: Number.parseInt(args.port, 10),
+    nWorkers: Number.parseInt(args.nJobsPerWorker, 10),
+    host: args.host,
+    graphs: context.config.graphs,
+    auth: context.config.auth,
+    ui: context.config.ui,
+    ui_config: context.config.ui_config,
+    cwd: options.projectCwd,
+    http: context.config.http,
+  });
   const { command, args: spawnArgs } = buildSpawnArgs({
     nodeLoader,
     reload: args.reload ?? true,
     pid: options.pid,
-    payload: {
-      port: Number.parseInt(args.port, 10),
-      nWorkers: Number.parseInt(args.nJobsPerWorker, 10),
-      host: args.host,
-      graphs: context.config.graphs,
-      auth: context.config.auth,
-      ui: context.config.ui,
-      ui_config: context.config.ui_config,
-      cwd: options.projectCwd,
-      http: context.config.http,
-    },
+    payload,
     resolve: (specifier) => import.meta.resolve(specifier),
   });
 

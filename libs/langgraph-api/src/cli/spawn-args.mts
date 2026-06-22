@@ -1,6 +1,8 @@
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { StartServerOptions } from "../server.mjs";
+
 /** Default loader: tsx CLI with built-in watch. */
 export const DEFAULT_NODE_LOADER = "tsx";
 
@@ -10,37 +12,6 @@ export const DEFAULT_NODE_LOADER = "tsx";
  */
 export const LOADER_IMPORT_SHORTCUTS: Record<string, string> = {
   "ts-node": "ts-node/esm",
-};
-
-export type SpawnServerPayload = {
-  port: number;
-  nWorkers: number;
-  host: string;
-  graphs: Record<string, string | { path: string; description?: string }>;
-  auth?: {
-    path?: string;
-    disable_studio_auth?: boolean;
-  };
-  ui?: Record<string, string>;
-  ui_config?: { shared?: string[] };
-  cwd: string;
-  http?: {
-    app?: string;
-    disable_assistants?: boolean;
-    disable_threads?: boolean;
-    disable_runs?: boolean;
-    disable_store?: boolean;
-    disable_meta?: boolean;
-    cors?: {
-      allow_origins?: string[];
-      allow_methods?: string[];
-      allow_headers?: string[];
-      allow_credentials?: boolean;
-      allow_origin_regex?: string;
-      expose_headers?: string[];
-      max_age?: number;
-    };
-  };
 };
 
 export function resolveNodeLoader(
@@ -86,7 +57,7 @@ export function buildSpawnArgs(options: {
   nodeLoader: string;
   reload: boolean;
   pid: number;
-  payload: SpawnServerPayload;
+  payload: StartServerOptions;
   resolve: (specifier: string) => string;
 }): { command: string; args: string[] } {
   const payloadArg = JSON.stringify(options.payload);
