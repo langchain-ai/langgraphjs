@@ -254,10 +254,36 @@ export interface UseStreamReturn<
    * (model, user context, …) and metadata (trigger source, test flags,
    * …) into the resumed run, mirroring `submit()`.
    *
+   * Pass `options.update` (and/or `options.goto`) to apply a state update
+   * (and/or directed jump) in the **same superstep** as the resume — mapped
+   * to LangGraph's `Command(resume, update, goto)`. The resumed run produces
+   * a single checkpoint reflecting both, so a HITL card can push its message
+   * into state at the moment it answers the interrupt (no separate state
+   * write, no intermediate checkpoint, no flicker). Messages may be plain
+   * dicts or `@langchain/core` `BaseMessage` instances (serialized like
+   * `submit()`).
+   *
    * @example
    * ```tsx
    * // Single pending interrupt
    * await stream.respond({ approved: true });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // Resolve the interrupt AND push the card's message into state atomically
+   * await stream.respond({ approved: true }, {
+   *   update: { messages: [{ type: "ai", content: "Approved by reviewer." }] },
+   * });
+   * ```
+   *
+   * @example
+   * ```tsx
+   * // `update` also accepts BaseMessage instances, like `submit()`
+   * import { AIMessage } from "@langchain/core/messages";
+   * await stream.respond({ approved: true }, {
+   *   update: { messages: [new AIMessage("Approved by reviewer.")] },
+   * });
    * ```
    *
    * @example

@@ -473,6 +473,20 @@ type InferMiddlewareState<T> =
 type IsAny<T> = 0 extends 1 & T ? true : false;
 
 /**
+ * Normalize an `any` result to the empty object `{}`.
+ *
+ * Middleware state inference reads the schema off `AgentMiddlewareLike`. An
+ * agent declared without middleware leaves `Middleware` as the broad
+ * `AnyAgentMiddleware[]` default, whose schema is the catch-all
+ * `StateDefinitionInit | undefined`; inferring an object input from that
+ * yields `any`. Left unchecked, that `any` widens the entire
+ * `InferAgentState` intersection to `any`, erasing the agent's real state
+ * type. Collapsing it to `{}` keeps the other intersection members intact.
+ */
+// eslint-disable-next-line @typescript-eslint/ban-types
+type AnyToEmpty<T> = IsAny<T> extends true ? {} : T;
+
+/**
  * Helper type to extract and merge states from an array of middleware.
  * Recursively processes each middleware and intersects their state types.
  *
@@ -575,7 +589,9 @@ export type InferAgentState<T> = T extends { "~agentTypes": unknown }
           ? // eslint-disable-next-line @typescript-eslint/ban-types
             {}
           : SafeInferInteropZodInput<ExtractAgentConfig<T>["State"]>) &
-        InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]> &
+        AnyToEmpty<
+          InferMiddlewareStatesFromArray<ExtractAgentConfig<T>["Middleware"]>
+        > &
         InferStructuredResponse<ExtractAgentConfig<T>["Response"]>
   : T extends { "~RunOutput": infer RunOutput }
     ? RunOutput

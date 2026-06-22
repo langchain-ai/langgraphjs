@@ -508,10 +508,22 @@ export class RootMessageProjection<
    *   `BaseMessage` instances, each carrying a stable id).
    * @param extraValues - Non-message input keys to shallow-merge into
    *   `values`.
+   * @param options     - When `sync` is true the staged write is
+   *   committed to the store *synchronously* instead of being coalesced
+   *   onto the next macrotask. Used for discrete, user-initiated
+   *   optimistic writes (`submit()` / `respond()` / `respondAll()`):
+   *   committing in the same tick as the triggering event lets the
+   *   framework render the optimistic message in the *same* commit as
+   *   any local state the caller flipped alongside it (e.g. a HITL form
+   *   hiding its inputs), so the pushed card never blinks out for the
+   *   one-macrotask window before the flush lands. Streaming writes
+   *   (`handleMessage` / `applyValues`) keep the default macrotask
+   *   coalescing, which is what tames high-frequency SSE bursts.
    */
   appendOptimistic(
     messages: BaseMessage[],
-    extraValues?: Record<string, unknown>
+    extraValues?: Record<string, unknown>,
+    options?: { sync?: boolean }
   ): void {
     let working = this.#pendingMessages ?? this.#store.getSnapshot().messages;
     let mutated = false;
@@ -545,7 +557,15 @@ export class RootMessageProjection<
     if (!mutated && values === baselineValues) return;
     this.#pendingMessages = working;
     if (values !== baselineValues) this.#pendingValues = values;
-    this.#scheduleFlush();
+    if (options?.sync) {
+      // Commit now so the optimistic message is visible in the same tick
+      // as the user event that produced it (no one-macrotask blink). Any
+      // flush already scheduled by a prior streaming write is absorbed
+      // here; its pending timer fires later as a no-op.
+      this.#flushPending();
+    } else {
+      this.#scheduleFlush();
+    }
   }
 
   /**
