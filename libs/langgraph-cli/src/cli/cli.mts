@@ -9,6 +9,7 @@ import "./build.mjs";
 import "./up.mjs";
 import "./new.mjs";
 import "./sysinfo.mjs";
+import "./deploy.mjs";
 
 builder.exitOverride((error) => gracefulExit(error.exitCode));
 asyncExitHook(() => flushAnalytics(), { wait: 2000 });

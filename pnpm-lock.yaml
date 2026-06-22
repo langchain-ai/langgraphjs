@@ -1949,6 +1949,9 @@ importers:
       extract-zip:
         specifier: ^2.0.1
         version: 2.0.1
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       langsmith:
         specifier: ^0.7.4
         version: 0.7.4(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
