@@ -69,9 +69,47 @@ describe("MongoDBSaver", () => {
       const op = (saver as any).timestampOp;
       expect(op).toEqual({ $currentDate: { upserted_at: true } });
     });
+  });
 
-    it("setup() should create TTL indexes when ttl is configured", async () => {
-      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+  describe("setup", () => {
+    it("should create compound indexes on both collections", async () => {
+      const createIndexMock = vi.fn().mockResolvedValue("ok");
+      const collectionMock = vi.fn(() => ({
+        createIndex: createIndexMock,
+        find: vi.fn(() => ({
+          sort: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              toArray: vi.fn(() => Promise.resolve([])),
+            })),
+          })),
+        })),
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({ collection: collectionMock })),
+      };
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const errors = await saver.setup();
+
+      expect(errors).toEqual([]);
+      expect(collectionMock).toHaveBeenCalledWith("checkpoints");
+      expect(collectionMock).toHaveBeenCalledWith("checkpoint_writes");
+      expect(createIndexMock).toHaveBeenCalledTimes(2);
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+        { name: "thread_ns_checkpoint_idx" }
+      );
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: 1, task_id: 1, idx: 1 },
+        { name: "thread_ns_checkpoint_task_idx" }
+      );
+    });
+
+    it("should create TTL indexes in addition to compound indexes when ttl is configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
       const mockCollection = vi.fn(() => ({
         createIndex: mockCreateIndex,
       }));
@@ -91,15 +129,20 @@ describe("MongoDBSaver", () => {
 
       expect(mockCollection).toHaveBeenCalledWith("checkpoints");
       expect(mockCollection).toHaveBeenCalledWith("checkpoint_writes");
-      expect(mockCreateIndex).toHaveBeenCalledTimes(2);
+      // 2 compound indexes + 2 TTL indexes
+      expect(mockCreateIndex).toHaveBeenCalledTimes(4);
+      expect(mockCreateIndex).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+        { name: "thread_ns_checkpoint_idx" }
+      );
       expect(mockCreateIndex).toHaveBeenCalledWith(
         { upserted_at: 1 },
         { expireAfterSeconds: 3600 }
       );
     });
 
-    it("setup() should not create indexes when ttl is not configured", async () => {
-      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+    it("should not create TTL indexes when ttl is not configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
       const mockCollection = vi.fn(() => ({
         createIndex: mockCreateIndex,
       }));
@@ -116,11 +159,16 @@ describe("MongoDBSaver", () => {
 
       await saver.setup();
 
-      expect(mockCreateIndex).not.toHaveBeenCalled();
+      // Only the 2 compound indexes, no TTL index.
+      expect(mockCreateIndex).toHaveBeenCalledTimes(2);
+      expect(mockCreateIndex).not.toHaveBeenCalledWith(
+        { upserted_at: 1 },
+        expect.anything()
+      );
     });
 
-    it("setup() should return empty array on success", async () => {
-      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+    it("should return empty array on success", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
       const mockCollection = vi.fn(() => ({
         createIndex: mockCreateIndex,
       }));
@@ -140,7 +188,7 @@ describe("MongoDBSaver", () => {
       expect(errors).toEqual([]);
     });
 
-    it("setup() should return errors for caller to handle", async () => {
+    it("should return errors for caller to handle", async () => {
       const mockCreateIndex = vi
         .fn()
         .mockRejectedValue(new Error("Index creation failed"));
@@ -160,7 +208,8 @@ describe("MongoDBSaver", () => {
       });
 
       const errors = await saver.setup();
-      expect(errors).toHaveLength(2);
+      // 2 compound + 2 TTL index creations all fail.
+      expect(errors).toHaveLength(4);
       expect(errors[0].message).toBe("Index creation failed");
     });
   });
