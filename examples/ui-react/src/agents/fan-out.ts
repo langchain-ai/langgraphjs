@@ -59,6 +59,7 @@ export async function agent() {
     checkpointer,
     middleware: [
       createCodeInterpreterMiddleware({
+        toolName: "js_eval",
         ptc: ["task"],
       }),
     ],
