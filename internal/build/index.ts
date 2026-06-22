@@ -1,12 +1,20 @@
 import { resolve, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { build, type Format } from "tsdown";
+import { build, type Format, type UserConfig } from "tsdown";
 import type { PackageJson } from "type-fest";
 import type { Options as UnusedOptions } from "unplugin-unused";
 
 import { findWorkspacePackages } from "./utils.js";
 import type { CompilePackageOptions } from "./types.js";
+
+/**
+ * Re-exported so packages can author a type-safe `tsdown.config.ts` with their
+ * build overrides without depending on `tsdown` directly (mirroring how
+ * langchainjs packages import build helpers from `@langchain/build`).
+ */
+export { defineConfig } from "tsdown";
 
 const __dirname = fileURLToPath(import.meta.url);
 const root = resolve(__dirname, "..", "..", "..");
@@ -40,6 +48,16 @@ async function buildProject(
     (exp) => typeof exp === "object" && exp && "require" in exp
   );
   const format: Format[] = exportsCJS ? ["esm", "cjs"] : ["esm"];
+
+  /**
+   * Per-package build overrides. Packages may ship a `tsdown.config.{ts,mts,js,mjs}`
+   * that exports a partial tsdown config (mirroring the langchainjs convention).
+   * This is merged on top of the defaults below, which lets a package opt into,
+   * for example, `noExternal` to bundle pure-ESM dependencies (`p-retry`,
+   * `p-queue`) into the output so the CJS artifact doesn't `require()` an ESM
+   * module and crash CJS consumers on Node < 20.19 / < 22.12.
+   */
+  const packageConfig = await loadPackageConfig(path);
 
   /**
    * don't clean if we:
@@ -102,6 +120,10 @@ async function buildProject(
     entry,
     clean,
     cwd: path,
+    // We discover and merge the package's `tsdown.config.*` ourselves (see
+    // `loadPackageConfig`) so its imports resolve from the package directory.
+    // Disable tsdown's own config auto-discovery to avoid loading it twice.
+    config: false,
     dts,
     sourcemap,
     unbundle: true,
@@ -118,5 +140,32 @@ async function buildProject(
       cwd: path,
     },
     ...buildChecks,
+    ...packageConfig,
   });
+}
+
+const PACKAGE_CONFIG_FILES = [
+  "tsdown.config.ts",
+  "tsdown.config.mts",
+  "tsdown.config.js",
+  "tsdown.config.mjs",
+];
+
+/**
+ * Load a package's optional `tsdown.config.*` file and return its exported
+ * config (resolving a default export and any factory function). Returns an
+ * empty object when the package does not ship a config.
+ */
+async function loadPackageConfig(path: string): Promise<Partial<UserConfig>> {
+  const configFile = PACKAGE_CONFIG_FILES.map((file) =>
+    resolve(path, file)
+  ).find((file) => existsSync(file));
+  if (!configFile) return {};
+
+  const mod = (await import(pathToFileURL(configFile).href)) as {
+    default?: unknown;
+  };
+  const exported = mod.default ?? mod;
+  const resolved = typeof exported === "function" ? await exported() : exported;
+  return (resolved as Partial<UserConfig>) ?? {};
 }

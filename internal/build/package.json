@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "scripts": {
     "compile": "tsx cli.ts",
     "watch": "tsx cli.ts --watch"
