@@ -1,10 +1,7 @@
 import { spawn } from "node:child_process";
 
 import { StartServerSchema, type StartServerOptions } from "../server.mjs";
-import {
-  buildSpawnArgs,
-  resolveNodeLoader,
-} from "./spawn-args.mjs";
+import { buildSpawnArgs, resolveNodeLoader } from "./spawn-args.mjs";
 
 export async function spawnServer(
   args: {

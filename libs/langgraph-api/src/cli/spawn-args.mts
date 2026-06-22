@@ -65,9 +65,7 @@ export function buildSpawnArgs(options: {
 
   if (usesTsxCli(options.nodeLoader)) {
     const args = [
-      fileURLToPath(
-        new URL("../../cli.mjs", options.resolve("tsx/esm/api"))
-      ),
+      fileURLToPath(new URL("../../cli.mjs", options.resolve("tsx/esm/api"))),
       ...(options.reload ? ["watch"] : []),
       "--clear-screen=false",
       "--import",
