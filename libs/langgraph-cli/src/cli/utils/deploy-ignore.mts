@@ -39,6 +39,111 @@ export interface IgnoreSpec {
   ignores(relPath: string): boolean;
   /** Whether any negation (`!pattern`) was declared in the ignore files. */
   hasNegation: boolean;
+  /**
+   * Whether an otherwise-ignored directory must still be walked because a
+   * negation (`!pattern`) could re-include one of its descendants.
+   *
+   * @remarks
+   * This lets the archive walk prune ignored directories aggressively while
+   * still descending into the (usually small) set of directories that a
+   * negation reaches, instead of walking every ignored directory whenever any
+   * negation exists. Ported from the Python CLI's
+   * `_NegatedDockerignoreHints.requires_dir_walk`.
+   *
+   * @param relPath - Directory path relative to the spec's root, using `/`
+   * separators and no trailing slash.
+   * @returns `true` if the directory must be walked despite being ignored.
+   */
+  requiresDirWalk(relPath: string): boolean;
+}
+
+/** Characters that mark a path segment as a glob pattern. */
+const GLOB_CHARS = ["*", "?", "["];
+
+/** Whether `ancestor` is a strict path-prefix (ancestor) of `descendant`. */
+function isAncestor(ancestor: string, descendant: string): boolean {
+  return descendant.startsWith(`${ancestor}/`);
+}
+
+/**
+ * Summary of which ignored directories a set of negation (`!pattern`) rules can
+ * reach, so the archive walk only descends into directories that matter.
+ *
+ * Ported from the Python CLI's `_build_dockerignore_negation_hints` /
+ * `_NegatedDockerignoreHints`.
+ */
+interface NegationHints {
+  /** Whether a broad negation forces walking every ignored directory. */
+  recurseAll: boolean;
+  /** Concrete parent directories a literal negation must reach. */
+  exactDirs: Set<string>;
+  /** Literal prefixes preceding a glob in a negation pattern. */
+  wildcardPrefixes: string[];
+}
+
+/**
+ * Build {@link NegationHints} from raw ignore-file lines.
+ *
+ * @param lines - Raw lines from the loaded ignore files.
+ * @returns The aggregated negation hints.
+ */
+function buildNegationHints(lines: string[]): NegationHints {
+  const exactDirs = new Set<string>();
+  const wildcardPrefixes = new Set<string>();
+  let recurseAll = false;
+
+  for (const rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith("\\!")) continue;
+    if (line.startsWith("\\#")) line = line.slice(1);
+    if (!line.startsWith("!")) continue;
+
+    let pattern = line.slice(1).replace(/^\/+/, "");
+    while (pattern.startsWith("./")) pattern = pattern.slice(2);
+    pattern = pattern.replace(/\/+$/, "");
+    const parts = pattern.split("/").filter((part) => part && part !== ".");
+    if (!parts.length) {
+      recurseAll = true;
+      continue;
+    }
+
+    const wildcardIndex = parts.findIndex((part) =>
+      GLOB_CHARS.some((char) => part.includes(char))
+    );
+    if (wildcardIndex !== -1) {
+      const literalParts = parts.slice(0, wildcardIndex);
+      if (!literalParts.length) {
+        recurseAll = true;
+        continue;
+      }
+      wildcardPrefixes.add(literalParts.join("/"));
+      continue;
+    }
+
+    const parentParts = parts.slice(0, -1);
+    for (let idx = 1; idx <= parentParts.length; idx += 1) {
+      exactDirs.add(parentParts.slice(0, idx).join("/"));
+    }
+  }
+
+  return { recurseAll, exactDirs, wildcardPrefixes: [...wildcardPrefixes] };
+}
+
+/**
+ * Whether the directory at `relPath` must be walked given the negation hints.
+ *
+ * @param hints - The aggregated negation hints.
+ * @param relPath - Directory path relative to the spec root (no trailing `/`).
+ * @returns `true` if the directory must be walked despite being ignored.
+ */
+function requiresDirWalkWith(hints: NegationHints, relPath: string): boolean {
+  if (hints.recurseAll || hints.exactDirs.has(relPath)) return true;
+  return hints.wildcardPrefixes.some(
+    (prefix) =>
+      relPath === prefix ||
+      isAncestor(relPath, prefix) ||
+      isAncestor(prefix, relPath)
+  );
 }
 
 /**
@@ -80,6 +185,10 @@ export async function buildIgnoreSpec(
 ): Promise<IgnoreSpec> {
   const includeGitignore = options.includeGitignore ?? true;
   const lines: string[] = [...ALWAYS_EXCLUDE];
+  // Raw negation-bearing lines from the loaded ignore files (excluding the
+  // built-in ALWAYS_EXCLUDE, which never contains negations) used to compute
+  // which ignored directories must still be walked.
+  const ignoreFileLines: string[] = [];
   let hasNegation = false;
 
   const ignoreFiles = [".dockerignore"];
@@ -94,10 +203,12 @@ export async function buildIgnoreSpec(
         hasNegation = true;
       }
     }
+    ignoreFileLines.push(...fileLines);
     lines.push(...fileLines);
   }
 
   const ig: Ignore = ignore().add(lines);
+  const negationHints = buildNegationHints(ignoreFileLines);
 
   return {
     ignores(relPath: string): boolean {
@@ -106,5 +217,9 @@ export async function buildIgnoreSpec(
       return ig.ignores(relPath);
     },
     hasNegation,
+    requiresDirWalk(relPath: string): boolean {
+      if (!relPath || relPath === ".") return true;
+      return requiresDirWalkWith(negationHints, relPath);
+    },
   };
 }

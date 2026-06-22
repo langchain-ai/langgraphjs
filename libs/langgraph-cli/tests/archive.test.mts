@@ -43,6 +43,31 @@ describe("buildIgnoreSpec", () => {
     expect(spec.ignores("secrets/key.pem")).toBe(true);
     expect(spec.hasNegation).toBe(true);
   });
+
+  it("only walks ignored dirs a negation can reach (requiresDirWalk)", async () => {
+    await fs.writeFile(
+      path.join(projectDir, ".dockerignore"),
+      ["build/", "!build/dist/app.js", "!cache/*/keep"].join("\n")
+    );
+    const spec = await buildIgnoreSpec(projectDir);
+    // Literal negation reaches build/ and build/dist.
+    expect(spec.requiresDirWalk("build")).toBe(true);
+    expect(spec.requiresDirWalk("build/dist")).toBe(true);
+    // Wildcard negation prefix `cache` and its descendants must be walked.
+    expect(spec.requiresDirWalk("cache")).toBe(true);
+    expect(spec.requiresDirWalk("cache/sub")).toBe(true);
+    // Unrelated directories are not force-walked just because a negation
+    // exists elsewhere.
+    expect(spec.requiresDirWalk("node_modules")).toBe(false);
+    expect(spec.requiresDirWalk("data")).toBe(false);
+  });
+
+  it("force-walks everything for a broad (root-glob) negation", async () => {
+    await fs.writeFile(path.join(projectDir, ".dockerignore"), "*\n!*.log\n");
+    const spec = await buildIgnoreSpec(projectDir);
+    expect(spec.requiresDirWalk("anything")).toBe(true);
+    expect(spec.requiresDirWalk("deeply/nested/dir")).toBe(true);
+  });
 });
 
 describe("createArchive", () => {

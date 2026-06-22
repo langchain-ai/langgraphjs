@@ -3,6 +3,8 @@
  * I/O so they can be unit-tested in isolation.
  */
 
+import path from "node:path";
+
 import type { Secret } from "./host-backend.mjs";
 
 /**
@@ -63,6 +65,24 @@ export const API_KEY_ENV_NAMES = [
 
 /** Env var holding a default deployment name. */
 export const DEPLOYMENT_NAME_ENV = "LANGSMITH_DEPLOYMENT_NAME";
+
+/**
+ * Whether `child` resolves to a location strictly inside `parent`.
+ *
+ * @remarks
+ * Used to keep configuration-supplied paths (e.g. the `env` file referenced
+ * from `langgraph.json`) contained within the project directory, preventing
+ * traversal (`../`) or absolute paths from reaching files outside the project.
+ * Both arguments are expected to be absolute paths.
+ *
+ * @param parent - Absolute path to the directory that must contain `child`.
+ * @param child - Absolute path to validate.
+ * @returns `true` when `child` is strictly inside `parent`.
+ */
+export function isPathWithin(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
 
 /** Default host backend API URL. */
 export const DEFAULT_HOST_URL = "https://api.host.langchain.com";

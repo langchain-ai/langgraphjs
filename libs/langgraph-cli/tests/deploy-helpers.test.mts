@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   envWithoutDeploymentName,
@@ -8,6 +9,7 @@ import {
   formatTimestamp,
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
+  isPathWithin,
   levelColor,
   normalizeImageTag,
   normalizeName,
@@ -184,6 +186,34 @@ describe("getDeploymentStatusUrl", () => {
 
   it("returns null without a tenant_id", () => {
     expect(getDeploymentStatusUrl({}, "dep-1")).toBeNull();
+  });
+});
+
+describe("isPathWithin", () => {
+  const project = path.resolve("/tmp/project");
+
+  it("accepts files inside the project directory", () => {
+    expect(isPathWithin(project, path.resolve(project, ".env"))).toBe(true);
+    expect(
+      isPathWithin(project, path.resolve(project, "config/.env"))
+    ).toBe(true);
+  });
+
+  it("rejects traversal paths that escape the project", () => {
+    expect(
+      isPathWithin(project, path.resolve(project, "../../.aws/credentials"))
+    ).toBe(false);
+    expect(isPathWithin(project, path.resolve(project, "../secret"))).toBe(
+      false
+    );
+  });
+
+  it("rejects absolute paths outside the project", () => {
+    expect(isPathWithin(project, path.resolve("/etc/passwd"))).toBe(false);
+  });
+
+  it("rejects the project directory itself (no descendant)", () => {
+    expect(isPathWithin(project, project)).toBe(false);
   });
 });
 

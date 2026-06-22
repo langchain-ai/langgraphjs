@@ -44,6 +44,7 @@ import {
   formatRevisionsTable,
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
+  isPathWithin,
   levelColor,
   normalizeImageTag,
   normalizeName,
@@ -93,22 +94,6 @@ async function exists(target: string): Promise<boolean> {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Return `true` only if `child` resolves to a location inside `parent`.
- *
- * Used to keep configuration-supplied paths (e.g. the `env` file referenced
- * from `langgraph.json`) contained within the project directory, preventing
- * traversal (`../`) or absolute paths from reaching files outside the project.
- *
- * @param parent - Absolute path to the directory that must contain `child`.
- * @param child - Absolute path to validate.
- * @returns `true` when `child` is strictly inside `parent`.
- */
-function isPathWithin(parent: string, child: string): boolean {
-  const rel = path.relative(parent, child);
-  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
 // ---------------------------------------------------------------------------
@@ -720,28 +705,79 @@ async function resolvePushedImageDigest(
 // GCS upload
 // ---------------------------------------------------------------------------
 
+/** Chunk size used when streaming the source archive upload (1 MiB). */
+const UPLOAD_CHUNK_SIZE = 1024 * 1024;
+
 async function uploadToGcs(
   signedUrl: string,
   filePath: string,
   fileSize: number
 ): Promise<void> {
-  const buffer = await fs.readFile(filePath);
-  const body = new Uint8Array(buffer);
-  emitter.uploadProgress(fileSize / BYTES_PER_MIB, 0);
-  const response = await fetch(signedUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/gzip",
-      "Content-Length": String(fileSize),
-      "X-Goog-Content-Length-Range": "0,209715200",
+  const sizeMb = fileSize / BYTES_PER_MIB;
+  const handle = await fs.open(filePath, "r");
+  let closed = false;
+  const closeHandle = async () => {
+    if (closed) return;
+    closed = true;
+    await handle.close().catch(() => {});
+  };
+
+  let uploaded = 0;
+  let lastPct = -1;
+  emitter.uploadProgress(sizeMb, 0);
+
+  // Stream the archive in chunks so progress reflects bytes actually sent
+  // (instead of buffering the whole file in memory and jumping 0% -> 100%).
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const buffer = new Uint8Array(UPLOAD_CHUNK_SIZE);
+      const { bytesRead } = await handle.read(
+        buffer,
+        0,
+        UPLOAD_CHUNK_SIZE,
+        uploaded
+      );
+      if (bytesRead === 0) {
+        await closeHandle();
+        controller.close();
+        return;
+      }
+      uploaded += bytesRead;
+      controller.enqueue(buffer.subarray(0, bytesRead));
+      const pct = fileSize ? Math.floor((uploaded * 100) / fileSize) : 100;
+      if (pct !== lastPct) {
+        emitter.uploadProgress(sizeMb, pct);
+        lastPct = pct;
+      }
     },
-    body,
+    async cancel() {
+      await closeHandle();
+    },
   });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Upload failed with status ${response.status}: ${detail}`);
+
+  try {
+    // `duplex: "half"` is required by undici when sending a streaming body.
+    const response = await fetch(signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/gzip",
+        "Content-Length": String(fileSize),
+        "X-Goog-Content-Length-Range": "0,209715200",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        `Upload failed with status ${response.status}: ${detail}`
+      );
+    }
+  } finally {
+    await closeHandle();
   }
-  emitter.uploadProgress(fileSize / BYTES_PER_MIB, 100);
+
+  if (lastPct !== 100) emitter.uploadProgress(sizeMb, 100);
   if (!emitter.jsonMode) process.stdout.write("\n");
 }
 
@@ -762,6 +798,8 @@ interface LocalBuildArgs {
   imageName: string | undefined;
   name: string | undefined;
   tag: string;
+  installCommand: string | undefined;
+  buildCommand: string | undefined;
   dockerBuildArgs: string[];
   secrets: Secret[];
 }
@@ -783,6 +821,8 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
     {
       watch: false,
       dockerCommand: "build",
+      installCommand: args.installCommand,
+      buildCommand: args.buildCommand,
     }
   );
   // `configToDocker` emits `FROM ${getBaseImage(config)}` using the config's
@@ -1227,6 +1267,8 @@ async function runDeploy(
         imageName: opts.imageName,
         name,
         tag: opts.tag,
+        installCommand: opts.installCommand,
+        buildCommand: opts.buildCommand,
         dockerBuildArgs,
         secrets,
       });

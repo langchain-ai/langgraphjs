@@ -285,23 +285,19 @@ export class HostBackendClient {
    *
    * @param deploymentId - Deployment ID.
    * @param imageUri - Fully-qualified image reference (ideally a digest).
-   * @param args - Optional secrets and tracked-package metadata.
+   * @param args - Optional secrets.
    * @param args.secrets - Secrets to set on the deployment.
-   * @param args.trackedPackages - `<name>:<version>` tracked-package entries.
    * @returns The updated deployment object.
    */
   updateDeployment(
     deploymentId: string,
     imageUri: string,
-    args: { secrets?: Secret[] | null; trackedPackages?: string[] | null } = {}
+    args: { secrets?: Secret[] | null } = {}
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
       revision_source: "internal_docker",
       source_revision_config: { image_uri: imageUri },
     };
-    if (args.trackedPackages && args.trackedPackages.length) {
-      payload.tracked_packages = args.trackedPackages;
-    }
     if (args.secrets != null) {
       payload.secrets = args.secrets;
     }
@@ -321,7 +317,6 @@ export class HostBackendClient {
    * @param args.secrets - Optional secrets to set on the deployment.
    * @param args.installCommand - Optional custom install command.
    * @param args.buildCommand - Optional custom build command.
-   * @param args.trackedPackages - `<name>:<version>` tracked-package entries.
    * @returns The updated deployment object.
    */
   updateDeploymentInternalSource(
@@ -332,7 +327,6 @@ export class HostBackendClient {
       secrets?: Secret[] | null;
       installCommand?: string | null;
       buildCommand?: string | null;
-      trackedPackages?: string[] | null;
     }
   ): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
@@ -342,9 +336,6 @@ export class HostBackendClient {
         langgraph_config_path: args.configPath,
       },
     };
-    if (args.trackedPackages && args.trackedPackages.length) {
-      payload.tracked_packages = args.trackedPackages;
-    }
 
     const sourceConfig: Record<string, unknown> = {};
     if (args.installCommand != null) {

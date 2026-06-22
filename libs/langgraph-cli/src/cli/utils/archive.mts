@@ -41,9 +41,9 @@ export interface Archive {
  * @remarks
  * Symlinks (and other non-regular entries) are skipped. Always-excluded
  * directories are pruned by name; other ignored directories are pruned too,
- * unless the ignore files declare a negation (`!pattern`) that could
- * re-include a descendant, in which case the directory is still walked and
- * filtering happens per-file.
+ * unless a negation (`!pattern`) could re-include one of their descendants (see
+ * {@link IgnoreSpec.requiresDirWalk}), in which case the directory is still
+ * walked and filtering happens per-file.
  *
  * @param rootDir - Absolute directory to walk (the archive root).
  * @returns Sorted-by-walk list of relative file paths to include.
@@ -65,7 +65,10 @@ async function collectFiles(rootDir: string): Promise<string[]> {
       if (entry.isDirectory()) {
         if (ALWAYS_EXCLUDE_NAMES.has(entry.name)) continue;
         const dirRel = `${rel}/`;
-        if (spec.ignores(dirRel) && !spec.hasNegation) continue;
+        // Prune ignored directories, but still descend into the (usually
+        // small) set a negation could re-include from, instead of walking
+        // every ignored directory whenever any negation exists.
+        if (spec.ignores(dirRel) && !spec.requiresDirWalk(rel)) continue;
         await walk(abs, rel);
         continue;
       }
