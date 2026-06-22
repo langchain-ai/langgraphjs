@@ -25,15 +25,15 @@
     "p-retry": "^7.1.1"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.1",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
-    "deepagents": "^1.8.3",
-    "langchain": "^1.4.4",
+    "deepagents": "^1.10.5",
+    "langchain": "^1.5.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "svelte": "^5.56.1",

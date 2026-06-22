@@ -4,6 +4,10 @@ import { z as z3 } from "zod/v3";
 
 import { SubgraphExtractor } from "../src/graph/parser/parser.mjs";
 import { getRuntimeGraphSchema } from "../src/graph/parser/index.mjs";
+import {
+  BASE_MESSAGE_REF,
+  baseMessageDefinitions,
+} from "./schema-expectations.mjs";
 import dedent from "dedent";
 import { StateGraph, StateSchema, ReducedValue } from "@langchain/langgraph";
 import { withLangGraph } from "@langchain/langgraph/zod";
@@ -194,15 +198,11 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
       messages: {
         type: "array",
         items: {
-          $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+          $ref: BASE_MESSAGE_REF,
         },
       },
     },
-    definitions: {
-      "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-        type: "object",
-      },
-    },
+    definitions: baseMessageDefinitions,
     $schema: "http://json-schema.org/draft-07/schema#",
   };
 
@@ -323,15 +323,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+              $ref: BASE_MESSAGE_REF,
             },
           },
         },
-        definitions: {
-          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-            type: "object",
-          },
-        },
+        definitions: baseMessageDefinitions,
         $schema: "http://json-schema.org/draft-07/schema#",
       });
 
@@ -345,15 +341,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+              $ref: BASE_MESSAGE_REF,
             },
           },
         },
-        definitions: {
-          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-            type: "object",
-          },
-        },
+        definitions: baseMessageDefinitions,
         $schema: "http://json-schema.org/draft-07/schema#",
       });
 
@@ -367,15 +359,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
           messages: {
             type: "array",
             items: {
-              $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+              $ref: BASE_MESSAGE_REF,
             },
           },
         },
-        definitions: {
-          "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-            type: "object",
-          },
-        },
+        definitions: baseMessageDefinitions,
         $schema: "http://json-schema.org/draft-07/schema#",
       });
 
@@ -455,15 +443,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -477,15 +461,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -499,15 +479,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
   });
@@ -650,15 +626,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -672,15 +644,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -694,15 +662,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -782,15 +746,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -804,15 +764,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -826,15 +782,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -904,15 +856,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -926,15 +874,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -948,15 +892,11 @@ describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 
@@ -1216,7 +1156,7 @@ test.concurrent("`strictFunctionTypes: false`", { timeout: 30_000 }, () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
         state: { type: "string" },

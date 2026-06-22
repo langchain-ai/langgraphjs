@@ -49,12 +49,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "^1.1.48",
-      "langchain": "1.5.1-dev-1781824996270",
-      "@examples/streaming>langchain": "1.5.1-dev-1781824996270",
-      "@examples/ui-react>langchain": "1.5.1-dev-1781824996270",
-      "@examples/ui-multimodal>langchain": "1.5.1-dev-1781824996270",
-      "deepagents>langchain": "1.5.1-dev-1781824996270",
+      "@langchain/core": "^1.2.1",
       "@langchain/langgraph-sdk": "workspace:*",
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",

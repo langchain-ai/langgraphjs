@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^1.4.0",
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.1",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/openai": "^1.4.7",
@@ -62,7 +62,7 @@
     "cheerio": "1.0.0-rc.12",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
-    "langchain": "^1.4.4",
+    "langchain": "^1.5.1",
     "pg": "^8.13.0",
     "playwright": "^1.55.1",
     "rollup": "^4.37.0",
