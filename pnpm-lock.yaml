@@ -966,7 +966,7 @@ importers:
     devDependencies:
       '@langchain/classic':
         specifier: ^1.0.34
-        version: 1.0.34(@langchain/core@1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(cheerio@1.2.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(typeorm@0.3.28(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1))(ws@8.21.0)
+        version: 1.0.34(@langchain/core@1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(cheerio@1.2.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(typeorm@0.3.29(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1))(ws@8.21.0)
       '@langchain/core':
         specifier: ^1.1.48
         version: 1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -992,8 +992,8 @@ importers:
         specifier: ^4.19.3
         version: 4.21.0
       typeorm:
-        specifier: ^0.3.0
-        version: 0.3.28(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1)
+        specifier: ^0.3.29
+        version: 0.3.29(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1)
       zod:
         specifier: ^4.3.5
         version: 4.3.6
@@ -7465,6 +7465,10 @@ packages:
     resolution: {integrity: sha512-HqZ5rWlFjGiV0tDm3UxxgNRqsOTniqoKZu0pIAfh7TZQMGuZK+hH0drySty0si0QXj1ieop4+SkSfPZBPPkHig==}
     engines: {node: '>=14'}
 
+  ansis@4.3.1:
+    resolution: {integrity: sha512-BJ8/l4R5LRE7hW9WdSuGYrLSHi2ynxeFpDFbH0K/CgNeY/tyhk+vO6TYxXC5r5CpUhNVX310xzPsN/H9lCdfOA==}
+    engines: {node: '>=14'}
+
   app-root-path@3.1.0:
     resolution: {integrity: sha512-biN3PwB2gUtjaYy/isrU3aNWI5w+fAfvHkSvCKeQGxhmYpwKFUxudR3Yya+KqVRHBmEDYh+/lTozYCFbmzX4nA==}
     engines: {node: '>= 6.0.0'}
@@ -7656,8 +7660,8 @@ packages:
   brace-expansion@1.1.14:
     resolution: {integrity: sha512-MWPGfDxnyzKU7rNOW9SP/c50vi3xrmrua/+6hfPbCS2ABNWfx24vPidzvC7krjU/RTo235sV776ymlsMtGKj8g==}
 
-  brace-expansion@2.1.0:
-    resolution: {integrity: sha512-TN1kCZAgdgweJhWWpgKYrQaMNHcDULHkWwQIspdtjV4Y5aurRdZpjAqn6yX3FPqTA9ngHCc4hJxMAMgGfve85w==}
+  brace-expansion@2.1.1:
+    resolution: {integrity: sha512-WR1cURNjuvBLMZBMbqM0UoE+WAfdUcEV1ccD8PVBVOI+Z3ND4+SZbN8RsfT2bMuG1qwz5RFvPukSZm5fF2D5eA==}
 
   brace-expansion@5.0.6:
     resolution: {integrity: sha512-kLpxurY4Z4r9sgMsyG0Z9uzsBlgiU/EFKhj/h91/8yHu0edo7XuixOIH3VcJ8kkxs6/jPzoI6U9Vj3WqbMQ94g==}
@@ -8295,6 +8299,9 @@ packages:
 
   dayjs@1.11.19:
     resolution: {integrity: sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw==}
+
+  dayjs@1.11.21:
+    resolution: {integrity: sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -10166,10 +10173,6 @@ packages:
   minimalistic-crypto-utils@1.0.1:
     resolution: {integrity: sha512-JIYlbt6g8i5jKfJ3xz7rF0LXmv2TkDxBLUkiBeZ7bAx4GnnNMr8xFpGnOxn6GhTEHx3SjRrZEoU+j04prX1ktg==}
 
-  minimatch@10.2.4:
-    resolution: {integrity: sha512-oRjTw/97aTBN0RHbYCdtF1MQfvusSIBQM0IZEgzl6426+8jSC0nF1a/GmnVLpfB9yyr6g6FTqWqiZVbxrtaCIg==}
-    engines: {node: 18 || 20 || >=22}
-
   minimatch@10.2.5:
     resolution: {integrity: sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==}
     engines: {node: 18 || 20 || >=22}
@@ -11946,8 +11949,8 @@ packages:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
     engines: {node: '>= 0.4'}
 
-  typeorm@0.3.28:
-    resolution: {integrity: sha512-6GH7wXhtfq2D33ZuRXYwIsl/qM5685WZcODZb7noOOcRMteM9KF2x2ap3H0EBjnSV0VO4gNAfJT5Ukp0PkOlvg==}
+  typeorm@0.3.29:
+    resolution: {integrity: sha512-wwPEX/df4l72gCmOsrs0otJZYLGA9lLQkUZCkukbsymEycV4zXv2KM7wU7v2r8L01TaCgY9ApSSqHQWBOUhEoQ==}
     engines: {node: '>=16.13.0'}
     hasBin: true
     peerDependencies:
@@ -13854,14 +13857,14 @@ snapshots:
       lodash.camelcase: 4.3.0
       long: 5.3.2
       protobufjs: 7.6.1
-      yargs: 17.7.2
+      yargs: 17.7.3
 
   '@grpc/proto-loader@0.8.0':
     dependencies:
       lodash.camelcase: 4.3.0
       long: 5.3.2
       protobufjs: 7.6.1
-      yargs: 17.7.2
+      yargs: 17.7.3
 
   '@harperfast/extended-iterable@1.0.3':
     optional: true
@@ -14258,7 +14261,7 @@ snapshots:
       '@langchain/core': 1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.4.3))(ws@8.21.0)
       zod: 4.4.2
 
-  '@langchain/classic@1.0.34(@langchain/core@1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(cheerio@1.2.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(typeorm@0.3.28(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1))(ws@8.21.0)':
+  '@langchain/classic@1.0.34(@langchain/core@1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(cheerio@1.2.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(typeorm@0.3.29(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1))(ws@8.21.0)':
     dependencies:
       '@langchain/core': 1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
       '@langchain/openai': 1.4.7(@langchain/core@1.1.48(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(ws@8.21.0)
@@ -14272,7 +14275,7 @@ snapshots:
     optionalDependencies:
       cheerio: 1.2.0
       langsmith: 0.6.0(@opentelemetry/api@1.9.0)(openai@6.42.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
-      typeorm: 0.3.28(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1)
+      typeorm: 0.3.29(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1)
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -15213,7 +15216,7 @@ snapshots:
       proxy-agent: 6.5.0
       semver: 7.8.1
       tar-fs: 3.1.2
-      yargs: 17.7.2
+      yargs: 17.7.3
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -18107,6 +18110,8 @@ snapshots:
 
   ansis@4.2.0: {}
 
+  ansis@4.3.1: {}
+
   app-root-path@3.1.0: {}
 
   archiver-utils@5.0.2:
@@ -18325,7 +18330,7 @@ snapshots:
       balanced-match: 1.0.2
       concat-map: 0.0.1
 
-  brace-expansion@2.1.0:
+  brace-expansion@2.1.1:
     dependencies:
       balanced-match: 1.0.2
 
@@ -19002,6 +19007,8 @@ snapshots:
   dataloader@1.4.0: {}
 
   dayjs@1.11.19: {}
+
+  dayjs@1.11.21: {}
 
   debug@4.4.3:
     dependencies:
@@ -19931,7 +19938,7 @@ snapshots:
     dependencies:
       foreground-child: 3.3.1
       jackspeak: 3.4.3
-      minimatch: 10.2.4
+      minimatch: 10.2.5
       minipass: 7.1.3
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
@@ -21371,10 +21378,6 @@ snapshots:
 
   minimalistic-crypto-utils@1.0.1: {}
 
-  minimatch@10.2.4:
-    dependencies:
-      brace-expansion: 5.0.6
-
   minimatch@10.2.5:
     dependencies:
       brace-expansion: 5.0.6
@@ -21385,7 +21388,7 @@ snapshots:
 
   minimatch@5.1.9:
     dependencies:
-      brace-expansion: 2.1.0
+      brace-expansion: 2.1.1
 
   minimist@1.2.8: {}
 
@@ -23785,13 +23788,13 @@ snapshots:
       es-errors: 1.3.0
       is-typed-array: 1.1.15
 
-  typeorm@0.3.28(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1):
+  typeorm@0.3.29(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1):
     dependencies:
       '@sqltools/formatter': 1.2.5
-      ansis: 4.2.0
+      ansis: 4.3.1
       app-root-path: 3.1.0
       buffer: 6.0.3
-      dayjs: 1.11.19
+      dayjs: 1.11.21
       debug: 4.4.3
       dedent: 1.7.2
       dotenv: 16.6.1
@@ -23801,7 +23804,7 @@ snapshots:
       sql-highlight: 6.1.0
       tslib: 2.8.1
       uuid: 11.1.1
-      yargs: 17.7.2
+      yargs: 17.7.3
     optionalDependencies:
       better-sqlite3: 12.10.0
       mongodb: 6.21.0(socks@2.8.7)
@@ -24764,7 +24767,6 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
-    optional: true
 
   yargs@18.0.0:
     dependencies:
