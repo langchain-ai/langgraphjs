@@ -40,6 +40,131 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("TTL support", () => {
+    it("should store ttl property when provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+      // Access protected property for testing
+      expect((saver as unknown as { ttl: number }).ttl).toBe(3600);
+    });
+
+    it("should not have ttl when not provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      expect((saver as unknown as { ttl?: number }).ttl).toBeUndefined();
+    });
+
+    it("should enable timestamps implicitly when ttl is provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({ $currentDate: { upserted_at: true } });
+    });
+
+    it("setup() should create TTL indexes when ttl is configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      await saver.setup();
+
+      expect(mockCollection).toHaveBeenCalledWith("checkpoints");
+      expect(mockCollection).toHaveBeenCalledWith("checkpoint_writes");
+      expect(mockCreateIndex).toHaveBeenCalledTimes(2);
+      expect(mockCreateIndex).toHaveBeenCalledWith(
+        { upserted_at: 1 },
+        { expireAfterSeconds: 3600 }
+      );
+    });
+
+    it("setup() should not create indexes when ttl is not configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await saver.setup();
+
+      expect(mockCreateIndex).not.toHaveBeenCalled();
+    });
+
+    it("setup() should return empty array on success", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("upserted_at_1");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      const errors = await saver.setup();
+      expect(errors).toEqual([]);
+    });
+
+    it("setup() should return errors for caller to handle", async () => {
+      const mockCreateIndex = vi
+        .fn()
+        .mockRejectedValue(new Error("Index creation failed"));
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      const errors = await saver.setup();
+      expect(errors).toHaveLength(2);
+      expect(errors[0].message).toBe("Index creation failed");
+    });
+  });
+
   describe("timestampOp", () => {
     it("should return empty object when enableTimestamps is not set", () => {
       const client = createMockClient();

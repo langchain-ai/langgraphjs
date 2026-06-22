@@ -22,6 +22,13 @@ export type MongoDBSaverParams = {
    * Useful for MongoDB TTL indexes, auditing, or debugging.
    */
   enableTimestamps?: boolean;
+  /**
+   * Time-to-live in seconds for checkpoint documents. When set, an
+   * `upserted_at` timestamp is written on every upsert (implies
+   * `enableTimestamps`) and {@link MongoDBSaver.setup} creates MongoDB TTL
+   * indexes so documents expire after the configured period of inactivity.
+   */
+  ttl?: number;
 };
 
 function getStringConfigValue(
@@ -57,6 +64,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   protected enableTimestamps: boolean;
 
+  protected ttl?: number;
+
   private get timestampOp() {
     return this.enableTimestamps
       ? ({ $currentDate: { upserted_at: true } } as const)
@@ -70,6 +79,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName,
       checkpointWritesCollectionName,
       enableTimestamps,
+      ttl,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -83,7 +93,37 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
-    this.enableTimestamps = enableTimestamps ?? false;
+    this.ttl = ttl;
+    // TTL expiry relies on the `upserted_at` timestamp, so configuring a `ttl`
+    // forces timestamps on (otherwise the TTL index would never match any
+    // document and nothing would ever expire).
+    this.enableTimestamps = (enableTimestamps ?? false) || ttl != null;
+  }
+
+  /**
+   * Creates TTL indexes on the checkpoint collections if a `ttl` is configured.
+   * This method is idempotent and safe to call multiple times (and concurrently).
+   * Returns an array of errors (empty if successful) so the caller can decide
+   * how to handle failures. No-op when `ttl` is not configured.
+   */
+  async setup(): Promise<Error[]> {
+    if (this.ttl == null) return [];
+
+    const ttlIndex = { upserted_at: 1 };
+    const options = { expireAfterSeconds: this.ttl };
+
+    const results = await Promise.allSettled([
+      this.db
+        .collection(this.checkpointCollectionName)
+        .createIndex(ttlIndex, options),
+      this.db
+        .collection(this.checkpointWritesCollectionName)
+        .createIndex(ttlIndex, options),
+    ]);
+
+    return results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => r.reason as Error);
   }
 
   /**
