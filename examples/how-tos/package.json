@@ -4,7 +4,7 @@
   "private": true,
   "devDependencies": {
     "@langchain/anthropic": "^1.4.0",
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.1",
     "@langchain/groq": "^1.2.1",
     "@langchain/langgraph": "workspace:*",
     "@langchain/mistralai": "^1.1.0",

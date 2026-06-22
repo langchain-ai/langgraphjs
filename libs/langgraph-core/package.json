@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@langchain/anthropic": "^1.4.0",
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.1",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/openai": "^1.4.7",

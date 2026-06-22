@@ -25,7 +25,7 @@
     "p-retry": "^7.1.1"
   },
   "devDependencies": {
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.1",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
