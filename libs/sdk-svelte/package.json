@@ -33,7 +33,7 @@
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.8.3",
     "hono": "^4.12.25",
-    "langchain": "^1.4.4",
+    "langchain": "^1.5.1",
     "svelte": "^5.56.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8",
