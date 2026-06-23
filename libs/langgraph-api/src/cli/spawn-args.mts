@@ -81,18 +81,14 @@ export function buildSpawnArgs(options: {
 }): { command: string; args: string[] } {
   const payloadArg = JSON.stringify(options.payload);
   const sharedArgs = [options.pid.toString(), payloadArg] as const;
-  const preloadPath = fileURLToPath(
-    new URL(options.resolve("../preload.mjs"))
-  );
+  const preloadPath = fileURLToPath(new URL(options.resolve("../preload.mjs")));
   const entrypointPath = fileURLToPath(
     new URL(options.resolve("./entrypoint.mjs"))
   );
 
   if (usesTsxCli(options.nodeLoader)) {
     const args = [
-      fileURLToPath(
-        new URL("../../cli.mjs", options.resolve("tsx/esm/api"))
-      ),
+      fileURLToPath(new URL("../../cli.mjs", options.resolve("tsx/esm/api"))),
       ...(options.reload ? ["watch"] : []),
       "--clear-screen=false",
       "--import",
@@ -104,10 +100,7 @@ export function buildSpawnArgs(options: {
     return { command: process.execPath, args };
   }
 
-  const loader = resolveLoaderRegistration(
-    options.nodeLoader,
-    options.resolve
-  );
+  const loader = resolveLoaderRegistration(options.nodeLoader, options.resolve);
   const args = [
     ...(options.reload ? ["--watch"] : []),
     loader.flag,
