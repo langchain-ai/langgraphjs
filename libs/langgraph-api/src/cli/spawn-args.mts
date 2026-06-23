@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { StartServerOptions } from "../server.mjs";
 
@@ -14,6 +14,10 @@ type LoaderRegistration = {
 /**
  * Shorthand loader names mapped to Node registration hooks.
  * Use `"tsx"` (not `"tsx/esm"`) to spawn via the tsx CLI instead.
+ *
+ * `ts-node` uses `--loader` (not `--import`) because `ts-node/esm` is a
+ * custom ESM loader hook. Node 20+ deprecates `--loader` in favor of
+ * `module.register()`, but ts-node still documents this entrypoint.
  */
 export const LOADER_REGISTRATIONS: Record<string, LoaderRegistration> = {
   "ts-node": { specifier: "ts-node/esm", flag: "--loader" },
@@ -68,6 +72,12 @@ export function resolveLoaderPath(
   }
 }
 
+/** Convert a resolved filesystem path to a Node `--loader`/`--import` URL. */
+export function toNodeModuleUrl(path: string): string {
+  if (path.startsWith("file://")) return path;
+  return pathToFileURL(path).href;
+}
+
 export function usesTsxCli(loader: string): boolean {
   return loader === DEFAULT_NODE_LOADER;
 }
@@ -81,18 +91,20 @@ export function buildSpawnArgs(options: {
 }): { command: string; args: string[] } {
   const payloadArg = JSON.stringify(options.payload);
   const sharedArgs = [options.pid.toString(), payloadArg] as const;
-  const preloadPath = fileURLToPath(new URL(options.resolve("../preload.mjs")));
+  const preloadUrl = new URL(options.resolve("../preload.mjs")).toString();
   const entrypointPath = fileURLToPath(
     new URL(options.resolve("./entrypoint.mjs"))
   );
 
   if (usesTsxCli(options.nodeLoader)) {
     const args = [
-      fileURLToPath(new URL("../../cli.mjs", options.resolve("tsx/esm/api"))),
+      fileURLToPath(
+        new URL("../../cli.mjs", options.resolve("tsx/esm/api"))
+      ),
       ...(options.reload ? ["watch"] : []),
       "--clear-screen=false",
       "--import",
-      new URL(options.resolve("../preload.mjs")).toString(),
+      preloadUrl,
       entrypointPath,
       ...sharedArgs,
     ];
@@ -100,13 +112,16 @@ export function buildSpawnArgs(options: {
     return { command: process.execPath, args };
   }
 
-  const loader = resolveLoaderRegistration(options.nodeLoader, options.resolve);
+  const loader = resolveLoaderRegistration(
+    options.nodeLoader,
+    options.resolve
+  );
   const args = [
     ...(options.reload ? ["--watch"] : []),
     loader.flag,
-    loader.path,
+    toNodeModuleUrl(loader.path),
     "--import",
-    preloadPath,
+    preloadUrl,
     entrypointPath,
     ...sharedArgs,
   ];

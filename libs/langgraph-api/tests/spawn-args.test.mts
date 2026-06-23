@@ -9,6 +9,7 @@ import {
   resolveLoaderPath,
   resolveLoaderRegistration,
   resolveNodeLoader,
+  toNodeModuleUrl,
   usesTsxCli,
 } from "../src/cli/spawn-args.mjs";
 import type { StartServerOptions } from "../src/server.mjs";
@@ -190,9 +191,9 @@ describe("buildSpawnArgs", () => {
     expect(args.slice(0, 5)).toEqual([
       "--watch",
       "--loader",
-      expect.stringContaining("ts-node"),
+      expect.stringMatching(/^file:\/\//),
       "--import",
-      expect.stringContaining("preload.mjs"),
+      expect.stringMatching(/^file:\/\/.*preload\.mjs$/),
     ]);
     expect(args[1]).toBe("--loader");
     expect(args[2]).not.toBe("--import");
@@ -247,6 +248,7 @@ describe("buildSpawnArgs", () => {
     expect(args).not.toContain("watch");
     expect(args).not.toContain("--loader");
     expect(args[0]).toBe("--import");
+    expect(args[1]).toMatch(/^file:\/\//);
     expect(args[1]).toContain("tsx");
   });
 
@@ -261,9 +263,21 @@ describe("buildSpawnArgs", () => {
 
     const preloadIndex = args.indexOf("--import");
     expect(preloadIndex).toBeGreaterThan(args.indexOf("--loader"));
-    expect(args[preloadIndex + 1]).toContain("preload.mjs");
+    expect(args[preloadIndex + 1]).toMatch(/^file:\/\/.*preload\.mjs$/);
     expect(args[preloadIndex + 2]).toContain("entrypoint.mjs");
     expect(args.at(-2)).toBe("7");
     expect(JSON.parse(args.at(-1)!)).toEqual(payload);
+  });
+});
+
+describe("toNodeModuleUrl", () => {
+  it("converts absolute paths to file URLs", () => {
+    const loaderPath = join(tmpdir(), "custom-loader.mjs");
+    expect(toNodeModuleUrl(loaderPath)).toBe(pathToFileURL(loaderPath).href);
+  });
+
+  it("passes through existing file URLs", () => {
+    const loaderUrl = pathToFileURL(join(tmpdir(), "custom-loader.mjs")).href;
+    expect(toNodeModuleUrl(loaderUrl)).toBe(loaderUrl);
   });
 });
