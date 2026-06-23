@@ -1,5 +1,6 @@
-import { sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
+import { join, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildSpawnArgs,
@@ -87,43 +88,39 @@ describe("resolveLoaderRegistration", () => {
   });
 
   it("defaults unknown loaders to --import", () => {
+    const loaderPath = join(tmpdir(), "tsx", "esm.mjs");
     const resolved = resolveLoaderRegistration(
       "tsx/esm",
       mockResolve({
-        "tsx/esm": pathToFileURL("/tmp/tsx/esm.mjs").href,
+        "tsx/esm": pathToFileURL(loaderPath).href,
       })
     );
     expect(resolved).toMatchObject({
       flag: "--import",
       specifier: "tsx/esm",
-      path: "/tmp/tsx/esm.mjs",
+      path: loaderPath,
     });
   });
 });
 
 describe("resolveLoaderPath", () => {
   it("resolves absolute paths unchanged", () => {
+    const loaderPath = join(tmpdir(), "custom-loader.mjs");
     expect(
-      resolveLoaderPath(
-        "/tmp/custom-loader.mjs",
-        "file:///tmp/custom-loader.mjs",
-        () => {
-          throw new Error("should not resolve");
-        }
-      )
-    ).toBe("/tmp/custom-loader.mjs");
+      resolveLoaderPath(loaderPath, loaderPath, () => {
+        throw new Error("should not resolve");
+      })
+    ).toBe(loaderPath);
   });
 
   it("resolves file URLs unchanged", () => {
+    const loaderPath = join(tmpdir(), "custom-loader.mjs");
+    const loaderUrl = pathToFileURL(loaderPath).href;
     expect(
-      resolveLoaderPath(
-        "file:///tmp/custom-loader.mjs",
-        "file:///tmp/custom-loader.mjs",
-        () => {
-          throw new Error("should not resolve");
-        }
-      )
-    ).toBe("/tmp/custom-loader.mjs");
+      resolveLoaderPath(loaderUrl, loaderUrl, () => {
+        throw new Error("should not resolve");
+      })
+    ).toBe(fileURLToPath(loaderUrl));
   });
 
   it("includes ts-node setup hint when resolution fails", () => {
