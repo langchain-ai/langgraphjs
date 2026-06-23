@@ -1103,6 +1103,19 @@ it("node config and python config", () => {
     env: {},
   });
 
+  expect(
+    getConfig({
+      node_loader: "ts-node",
+      graphs: { agent: "./agent.ts:graph" },
+    })
+  ).toEqual({
+    node_version: "20",
+    node_loader: "ts-node",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.ts:graph" },
+    env: {},
+  });
+
   // Default multiplatform
   expect(
     getConfig({

@@ -77,8 +77,10 @@ export const StartServerSchema = z.object({
     .optional(),
 });
 
+export type StartServerOptions = z.infer<typeof StartServerSchema>;
+
 export async function startServer(
-  options: z.infer<typeof StartServerSchema>,
+  options: StartServerOptions,
   storage?: { ops?: Ops }
 ) {
   const semver = await checkLangGraphSemver();
