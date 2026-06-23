@@ -6,12 +6,18 @@ import type { StartServerOptions } from "../server.mjs";
 /** Default loader: tsx CLI with built-in watch. */
 export const DEFAULT_NODE_LOADER = "tsx";
 
+type LoaderRegistration = {
+  specifier: string;
+  flag: "--loader" | "--import";
+};
+
 /**
- * Shorthand loader names mapped to Node `--import` specifiers.
+ * Shorthand loader names mapped to Node registration hooks.
  * Use `"tsx"` (not `"tsx/esm"`) to spawn via the tsx CLI instead.
  */
-export const LOADER_IMPORT_SHORTCUTS: Record<string, string> = {
-  "ts-node": "ts-node/esm",
+export const LOADER_REGISTRATIONS: Record<string, LoaderRegistration> = {
+  "ts-node": { specifier: "ts-node/esm", flag: "--loader" },
+  "ts-node/esm": { specifier: "ts-node/esm", flag: "--loader" },
 };
 
 export function resolveNodeLoader(
@@ -23,12 +29,25 @@ export function resolveNodeLoader(
   return configLoader ?? DEFAULT_NODE_LOADER;
 }
 
-export function resolveLoaderImport(
+export function resolveLoaderRegistration(
+  loader: string,
+  resolve: (specifier: string) => string
+): LoaderRegistration & { path: string } {
+  const registration = LOADER_REGISTRATIONS[loader] ?? {
+    specifier: loader,
+    flag: "--import" as const,
+  };
+
+  const path = resolveLoaderPath(registration.specifier, loader, resolve);
+
+  return { ...registration, path };
+}
+
+export function resolveLoaderPath(
+  specifier: string,
   loader: string,
   resolve: (specifier: string) => string
 ): string {
-  const specifier = LOADER_IMPORT_SHORTCUTS[loader] ?? loader;
-
   if (specifier.startsWith("file://")) {
     return fileURLToPath(specifier);
   }
@@ -62,29 +81,40 @@ export function buildSpawnArgs(options: {
 }): { command: string; args: string[] } {
   const payloadArg = JSON.stringify(options.payload);
   const sharedArgs = [options.pid.toString(), payloadArg] as const;
+  const preloadPath = fileURLToPath(
+    new URL(options.resolve("../preload.mjs"))
+  );
+  const entrypointPath = fileURLToPath(
+    new URL(options.resolve("./entrypoint.mjs"))
+  );
 
   if (usesTsxCli(options.nodeLoader)) {
     const args = [
-      fileURLToPath(new URL("../../cli.mjs", options.resolve("tsx/esm/api"))),
+      fileURLToPath(
+        new URL("../../cli.mjs", options.resolve("tsx/esm/api"))
+      ),
       ...(options.reload ? ["watch"] : []),
       "--clear-screen=false",
       "--import",
       new URL(options.resolve("../preload.mjs")).toString(),
-      fileURLToPath(new URL(options.resolve("./entrypoint.mjs"))),
+      entrypointPath,
       ...sharedArgs,
     ];
 
     return { command: process.execPath, args };
   }
 
-  const loaderImport = resolveLoaderImport(options.nodeLoader, options.resolve);
+  const loader = resolveLoaderRegistration(
+    options.nodeLoader,
+    options.resolve
+  );
   const args = [
     ...(options.reload ? ["--watch"] : []),
+    loader.flag,
+    loader.path,
     "--import",
-    loaderImport,
-    "--import",
-    fileURLToPath(new URL(options.resolve("../preload.mjs"))),
-    fileURLToPath(new URL(options.resolve("./entrypoint.mjs"))),
+    preloadPath,
+    entrypointPath,
     ...sharedArgs,
   ];
 

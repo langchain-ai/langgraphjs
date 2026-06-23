@@ -1,9 +1,12 @@
 import { sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildSpawnArgs,
   DEFAULT_NODE_LOADER,
-  resolveLoaderImport,
+  LOADER_REGISTRATIONS,
+  resolveLoaderPath,
+  resolveLoaderRegistration,
   resolveNodeLoader,
   usesTsxCli,
 } from "../src/cli/spawn-args.mjs";
@@ -16,6 +19,14 @@ const payload: StartServerOptions = {
   graphs: { agent: "./agent.ts:graph" },
   cwd: "/tmp/project",
 };
+
+const mockResolve =
+  (map: Record<string, string>) =>
+  (specifier: string): string => {
+    const resolved = map[specifier];
+    if (!resolved) throw new Error(`Cannot resolve ${specifier}`);
+    return resolved;
+  };
 
 describe("resolveNodeLoader", () => {
   it("defaults to tsx", () => {
@@ -41,24 +52,114 @@ describe("usesTsxCli", () => {
   });
 });
 
-describe("resolveLoaderImport", () => {
-  it("maps ts-node shorthand to ts-node/esm", () => {
-    const resolved = resolveLoaderImport("ts-node", (specifier) =>
+describe("LOADER_REGISTRATIONS", () => {
+  it("registers ts-node shorthands with --loader", () => {
+    expect(LOADER_REGISTRATIONS["ts-node"]).toEqual({
+      specifier: "ts-node/esm",
+      flag: "--loader",
+    });
+    expect(LOADER_REGISTRATIONS["ts-node/esm"]).toEqual({
+      specifier: "ts-node/esm",
+      flag: "--loader",
+    });
+  });
+});
+
+describe("resolveLoaderRegistration", () => {
+  it("maps ts-node shorthand to ts-node/esm via --loader", () => {
+    const resolved = resolveLoaderRegistration("ts-node", (specifier) =>
       import.meta.resolve(specifier)
     );
-    expect(resolved).toContain(`${sep}ts-node${sep}`);
-    expect(resolved.endsWith(`${sep}esm.mjs`)).toBe(true);
+    expect(resolved.flag).toBe("--loader");
+    expect(resolved.specifier).toBe("ts-node/esm");
+    expect(resolved.path).toContain(`${sep}ts-node${sep}`);
+    expect(resolved.path.endsWith(`${sep}esm.mjs`)).toBe(true);
+  });
+
+  it("maps ts-node/esm explicitly via --loader", () => {
+    const resolved = resolveLoaderRegistration("ts-node/esm", (specifier) =>
+      import.meta.resolve(specifier)
+    );
+    expect(resolved).toMatchObject({
+      flag: "--loader",
+      specifier: "ts-node/esm",
+    });
+  });
+
+  it("defaults unknown loaders to --import", () => {
+    const resolved = resolveLoaderRegistration(
+      "tsx/esm",
+      mockResolve({
+        "tsx/esm": pathToFileURL("/tmp/tsx/esm.mjs").href,
+      })
+    );
+    expect(resolved).toMatchObject({
+      flag: "--import",
+      specifier: "tsx/esm",
+      path: "/tmp/tsx/esm.mjs",
+    });
+  });
+});
+
+describe("resolveLoaderPath", () => {
+  it("resolves absolute paths unchanged", () => {
+    expect(
+      resolveLoaderPath(
+        "/tmp/custom-loader.mjs",
+        "file:///tmp/custom-loader.mjs",
+        () => {
+          throw new Error("should not resolve");
+        }
+      )
+    ).toBe("/tmp/custom-loader.mjs");
+  });
+
+  it("resolves file URLs unchanged", () => {
+    expect(
+      resolveLoaderPath(
+        "file:///tmp/custom-loader.mjs",
+        "file:///tmp/custom-loader.mjs",
+        () => {
+          throw new Error("should not resolve");
+        }
+      )
+    ).toBe("/tmp/custom-loader.mjs");
+  });
+
+  it("includes ts-node setup hint when resolution fails", () => {
+    expect(() =>
+      resolveLoaderPath("ts-node/esm", "ts-node", () => {
+        throw new Error("missing");
+      })
+    ).toThrow(/emitDecoratorMetadata/);
+  });
+
+  it("omits ts-node hint for unrelated loaders", () => {
+    expect(() =>
+      resolveLoaderPath("missing/pkg", "missing/pkg", () => {
+        throw new Error("missing");
+      })
+    ).toThrow(/could not be resolved/);
+
+    expect(() =>
+      resolveLoaderPath("missing/pkg", "missing/pkg", () => {
+        throw new Error("missing");
+      })
+    ).not.toThrow(/emitDecoratorMetadata/);
   });
 });
 
 describe("buildSpawnArgs", () => {
+  const resolveFromSpawn = (specifier: string) =>
+    import.meta.resolve(specifier, import.meta.resolve("../src/cli/spawn.mjs"));
+
   it("builds tsx watch args by default", () => {
     const { command, args } = buildSpawnArgs({
       nodeLoader: "tsx",
       reload: true,
       pid: 42,
       payload,
-      resolve: (specifier) => import.meta.resolve(specifier),
+      resolve: resolveFromSpawn,
     });
 
     expect(command).toBe(process.execPath);
@@ -73,26 +174,67 @@ describe("buildSpawnArgs", () => {
       reload: false,
       pid: 42,
       payload,
-      resolve: (specifier) => import.meta.resolve(specifier),
+      resolve: resolveFromSpawn,
     });
 
     expect(args).not.toContain("watch");
   });
 
-  it("builds node import loader args with node --watch", () => {
+  it("registers ts-node with node --loader before preload --import", () => {
     const { command, args } = buildSpawnArgs({
       nodeLoader: "ts-node",
       reload: true,
       pid: 99,
       payload,
-      resolve: (specifier) => import.meta.resolve(specifier),
+      resolve: resolveFromSpawn,
     });
 
     expect(command).toBe(process.execPath);
-    expect(args[0]).toBe("--watch");
-    expect(args).toContain("--import");
+    expect(args.slice(0, 5)).toEqual([
+      "--watch",
+      "--loader",
+      expect.stringContaining("ts-node"),
+      "--import",
+      expect.stringContaining("preload.mjs"),
+    ]);
+    expect(args[1]).toBe("--loader");
+    expect(args[2]).not.toBe("--import");
     expect(args.at(-2)).toBe("99");
     expect(JSON.parse(args.at(-1)!)).toEqual(payload);
+  });
+
+  it("registers ts-node/esm the same way as ts-node", () => {
+    const tsNode = buildSpawnArgs({
+      nodeLoader: "ts-node",
+      reload: false,
+      pid: 1,
+      payload,
+      resolve: resolveFromSpawn,
+    }).args.slice(0, 3);
+
+    const tsNodeEsm = buildSpawnArgs({
+      nodeLoader: "ts-node/esm",
+      reload: false,
+      pid: 1,
+      payload,
+      resolve: resolveFromSpawn,
+    }).args.slice(0, 3);
+
+    expect(tsNodeEsm).toEqual(tsNode);
+    expect(tsNodeEsm[0]).toBe("--loader");
+  });
+
+  it("omits node --watch for ts-node when reload is disabled", () => {
+    const { args } = buildSpawnArgs({
+      nodeLoader: "ts-node",
+      reload: false,
+      pid: 1,
+      payload,
+      resolve: resolveFromSpawn,
+    });
+
+    expect(args[0]).toBe("--loader");
+    expect(args).not.toContain("--watch");
   });
 
   it("supports arbitrary import loaders like tsx/esm", () => {
@@ -106,7 +248,25 @@ describe("buildSpawnArgs", () => {
 
     expect(command).toBe(process.execPath);
     expect(args).not.toContain("watch");
+    expect(args).not.toContain("--loader");
     expect(args[0]).toBe("--import");
     expect(args[1]).toContain("tsx");
+  });
+
+  it("places entrypoint and IPC payload after preload import", () => {
+    const { args } = buildSpawnArgs({
+      nodeLoader: "ts-node",
+      reload: false,
+      pid: 7,
+      payload,
+      resolve: resolveFromSpawn,
+    });
+
+    const preloadIndex = args.indexOf("--import");
+    expect(preloadIndex).toBeGreaterThan(args.indexOf("--loader"));
+    expect(args[preloadIndex + 1]).toContain("preload.mjs");
+    expect(args[preloadIndex + 2]).toContain("entrypoint.mjs");
+    expect(args.at(-2)).toBe("7");
+    expect(JSON.parse(args.at(-1)!)).toEqual(payload);
   });
 });
