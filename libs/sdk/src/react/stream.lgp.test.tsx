@@ -63,6 +63,28 @@ function mountThread(client: Client) {
   return thread;
 }
 
+function mountUnboundThread(client: Client) {
+  let thread:
+    | ReturnType<typeof useStream<Record<string, unknown>>>
+    | undefined;
+
+  function Probe() {
+    thread = useStream<Record<string, unknown>>({
+      assistantId: "test-assistant",
+      client,
+      threadId: null,
+      fetchStateHistory: false,
+    });
+    return null;
+  }
+
+  renderToString(<Probe />);
+  if (thread == null) {
+    throw new Error("Failed to mount stream handle.");
+  }
+  return thread;
+}
+
 it("does not evaluate guarded accessors during object spread", () => {
   const client = createMockClient();
   const thread = mountThread(client);
@@ -108,4 +130,33 @@ it("still opts into tools/updates when explicitly accessed", async () => {
     .calls[0]?.[2] as { streamMode?: StreamMode[] } | undefined;
   expect(streamCall?.streamMode).toContain("tools");
   expect(streamCall?.streamMode).toContain("updates");
+});
+
+it("uses submitOptions.threadId when hook threadId is null (no threads.create)", async () => {
+  const knownThreadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const mintedThreadId = "11111111-2222-3333-4444-555555555555";
+
+  const client = createMockClient();
+  (client.threads.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+    thread_id: mintedThreadId,
+  });
+
+  const thread = mountUnboundThread(client);
+
+  await thread.submit(
+    { messages: [{ type: "human", content: "hello" }] },
+    { threadId: knownThreadId }
+  );
+
+  expect(client.threads.create).not.toHaveBeenCalled();
+  expect(client.runs.stream).toHaveBeenCalledWith(
+    knownThreadId,
+    "test-assistant",
+    expect.any(Object)
+  );
+  expect(client.runs.stream).not.toHaveBeenCalledWith(
+    mintedThreadId,
+    expect.anything(),
+    expect.anything()
+  );
 });
