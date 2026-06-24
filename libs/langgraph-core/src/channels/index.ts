@@ -4,6 +4,7 @@ export {
   emptyChannels as empty,
   channelsFromCheckpoint,
   deltaChannelsToSnapshot,
+  exitDeltaTaskId,
   isDeltaChannel,
 } from "./base.js";
 export { DeltaChannel } from "./delta.js";

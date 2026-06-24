@@ -17,6 +17,7 @@ import {
   channelsFromCheckpoint,
   createCheckpoint,
   deltaChannelsToSnapshot,
+  exitDeltaTaskId,
 } from "../channels/base.js";
 import {
   messagesDeltaReducer,
@@ -305,6 +306,39 @@ describe("createCheckpoint / deltaChannelsToSnapshot", () => {
     expect(deltaChannelsToSnapshot(channels, { a: [1, 1], b: [0, 1] }).size).toBe(
       0
     );
+  });
+});
+
+describe("exitDeltaTaskId", () => {
+  const isPostgresUuid = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      id
+    );
+
+  it("produces valid RFC UUIDs that sort by superstep", () => {
+    const tid = "4f7226e4-0270-bf16-1ef8-fb321bef9f3d";
+    const id1 = exitDeltaTaskId(1, tid);
+    const id7 = exitDeltaTaskId(7, tid);
+
+    expect(isPostgresUuid(id1)).toBe(true);
+    expect(isPostgresUuid(id7)).toBe(true);
+    expect(id1 < id7).toBe(true);
+    expect(id1.split("-")[0]).toBe("00000001");
+    expect(id7.split("-")[0]).toBe("00000007");
+    expect(id1.endsWith("-0270-bf16-1ef8-fb321bef9f3d")).toBe(true);
+    expect(isPostgresUuid(`${String(1).padStart(8, "0")}-${tid}`)).toBe(false);
+  });
+
+  it("rejects invalid task ids", () => {
+    expect(() => exitDeltaTaskId(1, "not-a-uuid")).toThrow(
+      /Invalid task id for exit delta/
+    );
+  });
+
+  it("handles NULL_TASK_ID", () => {
+    const synth = exitDeltaTaskId(3, "00000000-0000-0000-0000-000000000000");
+    expect(isPostgresUuid(synth)).toBe(true);
+    expect(synth).toBe("00000003-0000-0000-0000-000000000000");
   });
 });
 

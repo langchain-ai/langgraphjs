@@ -10,6 +10,10 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { EmptyChannelError } from "../errors.js";
 import { getDeltaMaxSuperstepsSinceSnapshot } from "../constants.js";
 
+/** Matches Postgres `uuid` / Python `uuid.UUID` (128-bit, 8-4-4-4-12 hex). */
+const STRUCTURED_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Structural check for a {@link DeltaChannel} without importing it (avoids an
  * import cycle: `delta.ts` imports `base.ts`).
@@ -174,6 +178,22 @@ export function emptyChannels<Cc extends Record<string, BaseChannel>>(
 interface DeltaChannelLike extends BaseChannel {
   snapshotFrequency: number;
   replayWrites(writes: DeltaChannelHistory["writes"]): void;
+}
+
+/**
+ * Synthetic task id for exit-mode DeltaChannel writes.
+ *
+ * Embeds the superstep in the first UUID group so `ORDER BY task_id, idx`
+ * preserves chronological order while remaining a valid RFC UUID (required by
+ * Postgres `checkpoint_writes.task_id uuid` columns).
+ */
+export function exitDeltaTaskId(step: number, taskId: string): string {
+  if (!STRUCTURED_UUID.test(taskId)) {
+    throw new TypeError(`Invalid task id for exit delta: ${taskId}`);
+  }
+  const parts = taskId.toLowerCase().split("-");
+  const stepPart = String(step).padStart(8, "0");
+  return `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
 }
 
 /**

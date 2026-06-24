@@ -25,6 +25,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   deltaChannelsToSnapshot,
+  exitDeltaTaskId,
   isDeltaChannel,
 } from "../channels/base.js";
 import type {
@@ -1919,7 +1920,7 @@ export class PregelLoop {
       group.push([ch, v]);
     }
     for (const { key, step, tid } of order) {
-      const synthTid = `${String(step).padStart(8, "0")}-${tid}`;
+      const synthTid = exitDeltaTaskId(step, tid);
       this._trackCheckpointerPromise(
         this.checkpointer.putWrites(
           anchorWriteConfig,
