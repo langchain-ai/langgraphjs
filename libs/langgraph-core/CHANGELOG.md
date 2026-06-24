@@ -1,5 +1,17 @@
 # @langchain/langgraph
 
+## 1.4.6
+
+### Patch Changes
+
+- [`03a0d8b`](https://github.com/langchain-ai/langgraphjs/commit/03a0d8b8632082e6dbf4a96fcf37f8f67151b74f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): emit valid UUIDs for exit-mode delta task_ids
+
+  Exit-mode DeltaChannel writes used a step-prefixed synthetic task id that produced a 6-segment string Postgres rejects for `checkpoint_writes.task_id uuid` in LangGraph API. Embed the superstep in the first UUID group instead, matching langchain-ai/langgraph#8165.
+
+- Updated dependencies [[`0558e47`](https://github.com/langchain-ai/langgraphjs/commit/0558e472b7697304c62cb6fe69cc3005e8e1a457), [`091a46f`](https://github.com/langchain-ai/langgraphjs/commit/091a46f32ddd3a85ee89e35fb9ea953dfc4cf8b4)]:
+  - @langchain/langgraph-sdk@1.9.25
+  - @langchain/langgraph-checkpoint@1.1.3
+
 ## 1.4.5
 
 ### Patch Changes

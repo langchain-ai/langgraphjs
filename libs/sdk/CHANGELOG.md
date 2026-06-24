@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.9.25
+
+### Patch Changes
+
+- [#2565](https://github.com/langchain-ai/langgraphjs/pull/2565) [`0558e47`](https://github.com/langchain-ai/langgraphjs/commit/0558e472b7697304c62cb6fe69cc3005e8e1a457) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): bundle pure-ESM deps into CJS build to fix ERR_REQUIRE_ESM
+
+  Bundle the pure-ESM dependencies `p-retry` and `p-queue` (and their transitive ESM-only deps) into the build output so the CJS artifact no longer does a top-level `require()` of an ESM module. This fixes `ERR_REQUIRE_ESM` for CommonJS consumers on Node versions where `require(ESM)` is not enabled by default (< 20.19 / < 22.12). Closes [#2562](https://github.com/langchain-ai/langgraphjs/issues/2562).
+
 ## 1.9.24
 
 ### Patch Changes
