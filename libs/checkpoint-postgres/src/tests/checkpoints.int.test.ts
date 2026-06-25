@@ -625,3 +625,175 @@ describe("PostgresSaver with createSchema: false", () => {
     }
   });
 });
+
+describe("PostgresSaver lazy auto-setup (ensureTables)", () => {
+  const customSchema = "preprovisioned_schema";
+
+  const createFreshDb = async (): Promise<string> => {
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    const dbName = `lg_test_db_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL?.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  it("runs setup automatically on first operation by default", async () => {
+    const connString = await createFreshDb();
+
+    // No explicit setup() — ensureTables defaults to true.
+    const saver = PostgresSaver.fromConnString(connString);
+    postgresSavers.push(saver);
+
+    await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} },
+      checkpoint1.channel_versions
+    );
+    const tuple = await saver.getTuple({ configurable: { thread_id: "1" } });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+  });
+
+  it("does not auto-setup when ensureTables is false", async () => {
+    const connString = await createFreshDb();
+
+    const saver = PostgresSaver.fromConnString(connString, {
+      ensureTables: false,
+    });
+    postgresSavers.push(saver);
+
+    // Tables were never created and auto-setup is disabled, so the first
+    // operation hits an undefined relation.
+    await expect(
+      saver.put(
+        { configurable: { thread_id: "1" } },
+        checkpoint1,
+        { source: "update", step: -1, parents: {} },
+        checkpoint1.channel_versions
+      )
+    ).rejects.toThrow();
+
+    // An explicit setup() makes operations work again.
+    await saver.setup();
+    await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} },
+      checkpoint1.channel_versions
+    );
+    const tuple = await saver.getTuple({ configurable: { thread_id: "1" } });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+  });
+
+  it("honors createSchema: false through lazy auto-setup", async () => {
+    const connString = await createFreshDb();
+
+    // Provision the schema out-of-band.
+    const provisionPool = new Pool({ connectionString: connString });
+    try {
+      await provisionPool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await provisionPool.end();
+    }
+
+    // ensureTables defaults to true, so the first operation triggers
+    // auto-setup. With createSchema: false it must not issue CREATE SCHEMA.
+    const saver = PostgresSaver.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    postgresSavers.push(saver);
+
+    await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} },
+      checkpoint1.channel_versions
+    );
+    const tuple = await saver.getTuple({ configurable: { thread_id: "1" } });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+  });
+
+  it("runs migrations exactly once when operations race on a fresh saver", async () => {
+    const connString = await createFreshDb();
+
+    const saver = PostgresSaver.fromConnString(connString);
+    postgresSavers.push(saver);
+
+    // Concurrent first operations all hit the lazy-setup guard. Without
+    // single-flighting, each would replay the full migration set.
+    await Promise.all([
+      saver.put(
+        { configurable: { thread_id: "1" } },
+        checkpoint1,
+        { source: "update", step: -1, parents: {} },
+        checkpoint1.channel_versions
+      ),
+      saver.put(
+        { configurable: { thread_id: "2" } },
+        checkpoint2,
+        { source: "update", step: -1, parents: {} },
+        checkpoint2.channel_versions
+      ),
+      saver.getTuple({ configurable: { thread_id: "1" } }),
+      saver.getTuple({ configurable: { thread_id: "2" } }),
+      saver.getTuple({ configurable: { thread_id: "3" } }),
+    ]);
+
+    // Each migration version must appear exactly once — duplicate rows are the
+    // observable signature of a concurrent double-migration.
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query<{ v: number }>(
+        `SELECT v FROM checkpoint_migrations ORDER BY v`
+      );
+      const versions = result.rows.map((r) => r.v);
+      expect(versions.length).toBeGreaterThan(0);
+      expect(new Set(versions).size).toBe(versions.length);
+    } finally {
+      await pool.end();
+    }
+
+    const tuple = await saver.getTuple({ configurable: { thread_id: "1" } });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+  });
+
+  it("retries setup after a failure once the condition is corrected", async () => {
+    const connString = await createFreshDb();
+
+    const saver = PostgresSaver.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    postgresSavers.push(saver);
+
+    // First attempt fails — schema does not exist yet.
+    await expect(saver.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"createSchema" is false/
+    );
+
+    // Provision the schema out-of-band, then a fresh attempt must succeed —
+    // the failed run must not have been cached.
+    const provisionPool = new Pool({ connectionString: connString });
+    try {
+      await provisionPool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await provisionPool.end();
+    }
+
+    await expect(saver.setup()).resolves.not.toThrow();
+    await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} },
+      checkpoint1.channel_versions
+    );
+    const tuple = await saver.getTuple({ configurable: { thread_id: "1" } });
+    expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
+  });
+});

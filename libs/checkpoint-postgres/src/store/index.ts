@@ -51,6 +51,8 @@ export class PostgresStore extends BaseStore {
 
   private isSetup: boolean = false;
 
+  private setupPromise?: Promise<void>;
+
   private isClosed: boolean = false;
 
   private ensureTables: boolean;
@@ -200,10 +202,26 @@ export class PostgresStore extends BaseStore {
 
   /**
    * Initialize the store by running migrations to create necessary tables and indexes.
+   *
+   * Safe to call concurrently: the underlying migration run is single-flighted,
+   * so multiple operations racing on a fresh store share one `setup()` rather
+   * than each replaying migrations. A failed run is not cached — the next call
+   * retries, so a corrected condition (e.g. a schema created out-of-band after
+   * a `createSchema: false` failure) can succeed.
    */
   async setup(): Promise<void> {
     if (this.isSetup) return;
 
+    this.setupPromise ??= this.runSetupOnce();
+    try {
+      await this.setupPromise;
+    } catch (error) {
+      this.setupPromise = undefined;
+      throw error;
+    }
+  }
+
+  private async runSetupOnce(): Promise<void> {
     await this.runStoreMigrations();
     this.isSetup = true;
 

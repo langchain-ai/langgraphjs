@@ -1629,3 +1629,86 @@ describe("PostgresStore with createSchema: false", () => {
     }
   });
 });
+
+describe("PostgresStore concurrent first-operation setup", () => {
+  const customSchema = "preprovisioned_store_schema";
+
+  const createFreshDb = async (): Promise<string> => {
+    const dbName = `crud_test_concurrent_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL!.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  it("runs migrations exactly once when operations race on a fresh store", async () => {
+    const connString = await createFreshDb();
+
+    // No explicit setup(): ensureTables defaults to true, so each of these
+    // operations hits the lazy-setup guard. Without single-flighting, the
+    // concurrent first ops would each replay the full migration set.
+    const store = PostgresStore.fromConnString(connString);
+    testStores.push(store);
+
+    await Promise.all([
+      store.put(["ns"], "a", { data: 1 }),
+      store.put(["ns"], "b", { data: 2 }),
+      store.get(["ns"], "a"),
+      store.get(["ns"], "b"),
+      store.put(["ns"], "c", { data: 3 }),
+    ]);
+
+    // Each migration version must appear exactly once — duplicate rows are the
+    // observable signature of a concurrent double-migration.
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query<{ v: number }>(
+        `SELECT v FROM store_migrations ORDER BY v`
+      );
+      const versions = result.rows.map((r) => r.v);
+      expect(versions.length).toBeGreaterThan(0);
+      expect(new Set(versions).size).toBe(versions.length);
+    } finally {
+      await pool.end();
+    }
+
+    // Data operations succeeded despite the racing setup.
+    expect((await store.get(["ns"], "a"))?.value).toEqual({ data: 1 });
+    expect((await store.get(["ns"], "c"))?.value).toEqual({ data: 3 });
+  });
+
+  it("retries setup after a failure once the condition is corrected", async () => {
+    const connString = await createFreshDb();
+
+    // createSchema: false against a missing schema fails the first attempt.
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      createSchema: false,
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"createSchema" is false/
+    );
+
+    // Provision the schema out-of-band, then a fresh attempt must succeed —
+    // the failed run must not have been cached.
+    const provisionPool = new Pool({ connectionString: connString });
+    try {
+      await provisionPool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await provisionPool.end();
+    }
+
+    await expect(store.setup()).resolves.not.toThrow();
+    await store.put(["ns"], "after-retry", { data: "ok" });
+    expect((await store.get(["ns"], "after-retry"))?.value).toEqual({
+      data: "ok",
+    });
+  });
+});
