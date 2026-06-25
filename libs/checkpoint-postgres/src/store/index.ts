@@ -35,6 +35,33 @@ export type * from "./modules/types.js";
 const { Pool } = pg;
 
 /**
+ * `PostgresStoreConfig` with every default-able field resolved to a concrete
+ * value. `connectionOptions` is required from the caller, so it has no default
+ * and stays mandatory.
+ */
+type ResolvedPostgresStoreConfig = PostgresStoreConfig & {
+  schema: string;
+  schemaSetup: "create" | "verify";
+  ensureTables: boolean;
+  textSearchLanguage: string;
+};
+
+/**
+ * Resolve a user-supplied config into a complete config by filling in defaults
+ * for any omitted default-able field. Centralizes defaults in one place,
+ * mirroring `PostgresSaver`'s `_ensureCompleteOptions`.
+ */
+const _ensureCompleteConfig = (
+  config: PostgresStoreConfig
+): ResolvedPostgresStoreConfig => ({
+  ...config,
+  schema: config.schema ?? "public",
+  schemaSetup: config.schemaSetup ?? "create",
+  ensureTables: config.ensureTables ?? true,
+  textSearchLanguage: config.textSearchLanguage ?? "english",
+});
+
+/**
  * PostgreSQL implementation of the BaseStore interface.
  * This is now a lightweight orchestrator that delegates to specialized modules.
  */
@@ -62,19 +89,21 @@ export class PostgresStore extends BaseStore {
   constructor(config: PostgresStoreConfig) {
     super();
 
+    const resolved = _ensureCompleteConfig(config);
+
     // Create connection pool
     const pool =
-      typeof config.connectionOptions === "string"
-        ? new Pool({ connectionString: config.connectionOptions })
-        : new Pool(config.connectionOptions);
+      typeof resolved.connectionOptions === "string"
+        ? new Pool({ connectionString: resolved.connectionOptions })
+        : new Pool(resolved.connectionOptions);
 
     // Initialize core and modules
     this.core = new DatabaseCore(
       pool,
-      config.schema || "public",
-      config.ttl,
-      config.index,
-      config.textSearchLanguage
+      resolved.schema,
+      resolved.ttl,
+      resolved.index,
+      resolved.textSearchLanguage
     );
 
     this.vectorOps = new VectorOperations(this.core);
@@ -82,8 +111,8 @@ export class PostgresStore extends BaseStore {
     this.searchOps = new SearchOperations(this.core, this.vectorOps);
     this.ttlManager = new TTLManager(this.core);
 
-    this.ensureTables = config.ensureTables ?? true;
-    this.schemaSetup = config.schemaSetup ?? "create";
+    this.ensureTables = resolved.ensureTables;
+    this.schemaSetup = resolved.schemaSetup;
   }
 
   /**
