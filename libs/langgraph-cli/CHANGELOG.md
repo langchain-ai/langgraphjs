@@ -1,5 +1,16 @@
 # @langchain/langgraph-cli
 
+## 1.4.1
+
+### Patch Changes
+
+- [#2568](https://github.com/langchain-ai/langgraphjs/pull/2568) [`38d15e2`](https://github.com/langchain-ai/langgraphjs/commit/38d15e2f1f9dded34665a602cd9311cbcf5fbefc) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-api): support configurable TypeScript loaders in dev server
+
+  Add `node_loader` to `langgraph.json` (and `LANGGRAPH_NODE_LOADER` env override) so projects using reflect-metadata can use `ts-node` (`--loader ts-node/esm`) instead of the default tsx CLI. Other loaders default to `--import`; only registered shorthands like `ts-node` use `--loader`. `--no-reload` now also disables tsx's internal watch mode. Closes [#1834](https://github.com/langchain-ai/langgraphjs/issues/1834).
+
+- Updated dependencies [[`38d15e2`](https://github.com/langchain-ai/langgraphjs/commit/38d15e2f1f9dded34665a602cd9311cbcf5fbefc)]:
+  - @langchain/langgraph-api@1.4.1
+
 ## 1.4.0
 
 ### Minor Changes
