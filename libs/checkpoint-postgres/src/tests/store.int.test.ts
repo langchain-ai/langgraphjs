@@ -1528,7 +1528,7 @@ describe("PostgresStore Migration System", () => {
   });
 });
 
-describe("PostgresStore with createSchema: false", () => {
+describe("PostgresStore with schemaSetup: verify", () => {
   const customSchema = "preprovisioned_store_schema";
 
   // Create a fresh, empty database and return its connection string.
@@ -1560,7 +1560,7 @@ describe("PostgresStore with createSchema: false", () => {
 
     const store = PostgresStore.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     testStores.push(store);
 
@@ -1579,26 +1579,26 @@ describe("PostgresStore with createSchema: false", () => {
 
     const store = PostgresStore.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     testStores.push(store);
 
     // Match the schema-guard message specifically, not just any error that
     // happens to mention the schema name.
     await expect(store.setup()).rejects.toThrow(
-      /does not exist[\s\S]*"createSchema" is false/
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
     );
   });
 
-  it("honors createSchema: false through lazy auto-setup (no explicit setup call)", async () => {
+  it("honors schemaSetup: verify through lazy auto-setup (no explicit setup call)", async () => {
     const connString = await createFreshDb();
     await provisionSchema(connString);
 
     // ensureTables defaults to true, so the first operation triggers
-    // auto-setup. With createSchema: false it must not issue CREATE SCHEMA.
+    // auto-setup. With schemaSetup: "verify" it must not issue CREATE SCHEMA.
     const store = PostgresStore.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     testStores.push(store);
 
@@ -1685,15 +1685,15 @@ describe("PostgresStore concurrent first-operation setup", () => {
   it("retries setup after a failure once the condition is corrected", async () => {
     const connString = await createFreshDb();
 
-    // createSchema: false against a missing schema fails the first attempt.
+    // schemaSetup: "verify" against a missing schema fails the first attempt.
     const store = PostgresStore.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     testStores.push(store);
 
     await expect(store.setup()).rejects.toThrow(
-      /does not exist[\s\S]*"createSchema" is false/
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
     );
 
     // Provision the schema out-of-band, then a fresh attempt must succeed —

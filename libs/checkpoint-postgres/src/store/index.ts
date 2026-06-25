@@ -57,7 +57,7 @@ export class PostgresStore extends BaseStore {
 
   private ensureTables: boolean;
 
-  private createSchema: boolean;
+  private schemaSetup: "create" | "verify";
 
   constructor(config: PostgresStoreConfig) {
     super();
@@ -83,7 +83,7 @@ export class PostgresStore extends BaseStore {
     this.ttlManager = new TTLManager(this.core);
 
     this.ensureTables = config.ensureTables ?? true;
-    this.createSchema = config.createSchema ?? true;
+    this.schemaSetup = config.schemaSetup ?? "create";
   }
 
   /**
@@ -207,7 +207,7 @@ export class PostgresStore extends BaseStore {
    * so multiple operations racing on a fresh store share one `setup()` rather
    * than each replaying migrations. A failed run is not cached — the next call
    * retries, so a corrected condition (e.g. a schema created out-of-band after
-   * a `createSchema: false` failure) can succeed.
+   * a `schemaSetup: "verify"` failure) can succeed.
    */
   async setup(): Promise<void> {
     if (this.isSetup) return;
@@ -239,10 +239,10 @@ export class PostgresStore extends BaseStore {
     const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
 
     try {
-      if (this.createSchema) {
+      if (this.schemaSetup === "create") {
         await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
       } else {
-        // The flag is read from the constructor (not setup()), so the store's
+        // The option is read from the constructor (not setup()), so the store's
         // lazy auto-setup paths honor it too.
         await assertSchemaExists(client, this.core.schema);
       }

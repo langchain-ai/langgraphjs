@@ -27,16 +27,16 @@ import {
 interface PostgresSaverOptions {
   schema: string;
   /**
-   * Whether `setup()` should create the schema if it does not exist.
+   * What `setup()` does about the schema.
    *
-   * When `true` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
-   * When `false`, `setup()` instead verifies the schema already exists and
+   * When `"create"` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `"verify"`, `setup()` instead checks the schema already exists and
    * throws if it does not — useful for least-privilege roles that are not
    * permitted to create schemas. Table migrations still run either way.
    *
-   * @default true
+   * @default "create"
    */
-  createSchema: boolean;
+  schemaSetup: "create" | "verify";
   /**
    * Whether the first database operation should run `setup()` automatically.
    *
@@ -52,7 +52,7 @@ interface PostgresSaverOptions {
 
 const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
-  createSchema: true,
+  schemaSetup: "create",
   ensureTables: true,
 };
 
@@ -62,7 +62,7 @@ const _ensureCompleteOptions = (
   return {
     ...options,
     schema: options?.schema ?? _defaultOptions.schema,
-    createSchema: options?.createSchema ?? _defaultOptions.createSchema,
+    schemaSetup: options?.schemaSetup ?? _defaultOptions.schemaSetup,
     ensureTables: options?.ensureTables ?? _defaultOptions.ensureTables,
   };
 };
@@ -85,7 +85,7 @@ const { Pool } = pg;
  *   // optional configuration object
  *   {
  *     schema: "custom_schema", // defaults to "public"
- *     createSchema: false, // defaults to true; when false, setup() verifies the schema exists instead of creating it
+ *     schemaSetup: "verify", // defaults to "create"; "verify" checks the schema exists instead of creating it
  *     ensureTables: false // defaults to true; when false, you must call setup() explicitly before use
  *   }
  * );
@@ -172,7 +172,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * is not cached (the next call retries).
    *
    * By default the target schema is created via `CREATE SCHEMA IF NOT EXISTS`. If the
-   * `createSchema` option was set to `false` (e.g. for least-privilege roles that may
+   * `schemaSetup` option was set to `"verify"` (e.g. for least-privilege roles that may
    * not create schemas), this method instead verifies the schema already exists and
    * throws if it does not. Table migrations run either way.
    */
@@ -203,7 +203,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const client = await this.pool.connect();
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
-      if (this.options.createSchema) {
+      if (this.options.schemaSetup === "create") {
         await client.query(
           `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
         );

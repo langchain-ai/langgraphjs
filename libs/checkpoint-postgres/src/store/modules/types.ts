@@ -212,18 +212,18 @@ export interface PostgresStoreConfig {
   ensureTables?: boolean;
 
   /**
-   * Whether `setup()` should create the schema if it does not exist.
+   * What `setup()` does about the schema.
    *
-   * When `true` (default), setup runs `CREATE SCHEMA IF NOT EXISTS`.
-   * When `false`, setup instead verifies the schema already exists and throws
+   * When `"create"` (default), setup runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `"verify"`, setup instead checks the schema already exists and throws
    * if it does not — useful for least-privilege roles that are not permitted to
-   * create schemas. Because the flag is read here (not per `setup()` call), the
+   * create schemas. Because the option is read here (not per `setup()` call), the
    * store's lazy auto-setup paths honor it too. Table migrations still run
    * either way.
    *
-   * @default true
+   * @default "create"
    */
-  createSchema?: boolean;
+  schemaSetup?: "create" | "verify";
 
   /**
    * TTL configuration for automatic expiration of items.

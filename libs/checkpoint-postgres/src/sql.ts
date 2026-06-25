@@ -145,7 +145,7 @@ export const schemaExistsSQL = `SELECT EXISTS (
 /**
  * Verify that the given schema already exists, throwing a clear error if not.
  *
- * Used by `setup()` when `createSchema` is disabled: the schema must be
+ * Used by `setup()` when `schemaSetup` is `"verify"`: the schema must be
  * provisioned out-of-band (e.g. by a DBA) because the connecting role is not
  * permitted to create schemas. Shared by both the checkpointer and the store
  * so the check and its error message stay in one place.
@@ -158,8 +158,8 @@ export const assertSchemaExists = async (
   if (!result.rows[0]?.exists) {
     throw new Error(
       `Schema "${schema}" does not exist (or is not visible to the current role). ` +
-        `It was expected to already exist because "createSchema" is false. ` +
-        `Create the schema (or grant access to it) out-of-band, or set "createSchema" to true.`
+        `It was expected to already exist because "schemaSetup" is "verify". ` +
+        `Create the schema (or grant access to it) out-of-band, or set "schemaSetup" to "create".`
     );
   }
 };

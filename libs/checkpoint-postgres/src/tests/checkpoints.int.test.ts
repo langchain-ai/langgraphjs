@@ -535,7 +535,7 @@ describe.each([
   });
 });
 
-describe("PostgresSaver with createSchema: false", () => {
+describe("PostgresSaver with schemaSetup: verify", () => {
   const customSchema = "preprovisioned_schema";
 
   // Create a fresh, empty database and return its connection string.
@@ -565,7 +565,7 @@ describe("PostgresSaver with createSchema: false", () => {
 
     const saver = PostgresSaver.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     postgresSavers.push(saver);
 
@@ -592,14 +592,14 @@ describe("PostgresSaver with createSchema: false", () => {
 
     const saver = PostgresSaver.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     postgresSavers.push(saver);
 
     // Match the schema-guard message specifically, not just any error that
     // happens to mention the schema name.
     await expect(saver.setup()).rejects.toThrow(
-      /does not exist[\s\S]*"createSchema" is false/
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
     );
   });
 
@@ -690,7 +690,7 @@ describe("PostgresSaver lazy auto-setup (ensureTables)", () => {
     expect(tuple?.checkpoint.id).toBe(checkpoint1.id);
   });
 
-  it("honors createSchema: false through lazy auto-setup", async () => {
+  it("honors schemaSetup: verify through lazy auto-setup", async () => {
     const connString = await createFreshDb();
 
     // Provision the schema out-of-band.
@@ -702,10 +702,10 @@ describe("PostgresSaver lazy auto-setup (ensureTables)", () => {
     }
 
     // ensureTables defaults to true, so the first operation triggers
-    // auto-setup. With createSchema: false it must not issue CREATE SCHEMA.
+    // auto-setup. With schemaSetup: "verify" it must not issue CREATE SCHEMA.
     const saver = PostgresSaver.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     postgresSavers.push(saver);
 
@@ -768,13 +768,13 @@ describe("PostgresSaver lazy auto-setup (ensureTables)", () => {
 
     const saver = PostgresSaver.fromConnString(connString, {
       schema: customSchema,
-      createSchema: false,
+      schemaSetup: "verify",
     });
     postgresSavers.push(saver);
 
     // First attempt fails — schema does not exist yet.
     await expect(saver.setup()).rejects.toThrow(
-      /does not exist[\s\S]*"createSchema" is false/
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
     );
 
     // Provision the schema out-of-band, then a fresh attempt must succeed —
