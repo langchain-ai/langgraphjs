@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.4.7
+
+### Patch Changes
+
+- [#2571](https://github.com/langchain-ai/langgraphjs/pull/2571) [`85ba859`](https://github.com/langchain-ai/langgraphjs/commit/85ba859b6f60f4bf193d3313fa24149efe05491b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): drop unused zod-to-json-schema peer dependency
+
+  Remove the vestigial `zod-to-json-schema` (and its `peerDependenciesMeta`/dev) declarations. JSON Schema generation now flows through `@langchain/core`'s Zod v3/v4 interop (`toJsonSchema`), so the old `zod-to-json-schema@^3.x` peer (which pins `zod@^3.24.1`) is no longer needed and was the last source of install-time peer conflicts with Zod v4. Closes [#1706](https://github.com/langchain-ai/langgraphjs/issues/1706).
+
 ## 1.4.6
 
 ### Patch Changes
