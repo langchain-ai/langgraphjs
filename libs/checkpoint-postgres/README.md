@@ -86,6 +86,39 @@ await checkpointer.setup();
 // ...
 ```
 
+## Edge & serverless runtimes (Cloudflare Workers, etc.)
+
+`PostgresSaver` uses [node-postgres (`pg`)](https://node-postgres.com/) under the hood, which opens a raw TCP/TLS connection via Node's `net`/`tls` modules. Some serverless/edge runtimes, most notably **Cloudflare Workers**, do not support raw outbound TCP connections from arbitrary code, so a direct connection (including the initial `await checkpointer.setup()`) will hang. This is the root cause for issues where the runtime reports that the Worker "had hung and would never generate a response".
+
+This is a database-driver/runtime limitation, **not** a persistence-flush problem. LangGraph awaits all pending checkpoint writes before `invoke()`/`stream()` resolves (see the [base checkpoint package README](../checkpoint/README.md#when-are-checkpoints-persisted)), so as long as you `await` the run you do not need `ctx.waitUntil()` to keep the runtime alive for persistence.
+
+To use Postgres checkpointing from Cloudflare Workers, route the connection through [Cloudflare Hyperdrive](https://developers.cloudflare.com/hyperdrive/), which exposes a `pg`-compatible connection string:
+
+```ts
+// wrangler.toml / wrangler.jsonc must enable `nodejs_compat` and bind a Hyperdrive instance:
+//   compatibility_flags = ["nodejs_compat"]
+//   [[hyperdrive]]
+//   binding = "HYPERDRIVE"
+//   id = "<your-hyperdrive-id>"
+
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const checkpointer = PostgresSaver.fromConnString(
+      env.HYPERDRIVE.connectionString
+    );
+    // ... compile and `await graph.invoke(...)` here ...
+    // Persistence is complete once `invoke`/`stream` resolves.
+    return new Response("ok");
+  },
+};
+```
+
+Alternatively, implement a thin `BaseCheckpointSaver` on top of an HTTP/WebSocket Postgres driver such as [`@neondatabase/serverless`](https://github.com/neondatabase/serverless) that is designed for edge runtimes.
+
+> Note: standard Node.js, Deno, and Bun deployments are unaffected — `PostgresSaver` works there out of the box.
+
 ## Testing
 
 Spin up testing PostgreSQL

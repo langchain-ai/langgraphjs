@@ -30,6 +30,17 @@ You must pass these when invoking the graph as part of the configurable part of 
 
 When a graph node fails mid-execution at a given superstep, LangGraph stores pending checkpoint writes from any other nodes that completed successfully at that superstep, so that whenever we resume graph execution from that superstep we don't re-run the successful nodes.
 
+### When are checkpoints persisted
+
+By default (`durability: "async"`) checkpoint writes are dispatched in the background while the graph keeps executing, which keeps runs fast. Regardless of the `durability` mode, LangGraph **awaits all outstanding checkpointer writes before `invoke()` / `stream()` resolves**, `invoke()` fully drains the underlying stream, and the stream awaits every pending checkpointer promise before it completes.
+
+In practice this means:
+
+- If you `await graph.invoke(...)` (or fully consume `for await (... of graph.stream(...))`), persistence is guaranteed to be complete by the time the call returns. You do **not** need to keep the process/runtime alive for any trailing background writes.
+- On serverless/edge runtimes (e.g. Cloudflare Workers) you therefore do not need `ctx.waitUntil()` to flush checkpoints, just make sure you `await` the run before returning a response. The only way to orphan writes is to start a stream and never consume it (e.g. piping `graph.stream()` into a detached, un-awaited task).
+
+> Note: this guarantees the *write was issued and awaited*, not that your database driver works in a given runtime. See the runtime-compatibility notes in the [Postgres](../checkpoint-postgres/README.md#edge--serverless-runtimes-cloudflare-workers-etc) and [Redis](../checkpoint-redis/README.md#edge--serverless-runtimes-cloudflare-workers-etc) checkpointer READMEs.
+
 ## Interface
 
 Each checkpointer should conform to `BaseCheckpointSaver` interface and must implement the following methods:
