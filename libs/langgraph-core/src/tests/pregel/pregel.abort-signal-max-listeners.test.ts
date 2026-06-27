@@ -64,26 +64,21 @@ describe("parallel task AbortSignal fan-out", () => {
       .compile();
 
     const warnings: string[] = [];
-    const originalEmitWarning = process.emitWarning;
-    process.emitWarning = ((warning, ...args) => {
-      const message =
-        typeof warning === "string"
-          ? warning
-          : warning instanceof Error
-            ? warning.message
-            : String(warning);
-      warnings.push(message);
-      return originalEmitWarning.call(process, warning, ...args);
-    }) as typeof process.emitWarning;
+    const onWarning = (warning: Error) => {
+      warnings.push(warning.message);
+    };
+    process.on("warning", onWarning);
 
     try {
       const result = await graph.invoke({ workerCount });
       expect(result.results).toHaveLength(workerCount);
       expect(
-        warnings.some((warning) => warning.includes("MaxListenersExceededWarning"))
+        warnings.some((warning) =>
+          warning.includes("MaxListenersExceededWarning")
+        )
       ).toBe(false);
     } finally {
-      process.emitWarning = originalEmitWarning;
+      process.off("warning", onWarning);
     }
   });
 
