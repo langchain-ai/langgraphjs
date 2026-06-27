@@ -148,6 +148,82 @@ export function patchCheckpointMap(
 }
 
 /**
+ * Fan out a parent {@link AbortSignal} into per-consumer child signals using a
+ * single parent listener. Parallel tasks that each attach abort listeners (for
+ * example HTTP clients) would otherwise exceed the default MaxListeners limit
+ * when they all share one signal.
+ */
+export class AbortSignalFanOut {
+  #parent: AbortSignal;
+
+  #children = new Set<AbortController>();
+
+  #parentListener?: () => void;
+
+  constructor(parent: AbortSignal) {
+    this.#parent = parent;
+  }
+
+  fork(): AbortSignal {
+    if (this.#parent.aborted) {
+      return this.#parent;
+    }
+
+    const child = new AbortController();
+    this.#children.add(child);
+    this.#ensureParentListener();
+    return child.signal;
+  }
+
+  release(signal: AbortSignal | undefined): void {
+    if (signal == null || signal === this.#parent) {
+      return;
+    }
+
+    for (const child of this.#children) {
+      if (child.signal === signal) {
+        this.#children.delete(child);
+        break;
+      }
+    }
+
+    if (this.#children.size === 0) {
+      this.#removeParentListener();
+    }
+  }
+
+  dispose(): void {
+    this.#removeParentListener();
+    this.#children.clear();
+  }
+
+  #ensureParentListener(): void {
+    if (this.#parentListener != null) {
+      return;
+    }
+
+    this.#parentListener = () => {
+      const reason = this.#parent.reason;
+      for (const child of this.#children) {
+        if (!child.signal.aborted) {
+          child.abort(reason);
+        }
+      }
+    };
+    this.#parent.addEventListener("abort", this.#parentListener);
+  }
+
+  #removeParentListener(): void {
+    if (this.#parentListener == null) {
+      return;
+    }
+
+    this.#parent.removeEventListener("abort", this.#parentListener);
+    this.#parentListener = undefined;
+  }
+}
+
+/**
  * Combine multiple abort signals into a single abort signal.
  * @param signals - The abort signals to combine.
  * @returns A combined abort signal and a dispose function to remove the abort listener if unused.
