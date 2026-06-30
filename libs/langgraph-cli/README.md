@@ -56,7 +56,7 @@ The CLI uses a `langgraph.json` configuration file with these key settings:
   },
 
   // Optional: Node version (supported: "20", "22", "24")
-  node_version: "20",
+  node_version: "24",
 
   // Optional: Environment variables
   env: ".env",
