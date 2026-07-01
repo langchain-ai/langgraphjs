@@ -30,7 +30,7 @@
     "@langchain/protocol": "^0.0.18",
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.7",
-    "@vitejs/plugin-vue-jsx": "^5.1.5",
+    "@vitejs/plugin-vue-jsx": "^5.1.6",
     "@vitest/browser": "^4.1.9",
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.10.5",
@@ -39,7 +39,7 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.8",
     "vitest-browser-vue": "^2.1.0",
-    "vue": "^3.5.35",
+    "vue": "^3.5.39",
     "webdriverio": "^9.25.0",
     "zod": "^4.3.6"
   },
