@@ -20,7 +20,7 @@
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "svelte": "^5.56.1",
+    "svelte": "^5.56.4",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
     "vite": "^8.0.16"
