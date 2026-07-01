@@ -374,6 +374,7 @@ export class SubmitCoordinator<
       interrupt: undefined,
       error: undefined,
       isLoading: true,
+      isRunning: false,
     }));
 
     // Declared before the try so the catch/finally can settle the

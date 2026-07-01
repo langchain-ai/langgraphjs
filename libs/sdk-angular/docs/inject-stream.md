@@ -96,6 +96,7 @@ In Angular app and library code, prefer `StreamApi<T>`.
 | `interrupts`                    | `Signal<Interrupt[]>`                                | All pending root interrupts.                                                                |
 | `interrupt`                     | `Signal<Interrupt \| undefined>`                     | Convenience: `interrupts()[0]`.                                                             |
 | `isLoading`                     | `Signal<boolean>`                                    | `true` while a run is in flight or hydration hasn't finished.                               |
+| `status`                        | `Signal<"idle" \| "submitting" \| "streaming" \| "error">` | High-level run phase. `"submitting"` = dispatched but not yet running; `"streaming"` = actively running; `"error"` = last run/hydrate errored. |
 | `isThreadLoading`               | `Signal<boolean>`                                    | `true` only during initial thread hydration.                                                |
 | `error`                         | `Signal<unknown>`                                    | Last error surfaced by the controller.                                                      |
 | `threadId`                      | `Signal<string \| null>`                             | Currently-bound thread.                                                                     |
