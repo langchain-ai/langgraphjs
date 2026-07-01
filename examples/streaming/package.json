@@ -45,14 +45,14 @@
   },
   "devDependencies": {
     "@a2a-js/sdk": "^0.3.13",
-    "@langchain/anthropic": "^1.4.0",
+    "@langchain/anthropic": "^1.5.1",
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-cli": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/protocol": "^0.0.18",
     "deepagents": "^1.10.5",
-    "langchain": "1.4.4",
+    "langchain": "1.5.2",
     "tsx": "^4.21.0",
     "zod": "^4.3.6"
   }
