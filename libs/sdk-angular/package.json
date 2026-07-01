@@ -39,7 +39,7 @@
     "@vitest/browser-webdriverio": "^4.1.8",
     "deepagents": "^1.10.5",
     "hono": "^4.12.25",
-    "langchain": "^1.5.1",
+    "langchain": "^1.5.2",
     "rxjs": "^7.8.2",
     "tslib": "^2.8.1",
     "typescript": "^6.0.3",
