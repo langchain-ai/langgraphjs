@@ -13,6 +13,7 @@ import {
   maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
+import { randomUUID } from "node:crypto";
 
 import { getMigrations } from "./migrations.js";
 import {
@@ -81,7 +82,7 @@ const { Pool } = pg;
  * }, config);
  * ```
  */
-export class PostgresSaver extends BaseCheckpointSaver {
+export class PostgresSaver extends BaseCheckpointSaver<string | number> {
   private readonly pool: pg.Pool;
 
   private readonly options: PostgresSaverOptions;
@@ -100,6 +101,32 @@ export class PostgresSaver extends BaseCheckpointSaver {
     this.isSetup = false;
     this.options = _ensureCompleteOptions(options);
     this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
+  }
+
+  /**
+   * Generate the next version identifier for a channel.
+   *
+   * Overrides the base integer scheme with globally-unique, lexically-ordered
+   * version strings of the form `<zero-padded counter>.<uuid>`.
+   *
+   * Channel values are stored in `checkpoint_blobs` keyed by
+   * `(thread_id, checkpoint_ns, channel, version)` and inserted with
+   * `ON CONFLICT DO NOTHING`. Under the base integer scheme, two branches of the
+   * same thread produced by time-travel forks (`updateState`) advance a channel to
+   * the *same* version number, so the second branch's blob write is silently
+   * dropped and later reads of that branch return the first branch's value. A random
+   * suffix makes sibling branches write distinct keys, while the zero-padded counter
+   * prefix preserves ordering (versions are compared as strings via `localeCompare`).
+   */
+  getNextVersion(current: string | number | undefined): string {
+    const counter =
+      typeof current === "string"
+        ? Number.parseInt(current.split(".")[0] ?? "", 10)
+        : typeof current === "number"
+          ? current
+          : 0;
+    const next = (Number.isFinite(counter) ? counter : 0) + 1;
+    return `${next.toString().padStart(20, "0")}.${randomUUID()}`;
   }
 
   /**
