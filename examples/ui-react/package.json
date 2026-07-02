@@ -19,7 +19,7 @@
     "@langchain/react": "workspace:*",
     "@uiw/react-json-view": "^2.0.0-alpha.38",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.1",
+    "langchain": "^1.5.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "streamdown": "^2.5.0",

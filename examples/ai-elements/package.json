@@ -14,7 +14,7 @@
   "dependencies": {
     "@langchain/core": "^1.2.1",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.4.7",
+    "@langchain/openai": "^1.5.3",
     "@langchain/react": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "langchain": "^1.5.1",
+    "langchain": "^1.5.2",
     "lucide-react": "^0.577.0",
     "motion": "^12.36.0",
     "nanoid": "^5.1.6",

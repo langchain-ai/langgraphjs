@@ -14,10 +14,10 @@
   "dependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.4.7",
+    "@langchain/openai": "^1.5.3",
     "@langchain/react": "workspace:*",
     "deepagents": "^1.10.5",
-    "langchain": "1.4.4",
+    "langchain": "1.5.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zod": "^4.3.6"

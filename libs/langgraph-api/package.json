@@ -111,7 +111,7 @@
     "@types/semver": "^7.7.0",
     "deepagents": "^1.10.5",
     "jose": "^6.0.10",
-    "langchain": "^1.5.1",
+    "langchain": "^1.5.2",
     "postgres": "^3.4.5",
     "ts-node": "^10.9.2",
     "typescript": "^4.9.5 || ^5.4.5",
