@@ -34,10 +34,10 @@
     "deepagents": "^1.10.5",
     "hono": "^4.12.25",
     "langchain": "^1.5.2",
-    "svelte": "^5.56.1",
+    "svelte": "^5.56.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8",
-    "vitest-browser-svelte": "^2.1.1",
+    "vitest-browser-svelte": "^2.2.0",
     "webdriverio": "^9.25.0",
     "zod": "^4.3.6"
   },
