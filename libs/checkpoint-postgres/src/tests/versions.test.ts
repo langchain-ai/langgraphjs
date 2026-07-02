@@ -2,9 +2,14 @@ import { describe, it, expect } from "vitest";
 import { PostgresSaver } from "../index.js";
 
 // getNextVersion is pure (it does not touch the pool), so exercise it directly off
-// the prototype without constructing a saver / connecting to a database.
+// the prototype without constructing a saver / connecting to a database. Its return
+// type is `number` (the base `V`) to keep PostgresSaver a drop-in
+// BaseCheckpointSaver<number>, but the runtime value is the lexical version string.
 const nextVersion = (current: string | number | undefined): string =>
-  PostgresSaver.prototype.getNextVersion.call({} as PostgresSaver, current);
+  PostgresSaver.prototype.getNextVersion.call(
+    {} as PostgresSaver,
+    current
+  ) as unknown as string;
 
 const counter = (version: string): string => version.split(".")[0] ?? "";
 

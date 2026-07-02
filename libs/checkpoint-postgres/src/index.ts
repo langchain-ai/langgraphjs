@@ -82,7 +82,7 @@ const { Pool } = pg;
  * }, config);
  * ```
  */
-export class PostgresSaver extends BaseCheckpointSaver<string> {
+export class PostgresSaver extends BaseCheckpointSaver {
   private readonly pool: pg.Pool;
 
   private readonly options: PostgresSaverOptions;
@@ -118,7 +118,7 @@ export class PostgresSaver extends BaseCheckpointSaver<string> {
    * suffix makes sibling branches write distinct keys, while the zero-padded counter
    * prefix preserves ordering (versions are compared as strings via `localeCompare`).
    */
-  getNextVersion(current: string | number | undefined): string {
+  getNextVersion(current: string | number | undefined): number {
     const counter =
       typeof current === "string"
         ? Number.parseInt(current.split(".")[0] ?? "", 10)
@@ -126,7 +126,12 @@ export class PostgresSaver extends BaseCheckpointSaver<string> {
           ? current
           : 0;
     const next = (Number.isFinite(counter) ? counter : 0) + 1;
-    return `${next.toString().padStart(20, "0")}.${randomUUID()}`;
+    // The runtime value is a lexically-ordered string, but the declared return
+    // type stays `number` (the base `V`) so PostgresSaver remains a drop-in
+    // `BaseCheckpointSaver<number>` — assignable everywhere the graph expects a
+    // checkpointer. Channel versions are `string | number` on the wire, so a
+    // string is a valid stored version; the cast bridges the two.
+    return `${next.toString().padStart(20, "0")}.${randomUUID()}` as unknown as number;
   }
 
   /**
