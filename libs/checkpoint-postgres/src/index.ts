@@ -82,7 +82,7 @@ const { Pool } = pg;
  * }, config);
  * ```
  */
-export class PostgresSaver extends BaseCheckpointSaver<string | number> {
+export class PostgresSaver extends BaseCheckpointSaver<string> {
   private readonly pool: pg.Pool;
 
   private readonly options: PostgresSaverOptions;
