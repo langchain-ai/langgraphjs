@@ -83,6 +83,12 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
    */
   getState?: AgentServerAdapter["getState"];
 
+  /**
+   * Active-run reads are SSE-only. WebSocket delegates omit this so
+   * {@link StreamController} falls back to the configured client.
+   */
+  hasActiveRun?: AgentServerAdapter["hasActiveRun"];
+
   constructor(options: HttpAgentServerAdapterOptions) {
     this.threadId = options.threadId ?? "";
     this.apiUrl = options.apiUrl;
@@ -109,6 +115,7 @@ export class HttpAgentServerAdapter implements AgentServerAdapter {
     if (options.webSocketFactory == null) {
       const sse = this.#delegate as ProtocolSseTransportAdapter;
       this.getState = sse.getState.bind(sse);
+      this.hasActiveRun = sse.hasActiveRun.bind(sse);
     }
   }
 

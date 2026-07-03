@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-react";
 import {
-  Client,
   HttpAgentServerAdapter,
   type AgentServerAdapter,
 } from "@langchain/langgraph-sdk";
@@ -9,19 +8,29 @@ import {
 import { ReattachStream } from "./components/ReattachStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
+type ActiveRunAdapter = AgentServerAdapter & {
+  apiUrl: string;
+  hasActiveRun?: () => Promise<boolean>;
+};
+
 function createIdleHydrateAdapter(
   baseUrl: string,
   threadId: string,
   hits?: { getState: number },
-): AgentServerAdapter & { apiUrl: string } {
-  const delegate = new HttpAgentServerAdapter({ apiUrl: baseUrl, threadId });
+  fetch?: typeof globalThis.fetch,
+): ActiveRunAdapter {
+  const delegate = new HttpAgentServerAdapter({
+    apiUrl: baseUrl,
+    threadId,
+    fetch,
+  }) as ActiveRunAdapter;
   return {
     apiUrl: baseUrl,
     get threadId() {
       return delegate.threadId;
     },
     setThreadId(nextThreadId) {
-      delegate.setThreadId(nextThreadId);
+      delegate.setThreadId?.(nextThreadId);
     },
     getState: async <StateType,>() => {
       if (hits != null) hits.getState += 1;
@@ -37,7 +46,14 @@ function createIdleHydrateAdapter(
     open: () => delegate.open(),
     send: (command) => delegate.send(command),
     events: () => delegate.events(),
-    openEventStream: (params) => delegate.openEventStream(params),
+    openEventStream: (params) => {
+      const handle = delegate.openEventStream?.(params);
+      if (handle == null) {
+        throw new Error("Expected test delegate to support event streams.");
+      }
+      return handle;
+    },
+    hasActiveRun: () => delegate.hasActiveRun?.() ?? Promise.resolve(false),
     close: () => delegate.close(),
   };
 }
@@ -162,23 +178,18 @@ it("secondary hook attaches to an in-flight run on the same thread", async () =>
 
 it("reattaches when the hydrated checkpoint looks idle but the run is active", async () => {
   const adapterHits = { getState: 0 };
-  const activeRunFetchByThread = new Map<
-    string,
-    ReturnType<typeof createActiveRunFetch>
-  >();
+  let activeRunFetch: ReturnType<typeof createActiveRunFetch> | undefined;
   const screen = await render(
     <ReattachStream
       apiUrl={apiUrl}
-      createSecondaryTransport={(threadId) =>
-        createIdleHydrateAdapter(apiUrl, threadId, adapterHits)
-      }
-      createSecondaryClient={(threadId) => {
-        const activeRunFetch = createActiveRunFetch(apiUrl, threadId);
-        activeRunFetchByThread.set(threadId, activeRunFetch);
-        return new Client({
+      createSecondaryTransport={(threadId) => {
+        activeRunFetch = createActiveRunFetch(apiUrl, threadId);
+        return createIdleHydrateAdapter(
           apiUrl,
-          callerOptions: { fetch: activeRunFetch.fetch },
-        });
+          threadId,
+          adapterHits,
+          activeRunFetch.fetch,
+        );
       }}
     />,
   );
@@ -203,7 +214,6 @@ it("reattaches when the hydrated checkpoint looks idle but the run is active", a
       .element()
       .textContent?.trim();
     expect(threadId).toMatch(/.+/);
-    const activeRunFetch = activeRunFetchByThread.get(threadId!);
     expect(activeRunFetch).toBeDefined();
 
     await screen.getByTestId("secondary-mount").click();

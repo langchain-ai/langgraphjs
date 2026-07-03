@@ -124,6 +124,14 @@ export interface AgentServerAdapter extends TransportAdapter {
     parent_checkpoint?: { checkpoint_id?: string } | null;
   } | null>;
   /**
+   * Check whether the bound thread has a pending or running run.
+   * Used during hydration when checkpoint state looks idle but the
+   * server may have accepted a new run that has not written its first
+   * state-advancing checkpoint yet. Optional adapters should implement
+   * this with the same auth / routing context as their other requests.
+   */
+  hasActiveRun?(): Promise<boolean>;
+  /**
    * Fetch a slice of checkpoint history for the bound thread. Used
    * by branching and time-travel UIs. Optional — omitting it turns
    * those UIs into no-ops rather than surfacing an error.

@@ -21,6 +21,8 @@ export interface ProtocolTransportPaths {
   stream?: ProtocolPath;
   /** `GET` path for thread-state hydration. Defaults to `/threads/:threadId/state`. */
   state?: ProtocolPath;
+  /** `GET` path for active-run hydration probes. Defaults to `/threads/:threadId/runs`. */
+  runs?: ProtocolPath;
 }
 
 export interface ProtocolSseTransportOptions {

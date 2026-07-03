@@ -497,10 +497,20 @@ export class StreamController<
    * (`next: []`, no interrupts) after a new run has been accepted but
    * before that run writes its first state-advancing checkpoint. Hydrate
    * uses this to avoid treating that window as a finished thread and
-   * skipping the root pump/lifecycle watcher on page refresh.
+   * skipping the root pump/lifecycle watcher on page refresh. Custom
+   * adapters can provide this probe themselves so authenticated adapter
+   * requests do not fall back to an unauthenticated synthetic client.
    */
   async #hasActiveRun(threadId: string): Promise<boolean> {
     try {
+      const transport = this.#options.transport;
+      if (
+        transport != null &&
+        typeof transport === "object" &&
+        typeof transport.hasActiveRun === "function"
+      ) {
+        return await transport.hasActiveRun();
+      }
       const [latestRun] = await this.#options.client.runs.list(threadId, {
         limit: 1,
       });

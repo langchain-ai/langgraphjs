@@ -130,6 +130,14 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     );
   }
 
+  private get runsUrl(): string {
+    return resolveProtocolPath(
+      this.paths?.runs,
+      this.threadId,
+      (id) => `/threads/${id}/runs`
+    );
+  }
+
   /**
    * Fetch checkpointed thread state for hydration.
    *
@@ -176,6 +184,19 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       checkpoint?: { checkpoint_id?: string } | null;
       parent_checkpoint?: { checkpoint_id?: string } | null;
     };
+  }
+
+  /**
+   * Check whether the currently-bound thread has an in-flight run using
+   * the same HTTP auth/proxy context as state reads and stream commands.
+   */
+  async hasActiveRun(): Promise<boolean> {
+    const response = await this.request(`${this.runsUrl}?limit=1`, {
+      method: "GET",
+    });
+    const runs = (await response.json()) as Array<{ status?: unknown }>;
+    const latestRun = Array.isArray(runs) ? runs[0] : undefined;
+    return latestRun?.status === "pending" || latestRun?.status === "running";
   }
 
   private async resolveFetch(): Promise<typeof fetch> {

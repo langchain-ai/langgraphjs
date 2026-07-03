@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-import type { Client } from "@langchain/langgraph-sdk";
 import type { AgentServerAdapter } from "@langchain/langgraph-sdk/stream";
 
-import { useStream, type UseStreamOptions } from "../../index.js";
+import { useStream } from "../../index.js";
 
 interface StreamState {
   messages: BaseMessage[];
@@ -13,7 +12,6 @@ interface Props {
   apiUrl?: string;
   assistantId?: string;
   createSecondaryTransport?: (threadId: string) => AgentServerAdapter;
-  createSecondaryClient?: (threadId: string) => Client;
 }
 
 /**
@@ -30,7 +28,6 @@ export function ReattachStream({
   apiUrl,
   assistantId = "slow_graph",
   createSecondaryTransport,
-  createSecondaryClient,
 }: Props) {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [secondaryMounted, setSecondaryMounted] = useState(false);
@@ -38,10 +35,6 @@ export function ReattachStream({
   const secondaryTransport = useMemo(
     () => (threadId != null ? createSecondaryTransport?.(threadId) : undefined),
     [createSecondaryTransport, threadId],
-  );
-  const secondaryClient = useMemo(
-    () => (threadId != null ? createSecondaryClient?.(threadId) : undefined),
-    [createSecondaryClient, threadId],
   );
 
   const primary = useStream<StreamState>({
@@ -56,7 +49,6 @@ export function ReattachStream({
     secondaryContent =
       secondaryTransport != null ? (
         <SecondaryCustomStream
-          client={secondaryClient}
           transport={secondaryTransport}
           threadId={threadId}
         />
@@ -134,22 +126,15 @@ function SecondaryStream({ apiUrl, assistantId, threadId }: SecondaryProps) {
 }
 
 interface SecondaryCustomProps {
-  client?: Client;
   transport: AgentServerAdapter;
   threadId: string;
 }
 
-function SecondaryCustomStream({
-  client,
-  transport,
-  threadId,
-}: SecondaryCustomProps) {
-  const options = {
-    ...(client != null ? { client } : {}),
+function SecondaryCustomStream({ transport, threadId }: SecondaryCustomProps) {
+  const secondary = useStream<StreamState>({
     transport,
     threadId,
-  } as unknown as UseStreamOptions<StreamState>;
-  const secondary = useStream<StreamState>(options);
+  });
   return (
     <div>
       <div data-testid="secondary-mounted">yes</div>

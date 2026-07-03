@@ -28,6 +28,48 @@ describe("HttpAgentServerAdapter hydration", () => {
     });
   });
 
+  it("exposes hasActiveRun through the SSE delegate auth context", async () => {
+    const calls: Array<{ href: string; headers: Headers }> = [];
+    const fetch = (async (input, init) => {
+      const href =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      calls.push({ href, headers: new Headers(init?.headers) });
+      return new Response(JSON.stringify([{ status: "running" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+    const adapter = new HttpAgentServerAdapter({
+      apiUrl: "http://localhost:4100/api",
+      threadId: "thread-1",
+      defaultHeaders: {
+        authorization: "Bearer adapter-token",
+      },
+      onRequest: (_url, init) => {
+        const headers = new Headers(init.headers);
+        headers.set("x-request-hook", "yes");
+        return { ...init, headers };
+      },
+      paths: {
+        runs: (threadId) => `/sessions/${threadId}/runs`,
+      },
+      fetch,
+    });
+
+    expect(adapter.hasActiveRun).toEqual(expect.any(Function));
+    await expect(adapter.hasActiveRun?.()).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].href).toBe(
+      "http://localhost:4100/api/sessions/thread-1/runs?limit=1"
+    );
+    expect(calls[0].headers.get("authorization")).toBe("Bearer adapter-token");
+    expect(calls[0].headers.get("x-request-hook")).toBe("yes");
+  });
+
   it("omits getState for WebSocket delegates", () => {
     const { webSocketFactory } = createWebSocketUrlRecorder();
     const adapter = new HttpAgentServerAdapter({
@@ -37,6 +79,7 @@ describe("HttpAgentServerAdapter hydration", () => {
     });
 
     expect(adapter.getState).toBeUndefined();
+    expect(adapter.hasActiveRun).toBeUndefined();
   });
 });
 
