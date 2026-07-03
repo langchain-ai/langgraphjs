@@ -490,6 +490,29 @@ export class StreamController<
   }
 
   /**
+   * Check whether the server has an in-flight run even when the latest
+   * checkpoint snapshot looks idle.
+   *
+   * `getState()` can briefly return the previous completed checkpoint
+   * (`next: []`, no interrupts) after a new run has been accepted but
+   * before that run writes its first state-advancing checkpoint. Hydrate
+   * uses this to avoid treating that window as a finished thread and
+   * skipping the root pump/lifecycle watcher on page refresh.
+   */
+  async #hasActiveRun(threadId: string): Promise<boolean> {
+    try {
+      const [latestRun] = await this.#options.client.runs.list(threadId, {
+        limit: 1,
+      });
+      return latestRun?.status === "pending" || latestRun?.status === "running";
+    } catch {
+      // Older/custom deployments may not support run listing for hydrate.
+      // Preserve checkpoint-only behavior instead of failing thread load.
+      return false;
+    }
+  }
+
+  /**
    * Fetch the checkpointed thread state and seed the root snapshot.
    * Re-calling with a different `threadId` swaps the underlying
    * {@link ThreadStream}, rewires the registry to the new thread, and
@@ -564,6 +587,18 @@ export class StreamController<
       const state = await this.#fetchHydrationState();
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      // A newly accepted run can exist before `getState()` advances past
+      // the previous idle checkpoint. Treat that as active so refresh
+      // reattaches instead of rendering an idle chat until the next reload.
+      if (
+        !threadActive &&
+        threadExists &&
+        this.#currentThreadId != null &&
+        (await this.#hasActiveRun(this.#currentThreadId))
+      ) {
+        threadActive = true;
+        this.rootStore.setState((s) => ({ ...s, isLoading: true }));
+      }
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape

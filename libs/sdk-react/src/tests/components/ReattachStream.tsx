@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import type { Client } from "@langchain/langgraph-sdk";
+import type { AgentServerAdapter } from "@langchain/langgraph-sdk/stream";
 
-import { useStream } from "../../index.js";
+import { useStream, type UseStreamOptions } from "../../index.js";
 
 interface StreamState {
   messages: BaseMessage[];
@@ -10,6 +12,8 @@ interface StreamState {
 interface Props {
   apiUrl?: string;
   assistantId?: string;
+  createSecondaryTransport?: (threadId: string) => AgentServerAdapter;
+  createSecondaryClient?: (threadId: string) => Client;
 }
 
 /**
@@ -25,21 +29,53 @@ interface Props {
 export function ReattachStream({
   apiUrl,
   assistantId = "slow_graph",
+  createSecondaryTransport,
+  createSecondaryClient,
 }: Props) {
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const [secondaryMounted, setSecondaryMounted] = useState(false);
+  const [primaryRunCreated, setPrimaryRunCreated] = useState(false);
+  const secondaryTransport = useMemo(
+    () => (threadId != null ? createSecondaryTransport?.(threadId) : undefined),
+    [createSecondaryTransport, threadId],
+  );
+  const secondaryClient = useMemo(
+    () => (threadId != null ? createSecondaryClient?.(threadId) : undefined),
+    [createSecondaryClient, threadId],
+  );
 
   const primary = useStream<StreamState>({
     assistantId,
     apiUrl,
     threadId,
     onThreadId: (id) => setThreadId(id),
+    onCreated: () => setPrimaryRunCreated(true),
   });
+  let secondaryContent = <div data-testid="secondary-mounted">no</div>;
+  if (secondaryMounted && threadId != null) {
+    secondaryContent =
+      secondaryTransport != null ? (
+        <SecondaryCustomStream
+          client={secondaryClient}
+          transport={secondaryTransport}
+          threadId={threadId}
+        />
+      ) : (
+        <SecondaryStream
+          apiUrl={apiUrl}
+          assistantId={assistantId}
+          threadId={threadId}
+        />
+      );
+  }
 
   return (
     <div>
       <div data-testid="primary-loading">
         {primary.isLoading ? "Loading..." : "Not loading"}
+      </div>
+      <div data-testid="primary-run-created">
+        {primaryRunCreated ? "yes" : "no"}
       </div>
       <div data-testid="primary-thread-id">{primary.threadId ?? "none"}</div>
       <div data-testid="primary-message-count">{primary.messages.length}</div>
@@ -64,11 +100,7 @@ export function ReattachStream({
       >
         Unmount secondary
       </button>
-      {secondaryMounted && threadId != null ? (
-        <SecondaryStream apiUrl={apiUrl} assistantId={assistantId} threadId={threadId} />
-      ) : (
-        <div data-testid="secondary-mounted">no</div>
-      )}
+      {secondaryContent}
     </div>
   );
 }
@@ -85,6 +117,39 @@ function SecondaryStream({ apiUrl, assistantId, threadId }: SecondaryProps) {
     apiUrl,
     threadId,
   });
+  return (
+    <div>
+      <div data-testid="secondary-mounted">yes</div>
+      <div data-testid="secondary-loading">
+        {secondary.isLoading ? "Loading..." : "Not loading"}
+      </div>
+      <div data-testid="secondary-thread-id">
+        {secondary.threadId ?? "none"}
+      </div>
+      <div data-testid="secondary-message-count">
+        {secondary.messages.length}
+      </div>
+    </div>
+  );
+}
+
+interface SecondaryCustomProps {
+  client?: Client;
+  transport: AgentServerAdapter;
+  threadId: string;
+}
+
+function SecondaryCustomStream({
+  client,
+  transport,
+  threadId,
+}: SecondaryCustomProps) {
+  const options = {
+    ...(client != null ? { client } : {}),
+    transport,
+    threadId,
+  } as unknown as UseStreamOptions<StreamState>;
+  const secondary = useStream<StreamState>(options);
   return (
     <div>
       <div data-testid="secondary-mounted">yes</div>
