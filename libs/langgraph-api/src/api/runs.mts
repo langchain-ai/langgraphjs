@@ -15,6 +15,10 @@ import {
   jsonExtra,
   waitKeepAlive,
 } from "../utils/hono.mjs";
+import {
+  applyAuthToRunConfig,
+  applyRequestHeadersToRunConfig,
+} from "../utils/run-auth.mjs";
 import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
@@ -61,31 +65,8 @@ const createValidRun = async (
     });
   }
 
-  if (headers) {
-    for (const [rawKey, value] of headers.entries()) {
-      const key = rawKey.toLowerCase();
-      if (key.startsWith("x-")) {
-        if (["x-api-key", "x-tenant-id", "x-service-key"].includes(key)) {
-          continue;
-        }
-
-        config.configurable ??= {};
-        config.configurable[key] = value;
-      } else if (key === "user-agent") {
-        config.configurable ??= {};
-        config.configurable[key] = value;
-      }
-    }
-  }
-
-  let userId: string | undefined;
-  if (auth) {
-    userId = auth.user.identity ?? auth.user.id;
-    config.configurable ??= {};
-    config.configurable["langgraph_auth_user"] = auth.user;
-    config.configurable["langgraph_auth_user_id"] = userId;
-    config.configurable["langgraph_auth_permissions"] = auth.scopes;
-  }
+  applyRequestHeadersToRunConfig(config, headers);
+  const userId = applyAuthToRunConfig(config, auth);
 
   let feedbackKeys =
     run.feedback_keys != null
