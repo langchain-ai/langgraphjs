@@ -355,3 +355,21 @@ for await (const chunk of stream) {
     - each agent outputs its internal messages history to the overall message history of the multi-agent system
 
     Check out LangGraph [supervisor](https://github.com/langchain-ai/langgraph-supervisor-py#customizing-handoff-tools) and [swarm](https://github.com/langchain-ai/langgraph-swarm-py#customizing-handoff-tools) documentation to learn how to customize handoffs.
+
+!!! warning "Don't swallow handoff signals in `try`/`catch`"
+
+    Returning a `Command` with `graph: Command.PARENT` works by throwing an internal control-flow signal (a `GraphBubbleUp` error) that LangGraph catches to route the command to the parent graph. When the agent runs as a subgraph (as in handoffs), this signal propagates out of the nested invocation — so if you wrap that invocation in a `try`/`catch`, your `catch` intercepts the signal and the handoff silently stops working. The same applies to `interrupt()`, which uses the same mechanism.
+
+    When you need a `try`/`catch` around the invocation, re-throw `GraphBubbleUp` errors so LangGraph can still process them:
+
+    ```ts
+    import { isGraphBubbleUp } from "@langchain/langgraph";
+
+    try {
+      await agent.invoke(...);
+    } catch (error) {
+      // let LangGraph handle handoffs (Command.PARENT) and interrupts
+      if (isGraphBubbleUp(error)) throw error;
+      // ...your own error handling
+    }
+    ```
