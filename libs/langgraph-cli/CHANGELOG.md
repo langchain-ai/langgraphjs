@@ -1,5 +1,23 @@
 # @langchain/langgraph-cli
 
+## 1.4.2
+
+### Patch Changes
+
+- [#2590](https://github.com/langchain-ai/langgraphjs/pull/2590) [`f71e00c`](https://github.com/langchain-ai/langgraphjs/commit/f71e00c52600a6dafacccdde1363e83c17c8d97b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(api): inject langgraph_auth_user on protocol-v2 run.start
+
+  Stamp authenticated user fields onto run config in createOrResumeRun so
+  v2 streaming matches the REST runs API. Shared helpers also dedupe REST
+  run config auth/header enrichment.
+
+- [#2575](https://github.com/langchain-ai/langgraphjs/pull/2575) [`e1b40c2`](https://github.com/langchain-ai/langgraphjs/commit/e1b40c29e14f8e9fb2696acc62d611e14a813f43) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(cli): support node_version 24 in langgraph.json
+
+  Allow Node 24 in the CLI config schema and Docker base image resolution.
+  The langgraphjs-api:24 image is already published from langgraph-api.
+
+- Updated dependencies [[`f71e00c`](https://github.com/langchain-ai/langgraphjs/commit/f71e00c52600a6dafacccdde1363e83c17c8d97b), [`e1b40c2`](https://github.com/langchain-ai/langgraphjs/commit/e1b40c29e14f8e9fb2696acc62d611e14a813f43)]:
+  - @langchain/langgraph-api@1.4.2
+
 ## 1.4.1
 
 ### Patch Changes
