@@ -234,4 +234,4 @@ jobs:
             gh pr review "$PR_URL" --approve --body "Auto-approved guarded Dependabot update."
           fi
 
-          gh pr merge "$PR_URL" --auto --merge
+          gh pr merge "$PR_URL" --auto --squash
