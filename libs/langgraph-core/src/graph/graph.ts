@@ -419,6 +419,13 @@ export class Graph<
       throw new Error("START cannot be an end node");
     }
     if (
+      Array.from(this.edges).some(
+        ([start, end]) => start === startKey && end === endKey
+      )
+    ) {
+      return this;
+    }
+    if (
       Array.from(this.edges).some(([start]) => start === startKey) &&
       !("channels" in this)
     ) {

@@ -2625,4 +2625,37 @@ describe("Graph Structure Tests (Python port)", () => {
       { node_b: { foo: "b" } },
     ]);
   });
+
+  it("should deduplicate duplicate edges in StateGraph", () => {
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node_a", () => ({ value: "a" }))
+      .addNode("node_b", () => ({ value: "b" }))
+      .addNode("node_c", () => ({ value: "c" }));
+
+    // Add entry point
+    graph.addEdge(START, "node_a");
+
+    // Add string edge twice
+    graph.addEdge("node_a", "node_b");
+    graph.addEdge("node_a", "node_b");
+
+    // Add array edge (waiting edges) twice
+    graph.addEdge(["node_a", "node_b"], "node_c");
+    graph.addEdge(["node_a", "node_b"], "node_c");
+
+    // Verify sizes: edges has START->node_a and node_a->node_b
+    expect(graph.edges.size).toBe(2);
+    expect(graph.waitingEdges.size).toBe(1);
+
+    // Verify compilation is clean and works
+    const compiled = graph.compile();
+    expect(compiled).toBeDefined();
+  });
 });
