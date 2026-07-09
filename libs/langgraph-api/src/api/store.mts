@@ -11,6 +11,15 @@ import {
 } from "../auth/index.mjs";
 
 const api = new Hono();
+const AUTH_FILTER_SCAN_PAGE_LIMIT = 1000;
+const AUTH_FILTER_MAX_SCAN_LIMIT = 10_000;
+
+const throwStoreAuthScanLimitError = (): never => {
+  throw new HTTPException(400, {
+    message:
+      "Authenticated store query exceeded maximum scan limit. Narrow the namespace or filters.",
+  });
+};
 
 const getStoreAuthMetadata = (
   namespace: string[] | undefined,
@@ -82,24 +91,55 @@ api.post(
 
     const limit = payload.limit ?? 100;
     const offset = payload.offset ?? 0;
-    const namespaces = await storageStore.listNamespaces({
-      limit: filters == null ? limit : Number.MAX_SAFE_INTEGER,
-      offset: filters == null ? offset : 0,
-      prefix: payload.prefix,
-      suffix: payload.suffix,
-      maxDepth: payload.max_depth,
-    });
+    let namespaces: string[][];
+    if (filters == null) {
+      namespaces = await storageStore.listNamespaces({
+        limit,
+        offset,
+        prefix: payload.prefix,
+        suffix: payload.suffix,
+        maxDepth: payload.max_depth,
+      });
+    } else {
+      const authorizedNamespaces: string[][] = [];
+      const requiredCount = offset + limit;
+      let scannedCount = 0;
 
-    const authorizedNamespaces =
-      filters == null
-        ? namespaces
-        : namespaces
-            .filter((namespace) =>
-              isStoreAuthMatching(namespace, undefined, undefined, filters)
-            )
-            .slice(offset, offset + limit);
+      while (
+        authorizedNamespaces.length < requiredCount &&
+        scannedCount < AUTH_FILTER_MAX_SCAN_LIMIT
+      ) {
+        const scanLimit = Math.min(
+          AUTH_FILTER_SCAN_PAGE_LIMIT,
+          AUTH_FILTER_MAX_SCAN_LIMIT - scannedCount
+        );
+        const candidates = await storageStore.listNamespaces({
+          limit: scanLimit,
+          offset: scannedCount,
+          prefix: payload.prefix,
+          suffix: payload.suffix,
+          maxDepth: payload.max_depth,
+        });
+        scannedCount += candidates.length;
+        authorizedNamespaces.push(
+          ...candidates.filter((namespace) =>
+            isStoreAuthMatching(namespace, undefined, undefined, filters)
+          )
+        );
+        if (candidates.length < scanLimit) break;
+      }
 
-    return c.json({ namespaces: authorizedNamespaces });
+      if (
+        authorizedNamespaces.length < requiredCount &&
+        scannedCount >= AUTH_FILTER_MAX_SCAN_LIMIT
+      ) {
+        throwStoreAuthScanLimitError();
+      }
+
+      namespaces = authorizedNamespaces.slice(offset, requiredCount);
+    }
+
+    return c.json({ namespaces });
   }
 );
 
@@ -122,23 +162,53 @@ api.post(
 
     const limit = payload.limit ?? 10;
     const offset = payload.offset ?? 0;
-    const items = await storageStore.search(payload.namespace_prefix, {
-      filter: payload.filter,
-      limit: filters == null ? limit : Number.MAX_SAFE_INTEGER,
-      offset: filters == null ? offset : 0,
-      query: payload.query,
-    });
+    let items: Item[];
+    if (filters == null) {
+      items = await storageStore.search(payload.namespace_prefix, {
+        filter: payload.filter,
+        limit,
+        offset,
+        query: payload.query,
+      });
+    } else {
+      const authorizedItems: Item[] = [];
+      const requiredCount = offset + limit;
+      let scannedCount = 0;
 
-    const authorizedItems =
-      filters == null
-        ? items
-        : items
-            .filter((item) =>
-              isStoreAuthMatching(item.namespace, item.key, item.value, filters)
-            )
-            .slice(offset, offset + limit);
+      while (
+        authorizedItems.length < requiredCount &&
+        scannedCount < AUTH_FILTER_MAX_SCAN_LIMIT
+      ) {
+        const scanLimit = Math.min(
+          AUTH_FILTER_SCAN_PAGE_LIMIT,
+          AUTH_FILTER_MAX_SCAN_LIMIT - scannedCount
+        );
+        const candidates = await storageStore.search(payload.namespace_prefix, {
+          filter: payload.filter,
+          limit: scanLimit,
+          offset: scannedCount,
+          query: payload.query,
+        });
+        scannedCount += candidates.length;
+        authorizedItems.push(
+          ...candidates.filter((item) =>
+            isStoreAuthMatching(item.namespace, item.key, item.value, filters)
+          )
+        );
+        if (candidates.length < scanLimit) break;
+      }
 
-    return c.json({ items: authorizedItems.map(mapItemsToApi) });
+      if (
+        authorizedItems.length < requiredCount &&
+        scannedCount >= AUTH_FILTER_MAX_SCAN_LIMIT
+      ) {
+        throwStoreAuthScanLimitError();
+      }
+
+      items = authorizedItems.slice(offset, requiredCount);
+    }
+
+    return c.json({ items: items.map(mapItemsToApi) });
   }
 );
 
