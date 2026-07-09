@@ -83,8 +83,8 @@ api.post(
     const limit = payload.limit ?? 100;
     const offset = payload.offset ?? 0;
     const namespaces = await storageStore.listNamespaces({
-      limit: filters == null ? limit : undefined,
-      offset: filters == null ? offset : undefined,
+      limit: filters == null ? limit : Number.MAX_SAFE_INTEGER,
+      offset: filters == null ? offset : 0,
       prefix: payload.prefix,
       suffix: payload.suffix,
       maxDepth: payload.max_depth,
