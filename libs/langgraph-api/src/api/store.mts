@@ -27,7 +27,8 @@ const isStoreAuthMatching = (
   key: string | undefined,
   value: Record<string, unknown> | null | undefined,
   filters: AuthFilters
-): boolean => isAuthMatching(getStoreAuthMetadata(namespace, key, value), filters);
+): boolean =>
+  isAuthMatching(getStoreAuthMetadata(namespace, key, value), filters);
 
 const validateNamespace = (namespace: string[]) => {
   if (!namespace || namespace.length === 0) {
@@ -67,13 +68,17 @@ api.post(
     if (payload.prefix) validateNamespace(payload.prefix);
     if (payload.suffix) validateNamespace(payload.suffix);
 
-    const [filters] = await handleAuthEvent(c.var.auth, "store:list_namespaces", {
-      namespace: payload.prefix,
-      suffix: payload.suffix,
-      max_depth: payload.max_depth,
-      limit: payload.limit,
-      offset: payload.offset,
-    });
+    const [filters] = await handleAuthEvent(
+      c.var.auth,
+      "store:list_namespaces",
+      {
+        namespace: payload.prefix,
+        suffix: payload.suffix,
+        max_depth: payload.max_depth,
+        limit: payload.limit,
+        offset: payload.offset,
+      }
+    );
 
     const limit = payload.limit ?? 100;
     const offset = payload.offset ?? 0;
@@ -104,7 +109,8 @@ api.post(
   async (c) => {
     // Search Items
     const payload = c.req.valid("json");
-    if (payload.namespace_prefix.length) validateNamespace(payload.namespace_prefix);
+    if (payload.namespace_prefix.length)
+      validateNamespace(payload.namespace_prefix);
 
     const [filters] = await handleAuthEvent(c.var.auth, "store:search", {
       namespace: payload.namespace_prefix,
@@ -179,10 +185,14 @@ api.delete(
     const payload = c.req.valid("json");
     if (payload.namespace) validateNamespace(payload.namespace);
 
-    const [filters, mutable] = await handleAuthEvent(c.var.auth, "store:delete", {
-      namespace: payload.namespace,
-      key: payload.key,
-    });
+    const [filters, mutable] = await handleAuthEvent(
+      c.var.auth,
+      "store:delete",
+      {
+        namespace: payload.namespace,
+        key: payload.key,
+      }
+    );
 
     const namespace = mutable.namespace ?? [];
     if (namespace.length) validateNamespace(namespace);
@@ -198,7 +208,9 @@ api.delete(
       ) {
         throw new HTTPException(404, { message: "Item not found" });
       }
-    } else if (!isStoreAuthMatching(namespace, mutable.key, undefined, filters)) {
+    } else if (
+      !isStoreAuthMatching(namespace, mutable.key, undefined, filters)
+    ) {
       throw new HTTPException(403, { message: "Not authorized" });
     }
 
