@@ -4,9 +4,30 @@ import * as schemas from "../schemas.mjs";
 import { HTTPException } from "hono/http-exception";
 import { store as storageStore } from "../storage/store.mjs";
 import type { Item } from "@langchain/langgraph";
-import { handleAuthEvent } from "../auth/index.mjs";
+import {
+  handleAuthEvent,
+  isAuthMatching,
+  type AuthFilters,
+} from "../auth/index.mjs";
 
 const api = new Hono();
+
+const getStoreAuthMetadata = (
+  namespace: string[] | undefined,
+  key?: string,
+  value?: Record<string, unknown> | null
+): Record<string, unknown> => ({
+  ...(value ?? {}),
+  namespace: namespace ?? [],
+  ...(key == null ? {} : { key }),
+});
+
+const isStoreAuthMatching = (
+  namespace: string[] | undefined,
+  key: string | undefined,
+  value: Record<string, unknown> | null | undefined,
+  filters: AuthFilters
+): boolean => isAuthMatching(getStoreAuthMetadata(namespace, key, value), filters);
 
 const validateNamespace = (namespace: string[]) => {
   if (!namespace || namespace.length === 0) {
@@ -46,7 +67,7 @@ api.post(
     if (payload.prefix) validateNamespace(payload.prefix);
     if (payload.suffix) validateNamespace(payload.suffix);
 
-    await handleAuthEvent(c.var.auth, "store:list_namespaces", {
+    const [filters] = await handleAuthEvent(c.var.auth, "store:list_namespaces", {
       namespace: payload.prefix,
       suffix: payload.suffix,
       max_depth: payload.max_depth,
@@ -54,15 +75,26 @@ api.post(
       offset: payload.offset,
     });
 
-    return c.json({
-      namespaces: await storageStore.listNamespaces({
-        limit: payload.limit ?? 100,
-        offset: payload.offset ?? 0,
-        prefix: payload.prefix,
-        suffix: payload.suffix,
-        maxDepth: payload.max_depth,
-      }),
+    const limit = payload.limit ?? 100;
+    const offset = payload.offset ?? 0;
+    const namespaces = await storageStore.listNamespaces({
+      limit: filters == null ? limit : undefined,
+      offset: filters == null ? offset : undefined,
+      prefix: payload.prefix,
+      suffix: payload.suffix,
+      maxDepth: payload.max_depth,
     });
+
+    const authorizedNamespaces =
+      filters == null
+        ? namespaces
+        : namespaces
+            .filter((namespace) =>
+              isStoreAuthMatching(namespace, undefined, undefined, filters)
+            )
+            .slice(offset, offset + limit);
+
+    return c.json({ namespaces: authorizedNamespaces });
   }
 );
 
@@ -72,9 +104,9 @@ api.post(
   async (c) => {
     // Search Items
     const payload = c.req.valid("json");
-    if (payload.namespace_prefix) validateNamespace(payload.namespace_prefix);
+    if (payload.namespace_prefix.length) validateNamespace(payload.namespace_prefix);
 
-    await handleAuthEvent(c.var.auth, "store:search", {
+    const [filters] = await handleAuthEvent(c.var.auth, "store:search", {
       namespace: payload.namespace_prefix,
       filter: payload.filter,
       limit: payload.limit,
@@ -82,14 +114,25 @@ api.post(
       query: payload.query,
     });
 
+    const limit = payload.limit ?? 10;
+    const offset = payload.offset ?? 0;
     const items = await storageStore.search(payload.namespace_prefix, {
       filter: payload.filter,
-      limit: payload.limit ?? 10,
-      offset: payload.offset ?? 0,
+      limit: filters == null ? limit : Number.MAX_SAFE_INTEGER,
+      offset: filters == null ? offset : 0,
       query: payload.query,
     });
 
-    return c.json({ items: items.map(mapItemsToApi) });
+    const authorizedItems =
+      filters == null
+        ? items
+        : items
+            .filter((item) =>
+              isStoreAuthMatching(item.namespace, item.key, item.value, filters)
+            )
+            .slice(offset, offset + limit);
+
+    return c.json({ items: authorizedItems.map(mapItemsToApi) });
   }
 );
 
@@ -98,12 +141,33 @@ api.put("/store/items", zValidator("json", schemas.StorePutItem), async (c) => {
   const payload = c.req.valid("json");
   if (payload.namespace) validateNamespace(payload.namespace);
 
-  await handleAuthEvent(c.var.auth, "store:put", {
+  const [filters, mutable] = await handleAuthEvent(c.var.auth, "store:put", {
     namespace: payload.namespace,
     key: payload.key,
     value: payload.value,
   });
-  await storageStore.put(payload.namespace, payload.key, payload.value);
+
+  if (mutable.namespace) validateNamespace(mutable.namespace);
+  const existingItem = await storageStore.get(mutable.namespace, mutable.key);
+  if (
+    existingItem != null &&
+    !isStoreAuthMatching(
+      existingItem.namespace,
+      existingItem.key,
+      existingItem.value,
+      filters
+    )
+  ) {
+    throw new HTTPException(404, { message: "Item not found" });
+  }
+
+  if (
+    !isStoreAuthMatching(mutable.namespace, mutable.key, mutable.value, filters)
+  ) {
+    throw new HTTPException(403, { message: "Not authorized" });
+  }
+
+  await storageStore.put(mutable.namespace, mutable.key, mutable.value);
   return c.body(null, 204);
 });
 
@@ -115,11 +179,30 @@ api.delete(
     const payload = c.req.valid("json");
     if (payload.namespace) validateNamespace(payload.namespace);
 
-    await handleAuthEvent(c.var.auth, "store:delete", {
+    const [filters, mutable] = await handleAuthEvent(c.var.auth, "store:delete", {
       namespace: payload.namespace,
       key: payload.key,
     });
-    await storageStore.delete(payload.namespace ?? [], payload.key);
+
+    const namespace = mutable.namespace ?? [];
+    if (namespace.length) validateNamespace(namespace);
+    const existingItem = await storageStore.get(namespace, mutable.key);
+    if (existingItem != null) {
+      if (
+        !isStoreAuthMatching(
+          existingItem.namespace,
+          existingItem.key,
+          existingItem.value,
+          filters
+        )
+      ) {
+        throw new HTTPException(404, { message: "Item not found" });
+      }
+    } else if (!isStoreAuthMatching(namespace, mutable.key, undefined, filters)) {
+      throw new HTTPException(403, { message: "Not authorized" });
+    }
+
+    await storageStore.delete(namespace, mutable.key);
     return c.body(null, 204);
   }
 );
@@ -131,14 +214,21 @@ api.get(
     // Get Item
     const payload = c.req.valid("query");
 
-    await handleAuthEvent(c.var.auth, "store:get", {
+    const [filters, mutable] = await handleAuthEvent(c.var.auth, "store:get", {
       namespace: payload.namespace,
       key: payload.key,
     });
 
-    const key = payload.key;
-    const namespace = payload.namespace;
-    return c.json(mapItemsToApi(await storageStore.get(namespace, key)));
+    const namespace = mutable.namespace ?? [];
+    const item = await storageStore.get(namespace, mutable.key);
+    if (
+      item != null &&
+      !isStoreAuthMatching(item.namespace, item.key, item.value, filters)
+    ) {
+      throw new HTTPException(404, { message: "Item not found" });
+    }
+
+    return c.json(mapItemsToApi(item));
   }
 );
 
