@@ -30,7 +30,7 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
 
 function yieldToScheduler(): Promise<void> {
   return new Promise((resolve) => {
-    setImmediate(resolve);
+    setTimeout(resolve, 0);
   });
 }
 
