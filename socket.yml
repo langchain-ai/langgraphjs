@@ -1,0 +1,30 @@
+# Optional Socket GitHub App configuration.
+# Docs: https://docs.socket.dev/docs/socket-yml
+# Only takes effect once the Socket GitHub app is installed on this repo.
+version: 2
+
+# Only run PR alert scans when dependency manifests or lockfiles change.
+triggerPaths:
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "**/package.json"
+  - "**/pnpm-lock.yaml"
+
+issueRules:
+  malware: true
+  installScripts: true
+  telemetry: true
+  troll: true
+  gitDependency: true
+  httpDependency: true
+  hasNativeCode: true
+  shellScriptOverride: true
+  invalidPackageJSON: true
+  unresolvedRequire: true
+
+githubApp:
+  enabled: true
+  dependencyOverviewEnabled: true
+  ignoreUsers:
+    - "dependabot"
+    - "github-actions"
