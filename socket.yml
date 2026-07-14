@@ -26,5 +26,5 @@ githubApp:
   enabled: true
   dependencyOverviewEnabled: true
   ignoreUsers:
-    - "dependabot"
-    - "github-actions"
+    - "dependabot[bot]"
+    - "github-actions[bot]"
