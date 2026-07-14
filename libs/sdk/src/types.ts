@@ -273,7 +273,11 @@ export interface CronsCreatePayload extends RunsCreatePayload {
 
 export interface CronsUpdatePayload extends RunsInvokePayload {
   schedule?: string;
-  endTime?: string;
+  /**
+   * ISO 8601 timestamp after which the cron stops scheduling runs.
+   * Pass `null` to clear a previously set end time; omit to leave it unchanged.
+   */
+  endTime?: string | null;
 
   /**
    * IANA timezone string for interpreting the schedule (e.g. "America/New_York").
