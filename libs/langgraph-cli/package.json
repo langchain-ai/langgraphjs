@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-cli",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -42,7 +42,7 @@
     "exit-hook": "^4.0.0",
     "extract-zip": "^2.0.1",
     "ignore": "^7.0.5",
-    "langsmith": "^0.7.14",
+    "langsmith": "^0.8.0",
     "open": "^10.1.0",
     "package-manager-detector": "^1.3.0",
     "stacktrace-parser": "^0.1.10",

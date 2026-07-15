@@ -2,6 +2,7 @@ import { expect, it, inject } from "vitest";
 import { render } from "vitest-browser-svelte";
 
 import InterruptStream from "./components/InterruptStream.svelte";
+import InterruptReconnectStream from "./components/InterruptReconnectStream.svelte";
 import MultiInterruptStream from "./components/MultiInterruptStream.svelte";
 
 const serverUrl = inject("serverUrl");
@@ -44,6 +45,62 @@ it("resumes an interrupt via respond()", async () => {
     .element(screen.getByTestId("interrupt-count"))
     .toHaveTextContent("0");
 });
+
+it(
+  "resumes after a mid-HITL SSE drop when using a custom auth fetch",
+  { timeout: 20_000 },
+  async () => {
+    const screen = render(InterruptReconnectStream, { apiUrl: serverUrl });
+
+    await screen.getByTestId("submit").click();
+
+    await expect
+      .element(screen.getByTestId("interrupt-count"), { timeout: 10_000 })
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Not loading");
+
+    const opensBeforeDrop = Number(
+      screen.getByTestId("event-stream-opens").element().textContent ?? "0"
+    );
+
+    await screen.getByTestId("drop-events").click();
+
+    await expect
+      .poll(
+        () =>
+          Number(
+            screen.getByTestId("event-stream-opens").element().textContent ??
+              "0"
+          ),
+        { timeout: 10_000 }
+      )
+      .toBeGreaterThan(opensBeforeDrop);
+
+    await expect
+      .poll(
+        () =>
+          Number(
+            screen.getByTestId("reconnect-count").element().textContent ?? "0"
+          ),
+        { timeout: 10_000 }
+      )
+      .toBeGreaterThan(0);
+
+    await screen.getByTestId("resume").click();
+
+    await expect
+      .element(screen.getByTestId("loading"), { timeout: 10_000 })
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("last-message"))
+      .toHaveTextContent("After interrupt");
+    await expect
+      .element(screen.getByTestId("interrupt-count"))
+      .toHaveTextContent("0");
+  }
+);
 
 it("resumes several parallel interrupts via respondAll()", { timeout: 15_000 }, async () => {
   const screen = render(MultiInterruptStream, { apiUrl: serverUrl });

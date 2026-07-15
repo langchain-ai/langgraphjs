@@ -174,6 +174,15 @@ export async function startServer(
   // Loopback fetch used by webhooks and custom routes
   bindLoopbackFetch(app);
 
+  app.use(cors(options.http?.cors));
+  app.use(requestLogger());
+
+  if (options.auth?.path) {
+    logger.info(`Loading auth from ${options.auth.path}`);
+    await registerAuth(options.auth, { cwd: options.cwd });
+    app.use(auth());
+  }
+
   app.post(
     "/internal/truncate",
     zValidator(
@@ -194,15 +203,6 @@ export async function startServer(
       return c.json({ ok: true });
     }
   );
-
-  app.use(cors(options.http?.cors));
-  app.use(requestLogger());
-
-  if (options.auth?.path) {
-    logger.info(`Loading auth from ${options.auth.path}`);
-    await registerAuth(options.auth, { cwd: options.cwd });
-    app.use(auth());
-  }
 
   if (options.http?.app) {
     logger.info(`Loading HTTP app from ${options.http.app}`);
