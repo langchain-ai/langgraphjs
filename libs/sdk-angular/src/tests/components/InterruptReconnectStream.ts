@@ -1,88 +1,98 @@
-import {
-  Component,
-  Injectable,
-  computed,
-  inject as angularInject,
-  signal,
-} from "@angular/core";
+import { Component, OnDestroy, OnInit, signal } from "@angular/core";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-import { inject as vitestInject } from "vitest";
+import { inject } from "vitest";
 import { injectStream } from "../../index.js";
+import { createDroppableAuthFetch } from "../fixtures/droppable-auth-fetch.js";
 
-const serverUrl = vitestInject("serverUrl");
-
-/**
- * Reconnect state shared across remounts of the view. Lives in DI so the
- * captured `threadId` survives the `@for`-driven recreation that simulates
- * a fresh `injectStream` on reconnect.
- */
-@Injectable()
-class InterruptHarnessState {
-  readonly threadId = signal<string | undefined>(undefined);
-  readonly gen = signal(0);
-  readonly genList = computed(() => [this.gen()]);
-
-  readonly onThreadId = (id: string): void => this.threadId.set(id);
-
-  reconnect(): void {
-    this.gen.update((g) => g + 1);
-  }
-}
+const serverUrl = inject("serverUrl");
+const droppable = createDroppableAuthFetch();
 
 @Component({
-  selector: "lg-interrupt-view",
   template: `
     <div>
       <div data-testid="loading">
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
+      <div data-testid="messages">
+        @for (msg of stream.messages(); track msg.id ?? $index) {
+          <div [attr.data-testid]="'message-' + $index">
+            {{ str(msg.content) }}
+          </div>
+        }
+        @if (stream.messages().length > 0) {
+          <div data-testid="last-message">
+            {{
+              str(stream.messages()[stream.messages().length - 1].content)
+            }}
+          </div>
+        }
+      </div>
       <div data-testid="interrupt-count">{{ stream.interrupts().length }}</div>
-      <button data-testid="submit" (click)="submit()">Send</button>
-    </div>
-  `,
-})
-class InterruptViewComponent {
-  readonly stream: ReturnType<
-    typeof injectStream<{ messages: BaseMessage[] }, { nodeName: string }>
-  >;
-
-  constructor() {
-    const state = angularInject(InterruptHarnessState);
-    this.stream = injectStream<
-      { messages: BaseMessage[] },
-      { nodeName: string }
-    >({
-      assistantId: "interruptAgent",
-      apiUrl: serverUrl,
-      threadId: state.threadId,
-      onThreadId: state.onThreadId,
-    });
-  }
-
-  submit(): void {
-    void this.stream.submit({ messages: [new HumanMessage("ship it")] });
-  }
-}
-
-@Component({
-  selector: "lg-interrupt-reconnect",
-  imports: [InterruptViewComponent],
-  providers: [InterruptHarnessState],
-  template: `
-    <div>
-      <button
-        data-testid="reconnect"
-        [disabled]="state.threadId() == null"
-        (click)="state.reconnect()"
-      >
-        Reconnect
-      </button>
-      @for (g of state.genList(); track g) {
-        <lg-interrupt-view />
+      <div data-testid="reconnect-count">{{ reconnectCount() }}</div>
+      <div data-testid="event-stream-opens">{{ eventStreamOpens() }}</div>
+      @if (stream.interrupt()) {
+        <div>
+          <div data-testid="interrupt-node">
+            {{ stream.interrupt()!.value?.nodeName ?? "" }}
+          </div>
+          <div data-testid="interrupt-id">
+            {{ stream.interrupt()!.id }}
+          </div>
+          <button data-testid="resume" (click)="onResume()">Resume</button>
+        </div>
       }
+      <button data-testid="submit" (click)="onSubmit()">Send</button>
+      <button data-testid="drop-events" (click)="onDropEvents()">
+        Drop events
+      </button>
     </div>
   `,
 })
-export class InterruptReconnectHarnessComponent {
-  readonly state = angularInject(InterruptHarnessState);
+export class InterruptReconnectStreamComponent implements OnInit, OnDestroy {
+  reconnectCount = signal(0);
+  eventStreamOpens = signal(0);
+  private timer: number | undefined;
+
+  stream = injectStream<{ messages: BaseMessage[] }, { nodeName: string }>({
+    assistantId: "interruptAgent",
+    apiUrl: serverUrl,
+    fetch: droppable.fetch,
+    maxReconnectAttempts: 5,
+    reconnectDelayMs: () => 0,
+    streamIdleReconnect: 0,
+    onReconnect: () => {
+      this.reconnectCount.update((count) => count + 1);
+      this.eventStreamOpens.set(droppable.eventStreamOpenCount());
+    },
+  });
+
+  ngOnInit() {
+    this.timer = window.setInterval(() => {
+      this.eventStreamOpens.set(droppable.eventStreamOpenCount());
+    }, 50);
+  }
+
+  ngOnDestroy() {
+    if (this.timer != null) window.clearInterval(this.timer);
+  }
+
+  str(v: unknown) {
+    return typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  onSubmit() {
+    void this.stream.submit({
+      messages: [new HumanMessage("Hello")],
+    });
+    this.eventStreamOpens.set(droppable.eventStreamOpenCount());
+  }
+
+  onDropEvents() {
+    droppable.dropActiveStreams();
+    this.eventStreamOpens.set(droppable.eventStreamOpenCount());
+  }
+
+  onResume() {
+    void this.stream.respond("Resuming");
+  }
 }

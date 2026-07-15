@@ -38,7 +38,7 @@ import type { AssembledToolCall } from "../client/stream/handles/tools.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { NAMESPACE_SEPARATOR } from "./constants.js";
+import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { ensureMessageInstances } from "./message-coercion.js";
@@ -336,7 +336,7 @@ export class StreamController<
    */
   constructor(options: StreamControllerOptions<StateType>) {
     this.#options = options;
-    this.#messagesKey = options.messagesKey ?? "messages";
+    this.#messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     this.#currentThreadId = options.threadId ?? null;
     this.#rootBus = {
       channels: ROOT_PUMP_CHANNELS,
@@ -1571,6 +1571,10 @@ export class StreamController<
       transport: this.#options.transport,
       fetch: this.#options.fetch,
       webSocketFactory: this.#options.webSocketFactory,
+      maxReconnectAttempts: this.#options.maxReconnectAttempts,
+      streamIdleReconnect: this.#options.streamIdleReconnect,
+      reconnectDelayMs: this.#options.reconnectDelayMs,
+      onReconnect: this.#options.onReconnect,
     });
     this.registry.bind(this.#thread);
     if (deferRootPump) {
@@ -2466,8 +2470,8 @@ function extractAndCoerceMessagesWithFallback(
   messagesKey: string
 ): BaseMessage[] | null {
   let raw = values[messagesKey];
-  if (!Array.isArray(raw) && messagesKey !== "messages") {
-    raw = values.messages;
+  if (!Array.isArray(raw) && messagesKey !== DEFAULT_MESSAGES_KEY) {
+    raw = values[DEFAULT_MESSAGES_KEY];
   }
   if (!Array.isArray(raw)) return null;
   return ensureMessageInstances(

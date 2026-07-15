@@ -7,7 +7,9 @@ import {
   idleReconnectStream,
   type IdleReconnectMode,
   StreamRequestParams,
+  DEFAULT_IDLE_RECONNECT,
 } from "../utils/stream.js";
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../utils/reconnect.js";
 import type { StreamProtocol } from "../types.js";
 
 export type HeaderValue = string | undefined | null;
@@ -451,7 +453,7 @@ export class BaseClient {
       // decoder and the SSE decoder) so it can both reset on any line and
       // recognise `:` keep-alive heartbeats to drive `"auto"` mode. The SSE
       // decoder downstream discards those comment lines.
-      const idleMode = config.idleReconnect ?? "auto";
+      const idleMode = config.idleReconnect ?? DEFAULT_IDLE_RECONNECT;
       const enableIdle = idleMode === "auto" || idleMode > 0;
 
       const lines = response.body.pipeThrough(BytesLineDecoder());
@@ -466,7 +468,7 @@ export class BaseClient {
     };
 
     yield* streamWithRetry(makeRequest, {
-      maxRetries: config.maxRetries ?? 5,
+      maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
       signal: config.signal,
       onReconnect: config.onReconnect,
     });

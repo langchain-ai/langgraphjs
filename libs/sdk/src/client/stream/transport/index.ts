@@ -1,8 +1,5 @@
 export { ProtocolSseTransportAdapter } from "./http.js";
-export {
-  ProtocolWebSocketTransportAdapter,
-  webSocketReconnectDelayMs,
-} from "./websocket.js";
+export { ProtocolWebSocketTransportAdapter } from "./websocket.js";
 export { MaxWebSocketReconnectAttemptsError } from "../error.js";
 export type { WebSocketReconnectOptions } from "./websocket.js";
 export {

@@ -1,5 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
+import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import type { ThreadState, Interrupt } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Message } from "../types.messages.js";
@@ -175,14 +176,14 @@ export class CustomStreamOrchestrator<
   }
 
   #getMessages = (value: StateType): Message[] => {
-    const messagesKey = this.#options.messagesKey ?? "messages";
+    const messagesKey = this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
   #setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = this.#options.messagesKey ?? "messages";
+    const messagesKey = this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return { ...current, [messagesKey]: messages };
   };
 
