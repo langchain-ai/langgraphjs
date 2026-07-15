@@ -1,5 +1,14 @@
 # @langchain/langgraph-cli
 
+## 1.4.3
+
+### Patch Changes
+
+- [#2595](https://github.com/langchain-ai/langgraphjs/pull/2595) [`dac8c2f`](https://github.com/langchain-ai/langgraphjs/commit/dac8c2fa7edfd643aa393a1d6407759b6cd8acf4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - chore: bump langsmith to ^0.8.0
+
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.4.3
+
 ## 1.4.2
 
 ### Patch Changes
