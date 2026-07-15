@@ -10,6 +10,10 @@ import {
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
 import {
+  BASE_MESSAGE_REF,
+  baseMessageDefinitions,
+} from "./schema-expectations.mjs";
+import {
   afterAll,
   beforeAll,
   beforeEach,
@@ -180,15 +184,11 @@ describe("assistants", () => {
         messages: {
           type: "array",
           items: {
-            $ref: "#/definitions/BaseMessage<MessageStructure<MessageToolSet>,MessageType>",
+            $ref: BASE_MESSAGE_REF,
           },
         },
       },
-      definitions: {
-        "BaseMessage<MessageStructure<MessageToolSet>,MessageType>": {
-          type: "object",
-        },
-      },
+      definitions: baseMessageDefinitions,
       $schema: "http://json-schema.org/draft-07/schema#",
     });
 

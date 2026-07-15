@@ -255,6 +255,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
   ): Promise<Checkpoint> {
     return {
       ...checkpoint,
+      channel_versions: checkpoint.channel_versions ?? {},
+      versions_seen: checkpoint.versions_seen ?? {},
       channel_values: await this._loadBlobs(channelValues),
     };
   }

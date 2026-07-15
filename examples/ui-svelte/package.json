@@ -13,14 +13,14 @@
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/openai": "^1.4.7",
+    "@langchain/openai": "^1.5.3",
     "@langchain/svelte": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "svelte": "^5.56.1",
+    "svelte": "^5.56.4",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
     "vite": "^8.0.16"

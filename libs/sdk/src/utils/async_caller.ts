@@ -1,6 +1,20 @@
-import pRetry from "p-retry";
+import pRetryImport from "p-retry";
 import PQueueMod from "p-queue";
 import { _getFetchImplementation } from "../singletons/fetch.js";
+
+/**
+ * `p-retry` is a pure-ESM module that we bundle into the build output (so the
+ * CJS artifact doesn't `require()` an ESM module). Depending on how a
+ * downstream transpiler/bundler (e.g. `tsx`/esbuild) resolves the default
+ * export of the bundled chunk, the import can come through either as the
+ * function itself or as a namespace-like `{ default: fn }`. Normalize to the
+ * callable, mirroring the `"default" in` interop guard used for `p-queue`.
+ */
+const pRetry = (
+  typeof pRetryImport === "function"
+    ? pRetryImport
+    : (pRetryImport as { default: typeof pRetryImport }).default
+) as typeof pRetryImport;
 
 const STATUS_NO_RETRY = [
   400, // Bad Request

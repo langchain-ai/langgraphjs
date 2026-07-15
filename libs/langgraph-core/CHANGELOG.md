@@ -1,5 +1,68 @@
 # @langchain/langgraph
 
+## 1.4.8
+
+### Patch Changes
+
+- [#2604](https://github.com/langchain-ai/langgraphjs/pull/2604) [`42ec394`](https://github.com/langchain-ai/langgraphjs/commit/42ec39460bfe0c3be017fb043c668c3204c8a175) Thanks [@hntrl](https://github.com/hntrl)! - fix(pregel): wait for completed-superstep persistence with sync durability
+
+- Updated dependencies [[`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa), [`c201256`](https://github.com/langchain-ai/langgraphjs/commit/c201256b27d55c9aa333d3d15f6ec16c2fd7de9b)]:
+  - @langchain/langgraph-sdk@1.9.26
+
+## 1.4.7
+
+### Patch Changes
+
+- [#2571](https://github.com/langchain-ai/langgraphjs/pull/2571) [`85ba859`](https://github.com/langchain-ai/langgraphjs/commit/85ba859b6f60f4bf193d3313fa24149efe05491b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): drop unused zod-to-json-schema peer dependency
+
+  Remove the vestigial `zod-to-json-schema` (and its `peerDependenciesMeta`/dev) declarations. JSON Schema generation now flows through `@langchain/core`'s Zod v3/v4 interop (`toJsonSchema`), so the old `zod-to-json-schema@^3.x` peer (which pins `zod@^3.24.1`) is no longer needed and was the last source of install-time peer conflicts with Zod v4. Closes [#1706](https://github.com/langchain-ai/langgraphjs/issues/1706).
+
+## 1.4.6
+
+### Patch Changes
+
+- [`03a0d8b`](https://github.com/langchain-ai/langgraphjs/commit/03a0d8b8632082e6dbf4a96fcf37f8f67151b74f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): emit valid UUIDs for exit-mode delta task_ids
+
+  Exit-mode DeltaChannel writes used a step-prefixed synthetic task id that produced a 6-segment string Postgres rejects for `checkpoint_writes.task_id uuid` in LangGraph API. Embed the superstep in the first UUID group instead, matching langchain-ai/langgraph#8165.
+
+- Updated dependencies [[`0558e47`](https://github.com/langchain-ai/langgraphjs/commit/0558e472b7697304c62cb6fe69cc3005e8e1a457), [`091a46f`](https://github.com/langchain-ai/langgraphjs/commit/091a46f32ddd3a85ee89e35fb9ea953dfc4cf8b4)]:
+  - @langchain/langgraph-sdk@1.9.25
+  - @langchain/langgraph-checkpoint@1.1.3
+
+## 1.4.5
+
+### Patch Changes
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply state update and goto alongside interrupt resume
+
+  `respond(decision, { update, goto })` now maps to LangGraph's
+  `Command(resume, update, goto)`, so a human-in-the-loop UI can commit a state
+  update (e.g. push the interrupt card into state) in the **same superstep** as
+  the resume — one checkpoint, no separate `updateState` write, no flicker.
+  `@langchain/langgraph-api` forwards `update`/`goto` through `input.respond`,
+  and `@langchain/core` message instances in `update` are serialized to dicts
+  before transport, exactly like `submit()`. Bumps `@langchain/protocol` to
+  `^0.0.18` for the `Goto` type.
+
+  `respond`/`respondAll` also apply `update` **optimistically** (mirroring
+  `submit()`): the pushed messages paint immediately, with stable ids minted so
+  the resumed run's echo reconciles them in place. Without this the interrupt is
+  cleared the instant `respond()` dispatches while the pushed card only reappears
+  a server round-trip later — so the card would flicker in that gap. The
+  optimistic state settles on the resumed run's terminal (pending → sent, or
+  rolled back on a failure before any echo).
+
+  User-initiated optimistic writes (`submit()` / `respond()` / `respondAll()`) now
+  commit to the store **synchronously**, in the same tick as the triggering event,
+  instead of being coalesced onto the next macrotask. This lets a framework render
+  the pushed message in the **same commit** as any local UI state the caller flips
+  alongside it (e.g. a HITL form swapping its inputs for the resolved card), so the
+  card no longer blinks out for the one-macrotask window before the flush lands.
+  High-frequency streaming writes keep their macrotask coalescing.
+
+- Updated dependencies [[`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e)]:
+  - @langchain/langgraph-sdk@1.9.24
+
 ## 1.4.4
 
 ### Patch Changes

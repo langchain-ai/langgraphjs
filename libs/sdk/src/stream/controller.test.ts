@@ -1,4 +1,5 @@
 import type { Event } from "@langchain/protocol";
+import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
@@ -1547,6 +1548,283 @@ describe("StreamController", () => {
       response: { approved: true },
       config: { configurable: { model: "gpt-4o" } },
       metadata: { source: "ui" },
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() forwards update and goto on the same input.respond as the resume", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond(
+      { approved: true },
+      {
+        update: { messages: [{ type: "ai", content: "Approved." }] },
+        goto: "next_node",
+      }
+    );
+    // update / goto ride the SAME input.respond as the resume so the server
+    // folds them into one Command(resume, update, goto) — single checkpoint.
+    // The update is also applied optimistically (like submit()), so the
+    // id-less message is dispatched with a minted id the server echoes back —
+    // that's what lets the optimistic copy reconcile in place (no flicker).
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-1",
+      response: { approved: true },
+      update: {
+        messages: [expect.objectContaining({ type: "ai", content: "Approved." })],
+      },
+      goto: "next_node",
+      config: undefined,
+      metadata: undefined,
+    });
+    const sentUpdate = (
+      (respondInput.mock.calls[0] as unknown[])[0] as {
+        update: { messages: Array<Record<string, unknown>> };
+      }
+    ).update;
+    expect(typeof sentUpdate.messages[0].id).toBe("string");
+
+    await controller.dispose();
+  });
+
+  it("respond() omits update/goto when not provided", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond({ approved: true });
+    const sent = (respondInput.mock.calls[0] as unknown[])[0] as Record<
+      string,
+      unknown
+    >;
+    expect(sent).not.toHaveProperty("update");
+    expect(sent).not.toHaveProperty("goto");
+
+    await controller.dispose();
+  });
+
+  it("respond() serializes BaseMessage instances in update.messages to dicts", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    await controller.respond(
+      { approved: true },
+      { update: { messages: [new AIMessage("Approved by reviewer.")] } }
+    );
+
+    // The BaseMessage instance must arrive as a plain `{ type, content }`
+    // dict — its default JSON form is the `lc`-constructor envelope the
+    // server's `add_messages` reducer would not coerce.
+    const sent = (respondInput.mock.calls[0] as unknown[])[0] as {
+      update: { messages: Array<Record<string, unknown>> };
+    };
+    expect(sent.update.messages[0]).toMatchObject({
+      type: "ai",
+      content: "Approved by reviewer.",
+    });
+    expect(sent.update.messages[0]).not.toHaveProperty("lc");
+    expect(sent.update.messages[0]).not.toHaveProperty("kwargs");
+
+    await controller.dispose();
+  });
+
+  it("respond() applies update.messages optimistically before the server echo", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "Approve?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+
+    // The card pushed via `update` must paint immediately — the interrupt is
+    // cleared the instant `respond()` dispatches, and the server only echoes
+    // the message back a round-trip later. Without the optimistic apply the
+    // card would vanish in that gap (the flicker this guards against). The
+    // mock `respondInput` never streams a `values` echo, so any message in the
+    // projection here came purely from the optimistic apply.
+    //
+    // The optimistic write commits *synchronously* inside `respond()` (before
+    // its first await), so the snapshot already carries the card without
+    // draining a macrotask. That synchronous commit is what lets a framework
+    // render the card in the *same* commit as any local state the caller flips
+    // alongside it (e.g. a HITL form hiding its inputs) — no one-tick blink.
+    const pending = controller.respond(
+      { approved: true },
+      { update: { messages: [{ type: "ai", content: "Pushed card." }] } }
+    );
+
+    const messages = controller.rootStore.getSnapshot().messages;
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ content: "Pushed card." });
+
+    await pending;
+    // It carries the same minted id that was dispatched, so the server echo
+    // reconciles in place instead of appending a duplicate.
+    const dispatched = (
+      (respondInput.mock.calls[0] as unknown[])[0] as {
+        update: { messages: Array<{ id?: string }> };
+      }
+    ).update.messages[0];
+    expect((messages[0] as { id?: string }).id).toBe(dispatched.id);
+
+    await controller.dispose();
+  });
+
+  it("respondAll() forwards run-level update and goto for the batched resume", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "First?" }, namespace: [] },
+        { interruptId: "int-2", payload: { prompt: "Second?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "First?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "Second?" }));
+
+    await controller.respondAll(
+      {
+        "int-1": { approved: true },
+        "int-2": { approved: false },
+      },
+      { update: { reviewed: true } }
+    );
+
+    expect(respondInput).toHaveBeenCalledWith({
+      responses: [
+        { interrupt_id: "int-1", response: { approved: true }, namespace: [] },
+        { interrupt_id: "int-2", response: { approved: false }, namespace: [] },
+      ],
+      update: { reviewed: true },
+      config: undefined,
+      metadata: undefined,
     });
 
     await controller.dispose();

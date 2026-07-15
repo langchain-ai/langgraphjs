@@ -355,6 +355,31 @@ describe("config to docker", () => {
     `);
   });
 
+  it("js with node_version 24", async () => {
+    const graphs = { agent: "./graphs/agent.js:graph" };
+    const config = getConfig({
+      dockerfile_lines: [],
+      env: {},
+      node_version: "24" as const,
+      graphs,
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toEqual(dedenter`
+      FROM langchain/langgraphjs-api:24
+      ADD . /deps/unit_tests
+      ENV LANGSERVE_GRAPHS='{"agent":"./graphs/agent.js:graph"}'
+      WORKDIR /deps/unit_tests
+      RUN npm i
+      RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+    `);
+  });
+
   it("python with api_version", async () => {
     const graphs = { agent: "./agent.py:graph" };
     const config = getConfig({
@@ -983,6 +1008,25 @@ describe("getBaseImage", () => {
     );
   });
 
+  it("node 24 without api_version", () => {
+    const config = getConfig({
+      node_version: "24",
+      graphs: { agent: "./agent.js:graph" },
+    });
+    expect(getBaseImage(config)).toBe("langchain/langgraphjs-api:24");
+  });
+
+  it("node 24 with api_version", () => {
+    const config = getConfig({
+      node_version: "24",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: "0.7.29",
+    });
+    expect(getBaseImage(config)).toBe(
+      "langchain/langgraphjs-api:0.7.29-node24"
+    );
+  });
+
   it("python without api_version", () => {
     const config = getConfig({
       python_version: "3.11",
@@ -1098,6 +1142,32 @@ it("node config and python config", () => {
   // default node
   expect(getConfig({ graphs: { agent: "./agent.js:graph" } })).toEqual({
     node_version: "20",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+  });
+
+  expect(
+    getConfig({
+      node_loader: "ts-node",
+      graphs: { agent: "./agent.ts:graph" },
+    })
+  ).toEqual({
+    node_version: "20",
+    node_loader: "ts-node",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.ts:graph" },
+    env: {},
+  });
+
+  // node_version 24 is supported
+  expect(
+    getConfig({
+      node_version: "24",
+      graphs: { agent: "./agent.js:graph" },
+    })
+  ).toEqual({
+    node_version: "24",
     dockerfile_lines: [],
     graphs: { agent: "./agent.js:graph" },
     env: {},

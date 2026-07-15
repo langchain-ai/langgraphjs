@@ -23,6 +23,7 @@ import type {
   ProtocolTransportName,
   StateGetResult,
 } from "./types.mjs";
+import { applyAuthToRunConfig } from "../utils/run-auth.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
 import { RunProtocolSession } from "./session/index.mjs";
 
@@ -91,6 +92,19 @@ export const normalizeMultitaskStrategy = (
  */
 type NormalizedRunStart = RunStartParams & {
   multitaskStrategy?: MultitaskStrategy;
+  /**
+   * State update applied alongside a resume, mapped to LangGraph's
+   * `Command(update=...)`. Only set on the `input.respond` path
+   * (resume), never on a fresh `run.start` — the protocol's
+   * `RunStartParams` carries no `update` field.
+   */
+  update?: RunCommand["update"];
+  /**
+   * Directed jump applied alongside a resume, mapped to LangGraph's
+   * `Command(goto=...)`. Like {@link update}, only set on the
+   * `input.respond` (resume) path.
+   */
+  goto?: RunCommand["goto"];
 };
 
 const normalizeRunStart = (value: unknown): NormalizedRunStart => {
@@ -395,9 +409,29 @@ export class ProtocolService {
     // context, …) and metadata (trigger source, test flags, …) a fresh
     // `run.start` would. Read them leniently — same posture as
     // `normalizeRunStart`.
+    // `update` / `goto` are the optional state mutation and directed jump
+    // applied in the same superstep as the resume (`InputRespondOne` /
+    // `InputRespondMany`). The SDK's `respond({ update, goto })` forwards them
+    // on the `input.respond` command; they are folded into
+    // `Command(resume, update, goto)` by `createOrResumeRun`. Read leniently
+    // (update: object or [key, value][] tuples; goto: node name, Send object,
+    // or a list of either) — same posture as `config` / `metadata`.
+    const update =
+      isRecord(rawParams.update) || Array.isArray(rawParams.update)
+        ? (rawParams.update as RunCommand["update"])
+        : undefined;
+    const goto =
+      typeof rawParams.goto === "string" ||
+      Array.isArray(rawParams.goto) ||
+      isRecord(rawParams.goto)
+        ? (rawParams.goto as RunCommand["goto"])
+        : undefined;
+
     await this.createOrResumeRun(record, {
       assistant_id: record.assistantId,
       input: resumeInput,
+      update,
+      goto,
       config: isRecord(rawParams.config) ? rawParams.config : undefined,
       metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
     });
@@ -450,12 +484,22 @@ export class ProtocolService {
         thread_id: record.threadId,
       },
     };
+    const userId = applyAuthToRunConfig(runConfig, record.auth);
 
     const runPayload = {
       assistant_id: assistantId,
       input: isResume ? null : params.input,
       command: isResume
-        ? ({ resume: params.input } satisfies RunCommand)
+        ? ({
+            resume: params.input,
+            // Apply an optional state update and/or directed jump in the
+            // same superstep as the resume (HITL "push card into state +
+            // resume" flows, or resume-and-redirect). Mapped straight onto
+            // LangGraph's `Command(resume, update, goto)`, so the resumed
+            // run produces a single checkpoint reflecting all of them.
+            ...(params.update != null ? { update: params.update } : {}),
+            ...(params.goto != null ? { goto: params.goto } : {}),
+          } satisfies RunCommand)
         : undefined,
       config: runConfig,
       metadata: params.metadata,
@@ -488,6 +532,7 @@ export class ProtocolService {
       },
       {
         threadId: record.threadId,
+        userId,
         metadata: runPayload.metadata,
         status: "pending",
         multitaskStrategy: runPayload.multitask_strategy,

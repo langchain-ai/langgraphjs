@@ -25,6 +25,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   deltaChannelsToSnapshot,
+  exitDeltaTaskId,
   isDeltaChannel,
 } from "../channels/base.js";
 import type {
@@ -399,6 +400,17 @@ export class PregelLoop {
       }
     );
     this.checkpointerPromises.add(tracked);
+  }
+
+  /**
+   * Wait for persistence work scheduled by this run up to this point.
+   *
+   * Taking a snapshot keeps the barrier scoped to the completed superstep:
+   * persistence scheduled later cannot extend it, while failures from the
+   * captured work are propagated at the superstep boundary.
+   */
+  protected async _awaitCheckpointerPromises(): Promise<void> {
+    await Promise.all([...this.checkpointerPromises]);
   }
 
   store?: AsyncBatchedStore;
@@ -1004,6 +1016,12 @@ export class PregelLoop {
       // attached `checkpoint` envelope on the values event points at
       // the fork target that captures this superstep's final state.
       await this._putCheckpoint({ source: "loop" });
+      if (this.durability === "sync") {
+        // Task writes are persisted as tasks finish, while the checkpoint is
+        // scheduled above. Do not prepare the next superstep until all
+        // persistence caused by this completed superstep has settled.
+        await this._awaitCheckpointerPromises();
+      }
       this._emitValuesWithCheckpointMeta(valuesOutput);
       // after execution, check if we should interrupt
       if (
@@ -1919,7 +1937,7 @@ export class PregelLoop {
       group.push([ch, v]);
     }
     for (const { key, step, tid } of order) {
-      const synthTid = `${String(step).padStart(8, "0")}-${tid}`;
+      const synthTid = exitDeltaTaskId(step, tid);
       this._trackCheckpointerPromise(
         this.checkpointer.putWrites(
           anchorWriteConfig,

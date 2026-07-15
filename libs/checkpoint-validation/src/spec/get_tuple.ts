@@ -248,6 +248,98 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
         });
       });
 
+      describe("channels carried over from an ancestor checkpoint", () => {
+        let carryOverThreadId: string;
+        let childReconstructed: CheckpointTuple | undefined;
+        let latestReconstructed: CheckpointTuple | undefined;
+
+        beforeAll(async () => {
+          carryOverThreadId = uuid6(3);
+          const parentId = uuid6(3);
+          const childId = uuid6(3);
+
+          // Parent writes both `messages` (v1) and `stepCount` (v1).
+          const parent: CheckpointTuple = {
+            config: {
+              configurable: {
+                thread_id: carryOverThreadId,
+                checkpoint_ns,
+                checkpoint_id: parentId,
+              },
+            },
+            checkpoint: {
+              v: 4,
+              id: parentId,
+              ts: new Date().toISOString(),
+              channel_values: { messages: ["hi"], stepCount: 1 },
+              channel_versions: { messages: 1, stepCount: 1 },
+              versions_seen: { "": { someChannel: 1 } },
+            },
+            metadata: { source: "loop", step: 0, parents: {} },
+          };
+
+          // Child writes ONLY `stepCount` (bumped to v2). `messages` carries
+          // over from the parent at v1 and is intentionally absent from the
+          // child's `newVersions` — exactly the shape produced by a node that
+          // doesn't touch the `messages` channel.
+          const child: CheckpointTuple = {
+            config: {
+              configurable: {
+                thread_id: carryOverThreadId,
+                checkpoint_ns,
+                checkpoint_id: childId,
+              },
+            },
+            checkpoint: {
+              v: 4,
+              id: childId,
+              ts: new Date().toISOString(),
+              channel_values: { messages: ["hi"], stepCount: 3 },
+              channel_versions: { messages: 1, stepCount: 2 },
+              versions_seen: { "": { someChannel: 1 } },
+            },
+            metadata: { source: "loop", step: 1, parents: {} },
+            parentConfig: {
+              configurable: {
+                thread_id: carryOverThreadId,
+                checkpoint_ns,
+                checkpoint_id: parentId,
+              },
+            },
+          };
+
+          const stored = putTuples(checkpointer, [
+            {
+              tuple: parent,
+              writes: [],
+              newVersions: { messages: 1, stepCount: 1 },
+            },
+            { tuple: child, writes: [], newVersions: { stepCount: 2 } },
+          ]);
+
+          await stored.next(); // parent
+          childReconstructed = (await stored.next()).value;
+
+          latestReconstructed = await checkpointer.getTuple({
+            configurable: { thread_id: carryOverThreadId, checkpoint_ns },
+          });
+        });
+
+        it("reconstructs channels written by an ancestor but not the latest node", () => {
+          expect(childReconstructed?.checkpoint.channel_values).toEqual({
+            messages: ["hi"],
+            stepCount: 3,
+          });
+        });
+
+        it("reconstructs carried-over channels when loading the latest checkpoint", () => {
+          expect(latestReconstructed?.checkpoint.channel_values).toEqual({
+            messages: ["hi"],
+            stepCount: 3,
+          });
+        });
+      });
+
       it_skipForSomeModules(initializer.checkpointerName, {
         "@langchain/langgraph-checkpoint-mongodb":
           "MongoDBSaver never stored pending sends",

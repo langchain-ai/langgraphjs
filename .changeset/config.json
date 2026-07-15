@@ -19,7 +19,10 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@langchain/langgraph-benchmark"
+    "@langchain/langgraph-benchmark",
+    "langgraph",
+    "@example/*",
+    "@examples/*"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true

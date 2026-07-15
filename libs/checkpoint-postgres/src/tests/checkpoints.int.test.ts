@@ -10,6 +10,7 @@ import pg from "pg";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
 import { getMigrations } from "../migrations.js";
+import { getTablesWithSchema } from "../sql.js";
 
 const { Pool } = pg;
 
@@ -532,6 +533,55 @@ describe.each([
     expect(
       checkpointTuples[0].checkpoint.channel_versions[TASKS]
     ).toBeDefined();
+  });
+
+  it("should JSON.stringify when referenced from runnable configurable", () => {
+    expect(() =>
+      JSON.stringify({
+        configurable: { __pregel_checkpointer: postgresSaver },
+      })
+    ).not.toThrow();
+    expect(
+      JSON.stringify({
+        configurable: { __pregel_checkpointer: postgresSaver },
+      })
+    ).toContain("[PostgresSaver]");
+  });
+
+  it("should default missing versions_seen when loading a checkpoint", async () => {
+    const threadId = "missing-versions-seen";
+    const checkpointId = uuid6(3);
+    const pool = new Pool({ connectionString: currentDbConnectionString });
+    const tables = getTablesWithSchema(schema ?? "public");
+    try {
+      await pool.query(
+        `INSERT INTO ${tables.checkpoints}
+          (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          threadId,
+          "",
+          checkpointId,
+          null,
+          {
+            v: 4,
+            id: checkpointId,
+            ts: new Date().toISOString(),
+            channel_versions: { messages: 1 },
+          },
+          { source: "input", step: 0, parents: {} },
+        ]
+      );
+
+      const tuple = await postgresSaver.getTuple({
+        configurable: { thread_id: threadId },
+      });
+
+      expect(tuple?.checkpoint.versions_seen).toEqual({});
+      expect(tuple?.checkpoint.channel_versions).toEqual({ messages: 1 });
+    } finally {
+      await pool.end();
+    }
   });
 });
 

@@ -38,6 +38,8 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
       apiUrl: PROXIED_API_URL,
       threadId: THREAD_ID,
       fetch,
+      // Fail-fast mock: custom fetch keeps reconnect on by default.
+      maxReconnectAttempts: 0,
     });
 
     const handle = transport.openEventStream({ channels: ["values"] });
@@ -310,5 +312,112 @@ describe("ProtocolSseTransportAdapter AsyncCaller", () => {
     expect(callSpy.mock.calls.length).toBe(callsAfterCommand);
 
     await transport.close();
+  });
+});
+
+describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
+  it("reconnects after a mid-stream failure when a custom auth fetch is supplied", async () => {
+    let streamOpens = 0;
+    const onReconnect = vi.fn();
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        // First open fails after headers — auth-shim browsers hit the same
+        // class of transport error (QUIC / idle proxy drop).
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"e1"}\n\n'
+                  )
+                );
+                // Defer the failure so e1 can flush through the SSE decoder
+                // before the reconnect loop starts.
+                setTimeout(() => {
+                  controller.error(
+                    new TypeError("net::ERR_QUIC_PROTOCOL_ERROR")
+                  );
+                }, 10);
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "text/event-stream" },
+            }
+          )
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":2,"event_id":"e2"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as unknown as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string; seq?: number }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string; seq?: number });
+      if (received.some((m) => m.event_id === "e2")) break;
+    }
+
+    expect(received.map((m) => m.event_id)).toContain("e2");
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(streamOpens).toBe(2);
+
+    await transport.close();
+  });
+
+  it("keeps reconnect disabled when maxReconnectAttempts is explicitly 0", async () => {
+    const sentinel = new TypeError("net::ERR_QUIC_PROTOCOL_ERROR");
+    let streamOpens = 0;
+    const fetchImpl = vi.fn(() => {
+      streamOpens += 1;
+      return Promise.reject(sentinel);
+    }) as unknown as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await expect(handle.ready).rejects.toBe(sentinel);
+    expect(streamOpens).toBe(1);
+    handle.close();
   });
 });

@@ -3,7 +3,9 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   type Checkpoint,
   type CheckpointTuple,
+  BaseCheckpointSaver,
   compareChannelVersions,
+  copyCheckpoint,
   deepCopy,
   emptyCheckpoint,
   maxChannelVersion,
@@ -83,6 +85,49 @@ describe("Base", () => {
     // Check if the nested objects in the array are also deep copied
     expect(copiedArr[0]).toEqual(arr[0]);
     expect(copiedArr[0]).not.toBe(arr[0]);
+  });
+
+  it("copyCheckpoint defaults missing channel maps to empty objects", () => {
+    const partial = {
+      v: 4,
+      id: uuid6(0),
+      ts: "2024-04-19T17:19:07.952Z",
+    } as Checkpoint;
+
+    expect(copyCheckpoint(partial)).toEqual({
+      v: 4,
+      id: partial.id,
+      ts: partial.ts,
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
+    });
+  });
+
+  it("BaseCheckpointSaver.toJSON avoids backend client traversal", () => {
+    class TestSaver extends BaseCheckpointSaver {
+      backend = { timers: setTimeout(() => {}, 10_000) };
+
+      async getTuple() {
+        return undefined;
+      }
+
+      async *list() {}
+
+      async put(config: RunnableConfig) {
+        return config;
+      }
+
+      async putWrites() {}
+
+      async deleteThread() {}
+    }
+
+    const saver = new TestSaver();
+    expect(JSON.stringify({ configurable: { checkpointer: saver } })).toBe(
+      '{"configurable":{"checkpointer":"[TestSaver]"}}'
+    );
+    clearTimeout(saver.backend.timers);
   });
 });
 

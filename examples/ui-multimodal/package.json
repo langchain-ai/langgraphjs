@@ -1,7 +1,7 @@
 {
   "name": "@examples/ui-multimodal",
   "private": true,
-  "version": "0.0.26",
+  "version": "0.0.29",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n agent,web -c magenta,cyan \"npx --no-install langgraphjs dev --no-browser --port 2024\" \"vite\"",
@@ -14,10 +14,10 @@
   "dependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.4.7",
+    "@langchain/openai": "^1.5.3",
     "@langchain/react": "workspace:*",
-    "deepagents": "https://pkg.pr.new/deepagents@91d9510",
-    "langchain": "1.4.4",
+    "deepagents": "^1.10.5",
+    "langchain": "1.5.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zod": "^4.3.6"
@@ -26,9 +26,9 @@
     "@eslint/js": "^9.39.4",
     "@langchain/langgraph-cli": "workspace:*",
     "@types/node": "^24.12.2",
-    "@types/react": "^19.2.16",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",

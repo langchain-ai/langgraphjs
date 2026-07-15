@@ -18,12 +18,21 @@ import type {
   AgentServerAdapter,
   TransportAdapter,
 } from "../client/stream/transport.js";
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../utils/reconnect.js";
+import { DEFAULT_IDLE_RECONNECT } from "../utils/stream.js";
 import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
-import type { Channel, Event } from "@langchain/protocol";
+import type { Channel, Event, Goto } from "@langchain/protocol";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import type { StreamStore } from "./store.js";
+
+export {
+  DEFAULT_IDLE_RECONNECT,
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_MESSAGES_KEY,
+};
 
 /** Why a run's active streaming phase ended. */
 export type RunExecutionReason =
@@ -71,6 +80,32 @@ export interface StreamRespondAllOptions<
     [key: string]: unknown;
   };
   metadata?: Record<string, unknown>;
+  /**
+   * State update applied in the **same superstep** as the resume, mapped to
+   * LangGraph's `Command(update=...)`. The resumed run produces a single
+   * checkpoint reflecting both the resume value and this update — no separate
+   * `updateState` write, no intermediate checkpoint, no flicker.
+   *
+   * The canonical use case is a HITL flow where the UI pushes the interrupt
+   * card (e.g. an `AIMessage`) into state at the moment it answers the
+   * interrupt, so the card is committed before the resumed tool runs and stays
+   * rendered without the backend re-emitting it.
+   *
+   * Accepts a state-keys object (shallow-merged via the graph's channel
+   * reducers) or a list of `[key, value]` entries.
+   *
+   * Messages under the configured `messagesKey` may be either plain
+   * message dicts (`{ type: "ai", content: "…" }`) or `@langchain/core`
+   * `BaseMessage` instances (`new AIMessage("…")`) — instances are
+   * serialized to dicts before transport, exactly like `submit()`.
+   */
+  update?: Record<string, unknown> | [string, unknown][];
+  /**
+   * Directed jump applied in the **same superstep** as the resume, mapped to
+   * LangGraph's `Command(goto=...)`. A target node name, a `Send`
+   * (`{ node, input }`), or a list mixing the two for fan-out.
+   */
+  goto?: Goto;
 }
 
 /**
@@ -132,7 +167,7 @@ export interface UseStreamCommonOptions<
    */
   onCompleted?: (info: RunCompletedInfo) => void;
   initialValues?: StateType;
-  /** State key holding the message array. Defaults to `"messages"`. */
+  /** State key holding the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
   /** Headless tool implementations; auto-resumes matching interrupts. */
   tools?: AnyHeadlessToolImplementation[];
@@ -188,6 +223,22 @@ export interface AgentServerOptions<
   fetch?: typeof fetch;
   /** Optional `WebSocket` factory for the built-in WS transport. */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in transports only: max reconnect attempts after an unexpected
+   * disconnect. Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Independent of whether {@link fetch} is set.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to
+   * {@link DEFAULT_IDLE_RECONNECT}.
+   * Pass `0` to disable.
+   */
+  streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
+  /** Built-in transports only: delay before each reconnect attempt. */
+  reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
+  /** Built-in transports only: invoked before each reconnect attempt. */
+  onReconnect?: ThreadStreamOptions["onReconnect"];
 }
 
 /**
@@ -218,6 +269,10 @@ export interface CustomAdapterOptions<
   defaultHeaders?: never;
   fetch?: never;
   webSocketFactory?: never;
+  maxReconnectAttempts?: never;
+  streamIdleReconnect?: never;
+  reconnectDelayMs?: never;
+  onReconnect?: never;
 }
 
 /**
@@ -316,6 +371,23 @@ export interface StreamControllerOptions<
   fetch?: typeof fetch;
   /** Optional `WebSocket` factory forwarded to the built-in WS transport. */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in transports only: max reconnect attempts after an unexpected
+   * disconnect. Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Independent of whether {@link fetch} is set — auth shims keep reconnect
+   * enabled. Pass `0` to disable.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to
+   * {@link DEFAULT_IDLE_RECONNECT}.
+   * Pass `0` to disable. See {@link ThreadStreamOptions.streamIdleReconnect}.
+   */
+  streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
+  /** Built-in transports only: delay before each reconnect attempt. */
+  reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
+  /** Built-in transports only: invoked before each reconnect attempt. */
+  onReconnect?: ThreadStreamOptions["onReconnect"];
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
   /**
@@ -332,7 +404,7 @@ export interface StreamControllerOptions<
   onCompleted?: (info: RunCompletedInfo) => void;
   /** Initial state for `root.values` before hydration lands. */
   initialValues?: StateType;
-  /** Key inside `values` that holds the message array. Defaults to `"messages"`. */
+  /** Key inside `values` that holds the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
   /**
    * Optimistic UI for `submit()`. Defaults to `true`. See

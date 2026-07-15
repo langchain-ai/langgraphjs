@@ -1,5 +1,13 @@
 # @langchain/langgraph-checkpoint
 
+## 1.1.3
+
+### Patch Changes
+
+- [#2566](https://github.com/langchain-ai/langgraphjs/pull/2566) [`091a46f`](https://github.com/langchain-ai/langgraphjs/commit/091a46f32ddd3a85ee89e35fb9ea953dfc4cf8b4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-checkpoint-postgres): prevent createAgent failures with PostgresSaver
+
+  Add BaseCheckpointSaver.toJSON() so ConfigurableModel can stringify runnable config without traversing pg Pool timers, and default missing checkpoint maps on load/copy so resume no longer crashes on undefined versions_seen. Closes [#1808](https://github.com/langchain-ai/langgraphjs/issues/1808).
+
 ## 1.1.2
 
 ### Patch Changes

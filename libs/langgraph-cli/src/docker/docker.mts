@@ -276,6 +276,16 @@ export async function configToDocker(
     watch: boolean;
     dockerCommand?: string;
     onWorkingDir?: (workingDir: string | undefined) => void;
+    /**
+     * Override the package-manager install step (JS projects only). Mirrors the
+     * Python CLI's `--install-command`.
+     */
+    installCommand?: string;
+    /**
+     * Override the build step (JS projects only). Mirrors the Python CLI's
+     * `--build-command`.
+     */
+    buildCommand?: string;
   }
 ) {
   // figure out the package manager used here
@@ -358,7 +368,11 @@ export async function configToDocker(
 
   let installCmd = "npm i";
 
-  if (yarn) {
+  if (options?.installCommand) {
+    // Explicit override (JS projects only); takes precedence over lockfile
+    // auto-detection. Mirrors the Python CLI's `--install-command`.
+    installCmd = options.installCommand;
+  } else if (yarn) {
     installCmd = "yarn install";
   } else if (pnpm) {
     installCmd = "pnpm i --frozen-lockfile";
@@ -367,6 +381,10 @@ export async function configToDocker(
   } else if (bun) {
     installCmd = "bun i";
   }
+
+  const buildStep = options?.buildCommand
+    ? `RUN ${options.buildCommand}`
+    : `RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts`;
 
   const lines = [
     `FROM ${getBaseImage(config)}`,
@@ -385,12 +403,7 @@ export async function configToDocker(
     !!config.auth && `ENV LANGGRAPH_AUTH='${JSON.stringify(config.auth)}'`,
     !!config.http && `ENV LANGGRAPH_HTTP='${JSON.stringify(config.http)}'`,
     !!localDeps.workingDir && `WORKDIR ${localDeps.workingDir}`,
-    "node_version" in config
-      ? [
-          `RUN ${installCmd}`,
-          `RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts`,
-        ]
-      : undefined,
+    "node_version" in config ? [`RUN ${installCmd}`, buildStep] : undefined,
   ];
 
   if (options?.watch && (localDeps.workingDir || localDeps.reloadDir)) {
@@ -484,7 +497,18 @@ export async function configToCompose(
   const extendEnvIgnore = new Set<string>();
   if (typeof config.env === "string") {
     // try to parse out the env file
-    const envPath = path.resolve(path.dirname(configPath), config.env);
+    const projectRoot = path.dirname(configPath);
+    const envPath = path.resolve(projectRoot, config.env);
+
+    // Keep the config-supplied env path contained within the project so a
+    // malicious langgraph.json can't use `../` or an absolute path to read
+    // files outside the project (and surface them to docker compose).
+    const rel = path.relative(projectRoot, envPath);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(
+        `env file '${config.env}' specified in langgraph.json is outside the project directory.`
+      );
+    }
 
     try {
       const envFileKeys = (await fs.readFile(envPath, "utf-8"))

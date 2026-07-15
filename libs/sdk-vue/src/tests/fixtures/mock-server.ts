@@ -609,9 +609,72 @@ const headlessToolAgent = createAgent({
   checkpointer,
 }) as unknown as AnyPregel;
 
+// --- HITL card flow: interrupt raised from inside a tool ---
+// Mirrors a customer pattern where the interrupt carries an AIMessage
+// "card" (in `response_metadata.cards`) the frontend renders validation
+// buttons from. The tool's real work is slow, so the frontend pushes the
+// card into state alongside the resume (`respond(decision, { update })`) —
+// the backend never adds it — so the card stays visible without flicker.
+const reviewActionTool = tool(
+  async ({ toolArg }: { toolArg: string }) => {
+    const card = {
+      kind: "tool_validation",
+      action: toolArg,
+      buttons: ["approve", "reject"],
+    };
+    const response = interrupt({
+      type: "ai",
+      content: `Please review the "${toolArg}" action.`,
+      response_metadata: { cards: card },
+    });
+    const approved =
+      response === true ||
+      (response != null &&
+        typeof response === "object" &&
+        (response as { approved?: unknown }).approved === true);
+    if (!approved) {
+      return "User has rejected the toolcall";
+    }
+    // Long-running business logic — the FE-pushed card must stay in state
+    // for the entire duration (the no-flicker guarantee).
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    return `Executed "${toolArg}".`;
+  },
+  {
+    name: "review_action",
+    description: "Perform a sensitive action that requires human approval.",
+    schema: z.object({ toolArg: z.string() }),
+  },
+);
+
+const interruptCardModel = new FakeToolCallingModel({
+  responses: [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        {
+          name: "review_action",
+          args: { toolArg: "delete_db" },
+          id: "call-review-1",
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage("Done."),
+  ],
+});
+
+const interruptCardGraph = createAgent({
+  model: interruptCardModel,
+  tools: [reviewActionTool],
+  systemPrompt: "You are a deterministic approval agent for protocol testing.",
+  checkpointer,
+}) as unknown as AnyPregel;
+
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
+  interrupt_card_graph: interruptCardGraph,
   multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
   parentAgent,
   removeMessageAgent,

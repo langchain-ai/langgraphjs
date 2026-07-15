@@ -21,6 +21,7 @@ import type {
   ThreadStreamOptions,
   ThreadStreamTransportKind,
 } from "../stream/types.js";
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../../utils/reconnect.js";
 import { ProtocolSseTransportAdapter } from "../stream/transport/http.js";
 import { ProtocolWebSocketTransportAdapter } from "../stream/transport/websocket.js";
 import type { TransportAdapter } from "../stream/transport.js";
@@ -502,7 +503,8 @@ export class ThreadsClient<
       const transportKind: ThreadStreamTransportKind =
         options.transport ??
         (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
-      const maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+      const maxReconnectAttempts =
+        options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
 
       /**
        * Common options for both transports.
