@@ -396,6 +396,15 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
     expect(streamOpens).toBe(2);
 
+    const reconnectBodies = fetchImpl.mock.calls
+      .map((call) => call[1] as RequestInit | undefined)
+      .filter((init) => init?.body != null)
+      .map((init) => JSON.parse(String(init!.body)) as Record<string, unknown>);
+    expect(reconnectBodies.length).toBeGreaterThanOrEqual(2);
+    for (const body of reconnectBodies) {
+      expect(body).not.toHaveProperty("since");
+    }
+
     await transport.close();
   });
 

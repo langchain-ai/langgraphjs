@@ -252,12 +252,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
-    let resumeAfterSeq =
-      typeof (params as SubscribeParams & { since?: unknown }).since ===
-      "number"
-        ? (params as SubscribeParams & { since: number }).since
-        : undefined;
-
     let readySettled = false;
 
     const startStream = async () => {
@@ -265,6 +259,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
       while (!ac.signal.aborted && !this.closed) {
         try {
+          // Do not send `since` on SSE (re)connect. Protocol `seq` is
+          // connection-scoped: a new POST gets a fresh session that
+          // re-numbers Redis history from 1, so a previous connection's
+          // `since` filters out the entire replay (heartbeats only).
+          // Full history is re-delivered; the client dedups by durable
+          // `event_id`. A durable cursor can replace this later.
           const response = await this.request(
             streamUrl,
             {
@@ -277,7 +277,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 channels: params.channels,
                 ...(params.namespaces ? { namespaces: params.namespaces } : {}),
                 ...(params.depth != null ? { depth: params.depth } : {}),
-                ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
               }),
               signal: ac.signal,
             },
@@ -301,7 +300,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           // decoding) so it can reset on any line and recognise `:` keep-alive
           // heartbeats to drive `"auto"` mode. On idle it errors the stream,
           // which the catch below treats like any other disconnect and
-          // reconnects with `since` from the last seen sequence.
+          // re-opens the SSE without a `since` cursor.
           const enableIdle =
             this.idleReconnect === "auto" ||
             (typeof this.idleReconnect === "number" && this.idleReconnect > 0);
@@ -319,14 +318,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              const msg = event.data as Message & {
-                seq?: number;
-                method?: string;
-              };
-              if (typeof msg.seq === "number") {
-                resumeAfterSeq = msg.seq;
-              }
-              streamQueue.push(msg);
+              streamQueue.push(event.data as Message);
             }
           }
           streamQueue.close();
