@@ -17,7 +17,7 @@
     "build": "pnpm turbo build:internal --filter=@langchain/langgraph",
     "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph",
     "clean": "rm -rf dist/ dist-cjs/ .turbo/",
-    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:eslint": "oxlint src/",
     "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
     "prepublish": "pnpm build",
     "test": "vitest run",
