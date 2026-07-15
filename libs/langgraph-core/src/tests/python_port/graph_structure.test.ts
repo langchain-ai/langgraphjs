@@ -2626,7 +2626,7 @@ describe("Graph Structure Tests (Python port)", () => {
     ]);
   });
 
-  it("should deduplicate duplicate edges in StateGraph", () => {
+  it("should throw when adding duplicate edges", () => {
     const StateAnnotation = Annotation.Root({
       value: Annotation<string>({
         reducer: (_, b) => b,
@@ -2642,20 +2642,17 @@ describe("Graph Structure Tests (Python port)", () => {
     // Add entry point
     graph.addEdge(START, "node_a");
 
-    // Add string edge twice
     graph.addEdge("node_a", "node_b");
-    graph.addEdge("node_a", "node_b");
+    expect(() => graph.addEdge("node_a", "node_b")).toThrow(
+      "Edge from `node_a` to `node_b` already exists."
+    );
 
-    // Add array edge (waiting edges) twice
     graph.addEdge(["node_a", "node_b"], "node_c");
-    graph.addEdge(["node_a", "node_b"], "node_c");
+    expect(() => graph.addEdge(["node_a", "node_b"], "node_c")).toThrow(
+      "Edge from [node_a, node_b] to `node_c` already exists."
+    );
 
-    // Verify sizes: edges has START->node_a and node_a->node_b
     expect(graph.edges.size).toBe(2);
     expect(graph.waitingEdges.size).toBe(1);
-
-    // Verify compilation is clean and works
-    const compiled = graph.compile();
-    expect(compiled).toBeDefined();
   });
 });

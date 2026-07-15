@@ -423,7 +423,9 @@ export class Graph<
         ([start, end]) => start === startKey && end === endKey
       )
     ) {
-      return this;
+      throw new Error(
+        `Edge from \`${startKey}\` to \`${endKey}\` already exists.`
+      );
     }
     if (
       Array.from(this.edges).some(([start]) => start === startKey) &&

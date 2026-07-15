@@ -415,7 +415,6 @@ export class StateGraph<
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
-  // waitingEdges are deduplicated during addEdge to match python version
   waitingEdges: Set<[N[], N]> = new Set();
 
   /** @internal */
@@ -1276,7 +1275,9 @@ export class StateGraph<
       }
     );
     if (alreadyExists) {
-      return this;
+      throw new Error(
+        `Edge from [${startKey.join(", ")}] to \`${endKey}\` already exists.`
+      );
     }
 
     this.waitingEdges.add([startKey, endKey]);
