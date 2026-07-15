@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SubscribeParams } from "@langchain/protocol";
 
 import { AsyncCaller } from "../../../utils/async_caller.js";
 import { ProtocolSseTransportAdapter } from "./http.js";
@@ -9,6 +10,20 @@ import {
   createFetchRecorder,
   protocolSuccessResponse,
 } from "./test-helpers.js";
+
+type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
+
+function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
+  return fetchImpl.mock.calls
+    .filter((call: unknown[]) => String(call[0]).includes("/stream/events"))
+    .map((call: unknown[]) => {
+      const init = call[1] as RequestInit | undefined;
+      return init?.body != null
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : null;
+    })
+    .filter((body): body is Record<string, unknown> => body != null);
+}
 
 describe("ProtocolSseTransportAdapter URL resolution", () => {
   it("preserves apiUrl path prefix for protocol commands", async () => {
@@ -371,7 +386,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
           }
         )
       );
-    }) as unknown as typeof fetch;
+    }) as MockFetch;
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",
@@ -396,14 +411,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
     expect(streamOpens).toBe(2);
 
-    const streamBodies = fetchImpl.mock.calls
-      .filter((call) => String(call[0]).includes("/stream/events"))
-      .map((call) =>
-        JSON.parse(String((call[1] as RequestInit).body)) as Record<
-          string,
-          unknown
-        >
-      );
+    const streamBodies = streamEventBodies(fetchImpl);
     expect(streamBodies).toHaveLength(2);
     expect(streamBodies[0]).not.toHaveProperty("since");
     expect(streamBodies[1]).not.toHaveProperty("since");
@@ -461,7 +469,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
           }
         )
       );
-    }) as unknown as typeof fetch;
+    }) as MockFetch;
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",
@@ -475,7 +483,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     const handle = transport.openEventStream({
       channels: ["values"],
       since: 5,
-    } as { channels: string[]; since: number });
+    } as SubscribeParams & { since: number });
     await handle.ready;
 
     const received: Array<{ event_id?: string }> = [];
@@ -484,14 +492,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       if (received.some((m) => m.event_id === "e1")) break;
     }
 
-    const streamBodies = fetchImpl.mock.calls
-      .filter((call) => String(call[0]).includes("/stream/events"))
-      .map((call) =>
-        JSON.parse(String((call[1] as RequestInit).body)) as Record<
-          string,
-          unknown
-        >
-      );
+    const streamBodies = streamEventBodies(fetchImpl);
     expect(streamBodies).toHaveLength(2);
     expect(streamBodies[0]).toMatchObject({ since: 5 });
     expect(streamBodies[1]).not.toHaveProperty("since");
@@ -531,7 +532,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
           }
         )
       );
-    }) as unknown as typeof fetch;
+    }) as MockFetch;
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",
@@ -545,7 +546,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     const handle = transport.openEventStream({
       channels: ["values"],
       since: 5,
-    } as { channels: string[]; since: number });
+    } as SubscribeParams & { since: number });
     await handle.ready;
 
     const received: Array<{ event_id?: string }> = [];
@@ -554,18 +555,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       if (received.some((m) => m.event_id === "e6")) break;
     }
 
-    const streamBodies = fetchImpl.mock.calls
-      .filter((call) => String(call[0]).includes("/stream/events"))
-      .map((call) => {
-        const init = call[1] as RequestInit | undefined;
-        return init?.body != null
-          ? (JSON.parse(String(init.body)) as Record<string, unknown>)
-          : null;
-      })
-      .filter((body): body is Record<string, unknown> => body != null);
-    // First open may fail before a body is attached; only successful POSTs
-    // and retries that include a body are asserted. Both attempts that
-    // reach JSON body construction must still carry the caller cursor.
+    const streamBodies = streamEventBodies(fetchImpl);
     expect(streamBodies.length).toBeGreaterThanOrEqual(1);
     for (const body of streamBodies) {
       expect(body).toMatchObject({ since: 5 });
@@ -581,7 +571,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     const fetchImpl = vi.fn(() => {
       streamOpens += 1;
       return Promise.reject(sentinel);
-    }) as unknown as typeof fetch;
+    }) as MockFetch;
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",
