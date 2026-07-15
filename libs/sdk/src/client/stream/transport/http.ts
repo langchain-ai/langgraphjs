@@ -252,7 +252,13 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
-    let resumeAfterSeq =
+    // Honor an explicit caller `since` until the stream has connected
+    // once. Do not advance it from observed `seq` values — those are
+    // connection-local, and carrying them onto a post-connect reconnect
+    // POST filters out the full Redis replay (heartbeats only). Pre-ready
+    // retries still send the caller cursor; only after a successful open
+    // do reconnects omit `since` and rely on durable `event_id` dedup.
+    const initialSince =
       typeof (params as SubscribeParams & { since?: unknown }).since ===
       "number"
         ? (params as SubscribeParams & { since: number }).since
@@ -277,7 +283,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 channels: params.channels,
                 ...(params.namespaces ? { namespaces: params.namespaces } : {}),
                 ...(params.depth != null ? { depth: params.depth } : {}),
-                ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
+                ...(!readySettled && initialSince != null
+                  ? { since: initialSince }
+                  : {}),
               }),
               signal: ac.signal,
             },
@@ -301,7 +309,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           // decoding) so it can reset on any line and recognise `:` keep-alive
           // heartbeats to drive `"auto"` mode. On idle it errors the stream,
           // which the catch below treats like any other disconnect and
-          // reconnects with `since` from the last seen sequence.
+          // re-opens the SSE without carrying a connection-local `since`.
           const enableIdle =
             this.idleReconnect === "auto" ||
             (typeof this.idleReconnect === "number" && this.idleReconnect > 0);
@@ -319,14 +327,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              const msg = event.data as Message & {
-                seq?: number;
-                method?: string;
-              };
-              if (typeof msg.seq === "number") {
-                resumeAfterSeq = msg.seq;
-              }
-              streamQueue.push(msg);
+              streamQueue.push(event.data as Message);
             }
           }
           streamQueue.close();

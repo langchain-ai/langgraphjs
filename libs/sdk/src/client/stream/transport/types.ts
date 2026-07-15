@@ -57,8 +57,8 @@ export interface ProtocolSseTransportOptions {
    * Idle-reconnect policy guarding against half-open sockets that hang
    * indefinitely with no error or close (e.g. a platform revision rollover
    * that hard-kills the serving pod). On idle the underlying read is aborted,
-   * which the reconnect loop treats like any other disconnect, re-subscribing
-   * with `since` from the last seen sequence.
+   * which the reconnect loop treats like any other disconnect and re-opens
+   * the SSE without carrying a connection-local `since` (`seq` resets).
    *
    * - `"auto"` (`DEFAULT_IDLE_RECONNECT` from `utils/stream`): arm only once
    *   the server's SSE keep-alive heartbeats (LangGraph Platform:
