@@ -79,16 +79,14 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
     this.asyncCaller = options.asyncCaller;
-    // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
-    this.maxReconnectAttempts =
-      options.fetch != null ? 0 : (options.maxReconnectAttempts ?? 5);
-    // Custom fetch (tests/mocks) also disables the idle watchdog, matching the
-    // no-auto-reconnect policy above — a tripped watchdog would have nothing to
-    // reconnect to and would surface spurious errors in those harnesses.
-    // Otherwise default to heartbeat-adaptive `"auto"`, which stays dormant
-    // unless the server actually emits keep-alive heartbeats.
-    this.idleReconnect =
-      options.fetch != null ? null : (options.idleReconnect ?? "auto");
+    // Custom `fetch` (auth shims, proxies) must keep reconnect enabled — that is
+    // the production path for tenant-aware browsers. Tests that need fail-fast
+    // mocks should pass `maxReconnectAttempts: 0` (and `idleReconnect: 0`)
+    // explicitly rather than relying on `fetch` presence.
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+    // Default to heartbeat-adaptive `"auto"`, which stays dormant unless the
+    // server actually emits keep-alive heartbeats. Pass `0` to disable.
+    this.idleReconnect = options.idleReconnect ?? "auto";
     this.onReconnect = options.onReconnect;
     this.reconnectDelayMs =
       options.reconnectDelayMs ?? webSocketReconnectDelayMs;

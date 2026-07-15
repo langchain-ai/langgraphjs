@@ -46,6 +46,10 @@ export interface ProtocolSseTransportOptions {
   /**
    * Maximum reconnect attempts after an unexpected SSE disconnect.
    * Defaults to 5. Set to 0 to disable automatic reconnection.
+   *
+   * Independent of whether a custom {@link ProtocolSseTransportOptions.fetch}
+   * is supplied — auth/proxy fetch wrappers keep reconnect enabled. Pass `0`
+   * explicitly in unit tests that mock a failing `fetch` and expect fail-fast.
    */
   maxReconnectAttempts?: number;
   /**
@@ -61,6 +65,9 @@ export interface ProtocolSseTransportOptions {
    *   on heartbeat-less servers.
    * - a `number`: a fixed idle window in milliseconds.
    * - `0`: disables it.
+   *
+   * Independent of custom {@link ProtocolSseTransportOptions.fetch}; pass `0`
+   * in fail-fast test harnesses.
    *
    * @see {@link IdleReconnectMode}
    */

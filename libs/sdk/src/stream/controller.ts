@@ -1571,6 +1571,10 @@ export class StreamController<
       transport: this.#options.transport,
       fetch: this.#options.fetch,
       webSocketFactory: this.#options.webSocketFactory,
+      maxReconnectAttempts: this.#options.maxReconnectAttempts,
+      streamIdleReconnect: this.#options.streamIdleReconnect,
+      reconnectDelayMs: this.#options.reconnectDelayMs,
+      onReconnect: this.#options.onReconnect,
     });
     this.registry.bind(this.#thread);
     if (deferRootPump) {

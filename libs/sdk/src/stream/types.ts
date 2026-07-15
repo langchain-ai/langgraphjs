@@ -214,6 +214,20 @@ export interface AgentServerOptions<
   fetch?: typeof fetch;
   /** Optional `WebSocket` factory for the built-in WS transport. */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in transports only: max reconnect attempts after an unexpected
+   * disconnect. Defaults to 5. Independent of whether {@link fetch} is set.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to `"auto"`.
+   * Pass `0` to disable.
+   */
+  streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
+  /** Built-in transports only: delay before each reconnect attempt. */
+  reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
+  /** Built-in transports only: invoked before each reconnect attempt. */
+  onReconnect?: ThreadStreamOptions["onReconnect"];
 }
 
 /**
@@ -244,6 +258,10 @@ export interface CustomAdapterOptions<
   defaultHeaders?: never;
   fetch?: never;
   webSocketFactory?: never;
+  maxReconnectAttempts?: never;
+  streamIdleReconnect?: never;
+  reconnectDelayMs?: never;
+  onReconnect?: never;
 }
 
 /**
@@ -342,6 +360,21 @@ export interface StreamControllerOptions<
   fetch?: typeof fetch;
   /** Optional `WebSocket` factory forwarded to the built-in WS transport. */
   webSocketFactory?: (url: string) => WebSocket;
+  /**
+   * Built-in transports only: max reconnect attempts after an unexpected
+   * disconnect. Defaults to 5. Independent of whether {@link fetch} is set —
+   * auth shims keep reconnect enabled. Pass `0` to disable.
+   */
+  maxReconnectAttempts?: number;
+  /**
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to `"auto"`.
+   * Pass `0` to disable. See {@link ThreadStreamOptions.streamIdleReconnect}.
+   */
+  streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
+  /** Built-in transports only: delay before each reconnect attempt. */
+  reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
+  /** Built-in transports only: invoked before each reconnect attempt. */
+  onReconnect?: ThreadStreamOptions["onReconnect"];
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
   /**
