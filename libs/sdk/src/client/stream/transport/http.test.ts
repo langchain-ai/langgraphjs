@@ -396,14 +396,108 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
     expect(streamOpens).toBe(2);
 
-    const reconnectBodies = fetchImpl.mock.calls
-      .map((call) => call[1] as RequestInit | undefined)
-      .filter((init) => init?.body != null)
-      .map((init) => JSON.parse(String(init!.body)) as Record<string, unknown>);
-    expect(reconnectBodies.length).toBeGreaterThanOrEqual(2);
-    for (const body of reconnectBodies) {
-      expect(body).not.toHaveProperty("since");
+    const streamBodies = fetchImpl.mock.calls
+      .filter((call) => String(call[0]).includes("/stream/events"))
+      .map((call) =>
+        JSON.parse(String((call[1] as RequestInit).body)) as Record<
+          string,
+          unknown
+        >
+      );
+    expect(streamBodies).toHaveLength(2);
+    expect(streamBodies[0]).not.toHaveProperty("since");
+    expect(streamBodies[1]).not.toHaveProperty("since");
+
+    await transport.close();
+  });
+
+  it("honors caller since on the initial open but omits it on reconnect", async () => {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    'event: values\ndata: {"type":"event","method":"values","seq":6,"event_id":"e6"}\n\n'
+                  )
+                );
+                setTimeout(() => {
+                  controller.error(
+                    new TypeError("net::ERR_QUIC_PROTOCOL_ERROR")
+                  );
+                }, 10);
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "text/event-stream" },
+            }
+          )
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"e1"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as unknown as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({
+      channels: ["values"],
+      since: 5,
+    } as { channels: string[]; since: number });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (received.some((m) => m.event_id === "e1")) break;
     }
+
+    const streamBodies = fetchImpl.mock.calls
+      .filter((call) => String(call[0]).includes("/stream/events"))
+      .map((call) =>
+        JSON.parse(String((call[1] as RequestInit).body)) as Record<
+          string,
+          unknown
+        >
+      );
+    expect(streamBodies).toHaveLength(2);
+    expect(streamBodies[0]).toMatchObject({ since: 5 });
+    expect(streamBodies[1]).not.toHaveProperty("since");
+    expect(received.map((m) => m.event_id)).toEqual(
+      expect.arrayContaining(["e6", "e1"])
+    );
 
     await transport.close();
   });
