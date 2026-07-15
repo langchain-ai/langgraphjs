@@ -60,6 +60,15 @@ export type CheckpointMetadata<ExtraProperties extends object = object> = {
    * delta-channel design stabilizes.
    */
   counters_since_delta_snapshot?: Record<string, [number, number]>;
+
+  /**
+   * Version of the graph deployment that produced this checkpoint.
+   *
+   * Set by LangGraph when graph versioning is configured. Checkpointers keep
+   * this value as ordinary metadata so existing saver implementations remain
+   * compatible.
+   */
+  graph_version?: string | number;
 } & ExtraProperties;
 
 /**

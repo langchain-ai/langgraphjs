@@ -4,6 +4,45 @@ LangGraph has a built-in persistence layer, implemented through checkpointers. W
 
 ![Checkpoints](img/persistence/checkpoints.jpg)
 
+## Versioned graph deployments
+
+Long-lived threads can outlive the graph code that created them. Set
+`graphVersion` when compiling a graph and register migrations for checkpoint
+formats that are no longer compatible:
+
+```typescript
+const graph = workflow.compile({
+  checkpointer,
+  graphVersion: 2,
+  legacyGraphVersion: 1,
+  stateMigrations: [
+    {
+      from: 1,
+      to: 2,
+      migrate: (state) => {
+        const profile = state.checkpoint.channel_values.profile as {
+          name: string;
+        };
+        state.checkpoint.channel_values.profile = {
+          displayName: profile.name,
+        };
+        return state;
+      },
+    },
+  ],
+});
+```
+
+LangGraph stores the graph version in checkpoint metadata and applies each
+migration in order when resuming, reading, or updating a thread. A migration
+receives the persisted checkpoint and pending writes, so channel renames must
+update related `channel_versions` and `versions_seen` entries, resume values,
+and task payloads when needed. The checkpoint ID must not change. Checkpoints
+written before versioning require `legacyGraphVersion`; new checkpoints are
+automatically treated as current. Graphs using `DeltaChannel` fail closed
+during a version migration because the checkpointer API cannot rewrite their
+ancestor write history.
+
 ## Threads
 
 A thread is a unique ID or [thread identifier](#threads) assigned to each checkpoint saved by a checkpointer. When invoking graph with a checkpointer, you **must** specify a `thread_id` as part of the `configurable` portion of the config:

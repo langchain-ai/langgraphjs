@@ -48,6 +48,7 @@ import { StateDefinition, StateType } from "./annotation.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import type { StreamTransformer } from "../stream/types.js";
 import type { GraphNodeReturnValue } from "./types.js";
+import type { GraphVersion, StateMigration } from "../pregel/migrations.js";
 
 export interface BranchOptions<
   IO,
@@ -528,11 +529,20 @@ export class Graph<
     interruptAfter,
     name,
     transformers,
+    graphVersion,
+    legacyGraphVersion,
+    stateMigrations,
   }: {
     checkpointer?: BaseCheckpointSaver | false;
     interruptBefore?: N[] | All;
     interruptAfter?: N[] | All;
     name?: string;
+    /** Version of the graph deployment used to write checkpoints. */
+    graphVersion?: GraphVersion;
+    /** Version assigned to checkpoints created before graph versioning. */
+    legacyGraphVersion?: GraphVersion;
+    /** Migrations used to bring older checkpoints to `graphVersion`. */
+    stateMigrations?: readonly StateMigration[];
     /**
      * Stream transformer factories baked into the compiled graph.  These run
      * automatically for every `streamEvents(..., { version: "v3" })` call,
@@ -576,6 +586,9 @@ export class Graph<
       streamMode: "values",
       name,
       streamTransformers: transformers,
+      graphVersion,
+      legacyGraphVersion,
+      stateMigrations,
     });
 
     // attach nodes, edges and branches
