@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.9.27
+
+### Patch Changes
+
+- [#2606](https://github.com/langchain-ai/langgraphjs/pull/2606) [`fa4658c`](https://github.com/langchain-ai/langgraphjs/commit/fa4658c79489eb5fb3e38744c34a6f5bf2373831) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): omit carried `since` on SSE reconnect
+
+  Protocol `seq` is connection-scoped: a new `POST /stream/events` re-numbers Redis replay from 1, so advancing `since` from observed seqs and sending it after a successful open filtered out the full history (heartbeats only). An explicit caller `since` is still sent until the stream connects (including pre-ready retries); post-connect reconnects omit `since` and rely on durable `event_id` dedup.
+
 ## 1.9.26
 
 ### Patch Changes
