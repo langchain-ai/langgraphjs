@@ -601,9 +601,7 @@ export function useStream<
         streamIdleReconnect: hasCustomAdapter
           ? undefined
           : asBag.streamIdleReconnect,
-        reconnectDelayMs: hasCustomAdapter
-          ? undefined
-          : asBag.reconnectDelayMs,
+        reconnectDelayMs: hasCustomAdapter ? undefined : asBag.reconnectDelayMs,
         onReconnect: hasCustomAdapter ? undefined : asBag.onReconnect,
         onThreadId: options.onThreadId,
         onCreated: options.onCreated,

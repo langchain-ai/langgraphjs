@@ -18,12 +18,21 @@ import type {
   AgentServerAdapter,
   TransportAdapter,
 } from "../client/stream/transport.js";
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../utils/reconnect.js";
+import { DEFAULT_IDLE_RECONNECT } from "../utils/stream.js";
 import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
 import type { Channel, Event, Goto } from "@langchain/protocol";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import type { StreamStore } from "./store.js";
+
+export {
+  DEFAULT_IDLE_RECONNECT,
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_MESSAGES_KEY,
+};
 
 /** Why a run's active streaming phase ended. */
 export type RunExecutionReason =
@@ -158,7 +167,7 @@ export interface UseStreamCommonOptions<
    */
   onCompleted?: (info: RunCompletedInfo) => void;
   initialValues?: StateType;
-  /** State key holding the message array. Defaults to `"messages"`. */
+  /** State key holding the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
   /** Headless tool implementations; auto-resumes matching interrupts. */
   tools?: AnyHeadlessToolImplementation[];
@@ -216,11 +225,13 @@ export interface AgentServerOptions<
   webSocketFactory?: (url: string) => WebSocket;
   /**
    * Built-in transports only: max reconnect attempts after an unexpected
-   * disconnect. Defaults to 5. Independent of whether {@link fetch} is set.
+   * disconnect. Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Independent of whether {@link fetch} is set.
    */
   maxReconnectAttempts?: number;
   /**
-   * Built-in SSE transport only: idle-reconnect policy. Defaults to `"auto"`.
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to
+   * {@link DEFAULT_IDLE_RECONNECT}.
    * Pass `0` to disable.
    */
   streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
@@ -362,12 +373,14 @@ export interface StreamControllerOptions<
   webSocketFactory?: (url: string) => WebSocket;
   /**
    * Built-in transports only: max reconnect attempts after an unexpected
-   * disconnect. Defaults to 5. Independent of whether {@link fetch} is set —
-   * auth shims keep reconnect enabled. Pass `0` to disable.
+   * disconnect. Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Independent of whether {@link fetch} is set — auth shims keep reconnect
+   * enabled. Pass `0` to disable.
    */
   maxReconnectAttempts?: number;
   /**
-   * Built-in SSE transport only: idle-reconnect policy. Defaults to `"auto"`.
+   * Built-in SSE transport only: idle-reconnect policy. Defaults to
+   * {@link DEFAULT_IDLE_RECONNECT}.
    * Pass `0` to disable. See {@link ThreadStreamOptions.streamIdleReconnect}.
    */
   streamIdleReconnect?: ThreadStreamOptions["streamIdleReconnect"];
@@ -391,7 +404,7 @@ export interface StreamControllerOptions<
   onCompleted?: (info: RunCompletedInfo) => void;
   /** Initial state for `root.values` before hydration lands. */
   initialValues?: StateType;
-  /** Key inside `values` that holds the message array. Defaults to `"messages"`. */
+  /** Key inside `values` that holds the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
   /**
    * Optimistic UI for `submit()`. Defaults to `true`. See

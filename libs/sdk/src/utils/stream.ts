@@ -1,4 +1,8 @@
 import { isNetworkError } from "./error.js";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+} from "./reconnect.js";
 
 // in this case don't quite match.
 type IterableReadableStreamInterface<T> = ReadableStream<T> & AsyncIterable<T>;
@@ -8,7 +12,8 @@ type IterableReadableStreamInterface<T> = ReadableStream<T> & AsyncIterable<T>;
  */
 export interface StreamWithRetryOptions {
   /**
-   * Maximum number of reconnection attempts. Default is 5.
+   * Maximum number of reconnection attempts. Default is
+   * {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
    */
   maxRetries?: number;
 
@@ -90,6 +95,13 @@ const SSE_COMMENT_BYTE = 0x3a;
  *   so it can't false-fire during a legitimately quiet period.
  */
 export type IdleReconnectMode = number | "auto";
+
+/**
+ * Default idle-reconnect policy for SSE streams. Heartbeat-adaptive
+ * `"auto"` stays dormant unless the server emits keep-alive heartbeats.
+ * Pass `0` to disable.
+ */
+export const DEFAULT_IDLE_RECONNECT: IdleReconnectMode = "auto";
 
 export interface IdleReconnectStreamOptions {
   /** Fixed timeout (ms) or `"auto"` heartbeat-adaptive. */
@@ -223,7 +235,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
   }>,
   options: StreamWithRetryOptions = {}
 ): AsyncGenerator<T> {
-  const maxRetries = options.maxRetries ?? 5;
+  const maxRetries = options.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
   let attempt = 0;
   let lastEventId: string | undefined;
   let reconnectPath: string | undefined;
@@ -319,10 +331,8 @@ export async function* streamWithRetry<T extends { id?: string }>(
       // Notify about reconnection attempt
       options.onReconnect?.({ attempt, lastEventId, cause: lastError });
 
-      // Exponential backoff with jitter: min(1000 * 2^attempt, 5000) + random jitter
-      const baseDelay = Math.min(1000 * 2 ** (attempt - 1), 5000);
-      const jitter = Math.random() * 1000;
-      const delay = baseDelay + jitter;
+      // Exponential backoff with jitter (shared with protocol transports).
+      const delay = reconnectDelayMs(attempt);
 
       await new Promise((resolve) => {
         setTimeout(resolve, delay);

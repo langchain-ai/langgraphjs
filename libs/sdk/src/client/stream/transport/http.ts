@@ -29,7 +29,11 @@ import {
   idleReconnectStream,
   type IdleReconnectMode,
 } from "../../../utils/stream.js";
-import { webSocketReconnectDelayMs } from "./websocket.js";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+} from "../../../utils/reconnect.js";
+import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
@@ -83,13 +87,14 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     // the production path for tenant-aware browsers. Tests that need fail-fast
     // mocks should pass `maxReconnectAttempts: 0` (and `idleReconnect: 0`)
     // explicitly rather than relying on `fetch` presence.
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
-    // Default to heartbeat-adaptive `"auto"`, which stays dormant unless the
-    // server actually emits keep-alive heartbeats. Pass `0` to disable.
-    this.idleReconnect = options.idleReconnect ?? "auto";
+    this.maxReconnectAttempts =
+      options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
+    // Default to heartbeat-adaptive idle reconnect, which stays dormant
+    // unless the server actually emits keep-alive heartbeats. Pass `0` to
+    // disable.
+    this.idleReconnect = options.idleReconnect ?? DEFAULT_IDLE_RECONNECT;
     this.onReconnect = options.onReconnect;
-    this.reconnectDelayMs =
-      options.reconnectDelayMs ?? webSocketReconnectDelayMs;
+    this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
     this.threadId = options.threadId ?? "";
     this.paths = options.paths;
   }

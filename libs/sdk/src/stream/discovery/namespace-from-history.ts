@@ -22,7 +22,7 @@ import type {
   Metadata,
   ThreadState,
 } from "../../schema.js";
-import { NAMESPACE_SEPARATOR } from "../constants.js";
+import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "../constants.js";
 import { namespaceKey } from "../namespace.js";
 import { normalizeAIMessageToolCalls } from "../message-coercion.js";
 
@@ -188,7 +188,7 @@ function applyCollectors(
 export function mapSubagentNamespaces(
   history: AnyCheckpoint[],
   toolCallIds: string[],
-  messagesKey = "messages"
+  messagesKey = DEFAULT_MESSAGES_KEY
 ): Map<string, string> {
   const out = new Map<string, string>();
   const targets = new Set(toolCallIds);
@@ -219,7 +219,7 @@ export async function resolveSubagentNamespaces<TStateType>(
   if (targets.size === 0) return out;
 
   const limit = opts?.limit ?? 20;
-  const messagesKey = opts?.messagesKey ?? "messages";
+  const messagesKey = opts?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   const signal = opts?.signal;
 
   const page1 = await getHistoryPage(client, threadId, { limit, signal });
