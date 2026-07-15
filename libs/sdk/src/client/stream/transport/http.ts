@@ -252,11 +252,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
-    // Honor an explicit caller `since` on the initial open only. Do not
-    // advance it from observed `seq` values — those are connection-local,
-    // and carrying them onto a reconnect POST filters out the full Redis
-    // replay (heartbeats only). Reconnects omit `since` and rely on
-    // durable `event_id` dedup until a durable cursor exists.
+    // Honor an explicit caller `since` until the stream has connected
+    // once. Do not advance it from observed `seq` values — those are
+    // connection-local, and carrying them onto a post-connect reconnect
+    // POST filters out the full Redis replay (heartbeats only). Pre-ready
+    // retries still send the caller cursor; only after a successful open
+    // do reconnects omit `since` and rely on durable `event_id` dedup.
     const initialSince =
       typeof (params as SubscribeParams & { since?: unknown }).since ===
       "number"
@@ -282,7 +283,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 channels: params.channels,
                 ...(params.namespaces ? { namespaces: params.namespaces } : {}),
                 ...(params.depth != null ? { depth: params.depth } : {}),
-                ...(attempt === 0 && initialSince != null
+                ...(!readySettled && initialSince != null
                   ? { since: initialSince }
                   : {}),
               }),

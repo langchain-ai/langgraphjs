@@ -502,6 +502,79 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     await transport.close();
   });
 
+  it("keeps caller since across pre-ready fetch failures", async () => {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":6,"event_id":"e6"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as unknown as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({
+      channels: ["values"],
+      since: 5,
+    } as { channels: string[]; since: number });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (received.some((m) => m.event_id === "e6")) break;
+    }
+
+    const streamBodies = fetchImpl.mock.calls
+      .filter((call) => String(call[0]).includes("/stream/events"))
+      .map((call) => {
+        const init = call[1] as RequestInit | undefined;
+        return init?.body != null
+          ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+          : null;
+      })
+      .filter((body): body is Record<string, unknown> => body != null);
+    // First open may fail before a body is attached; only successful POSTs
+    // and retries that include a body are asserted. Both attempts that
+    // reach JSON body construction must still carry the caller cursor.
+    expect(streamBodies.length).toBeGreaterThanOrEqual(1);
+    for (const body of streamBodies) {
+      expect(body).toMatchObject({ since: 5 });
+    }
+    expect(received.map((m) => m.event_id)).toContain("e6");
+
+    await transport.close();
+  });
+
   it("keeps reconnect disabled when maxReconnectAttempts is explicitly 0", async () => {
     const sentinel = new TypeError("net::ERR_QUIC_PROTOCOL_ERROR");
     let streamOpens = 0;
