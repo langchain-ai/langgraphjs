@@ -2,6 +2,7 @@ import dedent from "dedent";
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
 import type { Config } from "../utils/config.mjs";
+import { resolveApiVersion } from "../utils/api-version.mjs";
 
 const dedenter = dedent.withOptions({ escapeSpecialCharacters: false });
 
@@ -268,6 +269,14 @@ export function getBaseImage(config: Config, apiVersion?: string) {
   throw new Error("Invalid config type");
 }
 
+export async function resolveBaseImage(config: Config, apiVersion?: string) {
+  if (config._INTERNAL_docker_tag) return getBaseImage(config, apiVersion);
+  return getBaseImage(
+    config,
+    await resolveApiVersion(apiVersion ?? config.api_version)
+  );
+}
+
 export async function configToDocker(
   configPath: string,
   config: Config,
@@ -387,7 +396,7 @@ export async function configToDocker(
     : `RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts`;
 
   const lines = [
-    `FROM ${getBaseImage(config)}`,
+    `FROM ${await resolveBaseImage(config)}`,
     config.dockerfile_lines,
     pipConfigFile,
     pipPkgs,
