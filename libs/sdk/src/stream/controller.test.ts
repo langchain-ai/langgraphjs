@@ -2461,4 +2461,63 @@ describe("StreamController", () => {
       await controller.dispose();
     }
   });
+
+  it("does not apply stale state or reconnect when the thread is cleared during hydrate", async () => {
+    // Regression: hydrate() re-reads the thread id after awaiting getState().
+    // If the id is cleared while that await is in flight (host clears it,
+    // hydrate(null), or the component unmounts during navigation), the stale
+    // hydrate must not (a) apply the fetched state to a thread we've left, nor
+    // (b) open a reconnect via threads.stream(null, …) — which reads `.fetch`
+    // off the null options object and throws.
+    let resolveGetState!: (value: {
+      values: { messages: unknown[] };
+      next: string[];
+    }) => void;
+    const getState = vi.fn(
+      () =>
+        new Promise<{ values: { messages: unknown[] }; next: string[] }>(
+          (resolve) => {
+            resolveGetState = resolve;
+          }
+        )
+    );
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    // Typed params so `stream.mock.calls[i][0]` is indexable in the assertion
+    // below (a bare `() => thread` infers a zero-arg tuple).
+    const stream = vi.fn((_threadId?: unknown, _options?: unknown) => thread);
+    const client = { threads: { getState, stream } };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+
+    // The constructor's hydrate("thread-1") is now suspended on getState().
+    // Clear the thread id, then let getState() resolve with a non-empty
+    // (active) thread state so the stale hydrate resumes.
+    await controller.hydrate(null);
+    resolveGetState({
+      values: {
+        messages: [{ type: "human", content: "old thread message", id: "h-1" }],
+      },
+      next: ["agent"],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Stale fetched state must not repopulate the cleared thread, and the
+    // reconnect must never be opened with a null thread id.
+    expect(controller.rootStore.getSnapshot().messages).toHaveLength(0);
+    for (const call of stream.mock.calls) {
+      expect(call[0]).not.toBeNull();
+    }
+
+    await controller.dispose();
+  });
 });
