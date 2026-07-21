@@ -394,9 +394,10 @@ export class StreamController<
         this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
-        // interrupts on the just-started run aren't filtered. Bump
-        // the generation so any in-flight hydrate skips its
-        // allowlist write on return (see #hydratedActiveInterruptIds).
+        // interrupts on the just-started run (submit *or* respond /
+        // respondAll via dispatchResume) aren't filtered. Bump the
+        // generation so any in-flight hydrate skips its allowlist
+        // write on return (see #hydratedActiveInterruptIds).
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
       },

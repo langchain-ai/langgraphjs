@@ -596,6 +596,12 @@ export class SubmitCoordinator<
   ): Promise<void> {
     if (this.#getDisposed()) return;
 
+    // Same allowlist clear as submit(): a resumed run can pause on a
+    // *new* interrupt id. Without this, the hydrate-window allowlist
+    // still contains only the interrupt being answered and
+    // `#recordRootInterrupt` drops the follow-on `input.requested`.
+    this.#onSubmitStart();
+
     // Rollback any run still tracked as active (mirrors submit()), then
     // claim the in-flight slot so stop()/dispose()/a concurrent submit
     // cancels the terminal watch armed below.

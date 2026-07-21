@@ -746,6 +746,82 @@ describe("StreamController", () => {
     await submitPromise;
   });
 
+  it("does not filter genuinely new interrupts after respond() clears the allowlist", async () => {
+    // Fan out to every registered listener — respond()'s background
+    // terminal watch also calls thread.onEvent, and a single-slot
+    // capture would overwrite the wildcard that mirrors interrupts.
+    const eventListeners = new Set<(event: Event) => void>();
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "old-interrupt",
+          payload: { prompt: "Approve?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [
+            {
+              interrupts: [
+                { id: "old-interrupt", value: { prompt: "Approve?" } },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-respond-new-live",
+    });
+    await controller.hydrationPromise;
+    expect(eventListeners.size).toBeGreaterThan(0);
+
+    // Hydrate seeded allowlist with [old-interrupt]. respond() must
+    // clear it the same way submit() does — otherwise the follow-on
+    // HITL from the resumed run is dropped as "historical" and
+    // stream.interrupt stays empty while the server is still paused.
+    await controller.respond({ approved: true });
+    expect(respondInput).toHaveBeenCalled();
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    const followOn = inputRequestedEvent("brand-new-interrupt", {
+      prompt: "Again?",
+    });
+    for (const listener of eventListeners) {
+      listener(followOn);
+    }
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toContain("brand-new-interrupt");
+    expect(controller.rootStore.getSnapshot().interrupt?.id).toBe(
+      "brand-new-interrupt"
+    );
+
+    await controller.dispose();
+  });
+
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
