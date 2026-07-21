@@ -1,0 +1,25 @@
+libs/sdk/src/stream/controller.test.ts
+  s_3a6d9379213038::t_a3e9fbfe3db356 2465-2475,2478-2482,2501-2502,2504-2509,2512-2514
+libs/sdk/src/stream/controller.ts
+  s_3a6d9379213038::t_9370c1b9e7c412 557-559
+  s_3a6d9379213038::t_9ff9ca1309b7dd 741
+  s_3a6d9379213038::t_7174d87f378249 568-574
+.changeset/usestream-hydrate-cleared-thread.md
+  s_3a6d9379213038::t_d1b669b40ff25c 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "f0920d4dda1e79e93a94ceeff26fcab70c21c400",
+  "prompts": {},
+  "sessions": {
+    "s_3a6d9379213038": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d23dbbef-ed65-4179-99dd-7598c202bb20",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sreeram Sama <sama.sreeram13@gmail.com>"
+    }
+  }
+}
