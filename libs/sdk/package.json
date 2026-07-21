@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@langchain/build": "workspace:*",
-    "@langchain/core": "^1.2.1",
+    "@langchain/core": "^1.2.3",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
@@ -34,7 +34,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.2",
+    "langchain": "^1.5.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "svelte": "^5.56.4",
