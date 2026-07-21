@@ -1246,7 +1246,7 @@ importers:
         version: 0.3.13(@grpc/grpc-js@1.14.4)(express@5.2.1)
       '@hono/node-server':
         specifier: ^1.19.13
-        version: 1.19.13(hono@4.12.25)
+        version: 1.19.13(hono@4.12.31)
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -1263,8 +1263,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk-react
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -1804,13 +1804,13 @@ importers:
         version: 7.29.0
       '@hono/node-server':
         specifier: ^1.19.13
-        version: 1.19.13(hono@4.12.25)
+        version: 1.19.13(hono@4.12.31)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.25))(hono@4.12.25)
+        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.31))(hono@4.12.31)
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.12.25)(zod@4.3.6)
+        version: 0.7.6(hono@4.12.31)(zod@4.3.6)
       '@langchain/langgraph-ui':
         specifier: workspace:*
         version: link:../langgraph-ui
@@ -1833,8 +1833,8 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       langsmith:
         specifier: '>=0.5.19 <1.0.0'
         version: 0.8.0(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2350,10 +2350,10 @@ importers:
         version: 22.0.4(@angular/common@22.0.4(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@22.0.4(@angular/common@22.0.4(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.0.4(@angular/compiler@22.0.4)(rxjs@7.8.2)(zone.js@0.16.1)))(rxjs@7.8.2)
       '@hono/node-server':
         specifier: ^2.0.0
-        version: 2.0.1(hono@4.12.25)
+        version: 2.0.1(hono@4.12.31)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.0.1(hono@4.12.25))(hono@4.12.25)
+        version: 1.3.1(@hono/node-server@2.0.1(hono@4.12.31))(hono@4.12.31)
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2379,8 +2379,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.0(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       langchain:
         specifier: ^1.5.2
         version: 1.5.2(@langchain/core@1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2417,10 +2417,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.13
-        version: 1.19.13(hono@4.12.25)
+        version: 1.19.13(hono@4.12.31)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.25))(hono@4.12.25)
+        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.31))(hono@4.12.31)
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2452,8 +2452,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.0(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       langchain:
         specifier: ^1.5.2
         version: 1.5.2(@langchain/core@1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2484,10 +2484,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.13
-        version: 1.19.13(hono@4.12.25)
+        version: 1.19.13(hono@4.12.31)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.25))(hono@4.12.25)
+        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.31))(hono@4.12.31)
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2516,8 +2516,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.0(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       langchain:
         specifier: ^1.5.2
         version: 1.5.2(@langchain/core@1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2548,10 +2548,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.13
-        version: 1.19.13(hono@4.12.25)
+        version: 1.19.13(hono@4.12.31)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.25))(hono@4.12.25)
+        version: 1.3.1(@hono/node-server@1.19.13(hono@4.12.31))(hono@4.12.31)
       '@langchain/core':
         specifier: ^1.2.1
         version: 1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -2586,8 +2586,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.0(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.3.6))
       hono:
-        specifier: ^4.12.25
-        version: 4.12.25
+        specifier: ^4.12.27
+        version: 4.12.31
       langchain:
         specifier: ^1.5.2
         version: 1.5.2(@langchain/core@1.2.1(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0))(@opentelemetry/api@1.9.0)(openai@6.45.0(ws@8.21.0)(zod@4.3.6))(ws@8.21.0)
@@ -8911,12 +8911,8 @@ packages:
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
 
-  hono@4.12.25:
-    resolution: {integrity: sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ==}
-    engines: {node: '>=16.9.0'}
-
-  hono@4.12.27:
-    resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
+  hono@4.12.31:
+    resolution: {integrity: sha512-zJIHFrl6bq3RDd2YusFNCDlM8qUprxKswyi/OPzPyzKDdyBXDqWx8bZlZ7R+saTdSTatUmb3O7K4SspGPaEOQg==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.0.1:
@@ -13404,39 +13400,39 @@ snapshots:
   '@harperfast/extended-iterable@1.0.3':
     optional: true
 
-  '@hono/node-server@1.19.13(hono@4.12.25)':
+  '@hono/node-server@1.19.13(hono@4.12.31)':
     dependencies:
-      hono: 4.12.25
+      hono: 4.12.31
 
-  '@hono/node-server@1.19.14(hono@4.12.27)':
+  '@hono/node-server@1.19.14(hono@4.12.31)':
     dependencies:
-      hono: 4.12.27
+      hono: 4.12.31
 
-  '@hono/node-server@2.0.1(hono@4.12.25)':
+  '@hono/node-server@2.0.1(hono@4.12.31)':
     dependencies:
-      hono: 4.12.25
+      hono: 4.12.31
 
-  '@hono/node-ws@1.3.1(@hono/node-server@1.19.13(hono@4.12.25))(hono@4.12.25)':
+  '@hono/node-ws@1.3.1(@hono/node-server@1.19.13(hono@4.12.31))(hono@4.12.31)':
     dependencies:
-      '@hono/node-server': 1.19.13(hono@4.12.25)
-      hono: 4.12.25
+      '@hono/node-server': 1.19.13(hono@4.12.31)
+      hono: 4.12.31
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@hono/node-ws@1.3.1(@hono/node-server@2.0.1(hono@4.12.25))(hono@4.12.25)':
+  '@hono/node-ws@1.3.1(@hono/node-server@2.0.1(hono@4.12.31))(hono@4.12.31)':
     dependencies:
-      '@hono/node-server': 2.0.1(hono@4.12.25)
-      hono: 4.12.25
+      '@hono/node-server': 2.0.1(hono@4.12.31)
+      hono: 4.12.31
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@hono/zod-validator@0.7.6(hono@4.12.25)(zod@4.3.6)':
+  '@hono/zod-validator@0.7.6(hono@4.12.31)(zod@4.3.6)':
     dependencies:
-      hono: 4.12.25
+      hono: 4.12.31
       zod: 4.3.6
 
   '@huggingface/jinja@0.2.2': {}
@@ -14124,7 +14120,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.27)
+      '@hono/node-server': 1.19.14(hono@4.12.31)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -14134,7 +14130,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.12.27
+      hono: 4.12.31
       jose: 6.2.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -19399,9 +19395,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  hono@4.12.25: {}
-
-  hono@4.12.27: {}
+  hono@4.12.31: {}
 
   hookable@6.0.1: {}
 
