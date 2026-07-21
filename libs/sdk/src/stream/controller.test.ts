@@ -2461,4 +2461,49 @@ describe("StreamController", () => {
       await controller.dispose();
     }
   });
+
+  it("does not reconnect against a null thread id when the thread is cleared during hydrate", async () => {
+    // Regression: hydrate() null-guards #currentThreadId before awaiting
+    // getState(), but re-reads it afterwards to open the reconnect. If the
+    // thread id is cleared while that await is in flight (host clears it,
+    // hydrate(null), or the component unmounts during navigation), the resumed
+    // hydrate must not call threads.stream(null, …) — passing a null thread id
+    // makes threads.stream read `.fetch` off the null options object and throw.
+    let resolveGetState!: (value: { values: unknown; next: string[] }) => void;
+    const getState = vi.fn(
+      () =>
+        new Promise<{ values: unknown; next: string[] }>((resolve) => {
+          resolveGetState = resolve;
+        })
+    );
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const stream = vi.fn(() => thread);
+    const client = { threads: { getState, stream } };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+
+    // The constructor's hydrate("thread-1") is now suspended on getState().
+    // Clear the thread id, then let the original getState() resolve so the
+    // first hydrate resumes and reaches its reconnect decision.
+    await controller.hydrate(null);
+    resolveGetState({ values: {}, next: ["agent"] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The reconnect must never be opened with a null thread id.
+    for (const call of stream.mock.calls) {
+      expect(call[0]).not.toBeNull();
+    }
+
+    await controller.dispose();
+  });
 });

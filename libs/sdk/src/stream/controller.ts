@@ -728,6 +728,13 @@ export class StreamController<
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
+    // `await this.#fetchHydrationState()` above yields. If the thread id was
+    // cleared while we were suspended — the host cleared it, `hydrate(null)`
+    // ran, or the component unmounted during navigation — there is nothing to
+    // reconnect. Forwarding a null id to `#ensureThread` would pass it to
+    // `threads.stream(null, …)`, which reads `.fetch` off the null and throws.
+    // Hydration was already settled above, so an early return is safe.
+    if (this.#disposed || this.#currentThreadId == null) return;
     const thread = this.#ensureThread(this.#currentThreadId, !threadActive);
 
     /**
