@@ -1,0 +1,24 @@
+libs/sdk/src/stream/controller.test.ts
+  s_3a6d9379213038::t_afe9906ed1b896 2464-2508
+libs/sdk/src/client/threads/index.ts
+  s_3a6d9379213038::t_f112501ac51a17 485-487
+  s_3a6d9379213038::t_f7b72fa2104640 481-484,488-492
+libs/sdk/src/stream/controller.ts
+  s_3a6d9379213038::t_85719d94418139 731-737
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "a89802d6e60aa02a942d2765d8ac5de190a23fa0",
+  "prompts": {},
+  "sessions": {
+    "s_3a6d9379213038": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d23dbbef-ed65-4179-99dd-7598c202bb20",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sreeram Sama <sama.sreeram13@gmail.com>"
+    }
+  }
+}
