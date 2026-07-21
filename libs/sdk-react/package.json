@@ -35,7 +35,7 @@
     "deepagents": "^1.10.5",
     "hono": "^4.12.25",
     "langchain": "^1.5.2",
-    "react": "^19.2.7",
+    "react": "^19.2.8",
     "typescript": "^5.9.3",
     "vitest": "^4.1.9",
     "vitest-browser-react": "^2.2.0",
