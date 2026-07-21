@@ -1,0 +1,26 @@
+.changeset/usestream-hydrate-cleared-thread.md
+  s_3a6d9379213038::t_d1b669b40ff25c 1-5
+libs/sdk/src/stream/controller.test.ts
+  s_3a6d9379213038::t_a3e9fbfe3db356 2465-2475,2478-2482,2503-2504,2506-2511,2514-2516
+  s_3a6d9379213038::t_f7e267feea8320 2491-2493
+libs/sdk/src/stream/controller.ts
+  s_3a6d9379213038::t_9ff9ca1309b7dd 741
+  s_3a6d9379213038::t_9370c1b9e7c412 557-559
+  s_3a6d9379213038::t_7174d87f378249 568-574
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "7957bb8e147d3844a17362ec3491c9cb7a182dfd",
+  "prompts": {},
+  "sessions": {
+    "s_3a6d9379213038": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d23dbbef-ed65-4179-99dd-7598c202bb20",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}
