@@ -15,7 +15,7 @@
     "langchain": "^1.5.2",
     "reflect-metadata": "^0.2.2",
     "tsx": "^4.19.3",
-    "typeorm": "^0.3.29",
+    "typeorm": "^0.3.31",
     "zod": "^3.23.8"
   }
 }
