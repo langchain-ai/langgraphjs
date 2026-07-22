@@ -505,7 +505,7 @@ export function useStreamLGP<
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId = threadId;
+    let usableThreadId = threadId ?? submitOptions?.threadId;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -543,6 +543,12 @@ export function useStreamLGP<
           threadIdRef.current = usableThreadId;
           threadIdStreamingRef.current = usableThreadId;
 
+          onThreadId(usableThreadId);
+        } else if (threadId == null && usableThreadId != null) {
+          // Hook threadId not bound yet — adopt submitOptions.threadId without
+          // calling threads.create (avoids server-minted orphan threads).
+          threadIdRef.current = usableThreadId;
+          threadIdStreamingRef.current = usableThreadId;
           onThreadId(usableThreadId);
         }
 
