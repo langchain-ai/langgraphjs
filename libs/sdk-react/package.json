@@ -30,7 +30,7 @@
     "@types/node": "^25.4.0",
     "@types/react": "^19.2.17",
     "@vitejs/plugin-react": "^6.0.3",
-    "@vitest/browser": "^4.1.9",
+    "@vitest/browser": "^4.1.10",
     "@vitest/browser-webdriverio": "^4.1.9",
     "deepagents": "^1.10.5",
     "hono": "^4.12.27",
