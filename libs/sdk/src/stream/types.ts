@@ -343,6 +343,14 @@ export interface RootSnapshot<
   interrupt: Interrupt<InterruptType> | undefined;
   /** True while a run is active / being started on the current thread. */
   isLoading: boolean;
+  /**
+   * True once a root `running` lifecycle has been observed for the
+   * active run (i.e. it has progressed past the optimistic submit
+   * window) and until it terminates. Distinguishes the "submitting"
+   * phase (run dispatched, not yet running) from the "streaming" phase.
+   * Drives {@link deriveStreamStatus}.
+   */
+  isRunning: boolean;
   /** True while the initial `thread.state.get()` hydration is in flight. */
   isThreadLoading: boolean;
   /** Last error observed on the active run / hydration. */

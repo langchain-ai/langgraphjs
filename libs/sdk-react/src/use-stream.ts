@@ -18,6 +18,7 @@ import {
 } from "@langchain/langgraph-sdk/client";
 import {
   StreamController,
+  deriveStreamStatus,
   type AgentServerAdapter,
   type AgentServerOptions as StreamAgentServerOptions,
   type AssembledToolCall,
@@ -31,6 +32,7 @@ import {
   type RunExecutionInfo,
   type StreamRespondAllOptions,
   type StreamRespondOptions,
+  type StreamStatus,
   type StreamStopOptions,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
@@ -145,8 +147,19 @@ export interface UseStreamReturn<
    * thread. Driven by root-namespace lifecycle events (`running` →
    * `true`, terminal phases → `false`). Use this to disable submit
    * buttons and show in-flight spinners.
+   *
+   * Equivalent to `status === "submitting" || status === "streaming"`;
+   * prefer {@link status} when you need to tell those phases apart.
    */
   readonly isLoading: boolean;
+  /**
+   * High-level run lifecycle phase: `"idle"`, `"submitting"` (run
+   * dispatched, not yet streaming), `"streaming"` (run actively
+   * emitting events), or `"error"`. A single readable value to drive
+   * UI instead of combining {@link isLoading} and {@link error} by
+   * hand. Hydration ({@link isThreadLoading}) is reported separately.
+   */
+  readonly status: StreamStatus;
   /**
    * `true` while the initial `thread.getState()` hydration for the
    * active thread is in flight. Distinct from {@link isLoading} —
@@ -740,6 +753,7 @@ export function useStream<
       interrupts: userFacingInterrupts,
       interrupt: userFacingInterrupts[0],
       isLoading: root.isLoading,
+      status: deriveStreamStatus(root),
       isThreadLoading: root.isThreadLoading,
       hydrationPromise: controller.hydrationPromise,
       error: root.error,
