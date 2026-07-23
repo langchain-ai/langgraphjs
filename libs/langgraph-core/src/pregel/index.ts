@@ -33,6 +33,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   getOnlyChannels,
+  isDeltaChannel,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -118,6 +119,12 @@ import type {
   StreamMode,
   StreamOutputMap,
 } from "./types.js";
+import {
+  migrateCheckpoint,
+  validateStateMigrations,
+  type GraphVersion,
+  type StateMigration,
+} from "./migrations.js";
 import {
   ensureLangGraphConfig,
   getConfig,
@@ -487,6 +494,15 @@ export class Pregel<
   /** The nodes in the graph, mapping node names to their PregelNode instances */
   nodes: Nodes;
 
+  /** Version of the graph deployment used to write checkpoints. */
+  graphVersion?: GraphVersion;
+
+  /** Version assigned to checkpoints created before graph versioning. */
+  legacyGraphVersion?: GraphVersion;
+
+  /** Migrations used to bring older checkpoints to `graphVersion`. */
+  stateMigrations?: readonly StateMigration[];
+
   /** The channels in the graph, mapping channel names to their BaseChannel or ManagedValueSpec instances */
   channels: Channels;
 
@@ -597,6 +613,14 @@ export class Pregel<
     }
 
     this.nodes = fields.nodes;
+    this.graphVersion = fields.graphVersion;
+    this.legacyGraphVersion = fields.legacyGraphVersion;
+    this.stateMigrations = fields.stateMigrations;
+    validateStateMigrations(
+      this.graphVersion,
+      this.legacyGraphVersion,
+      this.stateMigrations
+    );
     this.channels = fields.channels;
 
     if (
@@ -635,6 +659,13 @@ export class Pregel<
     if (this.autoValidate) {
       this.validate();
     }
+  }
+
+  protected _withGraphVersion(
+    metadata: CheckpointMetadata
+  ): CheckpointMetadata {
+    if (this.graphVersion === undefined) return metadata;
+    return { ...metadata, graph_version: this.graphVersion };
   }
 
   /**
@@ -883,6 +914,22 @@ export class Pregel<
         tasks: [],
       };
     }
+
+    const migrated = await migrateCheckpoint({
+      checkpoint: saved.checkpoint,
+      pendingWrites: saved.pendingWrites,
+      metadata: saved.metadata,
+      graphVersion: this.graphVersion,
+      legacyGraphVersion: this.legacyGraphVersion,
+      migrations: this.stateMigrations,
+      hasDeltaChannels: Object.values(this.channels).some(isDeltaChannel),
+    });
+    saved = {
+      ...saved,
+      checkpoint: migrated.checkpoint,
+      pendingWrites: migrated.pendingWrites,
+      metadata: migrated.metadata,
+    };
 
     // Create all channels, reconstructing any DeltaChannel from ancestor
     // writes via the checkpointer.
@@ -1250,7 +1297,23 @@ export class Pregel<
       const config = this.config
         ? mergeConfigs(this.config, inputConfig)
         : inputConfig;
-      const saved = await checkpointer.getTuple(config);
+      const savedTuple = await checkpointer.getTuple(config);
+      const saved = savedTuple
+        ? {
+            ...savedTuple,
+            ...(await migrateCheckpoint({
+              checkpoint: savedTuple.checkpoint,
+              pendingWrites: savedTuple.pendingWrites,
+              metadata: savedTuple.metadata,
+              graphVersion: this.graphVersion,
+              legacyGraphVersion: this.legacyGraphVersion,
+              migrations: this.stateMigrations,
+              hasDeltaChannels: Object.values(this.channels).some(
+                isDeltaChannel
+              ),
+            })),
+          }
+        : undefined;
       const checkpoint =
         saved !== undefined
           ? copyCheckpoint(saved.checkpoint)
@@ -1264,7 +1327,9 @@ export class Pregel<
       let checkpointConfig = patchConfigurable(config, {
         checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
       });
-      let checkpointMetadata = config.metadata ?? {};
+      let checkpointMetadata = this._withGraphVersion(
+        (config.metadata ?? {}) as CheckpointMetadata
+      );
       if (saved?.config.configurable) {
         checkpointConfig = patchConfigurable(config, saved.config.configurable);
         checkpointMetadata = {
@@ -1285,11 +1350,11 @@ export class Pregel<
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, undefined, step),
-          {
+          this._withGraphVersion({
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
-          },
+          }),
           {}
         );
         return patchCheckpointMap(
@@ -1370,12 +1435,12 @@ export class Pregel<
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, step),
-          {
+          this._withGraphVersion({
             ...checkpointMetadata,
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
-          },
+          }),
           getNewChannelVersions(
             checkpointPreviousVersions,
             checkpoint.channel_versions
@@ -1411,11 +1476,11 @@ export class Pregel<
           saved.parentConfig ??
             patchConfigurable(saved.config, { checkpoint_id: undefined }),
           nextCheckpoint,
-          {
+          this._withGraphVersion({
             source: "fork",
             step: step + 1,
             parents: saved.metadata?.parents ?? {},
-          },
+          }),
           {}
         );
 
@@ -1507,11 +1572,11 @@ export class Pregel<
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, nextStep),
-          {
+          this._withGraphVersion({
             source: "input",
             step: nextStep,
             parents: saved?.metadata?.parents ?? {},
-          },
+          }),
           getNewChannelVersions(
             checkpointPreviousVersions,
             checkpoint.channel_versions
@@ -1752,11 +1817,11 @@ export class Pregel<
       const nextConfig = await checkpointer.put(
         checkpointConfig,
         createCheckpoint(checkpoint, channels, step + 1),
-        {
+        this._withGraphVersion({
           source: "update",
           step: step + 1,
           parents: saved?.metadata?.parents ?? {},
-        },
+        }),
         newVersions
       );
 
@@ -2437,6 +2502,9 @@ export class Pregel<
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
           durability,
+          graphVersion: this.graphVersion,
+          legacyGraphVersion: this.legacyGraphVersion,
+          stateMigrations: this.stateMigrations,
         });
 
         const runner = new PregelRunner({
