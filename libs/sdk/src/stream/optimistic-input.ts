@@ -67,6 +67,52 @@ function isBaseMessageInstance(value: unknown): value is BaseMessage {
   );
 }
 
+/**
+ * Serialize `BaseMessage` instances under a state update's message key
+ * into plain message dicts so they survive JSON transport.
+ *
+ * `respond({ update })` / `respondAll({}, { update })` fold `update` into
+ * `Command(update=...)` on the wire. A `BaseMessage`'s default JSON form
+ * is the `lc` "constructor" envelope (`{ lc, type: "constructor", id,
+ * kwargs }`), which the server's `add_messages` reducer does **not**
+ * coerce — whereas the flat `{ type, content, ... }` dict that
+ * {@link toMessageDict} emits (and that `submit()` already sends) does.
+ * Mirroring the `submit()` path lets
+ * `respond({ update: { messages: [new AIMessage(...)] } })` behave like
+ * `submit({ messages: [new AIMessage(...)] })`.
+ *
+ * Only the configured `messagesKey` is touched — in both the object form
+ * and the `[key, value][]` tuple form. Every other key, and any already
+ * plain (non-`BaseMessage`) entry, passes through untouched.
+ */
+export function serializeUpdateMessages(
+  update: Record<string, unknown> | [string, unknown][],
+  messagesKey: string
+): Record<string, unknown> | [string, unknown][] {
+  if (Array.isArray(update)) {
+    return update.map((entry) =>
+      Array.isArray(entry) && entry[0] === messagesKey
+        ? [entry[0], serializeMessageValue(entry[1])]
+        : entry
+    ) as [string, unknown][];
+  }
+  if (!(messagesKey in update)) return update;
+  return {
+    ...update,
+    [messagesKey]: serializeMessageValue(update[messagesKey]),
+  };
+}
+
+function serializeMessageValue(value: unknown): unknown {
+  if (isBaseMessageInstance(value)) return toMessageDict(value);
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      isBaseMessageInstance(item) ? toMessageDict(item) : item
+    );
+  }
+  return value;
+}
+
 function extractId(value: unknown): string | undefined {
   const id = (value as { id?: unknown } | null)?.id;
   return typeof id === "string" && id.length > 0 ? id : undefined;

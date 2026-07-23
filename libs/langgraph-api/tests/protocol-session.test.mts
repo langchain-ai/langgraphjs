@@ -522,6 +522,14 @@ describe("RunProtocolSession", () => {
                 id: "ai_1",
                 type: "ai",
                 content: "",
+                response_metadata: {
+                  model_provider: "openai",
+                  usage: {
+                    input_tokens: 5,
+                    output_tokens: 2,
+                    total_tokens: 7,
+                  },
+                },
                 tool_calls: [
                   {
                     id: "call_123",

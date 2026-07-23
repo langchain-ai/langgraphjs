@@ -34,8 +34,8 @@ jobs:
       sdk-svelte: ${{ steps.changes.outputs.sdk-svelte }}
       workflow: ${{ steps.changes.outputs.workflow }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: changes
         with:
           filters: |
@@ -62,7 +62,7 @@ jobs:
       needs.detect-changes.outputs.sdk-react == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-and-build
         with:
           artifact-name: ${{ inputs.artifact-name }}
@@ -78,7 +78,7 @@ jobs:
       needs.detect-changes.outputs.sdk-angular == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-and-build
         with:
           artifact-name: ${{ inputs.artifact-name }}
@@ -94,7 +94,7 @@ jobs:
       needs.detect-changes.outputs.sdk-vue == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-and-build
         with:
           artifact-name: ${{ inputs.artifact-name }}
@@ -110,7 +110,7 @@ jobs:
       needs.detect-changes.outputs.sdk-svelte == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-and-build
         with:
           artifact-name: ${{ inputs.artifact-name }}

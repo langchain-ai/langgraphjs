@@ -1,5 +1,78 @@
 # @langchain/react
 
+## 1.0.29
+
+### Patch Changes
+
+- Updated dependencies [[`cf2407a`](https://github.com/langchain-ai/langgraphjs/commit/cf2407a31657a8308312873a13863f496b34f3ca), [`82a320f`](https://github.com/langchain-ai/langgraphjs/commit/82a320faf6876238f8bac8aa6a7c593bef2be061)]:
+  - @langchain/langgraph-sdk@1.9.28
+
+## 1.0.28
+
+### Patch Changes
+
+- Updated dependencies [[`fa4658c`](https://github.com/langchain-ai/langgraphjs/commit/fa4658c79489eb5fb3e38744c34a6f5bf2373831)]:
+  - @langchain/langgraph-sdk@1.9.27
+
+## 1.0.27
+
+### Patch Changes
+
+- [#2605](https://github.com/langchain-ai/langgraphjs/pull/2605) [`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep SSE reconnect enabled with custom fetch
+
+  Auth/proxy fetch shims previously forced `maxReconnectAttempts: 0`, so HITL waits that lost `/stream/events` (e.g. `ERR_QUIC_PROTOCOL_ERROR`) never recovered and left `respond()`/`submit()` spinning. Fail-fast test mocks should pass `maxReconnectAttempts: 0` explicitly. Also plumbs reconnect options through framework `useStream` bindings.
+
+- Updated dependencies [[`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa), [`c201256`](https://github.com/langchain-ai/langgraphjs/commit/c201256b27d55c9aa333d3d15f6ec16c2fd7de9b)]:
+  - @langchain/langgraph-sdk@1.9.26
+
+## 1.0.26
+
+### Patch Changes
+
+- Updated dependencies [[`0558e47`](https://github.com/langchain-ai/langgraphjs/commit/0558e472b7697304c62cb6fe69cc3005e8e1a457)]:
+  - @langchain/langgraph-sdk@1.9.25
+
+## 1.0.25
+
+### Patch Changes
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply state update and goto alongside interrupt resume
+
+  `respond(decision, { update, goto })` now maps to LangGraph's
+  `Command(resume, update, goto)`, so a human-in-the-loop UI can commit a state
+  update (e.g. push the interrupt card into state) in the **same superstep** as
+  the resume — one checkpoint, no separate `updateState` write, no flicker.
+  `@langchain/langgraph-api` forwards `update`/`goto` through `input.respond`,
+  and `@langchain/core` message instances in `update` are serialized to dicts
+  before transport, exactly like `submit()`. Bumps `@langchain/protocol` to
+  `^0.0.18` for the `Goto` type.
+
+  `respond`/`respondAll` also apply `update` **optimistically** (mirroring
+  `submit()`): the pushed messages paint immediately, with stable ids minted so
+  the resumed run's echo reconciles them in place. Without this the interrupt is
+  cleared the instant `respond()` dispatches while the pushed card only reappears
+  a server round-trip later — so the card would flicker in that gap. The
+  optimistic state settles on the resumed run's terminal (pending → sent, or
+  rolled back on a failure before any echo).
+
+  User-initiated optimistic writes (`submit()` / `respond()` / `respondAll()`) now
+  commit to the store **synchronously**, in the same tick as the triggering event,
+  instead of being coalesced onto the next macrotask. This lets a framework render
+  the pushed message in the **same commit** as any local UI state the caller flips
+  alongside it (e.g. a HITL form swapping its inputs for the resolved card), so the
+  card no longer blinks out for the one-macrotask window before the flush lands.
+  High-frequency streaming writes keep their macrotask coalescing.
+
+- Updated dependencies [[`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e)]:
+  - @langchain/langgraph-sdk@1.9.24
+
+## 1.0.24
+
+### Patch Changes
+
+- Updated dependencies [[`2134c8a`](https://github.com/langchain-ai/langgraphjs/commit/2134c8a2c0bc8dd2ebea33e1191c8dd0c4b83236)]:
+  - @langchain/langgraph-sdk@1.9.23
+
 ## 1.0.23
 
 ### Patch Changes

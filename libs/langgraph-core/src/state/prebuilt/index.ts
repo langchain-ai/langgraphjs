@@ -1,1 +1,1 @@
-export { MessagesValue } from "./messages.js";
+export { MessagesValue, MessagesDeltaValue } from "./messages.js";

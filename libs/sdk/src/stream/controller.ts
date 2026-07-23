@@ -38,7 +38,7 @@ import type { AssembledToolCall } from "../client/stream/handles/tools.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { NAMESPACE_SEPARATOR } from "./constants.js";
+import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { ensureMessageInstances } from "./message-coercion.js";
@@ -72,6 +72,7 @@ import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import {
   prepareOptimisticInput,
+  serializeUpdateMessages,
   type OptimisticHandle,
 } from "./optimistic-input.js";
 import {
@@ -335,7 +336,7 @@ export class StreamController<
    */
   constructor(options: StreamControllerOptions<StateType>) {
     this.#options = options;
-    this.#messagesKey = options.messagesKey ?? "messages";
+    this.#messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     this.#currentThreadId = options.threadId ?? null;
     this.#rootBus = {
       channels: ROOT_PUMP_CHANNELS,
@@ -393,9 +394,10 @@ export class StreamController<
         this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
-        // interrupts on the just-started run aren't filtered. Bump
-        // the generation so any in-flight hydrate skips its
-        // allowlist write on return (see #hydratedActiveInterruptIds).
+        // interrupts on the just-started run (submit *or* respond /
+        // respondAll via dispatchResume) aren't filtered. Bump the
+        // generation so any in-flight hydrate skips its allowlist
+        // write on return (see #hydratedActiveInterruptIds).
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
       },
@@ -553,6 +555,9 @@ export class StreamController<
     }
 
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
+    // Thread id this hydrate cycle is fetching for; used to detect a thread
+    // clear/swap across the getState() await below.
+    const hydratedThreadId = this.#currentThreadId;
     let hydrationError: unknown;
     let threadExists = false;
     // Default active so a getState error / non-404 failure never
@@ -561,6 +566,13 @@ export class StreamController<
     let threadActive = true;
     try {
       const state = await this.#fetchHydrationState();
+      // The await above yields. If the thread id changed or was cleared while
+      // we were suspended (host cleared it, hydrate(null), or the component
+      // unmounted during navigation), this hydrate is stale: applying its
+      // fetched state would repopulate rootStore for a thread we've left, and
+      // the reconnect below would call threads.stream(null, …) → `.fetch` on
+      // null. Bail before touching any state. Hydration is settled in finally.
+      if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
       if (state?.values != null) {
@@ -727,7 +739,7 @@ export class StreamController<
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
-    const thread = this.#ensureThread(this.#currentThreadId, !threadActive);
+    const thread = this.#ensureThread(hydratedThreadId, !threadActive);
 
     /**
      * Start the wildcard lifecycle watcher up-front for existing,
@@ -1277,23 +1289,49 @@ export class StreamController<
       throw new Error("No pending interrupt to respond to.");
     }
     const thread = this.#thread;
+
+    // Apply the state `update` optimistically, mirroring `submit()`: append its
+    // messages to the root projection and mint stable ids so the resumed run's
+    // echo reconciles by id. Without this the interrupt is cleared the instant
+    // `respond()` dispatches while the pushed messages only reappear after a
+    // server round-trip — so a HITL "card" pushed via `update` would vanish for
+    // that window (the flicker). The id-injected payload is what we dispatch,
+    // so the server echoes the same ids back and `#applyValues` flips them
+    // `pending` → `sent` in place (no duplicate, no gap).
+    const prepared =
+      options?.update != null
+        ? this.#beginOptimistic(options.update)
+        : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(
+      options?.update,
+      prepared
+    );
+
     try {
       // Route through the coordinator so a resumed run that fails (e.g. a
       // missing model key surfaced after the user answers) lands in the
       // reactive `rootStore.error` slot, exactly like a `submit()` failure.
       // The dispatch (`respondInput` + interrupt-resolved bookkeeping) is
       // what's awaited; the resumed run's terminal is watched in the
-      // background (see {@link SubmitCoordinator.dispatchResume}).
+      // background (see {@link SubmitCoordinator.dispatchResume}), which also
+      // settles the optimistic handle (rolls back un-echoed keys on failure).
       await this.#submitter.dispatchResume(async () => {
         await thread.respondInput({
           namespace: resolved.namespace,
           interrupt_id: resolved.interruptId,
           response: normalizeHitlResponseForServer(response),
+          // Fold an optional state update / directed jump into the same
+          // superstep as the resume (HITL "push card into state + resume").
+          // Omitted when absent so the server still sees a plain resume.
+          // `BaseMessage` instances under the messages key are serialized to
+          // plain dicts (like `submit()`) so they coerce server-side.
+          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+          ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
         });
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
-      });
+      }, prepared?.handle);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1362,20 +1400,39 @@ export class StreamController<
       namespace: pending.find((entry) => entry.interruptId === interruptId)
         ?.namespace ?? [...ROOT_NAMESPACE],
     }));
+    // Apply the run-level `update` optimistically (see `respond()` for the
+    // rationale): the batched resume's pushed messages paint immediately and
+    // reconcile by id when the single servicing run echoes them back.
+    const prepared =
+      options?.update != null
+        ? this.#beginOptimistic(options.update)
+        : undefined;
+    const dispatchUpdate = this.#resolveDispatchUpdate(
+      options?.update,
+      prepared
+    );
+
     try {
       // See `respond()` — route through the coordinator so the single run
       // that services the batched resume surfaces failures on the reactive
-      // `rootStore.error` slot.
+      // `rootStore.error` slot and settles the optimistic handle.
       await this.#submitter.dispatchResume(async () => {
         await thread.respondInput({
           responses,
+          // A batched resume services every targeted interrupt in one run, so
+          // the update / jump are run-level (not per-entry) — applied once in
+          // that run's superstep alongside all the resumes. `BaseMessage`
+          // instances under the messages key are serialized to plain dicts
+          // (like `submit()`) so they coerce server-side.
+          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+          ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
         });
         for (const { interrupt_id: interruptId } of responses) {
           this.#markInterruptResolvedInRootStore(interruptId);
         }
-      });
+      }, prepared?.handle);
     } catch (error) {
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1526,6 +1583,10 @@ export class StreamController<
       transport: this.#options.transport,
       fetch: this.#options.fetch,
       webSocketFactory: this.#options.webSocketFactory,
+      maxReconnectAttempts: this.#options.maxReconnectAttempts,
+      streamIdleReconnect: this.#options.streamIdleReconnect,
+      reconnectDelayMs: this.#options.reconnectDelayMs,
+      onReconnect: this.#options.onReconnect,
     });
     this.registry.bind(this.#thread);
     if (deferRootPump) {
@@ -2045,9 +2106,17 @@ export class StreamController<
     }));
 
     this.#sawValuesForRun = false;
+    // Commit synchronously: this runs inside the user's `submit()` /
+    // `respond()` call (before the first await), so the optimistic
+    // message lands in the same tick — and therefore the same React /
+    // framework commit — as any local UI state the caller flips
+    // alongside it. A macrotask-deferred flush would paint the message
+    // one tick late, leaving a blink (e.g. a HITL card vanishing between
+    // "form hidden" and "resolved card shown").
     this.#rootMessages.appendOptimistic(
       prepared.optimisticMessages,
-      prepared.extraValues
+      prepared.extraValues,
+      { sync: true }
     );
     if (prepared.echoedIds.length > 0) {
       this.#messageMetadata.markPending(prepared.echoedIds);
@@ -2056,6 +2125,30 @@ export class StreamController<
       dispatchInput: prepared.dispatchInput,
       handle: { echoedIds: prepared.echoedIds, restoreKeys },
     };
+  }
+
+  /**
+   * Pick the `update` payload to dispatch on a resume (`respond` /
+   * `respondAll`).
+   *
+   * When the optimistic path ran ({@link #beginOptimistic} returned a handle),
+   * its `dispatchInput` already carries the minted message ids the server must
+   * echo back, so dispatch that — the echo reconciles the optimistic messages
+   * by id (no duplicate). Otherwise (optimistic UI disabled, or an `update`
+   * with no echoable messages — e.g. the tuple-entry form) fall back to
+   * serializing `BaseMessage` instances to dicts, exactly as before. Returns
+   * `undefined` when there is no `update`, so the server still sees a plain
+   * resume.
+   */
+  #resolveDispatchUpdate(
+    update: Record<string, unknown> | [string, unknown][] | undefined,
+    prepared: { dispatchInput: unknown; handle: OptimisticHandle } | undefined
+  ): Record<string, unknown> | [string, unknown][] | undefined {
+    if (prepared != null) {
+      return prepared.dispatchInput as Record<string, unknown>;
+    }
+    if (update == null) return undefined;
+    return serializeUpdateMessages(update, this.#messagesKey);
   }
 
   /**
@@ -2389,8 +2482,8 @@ function extractAndCoerceMessagesWithFallback(
   messagesKey: string
 ): BaseMessage[] | null {
   let raw = values[messagesKey];
-  if (!Array.isArray(raw) && messagesKey !== "messages") {
-    raw = values.messages;
+  if (!Array.isArray(raw) && messagesKey !== DEFAULT_MESSAGES_KEY) {
+    raw = values[DEFAULT_MESSAGES_KEY];
   }
   if (!Array.isArray(raw)) return null;
   return ensureMessageInstances(

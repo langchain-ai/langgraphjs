@@ -78,7 +78,11 @@ const DEFAULT_NODE_VERSION = "20" as const;
 const PYTHON_EXTENSIONS = [".py", ".pyx", ".pyd", ".pyi"];
 
 const PythonVersionSchema = z.union([z.literal("3.11"), z.literal("3.12")]);
-const NodeVersionSchema = z.union([z.literal("20"), z.literal("22")]);
+const NodeVersionSchema = z.union([
+  z.literal("20"),
+  z.literal("22"),
+  z.literal("24"),
+]);
 
 const PythonConfigSchema = BaseConfigSchema.merge(
   z.object({
@@ -95,7 +99,10 @@ const PythonConfigSchema = BaseConfigSchema.merge(
 );
 
 const NodeConfigSchema = BaseConfigSchema.merge(
-  z.object({ node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION) })
+  z.object({
+    node_version: NodeVersionSchema.default(DEFAULT_NODE_VERSION),
+    node_loader: z.string().optional(),
+  })
 );
 
 const ConfigSchema = z.union([NodeConfigSchema, PythonConfigSchema]);

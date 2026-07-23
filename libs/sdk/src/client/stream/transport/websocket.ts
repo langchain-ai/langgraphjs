@@ -23,6 +23,10 @@ import type {
 } from "./types.js";
 import type { TransportAdapter } from "../transport.js";
 import { MaxWebSocketReconnectAttemptsError } from "../error.js";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+} from "../../../utils/reconnect.js";
 
 const WEB_SOCKET_CONNECTING = 0;
 const WEB_SOCKET_OPEN = 1;
@@ -35,7 +39,7 @@ const WEB_SOCKET_CLOSED = 3;
 export interface WebSocketReconnectOptions {
   /**
    * Maximum reconnection attempts after an unexpected disconnect.
-   * Defaults to 5.
+   * Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
    */
   maxReconnectAttempts?: number;
 
@@ -43,16 +47,6 @@ export interface WebSocketReconnectOptions {
    * Invoked before each reconnect attempt (after backoff).
    */
   onReconnect?: (options: { attempt: number; cause: unknown }) => void;
-}
-
-/**
- * Exponential backoff with jitter for WebSocket reconnect. Mirrors
- * {@link streamWithRetry} in `utils/stream.ts` (capped at 5s + 1s jitter).
- */
-export function webSocketReconnectDelayMs(attempt: number): number {
-  const baseDelay = Math.min(1000 * 2 ** (attempt - 1), 5000);
-  const jitter = Math.random() * 1000;
-  return baseDelay + jitter;
 }
 
 /**
@@ -109,11 +103,11 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.webSocketFactory =
       options.webSocketFactory ?? ((url) => new WebSocket(url));
     this.paths = options.paths;
-    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+    this.maxReconnectAttempts =
+      options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
     this.onReconnect = options.onReconnect;
     this.onReconnected = options.onReconnected;
-    this.reconnectDelayMs =
-      options.reconnectDelayMs ?? webSocketReconnectDelayMs;
+    this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
   }
 
   /** {@inheritDoc TransportAdapter.setThreadId} */

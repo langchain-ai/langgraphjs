@@ -125,7 +125,7 @@ export type {
   TransportAdapter,
 } from "../client/stream/transport.js";
 
-export { NAMESPACE_SEPARATOR } from "./constants.js";
+export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
 
 export { deriveStreamStatus } from "./status.js";
 export type { StreamStatus } from "./status.js";

@@ -332,15 +332,37 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // Group writes by channel
   const pendingWritesByChannel = {} as Record<keyof Cc, PendingWriteValue[]>;
+  // Originating task id per grouped write, used to reorder DeltaChannel writes
+  // below.
+  const pendingWriteTaskIdsByChannel = {} as Record<keyof Cc, string[]>;
   for (const task of tasks) {
+    const taskId = (task as { id?: string }).id ?? "";
     for (const [chan, val] of task.writes) {
       if (IGNORE.has(chan)) {
         // do nothing
       } else if (chan in onlyChannels) {
         pendingWritesByChannel[chan] ??= [];
         pendingWritesByChannel[chan].push(val);
+        pendingWriteTaskIdsByChannel[chan] ??= [];
+        pendingWriteTaskIdsByChannel[chan].push(taskId);
       }
     }
+  }
+
+  // Reorder concurrent DeltaChannel writes to match the checkpointer replay
+  // order: task id ascending (byte/string order, matching both MemorySaver and
+  // the Postgres `COLLATE "C"` sort). A stable sort keeps each task's writes in
+  // their original `idx` order, so reconstruction (see
+  // `BaseCheckpointSaver.getDeltaChannelHistory`) matches the live value.
+  for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
+    if (vals.length < 2) continue;
+    if (onlyChannels[chan]?.lc_graph_name !== "DeltaChannel") continue;
+    const taskIds = pendingWriteTaskIdsByChannel[chan as keyof Cc];
+    const paired = vals.map((val, i) => ({ val, taskId: taskIds[i] }));
+    paired.sort((a, b) =>
+      a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0
+    );
+    pendingWritesByChannel[chan as keyof Cc] = paired.map((p) => p.val);
   }
 
   // Find the highest version of all channels

@@ -585,9 +585,23 @@ export class SubmitCoordinator<
    * @param dispatch - Sends the `input.respond` command (and marks the
    *   targeted interrupt resolved). Invoked after the terminal watch is
    *   armed.
+   * @param optimisticHandle - Optional handle from an optimistic `update`
+   *   applied before dispatch (HITL "push card into state + resume"). Settled
+   *   on the resumed run's terminal — pending messages flip to `sent` and
+   *   un-echoed non-message keys roll back on failure — exactly like the
+   *   `submit()` optimistic lifecycle. A dispatch failure settles it `failed`.
    */
-  async dispatchResume(dispatch: () => Promise<void>): Promise<void> {
+  async dispatchResume(
+    dispatch: () => Promise<void>,
+    optimisticHandle?: OptimisticHandle
+  ): Promise<void> {
     if (this.#getDisposed()) return;
+
+    // Same allowlist clear as submit(): a resumed run can pause on a
+    // *new* interrupt id. Without this, the hydrate-window allowlist
+    // still contains only the interrupt being answered and
+    // `#recordRootInterrupt` drops the follow-on `input.requested`.
+    this.#onSubmitStart();
 
     // Rollback any run still tracked as active (mirrors submit()), then
     // claim the in-flight slot so stop()/dispose()/a concurrent submit
@@ -607,6 +621,15 @@ export class SubmitCoordinator<
       this.#rootStore.setState((s) => ({ ...s, error }));
     };
 
+    // Settle the optimistic `update` exactly once, whether the resumed run
+    // terminates (success/failure/interrupt) or the dispatch itself fails.
+    let optimisticSettled = false;
+    const settleOptimisticOnce = (event: TerminalResult["event"]): void => {
+      if (optimisticSettled || optimisticHandle == null) return;
+      optimisticSettled = true;
+      this.#settleOptimistic(optimisticHandle, event);
+    };
+
     // Subscribe to the resumed run's terminal *before* dispatching so a fast
     // `failed` can't race us. Unlike `#awaitNextTerminal`, the resume watcher
     // ignores stale `interrupted` events until root `running` is seen.
@@ -620,6 +643,7 @@ export class SubmitCoordinator<
           new Error(terminal.error ?? "Run failed with no error message")
         );
       }
+      settleOptimisticOnce(abort.signal.aborted ? "aborted" : terminal.event);
       // Drain any submission enqueued while the resumed run was active.
       setTimeout(() => this.#drainQueue(), 0);
     });
@@ -629,6 +653,7 @@ export class SubmitCoordinator<
     } catch (error) {
       // The `input.respond` send itself failed, before any run started.
       reportError(error);
+      settleOptimisticOnce("failed");
       if (this.#runAbort === abort) this.#runAbort = undefined;
       throw error;
     }

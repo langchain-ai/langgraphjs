@@ -40,6 +40,180 @@ describe("MongoDBSaver", () => {
     });
   });
 
+  describe("TTL support", () => {
+    it("should store ttl property when provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+      // Access protected property for testing
+      expect((saver as unknown as { ttl: number }).ttl).toBe(3600);
+    });
+
+    it("should not have ttl when not provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      expect((saver as unknown as { ttl?: number }).ttl).toBeUndefined();
+    });
+
+    it("should enable timestamps implicitly when ttl is provided", () => {
+      const client = createMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const op = (saver as any).timestampOp;
+      expect(op).toEqual({ $currentDate: { upserted_at: true } });
+    });
+  });
+
+  describe("setup", () => {
+    it("should create compound indexes on both collections", async () => {
+      const createIndexMock = vi.fn().mockResolvedValue("ok");
+      const collectionMock = vi.fn(() => ({
+        createIndex: createIndexMock,
+        find: vi.fn(() => ({
+          sort: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              toArray: vi.fn(() => Promise.resolve([])),
+            })),
+          })),
+        })),
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({ collection: collectionMock })),
+      };
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      const errors = await saver.setup();
+
+      expect(errors).toEqual([]);
+      expect(collectionMock).toHaveBeenCalledWith("checkpoints");
+      expect(collectionMock).toHaveBeenCalledWith("checkpoint_writes");
+      expect(createIndexMock).toHaveBeenCalledTimes(2);
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+        { name: "thread_ns_checkpoint_idx" }
+      );
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: 1, task_id: 1, idx: 1 },
+        { name: "thread_ns_checkpoint_task_idx" }
+      );
+    });
+
+    it("should create TTL indexes in addition to compound indexes when ttl is configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      await saver.setup();
+
+      expect(mockCollection).toHaveBeenCalledWith("checkpoints");
+      expect(mockCollection).toHaveBeenCalledWith("checkpoint_writes");
+      // 2 compound indexes + 2 TTL indexes
+      expect(mockCreateIndex).toHaveBeenCalledTimes(4);
+      expect(mockCreateIndex).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+        { name: "thread_ns_checkpoint_idx" }
+      );
+      expect(mockCreateIndex).toHaveBeenCalledWith(
+        { upserted_at: 1 },
+        { expireAfterSeconds: 3600 }
+      );
+    });
+
+    it("should not create TTL indexes when ttl is not configured", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+
+      await saver.setup();
+
+      // Only the 2 compound indexes, no TTL index.
+      expect(mockCreateIndex).toHaveBeenCalledTimes(2);
+      expect(mockCreateIndex).not.toHaveBeenCalledWith(
+        { upserted_at: 1 },
+        expect.anything()
+      );
+    });
+
+    it("should return empty array on success", async () => {
+      const mockCreateIndex = vi.fn().mockResolvedValue("ok");
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      const errors = await saver.setup();
+      expect(errors).toEqual([]);
+    });
+
+    it("should return errors for caller to handle", async () => {
+      const mockCreateIndex = vi
+        .fn()
+        .mockRejectedValue(new Error("Index creation failed"));
+      const mockCollection = vi.fn(() => ({
+        createIndex: mockCreateIndex,
+      }));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: mockCollection,
+        })),
+      };
+
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+        ttl: 3600,
+      });
+
+      const errors = await saver.setup();
+      // 2 compound + 2 TTL index creations all fail.
+      expect(errors).toHaveLength(4);
+      expect(errors[0].message).toBe("Index creation failed");
+    });
+  });
+
   describe("timestampOp", () => {
     it("should return empty object when enableTimestamps is not set", () => {
       const client = createMockClient();
@@ -574,6 +748,35 @@ describe("MongoDBSaver", () => {
       expect(specialOnly[0].updateOne.update).not.toHaveProperty(
         "$setOnInsert"
       );
+    });
+
+    it("should no-op without calling bulkWrite when writes is empty", async () => {
+      // Regression test: an empty `writes` array used to reach `bulkWrite([])`,
+      // which the MongoDB driver rejects with "Invalid BulkOperation, Batch
+      // cannot be empty" (hit by human-in-the-loop / interrupt() flows).
+      const bulkWriteMock = vi.fn(() => Promise.resolve({}));
+      const client = {
+        appendMetadata: vi.fn(),
+        db: vi.fn(() => ({
+          collection: vi.fn(() => ({ bulkWrite: bulkWriteMock })),
+        })),
+      };
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const config = {
+        configurable: {
+          thread_id: "t",
+          checkpoint_ns: "",
+          checkpoint_id: "c",
+        },
+      };
+
+      await expect(
+        saver.putWrites(config, [], "task_A")
+      ).resolves.toBeUndefined();
+      // Load-bearing assertion: before the fix, putWrites called bulkWrite([]).
+      expect(bulkWriteMock).not.toHaveBeenCalled();
     });
 
     it("should reject non-string thread_id in putWrites", async () => {

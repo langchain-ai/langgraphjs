@@ -1450,6 +1450,7 @@ export function runPregelTests(
           input: 2,
           triggers: ["input"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {
@@ -1462,6 +1463,7 @@ export function runPregelTests(
           input: [12],
           triggers: ["inbox"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {
@@ -1496,6 +1498,7 @@ export function runPregelTests(
           input: [3],
           triggers: ["inbox"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {
@@ -5452,6 +5455,7 @@ graph TD;
           input: { my_key: "value", market: "DE" },
           triggers: ["branch:to:prepare"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {
@@ -5520,6 +5524,7 @@ graph TD;
           input: { my_key: "value prepared", market: "DE" },
           triggers: ["branch:to:tool_two_slow"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {
@@ -5588,6 +5593,7 @@ graph TD;
           input: { my_key: "value prepared slow", market: "DE" },
           triggers: ["branch:to:finish"],
           interrupts: [],
+          metadata: { ls_integration: "langgraph" },
         },
       },
       {

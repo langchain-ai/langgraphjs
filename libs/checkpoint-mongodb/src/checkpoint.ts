@@ -22,6 +22,13 @@ export type MongoDBSaverParams = {
    * Useful for MongoDB TTL indexes, auditing, or debugging.
    */
   enableTimestamps?: boolean;
+  /**
+   * Time-to-live in seconds for checkpoint documents. When set, an
+   * `upserted_at` timestamp is written on every upsert (implies
+   * `enableTimestamps`) and {@link MongoDBSaver.setup} creates MongoDB TTL
+   * indexes so documents expire after the configured period of inactivity.
+   */
+  ttl?: number;
 };
 
 function getStringConfigValue(
@@ -45,6 +52,14 @@ function getStringConfigValue(
 
 /**
  * A LangGraph checkpoint saver backed by a MongoDB database.
+ *
+ * NOTE: you need to call .setup() the first time you're using your checkpointer.
+ *
+ * @example
+ * ```typescript
+ * const checkpointer = new MongoDBSaver({ client });
+ * await checkpointer.setup();
+ * ```
  */
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
@@ -56,6 +71,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   checkpointWritesCollectionName = "checkpoint_writes";
 
   protected enableTimestamps: boolean;
+
+  protected ttl?: number;
 
   private get timestampOp() {
     return this.enableTimestamps
@@ -70,6 +87,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName,
       checkpointWritesCollectionName,
       enableTimestamps,
+      ttl,
     }: MongoDBSaverParams,
     serde?: SerializerProtocol
   ) {
@@ -83,7 +101,64 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpointCollectionName ?? this.checkpointCollectionName;
     this.checkpointWritesCollectionName =
       checkpointWritesCollectionName ?? this.checkpointWritesCollectionName;
-    this.enableTimestamps = enableTimestamps ?? false;
+    this.ttl = ttl;
+    // TTL expiry relies on the `upserted_at` timestamp, so configuring a `ttl`
+    // forces timestamps on (otherwise the TTL index would never match any
+    // document and nothing would ever expire).
+    this.enableTimestamps = (enableTimestamps ?? false) || ttl != null;
+  }
+
+  /**
+   * Creates the indexes required by the checkpoint saver.
+   *
+   * Always creates compound indexes on the `checkpoints` and
+   * `checkpoint_writes` collections matching the query and upsert patterns so
+   * that lookups don't degrade into full collection scans as the collections
+   * grow. When a `ttl` is configured, additionally creates MongoDB TTL indexes
+   * on `upserted_at` so documents expire after the configured period of
+   * inactivity.
+   *
+   * This method is idempotent and safe to call on every application start (and
+   * concurrently). It returns an array of errors (empty if successful) so the
+   * caller can decide how to handle failures.
+   */
+  async setup(): Promise<Error[]> {
+    const operations: Promise<unknown>[] = [
+      this.db
+        .collection(this.checkpointCollectionName)
+        .createIndex(
+          { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
+          { name: "thread_ns_checkpoint_idx" }
+        ),
+      this.db.collection(this.checkpointWritesCollectionName).createIndex(
+        {
+          thread_id: 1,
+          checkpoint_ns: 1,
+          checkpoint_id: 1,
+          task_id: 1,
+          idx: 1,
+        },
+        { name: "thread_ns_checkpoint_task_idx" }
+      ),
+    ];
+
+    if (this.ttl != null) {
+      const ttlIndex = { upserted_at: 1 };
+      const options = { expireAfterSeconds: this.ttl };
+      operations.push(
+        this.db
+          .collection(this.checkpointCollectionName)
+          .createIndex(ttlIndex, options),
+        this.db
+          .collection(this.checkpointWritesCollectionName)
+          .createIndex(ttlIndex, options)
+      );
+    }
+
+    const results = await Promise.allSettled(operations);
+    return results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => r.reason as Error);
   }
 
   /**
@@ -424,9 +499,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       })
     );
 
-    await this.db
-      .collection(this.checkpointWritesCollectionName)
-      .bulkWrite(operations);
+    // The MongoDB driver rejects `bulkWrite([])` with "Invalid BulkOperation,
+    // Batch cannot be empty". `writes` can be empty in human-in-the-loop /
+    // `interrupt()` flows, so skip the call when there is nothing to persist.
+    if (operations.length > 0) {
+      await this.db
+        .collection(this.checkpointWritesCollectionName)
+        .bulkWrite(operations);
+    }
   }
 
   async deleteThread(threadId: string) {

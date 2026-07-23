@@ -11,13 +11,13 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.3",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.9",
     "zod": "^3.24.0"
   }
 }

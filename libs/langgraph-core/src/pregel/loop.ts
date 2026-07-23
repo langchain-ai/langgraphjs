@@ -25,6 +25,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   deltaChannelsToSnapshot,
+  exitDeltaTaskId,
   isDeltaChannel,
 } from "../channels/base.js";
 import type {
@@ -38,6 +39,7 @@ import type {
 import {
   isCommand,
   _isSend,
+  _isOverwriteValue,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -306,6 +308,15 @@ export class PregelLoop {
    */
   protected _exitDeltaWrites: [number, string, string, unknown][] | undefined;
 
+  /**
+   * DeltaChannels that saw an Overwrite since the last checkpoint. These
+   * channels are force-snapshotted at the next checkpoint so reconstruction
+   * starts from the post-overwrite value and never has to replay across the
+   * reset (the live `update` discards every sibling write in the overwriting
+   * super-step). Cleared once the channel snapshots.
+   */
+  protected _deltaChannelsWithOverwrite: Set<string> = new Set();
+
   /** Whether a real checkpoint was loaded from the saver at initialization. */
   protected _hasPersistedParent = false;
 
@@ -389,6 +400,17 @@ export class PregelLoop {
       }
     );
     this.checkpointerPromises.add(tracked);
+  }
+
+  /**
+   * Wait for persistence work scheduled by this run up to this point.
+   *
+   * Taking a snapshot keeps the barrier scoped to the completed superstep:
+   * persistence scheduled later cannot extend it, while failures from the
+   * captured work are propagated at the superstep boundary.
+   */
+  protected async _awaitCheckpointerPromises(): Promise<void> {
+    await Promise.all([...this.checkpointerPromises]);
   }
 
   store?: AsyncBatchedStore;
@@ -958,6 +980,19 @@ export class PregelLoop {
         this.checkpointerGetNextVersion,
         this.triggerToNodes
       );
+      // Track DeltaChannels that saw an Overwrite this super-step. They must
+      // snapshot at the next checkpoint so sparse replay starts from the
+      // post-overwrite value (live `update` already discarded the siblings).
+      for (const [ch, v] of writes) {
+        const channel = this.channels[ch];
+        if (
+          channel != null &&
+          isDeltaChannel(channel) &&
+          _isOverwriteValue(v)
+        ) {
+          this._deltaChannelsWithOverwrite.add(ch);
+        }
+      }
       // produce values output
       const valuesOutput = await gatherIterator(
         prefixGenerator(
@@ -981,6 +1016,12 @@ export class PregelLoop {
       // attached `checkpoint` envelope on the values event points at
       // the fork target that captures this superstep's final state.
       await this._putCheckpoint({ source: "loop" });
+      if (this.durability === "sync") {
+        // Task writes are persisted as tasks finish, while the checkpoint is
+        // scheduled above. Do not prepare the next superstep until all
+        // persistence caused by this completed superstep has settled.
+        await this._awaitCheckpointerPromises();
+      }
       this._emitValuesWithCheckpointMeta(valuesOutput);
       // after execution, check if we should interrupt
       if (
@@ -1520,6 +1561,10 @@ export class PregelLoop {
           const channel = this.channels[c];
           return channel != null && isDeltaChannel(channel);
         });
+        // An Overwrite supplied as input must also force a snapshot.
+        for (const [c, v] of deltaInput) {
+          if (_isOverwriteValue(v)) this._deltaChannelsWithOverwrite.add(c);
+        }
         if (deltaInput.length > 0) {
           if (this._exitDeltaWrites !== undefined) {
             // Exit mode: capture so the accumulator includes input deltas.
@@ -1756,6 +1801,13 @@ export class PregelLoop {
     const channelsToSnapshot = doCheckpoint
       ? deltaChannelsToSnapshot(this.channels, newCounters)
       : new Set<string>();
+    // Force a snapshot for any delta channel that saw an Overwrite since the
+    // last checkpoint, so the post-overwrite value is materialized and sparse
+    // replay never has to fold across the reset.
+    if (doCheckpoint) {
+      for (const ch of this._deltaChannelsWithOverwrite)
+        channelsToSnapshot.add(ch);
+    }
 
     // create new checkpoint
     this.checkpoint = createCheckpoint(
@@ -1775,7 +1827,12 @@ export class PregelLoop {
 
     // Reset counters for channels that just snapshotted, and persist the
     // non-zero remainder into metadata (or clear the field entirely).
-    for (const k of channelsToSnapshot) newCounters[k] = [0, 0];
+    for (const k of channelsToSnapshot) {
+      newCounters[k] = [0, 0];
+      // The overwrite was just materialized into `channel_values`; stop
+      // forcing a snapshot for it.
+      this._deltaChannelsWithOverwrite.delete(k);
+    }
     const nonZero: Record<string, [number, number]> = {};
     for (const k in newCounters) {
       if (!Object.prototype.hasOwnProperty.call(newCounters, k)) continue;
@@ -1821,6 +1878,11 @@ export class PregelLoop {
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
     const channelsToSnapshot = deltaChannelsToSnapshot(this.channels, counters);
+    // Channels that saw an Overwrite are force-snapshotted by the final
+    // `_putCheckpoint` (which runs after this), so their accumulated exit
+    // writes must NOT also be replayed on top of that snapshot — exclude them.
+    for (const ch of this._deltaChannelsWithOverwrite)
+      channelsToSnapshot.add(ch);
 
     const pending = this._exitDeltaWrites.filter(
       ([, , ch]) => !channelsToSnapshot.has(ch)
@@ -1875,7 +1937,7 @@ export class PregelLoop {
       group.push([ch, v]);
     }
     for (const { key, step, tid } of order) {
-      const synthTid = `${String(step).padStart(8, "0")}-${tid}`;
+      const synthTid = exitDeltaTaskId(step, tid);
       this._trackCheckpointerPromise(
         this.checkpointer.putWrites(
           anchorWriteConfig,

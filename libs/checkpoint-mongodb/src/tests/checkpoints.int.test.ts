@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, afterEach } from "vitest";
 import { MongoClient } from "mongodb";
 import {
   Checkpoint,
@@ -49,8 +49,10 @@ const client = new MongoClient(getEnvironmentVariable("MONGODB_URL")!, {
 
 afterAll(async () => {
   const db = client.db();
-  await db.dropCollection("checkpoints");
-  await db.dropCollection("checkpoint_writes");
+  await db.dropCollection("checkpoints").catch(() => {});
+  await db.dropCollection("checkpoint_writes").catch(() => {});
+  await db.dropCollection("checkpoints_ttl").catch(() => {});
+  await db.dropCollection("checkpoint_writes_ttl").catch(() => {});
   await client.close();
 });
 
@@ -189,18 +191,24 @@ describe("MongoDBSaver", () => {
         .collection("checkpoint_writes")
         .findOne({ thread_id: "ts-1" });
 
+      // `$currentDate` is evaluated server-side and can drift from the client
+      // clock by a millisecond (e.g. under Docker Desktop on macOS), so allow a
+      // small tolerance around the client-captured bounds.
+      const TOLERANCE_MS = 1000;
       expect(cpDoc?.upserted_at).toBeInstanceOf(Date);
       expect(cpDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        before.getTime()
+        before.getTime() - TOLERANCE_MS
       );
-      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(after.getTime());
+      expect(cpDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
+        after.getTime() + TOLERANCE_MS
+      );
 
       expect(writeDoc?.upserted_at).toBeInstanceOf(Date);
       expect(writeDoc!.upserted_at.getTime()).toBeGreaterThanOrEqual(
-        before.getTime()
+        before.getTime() - TOLERANCE_MS
       );
       expect(writeDoc!.upserted_at.getTime()).toBeLessThanOrEqual(
-        after.getTime()
+        after.getTime() + TOLERANCE_MS
       );
     });
 
@@ -260,5 +268,173 @@ describe("MongoDBSaver", () => {
     expect(
       await saver.getTuple({ configurable: { thread_id: "2" } })
     ).toBeDefined();
+  });
+
+  it("should no-op on empty writes without throwing", async () => {
+    // Regression test for the empty-batch crash against the real driver:
+    // bulkWrite([]) is rejected with "Invalid BulkOperation, Batch cannot be
+    // empty"; HITL / interrupt() flows can call putWrites with zero writes.
+    const saver = new MongoDBSaver({ client });
+
+    await saver.put(
+      { configurable: { thread_id: "empty-writes" } },
+      checkpoint1,
+      { source: "update", step: -1, parents: {} }
+    );
+
+    await expect(
+      saver.putWrites(
+        {
+          configurable: {
+            thread_id: "empty-writes",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [],
+        "task-empty"
+      )
+    ).resolves.toBeUndefined();
+
+    // Nothing should have been persisted to the writes collection.
+    const writeDoc = await client
+      .db()
+      .collection("checkpoint_writes")
+      .findOne({ thread_id: "empty-writes" });
+    expect(writeDoc).toBeNull();
+  });
+
+  describe("TTL support", () => {
+    const ttlCheckpointCollection = "checkpoints_ttl";
+    const ttlWritesCollection = "checkpoint_writes_ttl";
+    // Checkpoint timestamps come from MongoDB's server-side `$currentDate`,
+    // which can drift slightly from the client clock (notably under Docker
+    // Desktop on macOS), so compare against a tolerance window rather than
+    // exact client-captured bounds.
+    const CLOCK_SKEW_TOLERANCE_MS = 1000;
+
+    afterEach(async () => {
+      const db = client.db();
+      await db.collection(ttlCheckpointCollection).deleteMany({});
+      await db.collection(ttlWritesCollection).deleteMany({});
+    });
+
+    it("should create TTL indexes on setup()", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        ttl: 3600,
+        checkpointCollectionName: ttlCheckpointCollection,
+        checkpointWritesCollectionName: ttlWritesCollection,
+      });
+
+      await saver.setup();
+
+      const db = client.db();
+      const checkpointIndexes = await db
+        .collection(ttlCheckpointCollection)
+        .indexes();
+      const writesIndexes = await db.collection(ttlWritesCollection).indexes();
+
+      const checkpointTtlIndex = checkpointIndexes.find(
+        (idx) => idx.key?.upserted_at === 1
+      );
+      const writesTtlIndex = writesIndexes.find(
+        (idx) => idx.key?.upserted_at === 1
+      );
+
+      expect(checkpointTtlIndex).toBeDefined();
+      expect(checkpointTtlIndex?.expireAfterSeconds).toBe(3600);
+      expect(writesTtlIndex).toBeDefined();
+      expect(writesTtlIndex?.expireAfterSeconds).toBe(3600);
+    });
+
+    it("should add upserted_at field to checkpoints when TTL is enabled", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        ttl: 3600,
+        checkpointCollectionName: ttlCheckpointCollection,
+        checkpointWritesCollectionName: ttlWritesCollection,
+      });
+
+      const beforePut = new Date();
+      await saver.put(
+        { configurable: { thread_id: "ttl-test-1" } },
+        checkpoint1,
+        { source: "update", step: -1, parents: {} }
+      );
+      const afterPut = new Date();
+
+      const db = client.db();
+      const doc = await db
+        .collection(ttlCheckpointCollection)
+        .findOne({ thread_id: "ttl-test-1" });
+
+      expect(doc?.upserted_at).toBeDefined();
+      expect(doc?.upserted_at).toBeInstanceOf(Date);
+      expect(doc?.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        beforePut.getTime() - CLOCK_SKEW_TOLERANCE_MS
+      );
+      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(
+        afterPut.getTime() + CLOCK_SKEW_TOLERANCE_MS
+      );
+    });
+
+    it("should add upserted_at field to writes when TTL is enabled", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        ttl: 3600,
+        checkpointCollectionName: ttlCheckpointCollection,
+        checkpointWritesCollectionName: ttlWritesCollection,
+      });
+
+      const beforePut = new Date();
+      await saver.putWrites(
+        {
+          configurable: {
+            thread_id: "ttl-test-2",
+            checkpoint_ns: "",
+            checkpoint_id: checkpoint1.id,
+          },
+        },
+        [["channel1", "value1"]],
+        "task1"
+      );
+      const afterPut = new Date();
+
+      const db = client.db();
+      const doc = await db
+        .collection(ttlWritesCollection)
+        .findOne({ thread_id: "ttl-test-2" });
+
+      expect(doc?.upserted_at).toBeDefined();
+      expect(doc?.upserted_at).toBeInstanceOf(Date);
+      expect(doc?.upserted_at.getTime()).toBeGreaterThanOrEqual(
+        beforePut.getTime() - CLOCK_SKEW_TOLERANCE_MS
+      );
+      expect(doc?.upserted_at.getTime()).toBeLessThanOrEqual(
+        afterPut.getTime() + CLOCK_SKEW_TOLERANCE_MS
+      );
+    });
+
+    it("should NOT add upserted_at field when TTL is not enabled", async () => {
+      const saver = new MongoDBSaver({
+        client,
+        checkpointCollectionName: ttlCheckpointCollection,
+        checkpointWritesCollectionName: ttlWritesCollection,
+      });
+
+      await saver.put(
+        { configurable: { thread_id: "no-ttl-test" } },
+        checkpoint1,
+        { source: "update", step: -1, parents: {} }
+      );
+
+      const db = client.db();
+      const doc = await db
+        .collection(ttlCheckpointCollection)
+        .findOne({ thread_id: "no-ttl-test" });
+
+      expect(doc?.upserted_at).toBeUndefined();
+    });
   });
 });

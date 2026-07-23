@@ -10,6 +10,7 @@ import {
 
 import type { Message } from "../types.messages.js";
 import type { ThreadState } from "../schema.js";
+import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import {
   normalizeAIMessageToolCalls,
   tryCoerceMessageLikeToMessage,
@@ -174,7 +175,7 @@ export function ensureHistoryMessageInstances<
   StateType extends Record<string, unknown>,
 >(
   history: ThreadState<StateType>[],
-  messagesKey: string = "messages"
+  messagesKey: string = DEFAULT_MESSAGES_KEY
 ): ThreadState<StateType>[] {
   return history.map((state) => {
     if (state.values == null) return state;

@@ -1,5 +1,32 @@
 # @langchain/langgraph-ui
 
+## 1.4.3
+
+## 1.4.2
+
+### Patch Changes
+
+- [#2590](https://github.com/langchain-ai/langgraphjs/pull/2590) [`f71e00c`](https://github.com/langchain-ai/langgraphjs/commit/f71e00c52600a6dafacccdde1363e83c17c8d97b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(api): inject langgraph_auth_user on protocol-v2 run.start
+
+  Stamp authenticated user fields onto run config in createOrResumeRun so
+  v2 streaming matches the REST runs API. Shared helpers also dedupe REST
+  run config auth/header enrichment.
+
+- [#2575](https://github.com/langchain-ai/langgraphjs/pull/2575) [`e1b40c2`](https://github.com/langchain-ai/langgraphjs/commit/e1b40c29e14f8e9fb2696acc62d611e14a813f43) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(cli): support node_version 24 in langgraph.json
+
+  Allow Node 24 in the CLI config schema and Docker base image resolution.
+  The langgraphjs-api:24 image is already published from langgraph-api.
+
+## 1.4.1
+
+## 1.4.0
+
+### Minor Changes
+
+- [#2559](https://github.com/langchain-ai/langgraphjs/pull/2559) [`48cbdd2`](https://github.com/langchain-ai/langgraphjs/commit/48cbdd23fdf29277530f6aa05c397c9902e81206) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(langgraph-cli): add `deploy` command for LangSmith Deployment
+
+  Port the Python CLI's `langgraph deploy` workflow to `@langchain/langgraph-cli`, including local and remote build paths, deployment lifecycle subcommands (`list`, `revisions list`, `delete`, `logs`), and host-backend client utilities with tests.
+
 ## 1.3.1
 
 ### Patch Changes

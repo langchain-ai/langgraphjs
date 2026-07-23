@@ -1,5 +1,88 @@
 # @langchain/langgraph-api
 
+## 1.4.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.4.3
+
+## 1.4.2
+
+### Patch Changes
+
+- [#2590](https://github.com/langchain-ai/langgraphjs/pull/2590) [`f71e00c`](https://github.com/langchain-ai/langgraphjs/commit/f71e00c52600a6dafacccdde1363e83c17c8d97b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(api): inject langgraph_auth_user on protocol-v2 run.start
+
+  Stamp authenticated user fields onto run config in createOrResumeRun so
+  v2 streaming matches the REST runs API. Shared helpers also dedupe REST
+  run config auth/header enrichment.
+
+- [#2575](https://github.com/langchain-ai/langgraphjs/pull/2575) [`e1b40c2`](https://github.com/langchain-ai/langgraphjs/commit/e1b40c29e14f8e9fb2696acc62d611e14a813f43) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(cli): support node_version 24 in langgraph.json
+
+  Allow Node 24 in the CLI config schema and Docker base image resolution.
+  The langgraphjs-api:24 image is already published from langgraph-api.
+
+- Updated dependencies [[`f71e00c`](https://github.com/langchain-ai/langgraphjs/commit/f71e00c52600a6dafacccdde1363e83c17c8d97b), [`e1b40c2`](https://github.com/langchain-ai/langgraphjs/commit/e1b40c29e14f8e9fb2696acc62d611e14a813f43)]:
+  - @langchain/langgraph-ui@1.4.2
+
+## 1.4.1
+
+### Patch Changes
+
+- [#2568](https://github.com/langchain-ai/langgraphjs/pull/2568) [`38d15e2`](https://github.com/langchain-ai/langgraphjs/commit/38d15e2f1f9dded34665a602cd9311cbcf5fbefc) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-api): support configurable TypeScript loaders in dev server
+
+  Add `node_loader` to `langgraph.json` (and `LANGGRAPH_NODE_LOADER` env override) so projects using reflect-metadata can use `ts-node` (`--loader ts-node/esm`) instead of the default tsx CLI. Other loaders default to `--import`; only registered shorthands like `ts-node` use `--loader`. `--no-reload` now also disables tsx's internal watch mode. Closes [#1834](https://github.com/langchain-ai/langgraphjs/issues/1834).
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.4.1
+
+## 1.4.0
+
+### Minor Changes
+
+- [#2559](https://github.com/langchain-ai/langgraphjs/pull/2559) [`48cbdd2`](https://github.com/langchain-ai/langgraphjs/commit/48cbdd23fdf29277530f6aa05c397c9902e81206) Thanks [@christian-bromann](https://github.com/christian-bromann)! - feat(langgraph-cli): add `deploy` command for LangSmith Deployment
+
+  Port the Python CLI's `langgraph deploy` workflow to `@langchain/langgraph-cli`, including local and remote build paths, deployment lifecycle subcommands (`list`, `revisions list`, `delete`, `logs`), and host-backend client utilities with tests.
+
+### Patch Changes
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-api): preserve non-empty response_metadata on protocol-v2 state messages
+
+  The protocol-v2 state normalizer stripped `response_metadata` from messages,
+  dropping data that HITL flows rely on — an interrupt's card is carried on
+  `AIMessage.response_metadata` (e.g. `{ cards: ... }`). Non-empty
+  `response_metadata` is now retained so the card reaches the client.
+
+- [#2557](https://github.com/langchain-ai/langgraphjs/pull/2557) [`b1e856d`](https://github.com/langchain-ai/langgraphjs/commit/b1e856d987ac16148dc0872d1fecf70e659ef28e) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply state update and goto alongside interrupt resume
+
+  `respond(decision, { update, goto })` now maps to LangGraph's
+  `Command(resume, update, goto)`, so a human-in-the-loop UI can commit a state
+  update (e.g. push the interrupt card into state) in the **same superstep** as
+  the resume — one checkpoint, no separate `updateState` write, no flicker.
+  `@langchain/langgraph-api` forwards `update`/`goto` through `input.respond`,
+  and `@langchain/core` message instances in `update` are serialized to dicts
+  before transport, exactly like `submit()`. Bumps `@langchain/protocol` to
+  `^0.0.18` for the `Goto` type.
+
+  `respond`/`respondAll` also apply `update` **optimistically** (mirroring
+  `submit()`): the pushed messages paint immediately, with stable ids minted so
+  the resumed run's echo reconciles them in place. Without this the interrupt is
+  cleared the instant `respond()` dispatches while the pushed card only reappears
+  a server round-trip later — so the card would flicker in that gap. The
+  optimistic state settles on the resumed run's terminal (pending → sent, or
+  rolled back on a failure before any echo).
+
+  User-initiated optimistic writes (`submit()` / `respond()` / `respondAll()`) now
+  commit to the store **synchronously**, in the same tick as the triggering event,
+  instead of being coalesced onto the next macrotask. This lets a framework render
+  the pushed message in the **same commit** as any local UI state the caller flips
+  alongside it (e.g. a HITL form swapping its inputs for the resolved card), so the
+  card no longer blinks out for the one-macrotask window before the flush lands.
+  High-frequency streaming writes keep their macrotask coalescing.
+
+- Updated dependencies [[`48cbdd2`](https://github.com/langchain-ai/langgraphjs/commit/48cbdd23fdf29277530f6aa05c397c9902e81206)]:
+  - @langchain/langgraph-ui@1.4.0
+
 ## 1.3.1
 
 ### Patch Changes

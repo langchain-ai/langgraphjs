@@ -167,32 +167,29 @@ export class DeltaChannel<
   public update(values: OverwriteOrValue<ValueType, UpdateType>[]): boolean {
     if (values.length === 0) return false;
 
-    let overwriteIdx: number | undefined;
-    for (let i = 0; i < values.length; i += 1) {
-      if (_isOverwriteValue<ValueType>(values[i])) {
-        if (overwriteIdx !== undefined) {
+    let overwriteValue: ValueType | undefined;
+    let hasOverwrite = false;
+    for (const value of values) {
+      if (_isOverwriteValue<ValueType>(value)) {
+        if (hasOverwrite) {
           throw new InvalidUpdateError(
             "Can receive only one Overwrite value per step."
           );
         }
-        overwriteIdx = i;
+        hasOverwrite = true;
+        [, overwriteValue] = _getOverwriteValue<ValueType>(value);
       }
     }
 
-    if (overwriteIdx !== undefined) {
-      const [, overwriteValue] = _getOverwriteValue<ValueType>(
-        values[overwriteIdx]
-      );
-      const base =
+    if (hasOverwrite) {
+      // An Overwrite wins the entire super-step: every sibling write (before
+      // AND after) is discarded, mirroring `BinaryOperatorAggregate` — hence
+      // only one Overwrite per step. The loop force-snapshots channels that saw
+      // an Overwrite, so reconstruction seeds from this value without replaying.
+      this.value =
         overwriteValue !== undefined && overwriteValue !== null
           ? overwriteValue
           : this.initialValueFactory();
-      // Treat Overwrite as a hard reset: drop everything up to and including
-      // the overwrite, keeping only writes that follow it. This mirrors
-      // `replayWrites` so reconstruction from a checkpoint reproduces the live
-      // state even when a plain write precedes the Overwrite in the same step.
-      const remaining = values.slice(overwriteIdx + 1) as UpdateType[];
-      this.value = remaining.length > 0 ? this.reducer(base, remaining) : base;
       return true;
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-redis",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Redis checkpoint and store implementation for LangGraph",
   "type": "module",
   "engines": {
@@ -44,7 +44,7 @@
     "rollup": "^4.37.0",
     "tsx": "^4.19.3",
     "typescript": "^4.9.5 || ^5.4.5",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   },
   "publishConfig": {
     "access": "public",

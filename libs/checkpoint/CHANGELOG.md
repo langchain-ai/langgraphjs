@@ -1,5 +1,51 @@
 # @langchain/langgraph-checkpoint
 
+## 1.1.3
+
+### Patch Changes
+
+- [#2566](https://github.com/langchain-ai/langgraphjs/pull/2566) [`091a46f`](https://github.com/langchain-ai/langgraphjs/commit/091a46f32ddd3a85ee89e35fb9ea953dfc4cf8b4) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-checkpoint-postgres): prevent createAgent failures with PostgresSaver
+
+  Add BaseCheckpointSaver.toJSON() so ConfigurableModel can stringify runnable config without traversing pg Pool timers, and default missing checkpoint maps on load/copy so resume no longer crashes on undefined versions_seen. Closes [#1808](https://github.com/langchain-ai/langgraphjs/issues/1808).
+
+## 1.1.2
+
+### Patch Changes
+
+- [#2544](https://github.com/langchain-ai/langgraphjs/pull/2544) [`4487214`](https://github.com/langchain-ai/langgraphjs/commit/448721449f0801009ba76b03dd2e9c16f900bbba) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): make concurrent DeltaChannel writes deterministic on replay
+
+  Concurrent same-superstep writes to a `DeltaChannel` could reconstruct from a
+  checkpoint differently than they were applied live, because live execution
+  ordered them by task path while savers replayed them by task id. This fixes that
+  divergence in two complementary ways:
+
+  - Plain concurrent writes are now applied in the canonical `(task_id, idx)`
+    order on both paths: `_applyWrites` orders them that way live, and the
+    `getDeltaChannelHistory` walk enforces the same order so reconstruction
+    matches live for every saver (Postgres, SQLite, MongoDB, Redis, and custom).
+  - An `Overwrite` now wins its entire super-step: every sibling write in the same
+    step — before AND after the `Overwrite` — is discarded, matching
+    `BinaryOperatorAggregate`. This makes the result independent of the (unstable)
+    ordering of concurrent fan-in writes; previously a plain write that landed
+    after an `Overwrite` in the same step was still folded in.
+
+  To keep reconstruction in sync with this `Overwrite` rule, any `DeltaChannel`
+  that sees an `Overwrite` in a super-step is now force-snapshotted at the next
+  checkpoint (and, under `"exit"` durability, in the final checkpoint). The
+  post-overwrite value is materialized into `channel_values`, so a cold read seeds
+  from that snapshot and never has to replay across the reset — making live and
+  reconstructed state identical without changing the sparse-replay history shape.
+  These delta-channel APIs remain Beta.
+
+- [#2531](https://github.com/langchain-ai/langgraphjs/pull/2531) [`38cfe01`](https://github.com/langchain-ai/langgraphjs/commit/38cfe01ff02490ff6bcc86c66708ef671f2e0d4b) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): forward task metadata and name subagents via lc_agent_name
+
+  `mapDebugTasks` now forwards filtered user-meaningful task config metadata
+  (including `lc_agent_name`) onto `tasks` stream payloads. The lifecycle
+  transformer uses that metadata to set subagent `graph_name` from
+  `lc_agent_name` and recover `cause: { type: "toolCall", tool_call_id }`
+  from parent tool-dispatch tasks. Adds the shared `EXCLUDED_METADATA_KEYS`
+  constant to `@langchain/langgraph-checkpoint`. Ports langgraph#7928.
+
 ## 1.1.1
 
 ### Patch Changes

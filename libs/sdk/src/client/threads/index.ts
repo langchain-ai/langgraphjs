@@ -21,6 +21,7 @@ import type {
   ThreadStreamOptions,
   ThreadStreamTransportKind,
 } from "../stream/types.js";
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../../utils/reconnect.js";
 import { ProtocolSseTransportAdapter } from "../stream/transport/http.js";
 import { ProtocolWebSocketTransportAdapter } from "../stream/transport/websocket.js";
 import type { TransportAdapter } from "../stream/transport.js";
@@ -477,7 +478,18 @@ export class ThreadsClient<
             threadId: threadIdOrOptions,
             options: maybeOptions as ThreadStreamOptions,
           }
-        : { threadId: uuidv7(), options: threadIdOrOptions };
+        : // A nullish first arg is the generate-thread-id form, not the
+          // options-only overload. Without this branch, a runtime
+          // `stream(null, opts)` binds `null` to `options` and the
+          // `options.fetch` read below throws. Use the second arg as options.
+          // (Cast: the declared type excludes null, but callers can reach
+          // here at runtime, e.g. an in-flight reconnect after the id clears.)
+          (threadIdOrOptions as ThreadStreamOptions | null | undefined) == null
+          ? {
+              threadId: uuidv7(),
+              options: maybeOptions as ThreadStreamOptions,
+            }
+          : { threadId: uuidv7(), options: threadIdOrOptions };
 
     // `transport` accepts either a preset string (`"sse"` / `"websocket"`)
     // or a custom {@link AgentServerAdapter}. A custom adapter replaces
@@ -502,7 +514,8 @@ export class ThreadsClient<
       const transportKind: ThreadStreamTransportKind =
         options.transport ??
         (this.streamProtocol === "v2-websocket" ? "websocket" : "sse");
-      const maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
+      const maxReconnectAttempts =
+        options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
 
       /**
        * Common options for both transports.

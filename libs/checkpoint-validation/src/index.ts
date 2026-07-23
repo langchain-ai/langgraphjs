@@ -9,6 +9,7 @@ export {
   putTests,
   putWritesTests,
   specTest,
+  deltaChannelHistoryTests,
 } from "./spec/index.js";
 
 export function validate<CheckpointSaverT extends BaseCheckpointSaver>(

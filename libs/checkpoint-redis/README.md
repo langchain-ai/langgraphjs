@@ -169,6 +169,16 @@ const ttlConfig = {
 const checkpointer = await RedisSaver.fromUrl("redis://localhost:6379", ttlConfig);
 ```
 
+## Edge & serverless runtimes (Cloudflare Workers, etc.)
+
+The Redis savers and store use [node-redis](https://github.com/redis/node-redis) (`createClient`/`createCluster`), which opens a raw TCP/TLS socket via Node's `net`/`tls` modules. Some serverless/edge runtimes, most notably **Cloudflare Workers**, do not support raw outbound TCP connections, so connecting (and the initial index setup) will hang. This is the root cause for issues where the runtime reports that the Worker "had hung and would never generate a response".
+
+This is a client/runtime limitation, **not** a persistence-flush problem. LangGraph awaits all pending checkpoint writes before `invoke()`/`stream()` resolves (see the [base checkpoint package README](../checkpoint/README.md#when-are-checkpoints-persisted)), so as long as you `await` the run you do not need `ctx.waitUntil()` to keep the runtime alive for persistence.
+
+Cloudflare Hyperdrive only supports Postgres/MySQL, so it cannot front Redis. To use Redis-backed persistence from Cloudflare Workers, use an HTTP-based Redis service such as [Upstash Redis](https://upstash.com/docs/redis/sdks/ts/overview) (`@upstash/redis`, which speaks REST and works in Workers) behind a small custom `BaseCheckpointSaver` implementation, rather than `RedisSaver`/`ShallowRedisSaver`.
+
+> Note: standard Node.js, Deno, and Bun deployments are unaffected — the Redis savers work there out of the box.
+
 ## Development
 
 ### Running Tests

@@ -65,6 +65,29 @@ describe("crons.update", () => {
     });
   });
 
+  it("sends null end_time to clear a set end time", async () => {
+    const cron = cronPayload();
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(cron),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.crons.update("cron_123", { endTime: null });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body);
+
+    expect(url).toContain("/runs/crons/cron_123");
+    expect(options.method).toBe("PATCH");
+    expect(body).toEqual({ end_time: null });
+  });
+
   it("converts camelCase to snake_case", async () => {
     const cron = cronPayload();
 

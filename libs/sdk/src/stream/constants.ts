@@ -4,3 +4,9 @@
  * which are printable identifiers.
  */
 export const NAMESPACE_SEPARATOR = "\u0000";
+
+/**
+ * Default state / values key that holds the message array for stream
+ * controllers and UI bindings.
+ */
+export const DEFAULT_MESSAGES_KEY = "messages";
