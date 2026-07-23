@@ -31,7 +31,7 @@
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitejs/plugin-vue-jsx": "^5.1.6",
-    "@vitest/browser": "^4.1.9",
+    "@vitest/browser": "^4.1.10",
     "@vitest/browser-webdriverio": "^4.1.9",
     "deepagents": "^1.10.5",
     "hono": "^4.12.27",
