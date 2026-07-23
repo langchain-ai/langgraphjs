@@ -746,6 +746,82 @@ describe("StreamController", () => {
     await submitPromise;
   });
 
+  it("does not filter genuinely new interrupts after respond() clears the allowlist", async () => {
+    // Fan out to every registered listener — respond()'s background
+    // terminal watch also calls thread.onEvent, and a single-slot
+    // capture would overwrite the wildcard that mirrors interrupts.
+    const eventListeners = new Set<(event: Event) => void>();
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "old-interrupt",
+          payload: { prompt: "Approve?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [
+            {
+              interrupts: [
+                { id: "old-interrupt", value: { prompt: "Approve?" } },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-respond-new-live",
+    });
+    await controller.hydrationPromise;
+    expect(eventListeners.size).toBeGreaterThan(0);
+
+    // Hydrate seeded allowlist with [old-interrupt]. respond() must
+    // clear it the same way submit() does — otherwise the follow-on
+    // HITL from the resumed run is dropped as "historical" and
+    // stream.interrupt stays empty while the server is still paused.
+    await controller.respond({ approved: true });
+    expect(respondInput).toHaveBeenCalled();
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    const followOn = inputRequestedEvent("brand-new-interrupt", {
+      prompt: "Again?",
+    });
+    for (const listener of eventListeners) {
+      listener(followOn);
+    }
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toContain("brand-new-interrupt");
+    expect(controller.rootStore.getSnapshot().interrupt?.id).toBe(
+      "brand-new-interrupt"
+    );
+
+    await controller.dispose();
+  });
+
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
@@ -2460,5 +2536,64 @@ describe("StreamController", () => {
       acquired.release();
       await controller.dispose();
     }
+  });
+
+  it("does not apply stale state or reconnect when the thread is cleared during hydrate", async () => {
+    // Regression: hydrate() re-reads the thread id after awaiting getState().
+    // If the id is cleared while that await is in flight (host clears it,
+    // hydrate(null), or the component unmounts during navigation), the stale
+    // hydrate must not (a) apply the fetched state to a thread we've left, nor
+    // (b) open a reconnect via threads.stream(null, …) — which reads `.fetch`
+    // off the null options object and throws.
+    let resolveGetState!: (value: {
+      values: { messages: unknown[] };
+      next: string[];
+    }) => void;
+    const getState = vi.fn(
+      () =>
+        new Promise<{ values: { messages: unknown[] }; next: string[] }>(
+          (resolve) => {
+            resolveGetState = resolve;
+          }
+        )
+    );
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    // Typed params so `stream.mock.calls[i][0]` is indexable in the assertion
+    // below (a bare `() => thread` infers a zero-arg tuple).
+    const stream = vi.fn((_threadId?: unknown, _options?: unknown) => thread);
+    const client = { threads: { getState, stream } };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+
+    // The constructor's hydrate("thread-1") is now suspended on getState().
+    // Clear the thread id, then let getState() resolve with a non-empty
+    // (active) thread state so the stale hydrate resumes.
+    await controller.hydrate(null);
+    resolveGetState({
+      values: {
+        messages: [{ type: "human", content: "old thread message", id: "h-1" }],
+      },
+      next: ["agent"],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Stale fetched state must not repopulate the cleared thread, and the
+    // reconnect must never be opened with a null thread id.
+    expect(controller.rootStore.getSnapshot().messages).toHaveLength(0);
+    for (const call of stream.mock.calls) {
+      expect(call[0]).not.toBeNull();
+    }
+
+    await controller.dispose();
   });
 });

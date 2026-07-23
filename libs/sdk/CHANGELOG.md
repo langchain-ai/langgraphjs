@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.9.28
+
+### Patch Changes
+
+- [#2622](https://github.com/langchain-ai/langgraphjs/pull/2622) [`cf2407a`](https://github.com/langchain-ai/langgraphjs/commit/cf2407a31657a8308312873a13863f496b34f3ca) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear hydrate interrupt allowlist on respond()
+
+  `submit()` already cleared `#hydratedActiveInterruptIds` so a new run's live `input.requested` events were not dropped as historical. `respond()` / `respondAll()` (via `dispatchResume`) did not, so a follow-on HITL after resume never appeared on `stream.interrupt` and free-text submits could resume with the wrong payload.
+
+- [#2613](https://github.com/langchain-ai/langgraphjs/pull/2613) [`82a320f`](https://github.com/langchain-ai/langgraphjs/commit/82a320faf6876238f8bac8aa6a7c593bef2be061) Thanks [@sreeramsama](https://github.com/sreeramsama)! - Fix `useStream` crash (`TypeError: Cannot read properties of null (reading 'fetch')`) when a thread is cleared while hydration is in flight. The stale hydrate now bails immediately after the `getState()` await — it no longer applies the fetched state to the thread that was left, nor opens a reconnect via `threads.stream(null, …)`.
+
 ## 1.9.27
 
 ### Patch Changes

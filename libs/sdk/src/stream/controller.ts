@@ -394,9 +394,10 @@ export class StreamController<
         this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
-        // interrupts on the just-started run aren't filtered. Bump
-        // the generation so any in-flight hydrate skips its
-        // allowlist write on return (see #hydratedActiveInterruptIds).
+        // interrupts on the just-started run (submit *or* respond /
+        // respondAll via dispatchResume) aren't filtered. Bump the
+        // generation so any in-flight hydrate skips its allowlist
+        // write on return (see #hydratedActiveInterruptIds).
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
       },
@@ -554,6 +555,9 @@ export class StreamController<
     }
 
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
+    // Thread id this hydrate cycle is fetching for; used to detect a thread
+    // clear/swap across the getState() await below.
+    const hydratedThreadId = this.#currentThreadId;
     let hydrationError: unknown;
     let threadExists = false;
     // Default active so a getState error / non-404 failure never
@@ -562,6 +566,13 @@ export class StreamController<
     let threadActive = true;
     try {
       const state = await this.#fetchHydrationState();
+      // The await above yields. If the thread id changed or was cleared while
+      // we were suspended (host cleared it, hydrate(null), or the component
+      // unmounted during navigation), this hydrate is stale: applying its
+      // fetched state would repopulate rootStore for a thread we've left, and
+      // the reconnect below would call threads.stream(null, …) → `.fetch` on
+      // null. Bail before touching any state. Hydration is settled in finally.
+      if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
       if (state?.values != null) {
@@ -728,7 +739,7 @@ export class StreamController<
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
-    const thread = this.#ensureThread(this.#currentThreadId, !threadActive);
+    const thread = this.#ensureThread(hydratedThreadId, !threadActive);
 
     /**
      * Start the wildcard lifecycle watcher up-front for existing,
