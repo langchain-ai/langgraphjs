@@ -16,7 +16,7 @@ export class InvalidNamespaceError extends Error {
  * @param namespace The namespace to validate.
  * @throws {InvalidNamespaceError} If the namespace is invalid.
  */
-function validateNamespace(namespace: string[]): void {
+export function validateNamespace(namespace: string[]): void {
   if (namespace.length === 0) {
     throw new InvalidNamespaceError("Namespace cannot be empty.");
   }
