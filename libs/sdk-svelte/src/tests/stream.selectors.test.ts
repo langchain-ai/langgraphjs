@@ -10,7 +10,7 @@ import ChannelEffectStream from "./components/ChannelEffectStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("root useMessages / useToolCalls / useValues delegate to stream root projections", async () => {
-  const screen = render(RootSelectorsStream, { apiUrl: serverUrl });
+  const screen = await render(RootSelectorsStream, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("messages-count"))
@@ -36,7 +36,7 @@ it("root useMessages / useToolCalls / useValues delegate to stream root projecti
 });
 
 it("useChannel buffers raw custom events", async () => {
-  const screen = render(RootSelectorsStream, { apiUrl: serverUrl });
+  const screen = await render(RootSelectorsStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -54,7 +54,7 @@ it("useChannel buffers raw custom events", async () => {
 });
 
 it("unwraps named custom event payloads through useExtension", async () => {
-  const screen = render(ExtensionSelectorsStream, { apiUrl: serverUrl });
+  const screen = await render(ExtensionSelectorsStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -73,7 +73,7 @@ it("unwraps named custom event payloads through useExtension", async () => {
 });
 
 it("continues useExtension subscriptions across serial submits", async () => {
-  const screen = render(ExtensionSelectorsStream, { apiUrl: serverUrl });
+  const screen = await render(ExtensionSelectorsStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -95,7 +95,7 @@ it("continues useExtension subscriptions across serial submits", async () => {
 });
 
 it("delivers raw custom events to a useChannelEffect callback", async () => {
-  const screen = render(ChannelEffectStream, { apiUrl: serverUrl });
+  const screen = await render(ChannelEffectStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -114,7 +114,7 @@ it("delivers raw custom events to a useChannelEffect callback", async () => {
 });
 
 it("keeps delivering useChannelEffect events across serial submits", async () => {
-  const screen = render(ChannelEffectStream, { apiUrl: serverUrl });
+  const screen = await render(ChannelEffectStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
   await expect
@@ -134,7 +134,7 @@ it("keeps delivering useChannelEffect events across serial submits", async () =>
 });
 
 it("does not deliver useChannelEffect events when disabled", async () => {
-  const screen = render(ChannelEffectStream, {
+  const screen = await render(ChannelEffectStream, {
     apiUrl: serverUrl,
     enabled: false,
   });
@@ -149,7 +149,7 @@ it("does not deliver useChannelEffect events when disabled", async () => {
 });
 
 it("discovers subagents and scopes useMessages/useToolCalls to each namespace", async () => {
-  const screen = render(DeepAgentStream, { apiUrl: serverUrl });
+  const screen = await render(DeepAgentStream, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -192,7 +192,7 @@ it("discovers subagents and scopes useMessages/useToolCalls to each namespace", 
 });
 
 it("populates subgraphs and subgraphsByNode maps", async () => {
-  const screen = render(SubgraphStream, { apiUrl: serverUrl });
+  const screen = await render(SubgraphStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -208,7 +208,7 @@ it("populates subgraphs and subgraphsByNode maps", async () => {
 });
 
 it("ignores leaf function nodes and only promotes subgraph hosts", async () => {
-  const screen = render(SubgraphStream, {
+  const screen = await render(SubgraphStream, {
     apiUrl: serverUrl,
     assistantId: "embedded_subgraph_graph",
   });

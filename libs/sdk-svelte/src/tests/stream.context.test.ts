@@ -7,7 +7,7 @@ import ContextOrphan from "./components/ContextOrphan.svelte";
 const serverUrl = inject("serverUrl");
 
 it("provideStream exposes the stream to descendants", async () => {
-  const screen = render(ContextParent, { apiUrl: serverUrl });
+  const screen = await render(ContextParent, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("parent-loading"))
@@ -28,7 +28,7 @@ it("provideStream exposes the stream to descendants", async () => {
 });
 
 it("getStream throws when no ancestor provided a stream", async () => {
-  const screen = render(ContextOrphan);
+  const screen = await render(ContextOrphan);
 
   await expect
     .element(screen.getByTestId("orphan-error"))

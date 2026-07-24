@@ -11,7 +11,7 @@ it(
   async () => {
     const overrideThreadId = crypto.randomUUID();
 
-    const screen = render(SubmitThreadIdOverride, {
+    const screen = await render(SubmitThreadIdOverride, {
       apiUrl: serverUrl,
       submitThreadId: overrideThreadId,
     });

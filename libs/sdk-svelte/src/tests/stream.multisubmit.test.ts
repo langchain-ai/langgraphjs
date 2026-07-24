@@ -6,7 +6,7 @@ import MultiSubmit from "./components/MultiSubmit.svelte";
 const serverUrl = inject("serverUrl");
 
 it("handles back-to-back serial submits with rollback (default)", async () => {
-  const screen = render(MultiSubmit, { apiUrl: serverUrl });
+  const screen = await render(MultiSubmit, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 
@@ -40,7 +40,7 @@ it("handles back-to-back serial submits with rollback (default)", async () => {
 });
 
 it("accepts multitaskStrategy: 'enqueue' without breaking serial submits", async () => {
-  const screen = render(MultiSubmit, {
+  const screen = await render(MultiSubmit, {
     apiUrl: serverUrl,
     submitOptions: { multitaskStrategy: "enqueue" },
   });

@@ -50,7 +50,7 @@ it("opens no idle /events on reconnect to a finished thread, then opens them on 
   const events = trackEventsRequests();
 
   try {
-    const screen = render(ParallelFanoutReconnectStream, {
+    const screen = await render(ParallelFanoutReconnectStream, {
       apiUrl: serverUrl,
       assistantId: "parallel_fanout",
       kind: "subagent",
@@ -100,7 +100,7 @@ it("opens /events on hydrate of an interrupted thread (active → eager pumps)",
   let capturedThreadId: string | undefined;
 
   try {
-    const seed = render(InterruptStream, {
+    const seed = await render(InterruptStream, {
       apiUrl: serverUrl,
       onThreadId: (id: string) => {
         capturedThreadId = id;
@@ -114,7 +114,7 @@ it("opens /events on hydrate of an interrupted thread (active → eager pumps)",
     expect(capturedThreadId).toMatch(/.+/);
 
     events.start();
-    const screen = render(InterruptStream, {
+    const screen = await render(InterruptStream, {
       apiUrl: serverUrl,
       threadId: capturedThreadId,
     });

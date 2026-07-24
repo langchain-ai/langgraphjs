@@ -18,7 +18,7 @@ it("renders cached messages synchronously from initialValues", async () => {
     ],
   };
 
-  const screen = render(InitialValuesStream, {
+  const screen = await render(InitialValuesStream, {
     apiUrl: serverUrl,
     initialValues: cached,
   });
@@ -42,7 +42,7 @@ it("replaces initialValues with server state once a run starts", async () => {
     ],
   };
 
-  const screen = render(InitialValuesStream, {
+  const screen = await render(InitialValuesStream, {
     apiUrl: serverUrl,
     initialValues: cached,
   });

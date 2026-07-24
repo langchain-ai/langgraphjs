@@ -7,7 +7,7 @@ import HydratedStream from "./components/HydratedStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("uses hydrationPromise to gate hydrated render", async () => {
-  const seed = render(BasicStream, {
+  const seed = await render(BasicStream, {
     apiUrl: serverUrl,
     assistantId: "stategraph_text",
   });
@@ -22,7 +22,7 @@ it("uses hydrationPromise to gate hydrated render", async () => {
 
   expect(threadId).toMatch(/.+/);
 
-  const screen = render(HydratedStream, {
+  const screen = await render(HydratedStream, {
     apiUrl: serverUrl,
     threadId: threadId!,
     delayMs: 50,

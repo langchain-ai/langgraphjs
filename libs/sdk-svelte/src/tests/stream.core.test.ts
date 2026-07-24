@@ -7,7 +7,7 @@ import BasicStream from "./components/BasicStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("renders initial state correctly", async () => {
-  const screen = render(BasicStream, { apiUrl: serverUrl });
+  const screen = await render(BasicStream, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -22,7 +22,7 @@ it("renders initial state correctly", async () => {
 });
 
 it("submits input, streams values, and projects messages", async () => {
-  const screen = render(BasicStream, { apiUrl: serverUrl });
+  const screen = await render(BasicStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -39,7 +39,7 @@ it("submits input, streams values, and projects messages", async () => {
 });
 
 it("cancels an in-flight run via stop()", async () => {
-  const screen = render(BasicStream, { apiUrl: serverUrl });
+  const screen = await render(BasicStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
   await screen.getByTestId("stop").click();
@@ -53,7 +53,7 @@ it("assigns a thread id on first submit and surfaces it via onThreadId", async (
   const threadIds: string[] = [];
   const created: RunExecutionInfo[] = [];
 
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
     onThreadId: (id: string) => threadIds.push(id),
     onCreated: (info: RunExecutionInfo) => created.push(info),

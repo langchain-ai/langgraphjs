@@ -19,7 +19,7 @@ it("routes client-backed requests through onRequest", async () => {
     },
   });
 
-  const seed = render(BasicStream, {
+  const seed = await render(BasicStream, {
     apiUrl: serverUrl,
     threadId,
   });
@@ -31,7 +31,7 @@ it("routes client-backed requests through onRequest", async () => {
 
   onRequestCallback.mockClear();
 
-  const screen = render(OnRequest, {
+  const screen = await render(OnRequest, {
     apiUrl: serverUrl,
     client,
     threadId,
