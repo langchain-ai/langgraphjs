@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-sdk",
-  "version": "1.9.27",
+  "version": "1.9.28",
   "description": "Client library for interacting with the LangGraph API",
   "type": "module",
   "repository": {
@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@langchain/build": "workspace:*",
-    "@langchain/core": "^1.2.1",
+    "@langchain/core": "^1.2.3",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
@@ -34,13 +34,13 @@
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.2",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "langchain": "^1.5.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "svelte": "^5.56.4",
     "typescript": "^4.9.5 || ^5.4.5",
     "vitest": "^4.1.9",
-    "vue": "^3.5.39",
+    "vue": "^3.5.40",
     "ws": "^8.21.0",
     "zod": "^4.3.5"
   },

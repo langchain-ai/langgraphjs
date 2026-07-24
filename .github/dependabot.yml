@@ -149,3 +149,26 @@ updates:
           - "*"
         update-types:
           - "major"
+
+  # Docker Compose files used by root/package integration tests.
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/internal/environment_tests"
+      - "/libs/checkpoint-mongodb"
+      - "/libs/checkpoint-postgres"
+      - "/libs/checkpoint-redis"
+    schedule:
+      interval: "monthly"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
