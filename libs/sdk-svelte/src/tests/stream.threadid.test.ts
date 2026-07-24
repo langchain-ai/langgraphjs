@@ -7,7 +7,7 @@ import SwitchThreadStream from "./components/SwitchThreadStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("switches to a new threadId without bleeding prior messages", async () => {
-  const screen = render(SwitchThreadStream, { apiUrl: serverUrl });
+  const screen = await render(SwitchThreadStream, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("message-count"))
@@ -50,7 +50,7 @@ it("switches to a new threadId without bleeding prior messages", async () => {
 });
 
 it("clears state when the threadId becomes null", async () => {
-  const screen = render(SwitchThreadStream, { apiUrl: serverUrl });
+  const screen = await render(SwitchThreadStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -72,7 +72,7 @@ it("clears state when the threadId becomes null", async () => {
 });
 
 it("hydrates pre-existing thread state on mount", async () => {
-  const seedScreen = render(BasicStream, { apiUrl: serverUrl });
+  const seedScreen = await render(BasicStream, { apiUrl: serverUrl });
   await seedScreen.getByTestId("submit").click();
   await expect
     .element(seedScreen.getByTestId("loading"))
@@ -89,7 +89,7 @@ it("hydrates pre-existing thread state on mount", async () => {
   // guard (both renders share the same document body otherwise).
   seedScreen.unmount();
 
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
     threadId: threadId!,
   });

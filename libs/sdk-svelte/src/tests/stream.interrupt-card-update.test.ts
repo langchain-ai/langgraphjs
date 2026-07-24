@@ -18,7 +18,7 @@ it(
   "keeps the FE-pushed card in state through a slow tool on approve",
   { timeout: 20_000 },
   async () => {
-    const screen = render(InterruptCardStream, { apiUrl: serverUrl });
+    const screen = await render(InterruptCardStream, { apiUrl: serverUrl });
 
     await screen.getByTestId("submit").click();
 
@@ -67,7 +67,7 @@ it(
   "keeps the card and informs the agent on reject",
   { timeout: 20_000 },
   async () => {
-    const screen = render(InterruptCardStream, { apiUrl: serverUrl });
+    const screen = await render(InterruptCardStream, { apiUrl: serverUrl });
 
     await screen.getByTestId("submit").click();
 

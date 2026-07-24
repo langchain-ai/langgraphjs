@@ -6,7 +6,7 @@ import ReattachStream from "./components/ReattachStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("secondary composable attaches to an in-flight run on the same thread", async () => {
-  const screen = render(ReattachStream, { apiUrl: serverUrl });
+  const screen = await render(ReattachStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("primary-submit").click();
 

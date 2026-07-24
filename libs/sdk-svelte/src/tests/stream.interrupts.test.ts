@@ -8,7 +8,7 @@ import MultiInterruptStream from "./components/MultiInterruptStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("surfaces the first interrupt on submit()", async () => {
-  const screen = render(InterruptStream, { apiUrl: serverUrl });
+  const screen = await render(InterruptStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -24,7 +24,7 @@ it("surfaces the first interrupt on submit()", async () => {
 });
 
 it("resumes an interrupt via respond()", async () => {
-  const screen = render(InterruptStream, { apiUrl: serverUrl });
+  const screen = await render(InterruptStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -50,7 +50,7 @@ it(
   "resumes after a mid-HITL SSE drop when using a custom auth fetch",
   { timeout: 20_000 },
   async () => {
-    const screen = render(InterruptReconnectStream, { apiUrl: serverUrl });
+    const screen = await render(InterruptReconnectStream, { apiUrl: serverUrl });
 
     await screen.getByTestId("submit").click();
 
@@ -103,7 +103,7 @@ it(
 );
 
 it("resumes several parallel interrupts via respondAll()", { timeout: 15_000 }, async () => {
-  const screen = render(MultiInterruptStream, { apiUrl: serverUrl });
+  const screen = await render(MultiInterruptStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 

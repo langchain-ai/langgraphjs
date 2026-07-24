@@ -6,7 +6,7 @@ import MessageMetadataStream from "./components/MessageMetadataStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("records parentCheckpointId metadata for checkpointed messages", async () => {
-  const screen = render(MessageMetadataStream, { apiUrl: serverUrl });
+  const screen = await render(MessageMetadataStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 

@@ -20,7 +20,7 @@ type AdapterCommand = Parameters<AgentServerAdapter["send"]>[0];
 const serverUrl = inject("serverUrl");
 
 it("renders initial state correctly", async () => {
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
   });
 
@@ -32,7 +32,7 @@ it("renders initial state correctly", async () => {
 });
 
 it("handles message submission and streaming", async () => {
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
   });
 
@@ -54,7 +54,7 @@ it("handles message submission and streaming", async () => {
 });
 
 it("handles stop functionality", async () => {
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
   });
 
@@ -67,7 +67,7 @@ it("handles stop functionality", async () => {
 });
 
 it("onStop does not clear stream values", async () => {
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
   });
 
@@ -92,7 +92,7 @@ it("onStop does not clear stream values", async () => {
 it("make sure to pass metadata to the thread", async () => {
   const threadId = crypto.randomUUID();
 
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
     submitOptions: { metadata: { random: "123" }, threadId },
   });
@@ -124,7 +124,7 @@ it("handle message removal", async () => {
     { type: "text", text: "Step 3: To Keep" },
   ])}`;
 
-  const screen = render(MessageRemoval, {
+  const screen = await render(MessageRemoval, {
     apiUrl: serverUrl,
     onRender: (msgs: string[]) => {
       messagesValues.add(msgs.join("\n"));
@@ -156,7 +156,7 @@ it("handle message removal", async () => {
 it("enqueue multiple .submit() calls", async () => {
   const messagesValues = new Set<string>();
 
-  const screen = render(MultiSubmit, {
+  const screen = await render(MultiSubmit, {
     apiUrl: serverUrl,
     onRender: (msgs: string[]) => {
       messagesValues.add(msgs.join("\n"));
@@ -183,7 +183,7 @@ it("enqueue multiple .submit() calls", async () => {
 });
 
 it("exposes toolCalls property", async () => {
-  const screen = render(ToolCallsStream, {
+  const screen = await render(ToolCallsStream, {
     apiUrl: serverUrl,
   });
 
@@ -202,7 +202,7 @@ it("exposes toolCalls property", async () => {
 });
 
 it("exposes interrupts array", async () => {
-  const screen = render(InterruptsArray, {
+  const screen = await render(InterruptsArray, {
     apiUrl: serverUrl,
   });
 
@@ -221,7 +221,7 @@ it("exposes interrupts array", async () => {
 });
 
 it("switchThread clears messages and starts fresh", async () => {
-  const screen = render(SwitchThread, {
+  const screen = await render(SwitchThread, {
     apiUrl: serverUrl,
   });
 
@@ -266,7 +266,7 @@ it("switchThread clears messages and starts fresh", async () => {
 });
 
 it("switchThread to null clears messages", async () => {
-  const screen = render(SwitchThread, {
+  const screen = await render(SwitchThread, {
     apiUrl: serverUrl,
   });
 
@@ -287,7 +287,7 @@ it("switchThread to null clears messages", async () => {
 });
 
 it("custom adapter stream supports local branch UI", async () => {
-  const screen = render(CustomStreamMethods, {
+  const screen = await render(CustomStreamMethods, {
     apiUrl: serverUrl,
   });
 
@@ -310,7 +310,7 @@ it("custom adapter stream supports local branch UI", async () => {
 it("useStream forwards submissions to a custom AgentServerAdapter", async () => {
   const onCommand = vi.fn<(command: AdapterCommand) => void>();
 
-  const screen = render(CustomTransportStreamSubgraphs, {
+  const screen = await render(CustomTransportStreamSubgraphs, {
     onCommand,
   });
 
@@ -344,7 +344,7 @@ it("useStream forwards submissions to a custom AgentServerAdapter", async () => 
 });
 
 it("calls per-submit onError when stream fails", async () => {
-  const screen = render(SubmitOnError, { apiUrl: serverUrl });
+  const screen = await render(SubmitOnError, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -359,7 +359,7 @@ it("calls per-submit onError when stream fails", async () => {
 
 // Stream context tests (main branch)
 it("provideStream / getStream shares stream with child components", async () => {
-  const screen = render(StreamContextParent, {
+  const screen = await render(StreamContextParent, {
     apiUrl: serverUrl,
   });
 
@@ -405,7 +405,7 @@ it("provideStream / getStream shares stream with child components", async () => 
 });
 
 it("getStream throws when no parent has provided context", async () => {
-  const screen = render(StreamContextOrphan);
+  const screen = await render(StreamContextOrphan);
 
   await expect
     .element(screen.getByTestId("orphan-error"))
@@ -416,7 +416,7 @@ it("getStream throws when no parent has provided context", async () => {
 
 // provideStream / getStream context tests
 it("provideStream shares stream state across child components", async () => {
-  const screen = render(ContextProvider, {
+  const screen = await render(ContextProvider, {
     apiUrl: serverUrl,
   });
 
@@ -427,7 +427,7 @@ it("provideStream shares stream state across child components", async () => {
 });
 
 it("provideStream children can submit and receive messages", async () => {
-  const screen = render(ContextProvider, {
+  const screen = await render(ContextProvider, {
     apiUrl: serverUrl,
   });
 
@@ -449,7 +449,7 @@ it("provideStream children can submit and receive messages", async () => {
 });
 
 it("provideStream children can stop the stream", async () => {
-  const screen = render(ContextProvider, {
+  const screen = await render(ContextProvider, {
     apiUrl: serverUrl,
   });
 
