@@ -6,7 +6,7 @@ import DeepAgentSubscriptionStream from "./components/DeepAgentSubscriptionStrea
 const serverUrl = inject("serverUrl");
 
 it("does not open scoped subscriptions for a bare useStream mount", async () => {
-  const screen = render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
+  const screen = await render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -15,7 +15,7 @@ it("does not open scoped subscriptions for a bare useStream mount", async () => 
 });
 
 it("root useMessages(stream) delegates to the root projection", async () => {
-  const screen = render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
+  const screen = await render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
 
   await expect.element(screen.getByTestId("registry-size")).toHaveTextContent("0");
 
@@ -33,7 +33,7 @@ it("root useMessages(stream) delegates to the root projection", async () => {
 });
 
 it("opens one scoped subscription per selector/namespace and releases it", async () => {
-  const screen = render(DeepAgentSubscriptionStream, {
+  const screen = await render(DeepAgentSubscriptionStream, {
     apiUrl: serverUrl,
     initialMounts: { researcherMessagesA: true },
   });
@@ -62,7 +62,7 @@ it("opens one scoped subscription per selector/namespace and releases it", async
 });
 
 it("dedupes registry entries across multiple consumers of one namespace", async () => {
-  const screen = render(DeepAgentSubscriptionStream, {
+  const screen = await render(DeepAgentSubscriptionStream, {
     apiUrl: serverUrl,
     initialMounts: {
       researcherMessagesA: true,
@@ -111,7 +111,7 @@ it("dedupes registry entries across multiple consumers of one namespace", async 
 });
 
 it("keeps subagent message streams isolated across namespaces", async () => {
-  const screen = render(DeepAgentSubscriptionStream, {
+  const screen = await render(DeepAgentSubscriptionStream, {
     apiUrl: serverUrl,
     initialMounts: {
       researcherMessagesA: true,
@@ -144,7 +144,7 @@ it("keeps subagent message streams isolated across namespaces", async () => {
 });
 
 it("tracks message and tool-call selectors independently", async () => {
-  const screen = render(DeepAgentSubscriptionStream, {
+  const screen = await render(DeepAgentSubscriptionStream, {
     apiUrl: serverUrl,
     initialMounts: {
       researcherMessagesA: true,
@@ -176,7 +176,7 @@ it("tracks message and tool-call selectors independently", async () => {
 });
 
 it("opens subagent subscriptions lazily — entry count ratchets with each observer mounted", async () => {
-  const screen = render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
+  const screen = await render(DeepAgentSubscriptionStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
