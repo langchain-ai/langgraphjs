@@ -455,6 +455,10 @@ export function useStream<
     transport?: "sse" | "websocket" | AgentServerAdapter;
     fetch?: typeof fetch;
     webSocketFactory?: (url: string) => WebSocket;
+    maxReconnectAttempts?: number;
+    streamIdleReconnect?: number | "auto";
+    reconnectDelayMs?: (attempt: number) => number;
+    onReconnect?: (options: { attempt: number; cause: unknown }) => void;
     onThreadId?: (threadId: string) => void;
     onCreated?: (info: RunExecutionInfo) => void;
     onCompleted?: (info: RunCompletedInfo) => void;
@@ -508,6 +512,14 @@ export function useStream<
     transport,
     fetch: hasCustomAdapter ? undefined : asBag.fetch,
     webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
+    maxReconnectAttempts: hasCustomAdapter
+      ? undefined
+      : asBag.maxReconnectAttempts,
+    streamIdleReconnect: hasCustomAdapter
+      ? undefined
+      : asBag.streamIdleReconnect,
+    reconnectDelayMs: hasCustomAdapter ? undefined : asBag.reconnectDelayMs,
+    onReconnect: hasCustomAdapter ? undefined : asBag.onReconnect,
     onThreadId: options.onThreadId,
     onCreated: options.onCreated,
     onCompleted: options.onCompleted,

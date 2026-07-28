@@ -1,5 +1,30 @@
 # @langchain/vue
 
+## 1.0.29
+
+### Patch Changes
+
+- Updated dependencies [[`cf2407a`](https://github.com/langchain-ai/langgraphjs/commit/cf2407a31657a8308312873a13863f496b34f3ca), [`82a320f`](https://github.com/langchain-ai/langgraphjs/commit/82a320faf6876238f8bac8aa6a7c593bef2be061)]:
+  - @langchain/langgraph-sdk@1.9.28
+
+## 1.0.28
+
+### Patch Changes
+
+- Updated dependencies [[`fa4658c`](https://github.com/langchain-ai/langgraphjs/commit/fa4658c79489eb5fb3e38744c34a6f5bf2373831)]:
+  - @langchain/langgraph-sdk@1.9.27
+
+## 1.0.27
+
+### Patch Changes
+
+- [#2605](https://github.com/langchain-ai/langgraphjs/pull/2605) [`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep SSE reconnect enabled with custom fetch
+
+  Auth/proxy fetch shims previously forced `maxReconnectAttempts: 0`, so HITL waits that lost `/stream/events` (e.g. `ERR_QUIC_PROTOCOL_ERROR`) never recovered and left `respond()`/`submit()` spinning. Fail-fast test mocks should pass `maxReconnectAttempts: 0` explicitly. Also plumbs reconnect options through framework `useStream` bindings.
+
+- Updated dependencies [[`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa), [`c201256`](https://github.com/langchain-ai/langgraphjs/commit/c201256b27d55c9aa333d3d15f6ec16c2fd7de9b)]:
+  - @langchain/langgraph-sdk@1.9.26
+
 ## 1.0.26
 
 ### Patch Changes

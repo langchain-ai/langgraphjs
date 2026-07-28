@@ -23,6 +23,7 @@ import type {
   ProtocolTransportName,
   StateGetResult,
 } from "./types.mjs";
+import { applyAuthToRunConfig } from "../utils/run-auth.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
 import { RunProtocolSession } from "./session/index.mjs";
 
@@ -483,6 +484,7 @@ export class ProtocolService {
         thread_id: record.threadId,
       },
     };
+    const userId = applyAuthToRunConfig(runConfig, record.auth);
 
     const runPayload = {
       assistant_id: assistantId,
@@ -530,6 +532,7 @@ export class ProtocolService {
       },
       {
         threadId: record.threadId,
+        userId,
         metadata: runPayload.metadata,
         status: "pending",
         multitaskStrategy: runPayload.multitask_strategy,

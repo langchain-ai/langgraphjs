@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  ProtocolWebSocketTransportAdapter,
-  webSocketReconnectDelayMs,
-} from "./websocket.js";
+import { ProtocolWebSocketTransportAdapter } from "./websocket.js";
 import {
   PROXIED_API_URL,
   THREAD_ID,
@@ -164,13 +161,6 @@ describe("ProtocolWebSocketTransportAdapter thread binding", () => {
     expect(sockets[0].readyState).toBe(FakeWebSocket.OPEN);
 
     await transport.close();
-  });
-});
-
-describe("webSocketReconnectDelayMs", () => {
-  it("caps exponential backoff", () => {
-    expect(webSocketReconnectDelayMs(1)).toBeLessThanOrEqual(6000);
-    expect(webSocketReconnectDelayMs(10)).toBeLessThanOrEqual(6000);
   });
 });
 

@@ -100,9 +100,13 @@ export const auth = new Auth()
   })
   .on("store", ({ value, user }) => {
     const identity = user.identity;
-    if (!identity || !value.namespace?.includes(identity)) {
+    if (!identity) {
       throw new HTTPException(403, { message: "Not authorized" });
     }
+    if (value.namespace?.length && !value.namespace.includes(identity)) {
+      throw new HTTPException(403, { message: "Not authorized" });
+    }
+    return { namespace: { $contains: identity } };
   })
   .on("threads:create", ({ value, user, permissions }) => {
     if (

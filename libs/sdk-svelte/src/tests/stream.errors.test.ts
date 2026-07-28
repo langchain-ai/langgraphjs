@@ -6,7 +6,7 @@ import SubmitOnError from "./components/SubmitOnError.svelte";
 const serverUrl = inject("serverUrl");
 
 it("invokes per-submit onError when the underlying graph errors", async () => {
-  const screen = render(SubmitOnError, { apiUrl: serverUrl });
+  const screen = await render(SubmitOnError, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 

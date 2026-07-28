@@ -9,7 +9,7 @@ import { expect, it } from "vitest";
 import { render } from "vitest-browser-angular";
 
 import { ParallelFanoutSubagentOpenAllAfterReconnectHarnessComponent } from "./components/ParallelFanoutReconnectStream.js";
-import { InterruptReconnectHarnessComponent } from "./components/InterruptReconnectStream.js";
+import { InterruptReconnectHarnessComponent } from "./components/InterruptStream.js";
 
 const WORKER_COUNT = 6;
 

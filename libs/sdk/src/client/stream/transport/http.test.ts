@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SubscribeParams } from "@langchain/protocol";
 
 import { AsyncCaller } from "../../../utils/async_caller.js";
 import { ProtocolSseTransportAdapter } from "./http.js";
@@ -9,6 +10,20 @@ import {
   createFetchRecorder,
   protocolSuccessResponse,
 } from "./test-helpers.js";
+
+type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
+
+function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
+  return fetchImpl.mock.calls
+    .filter((call: unknown[]) => String(call[0]).includes("/stream/events"))
+    .map((call: unknown[]) => {
+      const init = call[1] as RequestInit | undefined;
+      return init?.body != null
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : null;
+    })
+    .filter((body): body is Record<string, unknown> => body != null);
+}
 
 describe("ProtocolSseTransportAdapter URL resolution", () => {
   it("preserves apiUrl path prefix for protocol commands", async () => {
@@ -38,6 +53,8 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
       apiUrl: PROXIED_API_URL,
       threadId: THREAD_ID,
       fetch,
+      // Fail-fast mock: custom fetch keeps reconnect on by default.
+      maxReconnectAttempts: 0,
     });
 
     const handle = transport.openEventStream({ channels: ["values"] });
@@ -310,5 +327,263 @@ describe("ProtocolSseTransportAdapter AsyncCaller", () => {
     expect(callSpy.mock.calls.length).toBe(callsAfterCommand);
 
     await transport.close();
+  });
+});
+
+describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
+  it("reconnects after a mid-stream failure when a custom auth fetch is supplied", async () => {
+    let streamOpens = 0;
+    const onReconnect = vi.fn();
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        // First open fails after headers — auth-shim browsers hit the same
+        // class of transport error (QUIC / idle proxy drop).
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"e1"}\n\n'
+                  )
+                );
+                // Defer the failure so e1 can flush through the SSE decoder
+                // before the reconnect loop starts.
+                setTimeout(() => {
+                  controller.error(
+                    new TypeError("net::ERR_QUIC_PROTOCOL_ERROR")
+                  );
+                }, 10);
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "text/event-stream" },
+            }
+          )
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":2,"event_id":"e2"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string; seq?: number }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string; seq?: number });
+      if (received.some((m) => m.event_id === "e2")) break;
+    }
+
+    expect(received.map((m) => m.event_id)).toContain("e2");
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(streamOpens).toBe(2);
+
+    const streamBodies = streamEventBodies(fetchImpl);
+    expect(streamBodies).toHaveLength(2);
+    expect(streamBodies[0]).not.toHaveProperty("since");
+    expect(streamBodies[1]).not.toHaveProperty("since");
+
+    await transport.close();
+  });
+
+  it("honors caller since on the initial open but omits it on reconnect", async () => {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    'event: values\ndata: {"type":"event","method":"values","seq":6,"event_id":"e6"}\n\n'
+                  )
+                );
+                setTimeout(() => {
+                  controller.error(
+                    new TypeError("net::ERR_QUIC_PROTOCOL_ERROR")
+                  );
+                }, 10);
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "text/event-stream" },
+            }
+          )
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"e1"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({
+      channels: ["values"],
+      since: 5,
+    } as SubscribeParams & { since: number });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (received.some((m) => m.event_id === "e1")) break;
+    }
+
+    const streamBodies = streamEventBodies(fetchImpl);
+    expect(streamBodies).toHaveLength(2);
+    expect(streamBodies[0]).toMatchObject({ since: 5 });
+    expect(streamBodies[1]).not.toHaveProperty("since");
+    expect(received.map((m) => m.event_id)).toEqual(
+      expect.arrayContaining(["e6", "e1"])
+    );
+
+    await transport.close();
+  });
+
+  it("keeps caller since across pre-ready fetch failures", async () => {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: values\ndata: {"type":"event","method":"values","seq":6,"event_id":"e6"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        )
+      );
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({
+      channels: ["values"],
+      since: 5,
+    } as SubscribeParams & { since: number });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (received.some((m) => m.event_id === "e6")) break;
+    }
+
+    const streamBodies = streamEventBodies(fetchImpl);
+    expect(streamBodies.length).toBeGreaterThanOrEqual(1);
+    for (const body of streamBodies) {
+      expect(body).toMatchObject({ since: 5 });
+    }
+    expect(received.map((m) => m.event_id)).toContain("e6");
+
+    await transport.close();
+  });
+
+  it("keeps reconnect disabled when maxReconnectAttempts is explicitly 0", async () => {
+    const sentinel = new TypeError("net::ERR_QUIC_PROTOCOL_ERROR");
+    let streamOpens = 0;
+    const fetchImpl = vi.fn(() => {
+      streamOpens += 1;
+      return Promise.reject(sentinel);
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await expect(handle.ready).rejects.toBe(sentinel);
+    expect(streamOpens).toBe(1);
+    handle.close();
   });
 });

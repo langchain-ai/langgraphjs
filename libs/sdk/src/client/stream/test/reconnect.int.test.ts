@@ -101,6 +101,49 @@ describe.skipIf(!hasGlobalWebSocket)(
       }
     });
 
+    it("SSE: custom auth fetch still reconnects after the server drops the connection", async () => {
+      // Auth shims must not disable reconnect — production LangSmith Fleet /
+      // tenant-aware browsers always supply a custom fetch.
+      server = await startMockProtocolServer({
+        threadId: "thread_sse_custom_fetch_reconnect",
+        events: TEST_EVENTS,
+        failSseAfterDelivered: 2,
+      });
+
+      const onReconnect = vi.fn();
+      const authFetch: typeof fetch = (input, init) =>
+        globalThis.fetch(input, init);
+      const client = new Client({ apiUrl: server.apiUrl, apiKey: null });
+      const thread = client.threads.stream(server.threadId, {
+        assistantId: "assistant_mock",
+        transport: "sse",
+        fetch: authFetch,
+        maxReconnectAttempts: 3,
+        reconnectDelayMs: () => 0,
+        onReconnect,
+      });
+
+      const { seqs, off } = collectSeqsFromThread(thread);
+      try {
+        const run = await thread.run.start({ input: { prompt: "hi" } });
+        expect(run).toBeDefined();
+
+        await vi.waitFor(
+          () => {
+            expect(onReconnect).toHaveBeenCalledTimes(1);
+            expect(server.sseConnectionCount()).toBeGreaterThanOrEqual(2);
+            expect(thread.ordering.lastSeenSeq).toBe(4);
+          },
+          { timeout: 10_000 }
+        );
+
+        expect([...new Set(seqs)].sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+      } finally {
+        off();
+        await thread.close();
+      }
+    });
+
     it("WebSocket: run.start streams all values after the server drops the connection", async () => {
       server = await startMockProtocolServer({
         threadId: "thread_ws_client_reconnect",

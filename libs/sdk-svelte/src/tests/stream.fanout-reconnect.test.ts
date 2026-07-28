@@ -19,7 +19,7 @@ function readNumber(testId: string): number {
 }
 
 it("seeds N parallel subagents on reconnect with a bounded getHistory cost", async () => {
-  const screen = render(ParallelFanoutReconnectStream, {
+  const screen = await render(ParallelFanoutReconnectStream, {
     apiUrl: serverUrl,
     assistantId: "parallel_fanout",
     kind: "subagent",
@@ -65,7 +65,7 @@ it("seeds N parallel subagents on reconnect with a bounded getHistory cost", asy
 });
 
 it("opening every subagent card at once after reconnect stays bounded (resolves coalesce onto one history read)", async () => {
-  const screen = render(ParallelFanoutReconnectStream, {
+  const screen = await render(ParallelFanoutReconnectStream, {
     apiUrl: serverUrl,
     assistantId: "parallel_fanout",
     kind: "subagent",
@@ -99,7 +99,7 @@ it("opening every subagent card at once after reconnect stays bounded (resolves 
 });
 
 it("seeds M parallel subgraphs on reconnect with a bounded getHistory cost", async () => {
-  const screen = render(ParallelFanoutReconnectStream, {
+  const screen = await render(ParallelFanoutReconnectStream, {
     apiUrl: serverUrl,
     assistantId: "parallel_subgraph",
     kind: "subgraph",

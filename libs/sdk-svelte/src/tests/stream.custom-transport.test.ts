@@ -6,7 +6,7 @@ import CustomTransportStream from "./components/CustomTransportStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("useStream works with HttpAgentServerAdapter", async () => {
-  const screen = render(CustomTransportStream, { apiUrl: serverUrl });
+  const screen = await render(CustomTransportStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 

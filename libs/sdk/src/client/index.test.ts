@@ -97,6 +97,8 @@ describe("Client", () => {
       assistantId: "my-agent",
       transport: "sse",
       fetch: customFetch,
+      maxReconnectAttempts: 0,
+      streamIdleReconnect: 0,
     });
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);
@@ -131,6 +133,8 @@ describe("Client", () => {
       assistantId: "docs_agent",
       transport: "sse",
       fetch: customFetch,
+      maxReconnectAttempts: 0,
+      streamIdleReconnect: 0,
     });
 
     await expect(thread.subscribe(["values"])).rejects.toBe(sentinel);

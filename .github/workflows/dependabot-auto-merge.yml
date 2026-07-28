@@ -1,0 +1,237 @@
+name: Dependabot Auto-Merge
+
+"on":
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot-auto-merge:
+    name: Auto-approve safe Dependabot updates
+    runs-on: ubuntu-latest
+    if: >-
+      github.repository == 'langchain-ai/langgraphjs' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
+    steps:
+      - name: Fetch Dependabot metadata
+        id: dependabot-metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98
+
+      - name: Classify update risk
+        id: classify
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEPENDENCY_NAMES: ${{ steps.dependabot-metadata.outputs.dependency-names }}
+          DEPENDENCY_TYPE: ${{ steps.dependabot-metadata.outputs.dependency-type }}
+          UPDATE_TYPE: ${{ steps.dependabot-metadata.outputs.update-type }}
+          PACKAGE_ECOSYSTEM: ${{ steps.dependabot-metadata.outputs.package-ecosystem }}
+          DIRECTORY: ${{ steps.dependabot-metadata.outputs.directory }}
+          DEPENDENCY_GROUP: ${{ steps.dependabot-metadata.outputs.dependency-group }}
+          MAINTAINER_CHANGES: ${{ steps.dependabot-metadata.outputs.maintainer-changes }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          safe=false
+          denied=false
+          reasons=()
+
+          allow() {
+            safe=true
+            reasons+=("allow: $1")
+          }
+
+          deny() {
+            denied=true
+            reasons+=("deny: $1")
+          }
+
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Invalid pull request number" >&2
+            exit 1
+          fi
+
+          if [[ ! "$DEPENDENCY_NAMES" =~ ^[-+.,/@:_[:alnum:][:space:]]*$ ]]; then
+            echo "Invalid dependency metadata" >&2
+            exit 1
+          fi
+
+          if [[ ! "$DIRECTORY" =~ ^/[.A-Za-z0-9/_-]*$ ]]; then
+            echo "Invalid Dependabot directory metadata" >&2
+            exit 1
+          fi
+
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch)
+              allow "semver patch update"
+              ;;
+            version-update:semver-minor)
+              allow "semver minor update"
+              ;;
+            version-update:semver-major)
+              deny "semver major update"
+              ;;
+            *)
+              reasons+=("info: update type is ${UPDATE_TYPE:-unknown}")
+              ;;
+          esac
+
+          if [[ "$DEPENDENCY_TYPE" == "indirect" ]]; then
+            allow "indirect dependency update"
+          fi
+
+          if [[ "$PACKAGE_ECOSYSTEM" == "github-actions" ]]; then
+            allow "GitHub Actions dependency update"
+          fi
+
+          if [[ "$DEPENDENCY_GROUP" == "minor-and-patch" ]]; then
+            allow "Dependabot minor-and-patch group"
+          fi
+
+          if [[ "$MAINTAINER_CHANGES" == "true" ]]; then
+            deny "maintainer changes detected"
+          fi
+
+          runtime_directories=(
+            "/"
+          )
+
+          if [[ "$DEPENDENCY_TYPE" == "direct:production" && "$PACKAGE_ECOSYSTEM" != "github-actions" ]]; then
+            for runtime_directory in "${runtime_directories[@]}"; do
+              if [[ "$DIRECTORY" == "$runtime_directory" ]]; then
+                deny "direct production dependency in runtime directory ${DIRECTORY}"
+                break
+              fi
+            done
+          fi
+
+          lowercase_names="${DEPENDENCY_NAMES,,}"
+          sensitive_package_terms=(
+            "auth"
+            "cert"
+            "crypt"
+            "docker"
+            "dompurify"
+            "esbuild"
+            "express"
+            "fastify"
+            "grpc"
+            "hono"
+            "jose"
+            "jwt"
+            "langchain"
+            "langgraph"
+            "langsmith"
+            "mongodb"
+            "oauth"
+            "openid"
+            "oxfmt"
+            "oxlint"
+            "pg"
+            "postgres"
+            "protobuf"
+            "redis"
+            "rollup"
+            "semver"
+            "sqlite"
+            "ssl"
+            "swc"
+            "testcontainers"
+            "tls"
+            "tsx"
+            "typescript"
+            "vite"
+            "vitest"
+            "webpack"
+            "ws"
+            "zod"
+          )
+
+          for package_term in "${sensitive_package_terms[@]}"; do
+            if [[ "$lowercase_names" == *"$package_term"* ]]; then
+              deny "sensitive dependency term '${package_term}' matched ${DEPENDENCY_NAMES}"
+              break
+            fi
+          done
+
+          mapfile -t changed_files < <(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
+
+          if (( ${#changed_files[@]} > 40 )); then
+            deny "large Dependabot diff with ${#changed_files[@]} changed files"
+          fi
+
+          for changed_file in "${changed_files[@]}"; do
+            if [[ ! "$changed_file" =~ ^[.A-Za-z0-9/_-]+$ ]]; then
+              echo "Invalid changed file path" >&2
+              exit 1
+            fi
+
+            case "$changed_file" in
+              .github/actions/*|.github/CODEOWNERS|CODEOWNERS|.github/dependabot.yml|*Dockerfile*|docker-*|*docker-compose*|*argocd*|*helm*|*kubernetes*|*k8s*)
+                deny "sensitive infrastructure file changed: ${changed_file}"
+                break
+                ;;
+              .github/workflows/deploy*|.github/workflows/release*|.github/workflows/sync_*|.github/workflows/wait_*|.github/workflows/update_*)
+                deny "deployment workflow changed: ${changed_file}"
+                break
+                ;;
+              .github/workflows/*)
+                if [[ "$PACKAGE_ECOSYSTEM" != "github-actions" ]]; then
+                  deny "workflow file changed by non-GitHub Actions update: ${changed_file}"
+                  break
+                fi
+                ;;
+            esac
+          done
+
+          if [[ "$denied" == "true" ]]; then
+            safe=false
+          fi
+
+          if [[ "$safe" != "true" ]]; then
+            reasons+=("skip: no guarded auto-merge rule matched or a deny rule matched")
+          fi
+
+          {
+            echo "safe=$safe"
+            echo "reasons<<EOF"
+            printf '%s\n' "${reasons[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Explain skipped auto-merge
+        if: steps.classify.outputs.safe != 'true'
+        shell: bash
+        env:
+          REASONS: ${{ steps.classify.outputs.reasons }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$REASONS"
+
+      - name: Approve and enable auto-merge
+        if: steps.classify.outputs.safe == 'true'
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REASONS: ${{ steps.classify.outputs.reasons }}
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' "$REASONS"
+
+          approval_count=$(gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            --jq 'map(select(.user.login == "github-actions[bot]" and .state == "APPROVED")) | length')
+
+          if [[ "$approval_count" == "0" ]]; then
+            gh pr review "$PR_URL" --approve --body "Auto-approved guarded Dependabot update."
+          fi
+
+          gh pr merge "$PR_URL" --auto --squash

@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
+import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import type {
   GetUpdateType,
   GetCustomEventType,
@@ -158,14 +159,14 @@ export function useStreamCustom<
   }, [threadId, stream]);
 
   const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return { ...current, [messagesKey]: messages };
   };
 

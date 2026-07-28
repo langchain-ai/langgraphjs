@@ -12,6 +12,7 @@ import type {
 } from "@langchain/langgraph-sdk/stream";
 import {
   NAMESPACE_SEPARATOR,
+  DEFAULT_MESSAGES_KEY,
   acquireChannelEffect,
   audioProjection,
   channelProjection,
@@ -269,7 +270,7 @@ export function useValues(
   options?: { messagesKey?: string }
 ): unknown {
   const namespace = resolveNamespace(target);
-  const messagesKey = options?.messagesKey ?? "messages";
+  const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   const key = `values|${messagesKey}|${namespaceKey(namespace)}`;
   const registry = isRoot(namespace) ? null : getRegistry(stream);
   const scoped = useProjection<unknown>(

@@ -1,6 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  DEFAULT_MESSAGES_KEY,
   acquireChannelEffect,
   audioProjection,
   channelProjection,
@@ -297,7 +298,7 @@ export function useValues(
       };
     }
   }
-  const messagesKey = options?.messagesKey ?? "messages";
+  const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   return selectFromTarget<unknown>(
     stream,
     target,

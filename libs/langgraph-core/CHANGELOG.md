@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.4.8
+
+### Patch Changes
+
+- [#2604](https://github.com/langchain-ai/langgraphjs/pull/2604) [`42ec394`](https://github.com/langchain-ai/langgraphjs/commit/42ec39460bfe0c3be017fb043c668c3204c8a175) Thanks [@hntrl](https://github.com/hntrl)! - fix(pregel): wait for completed-superstep persistence with sync durability
+
+- Updated dependencies [[`f326b89`](https://github.com/langchain-ai/langgraphjs/commit/f326b89365043bfa846e0b428564bcafafab4aaa), [`c201256`](https://github.com/langchain-ai/langgraphjs/commit/c201256b27d55c9aa333d3d15f6ec16c2fd7de9b)]:
+  - @langchain/langgraph-sdk@1.9.26
+
 ## 1.4.7
 
 ### Patch Changes

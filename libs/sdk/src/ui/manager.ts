@@ -1,5 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
+import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,
@@ -339,7 +340,7 @@ export class StreamManager<
       signal?: AbortSignal;
     }
   ): Promise<void> {
-    const messagesKey = options?.messagesKey ?? "messages";
+    const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
     const signal = options?.signal;
 
     /**

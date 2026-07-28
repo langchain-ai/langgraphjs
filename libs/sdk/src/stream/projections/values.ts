@@ -18,12 +18,13 @@ import {
 } from "../message-coercion.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
+import { DEFAULT_MESSAGES_KEY } from "../constants.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 export function valuesProjection<T = unknown>(
   namespace: readonly string[],
-  messagesKey: string = "messages"
+  messagesKey: string = DEFAULT_MESSAGES_KEY
 ): ProjectionSpec<T | undefined> {
   const ns = [...namespace];
   const key = `values|${messagesKey}|${namespaceKey(ns)}`;

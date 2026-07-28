@@ -7,7 +7,7 @@ import OptimisticValuesStream from "./components/OptimisticValuesStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("echoes the submitted message immediately as pending, then marks it sent", async () => {
-  const screen = render(OptimisticStream, {
+  const screen = await render(OptimisticStream, {
     apiUrl: serverUrl,
     assistantId: "slow_graph",
   });
@@ -40,7 +40,7 @@ it("echoes the submitted message immediately as pending, then marks it sent", as
 });
 
 it("reconciles the server echo by id without duplicating the message", async () => {
-  const screen = render(OptimisticStream, { apiUrl: serverUrl });
+  const screen = await render(OptimisticStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -63,7 +63,7 @@ it("reconciles the server echo by id without duplicating the message", async () 
 });
 
 it("keeps the optimistic message and marks it failed when the run errors", async () => {
-  const screen = render(OptimisticStream, {
+  const screen = await render(OptimisticStream, {
     apiUrl: serverUrl,
     assistantId: "errorAgent",
   });
@@ -88,7 +88,7 @@ it("keeps the optimistic message and marks it failed when the run errors", async
 });
 
 it("does not echo optimistically when optimistic is disabled", async () => {
-  const screen = render(OptimisticStream, {
+  const screen = await render(OptimisticStream, {
     apiUrl: serverUrl,
     assistantId: "slow_graph",
     optimistic: false,
@@ -118,7 +118,7 @@ it("does not echo optimistically when optimistic is disabled", async () => {
 });
 
 it("merges non-message state optimistically and converges to server truth", async () => {
-  const screen = render(OptimisticValuesStream, { apiUrl: serverUrl });
+  const screen = await render(OptimisticValuesStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit").click();
 
@@ -140,7 +140,7 @@ it("rolls back an optimistic non-message key when the run never starts", async (
   // An unknown assistant id makes dispatch reject before any `values`
   // snapshot streams back — the one case where the optimistic
   // non-message key is reverted rather than converged to server truth.
-  const screen = render(OptimisticValuesStream, {
+  const screen = await render(OptimisticValuesStream, {
     apiUrl: serverUrl,
     assistantId: "missing_graph",
   });
@@ -158,7 +158,7 @@ it("rolls back an optimistic non-message key when the run never starts", async (
 });
 
 it("does not merge non-message state when optimistic is disabled", async () => {
-  const screen = render(OptimisticValuesStream, {
+  const screen = await render(OptimisticValuesStream, {
     apiUrl: serverUrl,
     optimistic: false,
   });

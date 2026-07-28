@@ -13,6 +13,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  DEFAULT_MESSAGES_KEY,
   acquireChannelEffect,
   audioProjection,
   channelProjection,
@@ -225,7 +226,7 @@ export function useValues(
 ): Readonly<ShallowRef<unknown>> {
   const namespace = resolveNamespace(target);
   if (isRoot(namespace)) return stream.values as Readonly<ShallowRef<unknown>>;
-  const messagesKey = options?.messagesKey ?? "messages";
+  const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   const key = `values|${messagesKey}|${namespaceKey(namespace)}`;
   return useProjection<unknown>(
     getRegistry(stream),

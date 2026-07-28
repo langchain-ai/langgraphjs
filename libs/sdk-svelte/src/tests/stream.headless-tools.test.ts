@@ -12,7 +12,7 @@ it(
   "executes headless tool, resumes with result, and completes the run",
   { timeout: 20_000 },
   async () => {
-    const screen = render(HeadlessToolStream, { apiUrl: serverUrl });
+    const screen = await render(HeadlessToolStream, { apiUrl: serverUrl });
 
     await screen.getByTestId("submit").click();
 
@@ -42,7 +42,7 @@ it(
   "propagates execute error to the agent as a tool error payload",
   { timeout: 20_000 },
   async () => {
-    const screen = render(HeadlessToolStream, {
+    const screen = await render(HeadlessToolStream, {
       apiUrl: serverUrl,
       execute: async () => {
         throw new Error("GPS unavailable");

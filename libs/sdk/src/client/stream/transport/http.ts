@@ -29,7 +29,11 @@ import {
   idleReconnectStream,
   type IdleReconnectMode,
 } from "../../../utils/stream.js";
-import { webSocketReconnectDelayMs } from "./websocket.js";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+} from "../../../utils/reconnect.js";
+import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
@@ -79,19 +83,18 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     this.onRequest = options.onRequest;
     this.fetchFactory = options.fetchFactory;
     this.asyncCaller = options.asyncCaller;
-    // Custom fetch (tests/mocks) must not auto-reconnect — same policy as skipping AsyncCaller.
+    // Custom `fetch` (auth shims, proxies) must keep reconnect enabled — that is
+    // the production path for tenant-aware browsers. Tests that need fail-fast
+    // mocks should pass `maxReconnectAttempts: 0` (and `idleReconnect: 0`)
+    // explicitly rather than relying on `fetch` presence.
     this.maxReconnectAttempts =
-      options.fetch != null ? 0 : (options.maxReconnectAttempts ?? 5);
-    // Custom fetch (tests/mocks) also disables the idle watchdog, matching the
-    // no-auto-reconnect policy above — a tripped watchdog would have nothing to
-    // reconnect to and would surface spurious errors in those harnesses.
-    // Otherwise default to heartbeat-adaptive `"auto"`, which stays dormant
-    // unless the server actually emits keep-alive heartbeats.
-    this.idleReconnect =
-      options.fetch != null ? null : (options.idleReconnect ?? "auto");
+      options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
+    // Default to heartbeat-adaptive idle reconnect, which stays dormant
+    // unless the server actually emits keep-alive heartbeats. Pass `0` to
+    // disable.
+    this.idleReconnect = options.idleReconnect ?? DEFAULT_IDLE_RECONNECT;
     this.onReconnect = options.onReconnect;
-    this.reconnectDelayMs =
-      options.reconnectDelayMs ?? webSocketReconnectDelayMs;
+    this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
     this.threadId = options.threadId ?? "";
     this.paths = options.paths;
   }
@@ -249,7 +252,13 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
       rejectReady = reject;
     });
 
-    let resumeAfterSeq =
+    // Honor an explicit caller `since` until the stream has connected
+    // once. Do not advance it from observed `seq` values — those are
+    // connection-local, and carrying them onto a post-connect reconnect
+    // POST filters out the full Redis replay (heartbeats only). Pre-ready
+    // retries still send the caller cursor; only after a successful open
+    // do reconnects omit `since` and rely on durable `event_id` dedup.
+    const initialSince =
       typeof (params as SubscribeParams & { since?: unknown }).since ===
       "number"
         ? (params as SubscribeParams & { since: number }).since
@@ -274,7 +283,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 channels: params.channels,
                 ...(params.namespaces ? { namespaces: params.namespaces } : {}),
                 ...(params.depth != null ? { depth: params.depth } : {}),
-                ...(resumeAfterSeq != null ? { since: resumeAfterSeq } : {}),
+                ...(!readySettled && initialSince != null
+                  ? { since: initialSince }
+                  : {}),
               }),
               signal: ac.signal,
             },
@@ -298,7 +309,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           // decoding) so it can reset on any line and recognise `:` keep-alive
           // heartbeats to drive `"auto"` mode. On idle it errors the stream,
           // which the catch below treats like any other disconnect and
-          // reconnects with `since` from the last seen sequence.
+          // re-opens the SSE without carrying a connection-local `since`.
           const enableIdle =
             this.idleReconnect === "auto" ||
             (typeof this.idleReconnect === "number" && this.idleReconnect > 0);
@@ -316,14 +327,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              const msg = event.data as Message & {
-                seq?: number;
-                method?: string;
-              };
-              if (typeof msg.seq === "number") {
-                resumeAfterSeq = msg.seq;
-              }
-              streamQueue.push(msg);
+              streamQueue.push(event.data as Message);
             }
           }
           streamQueue.close();

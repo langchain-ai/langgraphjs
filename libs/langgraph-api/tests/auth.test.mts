@@ -238,6 +238,12 @@ it.skipIf(process.version.startsWith("v18."))("store auth", async () => {
   expect(
     await userA.store.listNamespaces({ prefix: ["johndoe"] })
   ).toMatchObject({ namespaces: [["johndoe"]] });
+  expect(await userA.store.searchItems([])).toMatchObject({
+    items: [{ key: "key_one", value: { text: "test user A" } }],
+  });
+  expect(await userA.store.listNamespaces({})).toMatchObject({
+    namespaces: [["johndoe"]],
+  });
 
   // Test other user can access their own store
   expect(await userB.store.getItem(["alice"], "key_one")).toMatchObject({

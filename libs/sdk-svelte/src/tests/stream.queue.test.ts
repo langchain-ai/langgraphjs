@@ -6,7 +6,7 @@ import QueueStream from "./components/QueueStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("records rapid submits in the submission queue", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 
@@ -22,7 +22,7 @@ it("records rapid submits in the submission queue", async () => {
 });
 
 it("exposes queued submission payloads via entries", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 
@@ -42,7 +42,7 @@ it("exposes queued submission payloads via entries", async () => {
 });
 
 it("drains the queue sequentially once the active run terminates", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
   await screen.getByTestId("submit-three").click();
@@ -62,7 +62,7 @@ it("drains the queue sequentially once the active run terminates", async () => {
 });
 
 it("removes a queued entry via cancel()", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 
@@ -87,7 +87,7 @@ it("removes a queued entry via cancel()", async () => {
 });
 
 it("empties the queue via clear()", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 
@@ -112,7 +112,7 @@ it("empties the queue via clear()", async () => {
 });
 
 it("clears the queue when the controller switches thread", async () => {
-  const screen = render(QueueStream, { apiUrl: serverUrl });
+  const screen = await render(QueueStream, { apiUrl: serverUrl });
 
   await screen.getByTestId("submit-first").click();
 

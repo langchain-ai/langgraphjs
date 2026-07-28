@@ -7,7 +7,7 @@ import SubgraphStream from "./components/SubgraphStream.svelte";
 const serverUrl = inject("serverUrl");
 
 it("streams successfully over the websocket transport", async () => {
-  const screen = render(BasicStream, {
+  const screen = await render(BasicStream, {
     apiUrl: serverUrl,
     assistantId: "stategraph_text",
     transport: "websocket",
@@ -27,7 +27,7 @@ it("streams successfully over the websocket transport", async () => {
 });
 
 it("discovers subgraphs over the websocket transport", async () => {
-  const screen = render(SubgraphStream, {
+  const screen = await render(SubgraphStream, {
     apiUrl: serverUrl,
     assistantId: "embedded_subgraph_graph",
     transport: "websocket",

@@ -101,56 +101,25 @@ export class CronsClient extends BaseClient {
    * ```
    */
   async update(cronId: string, payload?: CronsUpdatePayload): Promise<Cron> {
-    const json: Record<string, unknown> = {};
-
-    if (payload?.schedule !== undefined) {
-      json.schedule = payload.schedule;
-    }
-    if (payload?.timezone !== undefined) {
-      json.timezone = payload.timezone;
-    }
-    if (payload?.endTime !== undefined) {
-      json.end_time = payload.endTime;
-    }
-    if (payload?.input !== undefined) {
-      json.input = payload.input;
-    }
-    if (payload?.metadata !== undefined) {
-      json.metadata = payload.metadata;
-    }
-    if (payload?.config !== undefined) {
-      json.config = payload.config;
-    }
-    if (payload?.context !== undefined) {
-      json.context = payload.context;
-    }
-    if (payload?.webhook !== undefined) {
-      json.webhook = payload.webhook;
-    }
-    if (payload?.interruptBefore !== undefined) {
-      json.interrupt_before = payload.interruptBefore;
-    }
-    if (payload?.interruptAfter !== undefined) {
-      json.interrupt_after = payload.interruptAfter;
-    }
-    if (payload?.onRunCompleted !== undefined) {
-      json.on_run_completed = payload.onRunCompleted;
-    }
-    if (payload?.enabled !== undefined) {
-      json.enabled = payload.enabled;
-    }
-    if (payload?.streamMode !== undefined) {
-      json.stream_mode = payload.streamMode;
-    }
-    if (payload?.streamSubgraphs !== undefined) {
-      json.stream_subgraphs = payload.streamSubgraphs;
-    }
-    if (payload?.streamResumable !== undefined) {
-      json.stream_resumable = payload.streamResumable;
-    }
-    if (payload?.durability !== undefined) {
-      json.durability = payload.durability;
-    }
+    const json: Record<string, unknown> = {
+      schedule: payload?.schedule,
+      timezone: payload?.timezone,
+      // `null` clears a set end time; `undefined` (omitted) leaves it unchanged.
+      end_time: payload?.endTime,
+      input: payload?.input,
+      metadata: payload?.metadata,
+      config: payload?.config,
+      context: payload?.context,
+      webhook: payload?.webhook,
+      interrupt_before: payload?.interruptBefore,
+      interrupt_after: payload?.interruptAfter,
+      on_run_completed: payload?.onRunCompleted,
+      enabled: payload?.enabled,
+      stream_mode: payload?.streamMode,
+      stream_subgraphs: payload?.streamSubgraphs,
+      stream_resumable: payload?.streamResumable,
+      durability: payload?.durability,
+    };
 
     return this.fetch<Cron>(`/runs/crons/${cronId}`, {
       method: "PATCH",

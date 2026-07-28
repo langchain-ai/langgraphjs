@@ -15,9 +15,22 @@ import type {
   SubscribeParams,
 } from "@langchain/protocol";
 
-import type { IdleReconnectMode } from "../../utils/stream.js";
+import {
+  DEFAULT_IDLE_RECONNECT,
+  type IdleReconnectMode,
+} from "../../utils/stream.js";
 import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+} from "../../utils/reconnect.js";
+
+export {
+  DEFAULT_IDLE_RECONNECT,
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  reconnectDelayMs,
+};
 
 export interface ExtendedRunStartParams extends RunStartParams {
   forkFrom?: string;
@@ -129,7 +142,8 @@ export interface ThreadStreamOptions {
   webSocketFactory?: (url: string) => WebSocket;
   /**
    * Built-in `"sse"` / `"websocket"` transports only: max reconnect
-   * attempts after an unexpected disconnect. Defaults to 5.
+   * attempts after an unexpected disconnect. Defaults to
+   * {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
    */
   maxReconnectAttempts?: number;
   /**
@@ -137,17 +151,19 @@ export interface ThreadStreamOptions {
    * half-open sockets that hang with no error or close (e.g. a platform
    * revision rollover).
    *
-   * - `"auto"` (default): arm only once the server's SSE keep-alive
-   *   heartbeats are observed (LangGraph Platform emits `: heartbeat` every
-   *   ~5s), sizing the window from their cadence. Independent of agent
-   *   activity; stays dormant on heartbeat-less servers.
+   * - {@link DEFAULT_IDLE_RECONNECT} (`"auto"`): arm only once the server's
+   *   SSE keep-alive heartbeats are observed (LangGraph Platform emits
+   *   `: heartbeat` every ~5s), sizing the window from their cadence.
+   *   Independent of agent activity; stays dormant on heartbeat-less servers.
    * - a `number`: a fixed idle window in milliseconds.
    * - `0`: disables it.
+   *
+   * @default DEFAULT_IDLE_RECONNECT
    */
   streamIdleReconnect?: IdleReconnectMode;
   /**
    * Built-in transports only: delay before each reconnect attempt.
-   * Defaults to exponential backoff with jitter.
+   * Defaults to {@link reconnectDelayMs}.
    */
   reconnectDelayMs?: (attempt: number) => number;
   /**

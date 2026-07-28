@@ -45,22 +45,31 @@ export interface ProtocolSseTransportOptions {
   paths?: ProtocolTransportPaths;
   /**
    * Maximum reconnect attempts after an unexpected SSE disconnect.
-   * Defaults to 5. Set to 0 to disable automatic reconnection.
+   * Defaults to `DEFAULT_MAX_RECONNECT_ATTEMPTS` from `utils/reconnect`.
+   * Set to 0 to disable automatic reconnection.
+   *
+   * Independent of whether a custom {@link ProtocolSseTransportOptions.fetch}
+   * is supplied — auth/proxy fetch wrappers keep reconnect enabled. Pass `0`
+   * explicitly in unit tests that mock a failing `fetch` and expect fail-fast.
    */
   maxReconnectAttempts?: number;
   /**
    * Idle-reconnect policy guarding against half-open sockets that hang
    * indefinitely with no error or close (e.g. a platform revision rollover
    * that hard-kills the serving pod). On idle the underlying read is aborted,
-   * which the reconnect loop treats like any other disconnect, re-subscribing
-   * with `since` from the last seen sequence.
+   * which the reconnect loop treats like any other disconnect and re-opens
+   * the SSE without carrying a connection-local `since` (`seq` resets).
    *
-   * - `"auto"`: arm only once the server's SSE keep-alive heartbeats
-   *   (LangGraph Platform: `: heartbeat` every ~5s) are observed, sizing the
-   *   window from their cadence. Independent of agent activity; stays dormant
-   *   on heartbeat-less servers.
+   * - `"auto"` (`DEFAULT_IDLE_RECONNECT` from `utils/stream`): arm only once
+   *   the server's SSE keep-alive heartbeats (LangGraph Platform:
+   *   `: heartbeat` every ~5s) are observed, sizing the window from their
+   *   cadence. Independent of agent activity; stays dormant on
+   *   heartbeat-less servers.
    * - a `number`: a fixed idle window in milliseconds.
    * - `0`: disables it.
+   *
+   * Independent of custom {@link ProtocolSseTransportOptions.fetch}; pass `0`
+   * in fail-fast test harnesses.
    *
    * @see {@link IdleReconnectMode}
    */
@@ -69,7 +78,7 @@ export interface ProtocolSseTransportOptions {
   onReconnect?: (options: { attempt: number; cause: unknown }) => void;
   /**
    * Backoff before each SSE reconnect attempt. Defaults to
-   * {@link webSocketReconnectDelayMs} from `./websocket.js`.
+   * `reconnectDelayMs` from `utils/reconnect`.
    */
   reconnectDelayMs?: (attempt: number) => number;
 }
@@ -87,7 +96,8 @@ export interface ProtocolWebSocketTransportOptions {
   paths?: Pick<ProtocolTransportPaths, "stream">;
   /**
    * Maximum reconnect attempts after an unexpected socket close.
-   * Defaults to 5. Set to 0 to disable automatic reconnection.
+   * Defaults to `DEFAULT_MAX_RECONNECT_ATTEMPTS` from `utils/reconnect`.
+   * Set to 0 to disable automatic reconnection.
    */
   maxReconnectAttempts?: number;
   /**
@@ -101,7 +111,7 @@ export interface ProtocolWebSocketTransportOptions {
   onReconnected?: () => void | Promise<void>;
   /**
    * Backoff before each reconnect attempt. Defaults to
-   * {@link webSocketReconnectDelayMs}.
+   * `reconnectDelayMs` from `utils/reconnect`.
    */
   reconnectDelayMs?: (attempt: number) => number;
 }

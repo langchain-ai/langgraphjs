@@ -34,6 +34,7 @@ import type {
 import type { UseStream, SubmitOptions } from "./types.js";
 
 import { Client, getClientConfigHash } from "../client.js";
+import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";
@@ -304,14 +305,14 @@ export function useStreamLGP<
   const history = options.thread ?? builtInHistory;
 
   const getMessages = (value: StateType): Message[] => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
   const setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = options.messagesKey ?? "messages";
+    const messagesKey = options.messagesKey ?? DEFAULT_MESSAGES_KEY;
     return { ...current, [messagesKey]: messages };
   };
 
@@ -398,7 +399,7 @@ export function useStreamLGP<
       if (historyLimit !== false && threadId) {
         const controller = new AbortController();
         void stream.fetchSubagentHistory(client.threads, threadId, {
-          messagesKey: options.messagesKey ?? "messages",
+          messagesKey: options.messagesKey ?? DEFAULT_MESSAGES_KEY,
           historyLimit:
             typeof historyLimit === "number" ? historyLimit : undefined,
           signal: controller.signal,

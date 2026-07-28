@@ -10,6 +10,7 @@ import {
 import type { BaseMessage } from "@langchain/core/messages";
 import {
   NAMESPACE_SEPARATOR,
+  DEFAULT_MESSAGES_KEY,
   acquireChannelEffect,
   audioProjection,
   channelProjection,
@@ -271,7 +272,7 @@ export function injectValues(
   target?: SelectorTarget | Signal<SelectorTarget>,
   options?: { messagesKey?: string }
 ): Signal<unknown> {
-  const messagesKey = options?.messagesKey ?? "messages";
+  const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   const { namespace, key, isRootSignal } = normalizeTarget(
     target as SelectorTarget | Signal<SelectorTarget>,
     `values|${messagesKey}`
