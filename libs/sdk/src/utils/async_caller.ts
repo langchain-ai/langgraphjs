@@ -70,7 +70,7 @@ function isResponse(x: unknown): x is Response {
 /**
  * Utility error to properly handle failed requests
  */
-class HTTPError extends Error {
+export class HTTPError extends Error {
   status: number;
 
   text: string;
@@ -102,6 +102,35 @@ class HTTPError extends Error {
       );
     }
   }
+
+  /**
+   * Type guard for HTTPError. Uses duck-typing on the shape HTTPError
+   * exposes (status + text) so that:
+   *   - consumers can narrow errors even when the SDK module-graph
+   *     is loaded from multiple bundle entry points (each bundle has
+   *     its own HTTPError class, so `instanceof` would fail across
+   *     boundaries);
+   *   - the lint rule against instanceof is respected.
+   */
+  static isInstance(value: unknown): value is HTTPError {
+    return (
+      typeof value === "object" &&
+      value != null &&
+      "status" in value &&
+      "text" in value &&
+      "message" in value &&
+      typeof (value as { status: unknown }).status === "number" &&
+      typeof (value as { text: unknown }).text === "string"
+    );
+  }
+}
+
+/**
+ * Free-standing type guard for HTTPError. Same semantics as the static
+ * `HTTPError.isInstance(value)`. Use this when only the type is imported.
+ */
+export function isHTTPError(value: unknown): value is HTTPError {
+  return HTTPError.isInstance(value);
 }
 
 /**
