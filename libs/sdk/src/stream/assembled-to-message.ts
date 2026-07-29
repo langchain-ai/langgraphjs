@@ -187,7 +187,16 @@ interface LooseToolCallChunk {
 }
 
 function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
-  const out: LooseToolCallChunk[] = [];
+  // Dedupe chunks by index (or id when index is missing) so we only
+  // emit the last chunk per tool call. This matches the LangGraph
+  // protocol expectation that the final chunk per index carries the
+  // cumulative args snapshot. Some OpenAI-compatible proxies
+  // re-emit the full cumulative args per chunk (instead of true
+  // incremental deltas); without dedup, the downstream consumer
+  // concatenates the args and produces "{}{}{}" instead of "{}".
+  // See #2570.
+  const byKey = new Map<string, LooseToolCallChunk>();
+  const stripeOrder: string[] = [];
   for (const block of blocks) {
     if (block.type !== "tool_call_chunk") continue;
     const tc = block as {
@@ -196,15 +205,31 @@ function extractToolCallChunks(blocks: ContentBlock[]): LooseToolCallChunk[] {
       args?: string;
       index?: number;
     };
-    out.push({
+    const chunk: LooseToolCallChunk = {
       id: tc.id,
       name: tc.name,
       args: tc.args,
       index: tc.index,
       type: "tool_call_chunk",
-    });
+    };
+    // Use `index` as the primary key. Fall back to `id` when index is
+    // missing. If neither is present, append a synthetic index so the
+    // chunk is preserved but its key is unique to its position.
+    const key =
+      tc.index != null ? `i:${tc.index}` : tc.id != null ? `k:${tc.id}` : null;
+    if (key === null) {
+      // No key to dedupe on; preserve order but allow duplicates.
+      stripeOrder.push(`__unkeyed:${stripeOrder.length}`);
+      byKey.set(stripeOrder[stripeOrder.length - 1]!, chunk);
+    } else if (!byKey.has(key)) {
+      stripeOrder.push(key);
+      byKey.set(key, chunk);
+    } else {
+      // Replace the existing chunk with the same key. The last one wins.
+      byKey.set(key, chunk);
+    }
   }
-  return out;
+  return stripeOrder.map((k) => byKey.get(k)!);
 }
 
 function normalizeToolCallArgs(value: unknown): Record<string, unknown> {
