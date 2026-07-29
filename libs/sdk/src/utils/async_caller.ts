@@ -47,6 +47,18 @@ export interface AsyncCallerParams {
   onFailedResponseHook?: ResponseCallback;
 
   /**
+   * Whether to attach the raw `Response` object to thrown `HTTPError`
+   * instances as `error.response`. Defaults to `true` so consumers can
+   * inspect the response (status, headers, body) on error without
+   * having to register a separate `onFailedResponseHook`.
+   *
+   * Set to `false` for memory-constrained environments where the
+   * response body is large and consumers only need the status code and
+   * message already attached to `HTTPError`.
+   */
+  includeResponseOnError?: boolean;
+
+  /**
    * Specify a custom fetch implementation.
    *
    * By default we expect the `fetch` is available in the global scope.
@@ -154,7 +166,7 @@ export class AsyncCaller {
   private queue: (typeof import("p-queue"))["default"]["prototype"];
 
   private onFailedResponseHook?: ResponseCallback;
-
+  private includeResponseOnError: boolean;
   private customFetch?: typeof fetch;
 
   constructor(params: AsyncCallerParams) {
@@ -171,6 +183,8 @@ export class AsyncCaller {
       this.queue = new (PQueueMod as any)({ concurrency: this.maxConcurrency });
     }
     this.onFailedResponseHook = params?.onFailedResponseHook;
+    // Default to true so the response is always available on error.
+    this.includeResponseOnError = params?.includeResponseOnError ?? true;
     this.customFetch = params.fetch;
   }
 
@@ -179,7 +193,7 @@ export class AsyncCaller {
     callable: T,
     ...args: Parameters<T>
   ): Promise<Awaited<ReturnType<T>>> {
-    const { onFailedResponseHook } = this;
+    const { onFailedResponseHook, includeResponseOnError } = this;
     return this.queue.add(
       () =>
         pRetry(
@@ -190,7 +204,7 @@ export class AsyncCaller {
                 throw error;
               } else if (isResponse(error)) {
                 throw await HTTPError.fromResponse(error, {
-                  includeResponse: !!onFailedResponseHook,
+                  includeResponse: includeResponseOnError,
                 });
               } else {
                 throw new Error(error);
