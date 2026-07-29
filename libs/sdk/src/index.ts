@@ -12,6 +12,12 @@ export {
   ProtocolWebSocketTransportAdapter,
   HttpAgentServerAdapter,
 } from "./client.js";
+
+// Public HTTP error class and type guard. Use `HTTPError.isInstance(err)`
+// or the free-standing `isHTTPError(err)` to narrow errors thrown by the
+// SDK's HTTP layer without relying on `instanceof` (which breaks across
+// SDK module-graph boundaries).
+export { HTTPError, isHTTPError } from "./utils/async_caller.js";
 export type { HttpAgentServerAdapterOptions } from "./client.js";
 
 export type {

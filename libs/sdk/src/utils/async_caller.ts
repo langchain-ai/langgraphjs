@@ -47,6 +47,18 @@ export interface AsyncCallerParams {
   onFailedResponseHook?: ResponseCallback;
 
   /**
+   * Whether to attach the raw `Response` object to thrown `HTTPError`
+   * instances as `error.response`. Defaults to `true` so consumers can
+   * inspect the response (status, headers, body) on error without
+   * having to register a separate `onFailedResponseHook`.
+   *
+   * Set to `false` for memory-constrained environments where the
+   * response body is large and consumers only need the status code and
+   * message already attached to `HTTPError`.
+   */
+  includeResponseOnError?: boolean;
+
+  /**
    * Specify a custom fetch implementation.
    *
    * By default we expect the `fetch` is available in the global scope.
@@ -70,7 +82,7 @@ function isResponse(x: unknown): x is Response {
 /**
  * Utility error to properly handle failed requests
  */
-class HTTPError extends Error {
+export class HTTPError extends Error {
   status: number;
 
   text: string;
@@ -102,6 +114,35 @@ class HTTPError extends Error {
       );
     }
   }
+
+  /**
+   * Type guard for HTTPError. Uses duck-typing on the shape HTTPError
+   * exposes (status + text) so that:
+   *   - consumers can narrow errors even when the SDK module-graph
+   *     is loaded from multiple bundle entry points (each bundle has
+   *     its own HTTPError class, so `instanceof` would fail across
+   *     boundaries);
+   *   - the lint rule against instanceof is respected.
+   */
+  static isInstance(value: unknown): value is HTTPError {
+    return (
+      typeof value === "object" &&
+      value != null &&
+      "status" in value &&
+      "text" in value &&
+      "message" in value &&
+      typeof (value as { status: unknown }).status === "number" &&
+      typeof (value as { text: unknown }).text === "string"
+    );
+  }
+}
+
+/**
+ * Free-standing type guard for HTTPError. Same semantics as the static
+ * `HTTPError.isInstance(value)`. Use this when only the type is imported.
+ */
+export function isHTTPError(value: unknown): value is HTTPError {
+  return HTTPError.isInstance(value);
 }
 
 /**
@@ -125,7 +166,7 @@ export class AsyncCaller {
   private queue: (typeof import("p-queue"))["default"]["prototype"];
 
   private onFailedResponseHook?: ResponseCallback;
-
+  private includeResponseOnError: boolean;
   private customFetch?: typeof fetch;
 
   constructor(params: AsyncCallerParams) {
@@ -142,6 +183,8 @@ export class AsyncCaller {
       this.queue = new (PQueueMod as any)({ concurrency: this.maxConcurrency });
     }
     this.onFailedResponseHook = params?.onFailedResponseHook;
+    // Default to true so the response is always available on error.
+    this.includeResponseOnError = params?.includeResponseOnError ?? true;
     this.customFetch = params.fetch;
   }
 
@@ -150,7 +193,7 @@ export class AsyncCaller {
     callable: T,
     ...args: Parameters<T>
   ): Promise<Awaited<ReturnType<T>>> {
-    const { onFailedResponseHook } = this;
+    const { onFailedResponseHook, includeResponseOnError } = this;
     return this.queue.add(
       () =>
         pRetry(
@@ -161,7 +204,7 @@ export class AsyncCaller {
                 throw error;
               } else if (isResponse(error)) {
                 throw await HTTPError.fromResponse(error, {
-                  includeResponse: !!onFailedResponseHook,
+                  includeResponse: includeResponseOnError,
                 });
               } else {
                 throw new Error(error);
