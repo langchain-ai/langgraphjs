@@ -1,6 +1,23 @@
 import { z } from "zod/v3";
 import type { Checkpoint, RunnableConfig } from "../storage/types.mjs";
 
+/**
+ * Drop keys whose value is `undefined`.
+ *
+ * Pregel merges invoke/stream options roughly as:
+ * `{ recursionLimit: this.config?.recursionLimit, ...options }`.
+ * An explicit `recursionLimit: undefined` (e.g. from
+ * `kwargs.config?.recursion_limit` when the run omits it) overwrites the
+ * graph's `withConfig` default and falls back to langchain-core's 25.
+ */
+export function omitUndefined<T extends Record<string, unknown>>(
+  obj: T
+): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  ) as { [K in keyof T]?: Exclude<T[K], undefined> };
+}
+
 const ConfigSchema = z.object({
   configurable: z.object({
     thread_id: z.string(),
