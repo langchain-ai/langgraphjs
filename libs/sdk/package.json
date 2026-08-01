@@ -34,7 +34,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "svelte": "^5.56.7",

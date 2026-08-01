@@ -35,7 +35,7 @@
     "@vitest/browser-webdriverio": "^4.1.9",
     "deepagents": "^1.10.5",
     "hono": "^4.12.27",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.4",
     "typescript": "^5.9.3",
     "vitest": "^4.1.9",
     "vitest-browser-vue": "^2.1.0",

@@ -12,7 +12,7 @@
     "@langchain/openai": "^1.5.5",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.5",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "tsx": "^4.19.3",
     "typeorm": "^0.3.31",
