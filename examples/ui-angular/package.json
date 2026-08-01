@@ -29,8 +29,8 @@
     "zone.js": "~0.16.1"
   },
   "devDependencies": {
-    "@angular/build": "^22.0.8",
-    "@angular/cli": "^22.0.8",
+    "@angular/build": "^22.0.9",
+    "@angular/cli": "^22.0.9",
     "@angular/compiler-cli": "^22.0.8",
     "@langchain/langgraph-cli": "workspace:*",
     "typescript": "~5.9.2"
