@@ -60,8 +60,12 @@ describe("streamState", () => {
       attempt: 1,
       getGraph: async () =>
         ({
-          async *streamEvents(_input: unknown, options: Record<string, unknown>) {
+          async *streamEvents(
+            _input: unknown,
+            options: Record<string, unknown>
+          ) {
             seenOptions = options;
+            yield* [];
           },
         }) as never,
     })) {
@@ -90,8 +94,12 @@ describe("streamState", () => {
       attempt: 1,
       getGraph: async () =>
         ({
-          async *streamEvents(_input: unknown, options: Record<string, unknown>) {
+          async *streamEvents(
+            _input: unknown,
+            options: Record<string, unknown>
+          ) {
             seenOptions = options;
+            yield* [];
           },
         }) as never,
     })) {

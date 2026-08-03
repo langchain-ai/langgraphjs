@@ -9,13 +9,28 @@ import type { Checkpoint, RunnableConfig } from "../storage/types.mjs";
  * An explicit `recursionLimit: undefined` (e.g. from
  * `kwargs.config?.recursion_limit` when the run omits it) overwrites the
  * graph's `withConfig` default and falls back to langchain-core's 25.
+ *
+ * Keys whose value type cannot be `undefined` stay required so call sites
+ * preserve discriminators like `version: "v2" | "v3"` for streamEvents.
  */
+type OmitUndefinedKeys<T> = {
+  [K in keyof T as undefined extends T[K] ? never : K]: Exclude<
+    T[K],
+    undefined
+  >;
+} & {
+  [K in keyof T as undefined extends T[K] ? K : never]?: Exclude<
+    T[K],
+    undefined
+  >;
+};
+
 export function omitUndefined<T extends Record<string, unknown>>(
   obj: T
-): { [K in keyof T]?: Exclude<T[K], undefined> } {
+): OmitUndefinedKeys<T> {
   return Object.fromEntries(
     Object.entries(obj).filter(([, value]) => value !== undefined)
-  ) as { [K in keyof T]?: Exclude<T[K], undefined> };
+  ) as OmitUndefinedKeys<T>;
 }
 
 const ConfigSchema = z.object({
