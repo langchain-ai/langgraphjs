@@ -20,6 +20,7 @@ import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
 import type { Checkpoint, Run, RunnableConfig } from "./storage/types.mjs";
 import {
+  omitUndefined,
   runnableConfigToCheckpoint,
   taskRunnableConfigToCheckpoint,
 } from "./utils/runnableConfig.mjs";
@@ -240,7 +241,10 @@ export async function* streamState(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
       : (kwargs.input ?? null),
-    {
+    // Omit undefined keys: Pregel spreads options over the graph's withConfig
+    // defaults, so `recursionLimit: undefined` would wipe a bound limit back
+    // to langchain-core's DEFAULT_RECURSION_LIMIT (25).
+    omitUndefined({
       version: "v2" as const,
 
       interruptAfter: kwargs.interrupt_after,
@@ -257,7 +261,7 @@ export async function* streamState(
       streamMode: [...libStreamMode],
       signal: options?.signal,
       ...(tracer && { callbacks: [tracer] }),
-    }
+    })
   );
 
   const messages: Record<string, BaseMessageChunk> = {};
@@ -521,8 +525,11 @@ export async function* streamStateV2(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
       : (kwargs.input ?? null);
-  const graphOptions = {
-    version: "v3",
+  // Omit undefined keys: Pregel spreads options over the graph's withConfig
+  // defaults, so `recursionLimit: undefined` would wipe a bound limit back
+  // to langchain-core's DEFAULT_RECURSION_LIMIT (25).
+  const graphOptions = omitUndefined({
+    version: "v3" as const,
     interruptAfter: kwargs.interrupt_after,
     interruptBefore: kwargs.interrupt_before,
 
@@ -535,7 +542,7 @@ export async function* streamStateV2(
     runId: run.run_id,
     signal: options?.signal,
     ...(tracer && { callbacks: [tracer] }),
-  } as const;
+  });
 
   let graphRun: AsyncIterable<{
     method: string;
