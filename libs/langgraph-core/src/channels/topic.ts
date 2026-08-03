@@ -58,9 +58,7 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  public fromCheckpoint(
-    checkpoint?: Value[] | UniqueTopicCheckpoint<Value>
-  ) {
+  public fromCheckpoint(checkpoint?: Value[] | UniqueTopicCheckpoint<Value>) {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
