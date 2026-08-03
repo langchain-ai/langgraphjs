@@ -59,8 +59,7 @@ const worker = async (
     };
   };
 
-  const isInterrupted = () =>
-    signal.aborted && signal.reason === "interrupt";
+  const isInterrupted = () => signal.aborted && signal.reason === "interrupt";
 
   try {
     if (attempt > MAX_RETRY_ATTEMPTS) {
