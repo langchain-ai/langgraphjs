@@ -114,6 +114,7 @@ const worker = async (
     endedAt = new Date();
 
     if (isInterrupted()) {
+      checkpoint = undefined;
       status = "interrupted";
       await ops.runs.setStatus(run.run_id, status);
     } else {
