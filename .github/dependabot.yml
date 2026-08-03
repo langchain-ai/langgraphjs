@@ -153,7 +153,6 @@ updates:
   # Docker Compose files used by root/package integration tests.
   - package-ecosystem: "docker"
     directories:
-      - "/"
       - "/internal/environment_tests"
       - "/libs/checkpoint-mongodb"
       - "/libs/checkpoint-postgres"
