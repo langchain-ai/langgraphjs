@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.4.9
+
+### Patch Changes
+
+- [#2653](https://github.com/langchain-ai/langgraphjs/pull/2653) [`7880055`](https://github.com/langchain-ai/langgraphjs/commit/7880055ac7303483e424380cdd52f54cd094e311) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph): checkpoint Topic as a flat values list
+
+  Match Python Topic checkpoints so Host JS graphs no longer put `__pregel_tasks: [[], []]` through the Python checkpointer. Keep reading legacy `[seen, values]` checkpoints for restore compatibility.
+
 ## 1.4.8
 
 ### Patch Changes
