@@ -2,12 +2,29 @@ import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
 /**
+ * Legacy JS Topic checkpoint shape: `[seen, values]`.
+ *
+ * Current checkpoints match Python and store a flat `values` list. Keep reading
+ * the tuple form so threads checkpointed before that change still restore.
+ */
+function isLegacyTopicCheckpoint<Value>(
+  checkpoint: unknown
+): checkpoint is [Value[], Value[]] {
+  return (
+    Array.isArray(checkpoint) &&
+    checkpoint.length === 2 &&
+    Array.isArray(checkpoint[0]) &&
+    Array.isArray(checkpoint[1])
+  );
+}
+
+/**
  * A configurable PubSub Topic.
  */
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
   Value | Value[],
-  [Value[], Value[]]
+  Value[]
 > {
   lc_graph_name = "Topic";
 
@@ -38,15 +55,26 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  public fromCheckpoint(checkpoint?: [Value[], Value[]]) {
+  public fromCheckpoint(checkpoint?: Value[] | [Value[], Value[]]) {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
     });
-    if (typeof checkpoint !== "undefined") {
+    if (typeof checkpoint === "undefined") {
+      return empty as this;
+    }
+    // Back-compat with pre-flat JS Topic checkpoints (`[seen, values]`),
+    // matching Python Topic.from_checkpoint's tuple handling.
+    if (isLegacyTopicCheckpoint<Value>(checkpoint)) {
       empty.seen = new Set(checkpoint[0]);
-      // eslint-disable-next-line prefer-destructuring
-      empty.values = checkpoint[1];
+      empty.values = [...checkpoint[1]];
+      return empty as this;
+    }
+    empty.values = [...checkpoint];
+    // Flat checkpoints do not carry `seen`. Seed it from restored values so
+    // `unique: true` still de-dupes against the current buffer after restore.
+    if (this.unique) {
+      empty.seen = new Set(empty.values);
     }
     return empty as this;
   }
@@ -82,8 +110,14 @@ export class Topic<Value> extends BaseChannel<
     return this.values;
   }
 
-  public checkpoint(): [Value[], Value[]] {
-    return [[...this.seen], this.values];
+  /**
+   * Checkpoint as a flat values list (Python Topic parity).
+   *
+   * Previously returned `[seen, values]`, which Host's Python checkpointer
+   * treated as a list of non-Send items and rejected for `__pregel_tasks`.
+   */
+  public checkpoint(): Value[] {
+    return [...this.values];
   }
 
   isAvailable(): boolean {

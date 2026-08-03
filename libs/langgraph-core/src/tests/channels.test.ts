@@ -157,8 +157,16 @@ describe("Topic", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
+    expect(checkpoint).toEqual(["e"]);
     const newChannel = new Topic<string>().fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
+  });
+
+  it("should checkpoint an empty topic as a flat empty list", () => {
+    const empty = new Topic<string>();
+    expect(empty.checkpoint()).toEqual([]);
+    const restored = new Topic<string>().fromCheckpoint([]);
+    expect(() => restored.get()).toThrow(EmptyChannelError);
   });
 
   it.each([0, "", false, null])("should handle '%s'", (value) => {
@@ -192,12 +200,26 @@ describe("Topic with unique: true", () => {
 
   it("should de-dupe from checkpoint", () => {
     const checkpoint = channel.checkpoint();
+    expect(checkpoint).toEqual(["e"]);
     const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(
       checkpoint
     );
 
     expect(newChannel.get()).toEqual(["e"]);
 
+    // Flat checkpoints only seed `seen` from restored values, so "d" (seen
+    // before checkpoint but not in the current buffer) is accepted again.
+    newChannel.update(["d", "f"]);
+    expect(newChannel.get()).toEqual(["d", "f"]);
+  });
+
+  it("restores legacy [seen, values] checkpoints", () => {
+    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint([
+      ["a", "b", "c", "d", "e"],
+      ["e"],
+    ]);
+
+    expect(newChannel.get()).toEqual(["e"]);
     newChannel.update(["d", "f"]);
     expect(newChannel.get()).toEqual(["f"]);
   });
