@@ -67,10 +67,13 @@ function isResponse(x: unknown): x is Response {
   return "status" in x && "statusText" in x && "text" in x;
 }
 
+const HTTP_ERROR_SYMBOL = Symbol.for("langgraph.sdk.http_error");
+
 /**
  * Utility error to properly handle failed requests
  */
-class HTTPError extends Error {
+export class HTTPError extends Error {
+  protected readonly [HTTP_ERROR_SYMBOL] = true as const;
   status: number;
 
   text: string;
@@ -82,6 +85,15 @@ class HTTPError extends Error {
     this.status = status;
     this.text = message;
     this.response = response;
+  }
+
+    static isInstance(error: unknown): error is HTTPError {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      HTTP_ERROR_SYMBOL in error &&
+      (error as Record<symbol, unknown>)[HTTP_ERROR_SYMBOL] === true
+    );
   }
 
   static async fromResponse(
@@ -117,6 +129,8 @@ class HTTPError extends Error {
  * means that by default, each call will be retried up to 5 times, with an
  * exponential backoff between each attempt.
  */
+
+
 export class AsyncCaller {
   protected maxConcurrency: AsyncCallerParams["maxConcurrency"];
 
