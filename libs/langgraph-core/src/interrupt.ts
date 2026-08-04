@@ -27,6 +27,12 @@ import { XXH3 } from "./hash.js";
  * 2. Otherwise, it throws a `GraphInterrupt` with the provided value
  * 3. The graph can be resumed by passing a `Command` with a `resume` value
  *
+ * When multiple interrupts fire in a single node and the user resumes with
+ * a SCALAR value (the common case), the same scalar is reused for every
+ * subsequent interrupt in that node. To supply distinct values per interrupt,
+ * pass a record keyed by the interrupt's hash (`interrupt.id`) via
+ * `Command({ resume: { "<interrupt_id>": "value" } })`.
+ *
  * Because the `interrupt` function propagates by throwing a special `GraphInterrupt` error,
  * you should avoid using `try/catch` blocks around the `interrupt` function,
  * or if you do, ensure that the `GraphInterrupt` error is thrown again within your `catch` block.
@@ -84,10 +90,23 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   scratchpad.interruptCounter += 1;
   const idx = scratchpad.interruptCounter;
 
-  // Find previous resume values
-  if (scratchpad.resume.length > 0 && idx < scratchpad.resume.length) {
+  // Find previous resume values.
+  // If the user supplied a single value for multiple interrupts, the
+  // resume array has length 1 but the interrupt counter keeps
+  // incrementing. We reuse the last supplied value so that a single
+  // scalar resume applies to every interrupt in the same node.
+  // See #1298.
+  if (scratchpad.resume.length > 0) {
+    if (idx < scratchpad.resume.length) {
+      conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
+      return scratchpad.resume[idx] as R;
+    }
+    const lastResume = scratchpad.resume[scratchpad.resume.length - 1];
+    // Append a copy of the last value so the SEND channel reflects
+    // the value the caller actually received for this interrupt.
+    scratchpad.resume.push(lastResume);
     conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
-    return scratchpad.resume[idx] as R;
+    return lastResume as R;
   }
 
   // Find current resume value
