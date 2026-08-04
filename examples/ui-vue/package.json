@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.3",
+    "@langchain/core": "^1.2.4",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.5.5",

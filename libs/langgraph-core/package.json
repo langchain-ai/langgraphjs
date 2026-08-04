@@ -39,8 +39,8 @@
     "zod": "^3.25.32 || ^4.2.0"
   },
   "devDependencies": {
-    "@langchain/anthropic": "^1.5.1",
-    "@langchain/core": "^1.2.3",
+    "@langchain/anthropic": "^1.5.2",
+    "@langchain/core": "^1.2.4",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/openai": "^1.5.5",
@@ -56,7 +56,7 @@
     "cheerio": "1.0.0-rc.12",
     "dotenv": "^16.3.1",
     "dpdm": "^3.12.0",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.4",
     "pg": "^8.13.0",
     "playwright": "^1.55.1",
     "rollup": "^4.62.3",
