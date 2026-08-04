@@ -1,5 +1,19 @@
 # @langchain/langgraph-api
 
+## 1.4.4
+
+### Patch Changes
+
+- [#2645](https://github.com/langchain-ai/langgraphjs/pull/2645) [`059f3b8`](https://github.com/langchain-ai/langgraphjs/commit/059f3b8200d1f2f6bd701eb26bac24675395918a) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(langgraph-api): stop wiping graph recursionLimit with undefined
+
+  When a run omitted `config.recursion_limit`, the server still passed
+  `recursionLimit: undefined` into `streamEvents`. Pregel spreads that over the
+  graph's `withConfig` default, so agents fell back to langchain-core's 25.
+  Omit undefined keys so bound limits (and deepagents' 10000) stick.
+
+- Updated dependencies [[`059f3b8`](https://github.com/langchain-ai/langgraphjs/commit/059f3b8200d1f2f6bd701eb26bac24675395918a)]:
+  - @langchain/langgraph-ui@1.4.4
+
 ## 1.4.3
 
 ### Patch Changes
