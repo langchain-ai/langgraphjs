@@ -169,6 +169,16 @@ export interface UseStreamCommonOptions<
   initialValues?: StateType;
   /** State key holding the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
+  /**
+   * Whether hydration should read checkpoint history to rediscover subgraph
+   * hosts. Disable when the consumer does not render subgraphs.
+   *
+   * History is still read when the current state contains subagents whose
+   * execution namespaces need promotion.
+   *
+   * @default true
+   */
+  discoverSubgraphsOnHydrate?: boolean;
   /** Headless tool implementations; auto-resumes matching interrupts. */
   tools?: AnyHeadlessToolImplementation[];
   /** Observe lifecycle events for registered {@link tools}. */
@@ -406,6 +416,11 @@ export interface StreamControllerOptions<
   initialValues?: StateType;
   /** Key inside `values` that holds the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
+  /**
+   * Whether hydration should read checkpoint history to rediscover subgraph
+   * hosts. Defaults to `true`; subagents can still require history when false.
+   */
+  discoverSubgraphsOnHydrate?: boolean;
   /**
    * Optimistic UI for `submit()`. Defaults to `true`. See
    * {@link UseStreamCommonOptions.optimistic} for the full contract.

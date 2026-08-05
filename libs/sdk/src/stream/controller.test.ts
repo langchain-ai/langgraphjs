@@ -2210,7 +2210,34 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("hydrate promotes subagent execution namespace from getHistory", async () => {
+  it("skips history when subgraph hydration is disabled without subagents", async () => {
+    const { thread } = discoveryThread();
+    const getHistory = vi.fn(async () => []);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: [{ type: "human", content: "Hello" }] },
+          next: [],
+          tasks: [],
+        })),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "chat_agent",
+      client: client as never,
+      threadId: "thread-1",
+      discoverSubgraphsOnHydrate: false,
+    });
+    await controller.hydrationPromise;
+
+    expect(getHistory).not.toHaveBeenCalled();
+
+    await controller.dispose();
+  });
+
+  it("still promotes subagents when subgraph hydration is disabled", async () => {
     const { thread } = discoveryThread();
     const getHistory = vi.fn(async () => [
       {
@@ -2237,6 +2264,7 @@ describe("StreamController", () => {
       assistantId: "deep_agent",
       client: client as never,
       threadId: "thread-1",
+      discoverSubgraphsOnHydrate: false,
     });
     await controller.hydrationPromise;
 
@@ -2284,6 +2312,7 @@ describe("StreamController", () => {
         { nodeName: "research", status: "complete" }
       );
     });
+    expect(getHistory).toHaveBeenCalledTimes(1);
 
     await controller.dispose();
   });

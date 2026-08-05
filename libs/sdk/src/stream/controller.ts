@@ -759,7 +759,14 @@ export class StreamController<
     if (threadExists && threadActive) {
       thread.startLifecycleWatcher();
     }
-    if (threadExists) {
+    const hasUnresolvedSubagents = [...this.#subagents.snapshot.values()].some(
+      namespaceIsDefaultOnly
+    );
+    if (
+      threadExists &&
+      (this.#options.discoverSubgraphsOnHydrate !== false ||
+        hasUnresolvedSubagents)
+    ) {
       /**
        * Seed subgraph discovery and promote subagent execution
        * namespaces from a single bounded `getHistory` page. Subgraph
@@ -768,6 +775,10 @@ export class StreamController<
        * history. Fire-and-forget — not awaited into the hydration
        * promise, so Suspense / first paint stay unblocked; cards fill
        * in progressively when it resolves.
+       *
+       * Consumers that do not render subgraphs can disable the otherwise
+       * unconditional history read. Default-only subagents still require this
+       * seed so their execution namespaces resolve correctly after reconnect.
        *
        * Held in `#discoverySeedPromise` so lazy per-card
        * {@link resolveSubagentNamespace} calls coalesce onto this single
