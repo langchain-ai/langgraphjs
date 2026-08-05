@@ -497,6 +497,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    discoverSubgraphsOnHydrate?: boolean;
     optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
@@ -567,7 +568,12 @@ export function useStream<
   // Recreated only when its identity inputs change; the previous
   // instance is disposed by the `activate()` effect when `controller`
   // changes.
-  const controllerDeps = [client, assistantId, transport] as const;
+  const controllerDeps = [
+    client,
+    assistantId,
+    transport,
+    asBag.discoverSubgraphsOnHydrate,
+  ] as const;
   const controllerRef = useRef<{
     deps: typeof controllerDeps;
     controller: StreamController<StateType, InterruptType, ConfigurableType>;
@@ -608,6 +614,7 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        discoverSubgraphsOnHydrate: asBag.discoverSubgraphsOnHydrate,
         optimistic: asBag.optimistic,
       }),
     };

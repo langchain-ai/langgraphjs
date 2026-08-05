@@ -12,7 +12,8 @@
  * The fix pins the controller in a `useRef` (recreated only when its
  * identity inputs actually change). This test forces several re-renders
  * during/after hydration and asserts the controller identity is stable
- * and `getState`/`getHistory` each fired at most once.
+ * and hydration fires only once. It also verifies that changing a controller
+ * capability intentionally creates a new controller with the new behavior.
  *
  * Note: in a normal test env `useMemo` would also stay stable, so this
  * guards primarily against future regressions (e.g. an unstable
@@ -34,11 +35,14 @@ function StabilityProbe({
   threadId: string;
 }) {
   const [, forceRender] = useState(0);
+  const [discoverSubgraphsOnHydrate, setDiscoverSubgraphsOnHydrate] =
+    useState(false);
 
   const stream = useStream<{ messages: unknown[] }>({
     assistantId: "stategraph_text",
     apiUrl,
     threadId,
+    discoverSubgraphsOnHydrate,
   });
 
   // Track controller identity across renders.
@@ -54,6 +58,12 @@ function StabilityProbe({
     <div>
       <button data-testid="rerender" onClick={() => forceRender((n) => n + 1)}>
         Re-render
+      </button>
+      <button
+        data-testid="toggle-subgraph-discovery"
+        onClick={() => setDiscoverSubgraphsOnHydrate((enabled) => !enabled)}
+      >
+        Toggle subgraph discovery
       </button>
       <div data-testid="thread-loading">
         {stream.isThreadLoading ? "Hydrating..." : "Ready"}
@@ -121,7 +131,22 @@ it("keeps one controller (single hydrate) across re-renders", async () => {
       )
     ).toBe(0);
     expect(stateRequests).toBe(1);
-    expect(historyRequests).toBeLessThanOrEqual(1);
+    expect(historyRequests).toBe(0);
+
+    // Controller capabilities are identity inputs. Enabling subgraph
+    // discovery must replace the controller so the next hydrate performs the
+    // history read instead of retaining the previous controller's behavior.
+    await screen.getByTestId("toggle-subgraph-discovery").click();
+    await expect
+      .element(screen.getByTestId("identity-changes"))
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("thread-loading"), { timeout: 20_000 })
+      .toHaveTextContent("Ready");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    expect(stateRequests).toBe(2);
+    expect(historyRequests).toBe(1);
   } finally {
     globalThis.fetch = originalFetch;
     await cleanupRender(screen);
