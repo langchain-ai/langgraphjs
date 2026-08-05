@@ -1046,6 +1046,35 @@ describe("Graph Structure Tests (Python port)", () => {
     expect(result4.items).toEqual(["0", "1", ...expectedNumbers, "3"]);
   });
 
+  it("should run all Send fan-out tasks with maxConcurrency 1", async () => {
+    const State = Annotation.Root({
+      items: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+      seen: Annotation<string[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    const graph = new StateGraph(State)
+      .addNode("start", () => ({}))
+      .addNode("worker", (state: typeof State.State) => ({
+        seen: [(state as Record<string, string>).item],
+      }))
+      .addConditionalEdges("start", (s) =>
+        s.items.map((item) => new Send("worker", { item }))
+      )
+      .addEdge(START, "start")
+      .addEdge("worker", END)
+      .compile();
+
+    const items = ["a", "b", "c", "d", "e", "f"];
+    const result = await graph.invoke({ items }, { maxConcurrency: 1 });
+    expect(result.seen.sort()).toEqual(items.sort());
+  });
+
   /**
    * Port of test_max_concurrency_control from test_pregel_async_graph_structure.py
    */

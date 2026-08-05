@@ -331,7 +331,7 @@ export class PregelRunner {
       : undefined;
 
     while (
-      (startedTasksCount === 0 || executingTasksMap.size > 0) &&
+      (startedTasksCount < tasks.length || executingTasksMap.size > 0) &&
       tasks.length
     ) {
       for (
