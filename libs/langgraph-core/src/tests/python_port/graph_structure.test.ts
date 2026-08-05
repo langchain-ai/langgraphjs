@@ -2625,4 +2625,34 @@ describe("Graph Structure Tests (Python port)", () => {
       { node_b: { foo: "b" } },
     ]);
   });
+
+  it("should throw when adding duplicate edges", () => {
+    const StateAnnotation = Annotation.Root({
+      value: Annotation<string>({
+        reducer: (_, b) => b,
+        default: () => "",
+      }),
+    });
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("node_a", () => ({ value: "a" }))
+      .addNode("node_b", () => ({ value: "b" }))
+      .addNode("node_c", () => ({ value: "c" }));
+
+    // Add entry point
+    graph.addEdge(START, "node_a");
+
+    graph.addEdge("node_a", "node_b");
+    expect(() => graph.addEdge("node_a", "node_b")).toThrow(
+      "Edge from `node_a` to `node_b` already exists."
+    );
+
+    graph.addEdge(["node_a", "node_b"], "node_c");
+    expect(() => graph.addEdge(["node_a", "node_b"], "node_c")).toThrow(
+      "Edge from [node_a, node_b] to `node_c` already exists."
+    );
+
+    expect(graph.edges.size).toBe(2);
+    expect(graph.waitingEdges.size).toBe(1);
+  });
 });
