@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { HTTPError, isHTTPError } from "../index.js";
 import { AsyncCaller } from "./async_caller.js";
 
 describe("AsyncCaller", () => {
@@ -154,7 +155,7 @@ describe("AsyncCaller", () => {
 
       const failingCallable = vi.fn(() => Promise.reject(responseError));
 
-      await expect(caller.call(failingCallable)).rejects.toThrow(/HTTP 404/);
+      await expect(caller.call(failingCallable)).rejects.toBeInstanceOf(HTTPError);
     });
 
     it("should include response text in HTTPError message", async () => {
@@ -171,6 +172,32 @@ describe("AsyncCaller", () => {
       await expect(caller.call(failingCallable)).rejects.toThrow(
         "HTTP 400: Invalid parameters"
       );
+    });
+
+    it("should identify HTTPError values with isHTTPError", () => {
+      const response = {
+        status: 503,
+        statusText: "Service Unavailable",
+        text: () => Promise.resolve("Service down"),
+      } as Response;
+      const error: unknown = new HTTPError(503, "Service down", response);
+
+      expect(isHTTPError(error)).toBe(true);
+
+      if (isHTTPError(error)) {
+        expect(error.status).toBe(503);
+        expect(error.text).toBe("Service down");
+        expect(error.response).toBe(response);
+      }
+
+      expect(isHTTPError(new Error("Unrelated error"))).toBe(false);
+      expect(
+        isHTTPError({
+          status: 503,
+          text: "Service down",
+        })
+      ).toBe(false);
+      expect(isHTTPError(null)).toBe(false);
     });
 
     it("should retry connection errors and throw ConnectionError when retries are exhausted", async () => {

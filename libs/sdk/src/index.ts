@@ -1,5 +1,6 @@
 export { Client, getApiKey } from "./client.js";
 export type { ClientConfig, RequestHook } from "./client.js";
+export { HTTPError, isHTTPError } from "./utils/async_caller.js";
 
 export {
   ProtocolError,

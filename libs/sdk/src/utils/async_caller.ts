@@ -70,7 +70,7 @@ function isResponse(x: unknown): x is Response {
 /**
  * Utility error to properly handle failed requests
  */
-class HTTPError extends Error {
+export class HTTPError extends Error {
   status: number;
 
   text: string;
@@ -117,6 +117,15 @@ class HTTPError extends Error {
  * means that by default, each call will be retried up to 5 times, with an
  * exponential backoff between each attempt.
  */
+
+/**
+ * Returns whether an unknown value is an HTTP error thrown by the SDK.
+ */
+export const isHTTPError = (error: unknown): error is HTTPError => {
+  // eslint-disable-next-line no-instanceof/no-instanceof
+  return error instanceof HTTPError;
+};
+
 export class AsyncCaller {
   protected maxConcurrency: AsyncCallerParams["maxConcurrency"];
 
