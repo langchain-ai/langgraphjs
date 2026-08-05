@@ -1,16 +1,20 @@
 /**
- * Drives the {@link RootSnapshot.isLoading} flag from root lifecycle
- * events.
+ * Drives the {@link RootSnapshot.isLoading} and
+ * {@link RootSnapshot.isRunning} flags from root lifecycle events.
  *
  * # What it does
  *
  * The tracker watches a stream of protocol events and flips the
- * `isLoading` slot of a {@link StreamStore} based on root-namespace
- * `lifecycle` payloads:
+ * `isLoading` / `isRunning` slots of a {@link StreamStore} based on
+ * root-namespace `lifecycle` payloads:
  *
- *   - `running`                       → `isLoading = true`
+ *   - `running`                       → `isLoading = isRunning = true`
  *   - `completed` / `failed` / `interrupted`
- *                                     → `isLoading = false`
+ *                                     → `isLoading = isRunning = false`
+ *
+ * `isRunning` marks that the run has begun running; combined with the
+ * optimistic `isLoading` set on submit it lets
+ * {@link deriveStreamStatus} tell "submitting" from "streaming".
  *
  * Non-root, non-lifecycle, and unknown events are ignored.
  *
@@ -49,7 +53,10 @@ import { isRootNamespace } from "./namespace.js";
  * Minimal contract the snapshot must satisfy. The tracker only
  * touches `isLoading`, leaving everything else for the controller.
  */
-type LoadingSnapshot = { readonly isLoading: boolean };
+type LoadingSnapshot = {
+  readonly isLoading: boolean;
+  readonly isRunning: boolean;
+};
 
 /**
  * Drives root-snapshot `isLoading` from root lifecycle events.
@@ -124,7 +131,9 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
         return;
       }
       this.#store.setState((s) =>
-        s.isLoading ? s : { ...s, isLoading: true }
+        s.isLoading && s.isRunning
+          ? s
+          : { ...s, isLoading: true, isRunning: true }
       );
       return;
     }
@@ -146,7 +155,9 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       setTimeout(() => {
         if (this.#isDisposed()) return;
         this.#store.setState((s) =>
-          s.isLoading ? { ...s, isLoading: false } : s
+          s.isLoading || s.isRunning
+            ? { ...s, isLoading: false, isRunning: false }
+            : s
         );
       }, 0);
     }

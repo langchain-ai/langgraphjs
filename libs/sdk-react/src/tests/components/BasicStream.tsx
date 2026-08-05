@@ -59,6 +59,7 @@ export function BasicStream({
       <div data-testid="loading">
         {thread.isLoading ? "Loading..." : "Not loading"}
       </div>
+      <div data-testid="status">{thread.status}</div>
       <div data-testid="thread-id">{thread.threadId ?? "none"}</div>
       {thread.error ? (
         <div data-testid="error">{String(thread.error)}</div>
