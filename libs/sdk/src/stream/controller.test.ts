@@ -865,6 +865,7 @@ describe("StreamController", () => {
 
   it("calls thread.startLifecycleWatcher() on hydrate of an existing thread", async () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
+    const getHistory = vi.fn(async () => []);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
       onEvent: vi.fn(() => vi.fn()),
@@ -875,6 +876,7 @@ describe("StreamController", () => {
     const client = {
       threads: {
         getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        getHistory,
         stream: vi.fn(() => thread),
       },
     };
@@ -883,10 +885,12 @@ describe("StreamController", () => {
       assistantId: "deep-agent",
       client: client as never,
       threadId: "thread-existing",
+      discoverSubgraphsOnHydrate: false,
     });
     await controller.hydrationPromise;
 
     expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    expect(getHistory).not.toHaveBeenCalled();
     await controller.dispose();
   });
 
@@ -1180,6 +1184,7 @@ describe("StreamController", () => {
 
   it("hydrate(null) clears subgraph discovery from the previous thread", async () => {
     let onEvent: ((event: Event) => void) | undefined;
+    const getHistory = vi.fn(async () => []);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
@@ -1193,6 +1198,7 @@ describe("StreamController", () => {
     const client = {
       threads: {
         getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        getHistory,
         stream: vi.fn(() => thread),
       },
     };
@@ -1201,6 +1207,7 @@ describe("StreamController", () => {
       assistantId: "graph-execution-cards",
       client: client as never,
       threadId: "thread-1",
+      discoverSubgraphsOnHydrate: false,
     });
     await controller.hydrationPromise;
     expect(onEvent).toBeDefined();
@@ -1217,6 +1224,7 @@ describe("StreamController", () => {
 
     expect(controller.subgraphStore.getSnapshot().size).toBe(0);
     expect(controller.subgraphByNodeStore.getSnapshot().size).toBe(0);
+    expect(getHistory).not.toHaveBeenCalled();
     await controller.dispose();
   });
 
