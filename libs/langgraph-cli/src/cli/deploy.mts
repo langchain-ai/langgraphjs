@@ -22,7 +22,7 @@ import { getConfig, type Config } from "../utils/config.mjs";
 import {
   assembleLocalDeps,
   configToDocker,
-  getBaseImage,
+  resolveBaseImage,
 } from "../docker/docker.mjs";
 import { getExecaOptions } from "../docker/shell.mjs";
 import {
@@ -812,7 +812,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
   // neither is supplied this equals the config's own base image, so the
   // rewrite below is a no-op.
   const baseImageRef =
-    args.baseImage ?? getBaseImage(args.config, args.apiVersion);
+    args.baseImage ?? (await resolveBaseImage(args.config, args.apiVersion));
 
   const generatedDockerfile = await configToDocker(
     args.configPath,
@@ -825,7 +825,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
       buildCommand: args.buildCommand,
     }
   );
-  // `configToDocker` emits `FROM ${getBaseImage(config)}` using the config's
+  // `configToDocker` emits `FROM ${resolveBaseImage(config)}` using the config's
   // own base image; rewrite the first FROM instruction so the resolved base
   // image (including any override) is what gets built.
   const dockerfile = generatedDockerfile.replace(
