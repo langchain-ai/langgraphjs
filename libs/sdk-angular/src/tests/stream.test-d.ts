@@ -51,6 +51,13 @@ describe("useStream return shape", () => {
 
     expectTypeOf(stream.threadId()).toEqualTypeOf<string | null>();
   });
+
+  test("accepts the subgraph hydration capability", () => {
+    expectTypeOf(useStream<BasicState>).toBeCallableWith({
+      assistantId: "agent",
+      discoverSubgraphsOnHydrate: false,
+    });
+  });
 });
 
 describe("companion injectors", () => {

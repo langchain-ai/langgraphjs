@@ -464,6 +464,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    discoverSubgraphsOnHydrate?: boolean;
     tools?: AnyHeadlessToolImplementation[];
     onTool?: OnToolCallback;
     optimistic?: boolean;
@@ -525,6 +526,7 @@ export function useStream<
     onCompleted: options.onCompleted,
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
+    discoverSubgraphsOnHydrate: asBag.discoverSubgraphsOnHydrate,
     optimistic: asBag.optimistic,
   });
 

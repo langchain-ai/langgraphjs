@@ -377,6 +377,13 @@ describe("useStream accepts reactive options for dynamic inputs", () => {
     expectTypeOf(stream.messages).toExtend<Readonly<ShallowRef<BaseMessage[]>>>();
   });
 
+  test("accepts the subgraph hydration capability", () => {
+    expectTypeOf(useStream<BasicState>).toBeCallableWith({
+      assistantId: "agent",
+      discoverSubgraphsOnHydrate: false,
+    });
+  });
+
   test("callbacks remain plain function types", () => {
     useStream<BasicState>({
       assistantId: "agent",

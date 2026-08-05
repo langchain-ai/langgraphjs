@@ -510,6 +510,13 @@ describe("v1 useStream options and submit typing", () => {
     });
   });
 
+  test("accepts the subgraph hydration capability", () => {
+    expectTypeOf(useStream<BedtimeState>).toBeCallableWith({
+      assistantId: "agent",
+      discoverSubgraphsOnHydrate: false,
+    });
+  });
+
   test("submit accepts BaseMessage instances and v1 options", () => {
     const widened: WidenUpdateMessages<Partial<BedtimeState>> = {
       messages: [new HumanMessage("hi")],
