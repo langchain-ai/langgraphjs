@@ -568,11 +568,12 @@ export function useStream<
   // Recreated only when its identity inputs change; the previous
   // instance is disposed by the `activate()` effect when `controller`
   // changes.
+  const discoverSubgraphsOnHydrate = asBag.discoverSubgraphsOnHydrate !== false;
   const controllerDeps = [
     client,
     assistantId,
     transport,
-    asBag.discoverSubgraphsOnHydrate,
+    discoverSubgraphsOnHydrate,
   ] as const;
   const controllerRef = useRef<{
     deps: typeof controllerDeps;
@@ -614,7 +615,7 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
-        discoverSubgraphsOnHydrate: asBag.discoverSubgraphsOnHydrate,
+        discoverSubgraphsOnHydrate,
         optimistic: asBag.optimistic,
       }),
     };

@@ -36,7 +36,7 @@ function StabilityProbe({
 }) {
   const [, forceRender] = useState(0);
   const [discoverSubgraphsOnHydrate, setDiscoverSubgraphsOnHydrate] =
-    useState(false);
+    useState<boolean | undefined>(false);
 
   const stream = useStream<{ messages: unknown[] }>({
     assistantId: "stategraph_text",
@@ -64,6 +64,12 @@ function StabilityProbe({
         onClick={() => setDiscoverSubgraphsOnHydrate((enabled) => !enabled)}
       >
         Toggle subgraph discovery
+      </button>
+      <button
+        data-testid="default-subgraph-discovery"
+        onClick={() => setDiscoverSubgraphsOnHydrate(undefined)}
+      >
+        Default subgraph discovery
       </button>
       <div data-testid="thread-loading">
         {stream.isThreadLoading ? "Hydrating..." : "Ready"}
@@ -145,6 +151,16 @@ it("keeps one controller (single hydrate) across re-renders", async () => {
       .toHaveTextContent("Ready");
     await new Promise((resolve) => setTimeout(resolve, 250));
 
+    expect(stateRequests).toBe(2);
+    expect(historyRequests).toBe(1);
+
+    // `undefined` uses the same enabled default as `true`, so this render
+    // must retain the current controller and avoid another hydration.
+    await screen.getByTestId("default-subgraph-discovery").click();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await expect
+      .element(screen.getByTestId("identity-changes"))
+      .toHaveTextContent("1");
     expect(stateRequests).toBe(2);
     expect(historyRequests).toBe(1);
   } finally {
