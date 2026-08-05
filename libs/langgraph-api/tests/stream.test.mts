@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PROTOCOL_STREAM_RUN_KEY } from "../src/protocol/constants.mjs";
 import { streamState } from "../src/stream.mjs";
 import type { Run } from "../src/storage/types.mjs";
+import { omitUndefined } from "../src/utils/runnableConfig.mjs";
 
 const createRun = (overrides?: Partial<Run>): Run =>
   ({
@@ -27,7 +28,87 @@ const createRun = (overrides?: Partial<Run>): Run =>
     ...overrides,
   }) satisfies Run;
 
+describe("omitUndefined", () => {
+  it("drops undefined keys so Pregel cannot wipe withConfig defaults", () => {
+    expect(
+      omitUndefined({
+        recursionLimit: undefined,
+        configurable: { thread_id: "t1" },
+        tags: undefined,
+        metadata: { a: 1 },
+      })
+    ).toEqual({
+      configurable: { thread_id: "t1" },
+      metadata: { a: 1 },
+    });
+  });
+
+  it("keeps an explicit recursionLimit", () => {
+    expect(omitUndefined({ recursionLimit: 200, tags: ["x"] })).toEqual({
+      recursionLimit: 200,
+      tags: ["x"],
+    });
+  });
+});
+
 describe("streamState", () => {
+  it("omits recursionLimit from streamEvents options when the run config omits it", async () => {
+    const run = createRun();
+    let seenOptions: Record<string, unknown> | undefined;
+
+    for await (const _chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents(
+            _input: unknown,
+            options: Record<string, unknown>
+          ) {
+            seenOptions = options;
+            yield* [];
+          },
+        }) as never,
+    })) {
+      // drain
+    }
+
+    expect(seenOptions).toBeDefined();
+    expect("recursionLimit" in (seenOptions ?? {})).toBe(false);
+  });
+
+  it("forwards an explicit recursion_limit to streamEvents", async () => {
+    const run = createRun({
+      kwargs: {
+        config: {
+          configurable: { graph_id: "deep-agent" },
+          recursion_limit: 200,
+        },
+        stream_mode: ["messages-tuple"],
+        subgraphs: true,
+        resumable: true,
+      },
+    });
+    let seenOptions: Record<string, unknown> | undefined;
+
+    for await (const _chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents(
+            _input: unknown,
+            options: Record<string, unknown>
+          ) {
+            seenOptions = options;
+            yield* [];
+          },
+        }) as never,
+    })) {
+      // drain
+    }
+
+    expect(seenOptions?.recursionLimit).toBe(200);
+  });
+
   it("includes child on_chain_stream events when subgraphs are enabled", async () => {
     const run = createRun();
     const childRunId = "00000000-0000-7000-8000-000000000099";

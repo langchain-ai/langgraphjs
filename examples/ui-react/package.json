@@ -11,15 +11,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/anthropic": "^1.5.1",
-    "@langchain/core": "^1.2.3",
+    "@langchain/anthropic": "^1.5.2",
+    "@langchain/core": "^1.2.4",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
-    "@langchain/quickjs": "^0.6.0",
+    "@langchain/quickjs": "^1.0.0",
     "@langchain/react": "workspace:*",
     "@uiw/react-json-view": "^2.0.0-alpha.38",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.3",
+    "langchain": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "streamdown": "^2.5.0",
@@ -27,11 +27,11 @@
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.0.3",
-    "@vitejs/plugin-react": "^6.0.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
-    "vite": "^8.0.16"
+    "vite": "^8.2.0"
   }
 }

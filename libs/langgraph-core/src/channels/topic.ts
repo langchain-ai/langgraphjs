@@ -1,13 +1,33 @@
 import { EmptyChannelError } from "../errors.js";
 import { BaseChannel } from "./base.js";
 
+/** JS Topic checkpoint when `unique` is set: `[seen, values]`. */
+type UniqueTopicCheckpoint<Value> = [Value[], Value[]];
+
+/**
+ * Detect the `[seen, values]` Topic checkpoint shape.
+ *
+ * Used for `unique: true` topics (current) and pre-flat JS checkpoints
+ * (legacy). Flat Python-parity checkpoints are a single values list.
+ */
+function isUniqueTopicCheckpoint<Value>(
+  checkpoint: unknown
+): checkpoint is UniqueTopicCheckpoint<Value> {
+  return (
+    Array.isArray(checkpoint) &&
+    checkpoint.length === 2 &&
+    Array.isArray(checkpoint[0]) &&
+    Array.isArray(checkpoint[1])
+  );
+}
+
 /**
  * A configurable PubSub Topic.
  */
 export class Topic<Value> extends BaseChannel<
   Array<Value>,
   Value | Value[],
-  [Value[], Value[]]
+  Value[] | UniqueTopicCheckpoint<Value>
 > {
   lc_graph_name = "Topic";
 
@@ -38,15 +58,25 @@ export class Topic<Value> extends BaseChannel<
     this.values = [];
   }
 
-  public fromCheckpoint(checkpoint?: [Value[], Value[]]) {
+  public fromCheckpoint(checkpoint?: Value[] | UniqueTopicCheckpoint<Value>) {
     const empty = new Topic<Value>({
       unique: this.unique,
       accumulate: this.accumulate,
     });
-    if (typeof checkpoint !== "undefined") {
+    if (typeof checkpoint === "undefined") {
+      return empty as this;
+    }
+    // `unique: true` (and legacy pre-flat) checkpoints are `[seen, values]`.
+    if (isUniqueTopicCheckpoint<Value>(checkpoint)) {
       empty.seen = new Set(checkpoint[0]);
-      // eslint-disable-next-line prefer-destructuring
-      empty.values = checkpoint[1];
+      empty.values = [...checkpoint[1]];
+      return empty as this;
+    }
+    empty.values = [...checkpoint];
+    // Flat checkpoints have no historical `seen`. Seed from the current
+    // buffer so `unique: true` still de-dupes values present after restore.
+    if (this.unique) {
+      empty.seen = new Set(empty.values);
     }
     return empty as this;
   }
@@ -82,8 +112,22 @@ export class Topic<Value> extends BaseChannel<
     return this.values;
   }
 
-  public checkpoint(): [Value[], Value[]] {
-    return [[...this.seen], this.values];
+  /**
+   * Checkpoint Topic state.
+   *
+   * Default / Host path (`unique: false`, including `__pregel_tasks`): flat
+   * values list, matching Python Topic. Previously this always returned
+   * `[seen, values]`, so empty TASKS became `[[], []]` and Host's Python
+   * checkpointer rejected it.
+   *
+   * When `unique: true`, keep `[seen, values]` so dedupe history that outlives
+   * the current buffer still survives resume.
+   */
+  public checkpoint(): Value[] | UniqueTopicCheckpoint<Value> {
+    if (this.unique) {
+      return [[...this.seen], [...this.values]];
+    }
+    return [...this.values];
   }
 
   isAvailable(): boolean {
