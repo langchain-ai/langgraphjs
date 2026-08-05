@@ -1061,7 +1061,7 @@ describe("Graph Structure Tests (Python port)", () => {
     const graph = new StateGraph(State)
       .addNode("start", () => ({}))
       .addNode("worker", (state: typeof State.State) => ({
-        seen: [(state as Record<string, string>).item],
+        seen: [(state as unknown as { item: string }).item],
       }))
       .addConditionalEdges("start", (s) =>
         s.items.map((item) => new Send("worker", { item }))
