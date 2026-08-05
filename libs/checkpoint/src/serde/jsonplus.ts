@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-instanceof/no-instanceof */
-import { load } from "@langchain/core/load";
+import { load, type LoadOptions } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 import { stringify } from "./utils/fast-safe-stringify/index.js";
 import { DeltaSnapshot } from "./types.js";
@@ -22,17 +22,17 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
  * We therefore must start from the most nested elements in the input and
  * deserialize upwards rather than top-down.
  */
-async function _reviver(value: any): Promise<any> {
+async function _reviver(value: any, options?: LoadOptions): Promise<any> {
   if (value && typeof value === "object") {
     if (Array.isArray(value)) {
       const revivedArray = await Promise.all(
-        value.map((item) => _reviver(item))
+        value.map((item) => _reviver(item, options))
       );
       return revivedArray;
     } else {
       const revivedObj: any = {};
       for (const [k, v] of Object.entries(value)) {
-        revivedObj[k] = await _reviver(v);
+        revivedObj[k] = await _reviver(v, options);
       }
 
       if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
@@ -79,7 +79,7 @@ async function _reviver(value: any): Promise<any> {
           return revivedObj;
         }
       } else if (isLangChainSerializedObject(revivedObj)) {
-        return load(JSON.stringify(revivedObj));
+        return load(JSON.stringify(revivedObj), options);
       }
 
       return revivedObj;
@@ -142,7 +142,52 @@ function _default(obj: any): any {
   }
 }
 
+/**
+ * Default serializer used by every checkpointer and cache.
+ *
+ * Deserialization of LangChain objects is delegated to `load()` from
+ * `@langchain/core/load`, which resolves classes from a namespace path rather
+ * than importing arbitrary modules. Only the `langchain_core` namespace
+ * resolves automatically — classes from any other package (for example
+ * `ChatOpenAI`, whose namespace is `langchain`) are unreachable unless the
+ * application explicitly opts them in, since core has no way to know which
+ * packages are installed.
+ *
+ * Pass {@link LoadOptions} here to opt those classes in, then hand the
+ * serializer to any checkpointer:
+ *
+ * @example
+ * ```typescript
+ * import { MemorySaver, JsonPlusSerializer } from "@langchain/langgraph-checkpoint";
+ * import * as chatModels from "@langchain/openai";
+ *
+ * const checkpointer = new MemorySaver(
+ *   new JsonPlusSerializer({
+ *     importMap: { chat_models__openai: chatModels },
+ *     // Provider classes serialize their credentials as secret references,
+ *     // so reviving them also needs the secrets resolved.
+ *     secretsMap: { OPENAI_API_KEY: process.env.OPENAI_API_KEY! },
+ *   })
+ * );
+ * ```
+ *
+ * @remarks
+ * **Security:** `importMap` / `optionalImportsMap` widen the set of classes a
+ * checkpoint payload can instantiate, and constructors run during
+ * deserialization. Only pass modules you trust, and never build these maps
+ * from user input. See {@link LoadOptions} for full guidance.
+ */
 export class JsonPlusSerializer implements SerializerProtocol {
+  /**
+   * Options forwarded to `load()` when reviving LangChain objects.
+   * When omitted, only `langchain_core` classes can be revived.
+   */
+  protected loadOptions?: LoadOptions;
+
+  constructor(loadOptions?: LoadOptions) {
+    this.loadOptions = loadOptions;
+  }
+
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
     return encoder.encode(
@@ -162,7 +207,7 @@ export class JsonPlusSerializer implements SerializerProtocol {
 
   protected async _loads(data: string): Promise<any> {
     const parsed = JSON.parse(data);
-    return _reviver(parsed);
+    return _reviver(parsed, this.loadOptions);
   }
 
   async loadsTyped(type: string, data: Uint8Array | string): Promise<any> {
