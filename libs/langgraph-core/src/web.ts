@@ -36,6 +36,9 @@ export {
   type NodePolicyOptions,
   type StateGraphArgsWithStateSchema,
   type StateGraphArgsWithInputOutputSchemas,
+  type GraphVersion,
+  type StateMigration,
+  type StateMigrationState,
 } from "./graph/index.js";
 export type {
   StateSnapshot,
