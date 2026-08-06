@@ -1,0 +1,89 @@
+// Copyright (c) 2026, Oracle and/or its affiliates.
+import { Buffer } from "node:buffer";
+import {
+  InvalidNamespaceError,
+  type MatchCondition,
+} from "@langchain/langgraph-checkpoint";
+
+import { STORE_KEY_ENCODING_PREFIX } from "./constants.js";
+
+export function validateNamespace(namespace: string[]): void {
+  if (namespace.length === 0) {
+    throw new InvalidNamespaceError("Namespace cannot be empty.");
+  }
+  for (const label of namespace) {
+    if (typeof label !== "string") {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels must be strings, but got ${typeof label}.`
+      );
+    }
+    if (label.includes(".")) {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
+      );
+    }
+    if (label === "") {
+      throw new InvalidNamespaceError(
+        `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
+      );
+    }
+  }
+  if (namespace[0] === "langgraph") {
+    throw new InvalidNamespaceError(
+      `Root label for namespace cannot be "langgraph". Got: ${namespace}`
+    );
+  }
+}
+
+export function namespacePath(namespace: string[]): string {
+  return JSON.stringify(namespace);
+}
+
+export function encodeStoreKey(key: string): string {
+  return `${STORE_KEY_ENCODING_PREFIX}${Buffer.from(key, "utf8").toString(
+    "base64url"
+  )}`;
+}
+
+export function decodeStoreKey(key: string): string {
+  if (!key.startsWith(STORE_KEY_ENCODING_PREFIX)) return key;
+  return Buffer.from(
+    key.slice(STORE_KEY_ENCODING_PREFIX.length),
+    "base64url"
+  ).toString("utf8");
+}
+
+export function namespacePrefixLikePattern(namespace: string[]): string {
+  return `${escapeLike(namespacePath(namespace).slice(0, -1))},%`;
+}
+
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+export function hasNamespacePrefix(
+  namespace: string[],
+  prefix: string[]
+): boolean {
+  if (prefix.length > namespace.length) return false;
+  return prefix.every((label, index) => namespace[index] === label);
+}
+
+export function matchesNamespaceCondition(
+  namespace: string[],
+  condition: MatchCondition
+): boolean {
+  const { path, matchType } = condition;
+  if (path.length > namespace.length) return false;
+
+  if (matchType === "prefix") {
+    return path.every(
+      (label, index) => label === "*" || namespace[index] === label
+    );
+  }
+
+  const offset = namespace.length - path.length;
+  return path.every(
+    (label, index) => label === "*" || namespace[offset + index] === label
+  );
+}
