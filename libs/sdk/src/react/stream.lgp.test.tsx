@@ -132,7 +132,7 @@ it("still opts into tools/updates when explicitly accessed", async () => {
   expect(streamCall?.streamMode).toContain("updates");
 });
 
-it("uses submitOptions.threadId when hook threadId is null (no threads.create)", async () => {
+it("uses submitOptions.threadId when hook threadId is null (idempotent create)", async () => {
   const knownThreadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
   const mintedThreadId = "11111111-2222-3333-4444-555555555555";
 
@@ -145,10 +145,15 @@ it("uses submitOptions.threadId when hook threadId is null (no threads.create)",
 
   await thread.submit(
     { messages: [{ type: "human", content: "hello" }] },
-    { threadId: knownThreadId }
+    { threadId: knownThreadId, metadata: { source: "bootstrap" } }
   );
 
-  expect(client.threads.create).not.toHaveBeenCalled();
+  expect(client.threads.create).toHaveBeenCalledWith({
+    threadId: knownThreadId,
+    ifExists: "do_nothing",
+    metadata: { source: "bootstrap" },
+    signal: expect.any(AbortSignal),
+  });
   expect(client.runs.stream).toHaveBeenCalledWith(
     knownThreadId,
     "test-assistant",
@@ -158,5 +163,33 @@ it("uses submitOptions.threadId when hook threadId is null (no threads.create)",
     mintedThreadId,
     expect.anything(),
     expect.anything()
+  );
+});
+
+it("provisions submitOptions.threadId when unbound and thread does not exist yet", async () => {
+  const knownThreadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+  const client = createMockClient();
+  (client.threads.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+    thread_id: knownThreadId,
+  });
+
+  const thread = mountUnboundThread(client);
+
+  await thread.submit(
+    { messages: [{ type: "human", content: "hello" }] },
+    { threadId: knownThreadId }
+  );
+
+  expect(client.threads.create).toHaveBeenCalledWith({
+    threadId: knownThreadId,
+    ifExists: "do_nothing",
+    metadata: undefined,
+    signal: expect.any(AbortSignal),
+  });
+  expect(client.runs.stream).toHaveBeenCalledWith(
+    knownThreadId,
+    "test-assistant",
+    expect.any(Object)
   );
 });

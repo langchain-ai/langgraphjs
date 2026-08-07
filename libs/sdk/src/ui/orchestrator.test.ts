@@ -950,4 +950,84 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
   });
+
+  describe("submit threadId coalescing", () => {
+    it("uses submitOptions.threadId with idempotent create when unbound", async () => {
+      const knownThreadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const mintedThreadId = "11111111-2222-3333-4444-555555555555";
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          // no-op stream
+        },
+      };
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockReturnValue(
+        mockStream
+      );
+      (client.threads.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        thread_id: mintedThreadId,
+      });
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: false }),
+        accessors
+      );
+
+      await orch.submit(
+        { messages: [] },
+        { threadId: knownThreadId, metadata: { source: "bootstrap" } }
+      );
+      await flushMicrotasks();
+
+      expect(client.threads.create).toHaveBeenCalledWith({
+        threadId: knownThreadId,
+        ifExists: "do_nothing",
+        metadata: { source: "bootstrap" },
+      });
+      expect(client.runs.stream).toHaveBeenCalledWith(
+        knownThreadId,
+        "test-assistant",
+        expect.any(Object)
+      );
+      expect(orch.threadId).toBe(knownThreadId);
+
+      orch.dispose();
+    });
+
+    it("provisions submitOptions.threadId when unbound and thread does not exist yet", async () => {
+      const knownThreadId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          // no-op stream
+        },
+      };
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockReturnValue(
+        mockStream
+      );
+      (client.threads.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+        thread_id: knownThreadId,
+      });
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: false }),
+        accessors
+      );
+
+      await orch.submit({ messages: [] }, { threadId: knownThreadId });
+      await flushMicrotasks();
+
+      expect(client.threads.create).toHaveBeenCalledWith({
+        threadId: knownThreadId,
+        ifExists: "do_nothing",
+        metadata: undefined,
+      });
+      expect(client.runs.stream).toHaveBeenCalledWith(
+        knownThreadId,
+        "test-assistant",
+        expect.any(Object)
+      );
+      expect(orch.threadId).toBe(knownThreadId);
+
+      orch.dispose();
+    });
+  });
 });

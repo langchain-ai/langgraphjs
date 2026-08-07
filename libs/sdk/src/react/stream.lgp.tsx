@@ -528,14 +528,15 @@ export function useStreamLGP<
           return { ...prev };
         });
 
-        if (!usableThreadId) {
+        if (!threadId) {
           const thread = await client.threads.create({
-            threadId: submitOptions?.threadId,
+            threadId: usableThreadId,
+            ifExists: "do_nothing",
             metadata: submitOptions?.metadata,
             signal,
           });
 
-          usableThreadId = thread.thread_id;
+          usableThreadId = usableThreadId ?? thread.thread_id;
 
           // Pre-emptively update the thread ID before
           // stream cancellation is kicked off and thread
@@ -543,12 +544,6 @@ export function useStreamLGP<
           threadIdRef.current = usableThreadId;
           threadIdStreamingRef.current = usableThreadId;
 
-          onThreadId(usableThreadId);
-        } else if (threadId == null && usableThreadId != null) {
-          // Hook threadId not bound yet — adopt submitOptions.threadId without
-          // calling threads.create (avoids server-minted orphan threads).
-          threadIdRef.current = usableThreadId;
-          threadIdStreamingRef.current = usableThreadId;
           onThreadId(usableThreadId);
         }
 
