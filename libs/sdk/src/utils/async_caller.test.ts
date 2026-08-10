@@ -173,6 +173,42 @@ describe("AsyncCaller", () => {
       );
     });
 
+    it("should attach error.response without onFailedResponseHook", async () => {
+      const caller = new AsyncCaller({ maxRetries: 0 });
+
+      const responseError = {
+        status: 404,
+        statusText: "Not Found",
+        text: () => Promise.resolve("missing"),
+      };
+
+      const failingCallable = vi.fn(() => Promise.reject(responseError));
+
+      await expect(caller.call(failingCallable)).rejects.toMatchObject({
+        status: 404,
+        response: responseError,
+      });
+    });
+
+    it("should not attach a response to failures that carry none", async () => {
+      const caller = new AsyncCaller({ maxRetries: 0 });
+
+      // Only a Response rejection becomes an HTTPError, so these keep no
+      // `response`: a generic failure is rethrown as-is, and a connection
+      // failure is replaced by ConnectionError.
+      for (const failure of [
+        new TypeError("boom"),
+        new TypeError("fetch failed"),
+      ]) {
+        const error = await caller
+          .call(vi.fn(() => Promise.reject(failure)))
+          .catch((caught) => caught);
+
+        expect(error).not.toHaveProperty("response");
+        expect(error).not.toHaveProperty("status");
+      }
+    });
+
     it("should retry connection errors and throw ConnectionError when retries are exhausted", async () => {
       const caller = new AsyncCaller({ maxRetries: 1 });
 
