@@ -132,9 +132,9 @@ export interface StreamRespondOptions<
    */
   interruptId?: string;
   /**
-   * Namespace of the targeted interrupt. Root interrupts use `[]` (the
-   * default when omitted). Subgraph interrupts require the exact tuple
-   * from `getThread()?.interrupts`.
+   * Namespace of the targeted interrupt. Root interrupts use `[]`.
+   * When omitted, resolved from `thread.interrupts` /
+   * `stream.interrupts` for the given `interruptId`.
    */
   namespace?: string[];
 }

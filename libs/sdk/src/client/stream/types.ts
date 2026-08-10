@@ -231,10 +231,10 @@ export interface ThreadModules {
  * Matches the in-process `InterruptPayload` type.
  *
  * {@link ThreadStream.interrupts} collects these entries in arrival order.
- * Use them (via {@link StreamController.getThread `getThread()`}) when
- * you need the protocol `namespace` tuple for
- * {@link StreamController.respond `respond()`} — for example subgraph
- * interrupts that are not mirrored on {@link RootSnapshot.interrupts}.
+ * The same pending interrupts (including nested namespaces) are also
+ * mirrored onto {@link RootSnapshot.interrupts} / framework
+ * `stream.interrupts` for UI rendering; `respond()` resolves `namespace`
+ * from either list when only `interruptId` is supplied.
  */
 export interface InterruptPayload<TPayload = unknown> {
   interruptId: string;
