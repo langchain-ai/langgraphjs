@@ -674,9 +674,16 @@ export class StreamController<
         const activeIds = new Set<string>();
         for (const task of state.tasks) {
           if (!Array.isArray(task?.interrupts)) continue;
+          const checkpointNs = (
+            task as { checkpoint?: { checkpoint_ns?: unknown } | null }
+          )?.checkpoint?.checkpoint_ns;
+          const namespace =
+            typeof checkpointNs === "string" && checkpointNs.length > 0
+              ? checkpointNs.split("|").filter((segment) => segment.length > 0)
+              : [...ROOT_NAMESPACE];
           for (const interrupt of task.interrupts) {
             const typed = interrupt as
-              | { id?: string; value?: unknown }
+              | { id?: string; value?: unknown; namespace?: string[] }
               | null
               | undefined;
             const id = typed?.id;
@@ -686,6 +693,9 @@ export class StreamController<
               normalizeInterruptForClient({
                 id,
                 value: typed?.value as InterruptType,
+                namespace: Array.isArray(typed?.namespace)
+                  ? [...typed.namespace]
+                  : namespace,
               })
             );
           }
@@ -1210,14 +1220,15 @@ export class StreamController<
    * oldest and picks the first entry whose `interruptId` has not already
    * been resolved by a prior `respond()` call. That entry may be at the
    * root (`namespace: []`) or inside a subgraph (non-empty `namespace`).
-   * This is **not** the same as {@link RootSnapshot.interrupts
-   * `rootStore.interrupts[0]`} / framework `stream.interrupt`, which only
-   * mirrors root-namespace interrupts for UI convenience.
+   * {@link RootSnapshot.interrupts `rootStore.interrupts`} /
+   * framework `stream.interrupts` mirrors the same pending interrupts
+   * (including nested namespaces) for UI rendering.
    *
    * Omitting `interruptId` is fine when exactly one interrupt is pending.
    * When several can be active (parallel subagents, fan-out, nested
-   * graphs), pass an explicit `interruptId` (and `namespace` for subgraph
-   * interrupts) so you resume the interrupt the user acted on.
+   * graphs), pass an explicit `interruptId` so you resume the interrupt
+   * the user acted on. `namespace` is resolved automatically from
+   * `thread.interrupts` / `stream.interrupts` when omitted.
    *
    * To resume several interrupts pending at the same checkpoint in one
    * command, use {@link respondAll} — sequential single `respond()` calls
@@ -1225,9 +1236,8 @@ export class StreamController<
    * others with no interrupted run to respond to.
    *
    * The server validates `namespace` against the pending interrupt. Root
-   * interrupts use `namespace: []` (the default when `namespace` is
-   * omitted). Subgraph interrupts require the exact tuple from
-   * `getThread()?.interrupts` — see the example below.
+   * interrupts use `namespace: []`. Subgraph interrupts carry the exact
+   * tuple on each {@link Interrupt} / {@link InterruptPayload} entry.
    *
    * @param response - Payload sent back to the interrupted namespace.
    * @param options - Optional target (`interruptId` / `namespace`) and
@@ -1248,27 +1258,16 @@ export class StreamController<
    * );
    * ```
    *
-   * @example Multiple root interrupts — target by id
+   * @example Multiple / nested interrupts — target by id
    * ```tsx
    * for (const intr of stream.interrupts) {
    *   await stream.respond(decide(intr.value), { interruptId: intr.id! });
    * }
    * ```
    *
-   * @example Subgraph interrupt — read `namespace` from the thread stream
-   * ```tsx
-   * const thread = stream.getThread();
-   * for (const entry of thread?.interrupts ?? []) {
-   *   await stream.respond(buildResponse(entry.payload), {
-   *     interruptId: entry.interruptId,
-   *     namespace: entry.namespace,
-   *   });
-   * }
-   * ```
-   *
-   * Each {@link InterruptPayload} on `thread.interrupts` mirrors an
-   * `input.requested` event: `{ interruptId, payload, namespace }`.
-   * Nested interrupts may appear here but not on `stream.interrupts`.
+   * Each {@link InterruptPayload} on `thread.interrupts` and each
+   * {@link Interrupt} on `stream.interrupts` mirrors an
+   * `input.requested` event with its protocol `namespace`.
    */
   async respond(
     response: unknown,
@@ -1282,7 +1281,10 @@ export class StreamController<
       options?.interruptId != null
         ? {
             interruptId: options.interruptId,
-            namespace: options.namespace ?? [...ROOT_NAMESPACE],
+            namespace: this.#resolveNamespaceForInterruptId(
+              options.interruptId,
+              options.namespace
+            ),
           }
         : this.#resolveInterruptForResume();
     if (resolved == null) {
@@ -1880,16 +1882,14 @@ export class StreamController<
     this.#lifecycleLoading.handle(event);
 
     /**
-     * Nested `input.requested` events (HITL inside a subagent /
-     * subgraph) are not observable via the narrow content pump. The
-     * `ThreadStream` itself already records them into
-     * `thread.interrupts`, which `#latestUnresolvedInterrupt()`
-     * consults — so HITL respond() works for any depth. Root-level
-     * interrupts are also mirrored into `rootStore.interrupts` here so
-     * UI state does not depend on the narrower content pump being the
-     * first consumer to see the event.
+     * `input.requested` events (including HITL inside a subagent /
+     * subgraph) are not always observable via the narrow content pump.
+     * Mirror every namespace into `rootStore.interrupts` here so UI
+     * state does not depend on the content pump being the first
+     * consumer. `ThreadStream.interrupts` is updated in parallel for
+     * resume targeting.
      */
-    this.#recordRootInterrupt(event);
+    this.#recordInterrupt(event);
   }
 
   /**
@@ -2041,7 +2041,7 @@ export class StreamController<
     }
 
     if (event.method === "input.requested") {
-      this.#recordRootInterrupt(event);
+      this.#recordInterrupt(event);
       return;
     }
 
@@ -2242,14 +2242,13 @@ export class StreamController<
   }
 
   /**
-   * Mirror root protocol interrupts into the root snapshot.
+   * Mirror protocol interrupts (any namespace) into the root snapshot.
    *
    * This can be called from both the wildcard lifecycle/input watcher and the
    * root content pump. Store-level dedup keeps the user-facing list stable.
    */
-  #recordRootInterrupt(event: Event): void {
+  #recordInterrupt(event: Event): void {
     if (event.method !== "input.requested") return;
-    if (!isRootNamespace(event.params.namespace)) return;
     const data = event.params.data as {
       interrupt_id?: string;
       payload?: unknown;
@@ -2274,15 +2273,42 @@ export class StreamController<
     ) {
       return;
     }
+    const namespace = Array.isArray(event.params.namespace)
+      ? [...event.params.namespace]
+      : [...ROOT_NAMESPACE];
     const interrupt: Interrupt<InterruptType> = normalizeInterruptForClient({
       id: interruptId,
       value: data.payload as InterruptType,
+      namespace,
     });
     this.rootStore.setState((s) => {
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
     });
+  }
+
+  /**
+   * Resolve the protocol namespace for a targeted resume.
+   *
+   * Prefer an explicit caller-supplied namespace, then the matching
+   * {@link ThreadStream.interrupts} entry, then the UI mirror on
+   * `rootStore.interrupts`, finally root (`[]`).
+   */
+  #resolveNamespaceForInterruptId(
+    interruptId: string,
+    explicitNamespace?: string[]
+  ): string[] {
+    if (explicitNamespace != null) return [...explicitNamespace];
+    const fromThread = this.#thread?.interrupts.find(
+      (entry) => entry.interruptId === interruptId
+    )?.namespace;
+    if (fromThread != null) return [...fromThread];
+    const fromRoot = this.rootStore
+      .getSnapshot()
+      .interrupts.find((entry) => entry.id === interruptId)?.namespace;
+    if (fromRoot != null) return [...fromRoot];
+    return [...ROOT_NAMESPACE];
   }
 
   /**
