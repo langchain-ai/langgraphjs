@@ -4,7 +4,7 @@ import { createDeepAgent, type DeepAgent } from "deepagents";
 import { tool } from "langchain";
 import { z } from "zod/v4";
 
-import { DeterministicToolCallingModel } from "./shared.js";
+import { scriptedFakeModel } from "./shared.js";
 
 /**
  * Tool that pauses the run with `interrupt()` so the subagent's
@@ -28,51 +28,47 @@ const requestApprovalTool = tool(
  * Orchestrator that deterministically fans out a single `task` call to
  * the `approver` subagent, then emits a final summary after resume.
  */
-const orchestratorModel = new DeterministicToolCallingModel({
-  responses: [
-    new AIMessage({
-      id: "deep-interrupt-orchestrator",
-      content: "",
-      tool_calls: [
-        {
-          id: "task-approve-1",
-          name: "task",
-          args: {
-            description: "Request approval for the pending change",
-            subagent_type: "approver",
-          },
-          type: "tool_call" as const,
+const orchestratorModel = scriptedFakeModel([
+  new AIMessage({
+    id: "deep-interrupt-orchestrator",
+    content: "",
+    tool_calls: [
+      {
+        id: "task-approve-1",
+        name: "task",
+        args: {
+          description: "Request approval for the pending change",
+          subagent_type: "approver",
         },
-      ],
-    }),
-    new AIMessage({
-      id: "deep-interrupt-final",
-      content: "Subagent approval completed.",
-    }),
-  ],
-});
+        type: "tool_call" as const,
+      },
+    ],
+  }),
+  new AIMessage({
+    id: "deep-interrupt-final",
+    content: "Subagent approval completed.",
+  }),
+]);
 
 /** Subagent that immediately calls `request_approval` (which interrupts). */
-const approverModel = new DeterministicToolCallingModel({
-  responses: [
-    new AIMessage({
-      id: "approver-call",
-      content: "",
-      tool_calls: [
-        {
-          id: "approval-1",
-          name: "request_approval",
-          args: {},
-          type: "tool_call" as const,
-        },
-      ],
-    }),
-    new AIMessage({
-      id: "approver-done",
-      content: "Approval recorded.",
-    }),
-  ],
-});
+const approverModel = scriptedFakeModel([
+  new AIMessage({
+    id: "approver-call",
+    content: "",
+    tool_calls: [
+      {
+        id: "approval-1",
+        name: "request_approval",
+        args: {},
+        type: "tool_call" as const,
+      },
+    ],
+  }),
+  new AIMessage({
+    id: "approver-done",
+    content: "Approval recorded.",
+  }),
+]);
 
 export const graph = createDeepAgent({
   model: orchestratorModel,

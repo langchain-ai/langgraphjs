@@ -1,76 +1,24 @@
-import {
-  AIMessage,
-  AIMessageChunk,
-  type BaseMessage,
-} from "@langchain/core/messages";
-import {
-  BaseChatModel,
-  type BaseChatModelParams,
-} from "@langchain/core/language_models/chat_models";
-import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
+import { AIMessage } from "@langchain/core/messages";
 import { interrupt } from "@langchain/langgraph";
 import { createDeepAgent, type DeepAgent } from "deepagents";
-import { tool } from "langchain";
+import { fakeModel, tool } from "langchain";
 import { z } from "zod/v4";
 
-/** Deterministic tool-calling model for Node-side fixtures only. */
-class FakeToolCallingModel extends BaseChatModel {
-  responses: BaseMessage[];
-  callCount = 0;
-
-  constructor(fields: { responses: BaseMessage[] } & BaseChatModelParams) {
-    super(fields);
-    this.responses = fields.responses;
-  }
-
-  _llmType() {
-    return "fake-tool-calling";
-  }
-
-  _combineLLMOutput() {
-    return [];
-  }
-
-  async _generate(): Promise<ChatResult> {
-    const baseMsg = this.responses[this.callCount % this.responses.length];
-    this.callCount += 1;
-    return {
-      generations: [
-        { text: (baseMsg.content as string) || "", message: baseMsg },
-      ],
-    };
-  }
-
-  async *_streamResponseChunks() {
-    const baseMsg = this.responses[this.callCount % this.responses.length];
-    const toolCalls = (baseMsg as AIMessage).tool_calls;
-    const chunkFields: Record<string, unknown> = {
-      content: (baseMsg.content as string) || "",
-    };
-    if (toolCalls?.length) {
-      chunkFields.tool_call_chunks = toolCalls.map(
-        (
-          tc: { name: string; args: Record<string, unknown>; id?: string },
-          index: number
-        ) => ({
-          name: tc.name,
-          args: JSON.stringify(tc.args),
-          id: tc.id,
-          index,
-          type: "tool_call_chunk" as const,
-        })
-      );
-    }
-    yield new ChatGenerationChunk({
-      message: new AIMessageChunk(chunkFields),
-      text: (baseMsg.content as string) || "",
+/**
+ * {@link fakeModel} that replays responses in a loop so the shared
+ * mock-server graph survives multiple suite tests.
+ */
+function scriptedFakeModel(responses: AIMessage[], capacity = 512) {
+  let turn = 0;
+  let model = fakeModel();
+  for (let i = 0; i < capacity; i++) {
+    model = model.respond(() => {
+      const message = responses[turn % responses.length]!;
+      turn += 1;
+      return message;
     });
-    this.callCount += 1;
   }
-
-  bindTools() {
-    return this;
-  }
+  return model;
 }
 
 const requestApprovalTool = tool(
@@ -87,50 +35,46 @@ const requestApprovalTool = tool(
   }
 );
 
-const orchestratorModel = new FakeToolCallingModel({
-  responses: [
-    new AIMessage({
-      id: "deep-interrupt-orchestrator",
-      content: "",
-      tool_calls: [
-        {
-          id: "task-approve-1",
-          name: "task",
-          args: {
-            description: "Request approval for the pending change",
-            subagent_type: "approver",
-          },
-          type: "tool_call" as const,
+const orchestratorModel = scriptedFakeModel([
+  new AIMessage({
+    id: "deep-interrupt-orchestrator",
+    content: "",
+    tool_calls: [
+      {
+        id: "task-approve-1",
+        name: "task",
+        args: {
+          description: "Request approval for the pending change",
+          subagent_type: "approver",
         },
-      ],
-    }),
-    new AIMessage({
-      id: "deep-interrupt-final",
-      content: "Subagent approval completed.",
-    }),
-  ],
-});
+        type: "tool_call" as const,
+      },
+    ],
+  }),
+  new AIMessage({
+    id: "deep-interrupt-final",
+    content: "Subagent approval completed.",
+  }),
+]);
 
-const approverModel = new FakeToolCallingModel({
-  responses: [
-    new AIMessage({
-      id: "approver-call",
-      content: "",
-      tool_calls: [
-        {
-          id: "approval-1",
-          name: "request_approval",
-          args: {},
-          type: "tool_call" as const,
-        },
-      ],
-    }),
-    new AIMessage({
-      id: "approver-done",
-      content: "Approval recorded.",
-    }),
-  ],
-});
+const approverModel = scriptedFakeModel([
+  new AIMessage({
+    id: "approver-call",
+    content: "",
+    tool_calls: [
+      {
+        id: "approval-1",
+        name: "request_approval",
+        args: {},
+        type: "tool_call" as const,
+      },
+    ],
+  }),
+  new AIMessage({
+    id: "approver-done",
+    content: "Approval recorded.",
+  }),
+]);
 
 export const graph = createDeepAgent({
   model: orchestratorModel,
