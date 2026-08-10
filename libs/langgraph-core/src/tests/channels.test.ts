@@ -157,8 +157,16 @@ describe("Topic", () => {
 
   it("should create and use a checkpoint", () => {
     const checkpoint = channel.checkpoint();
+    expect(checkpoint).toEqual(["e"]);
     const newChannel = new Topic<string>().fromCheckpoint(checkpoint);
     expect(newChannel.get()).toEqual(["e"]);
+  });
+
+  it("should checkpoint an empty topic as a flat empty list", () => {
+    const empty = new Topic<string>();
+    expect(empty.checkpoint()).toEqual([]);
+    const restored = new Topic<string>().fromCheckpoint([]);
+    expect(() => restored.get()).toThrow(EmptyChannelError);
   });
 
   it.each([0, "", false, null])("should handle '%s'", (value) => {
@@ -191,7 +199,10 @@ describe("Topic with unique: true", () => {
   });
 
   it("should de-dupe from checkpoint", () => {
+    // unique Topics keep [seen, values] so history outside the current buffer
+    // survives resume (unlike the flat Python-parity format).
     const checkpoint = channel.checkpoint();
+    expect(checkpoint).toEqual([["a", "b", "c", "d", "e"], ["e"]]);
     const newChannel = new Topic<string>({ unique: true }).fromCheckpoint(
       checkpoint
     );
@@ -200,6 +211,16 @@ describe("Topic with unique: true", () => {
 
     newChannel.update(["d", "f"]);
     expect(newChannel.get()).toEqual(["f"]);
+  });
+
+  it("still de-dupes when restoring a flat values-only checkpoint", () => {
+    const newChannel = new Topic<string>({ unique: true }).fromCheckpoint([
+      "e",
+    ]);
+    expect(newChannel.get()).toEqual(["e"]);
+    // Flat restore only knows about "e", so "d" is accepted again.
+    newChannel.update(["d", "f"]);
+    expect(newChannel.get()).toEqual(["d", "f"]);
   });
 });
 

@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.3",
+    "@langchain/core": "^1.2.4",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/openai": "^1.5.5",
@@ -20,9 +20,9 @@
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
-    "svelte": "^5.56.7",
+    "svelte": "^5.56.8",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
-    "vite": "^8.0.16"
+    "vite": "^8.2.0"
   }
 }

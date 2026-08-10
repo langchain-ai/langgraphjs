@@ -59,6 +59,8 @@ const worker = async (
     };
   };
 
+  const isInterrupted = () => signal.aborted && signal.reason === "interrupt";
+
   try {
     if (attempt > MAX_RETRY_ATTEMPTS) {
       throw new Error(`Run ${run.run_id} exceeded max attempts`);
@@ -85,12 +87,14 @@ const worker = async (
         });
       }
     } catch (error) {
-      await ops.runs.stream.publish({
-        runId,
-        resumable,
-        event: "error",
-        data: serializeError(error),
-      });
+      if (!isInterrupted()) {
+        await ops.runs.stream.publish({
+          runId,
+          resumable,
+          event: "error",
+          data: serializeError(error),
+        });
+      }
       throw error;
     }
 
@@ -108,22 +112,29 @@ const worker = async (
     await ops.runs.setStatus(run.run_id, status);
   } catch (error) {
     endedAt = new Date();
-    if (error instanceof Error) exception = error;
 
-    logError(error, {
-      prefix: "Background run failed",
-      context: {
-        run_id: run.run_id,
-        run_attempt: attempt,
-        run_created_at: run.created_at,
-        run_started_at: startedAt,
-        run_ended_at: endedAt,
-        run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
-      },
-    });
+    if (isInterrupted()) {
+      checkpoint = undefined;
+      status = "interrupted";
+      await ops.runs.setStatus(run.run_id, status);
+    } else {
+      if (error instanceof Error) exception = error;
 
-    status = "error";
-    await ops.runs.setStatus(run.run_id, "error");
+      logError(error, {
+        prefix: "Background run failed",
+        context: {
+          run_id: run.run_id,
+          run_attempt: attempt,
+          run_created_at: run.created_at,
+          run_started_at: startedAt,
+          run_ended_at: endedAt,
+          run_exec_ms: endedAt.valueOf() - startedAt.valueOf(),
+        },
+      });
+
+      status = "error";
+      await ops.runs.setStatus(run.run_id, status);
+    }
   } finally {
     if (temporary) {
       await ops.threads.delete(run.thread_id, undefined);

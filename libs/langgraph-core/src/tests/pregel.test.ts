@@ -180,7 +180,8 @@ export function runPregelTests(
       expect(checkpoint?.channel_values).toEqual({
         input: 1,
         output: 1,
-        [TASKS]: [[], []],
+        // Topic checkpoints a flat values list (Python parity), not [seen, values].
+        [TASKS]: [],
       });
     });
 
@@ -1004,7 +1005,7 @@ export function runPregelTests(
         channel_values: {
           channel1: 1,
           channel2: 2,
-          [TASKS]: [[], pendingSends],
+          [TASKS]: pendingSends,
         },
         channel_versions: {
           channel1: 2,

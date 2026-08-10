@@ -548,7 +548,9 @@ describe("threads crud", () => {
     const thread = await client.threads.create();
     const run = await client.runs.create(thread.thread_id, "agent_simple", {
       input: { messages: [{ role: "human", content: "foo" }] },
-      afterSeconds: 2,
+      // wide enough that update + cancel land before the run starts, even
+      // when client-side dispatch is slow under the concurrent test load
+      afterSeconds: 5,
     });
 
     // make sure that the run has been created

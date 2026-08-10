@@ -15,6 +15,7 @@ import { HTTPException } from "hono/http-exception";
 import * as schemas from "../schemas.mjs";
 import { assistants } from "../storage/context.mjs";
 import { AssistantSelectField } from "../storage/types.mjs";
+import { omitUndefined } from "../utils/runnableConfig.mjs";
 const api = new Hono();
 
 const RunnableConfigSchema = z.object({
@@ -31,7 +32,9 @@ const getRunnableConfig = (
   userConfig: z.infer<typeof RunnableConfigSchema> | null | undefined
 ) => {
   if (!userConfig) return {};
-  return {
+  // Omit undefined keys so callers that spread this into Pregel options do not
+  // wipe graph `withConfig` defaults (notably recursionLimit → 25).
+  return omitUndefined({
     configurable: userConfig.configurable,
     tags: userConfig.tags,
     metadata: userConfig.metadata,
@@ -39,7 +42,7 @@ const getRunnableConfig = (
     maxConcurrency: userConfig.max_concurrency,
     recursionLimit: userConfig.recursion_limit,
     runId: userConfig.run_id,
-  };
+  });
 };
 
 api.post(
