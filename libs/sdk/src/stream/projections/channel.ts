@@ -11,6 +11,7 @@
  * for inspection, custom reducers, or niche use-cases.
  */
 import type { Channel, Event } from "@langchain/protocol";
+import { inferChannel } from "../../client/stream/subscription.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import { isRootNamespace, namespaceKey } from "../namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
@@ -61,27 +62,18 @@ export function channelProjection(
 
       if (covered) {
         const requestedSet = new Set(chs as Channel[]);
-        // Pre-compute `custom:<name>` sub-filters so incoming events
-        // can be matched in O(1). The server delivers named custom
-        // events as `{ method: "custom", params: { data: { name } } }`,
-        // so matching purely on `event.method` would miss them — we
-        // need to peek at `data.name` when the caller asked for a
-        // specific `custom:<name>` channel.
-        const namedCustom = new Set<string>();
-        for (const channel of chs) {
-          if (channel.startsWith("custom:")) {
-            namedCustom.add(channel.slice("custom:".length));
-          }
-        }
+        // Classify via `inferChannel` so namespaced methods (e.g.
+        // `input.requested` → `input`) and named custom events
+        // (`custom` + `data.name` → `custom:<name>`) match the same
+        // way as the slow path's `matchesSubscription`. Comparing
+        // `event.method` to channel names would silently drop `input`.
         const matches = (event: Event): boolean => {
-          if (requestedSet.has(event.method as Channel)) return true;
-          if (event.method !== "custom" || namedCustom.size === 0) {
-            return false;
-          }
-          const data = (event.params as Record<string, unknown>).data as
-            | { name?: unknown }
-            | undefined;
-          return typeof data?.name === "string" && namedCustom.has(data.name);
+          const channel = inferChannel(event);
+          if (channel === undefined) return false;
+          return (
+            requestedSet.has(channel) ||
+            (channel.startsWith("custom:") && requestedSet.has("custom"))
+          );
         };
         const push = (event: Event): void => {
           if (!matches(event)) return;
