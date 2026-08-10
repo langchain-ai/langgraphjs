@@ -116,4 +116,69 @@ describe("channelProjection", () => {
     expect(rootBus.subscribe).toHaveBeenCalledTimes(1);
     expect(thread.subscribe).not.toHaveBeenCalled();
   });
+
+  it("delivers input.requested on the root-bus fast path", () => {
+    // `useChannelEffect` defaults to replay: false, which takes this path.
+    // Events use method "input.requested", not "input" — matching must go
+    // through inferChannel, not a raw method===channel compare.
+    const rootBus = makeRootBus(["input"]);
+    const projection = channelProjection(["input"], [], { replay: false });
+    const store = new StreamStore(projection.initial);
+    const thread = {
+      subscribe: vi.fn(),
+    } as unknown as ThreadStream;
+    const requested = {
+      type: "event",
+      method: "input.requested",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { interrupt_id: "i1", value: { question: "approve?" } },
+      },
+    } as unknown as Event;
+
+    projection.open({ thread, store, rootBus: rootBus as RootEventBus });
+    rootBus.emit(requested);
+
+    expect(store.getSnapshot()).toEqual([requested]);
+    expect(thread.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("delivers named custom events on the root-bus fast path", () => {
+    // Force the fast path by advertising the requested channel; the
+    // matcher still has to resolve method "custom" + data.name → channel.
+    const rootBus = makeRootBus(["custom:a2a"] as Channel[]);
+    const projection = channelProjection(["custom:a2a"], [], {
+      replay: false,
+    });
+    const store = new StreamStore(projection.initial);
+    const thread = {
+      subscribe: vi.fn(),
+    } as unknown as ThreadStream;
+    const a2a = {
+      type: "event",
+      method: "custom",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { name: "a2a", payload: { status: "working" } },
+      },
+    } as unknown as Event;
+    const other = {
+      type: "event",
+      method: "custom",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { name: "other", payload: {} },
+      },
+    } as unknown as Event;
+
+    projection.open({ thread, store, rootBus: rootBus as RootEventBus });
+    rootBus.emit(a2a);
+    rootBus.emit(other);
+
+    expect(store.getSnapshot()).toEqual([a2a]);
+    expect(thread.subscribe).not.toHaveBeenCalled();
+  });
 });
