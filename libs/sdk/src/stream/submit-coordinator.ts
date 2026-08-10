@@ -154,6 +154,8 @@ export class SubmitCoordinator<
   readonly #setCurrentThreadId: (threadId: string | null) => void;
   /** Records a thread id we created client-side so hydrate can skip a 404 round-trip. */
   readonly #rememberSelfCreatedThreadId: (threadId: string) => void;
+  /** True when the id is pending server-side create (minted or hydrate 404). */
+  readonly #isSelfCreatedThreadId: (threadId: string) => boolean;
   /** Drops a thread id from the self-created set once it's committed server-side. */
   readonly #forgetSelfCreatedThreadId: (threadId: string) => void;
   /** Triggers a hydrate on the controller (used by `options.threadId` rebinds). */
@@ -223,6 +225,7 @@ export class SubmitCoordinator<
     getCurrentThreadId: () => string | null;
     setCurrentThreadId: (threadId: string | null) => void;
     rememberSelfCreatedThreadId: (threadId: string) => void;
+    isSelfCreatedThreadId: (threadId: string) => boolean;
     forgetSelfCreatedThreadId: (threadId: string) => void;
     hydrate: (threadId?: string | null) => Promise<void>;
     ensureThread: (threadId: string, deferRootPump?: boolean) => ThreadStream;
@@ -251,6 +254,7 @@ export class SubmitCoordinator<
     this.#getCurrentThreadId = params.getCurrentThreadId;
     this.#setCurrentThreadId = params.setCurrentThreadId;
     this.#rememberSelfCreatedThreadId = params.rememberSelfCreatedThreadId;
+    this.#isSelfCreatedThreadId = params.isSelfCreatedThreadId;
     this.#forgetSelfCreatedThreadId = params.forgetSelfCreatedThreadId;
     this.#hydrate = params.hydrate;
     this.#ensureThread = params.ensureThread;
@@ -326,14 +330,18 @@ export class SubmitCoordinator<
 
     const currentThreadId = this.#getCurrentThreadId();
     if (currentThreadId == null) return;
-    // For client-self-created threads we defer the persistent root SSE
-    // pump until after `submitRun` / `respondInput` commits the thread
-    // server-side. Opening the pump's `subscription.subscribe` against
-    // a not-yet-existent thread row produces a `404: Thread not found`
-    // protocol error that strands lifecycle / messages events for the
-    // first run. The deferred path starts the pump after dispatch
-    // returns (see `#startDeferredRootPump` calls below).
-    const thread = this.#ensureThread(currentThreadId, wasSelfCreated);
+    // For threads that don't exist server-side yet (just minted here,
+    // or an externally-minted id that hydrate marked missing via 404)
+    // we defer the persistent root SSE pump until after `submitRun` /
+    // `respondInput` commits the thread. Opening the pump's
+    // `subscription.subscribe` against a not-yet-existent thread row
+    // either 404s or — on langgraph_api's in-mem runtime — joins a
+    // dead subscription that delivers 0 bytes until idle reconnect.
+    // The deferred path starts the pump after dispatch returns (see
+    // `#startDeferredRootPump` calls below).
+    const pendingServerCreate =
+      wasSelfCreated || this.#isSelfCreatedThreadId(currentThreadId);
+    const thread = this.#ensureThread(currentThreadId, pendingServerCreate);
     const activeThreadId = currentThreadId;
 
     const strategy = options?.multitaskStrategy ?? "rollback";
@@ -467,14 +475,14 @@ export class SubmitCoordinator<
         () => {
           // Dispatch failed. Without abandoning, `#rootPumpDeferred`
           // stays armed and `selfCreatedThreadIds` still holds this
-          // id — a retry submit would see `wasSelfCreated=false`
-          // (currentThreadId is no longer null), `#ensureThread`
-          // would early-return because `#thread != null`, and the
-          // root pump would never start. Tear down so the next
-          // submit re-runs `#ensureThread` from scratch.
-          if (wasSelfCreated) {
+          // id — a retry submit would see `pendingServerCreate=true`
+          // again but `#ensureThread` would early-return because
+          // `#thread != null`, and the root pump would never start.
+          // Tear down so the next submit re-runs `#ensureThread`
+          // from scratch. Keep the self-created mark so the retry
+          // still defers the pump (the server row was never created).
+          if (pendingServerCreate) {
             this.#abandonDeferredRootPump();
-            this.#forgetSelfCreatedThreadId(activeThreadId);
           }
         }
       );

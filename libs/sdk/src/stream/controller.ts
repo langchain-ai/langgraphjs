@@ -263,10 +263,15 @@ export class StreamController<
    */
   #submitGeneration = 0;
   /**
-   * Thread ids we minted client-side on first `submit()`. Keeping them
-   * here lets `hydrate()` skip the `threads.getState()` round-trip —
-   * we know there is nothing checkpointed server-side yet (and the
-   * request would 404 and surface a spurious error to the UI).
+   * Thread ids that are not known to exist server-side yet — either
+   * minted client-side on first `submit()`, or supplied by the caller
+   * and confirmed missing via a `threads.getState()` 404 during
+   * hydrate. Keeping them here lets `hydrate()` skip the getState
+   * round-trip on re-entry, and lets `submit()` defer the root SSE
+   * pump until `run.start` / `commands` commits the thread. Opening
+   * `/threads/{id}/stream/events` before that create leaves a dead
+   * subscription on langgraph_api's in-mem runtime (0 bytes until the
+   * idle reconnect replays the run).
    */
   readonly #selfCreatedThreadIds = new Set<string>();
   /**
@@ -380,6 +385,8 @@ export class StreamController<
       rememberSelfCreatedThreadId: (threadId) => {
         this.#selfCreatedThreadIds.add(threadId);
       },
+      isSelfCreatedThreadId: (threadId) =>
+        this.#selfCreatedThreadIds.has(threadId),
       hydrate: (threadId) => this.hydrate(threadId),
       ensureThread: (threadId, deferRootPump) =>
         this.#ensureThread(threadId, deferRootPump),
@@ -560,6 +567,12 @@ export class StreamController<
     const hydratedThreadId = this.#currentThreadId;
     let hydrationError: unknown;
     let threadExists = false;
+    // True only when getState 404s — the id is bound in the client but
+    // the server row doesn't exist yet. A null state payload is
+    // different (thread may exist with nothing to seed) and still
+    // opens the pump below. Distinct from `hydrationError` so a
+    // transport failure still takes the eager pump path.
+    let threadMissing = false;
     // Default active so a getState error / non-404 failure never
     // silently disables streaming — the pumps open eagerly as before.
     // Flipped to the real signal once we have the state in hand.
@@ -716,6 +729,11 @@ export class StreamController<
       if (status !== 404) {
         hydrationError = error;
         this.rootStore.setState((s) => ({ ...s, error }));
+      } else {
+        // Caller supplied a brand-new / externally-minted thread id.
+        // There is no server row yet — same lifecycle as a client-
+        // minted id on first `submit()`.
+        threadMissing = true;
       }
     } finally {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
@@ -724,6 +742,19 @@ export class StreamController<
       } else {
         this.#resolveHydration();
       }
+    }
+
+    /**
+     * Missing threads must not open `/stream/events`. The in-mem
+     * runtime accepts the join against a not-yet-created id but the
+     * subscription never attaches to the live channel — the first run
+     * then delivers 0 bytes until idle reconnect. Park the pump until
+     * `submit()`'s `run.start` creates the row (see
+     * {@link #startDeferredRootPump}), matching the self-created path.
+     */
+    if (threadMissing) {
+      this.#selfCreatedThreadIds.add(hydratedThreadId);
+      return;
     }
 
     /**
@@ -1624,16 +1655,11 @@ export class StreamController<
    * Without this, the controller would be wedged in a state where:
    *   - `#thread` is wired but no content pump is open
    *   - `#rootPumpDeferred` stays `true`
-   *   - `selfCreatedThreadIds` still holds the id
    *
-   * A retry submit on the same controller would see
-   * `wasSelfCreated=false` (because `currentThreadId` is no longer
-   * null), `#ensureThread(id, false)` would early-return because
-   * `#thread != null`, and the pump would never start. The thread
-   * would have an id committed to the URL but no live subscription.
-   *
-   * Tearing down `#thread` so the next submit re-runs `#ensureThread`
-   * from scratch is the simplest recovery — the failed dispatch
+   * A retry submit must re-run `#ensureThread` from scratch (with
+   * `deferRootPump` still true — the id stays in
+   * `#selfCreatedThreadIds` until a successful dispatch). Tearing
+   * down `#thread` is the simplest recovery; the failed dispatch
    * means there was nothing to subscribe to anyway.
    */
   #abandonDeferredRootPump(): void {
