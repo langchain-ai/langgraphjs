@@ -65,7 +65,7 @@ That list includes root **and** subgraph interrupts. It is **not** the same as `
 | Surface | What it contains | Use for |
 | ------- | ---------------- | ------- |
 | `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
-| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting + namespace for `respond()` |
+| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting nested / all interrupts |
 
 When several root interrupts are pending, target by id:
 
@@ -82,13 +82,13 @@ stream.interrupts.map((intr) => (
 ));
 ```
 
-Root interrupts use `namespace: []`. You can omit `namespace` in the target — it defaults to the root tuple.
+When `namespace` is omitted, `respond()` looks it up from `getThread()?.interrupts` by `interruptId` (falling back to root `[]` only if the id is unknown). An explicit `namespace` overrides the lookup.
 
 ## Subgraph interrupts and namespace
 
 Interrupts raised inside a subagent or nested graph carry a **non-empty** protocol `namespace` tuple (for example `["task:research"]`). The server validates that tuple when you resume.
 
-Those entries appear on `stream.getThread()?.interrupts` but may **not** appear on `stream.interrupts`. Read `namespace` from the thread stream entry — do not guess it from UI state:
+Those entries appear on `stream.getThread()?.interrupts` but may **not** appear on `stream.interrupts`. Passing `{ interruptId }` is enough — the SDK resolves `namespace` from the thread stream:
 
 ```tsx
 const thread = stream.getThread();
@@ -105,7 +105,6 @@ return (
           onClick={() =>
             void stream.respond(buildResponse(entry.payload), {
               interruptId: entry.interruptId,
-              namespace: entry.namespace,
             })
           }
         >
@@ -117,7 +116,7 @@ return (
 );
 ```
 
-Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`. Pass both `interruptId` and `namespace` for subgraph interrupts; omitting `namespace` assumes root (`[]`) and the server will reject the resume if the pending interrupt lives in a subgraph.
+Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`.
 
 ## `respond(response, options?)`
 
@@ -140,8 +139,8 @@ stream.respond(
 | `options.interruptId` | Behavior |
 | --------------------- | -------- |
 | Omitted | Newest unresolved entry in `getThread()?.interrupts`. Safe when one interrupt is pending. |
-| `interruptId` set | Resume that id at root (`namespace: []`). |
-| `interruptId` + `namespace` | Resume that id in the given subgraph namespace. Required when the interrupt is not at root. |
+| `interruptId` set | Resume that id; `namespace` resolved from `getThread()?.interrupts` (root `[]` if unknown). |
+| `interruptId` + `namespace` | Resume that id in the given namespace (overrides the lookup). |
 
 `options.config` / `options.metadata` are folded into the run that services the resume — the same `config` / `metadata` you'd pass to `submit()`. Use them to carry model/user config or run metadata (e.g. trigger source) onto a HITL resume.
 

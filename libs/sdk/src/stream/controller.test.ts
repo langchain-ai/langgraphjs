@@ -1813,6 +1813,142 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("respond() resolves namespace from thread.interrupts when only interruptId is provided", async () => {
+    const respondInput = vi.fn(async () => undefined);
+    const nestedNamespace = ["subgraph:child", "tools:tc-1"];
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-nested",
+          payload: { prompt: "Approve nested?" },
+          namespace: nestedNamespace,
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respond(
+      { approved: true },
+      { interruptId: "int-nested" }
+    );
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: nestedNamespace,
+      interrupt_id: "int-nested",
+      response: { approved: true },
+      config: undefined,
+      metadata: undefined,
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() keeps an explicit namespace over the thread.interrupts lookup", async () => {
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-nested",
+          payload: { prompt: "Approve nested?" },
+          namespace: ["subgraph:child"],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respond(
+      { approved: true },
+      { interruptId: "int-nested", namespace: ["custom:override"] }
+    );
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: ["custom:override"],
+      interrupt_id: "int-nested",
+      response: { approved: true },
+      config: undefined,
+      metadata: undefined,
+    });
+
+    await controller.dispose();
+  });
+
+  it("respond() falls back to root namespace when interruptId is unknown", async () => {
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-other",
+          payload: { prompt: "Other?" },
+          namespace: ["subgraph:child"],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respond(
+      { approved: true },
+      { interruptId: "int-missing" }
+    );
+    expect(respondInput).toHaveBeenCalledWith({
+      namespace: [],
+      interrupt_id: "int-missing",
+      response: { approved: true },
+      config: undefined,
+      metadata: undefined,
+    });
+
+    await controller.dispose();
+  });
+
   it("respondAll() resumes several interrupts at once with distinct payloads", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);
