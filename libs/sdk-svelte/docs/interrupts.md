@@ -22,7 +22,7 @@ When a graph pauses on an interrupt, `stream.interrupt` (and the full list in `s
 
 ### Targeting a specific interrupt
 
-When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), pass `{ interruptId, namespace? }`. Root interrupts can omit `namespace` (defaults to `[]`). Subgraph interrupts need the exact tuple from `getThread()?.interrupts`:
+When multiple concurrent interrupts are in flight (subagents, fan-out, nested graphs), pass `{ interruptId }`. When `namespace` is omitted, it is resolved from `getThread()?.interrupts` by that id (falling back to root `[]` only if the id is unknown):
 
 ```ts
 await stream.respond(
@@ -34,7 +34,6 @@ const thread = stream.getThread();
 for (const entry of thread?.interrupts ?? []) {
   await stream.respond(buildResponse(entry.payload), {
     interruptId: entry.interruptId,
-    namespace: entry.namespace,
   });
 }
 ```

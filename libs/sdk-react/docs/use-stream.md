@@ -128,9 +128,7 @@ Pass `{ cancel: false }` to disconnect without cancelling server-side execution,
 
 ### `respond(response, options?)`
 
-Resume a single pending interrupt. When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `options.interruptId` (and `options.namespace` for subgraph interrupts).
-
-The server validates `namespace` against the pending interrupt. Root interrupts use `namespace: []` (default when omitted). For subgraph interrupts, copy `namespace` from `getThread()?.interrupts` — see [Interrupts](./interrupts.md#subgraph-interrupts-and-namespace).
+Resume a single pending interrupt. When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from newest to oldest and resumes the first entry not yet resolved by a prior `respond()` call. That may be a root or subgraph interrupt — it is **not** necessarily `stream.interrupt` (`stream.interrupts[0]`, root-only). Safe when exactly one interrupt is pending; otherwise pass `options.interruptId`. When `options.namespace` is omitted, it is resolved from `getThread()?.interrupts` by that id (falling back to root `[]` only if the id is unknown) — see [Interrupts](./interrupts.md#subgraph-interrupts-and-namespace).
 
 Pass `options.config` / `options.metadata` to fold run-level config (model, user context, …) and metadata (trigger source, test flags, …) into the resumed run, mirroring `submit()`.
 
@@ -138,17 +136,8 @@ Pass `options.config` / `options.metadata` to fold run-level config (model, user
 // Single pending interrupt — omit target:
 await stream.respond({ approved: true });
 
-// Multiple root interrupts — target by id:
+// Multiple / nested interrupts — target by id (namespace resolved):
 await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
-
-// Subgraph interrupt — namespace from getThread():
-const entry = stream.getThread()?.interrupts.find(
-  (e) => e.interruptId === myInterruptId,
-);
-await stream.respond(
-  { approved: true },
-  { interruptId: entry!.interruptId, namespace: entry!.namespace },
-);
 
 // Carry run config + metadata onto the resume:
 await stream.respond({ approved: true }, {

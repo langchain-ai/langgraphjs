@@ -54,9 +54,9 @@ export class ChatComponent {
 
 ## Responding to a specific interrupt
 
-When multiple interrupts are pending, pass `{ interruptId, namespace? }`.
-Root interrupts can omit `namespace` (defaults to `[]`). Subgraph
-interrupts need the exact tuple from `getThread()?.interrupts`:
+When multiple interrupts are pending, pass `{ interruptId }`. When
+`namespace` is omitted, it is resolved from `getThread()?.interrupts` by
+that id (falling back to root `[]` only if the id is unknown):
 
 ```typescript
 for (const intr of stream.interrupts()) {
@@ -67,7 +67,6 @@ const thread = stream.getThread();
 for (const entry of thread?.interrupts ?? []) {
   await stream.respond(buildResponse(entry.payload), {
     interruptId: entry.interruptId,
-    namespace: entry.namespace,
   });
 }
 ```

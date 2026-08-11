@@ -1439,12 +1439,10 @@ export class StreamController<
       throw new Error("respondAll() requires at least one response.");
     }
     const thread = this.#thread;
-    const pending = thread.interrupts;
     const responses = entries.map(([interruptId, response]) => ({
       interrupt_id: interruptId,
       response: normalizeHitlResponseForServer(response),
-      namespace: pending.find((entry) => entry.interruptId === interruptId)
-        ?.namespace ?? [...ROOT_NAMESPACE],
+      namespace: this.#resolveNamespaceForInterruptId(interruptId),
     }));
     // Apply the run-level `update` optimistically (see `respond()` for the
     // rationale): the batched resume's pushed messages paint immediately and
