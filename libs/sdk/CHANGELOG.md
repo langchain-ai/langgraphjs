@@ -1,5 +1,28 @@
 # @langchain/langgraph-sdk
 
+## 1.9.29
+
+### Patch Changes
+
+- [#2668](https://github.com/langchain-ai/langgraphjs/pull/2668) [`f9c0e88`](https://github.com/langchain-ai/langgraphjs/commit/f9c0e885e25149fe614d7d2002c884b80ab54484) Thanks [@edenbuilds](https://github.com/edenbuilds)! - Always attach the underlying Response on HTTPError.
+
+- [#2675](https://github.com/langchain-ai/langgraphjs/pull/2675) [`3958305`](https://github.com/langchain-ai/langgraphjs/commit/3958305d3ee89419abc496f28602cf4b38f2a6b3) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): deliver input channel events on the root-bus fast path
+
+  `channelProjection` with `replay: false` (the `useChannelEffect` default) compared `event.method` to channel names, so `input.requested` never matched `"input"`. Match via `inferChannel` instead, same as the slow path.
+
+- [#2677](https://github.com/langchain-ai/langgraphjs/pull/2677) [`4c0fd78`](https://github.com/langchain-ai/langgraphjs/commit/4c0fd78485e1778234ddb56c7579f8d823946f18) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): defer stream join until lazy thread create commits
+
+  Hydrating an externally-minted thread id that 404s still opened `/stream/events` before `POST /commands` created the row. On langgraph_api's in-mem runtime that join is accepted but dead, so the first run delivered nothing until idle reconnect. Treat missing threads like client-minted ones and start the root pump only after dispatch succeeds.
+
+- [#2672](https://github.com/langchain-ai/langgraphjs/pull/2672) [`5be518f`](https://github.com/langchain-ai/langgraphjs/commit/5be518fe18f2497a28957dfec85522997e6df4f3) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): surface nested interrupts on stream.interrupts
+
+  `input.requested` events from subgraphs/subagents were dropped live by a root-only filter, while hydrate seeded them from `state.tasks`, so HITL UIs saw nested interrupts only after reload. Mirror every namespace onto `rootStore.interrupts` (with `Interrupt.namespace`), and resolve that namespace in `respond({ interruptId })` when callers omit it.
+
+- [#2676](https://github.com/langchain-ai/langgraphjs/pull/2676) [`b3c1ceb`](https://github.com/langchain-ai/langgraphjs/commit/b3c1ceb2cc16dcb15e7a9c1178fe6ddb98e5a93f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resolve respond() namespace from interrupt id
+
+  When callers pass `{ interruptId }` without `namespace`, look the
+  namespace up on `thread.interrupts` instead of defaulting to root.
+
 ## 1.9.28
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @langchain/angular
 
+## 1.0.30
+
+### Patch Changes
+
+- [#2676](https://github.com/langchain-ai/langgraphjs/pull/2676) [`b3c1ceb`](https://github.com/langchain-ai/langgraphjs/commit/b3c1ceb2cc16dcb15e7a9c1178fe6ddb98e5a93f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resolve respond() namespace from interrupt id
+
+  When callers pass `{ interruptId }` without `namespace`, look the
+  namespace up on `thread.interrupts` instead of defaulting to root.
+
+- Updated dependencies [[`f9c0e88`](https://github.com/langchain-ai/langgraphjs/commit/f9c0e885e25149fe614d7d2002c884b80ab54484), [`3958305`](https://github.com/langchain-ai/langgraphjs/commit/3958305d3ee89419abc496f28602cf4b38f2a6b3), [`4c0fd78`](https://github.com/langchain-ai/langgraphjs/commit/4c0fd78485e1778234ddb56c7579f8d823946f18), [`5be518f`](https://github.com/langchain-ai/langgraphjs/commit/5be518fe18f2497a28957dfec85522997e6df4f3), [`b3c1ceb`](https://github.com/langchain-ai/langgraphjs/commit/b3c1ceb2cc16dcb15e7a9c1178fe6ddb98e5a93f)]:
+  - @langchain/langgraph-sdk@1.9.29
+
 ## 1.0.29
 
 ### Patch Changes
