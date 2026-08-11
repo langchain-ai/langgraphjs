@@ -263,17 +263,22 @@ export class StreamController<
    */
   #submitGeneration = 0;
   /**
-   * Thread ids that are not known to exist server-side yet — either
-   * minted client-side on first `submit()`, or supplied by the caller
-   * and confirmed missing via a `threads.getState()` 404 during
-   * hydrate. Keeping them here lets `hydrate()` skip the getState
-   * round-trip on re-entry, and lets `submit()` defer the root SSE
-   * pump until `run.start` / `commands` commits the thread. Opening
-   * `/threads/{id}/stream/events` before that create leaves a dead
-   * subscription on langgraph_api's in-mem runtime (0 bytes until the
-   * idle reconnect replays the run).
+   * Thread ids this controller minted client-side on first `submit()`.
+   * `hydrate()` skips `threads.getState()` for these — we know there
+   * is nothing checkpointed yet. Cleared once dispatch commits the
+   * thread server-side.
    */
   readonly #selfCreatedThreadIds = new Set<string>();
+  /**
+   * Caller-supplied thread ids that 404'd on hydrate. Unlike
+   * {@link #selfCreatedThreadIds}, these are revalidated on every
+   * hydrate: another client may create the same id between visits.
+   * While marked missing, `submit()` still defers the root SSE pump
+   * until `run.start` / `commands` commits the row — joining
+   * `/stream/events` beforehand leaves a dead subscription on
+   * langgraph_api's in-mem runtime.
+   */
+  readonly #missingThreadIds = new Set<string>();
   /**
    * In-flight per-subagent namespace resolutions, keyed by tool-call
    * id. De-dupes concurrent {@link resolveSubagentNamespace} calls so
@@ -386,7 +391,8 @@ export class StreamController<
         this.#selfCreatedThreadIds.add(threadId);
       },
       isSelfCreatedThreadId: (threadId) =>
-        this.#selfCreatedThreadIds.has(threadId),
+        this.#selfCreatedThreadIds.has(threadId) ||
+        this.#missingThreadIds.has(threadId),
       hydrate: (threadId) => this.hydrate(threadId),
       ensureThread: (threadId, deferRootPump) =>
         this.#ensureThread(threadId, deferRootPump),
@@ -394,6 +400,7 @@ export class StreamController<
       abandonDeferredRootPump: () => this.#abandonDeferredRootPump(),
       forgetSelfCreatedThreadId: (threadId) => {
         this.#selfCreatedThreadIds.delete(threadId);
+        this.#missingThreadIds.delete(threadId);
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
@@ -588,6 +595,9 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      // A prior hydrate-404 may have marked this id missing; clear it
+      // now that the server row exists (e.g. another client created it).
+      this.#missingThreadIds.delete(hydratedThreadId);
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
@@ -750,10 +760,12 @@ export class StreamController<
      * subscription never attaches to the live channel — the first run
      * then delivers 0 bytes until idle reconnect. Park the pump until
      * `submit()`'s `run.start` creates the row (see
-     * {@link #startDeferredRootPump}), matching the self-created path.
+     * {@link #startDeferredRootPump}). Tracked in `#missingThreadIds`
+     * (not `#selfCreatedThreadIds`) so a later hydrate revalidates —
+     * another client may create the same id between visits.
      */
     if (threadMissing) {
-      this.#selfCreatedThreadIds.add(hydratedThreadId);
+      this.#missingThreadIds.add(hydratedThreadId);
       return;
     }
 
@@ -946,7 +958,8 @@ export class StreamController<
       threadId == null ||
       params.namespace.length === 0 ||
       !this.#rootPumpDeferred ||
-      this.#selfCreatedThreadIds.has(threadId)
+      this.#selfCreatedThreadIds.has(threadId) ||
+      this.#missingThreadIds.has(threadId)
     ) {
       return false;
     }
