@@ -64,7 +64,7 @@ it("reconciles the server echo by id without duplicating the message", async () 
     .toHaveTextContent("Hey");
 });
 
-it("keeps the optimistic message and marks it failed when the run errors", async () => {
+it("marks the optimistic message failed when submission errors before a server echo", async () => {
   const screen = await render(OptimisticErrorStreamComponent);
 
   await screen.getByTestId("submit").click();
