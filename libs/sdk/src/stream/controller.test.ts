@@ -92,7 +92,8 @@ function inputRequestedEvent(
         args: { to: "qa@example.com" },
       },
     ],
-  }
+  },
+  namespace: string[] = []
 ): Event {
   return {
     type: "event",
@@ -100,7 +101,7 @@ function inputRequestedEvent(
     seq: 1,
     method: "input.requested",
     params: {
-      namespace: [],
+      namespace,
       timestamp: 0,
       data: {
         interrupt_id: interruptId,
@@ -635,6 +636,157 @@ describe("StreamController", () => {
       "active-2",
     ]);
     expect(snapshot.interrupt?.id).toBe("active-1");
+
+    await controller.dispose();
+  });
+
+  it("mirrors nested input.requested into rootStore.interrupts with namespace", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-nested",
+    });
+    await controller.hydrationPromise;
+    expect(onEvent).toBeDefined();
+
+    const nestedNs = ["tools:task-abc"];
+    onEvent?.(
+      inputRequestedEvent(
+        "nested-int-1",
+        { prompt: "Approve nested action?" },
+        nestedNs
+      )
+    );
+
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.interrupts).toHaveLength(1);
+    expect(snapshot.interrupt?.id).toBe("nested-int-1");
+    expect(snapshot.interrupt?.namespace).toEqual(nestedNs);
+    expect(snapshot.interrupt?.value).toEqual({
+      prompt: "Approve nested action?",
+    });
+
+    await controller.dispose();
+  });
+
+  it("hydrate seeds nested task interrupt namespaces from checkpoint_ns", async () => {
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [
+            {
+              checkpoint: {
+                checkpoint_ns: "child:u1|inner:u2",
+              },
+              interrupts: [
+                { id: "nested-active", value: { prompt: "nested?" } },
+              ],
+            },
+            {
+              interrupts: [{ id: "root-active", value: { prompt: "root?" } }],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-hydrate-ns",
+    });
+    await controller.hydrationPromise;
+
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.interrupts.map((i) => i.id)).toEqual([
+      "nested-active",
+      "root-active",
+    ]);
+    expect(snapshot.interrupts[0]?.namespace).toEqual(["child:u1", "inner:u2"]);
+    expect(snapshot.interrupts[1]?.namespace).toEqual([]);
+
+    await controller.dispose();
+  });
+
+  it("respond() resolves nested namespace from thread.interrupts when only interruptId is passed", async () => {
+    const nestedNs = ["tools:call-xyz"];
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "nested-int",
+          payload: { prompt: "Approve?" },
+          namespace: nestedNs,
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          tasks: [
+            {
+              checkpoint: { checkpoint_ns: "tools:call-xyz" },
+              interrupts: [{ id: "nested-int", value: { prompt: "Approve?" } }],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-nested-respond",
+    });
+    await controller.hydrationPromise;
+
+    await controller.respond(
+      { approved: true },
+      { interruptId: "nested-int" }
+    );
+    expect(respondInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interrupt_id: "nested-int",
+        namespace: nestedNs,
+        response: { approved: true },
+      })
+    );
 
     await controller.dispose();
   });

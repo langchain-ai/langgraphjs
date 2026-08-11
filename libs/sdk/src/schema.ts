@@ -172,6 +172,14 @@ export interface Interrupt<TValue = unknown> {
   value?: TValue;
 
   /**
+   * Protocol namespace tuple for resume targeting (`[]` at root).
+   * Populated for nested subgraph / subagent interrupts so
+   * `respond({ interruptId })` can resume without a separate
+   * `getThread()?.interrupts` lookup.
+   */
+  namespace?: string[];
+
+  /**
    * Will be deprecated in the future.
    * @deprecated Will be removed in the future.
    */

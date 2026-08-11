@@ -1,34 +1,17 @@
-import { AIMessage, AIMessageChunk, type BaseMessage } from "@langchain/core/messages";
-import {
-  BaseChatModel,
-  type BaseChatModelParams,
-} from "@langchain/core/language_models/chat_models";
+import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
-import { ChatGenerationChunk, type ChatResult } from "@langchain/core/outputs";
+import { ChatGenerationChunk } from "@langchain/core/outputs";
 import { FakeListChatModel } from "@langchain/core/utils/testing";
 import { ToolMessage } from "@langchain/core/messages";
 import { Command } from "@langchain/langgraph";
-import { tool } from "langchain";
+import { fakeModel, tool } from "langchain";
 import { z } from "zod/v4";
 
-type ToolCall = {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  type: "tool_call";
-};
-
-const splitText = (text: string) => {
-  const parts = text.match(/\S+\s*/g);
-  return parts && parts.length > 0 ? parts : [text];
-};
-
-const splitJson = (value: string) => {
-  if (value.length < 2) return [value];
-  const midpoint = Math.ceil(value.length / 2);
-  return [value.slice(0, midpoint), value.slice(midpoint)];
-};
-
+/**
+ * FakeListChatModel subclass that keeps a stable message id across the
+ * streamed token chunks of a single response (needed by message-metadata /
+ * stategraph text fixtures).
+ */
 export class StableFakeListChatModel extends FakeListChatModel {
   private streamIndex = 0;
 
@@ -59,122 +42,66 @@ export class StableFakeListChatModel extends FakeListChatModel {
   }
 }
 
-export class DeterministicToolCallingModel extends BaseChatModel {
-  responses: AIMessage[];
-
-  callCount = 0;
-
-  constructor(fields: { responses: AIMessage[] } & BaseChatModelParams) {
-    super(fields);
-    this.responses = fields.responses;
-  }
-
-  _llmType() {
-    return "deterministic-tool-calling";
-  }
-
-  _combineLLMOutput() {
-    return [];
-  }
-
-  private currentResponse() {
-    return this.responses[this.callCount % this.responses.length];
-  }
-
-  async _generate(): Promise<ChatResult> {
-    const response = this.currentResponse();
-    this.callCount += 1;
-    return {
-      generations: [
-        {
-          text: typeof response.content === "string" ? response.content : "",
-          message: response,
-        },
-      ],
-    };
-  }
-
-  async *_streamResponseChunks(): AsyncGenerator<ChatGenerationChunk> {
-    const response = this.currentResponse();
-    const messageId =
-      typeof response.id === "string"
-        ? response.id
-        : `deterministic-message-${this.callCount + 1}`;
-
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      for (const [index, toolCall] of response.tool_calls.entries()) {
-        const parts = splitJson(JSON.stringify((toolCall as ToolCall).args));
-        for (const part of parts) {
-          yield new ChatGenerationChunk({
-            message: new AIMessageChunk({
-              id: messageId,
-              content: "",
-              tool_call_chunks: [
-                {
-                  type: "tool_call_chunk",
-                  id: (toolCall as ToolCall).id,
-                  name: (toolCall as ToolCall).name,
-                  args: part,
-                  index,
-                },
-              ],
-            }),
-            text: "",
-          });
-        }
-      }
-    } else {
-      const text = typeof response.content === "string" ? response.content : "";
-      for (const part of splitText(text)) {
-        yield new ChatGenerationChunk({
-          message: new AIMessageChunk({
-            id: messageId,
-            content: part,
-          }),
-          text: part,
-        });
-      }
-    }
-
-    this.callCount += 1;
-  }
-
-  bindTools() {
-    return this;
-  }
-}
-
 export const createStableTextModel = (responses: string[]) =>
   new StableFakeListChatModel({
     responses,
   });
 
-export const createDeterministicToolCallingModel = (options: {
+/**
+ * {@link fakeModel} wrapper that replays `responses` in a loop.
+ *
+ * Mock-server graphs are compiled once and shared across the suite, so a
+ * one-shot FIFO queue would dry up after the first test. Each slot is a
+ * factory that advances a shared turn counter — see
+ * https://docs.langchain.com/oss/javascript/langchain/test/unit-testing
+ */
+export function scriptedFakeModel(
+  responses: AIMessage[],
+  capacity = 512
+): ReturnType<typeof fakeModel> {
+  if (responses.length === 0) {
+    throw new Error("scriptedFakeModel requires at least one response");
+  }
+  let turn = 0;
+  let model = fakeModel();
+  for (let i = 0; i < capacity; i++) {
+    model = model.respond(() => {
+      const message = responses[turn % responses.length]!;
+      turn += 1;
+      return message;
+    });
+  }
+  return model;
+}
+
+/**
+ * Scripted tool-calling model for Node-side graph fixtures.
+ */
+export function createDeterministicToolCallingModel(options: {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
   finalText: string;
-}) =>
-  new DeterministicToolCallingModel({
-    responses: [
-      new AIMessage({
-        id: `${options.toolCallId}-message`,
-        content: "",
-        tool_calls: [
-          {
-            id: options.toolCallId,
-            name: options.toolName,
-            args: options.toolArgs,
-            type: "tool_call",
-          },
-        ],
-      }),
-      new AIMessage({
-        id: `${options.toolCallId}-final`,
-        content: options.finalText,
-      }),
-    ],
-  });
+}) {
+  return scriptedFakeModel([
+    new AIMessage({
+      id: `${options.toolCallId}-message`,
+      content: "",
+      tool_calls: [
+        {
+          id: options.toolCallId,
+          name: options.toolName,
+          args: options.toolArgs,
+          type: "tool_call",
+        },
+      ],
+    }),
+    new AIMessage({
+      id: `${options.toolCallId}-final`,
+      content: options.finalText,
+    }),
+  ]);
+}
 
 export const searchWebTool = tool(
   async ({ query }: { query: string }) =>
@@ -228,38 +155,36 @@ export const queryDatabaseTool = tool(
   }
 );
 
-export const deepOrchestratorModel = new DeterministicToolCallingModel({
-  responses: [
-    new AIMessage({
-      id: "deep-orchestrator-tool-call",
-      content: "",
-      tool_calls: [
-        {
-          name: "task",
-          args: {
-            description: "Search the web for protocol risks",
-            subagent_type: "researcher",
-          },
-          id: "task-1",
-          type: "tool_call",
+export const deepOrchestratorModel = scriptedFakeModel([
+  new AIMessage({
+    id: "deep-orchestrator-tool-call",
+    content: "",
+    tool_calls: [
+      {
+        name: "task",
+        args: {
+          description: "Search the web for protocol risks",
+          subagent_type: "researcher",
         },
-        {
-          name: "task",
-          args: {
-            description: "Inspect the sample dataset",
-            subagent_type: "data-analyst",
-          },
-          id: "task-2",
-          type: "tool_call",
+        id: "task-1",
+        type: "tool_call",
+      },
+      {
+        name: "task",
+        args: {
+          description: "Inspect the sample dataset",
+          subagent_type: "data-analyst",
         },
-      ],
-    }),
-    new AIMessage({
-      id: "deep-orchestrator-final",
-      content: "Both subagents completed their tasks successfully.",
-    }),
-  ],
-});
+        id: "task-2",
+        type: "tool_call",
+      },
+    ],
+  }),
+  new AIMessage({
+    id: "deep-orchestrator-final",
+    content: "Both subagents completed their tasks successfully.",
+  }),
+]);
 
 export const deepResearcherModel = createDeterministicToolCallingModel({
   toolCallId: "search-1",
