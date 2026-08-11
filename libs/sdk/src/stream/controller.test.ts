@@ -1077,6 +1077,143 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("does NOT open SSE pumps on hydrate when the thread is missing (404)", async () => {
+    // Externally-minted ids (URL / localStorage) 404 on getState until
+    // the first submit's run.start creates the row. Opening
+    // /stream/events before that create races the in-mem runtime and
+    // strands the first run until idle reconnect.
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const stream = vi.fn(() => {
+      throw new Error("threads.stream must not run for a missing thread");
+    });
+    const notFound = Object.assign(new Error("Thread not found"), {
+      status: 404,
+    });
+    const client = {
+      threads: {
+        getState: vi.fn(async () => {
+          throw notFound;
+        }),
+        stream,
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-not-yet-created",
+    });
+    await controller.hydrationPromise;
+
+    expect(stream).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(startLifecycleWatcher).not.toHaveBeenCalled();
+    expect(controller.rootStore.getSnapshot().error).toBeUndefined();
+    await controller.dispose();
+  });
+
+  it("brings up the content pump only after submitRun for a missing thread", async () => {
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    let resolveSubmit!: (value: { run_id: string }) => void;
+    const submitRun = vi.fn(
+      () =>
+        new Promise<{ run_id: string }>((resolve) => {
+          resolveSubmit = resolve;
+        })
+    );
+    const thread = {
+      subscribe,
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const notFound = Object.assign(new Error("Thread not found"), {
+      status: 404,
+    });
+    const client = {
+      threads: {
+        getState: vi.fn(async () => {
+          throw notFound;
+        }),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-not-yet-created",
+    });
+    await controller.hydrationPromise;
+    expect(client.threads.stream).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+
+    void controller.submit({ messages: [] });
+
+    await waitForExpectation(() => {
+      expect(submitRun).toHaveBeenCalled();
+    });
+    // Still deferred until the command response commits the thread.
+    expect(subscribe).not.toHaveBeenCalled();
+
+    resolveSubmit({ run_id: "run-1" });
+    await waitForExpectation(() => {
+      expect(subscribe).toHaveBeenCalled();
+    });
+    await controller.dispose();
+  });
+
+  it("revalidates a prior hydrate-404 so an externally created thread is observed", async () => {
+    // open-swe: a 404 must not permanently skip getState via the
+    // self-created early return — another client may create the id.
+    const subscribe = vi.fn(async () => makeNeverEndingSubscription());
+    const startLifecycleWatcher = vi.fn(() => undefined);
+    const thread = {
+      subscribe,
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher,
+    } as unknown as ThreadStream;
+    const notFound = Object.assign(new Error("Thread not found"), {
+      status: 404,
+    });
+    let exists = false;
+    const getState = vi.fn(async () => {
+      if (!exists) throw notFound;
+      return { values: { messages: [] }, next: ["agent"], tasks: [] };
+    });
+    const client = {
+      threads: {
+        getState,
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-shared",
+    });
+    await controller.hydrationPromise;
+    expect(client.threads.stream).not.toHaveBeenCalled();
+    expect(getState).toHaveBeenCalledTimes(1);
+
+    exists = true;
+    await controller.hydrate("thread-shared");
+
+    expect(getState).toHaveBeenCalledTimes(2);
+    expect(client.threads.stream).toHaveBeenCalledOnce();
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    await controller.dispose();
+  });
+
   it("brings up the content pump on first submit() for an idle thread", async () => {
     const subscribe = vi.fn(async () => makeNeverEndingSubscription());
     const startLifecycleWatcher = vi.fn(() => undefined);

@@ -263,12 +263,22 @@ export class StreamController<
    */
   #submitGeneration = 0;
   /**
-   * Thread ids we minted client-side on first `submit()`. Keeping them
-   * here lets `hydrate()` skip the `threads.getState()` round-trip —
-   * we know there is nothing checkpointed server-side yet (and the
-   * request would 404 and surface a spurious error to the UI).
+   * Thread ids this controller minted client-side on first `submit()`.
+   * `hydrate()` skips `threads.getState()` for these — we know there
+   * is nothing checkpointed yet. Cleared once dispatch commits the
+   * thread server-side.
    */
   readonly #selfCreatedThreadIds = new Set<string>();
+  /**
+   * Caller-supplied thread ids that 404'd on hydrate. Unlike
+   * {@link #selfCreatedThreadIds}, these are revalidated on every
+   * hydrate: another client may create the same id between visits.
+   * While marked missing, `submit()` still defers the root SSE pump
+   * until `run.start` / `commands` commits the row — joining
+   * `/stream/events` beforehand leaves a dead subscription on
+   * langgraph_api's in-mem runtime.
+   */
+  readonly #missingThreadIds = new Set<string>();
   /**
    * In-flight per-subagent namespace resolutions, keyed by tool-call
    * id. De-dupes concurrent {@link resolveSubagentNamespace} calls so
@@ -380,6 +390,9 @@ export class StreamController<
       rememberSelfCreatedThreadId: (threadId) => {
         this.#selfCreatedThreadIds.add(threadId);
       },
+      isSelfCreatedThreadId: (threadId) =>
+        this.#selfCreatedThreadIds.has(threadId) ||
+        this.#missingThreadIds.has(threadId),
       hydrate: (threadId) => this.hydrate(threadId),
       ensureThread: (threadId, deferRootPump) =>
         this.#ensureThread(threadId, deferRootPump),
@@ -387,6 +400,7 @@ export class StreamController<
       abandonDeferredRootPump: () => this.#abandonDeferredRootPump(),
       forgetSelfCreatedThreadId: (threadId) => {
         this.#selfCreatedThreadIds.delete(threadId);
+        this.#missingThreadIds.delete(threadId);
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
@@ -560,6 +574,12 @@ export class StreamController<
     const hydratedThreadId = this.#currentThreadId;
     let hydrationError: unknown;
     let threadExists = false;
+    // True only when getState 404s — the id is bound in the client but
+    // the server row doesn't exist yet. A null state payload is
+    // different (thread may exist with nothing to seed) and still
+    // opens the pump below. Distinct from `hydrationError` so a
+    // transport failure still takes the eager pump path.
+    let threadMissing = false;
     // Default active so a getState error / non-404 failure never
     // silently disables streaming — the pumps open eagerly as before.
     // Flipped to the real signal once we have the state in hand.
@@ -575,6 +595,9 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      // A prior hydrate-404 may have marked this id missing; clear it
+      // now that the server row exists (e.g. another client created it).
+      this.#missingThreadIds.delete(hydratedThreadId);
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
@@ -726,6 +749,11 @@ export class StreamController<
       if (status !== 404) {
         hydrationError = error;
         this.rootStore.setState((s) => ({ ...s, error }));
+      } else {
+        // Caller supplied a brand-new / externally-minted thread id.
+        // There is no server row yet — same lifecycle as a client-
+        // minted id on first `submit()`.
+        threadMissing = true;
       }
     } finally {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
@@ -734,6 +762,21 @@ export class StreamController<
       } else {
         this.#resolveHydration();
       }
+    }
+
+    /**
+     * Missing threads must not open `/stream/events`. The in-mem
+     * runtime accepts the join against a not-yet-created id but the
+     * subscription never attaches to the live channel — the first run
+     * then delivers 0 bytes until idle reconnect. Park the pump until
+     * `submit()`'s `run.start` creates the row (see
+     * {@link #startDeferredRootPump}). Tracked in `#missingThreadIds`
+     * (not `#selfCreatedThreadIds`) so a later hydrate revalidates —
+     * another client may create the same id between visits.
+     */
+    if (threadMissing) {
+      this.#missingThreadIds.add(hydratedThreadId);
+      return;
     }
 
     /**
@@ -925,7 +968,8 @@ export class StreamController<
       threadId == null ||
       params.namespace.length === 0 ||
       !this.#rootPumpDeferred ||
-      this.#selfCreatedThreadIds.has(threadId)
+      this.#selfCreatedThreadIds.has(threadId) ||
+      this.#missingThreadIds.has(threadId)
     ) {
       return false;
     }
@@ -1626,16 +1670,11 @@ export class StreamController<
    * Without this, the controller would be wedged in a state where:
    *   - `#thread` is wired but no content pump is open
    *   - `#rootPumpDeferred` stays `true`
-   *   - `selfCreatedThreadIds` still holds the id
    *
-   * A retry submit on the same controller would see
-   * `wasSelfCreated=false` (because `currentThreadId` is no longer
-   * null), `#ensureThread(id, false)` would early-return because
-   * `#thread != null`, and the pump would never start. The thread
-   * would have an id committed to the URL but no live subscription.
-   *
-   * Tearing down `#thread` so the next submit re-runs `#ensureThread`
-   * from scratch is the simplest recovery — the failed dispatch
+   * A retry submit must re-run `#ensureThread` from scratch (with
+   * `deferRootPump` still true — the id stays in
+   * `#selfCreatedThreadIds` until a successful dispatch). Tearing
+   * down `#thread` is the simplest recovery; the failed dispatch
    * means there was nothing to subscribe to anyway.
    */
   #abandonDeferredRootPump(): void {

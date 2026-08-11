@@ -58,6 +58,8 @@ interface Harness {
   onRunCompleted: ReturnType<typeof vi.fn>;
   onRunEnd: ReturnType<typeof vi.fn>;
   rememberSelfCreatedThreadId: ReturnType<typeof vi.fn>;
+  isSelfCreatedThreadId: ReturnType<typeof vi.fn>;
+  selfCreatedThreadIds: Set<string>;
   setCurrentThreadId: ReturnType<typeof vi.fn>;
   threadIds: string[];
   setThreadId: (id: string | null) => void;
@@ -158,8 +160,16 @@ function makeHarness(
   const setCurrentThreadId = vi.fn((id: string | null) => {
     currentThreadId = id;
   });
-  const rememberSelfCreatedThreadId = vi.fn(() => undefined);
-  const forgetSelfCreatedThreadId = vi.fn(() => undefined);
+  const selfCreatedThreadIds = new Set<string>();
+  const rememberSelfCreatedThreadId = vi.fn((threadId: string) => {
+    selfCreatedThreadIds.add(threadId);
+  });
+  const isSelfCreatedThreadId = vi.fn((threadId: string) =>
+    selfCreatedThreadIds.has(threadId)
+  );
+  const forgetSelfCreatedThreadId = vi.fn((threadId: string) => {
+    selfCreatedThreadIds.delete(threadId);
+  });
   const onRunStart = vi.fn(() => undefined);
   const onRunCreated = vi.fn(() => undefined);
   const onRunCompleted = vi.fn(
@@ -186,6 +196,7 @@ function makeHarness(
     getCurrentThreadId: () => currentThreadId,
     setCurrentThreadId,
     rememberSelfCreatedThreadId,
+    isSelfCreatedThreadId,
     forgetSelfCreatedThreadId,
     hydrate,
     ensureThread,
@@ -241,6 +252,8 @@ function makeHarness(
     onRunCompleted,
     onRunEnd,
     rememberSelfCreatedThreadId,
+    isSelfCreatedThreadId,
+    selfCreatedThreadIds,
     setCurrentThreadId,
     threadIds: [],
     setThreadId: (id) => {
@@ -843,7 +856,9 @@ describe("SubmitCoordinator", () => {
 
       expect(h.rootStore.getSnapshot().error).toBe(err);
       expect(h.abandonDeferredRootPump).toHaveBeenCalledOnce();
-      expect(h.forgetSelfCreatedThreadId).toHaveBeenCalledOnce();
+      // Keep the self-created mark so a retry still defers the pump —
+      // the server row was never created.
+      expect(h.forgetSelfCreatedThreadId).not.toHaveBeenCalled();
       expect(h.startDeferredRootPump).not.toHaveBeenCalled();
     });
 
@@ -859,6 +874,29 @@ describe("SubmitCoordinator", () => {
 
       expect(h.rootStore.getSnapshot().error).toBe(err);
       expect(h.abandonDeferredRootPump).not.toHaveBeenCalled();
+    });
+
+    it("defers the root pump for an externally-minted id pending server create", async () => {
+      const h = makeHarness({ threadId: "thread-minted-externally" });
+      h.selfCreatedThreadIds.add("thread-minted-externally");
+
+      const submitPromise = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      const lastEnsureCall = h.ensureThread.mock.calls.at(-1);
+      expect(lastEnsureCall).toBeDefined();
+      expect(lastEnsureCall![1]).toBe(true);
+
+      h.resolveSubmit();
+      await vi.runAllTimersAsync();
+      expect(h.startDeferredRootPump).toHaveBeenCalledOnce();
+      expect(h.forgetSelfCreatedThreadId).toHaveBeenCalledWith(
+        "thread-minted-externally"
+      );
+
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submitPromise;
     });
   });
 });
