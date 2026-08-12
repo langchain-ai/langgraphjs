@@ -58,6 +58,7 @@ import {
   CONFIG_KEY_NODE_ERROR,
   _getOverwriteValue,
   OVERWRITE,
+  WAITING_EDGE_CHANNEL_PREFIX,
 } from "../constants.js";
 import {
   InvalidUpdateError,
@@ -1238,6 +1239,50 @@ export class StateGraph<
     return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
 
+  /**
+   * Add an edge between nodes.
+   *
+   * With a single `startKey`, `endKey` is triggered whenever `startKey`
+   * completes.
+   *
+   * An array of `startKey` nodes creates a waiting edge: `endKey` is triggered
+   * once all of the listed nodes have completed, and once for the whole set
+   * rather than once per node. Same contract as Python's `add_edge`, which
+   * documents that the graph will wait for all of the start nodes to complete.
+   *
+   * A waiting edge releases only once every listed node has written to it, so
+   * if one of them never runs — a conditional edge did not select it, a
+   * {@link Command} routed past it, a node-level error handler ended that
+   * branch — then `endKey` is not triggered and no error is raised. Nodes
+   * further downstream are skipped with it, unless they have
+   * another live path into them. Listing a node in a router's `ends` does not
+   * change this: `ends` declares which nodes a branch *may* select, not which
+   * ones will run.
+   *
+   * The edge re-arms after it releases, so a loop that runs every listed node
+   * again triggers it again. A loop that re-enters only some of them leaves it
+   * waiting for the rest.
+   *
+   * Separate edges into the same target are not equivalent to a waiting edge.
+   * They trigger `endKey` on every arrival rather than once for all of them, so
+   * when the branches have different lengths `endKey` runs once per superstep
+   * in which any of them completes.
+   *
+   * An edge that never released is reported as `waitingEdges` on the snapshot
+   * returned by `getState()`, naming the nodes that completed and the ones that
+   * never ran. That requires a checkpointer: `getState()` throws without one.
+   *
+   * @example Waiting edge — `d` is triggered once `b` and `c` have completed
+   * ```ts
+   * graph.addEdge(["b", "c"], "d");
+   * ```
+   *
+   * @example Separate edges — `d` runs when `b` completes, and again for `c`
+   * ```ts
+   * graph.addEdge("b", "d");
+   * graph.addEdge("c", "d");
+   * ```
+   */
   override addEdge(
     startKey: typeof START | N | N[],
     endKey: N | typeof END
@@ -1975,7 +2020,9 @@ export class CompiledStateGraph<
         )
       );
     } else if (Array.isArray(starts)) {
-      const channelName = `join:${starts.join("+")}:${end}`;
+      const channelName = `${WAITING_EDGE_CHANNEL_PREFIX}${starts.join(
+        "+"
+      )}:${end}`;
       // register channel
       this.channels[channelName as string | N] = this.builder.nodes[end].defer
         ? new NamedBarrierValueAfterFinish(new Set(starts))

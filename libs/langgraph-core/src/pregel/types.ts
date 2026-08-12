@@ -644,6 +644,42 @@ export interface StateSnapshot {
    * Tasks to execute in this step. If already attempted, may contain an error.
    */
   readonly tasks: PregelTaskDescription[];
+  /**
+   * Waiting edges — created by `addEdge([...], target)` — holding writes from
+   * some of their listed nodes but not all, so the edge has not released.
+   *
+   * A non-empty entry alongside an empty `next` means the run ended without
+   * releasing the edge, so the writes listed in `completed` were discarded and
+   * `target` did not run for them.
+   *
+   * It does not mean `target` never ran, because it can also be reached without
+   * the edge: an edge inside a loop releases on each complete pass and re-arms,
+   * so a final incomplete pass is reported while earlier passes did run, and a
+   * `Send` or `Command` may route to `target` directly. Read an entry as "these
+   * writes were dropped", not as "this node was never executed".
+   *
+   * While a run is interrupted, entries here are expected and clear once the
+   * remaining nodes complete on resume; `next` is non-empty in that case.
+   */
+  readonly waitingEdges?: WaitingEdgeDescription[];
+}
+
+/**
+ * A waiting edge that has armed but not released.
+ */
+export interface WaitingEdgeDescription {
+  /**
+   * The node the edge feeds.
+   */
+  readonly target: string;
+  /**
+   * Listed nodes that have completed and written to the edge.
+   */
+  readonly completed: string[];
+  /**
+   * Listed nodes that have not written to the edge.
+   */
+  readonly missing: string[];
 }
 
 /**

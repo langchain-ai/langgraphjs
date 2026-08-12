@@ -4,7 +4,11 @@ import type {
   ChannelVersions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
-import { CONFIG_KEY_CHECKPOINT_MAP, START } from "../../constants.js";
+import {
+  CONFIG_KEY_CHECKPOINT_MAP,
+  START,
+  WAITING_EDGE_CHANNEL_PREFIX,
+} from "../../constants.js";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
   // Short circuit for commonly used channels such as __start__
@@ -220,3 +224,43 @@ export const combineCallbacks = (
   }
   return [callback1, callback2] as Callbacks;
 };
+
+function isNodeNameSet(value: unknown): value is Set<string> {
+  const candidate = value as Set<string> | undefined;
+  return (
+    typeof candidate?.has === "function" && typeof candidate?.size === "number"
+  );
+}
+
+/**
+ * Collect the waiting edges — `addEdge([...], target)` — that have received
+ * some of their listed nodes but not all, so `target` has not run.
+ *
+ * The barrier channel clears `seen` when it releases, so a partially filled
+ * `seen` means the edge armed and is still waiting rather than that it fired.
+ *
+ * @param channels - Live channels, e.g. from `channelsFromCheckpoint`.
+ */
+export function collectWaitingEdges(
+  channels: Record<string, unknown>
+): { target: string; completed: string[]; missing: string[] }[] {
+  const waiting: { target: string; completed: string[]; missing: string[] }[] =
+    [];
+  for (const [name, channel] of Object.entries(channels)) {
+    if (!name.startsWith(WAITING_EDGE_CHANNEL_PREFIX)) continue;
+    // Safe to split on the last colon: `StateGraph.addNode` rejects node names
+    // containing `CHECKPOINT_NAMESPACE_END`.
+    const { names, seen } = (channel ?? {}) as {
+      names?: unknown;
+      seen?: unknown;
+    };
+    if (!isNodeNameSet(names) || !isNodeNameSet(seen)) continue;
+    if (seen.size === 0 || seen.size >= names.size) continue;
+    waiting.push({
+      target: name.slice(name.lastIndexOf(":") + 1),
+      completed: [...seen],
+      missing: [...names].filter((node) => !seen.has(node)),
+    });
+  }
+  return waiting;
+}

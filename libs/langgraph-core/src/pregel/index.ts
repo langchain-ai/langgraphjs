@@ -125,6 +125,7 @@ import {
 } from "./utils/config.js";
 import {
   _coerceToDict,
+  collectWaitingEdges,
   combineAbortSignals,
   getNewChannelVersions,
   patchCheckpointMap,
@@ -1024,6 +1025,8 @@ export class Pregel<
       .filter((task) => task.writes.length === 0)
       .map((task) => task.name as string);
 
+    const waitingEdges = collectWaitingEdges(channels);
+
     // assemble the state snapshot
     return {
       values: readChannels(
@@ -1037,6 +1040,8 @@ export class Pregel<
         taskStates,
         this.streamChannelsAsIs
       ),
+      // Omitted when empty so a healthy snapshot keeps its existing shape.
+      ...(waitingEdges.length > 0 ? { waitingEdges } : {}),
       metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,
