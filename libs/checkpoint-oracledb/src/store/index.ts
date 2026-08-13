@@ -829,8 +829,10 @@ WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP`
       };
       const vectorRequired = this.indexConfig !== undefined;
       const expectedTables = getExpectedStoreTables(tables, vectorRequired);
-      const expectedVersions = [0, 1, 2, 3, 4];
-      const knownVersions = [0, 1, 2, 3, 4];
+      // Derived from the migration lists so appending a migration cannot
+      // leave the diagnostics reporting a stale expectation.
+      const storeVersions = STORE_MIGRATIONS.map((_, version) => version);
+      const vectorVersions = VECTOR_MIGRATIONS.map((_, version) => version);
       const schema = await inspectOracleSchema(
         connection,
         expectedTables,
@@ -839,9 +841,19 @@ WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP`
       const migrations = await inspectOracleMigrations(
         connection,
         this.migrationTableName,
-        expectedVersions,
-        knownVersions
+        storeVersions,
+        storeVersions
       );
+      // A vector-configured store whose index migration never ran is not
+      // ready, so the vector migration table has to be inspected too.
+      const vectorMigrations = vectorRequired
+        ? await inspectOracleMigrations(
+            connection,
+            this.vectorMigrationTableName,
+            vectorVersions,
+            vectorVersions
+          )
+        : undefined;
       const vectorProbe = await probeOracleVector(
         connection,
         this.indexConfig?.dims ?? 1
@@ -859,15 +871,29 @@ WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP`
           )
         : undefined;
       const schemaStatus = getOracleDiagnosticsStatus(schema, migrations);
+      const vectorMigrationStatus =
+        vectorMigrations && schemaStatus === "ready"
+          ? getOracleDiagnosticsStatus(schema, vectorMigrations)
+          : schemaStatus;
       const status =
         vectorRequired &&
-        schemaStatus === "ready" &&
+        vectorMigrationStatus === "ready" &&
         vectorProbe.status !== "available"
           ? vectorProbe.status === "unavailable"
             ? "partial"
             : "unknown"
-          : schemaStatus;
+          : vectorMigrationStatus;
       const issues = [...schema.issues];
+      if (vectorMigrations && vectorMigrations.pending.length > 0) {
+        issues.push(
+          `Vector migrations pending in ${this.vectorMigrationTableName}: ${vectorMigrations.pending.join(", ")}.`
+        );
+      }
+      if (vectorMigrations && vectorMigrations.future.length > 0) {
+        issues.push(
+          `Vector migrations recorded in ${this.vectorMigrationTableName} are newer than this package supports: ${vectorMigrations.future.join(", ")}.`
+        );
+      }
       if (vectorRequired && vectorProbe.status !== "available") {
         issues.push(`Oracle VECTOR probe status is ${vectorProbe.status}.`);
       }
@@ -879,6 +905,7 @@ WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP`
         tables,
         runtime: getOracleRuntimeDiagnostics(oracledb, connection),
         migrations,
+        ...(vectorMigrations ? { vectorMigrations } : {}),
         schema,
         vector: {
           configured: vectorRequired,

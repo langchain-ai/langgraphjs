@@ -5,7 +5,20 @@ import {
   oracleErrorCode,
   optionalRowValue as rowValue,
 } from "./utils.js";
-import { ORACLE_VECTOR_MAX_DIMENSIONS } from "./store/constants.js";
+import {
+  ORACLE_VECTOR_MAX_DIMENSIONS,
+  VECTOR_STRING_BIND_MAX_BYTES,
+} from "./store/constants.js";
+
+/**
+ * Largest dimension count whose probe literal still fits a VARCHAR2 bind.
+ *
+ * The literal is `[1,0,0,...]`, so its length is `2 * dims + 1` bytes. Above
+ * this the bind is rejected and a healthy database would be reported as
+ * `unknown`. The probe only has to prove that VECTOR works, so a shorter
+ * vector answers the same question.
+ */
+const PROBE_MAX_DIMS = Math.floor((VECTOR_STRING_BIND_MAX_BYTES - 1) / 2);
 
 export type OracleDiagnosticsStatus =
   | "ready"
@@ -153,6 +166,11 @@ export interface OracleStoreDiagnostics {
   };
   runtime: OracleRuntimeDiagnostics;
   migrations: OracleMigrationDiagnostics;
+  /**
+   * State of the vector migration table. Present only when the store is
+   * configured with an index, since the table is not created otherwise.
+   */
+  vectorMigrations?: OracleMigrationDiagnostics;
   schema: OracleSchemaDiagnostics;
   vector: OracleStoreVectorDiagnostics;
   issues: string[];
@@ -594,7 +612,7 @@ export const probeOracleVector = async (
 ): Promise<OracleStoreVectorDiagnostics["probe"]> => {
   const safeDims =
     typeof dims === "number" && Number.isFinite(dims) && dims > 0
-      ? Math.min(Math.floor(dims), ORACLE_VECTOR_MAX_DIMENSIONS)
+      ? Math.min(Math.floor(dims), ORACLE_VECTOR_MAX_DIMENSIONS, PROBE_MAX_DIMS)
       : 1;
   const vectorValues = new Array(safeDims).fill(0) as number[];
   vectorValues[0] = 1;

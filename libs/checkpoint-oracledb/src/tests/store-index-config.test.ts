@@ -69,8 +69,14 @@ describe("Python JSON compatibility", () => {
   });
 
   test("escapes non-ASCII the way ensure_ascii=True does", () => {
-    // CPython: json.dumps({"fields": ["tést"]}, sort_keys=True)
-    expect(pythonJsonDumps({ fields: ["tést"] })).toBe(
+    // The input is "t", U+00E9 (e acute), U+007F (DEL), "st", written as
+    // escapes rather than literals: DEL is invisible in an editor and does
+    // not survive copy-paste, yet it is the point of the case, since
+    // ensure_ascii=True escapes it and JSON.stringify does not.
+    //
+    // CPython reference:
+    //   json.dumps({"fields": ["t\u00e9\u007fst"]}, sort_keys=True)
+    expect(pythonJsonDumps({ fields: ["t\u00e9\u007fst"] })).toBe(
       '{"fields": ["t\\u00e9\\u007fst"]}'
     );
   });

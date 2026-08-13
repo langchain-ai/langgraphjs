@@ -5,6 +5,15 @@ import type { Pool } from "oracledb";
 
 import { OracleCheckpointSaver, type OracleConnectionLike } from "../saver.js";
 import { OracleStore } from "../store/index.js";
+import { probeOracleVector } from "../diagnostics.js";
+import {
+  ORACLE_VECTOR_MAX_DIMENSIONS,
+  VECTOR_STRING_BIND_MAX_BYTES,
+} from "../store/constants.js";
+import {
+  STORE_MIGRATIONS,
+  VECTOR_MIGRATIONS,
+} from "../store/migrations.js";
 
 type FakeRow = Record<string, unknown>;
 type MetadataQuery =
@@ -35,6 +44,7 @@ class FakeDiagnosticsConnection implements OracleConnectionLike {
       checkpointTables?: boolean;
       storeTables?: boolean;
       vectorTable?: boolean;
+      vectorApplied?: number[];
       vectorProbeErrorCode?: number;
       checkpointDataType?: string;
       omitCheckpointColumn?: boolean;
@@ -78,6 +88,14 @@ class FakeDiagnosticsConnection implements OracleConnectionLike {
         if (!this.options.checkpointTables) throw missingTableError();
         return {
           rows: (this.options.checkpointApplied ?? []).map(
+            (version) => ({ V: version } as RowT)
+          ),
+        };
+      }
+      if (tableName?.includes("VECTOR_MIGRATIONS")) {
+        if (!this.options.vectorTable) throw missingTableError();
+        return {
+          rows: (this.options.vectorApplied ?? [0, 1]).map(
             (version) => ({ V: version } as RowT)
           ),
         };
@@ -695,5 +713,157 @@ describe("Oracle diagnostics", () => {
     expect(serialized).not.toContain(SENSITIVE_FIXTURE_VALUE);
     expect(serialized).not.toContain("connectstring");
     expect(serialized).not.toContain("wallet");
+  });
+});
+
+describe("Oracle store vector migration diagnostics", () => {
+  const vectorIndex = {
+    dims: 3,
+    embeddings: {
+      async embedDocuments() {
+        return [];
+      },
+      async embedQuery() {
+        return [0, 0, 0];
+      },
+    } as never,
+  };
+
+  test("reports a vector store whose index migration never ran", async () => {
+    const connection = new FakeDiagnosticsConnection({
+      prefix: "LG_VECMIG_",
+      storeTables: true,
+      vectorTable: true,
+      storeApplied: [0, 1, 2, 3, 4],
+      // The vector table exists but VECTOR_MIGRATIONS[1], the index, is absent.
+      vectorApplied: [0],
+    });
+    const store = new OracleStore({
+      pool: diagnosticsPool(connection),
+      tableSuffix: "lg_vecmig",
+      index: vectorIndex,
+    });
+
+    const diagnostics = await store.getDiagnostics();
+
+    expect(diagnostics.status).not.toBe("ready");
+    expect(diagnostics.vectorMigrations?.pending).toEqual([1]);
+    expect(diagnostics.issues.join(" ")).toContain(
+      "Vector migrations pending"
+    );
+  });
+
+  test("reports ready once every vector migration is applied", async () => {
+    const connection = new FakeDiagnosticsConnection({
+      prefix: "LG_VECOK_",
+      storeTables: true,
+      vectorTable: true,
+      storeApplied: [0, 1, 2, 3, 4],
+      vectorApplied: [0, 1],
+    });
+    const store = new OracleStore({
+      pool: diagnosticsPool(connection),
+      tableSuffix: "lg_vecok",
+      index: vectorIndex,
+    });
+
+    const diagnostics = await store.getDiagnostics();
+
+    expect(diagnostics.vectorMigrations?.pending).toEqual([]);
+    expect(diagnostics.status).toBe("ready");
+  });
+
+  test("omits vector migration state for a store with no index", async () => {
+    const connection = new FakeDiagnosticsConnection({
+      prefix: "LG_NOVECMIG_",
+      storeTables: true,
+      vectorTable: true,
+      storeApplied: [0, 1, 2, 3, 4],
+    });
+    const store = new OracleStore({
+      pool: diagnosticsPool(connection),
+      tableSuffix: "lg_novecmig",
+    });
+
+    const diagnostics = await store.getDiagnostics();
+
+    expect(diagnostics.vectorMigrations).toBeUndefined();
+    expect(diagnostics.status).toBe("ready");
+  });
+
+  test("derives expected versions from the migration lists", async () => {
+    const connection = new FakeDiagnosticsConnection({
+      prefix: "LG_DERIVED_",
+      storeTables: true,
+      vectorTable: true,
+      storeApplied: STORE_MIGRATIONS.map((_, version) => version),
+      vectorApplied: VECTOR_MIGRATIONS.map((_, version) => version),
+    });
+    const store = new OracleStore({
+      pool: diagnosticsPool(connection),
+      tableSuffix: "lg_derived",
+      index: vectorIndex,
+    });
+
+    const diagnostics = await store.getDiagnostics();
+
+    // Appending a migration must not require editing the diagnostics.
+    expect(diagnostics.migrations.expectedForCurrentConfig).toEqual(
+      STORE_MIGRATIONS.map((_, version) => version)
+    );
+    expect(diagnostics.vectorMigrations?.expectedForCurrentConfig).toEqual(
+      VECTOR_MIGRATIONS.map((_, version) => version)
+    );
+    expect(diagnostics.status).toBe("ready");
+  });
+});
+
+describe("Oracle vector probe bind limits", () => {
+  class CapturingConnection {
+    binds: Record<string, unknown>[] = [];
+
+    async execute(_sql: string, binds: Record<string, unknown> = {}) {
+      this.binds.push(binds);
+      return { rows: [{ SCORE: 1 }] };
+    }
+  }
+
+  test.each([1, 1536, 4096, 16383, 16384, 65535, ORACLE_VECTOR_MAX_DIMENSIONS])(
+    "keeps the probe literal within the VARCHAR2 bind limit for dims %i",
+    async (dims) => {
+      const connection = new CapturingConnection();
+
+      const probe = await probeOracleVector(connection as never, dims);
+
+      expect(probe.status).toBe("available");
+      const literal = connection.binds[0].probe_vector as string;
+      expect(Buffer.byteLength(literal, "utf8")).toBeLessThanOrEqual(
+        VECTOR_STRING_BIND_MAX_BYTES
+      );
+      expect(literal.startsWith("[1")).toBe(true);
+    }
+  );
+
+  test("reports available for a dimension count that used to overflow", async () => {
+    // 16384 dims produced a 32769-byte literal, so the bind was rejected and a
+    // healthy database was reported as unknown.
+    const connection = new CapturingConnection();
+
+    const probe = await probeOracleVector(connection as never, 16_384);
+
+    expect(probe.status).toBe("available");
+    expect(probe.error).toBeUndefined();
+  });
+
+  test("falls back to a single dimension for unusable input", async () => {
+    const connection = new CapturingConnection();
+
+    for (const dims of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await probeOracleVector(connection as never, dims);
+    }
+
+    for (const bind of connection.binds) {
+      expect(bind.probe_vector).toBe("[1]");
+    }
   });
 });
