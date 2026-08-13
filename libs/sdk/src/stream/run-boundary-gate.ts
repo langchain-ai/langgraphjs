@@ -115,12 +115,15 @@ export class RunBoundaryGate {
     this.#expectedRunId = runId;
     this.#mode = "bound";
     this.#legacyRequireRunning = false;
-    const terminals = this.#bufferedTerminals.filter(
-      (event) => extractEventRunId(event) === runId
-    );
-    const values = this.#bufferedValues.filter(
-      (event) => extractEventRunId(event) === runId
-    );
+    const terminals = this.#bufferedTerminals.filter((event) => {
+      const eventRunId = extractEventRunId(event);
+      // Keep matching run ids, and legacy envelopes with no run id.
+      return eventRunId == null || eventRunId === runId;
+    });
+    const values = this.#bufferedValues.filter((event) => {
+      const eventRunId = extractEventRunId(event);
+      return eventRunId == null || eventRunId === runId;
+    });
     this.#bufferedTerminals = [];
     this.#bufferedValues = [];
     return { terminals, values };
@@ -156,11 +159,19 @@ export class RunBoundaryGate {
     const runId = extractEventRunId(event);
 
     if (this.#mode === "expecting") {
-      if (TERMINAL_EVENTS.has(status) && runId != null) {
+      // Buffer terminals for flush on bind. Include legacy envelopes with
+      // no run id — otherwise a fast completed before `run.start` resolves
+      // is dropped and submit waiters hang (embed tests before API stamp).
+      if (TERMINAL_EVENTS.has(status)) {
         this.#bufferUnique(this.#bufferedTerminals, event);
       }
-      // Drop `running` from unknown runs until bound — loading must not
-      // flicker on replayed prior-run lifecycle.
+      if (status === "running" && runId == null) {
+        // Legacy servers emit `running` without run id during the
+        // expect window; remember it so post-bind terminals can settle.
+        this.#sawRunningForExpected = true;
+      }
+      // Drop live apply until bound — loading must not flicker on
+      // replayed prior-run lifecycle.
       return false;
     }
 
@@ -172,7 +183,7 @@ export class RunBoundaryGate {
         return true;
       }
       // Legacy servers: no envelope / synth run id — require a `running`
-      // after bind before terminals count.
+      // after bind (or during expect) before terminals count.
       if (status === "running") {
         this.#sawRunningForExpected = true;
         return true;

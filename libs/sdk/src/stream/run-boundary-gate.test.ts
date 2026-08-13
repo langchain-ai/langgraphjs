@@ -127,6 +127,29 @@ describe("RunBoundaryGate", () => {
     expect(gate.acceptLifecycle(lifecycleEvent("completed"))).toBe(true);
   });
 
+  it("buffers legacy terminals during expect and flushes them on bind", () => {
+    const gate = new RunBoundaryGate();
+    gate.onSubmitStart();
+    expect(
+      gate.acceptLifecycle(
+        lifecycleEvent("running", { event_id: "1" })
+      )
+    ).toBe(false);
+    expect(
+      gate.acceptLifecycle(
+        lifecycleEvent("completed", { event_id: "2" })
+      )
+    ).toBe(false);
+
+    const flush = gate.onRunBound("run-current");
+    expect(flush.terminals.map((e) => e.event_id)).toEqual(["2"]);
+    // Running during expect arms the legacy flag so later bare terminals
+    // are accepted without waiting for another running.
+    expect(gate.acceptLifecycle(lifecycleEvent("completed", { event_id: "3" }))).toBe(
+      true
+    );
+  });
+
   it("resume mode ignores interrupted until running but accepts failed", () => {
     const gate = new RunBoundaryGate();
     gate.onResumeStart();
