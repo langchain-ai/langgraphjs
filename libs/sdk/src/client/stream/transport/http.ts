@@ -272,9 +272,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         }
       ).since_event_id;
       if (typeof raw === "string" && raw.length > 0) return raw;
-      const camel = (
-        params as SubscribeParams & { sinceEventId?: unknown }
-      ).sinceEventId;
+      const camel = (params as SubscribeParams & { sinceEventId?: unknown })
+        .sinceEventId;
       return typeof camel === "string" && camel.length > 0 ? camel : undefined;
     })();
 
