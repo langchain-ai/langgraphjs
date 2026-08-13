@@ -529,13 +529,16 @@ export class StreamController<
        * Suspense boundary remounted against the new id suspends again.
        */
       this.#resetHydrationPromise();
-      await this.#teardownThread();
       /**
-       * Reset UI-facing snapshot so stale messages/values/tool-calls
-       * from the previous thread don't bleed into the new one. The
-       * new thread's state (if any) is then populated below via
-       * `#applyValues`.
+       * Kick teardown so the synchronous abort (unbind, drop onEvent,
+       * close the root subscription, reset assemblers) runs before we
+       * touch the snapshot. Then reset immediately so the UI does not
+       * wait on pump/close. An interrupted thread parks the root pump
+       * on `waitForResume()`; awaiting teardown *before* this reset
+       * left `threadId` null while `messages` still showed the previous
+       * conversation (`useStream` fire-and-forgets `hydrate()`).
        */
+      const teardown = this.#teardownThread();
       this.rootStore.setState(() => ({
         ...this.#createInitialSnapshot(),
         threadId: this.#currentThreadId,
@@ -548,6 +551,7 @@ export class StreamController<
       this.queueStore.setState(
         () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
       );
+      await teardown;
     }
 
     if (this.#currentThreadId == null) {
@@ -1697,25 +1701,22 @@ export class StreamController<
      */
     this.#rootEventListeners.delete(this.#lifecycleLoading.listener);
     this.#rootEventListeners.delete(this.#runLifecycleListener);
-    try {
-      await this.#rootSubscription?.unsubscribe();
-    } catch {
-      /* already closed */
-    }
+    /**
+     * Close first so a pump parked on `waitForResume()` (interrupted
+     * run) unparks even if the unsubscribe RPC is slow. `close()` is
+     * idempotent; `unsubscribe()` is then a no-op once closed.
+     */
+    const subscription = this.#rootSubscription;
     this.#rootSubscription = undefined;
+    subscription?.close();
     this.#rootPumpReady = undefined;
     // Reset so a swap to a new thread doesn't carry over a stale
     // deferred flag — `#ensureThread` will set it again if the new
     // thread is self-created.
     this.#rootPumpDeferred = false;
-    try {
-      await this.#rootPump;
-    } catch {
-      /* ignore */
-    }
-    this.#rootPump = undefined;
 
-    // Reset per-thread assembly state.
+    // Reset per-thread assembly state before any awaits so hydrate()
+    // can clear the UI snapshot without waiting on pump/close.
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
@@ -1731,6 +1732,18 @@ export class StreamController<
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
     );
+
+    try {
+      await subscription?.unsubscribe();
+    } catch {
+      /* already closed */
+    }
+    try {
+      await this.#rootPump;
+    } catch {
+      /* ignore */
+    }
+    this.#rootPump = undefined;
 
     if (thread != null) {
       try {

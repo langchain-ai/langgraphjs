@@ -1467,6 +1467,95 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("hydrate(null) clears messages even when teardown is blocked on a pending interrupt", async () => {
+    // Regression: useStream reuses the controller and fire-and-forgets
+    // hydrate(null) when threadId goes undefined. If the previous thread
+    // is paused at an interrupt, the root pump is parked on
+    // waitForResume() and #teardownThread() awaits that pump. The UI
+    // snapshot must reset independently of that await — otherwise
+    // threadId becomes null while messages keep the old conversation.
+    let resumeTeardown!: () => void;
+    const hungSubscription = {
+      isPaused: true,
+      waitForResume: () =>
+        new Promise<void>((resolve) => {
+          resumeTeardown = resolve;
+        }),
+      unsubscribe: vi.fn(async () => undefined),
+      close: vi.fn(),
+      [Symbol.asyncIterator]() {
+        return {
+          next: async (): Promise<IteratorResult<Event>> => ({
+            done: true,
+            value: undefined,
+          }),
+        };
+      },
+    };
+    const thread = {
+      subscribe: vi.fn(async () => hungSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", content: "old thread message", id: "h-1" },
+            ],
+          },
+          next: [],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: { question: "approve?" } },
+              ],
+            },
+          ],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-interrupted",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    // Let the root pump park on waitForResume().
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const seeded = controller.rootStore.getSnapshot();
+    expect(seeded.messages.map((message) => message.id)).toEqual(["h-1"]);
+    expect(seeded.interrupts.map((interrupt) => interrupt.id)).toEqual([
+      "int-1",
+    ]);
+
+    // Same as useStream: do not await hydrate().
+    void controller.hydrate(null);
+
+    await waitForExpectation(() => {
+      const snapshot = controller.rootStore.getSnapshot();
+      expect(snapshot.threadId).toBeNull();
+      expect(snapshot.messages).toHaveLength(0);
+      expect(snapshot.interrupts).toHaveLength(0);
+      expect(snapshot.interrupt).toBeUndefined();
+      expect(snapshot.isLoading).toBe(false);
+      expect(snapshot.isThreadLoading).toBe(false);
+    });
+
+    resumeTeardown?.();
+    await controller.dispose();
+  });
+
   it("hydrate(null) clears subgraph discovery from the previous thread", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
