@@ -69,10 +69,7 @@ import {
   type MessageMetadataMap,
 } from "./message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
-import {
-  RunBoundaryGate,
-  type RunBoundFlush,
-} from "./run-boundary-gate.js";
+import { RunBoundaryGate, type RunBoundFlush } from "./run-boundary-gate.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import {
   prepareOptimisticInput,
@@ -617,9 +614,8 @@ export class StreamController<
       // Bind the run-boundary gate to the in-flight run when possible so
       // SSE replay of older runs is dropped without a local submit.
       if (threadActive) {
-        const metaRunId = (
-          state?.metadata as { run_id?: unknown } | undefined
-        )?.run_id;
+        const metaRunId = (state?.metadata as { run_id?: unknown } | undefined)
+          ?.run_id;
         if (typeof metaRunId === "string" && metaRunId.length > 0) {
           this.#runBoundary.onRunBound(metaRunId);
           this.#activeRunId = metaRunId;
@@ -2481,8 +2477,7 @@ export class StreamController<
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
-      let unsubscribeRoot: (() => void) | undefined;
-      let unsubscribeThread: (() => void) | undefined;
+      const unsubscribes: Array<() => void> = [];
       const finish = (result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
@@ -2490,8 +2485,7 @@ export class StreamController<
         if (settled) return;
         settled = true;
         this.#boundFlushListeners.delete(onFlush);
-        unsubscribeRoot?.();
-        unsubscribeThread?.();
+        for (const unsubscribe of unsubscribes) unsubscribe();
         signal.removeEventListener("abort", finishAborted);
         resolve(result);
       };
@@ -2533,8 +2527,9 @@ export class StreamController<
         }
       };
       this.#boundFlushListeners.add(onFlush);
-      unsubscribeRoot = this.#rootBus.subscribe(onEvent);
-      unsubscribeThread = this.#thread?.onEvent(onEvent);
+      unsubscribes.push(this.#rootBus.subscribe(onEvent));
+      const unsubscribeThread = this.#thread?.onEvent(onEvent);
+      if (unsubscribeThread != null) unsubscribes.push(unsubscribeThread);
       if (signal.aborted) {
         finishAborted();
       } else {
