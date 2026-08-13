@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-checkpoint-oracledb",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Oracle AI Database integration for LangGraph",
   "type": "module",
   "engines": {
