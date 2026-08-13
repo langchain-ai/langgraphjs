@@ -60,7 +60,6 @@ import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
 import { NAMESPACE_SEPARATOR } from "../../stream/constants.js";
 import { isHeadlessToolInterrupt } from "../../headless-tools.js";
-import { extractEventRunId } from "../../stream/run-boundary-gate.js";
 
 type PendingCommand = {
   resolve: (response: CommandResponse) => void;
@@ -585,13 +584,6 @@ export class ThreadStream<
   readonly #pendingSubResolves: PendingSubResolve[] = [];
   #terminalPauseTimer: ReturnType<typeof setTimeout> | undefined;
   #terminalPauseSeq: number | null | undefined;
-  /**
-   * Run id from the latest `run.start` ack. While awaiting that ack
-   * after {@link #prepareForNextRun}, terminal pauses are suppressed so
-   * replayed older-run terminals cannot thrash subscriptions.
-   */
-  #activeRunId: string | undefined;
-  #awaitingRunId = false;
 
   #lifecycleSubId: string | null = null;
   #lifecycleStartPromise?: Promise<void>;
@@ -706,7 +698,7 @@ export class ThreadStream<
         // the in-flight `run.start` send completes. Sites that open
         // SSE/WS resources await this gate; everything else (event
         // dispatch, projection bookkeeping) runs without delay.
-        return await this.#withRunStartGate(async () => {
+        return await this.#withRunStartGate(() => {
           this.#ensureLifecycleTracking();
           // Eagerly start the values projection so `thread.output` /
           // `thread.values` resolve with the final state regardless of
@@ -720,12 +712,10 @@ export class ThreadStream<
           // replay any custom events that were emitted before the
           // subscription landed. This keeps the zero-extensions hot path
           // free of an unused `custom` subscription per run.
-          const result = await this.#send("run.start", {
+          return this.#send("run.start", {
             ...foldForkFromIntoConfig(params),
             assistant_id: this.assistantId,
           });
-          this.#bindActiveRunId(result.run_id);
-          return result;
         });
       },
     };
@@ -743,7 +733,6 @@ export class ThreadStream<
         // across resumes regardless of access order.
         void this.values;
         await this.#send("input.respond", params);
-        this.#awaitingRunId = false;
       },
       inject: async (params) => {
         await this.#send(
@@ -880,8 +869,6 @@ export class ThreadStream<
    */
   #prepareForNextRun(respondedInterruptId?: string | readonly string[]): void {
     this.interrupted = false;
-    this.#awaitingRunId = true;
-    this.#activeRunId = undefined;
     if (respondedInterruptId != null) {
       const respondedIds = new Set(
         Array.isArray(respondedInterruptId)
@@ -906,30 +893,6 @@ export class ThreadStream<
         subscription.resume();
       }
     }
-  }
-
-  #bindActiveRunId(runId: unknown): void {
-    if (typeof runId === "string" && runId.length > 0) {
-      this.#activeRunId = runId;
-    }
-    this.#awaitingRunId = false;
-  }
-
-  /**
-   * Skip terminal pauses for other runs' replayed lifecycle events.
-   * While `run.start` has not ack'd, suppress all pauses.
-   */
-  #shouldPauseForTerminal(message: Event): boolean {
-    if (this.#awaitingRunId) return false;
-    const eventRunId = extractEventRunId(message);
-    if (
-      this.#activeRunId != null &&
-      eventRunId != null &&
-      eventRunId !== this.#activeRunId
-    ) {
-      return false;
-    }
-    return true;
   }
 
   // ---------- Lazy getters mirroring in-process GraphRunStream ----------
@@ -1400,14 +1363,12 @@ export class ThreadStream<
     // its downstream `useToolCalls` / `useMessages` subscriptions
     // don't race the run), but its server-side SSE/WS open is staged
     // behind `#runStartReady` to avoid a `404: Thread not found`.
-    return await this.#withRunStartGate(async () => {
+    return await this.#withRunStartGate(() => {
       this.#startLifecycleWatcher();
-      const result = await this.#send("run.start", {
+      return this.#send("run.start", {
         ...(foldForkFromIntoConfig(params) as Record<string, unknown>),
         assistant_id: this.assistantId,
       });
-      this.#bindActiveRunId(result.run_id);
-      return result;
     });
   }
 
@@ -1428,9 +1389,6 @@ export class ThreadStream<
     this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
     await this.#send("input.respond", params);
-    // input.respond does not return a run_id; allow pauses again and
-    // correlate via envelope run_id when present (legacy: unfiltered).
-    this.#awaitingRunId = false;
   }
 
   /**
@@ -2434,9 +2392,6 @@ export class ThreadStream<
           this.#headlessInterruptsAwaitingTerminal.size > 0;
         if (shouldSkipPause) {
           this.#headlessInterruptsAwaitingTerminal.clear();
-          return;
-        }
-        if (!this.#shouldPauseForTerminal(message)) {
           return;
         }
         // A single shared stream delivers every subscription's events,

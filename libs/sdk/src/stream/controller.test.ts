@@ -8,7 +8,6 @@ import type { ThreadStream } from "../client/stream/index.js";
 
 interface State {
   messages?: unknown[];
-  title?: string;
 }
 
 function makeNeverEndingSubscription() {
@@ -112,23 +111,17 @@ function inputRequestedEvent(
   } as Event;
 }
 
-function valuesEvent(
-  messages: unknown[],
-  seq: number,
-  opts: { run_id?: string; title?: string; event_id?: string } = {}
-): Event {
+function valuesEvent(messages: unknown[], seq: number): Event {
   return {
     type: "event",
-    event_id: opts.event_id ?? `values-${seq}`,
+    event_id: `values-${seq}`,
     seq,
-    ...(opts.run_id != null ? { run_id: opts.run_id } : {}),
     method: "values",
     params: {
       namespace: [],
       timestamp: 0,
       data: {
         messages,
-        ...(opts.title != null ? { title: opts.title } : {}),
       },
     },
   } as Event;
@@ -148,16 +141,11 @@ function checkpointsEvent(step: number, seq: number, id = `cp-${step}`): Event {
   } as unknown as Event;
 }
 
-function lifecycleEvent(
-  event: string,
-  seq: number,
-  opts: { run_id?: string; event_id?: string } = {}
-): Event {
+function lifecycleEvent(event: string, seq: number): Event {
   return {
     type: "event",
-    event_id: opts.event_id ?? `lifecycle-${event}-${seq}`,
+    event_id: `lifecycle-${event}-${seq}`,
     seq,
-    ...(opts.run_id != null ? { run_id: opts.run_id } : {}),
     method: "lifecycle",
     params: {
       namespace: [],
@@ -1330,138 +1318,6 @@ describe("StreamController", () => {
       "ai-1",
     ]);
     expect((messages[1] as { text?: string }).text).toBe("All done.");
-
-    await controller.dispose();
-  });
-
-  it("ignores prior-run lifecycle/values replay after idle hydrate submit (#2609)", async () => {
-    // Hydrate an idle thread, submit a new run, then replay the finished
-    // prior run's root lifecycle + values before any current-run event.
-    // The prior terminal must not settle submit / clear isLoading, and
-    // prior values must not rewind hydrated non-message state.
-    const rootSubscription = makePushableSubscription();
-    const submitRun = vi.fn(async () => ({ run_id: "run-current" }));
-    const thread = {
-      subscribe: vi.fn(async () => rootSubscription),
-      onEvent: vi.fn(() => vi.fn()),
-      close: vi.fn(async () => undefined),
-      interrupts: [],
-      submitRun,
-      startLifecycleWatcher: vi.fn(() => undefined),
-    } as unknown as ThreadStream;
-    const seededMessages = [
-      { type: "human", content: "old", id: "old-user" },
-      { type: "ai", id: "old-ai", content: "old answer" },
-    ];
-    const client = {
-      threads: {
-        getState: vi.fn(async () => ({
-          values: { messages: seededMessages, title: "Current title" },
-          next: [],
-          tasks: [],
-          checkpoint: { checkpoint_id: "cp-latest" },
-          metadata: { step: 9 },
-        })),
-        getHistory: vi.fn(async () => []),
-        stream: vi.fn(() => thread),
-      },
-    };
-
-    const controller = new StreamController<State>({
-      assistantId: "deep-agent",
-      client: client as never,
-      threadId: "thread-idle",
-    });
-    await controller.hydrationPromise;
-    await waitForExpectation(() => {
-      expect(controller.rootStore.getSnapshot().values).toMatchObject({
-        title: "Current title",
-      });
-    });
-
-    const submitPromise = controller.submit({
-      messages: [{ type: "human", content: "new", id: "new-user" }],
-    });
-    await waitForExpectation(() => {
-      expect(thread.submitRun).toHaveBeenCalled();
-      expect(thread.subscribe).toHaveBeenCalled();
-    });
-    await rootSubscription.started;
-
-    // Prior-run replay (would previously settle submit + rewind title).
-    rootSubscription.push(
-      lifecycleEvent("running", 1, {
-        run_id: "run-old",
-        event_id: "synth:run-old:lc||running",
-      })
-    );
-    rootSubscription.push(
-      valuesEvent([{ type: "human", content: "old", id: "old-user" }], 2, {
-        run_id: "run-old",
-        title: "Initial title",
-        event_id: "synth:run-old:values|2",
-      })
-    );
-    rootSubscription.push(
-      lifecycleEvent("completed", 3, {
-        run_id: "run-old",
-        event_id: "synth:run-old:lc||completed",
-      })
-    );
-
-    await new Promise((r) => setTimeout(r, 30));
-
-    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
-    expect(controller.rootStore.getSnapshot().values).toMatchObject({
-      title: "Current title",
-    });
-    expect(
-      controller.rootStore.getSnapshot().messages.map((m) => (m as { id?: string }).id)
-    ).toEqual(expect.arrayContaining(["old-user", "old-ai", "new-user"]));
-
-    let submitSettled = false;
-    void submitPromise.then(() => {
-      submitSettled = true;
-    });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(submitSettled).toBe(false);
-
-    // Current-run events — only these may settle submit / update title.
-    rootSubscription.push(
-      lifecycleEvent("running", 4, {
-        run_id: "run-current",
-        event_id: "synth:run-current:lc||running",
-      })
-    );
-    rootSubscription.push(
-      valuesEvent(
-        [
-          ...seededMessages,
-          { type: "human", content: "new", id: "new-user" },
-          { type: "ai", id: "new-ai", content: "new answer" },
-        ],
-        5,
-        {
-          run_id: "run-current",
-          title: "Updated title",
-          event_id: "synth:run-current:values|5",
-        }
-      )
-    );
-    rootSubscription.push(
-      lifecycleEvent("completed", 6, {
-        run_id: "run-current",
-        event_id: "synth:run-current:lc||completed",
-      })
-    );
-
-    await submitPromise;
-    await waitForExpectation(() => {
-      expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
-    });
-    expect(controller.rootStore.getSnapshot().values).toMatchObject({
-      title: "Updated title",
-    });
 
     await controller.dispose();
   });

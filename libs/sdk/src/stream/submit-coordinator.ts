@@ -180,12 +180,8 @@ export class SubmitCoordinator<
   readonly #awaitResumedRunTerminal: (
     signal: AbortSignal
   ) => Promise<TerminalResult>;
-  /**
-   * Called once at the start of every {@link submit} / {@link dispatchResume}.
-   * `kind` selects the run-boundary gate mode (`submit` waits for run id;
-   * `resume` uses the running-before-terminal legacy boundary).
-   */
-  readonly #onSubmitStart: (kind: "submit" | "resume") => void;
+  /** Called once at the start of every {@link submit} invocation. */
+  readonly #onSubmitStart: () => void;
   /** Marks that a local run dispatch is now active. */
   readonly #onRunStart: () => void;
   /** Records a server-accepted local run id and fires `onCreated`. */
@@ -238,7 +234,7 @@ export class SubmitCoordinator<
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     awaitResumedRunTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-    onSubmitStart?: (kind: "submit" | "resume") => void;
+    onSubmitStart?: () => void;
     onRunStart?: () => void;
     onRunCreated?: (runId: string) => void;
     onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
@@ -305,7 +301,7 @@ export class SubmitCoordinator<
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void> {
     if (this.#getDisposed()) return;
-    this.#onSubmitStart("submit");
+    this.#onSubmitStart();
 
     // Per-submit thread override: rebind first so the rest of the
     // submit operates against the new thread.
@@ -471,23 +467,8 @@ export class SubmitCoordinator<
       // Fire-and-forget: we don't want to gate Promise.race on this,
       // and `commandPromise.catch` is already handled below. A
       // dispatch failure means there's no thread to pump anyway.
-      const notifyCreated = (result: { run_id?: unknown }) => {
-        if (typeof result.run_id !== "string") return;
-        if (createdRunId === result.run_id) return;
-        createdRunId = result.run_id;
-        // Bind the run-boundary gate *before* opening the deferred
-        // pump so seq=0 replay cannot settle submit / rewind values
-        // under an unbound gate.
-        this.#onRunCreated(createdRunId);
-        if (pendingCompletionReason != null) {
-          notifyCompletion(pendingCompletionReason);
-        }
-      };
-      // Bind run id then start the deferred pump on the same resolution
-      // path — ordering matters for the idle-thread replay gate.
       void commandPromise.then(
-        (result) => {
-          notifyCreated(result);
+        () => {
           this.#startDeferredRootPump();
           this.#forgetSelfCreatedThreadId(activeThreadId);
         },
@@ -505,6 +486,14 @@ export class SubmitCoordinator<
           }
         }
       );
+      const notifyCreated = (result: { run_id?: unknown }) => {
+        if (typeof result.run_id !== "string") return;
+        createdRunId = result.run_id;
+        this.#onRunCreated(createdRunId);
+        if (pendingCompletionReason != null) {
+          notifyCompletion(pendingCompletionReason);
+        }
+      };
       const first = await Promise.race([
         terminalPromise.then((value) => ({
           type: "terminal" as const,
@@ -517,15 +506,14 @@ export class SubmitCoordinator<
       ]);
       if (first.type === "error") throw first.error;
       if (first.type === "command") {
-        // Created + pump already handled by commandPromise.then above;
-        // notifyCreated is idempotent if that listener already ran.
         notifyCreated(first.result);
       } else {
-        // Terminal landed first (very fast runs). Created/pump remain
-        // owned by commandPromise.then; only surface dispatch errors.
+        // Terminal landed first (very fast runs). Wait for the
+        // dispatch response in the background so onCreated fires
+        // and dispatch errors still surface.
         terminal = first.value;
         terminalSettled = true;
-        void commandPromise.catch((error) => {
+        void commandPromise.then(notifyCreated).catch((error) => {
           if (!terminalSettled) reportError(error);
         });
       }
@@ -620,8 +608,7 @@ export class SubmitCoordinator<
     // *new* interrupt id. Without this, the hydrate-window allowlist
     // still contains only the interrupt being answered and
     // `#recordRootInterrupt` drops the follow-on `input.requested`.
-    // Use resume gate mode — `input.respond` does not return a run id.
-    this.#onSubmitStart("resume");
+    this.#onSubmitStart();
 
     // Rollback any run still tracked as active (mirrors submit()), then
     // claim the in-flight slot so stop()/dispose()/a concurrent submit

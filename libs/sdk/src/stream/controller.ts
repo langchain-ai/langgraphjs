@@ -69,7 +69,6 @@ import {
   type MessageMetadataMap,
 } from "./message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
-import { RunBoundaryGate, type RunBoundFlush } from "./run-boundary-gate.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import {
   prepareOptimisticInput,
@@ -305,12 +304,6 @@ export class StreamController<
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
   #localRunDepth = 0;
-  readonly #runBoundary = new RunBoundaryGate();
-  /**
-   * Submit waiters register here so buffered terminals/values flushed
-   * at {@link #notifyCreated} can settle the fast-ack race.
-   */
-  readonly #boundFlushListeners = new Set<(flush: RunBoundFlush) => void>();
   /**
    * `true` once a root `values` event has been applied for the current
    * optimistic run. Reset to `false` in {@link #beginOptimistic} and
@@ -380,7 +373,6 @@ export class StreamController<
     this.#lifecycleLoading = new LifecycleLoadingTracker({
       store: this.rootStore,
       isDisposed: () => this.#disposed,
-      acceptLifecycle: (event) => this.#runBoundary.acceptLifecycle(event),
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -414,7 +406,7 @@ export class StreamController<
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
       awaitResumedRunTerminal: (signal) =>
         this.#awaitResumedRunTerminal(signal),
-      onSubmitStart: (kind) => {
+      onSubmitStart: () => {
         // Clear the hydrate-window allowlist so genuinely-new live
         // interrupts on the just-started run (submit *or* respond /
         // respondAll via dispatchResume) aren't filtered. Bump the
@@ -422,11 +414,6 @@ export class StreamController<
         // write on return (see #hydratedActiveInterruptIds).
         this.#hydratedActiveInterruptIds = null;
         this.#submitGeneration += 1;
-        if (kind === "resume") {
-          this.#runBoundary.onResumeStart();
-        } else {
-          this.#runBoundary.onSubmitStart();
-        }
       },
       onRunStart: () => this.#markLocalRunStart(),
       onRunCreated: (runId) => this.#notifyCreated(runId),
@@ -611,16 +598,6 @@ export class StreamController<
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
-      // Bind the run-boundary gate to the in-flight run when possible so
-      // SSE replay of older runs is dropped without a local submit.
-      if (threadActive) {
-        const metaRunId = (state?.metadata as { run_id?: unknown } | undefined)
-          ?.run_id;
-        if (typeof metaRunId === "string" && metaRunId.length > 0) {
-          this.#runBoundary.onRunBound(metaRunId);
-          this.#activeRunId = metaRunId;
-        }
-      }
       if (state?.values != null) {
         /**
          * `threads.getState()` returns the legacy `ThreadState` shape
@@ -1217,31 +1194,7 @@ export class StreamController<
   }
 
   #notifyCreated(runId: string): void {
-    const alreadyBound = this.#activeRunId === runId;
     this.#activeRunId = runId;
-    const flush = this.#runBoundary.onRunBound(runId);
-    // Re-apply values that arrived before run.start resolved, then
-    // notify submit waiters of matching buffered terminals.
-    for (const valuesEvent of flush.values) {
-      if (valuesEvent.method !== "values") continue;
-      const data = (valuesEvent as ValuesEvent).params.data;
-      this.#applyValues(data);
-    }
-    if (flush.terminals.length > 0 || flush.values.length > 0) {
-      for (const listener of this.#boundFlushListeners) {
-        try {
-          listener(flush);
-        } catch {
-          /* waiter errors must not crash the stream */
-        }
-      }
-      // Loading tracker skipped these during expecting mode — drive it
-      // now that the gate accepts the bound run's lifecycle.
-      for (const terminal of flush.terminals) {
-        this.#lifecycleLoading.handle(terminal);
-      }
-    }
-    if (alreadyBound) return;
     try {
       this.#options.onCreated?.({ runId });
     } catch {
@@ -1256,7 +1209,6 @@ export class StreamController<
     if (runId != null && runId === this.#activeRunId) {
       this.#activeRunId = undefined;
     }
-    this.#runBoundary.onRunSettled();
     setTimeout(() => {
       if (this.#disposed) return;
       try {
@@ -1273,7 +1225,6 @@ export class StreamController<
     if (this.#localRunDepth > 0) return;
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
-    if (!this.#runBoundary.acceptLifecycle(event)) return;
     if (!this.rootStore.getSnapshot().isLoading) return;
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
@@ -1768,8 +1719,6 @@ export class StreamController<
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
-    this.#runBoundary.reset();
-    this.#boundFlushListeners.clear();
     this.#subagents.reset();
     this.#subgraphs.reset();
     this.#scopedHistorySeeds.clear();
@@ -2124,9 +2073,6 @@ export class StreamController<
       const bufferedCheckpoint = this.#messageMetadata.consumeCheckpoint(
         event.params.namespace
       );
-      if (!this.#runBoundary.acceptValues(event)) {
-        return;
-      }
       this.#applyValues(valuesEvent.params.data, bufferedCheckpoint);
       return;
     }
@@ -2477,26 +2423,22 @@ export class StreamController<
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
-      const unsubscribes: Array<() => void> = [];
-      const finish = (result: {
+      function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
-      }) => {
+      }) {
         if (settled) return;
         settled = true;
-        this.#boundFlushListeners.delete(onFlush);
-        for (const unsubscribe of unsubscribes) unsubscribe();
+        unsubscribeRoot?.();
+        unsubscribeThread?.();
         signal.removeEventListener("abort", finishAborted);
         resolve(result);
-      };
+      }
       const finishAborted = () => finish({ event: "aborted" });
-      const handleLifecycle = (event: Event, alreadyAccepted: boolean) => {
+      const onEvent = (event: Event) => {
         if (settled) return;
         if (event.method !== "lifecycle") return;
         if (!isRootNamespace(event.params.namespace)) return;
-        if (!alreadyAccepted && !this.#runBoundary.acceptLifecycle(event)) {
-          return;
-        }
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
           error?: string;
@@ -2519,17 +2461,8 @@ export class StreamController<
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       };
-      const onEvent = (event: Event) => handleLifecycle(event, false);
-      const onFlush = (flush: RunBoundFlush) => {
-        for (const terminal of flush.terminals) {
-          // Gate already accepted these on bind; don't re-filter.
-          handleLifecycle(terminal, true);
-        }
-      };
-      this.#boundFlushListeners.add(onFlush);
-      unsubscribes.push(this.#rootBus.subscribe(onEvent));
+      const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
-      if (unsubscribeThread != null) unsubscribes.push(unsubscribeThread);
       if (signal.aborted) {
         finishAborted();
       } else {
