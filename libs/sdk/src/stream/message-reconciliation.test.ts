@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import {
   buildMessageIndex,
   reconcileMessagesFromValues,
+  shouldPreferValuesMessage,
   shouldPreferValuesMessageForToolCalls,
 } from "./message-reconciliation.js";
 
@@ -87,6 +88,33 @@ describe("reconcileMessagesFromValues", () => {
     expect(result.valueMessageIds).toEqual(new Set());
   });
 
+  it("prefers the values human when it carries additional_kwargs the optimistic copy lacks", () => {
+    const optimistic = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+    });
+    const echoed = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+      additional_kwargs: {
+        attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+      },
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [echoed],
+      currentMessages: [optimistic],
+      currentIndexById: buildMessageIndex([optimistic]),
+      previousValueMessageIds: new Set(),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([echoed]);
+    expect(
+      (result.messages[0] as HumanMessage).additional_kwargs.attachments
+    ).toEqual([{ filename: "notes.pdf", path: "uploads/notes.pdf" }]);
+  });
+
   it("can prefer values messages when they contain finalized tool calls", () => {
     const streamed = new AIMessage({
       id: "assistant-1",
@@ -107,6 +135,28 @@ describe("reconcileMessagesFromValues", () => {
     });
 
     expect(result.messages).toEqual([values]);
+  });
+
+  it("keeps streamed content when it has moved past a lagging values snapshot", () => {
+    const streamed = new AIMessage({
+      id: "assistant-1",
+      content: "streamed partial extra",
+    });
+    const values = new AIMessage({
+      id: "assistant-1",
+      content: "streamed partial",
+      additional_kwargs: { usage: { tokens: 1 } },
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [values],
+      currentMessages: [streamed],
+      currentIndexById: buildMessageIndex([streamed]),
+      previousValueMessageIds: new Set(),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([streamed]);
   });
 
   it("keeps the current array identity when reconciliation is unchanged", () => {

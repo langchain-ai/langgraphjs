@@ -24,7 +24,8 @@
  *
  * The reconciliation rules (delegated to
  * {@link reconcileMessagesFromValues}) preserve in-flight streamed
- * content while letting values dictate ordering and removals.
+ * content while letting values dictate ordering, removals, and
+ * same-id metadata enrichment (e.g. committed attachment kwargs).
  *
  * # Tool-message namespace correlation
  *
@@ -85,7 +86,7 @@ import {
   buildMessageIndex,
   messagesEqual,
   reconcileMessagesFromValues,
-  shouldPreferValuesMessageForToolCalls,
+  shouldPreferValuesMessage,
 } from "./message-reconciliation.js";
 
 /**
@@ -382,9 +383,10 @@ export class RootMessageProjection<
    * Reconcile a full `values` snapshot into the projection.
    *
    * Delegates the merge to {@link reconcileMessagesFromValues}:
-   * values stays authoritative for ordering and removals, while
-   * streamed in-flight messages keep their content until the server
-   * echoes them back. Empty messages just refresh the values blob.
+   * values stays authoritative for ordering, removals, and same-id
+   * metadata enrichment, while streamed in-flight messages keep
+   * content that has moved past the snapshot. Empty messages just
+   * refresh the values blob.
    *
    * Rebuilds {@link #indexById} after the merge so subsequent delta
    * applications target the new positions.
@@ -455,7 +457,7 @@ export class RootMessageProjection<
       currentMessages: baselineMessages,
       currentIndexById: this.#indexById,
       previousValueMessageIds: this.#valuesMessageIds,
-      preferValuesMessage: shouldPreferValuesMessageForToolCalls,
+      preferValuesMessage: shouldPreferValuesMessage,
       addOnly,
     });
     // A stale replay snapshot must not shrink the authoritative id set:
@@ -495,8 +497,11 @@ export class RootMessageProjection<
    * exists), preserving prior history ordering. When the server later
    * emits a `values` snapshot containing the same ids,
    * {@link applyValues} → {@link reconcileMessagesFromValues} takes over
-   * (server ordering wins, the echoed message replaces the optimistic
-   * one).
+   * (server ordering wins; the echoed message replaces the optimistic
+   * one when content matches, so server-authored metadata such as
+   * `additional_kwargs` is visible without waiting for hydration).
+   * In-flight streamed content still wins when it has moved past the
+   * snapshot.
    *
    * Non-message input keys are shallow-merged into `values` via
    * `extraValues`; they are dropped/overwritten automatically by the

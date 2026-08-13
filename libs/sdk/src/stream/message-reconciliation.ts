@@ -29,7 +29,8 @@ export interface ReconcileMessagesFromValuesOptions {
   /**
    * Allows callers to keep a values message even when a streamed message with
    * the same id exists. Used by the root controller when the values message
-   * carries finalized tool-call data missing from the streamed message.
+   * carries data the current copy lacks (finalized tool calls, or
+   * same-content metadata such as committed `additional_kwargs`).
    */
   readonly preferValuesMessage?: (
     valuesMessage: BaseMessage,
@@ -55,9 +56,11 @@ export interface ReconciledMessages {
  * message projection.
  *
  * Values remain authoritative for ordering and removals. Streamed messages
- * remain authoritative for in-flight content until the server echoes them in a
- * values snapshot, and stream-only messages are preserved until they either
- * appear in values or are known to have been removed.
+ * remain authoritative for in-flight content that has moved past this
+ * snapshot. When the server echoes a same-id message with equal content
+ * plus enrichment (tool calls, `additional_kwargs`, …), values win.
+ * Stream-only messages are preserved until they either appear in values
+ * or are known to have been removed.
  */
 export function reconcileMessagesFromValues({
   valueMessages,
@@ -130,6 +133,32 @@ export function buildMessageIndex(
     if (id != null) index.set(id, idx);
   });
   return index;
+}
+
+/**
+ * Decide whether a values message should replace a same-id streamed or
+ * optimistic message.
+ *
+ * Values win when they carry data the current copy lacks:
+ *   - finalized tool-call args (see
+ *     {@link shouldPreferValuesMessageForToolCalls})
+ *   - metadata enrichment with unchanged content (e.g. server-committed
+ *     `additional_kwargs.attachments` on an optimistic human)
+ *
+ * Streamed content still wins when it has moved past this snapshot, so
+ * in-flight token streaming is not overwritten by a lagging values event.
+ */
+export function shouldPreferValuesMessage(
+  valuesMessage: BaseMessage,
+  streamedMessage: BaseMessage
+): boolean {
+  if (shouldPreferValuesMessageForToolCalls(valuesMessage, streamedMessage)) {
+    return true;
+  }
+  if (!jsonishEqual(valuesMessage.content, streamedMessage.content)) {
+    return false;
+  }
+  return !messagesEqual(valuesMessage, streamedMessage);
 }
 
 /**
