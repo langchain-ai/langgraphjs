@@ -77,7 +77,8 @@ export interface TransportAdapter {
    * whose filter matches. The SDK's shared-stream rotation relies on
    * this: when a subscription's filter widens the union, the SDK opens
    * a fresh stream and expects to receive the run's full history from
-   * `seq=0` (deduplication is handled client-side via `event_id`). The
+   * `seq=0` (deduplication is handled client-side via `event_id`), unless
+   * the caller passes durable `since_event_id` to seek the tape. The
    * SDK also defers the open until after `run.start` has committed the
    * thread server-side to avoid a `404: Thread not found`, which means
    * events emitted during that window MUST be delivered to the late

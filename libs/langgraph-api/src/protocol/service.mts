@@ -844,7 +844,16 @@ export function matchesSinkFilter(
   filter: EventSinkFilter,
   event: ProtocolEvent
 ): boolean {
-  if (filter.since != null && (event.seq ?? 0) <= filter.since) return false;
+  // Durable `sinceEventId` seeks across reconnects. Session `since` remains
+  // for same-connection ring-buffer resume only.
+  if (filter.sinceEventId != null) {
+    const eventId = event.event_id;
+    if (typeof eventId !== "string" || !(eventId > filter.sinceEventId)) {
+      return false;
+    }
+  } else if (filter.since != null && (event.seq ?? 0) <= filter.since) {
+    return false;
+  }
 
   // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
   // `custom` filter still matches via the prefix check below.

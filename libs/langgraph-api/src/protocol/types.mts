@@ -149,6 +149,8 @@ export type EventSinkFilter = {
   namespaces?: string[][];
   depth?: number;
   since?: number;
+  /** Durable cursor: deliver events with `event_id` strictly after this. */
+  sinceEventId?: string;
 };
 
 /**
