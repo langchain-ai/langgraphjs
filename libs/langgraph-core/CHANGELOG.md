@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.4.10
+
+### Patch Changes
+
+- [#2690](https://github.com/langchain-ai/langgraphjs/pull/2690) [`00f68a1`](https://github.com/langchain-ai/langgraphjs/commit/00f68a1b002d820b95129bcdaf387d2678ead6f0) Thanks [@saad-supports-langchain](https://github.com/saad-supports-langchain)! - fix(langgraph): keep `context` values out of tracer-derived metadata
+
 ## 1.4.9
 
 ### Patch Changes
