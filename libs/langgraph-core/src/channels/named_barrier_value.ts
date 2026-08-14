@@ -81,6 +81,31 @@ export class NamedBarrierValue<Value> extends BaseChannel<
 }
 
 /**
+ * A NamedBarrierValue whose graph consented to an inclusive release: once the
+ * run has quiesced — no task is running and none is scheduled, so no further
+ * write can arrive — the loop completes the barrier with its missing names and
+ * the target runs once, with the writes that did arrive.
+ *
+ * Between supersteps it behaves exactly like {@link NamedBarrierValue}; the
+ * class exists so the loop can tell which barriers opted in. Created by
+ * `addEdge([...], target, { inclusive: true })`.
+ * @internal
+ */
+export class InclusiveNamedBarrierValue<
+  Value,
+> extends NamedBarrierValue<Value> {
+  lc_graph_name = "InclusiveNamedBarrierValue";
+
+  fromCheckpoint(checkpoint?: Value[]) {
+    const empty = new InclusiveNamedBarrierValue<Value>(this.names);
+    if (typeof checkpoint !== "undefined") {
+      empty.seen = new Set(checkpoint);
+    }
+    return empty as this;
+  }
+}
+
+/**
  * A channel that waits until all named values are received before making the value ready to be made available.
  * It is only made available after finish() is called.
  * @internal

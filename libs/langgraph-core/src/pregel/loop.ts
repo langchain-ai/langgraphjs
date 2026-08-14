@@ -70,10 +70,12 @@ import {
   _prepareNodeErrorHandlerTask,
   _prepareSingleTask,
   increment,
+  maxChannelMapVersion,
   shouldInterrupt,
   sanitizeUntrackedValuesInSend,
   WritesProtocol,
 } from "./algo.js";
+import type { InclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
 import {
   gatherIterator,
   gatherIteratorSync,
@@ -1090,8 +1092,39 @@ export class PregelLoop {
     }
 
     if (taskList.length === 0) {
-      this.status = "done";
-      return false;
+      // The run has quiesced: the last superstep's writes are applied and task
+      // derivation produced nothing, so nothing is running and nothing is
+      // scheduled — a `Send` in flight would be a pending task. Inclusive
+      // waiting edges release here, with the nodes that did arrive; a drain
+      // stops the run mid-flight, so it does not count as quiescence.
+      if (
+        !(this.control != null && this.control.drainRequested) &&
+        this._releaseInclusiveWaitingEdges()
+      ) {
+        this.tasks = _prepareNextTasks(
+          this.checkpoint,
+          this.checkpointPendingWrites,
+          this.nodes,
+          this.channels,
+          this.config,
+          true,
+          {
+            step: this.step,
+            checkpointer: this.checkpointer,
+            isResuming: this.isResuming,
+            manager: this.manager,
+            store: this.store,
+            stream: this.stream,
+            triggerToNodes: this.triggerToNodes,
+            updatedChannels: this.updatedChannels,
+          }
+        );
+        taskList = Object.values(this.tasks);
+      }
+      if (taskList.length === 0) {
+        this.status = "done";
+        return false;
+      }
     }
     // Cooperative drain: the previous superstep's writes have been applied
     // and checkpointed above, and the next tasks have been prepared. If a
@@ -1149,6 +1182,49 @@ export class PregelLoop {
     }
 
     return true;
+  }
+
+  /**
+   * Complete every inclusive waiting edge — `addEdge([...], target,
+   * { inclusive: true })` — that has received some of its listed nodes but not
+   * all, by feeding it the missing names. The caller invokes this only at
+   * quiescence, where no further write can arrive, so "the nodes that arrived"
+   * is final. The barrier releases through its own completeness rule and
+   * `consume()` clears it as usual, so the edge stays single-shot and re-arms
+   * in a loop, the same as the default barrier.
+   *
+   * An edge nobody wrote to stays silent: with no writes, there is nothing to
+   * run the target on.
+   *
+   * @returns true when at least one edge released, so the caller re-derives
+   * tasks instead of finishing the run.
+   */
+  protected _releaseInclusiveWaitingEdges(): boolean {
+    let released = false;
+    for (const [name, channel] of Object.entries(this.channels)) {
+      // `lc_graph_name` rather than `instanceof`, matching how the rest of the
+      // codebase tells channels apart (and the house lint rule).
+      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
+      const barrier = channel as InclusiveNamedBarrierValue<string>;
+      if (barrier.seen.size === 0 || barrier.seen.size >= barrier.names.size) {
+        continue;
+      }
+      const missing = [...barrier.names].filter(
+        (node) => !barrier.seen.has(node)
+      );
+      barrier.update(missing);
+      // The same version bump `_applyWrites` gives an updated channel, so the
+      // target's trigger sees a version newer than the one it last observed.
+      this.checkpoint.channel_versions[name] = this.checkpointerGetNextVersion(
+        maxChannelMapVersion(this.checkpoint.channel_versions) as
+          | number
+          | undefined
+      );
+      this.updatedChannels ??= new Set();
+      this.updatedChannels.add(name);
+      released = true;
+    }
+    return released;
   }
 
   async finishAndHandleError(error?: Error) {
