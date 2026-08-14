@@ -560,6 +560,139 @@ describe("inclusive waiting edges", () => {
     expect(result.ran).toEqual(["drainer", "w1", "join"]);
   });
 
+  it("two inclusive edges into one target: one run, and the record is their union", async () => {
+    // Found by the four-hats red team: both barriers release at the same
+    // quiescence and trigger ONE task; the first version of the record kept
+    // only the first edge's arrivals.
+    const observed: Array<unknown> = [];
+    const graph = new StateGraph(State)
+      .addNode("a", mark("a"))
+      .addNode("b", mark("b"))
+      .addNode("c", mark("c"))
+      .addNode("d", mark("d"))
+      .addNode("join", () => {
+        observed.push(waitingEdgeRelease());
+        return { ran: ["join"] };
+      })
+      .addConditionalEdges(START, () => ["a", "c"], ["a", "b", "c", "d"])
+      .addEdge(["a", "b"], "join", { inclusive: true })
+      .addEdge(["c", "d"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile();
+
+    const result = (await graph.invoke({})) as { ran: string[] };
+
+    expect(count(result.ran, "join")).toBe(1);
+    expect(observed).toEqual([
+      { target: "join", arrived: ["a", "c"], missing: ["b", "d"] },
+    ]);
+  });
+
+  it("a Send straight at the armed target runs it separately — edges, not sends", async () => {
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("sender", mark("sender"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "sender"], [
+        "w0",
+        "w1",
+        "sender",
+      ])
+      .addConditionalEdges("sender", () => [new Send("join", {})], ["join"])
+      .addEdge(["w0", "w1"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile();
+
+    const result = (await graph.invoke({})) as { ran: string[] };
+
+    expect(count(result.ran, "join")).toBe(2);
+  });
+
+  it("removing the option later leaves an armed thread honest, not corrupt", async () => {
+    // Found by the four-hats red team: the inclusive barrier checkpoints
+    // [seen, released]; before the restore tolerance, resuming without the
+    // flag fed the tuple to the default barrier, whose seen became a set of
+    // garbage — unreleasable AND invisible to waitingEdges.
+    const saver = new MemorySaver();
+    let boom = true;
+    const build = (inclusive: boolean) =>
+      new StateGraph(State)
+        .addNode("w0", mark("w0"))
+        .addNode("w1", mark("w1"))
+        .addNode("mid", mark("mid"))
+        .addNode("holder", () => {
+          if (boom) {
+            boom = false;
+            throw new Error("boom");
+          }
+          return { ran: ["holder"] };
+        })
+        .addNode("join", mark("join"))
+        .addConditionalEdges(START, () => ["w1", "mid"], ["w0", "w1", "mid"])
+        .addEdge("mid", "holder")
+        .addEdge(
+          ["w0", "w1"],
+          "join",
+          inclusive ? { inclusive: true } : undefined
+        )
+        .addEdge("join", END)
+        .addEdge("holder", END)
+        .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "downgrade-honest" } };
+
+    await expect(build(true).invoke({}, config)).rejects.toThrow("boom");
+
+    // resumed WITHOUT the flag: default semantics from here — the edge waits
+    // for all, the run resolves, and the snapshot reports the drop honestly
+    const downgraded = build(false);
+    const result = (await downgraded.invoke(null, config)) as {
+      ran: string[];
+    };
+    expect(count(result.ran, "join")).toBe(0);
+    const final = await downgraded.getState(config);
+    expect(final.waitingEdges).toEqual([
+      { target: "join", completed: ["w1"], missing: ["w0"] },
+    ]);
+  });
+
+  it("adding the option to an existing armed thread releases on resume", async () => {
+    const saver = new MemorySaver();
+    let boom = true;
+    const build = (inclusive: boolean) =>
+      new StateGraph(State)
+        .addNode("w0", mark("w0"))
+        .addNode("w1", mark("w1"))
+        .addNode("mid", mark("mid"))
+        .addNode("holder", () => {
+          if (boom) {
+            boom = false;
+            throw new Error("boom");
+          }
+          return { ran: ["holder"] };
+        })
+        .addNode("join", mark("join"))
+        .addConditionalEdges(START, () => ["w1", "mid"], ["w0", "w1", "mid"])
+        .addEdge("mid", "holder")
+        .addEdge(
+          ["w0", "w1"],
+          "join",
+          inclusive ? { inclusive: true } : undefined
+        )
+        .addEdge("join", END)
+        .addEdge("holder", END)
+        .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "upgrade-releases" } };
+
+    await expect(build(false).invoke({}, config)).rejects.toThrow("boom");
+
+    const upgraded = build(true);
+    const result = (await upgraded.invoke(null, config)) as { ran: string[] };
+    expect(count(result.ran, "join")).toBe(1);
+    const final = await upgraded.getState(config);
+    expect(final.waitingEdges).toBeUndefined();
+  });
+
   it("two inclusive edges listing each other's targets never settle", async () => {
     // The OR-join vicious circle: each release re-arms the other edge, so the
     // graph livelocks and ends at the recursion limit — where the same shape

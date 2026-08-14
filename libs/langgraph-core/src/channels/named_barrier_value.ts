@@ -27,10 +27,18 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     this.seen = new Set<Value>();
   }
 
-  fromCheckpoint(checkpoint?: Value[]) {
+  fromCheckpoint(checkpoint?: Value[] | [Value[], boolean]) {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      empty.seen = new Set(checkpoint);
+      // Restore tolerance: the inclusive and defer variants checkpoint
+      // `[seen, flag]`. A thread resumed after the option was removed hands
+      // that tuple here; take the seen list rather than corrupting the set —
+      // the edge then follows this class's wait-for-all rule.
+      empty.seen = new Set(
+        Array.isArray(checkpoint[0])
+          ? (checkpoint[0] as Value[])
+          : (checkpoint as Value[])
+      );
     }
     return empty as this;
   }
@@ -93,6 +101,17 @@ export class NamedBarrierValue<Value> extends BaseChannel<
  * and re-arms like the default barrier.
  * @internal
  */
+/**
+ * Narrow a channel to the inclusive barrier without `instanceof`, matching how
+ * the rest of the codebase tells channels apart.
+ * @internal
+ */
+export const isInclusiveNamedBarrierValue = <Value = string>(
+  channel: unknown
+): channel is InclusiveNamedBarrierValue<Value> =>
+  (channel as { lc_graph_name?: string } | undefined)?.lc_graph_name ===
+  "InclusiveNamedBarrierValue";
+
 export class InclusiveNamedBarrierValue<Value> extends BaseChannel<
   void,
   Value,
@@ -219,12 +238,19 @@ export class NamedBarrierValueAfterFinish<Value> extends BaseChannel<
     this.finished = false;
   }
 
-  fromCheckpoint(checkpoint?: [Value[], boolean]) {
+  fromCheckpoint(checkpoint?: [Value[], boolean] | Value[]) {
     const empty = new NamedBarrierValueAfterFinish<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      const [seen, finished] = checkpoint;
-      empty.seen = new Set(seen);
-      empty.finished = finished;
+      if (Array.isArray(checkpoint[0])) {
+        const [seen, finished] = checkpoint as [Value[], boolean];
+        empty.seen = new Set(seen);
+        empty.finished = finished;
+      } else {
+        // Restore tolerance: a thread checkpointed before `defer: true` was
+        // added stored the bare seen list; destructuring it would have made
+        // `seen` the characters of the first node name.
+        empty.seen = new Set(checkpoint as Value[]);
+      }
     }
     return empty as this;
   }

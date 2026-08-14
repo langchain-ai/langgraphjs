@@ -124,6 +124,7 @@ import {
   getConfig,
   recastCheckpointNamespace,
 } from "./utils/config.js";
+import { isInclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
 import {
   _coerceToDict,
   collectWaitingEdges,
@@ -1109,12 +1110,8 @@ export class Pregel<
     // `next` is the documented "the run is over" signal.
     if (nextList.length === 0) {
       for (const [name, channel] of Object.entries(channels)) {
-        if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
-        const { seen, names, released } = channel as unknown as {
-          seen: Set<string>;
-          names: Set<string>;
-          released: boolean;
-        };
+        if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+        const { seen, names, released } = channel;
         // A barrier that already released has a real task; only an armed one
         // needs its target surfaced here.
         if (released || seen.size === 0 || seen.size >= names.size) continue;

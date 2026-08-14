@@ -1288,8 +1288,14 @@ export class StateGraph<
    * again: one run per arming, the same accumulation rule the default barrier
    * has. Two inclusive edges that list each other's targets never settle —
    * each release re-arms the other — and such a run ends only at the recursion
-   * limit. Not compatible with `defer: true` on `endKey`, which already
-   * postpones the node to the end of the run.
+   * limit. A `Send` addressed to `endKey` itself still runs it separately —
+   * the single-run property is about edges, not sends. Several inclusive
+   * edges into one `endKey` that release together produce a single run whose
+   * release record is their union. Removing the option later is safe for
+   * existing threads: an armed edge restores the names it has seen and
+   * follows the default wait-for-all rule from there. Not compatible with
+   * `defer: true` on `endKey`, which already postpones the node to the end of
+   * the run.
    *
    * Without the option, separate edges plus `defer: true` on `endKey`
    * approximate the same semantics — every arrival is a trigger and deferring

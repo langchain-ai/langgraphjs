@@ -75,7 +75,7 @@ import {
   sanitizeUntrackedValuesInSend,
   WritesProtocol,
 } from "./algo.js";
-import type { InclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
+import { isInclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
 import {
   gatherIterator,
   gatherIteratorSync,
@@ -353,6 +353,12 @@ export class PregelLoop {
 
   protected updatedChannels: Set<string> | undefined;
 
+  /**
+   * Whether any channel is an inclusive waiting-edge barrier — computed once,
+   * so graphs without one pay nothing on the per-superstep paths below.
+   */
+  protected hasInclusiveWaitingEdges: boolean;
+
   status:
     | "pending"
     | "done"
@@ -498,6 +504,9 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
+    this.hasInclusiveWaitingEdges = Object.values(params.channels).some(
+      isInclusiveNamedBarrierValue
+    );
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     this.step = params.step;
     this.stop = params.stop;
@@ -1066,7 +1075,7 @@ export class PregelLoop {
     this.tasks = nextTasks;
     // Covers a resume from a checkpoint written between a release and the
     // released target's superstep (interruptBefore on the target, or a crash).
-    this._attachWaitingEdgeReleases();
+    if (this.hasInclusiveWaitingEdges) this._attachWaitingEdgeReleases();
     let taskList = Object.values(this.tasks);
 
     // Full-state checkpoint snapshots are expensive; skip unless a consumer
@@ -1104,11 +1113,17 @@ export class PregelLoop {
         // An armed inclusive edge is remaining work — it releases once the
         // run truly settles — so a drain here must report a resumable stop,
         // not a completed run that silently dropped its join.
-        if (this._hasArmedInclusiveWaitingEdge()) {
+        if (
+          this.hasInclusiveWaitingEdges &&
+          this._hasArmedInclusiveWaitingEdge()
+        ) {
           this.status = "draining";
           return false;
         }
-      } else if (this._releaseInclusiveWaitingEdges()) {
+      } else if (
+        this.hasInclusiveWaitingEdges &&
+        this._releaseInclusiveWaitingEdges()
+      ) {
         this.tasks = _prepareNextTasks(
           this.checkpoint,
           this.checkpointPendingWrites,
@@ -1196,8 +1211,8 @@ export class PregelLoop {
   /** Is any inclusive waiting edge holding writes without having released? */
   protected _hasArmedInclusiveWaitingEdge(): boolean {
     for (const channel of Object.values(this.channels)) {
-      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
-      const barrier = channel as InclusiveNamedBarrierValue<string>;
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      const barrier = channel;
       if (
         !barrier.released &&
         barrier.seen.size > 0 &&
@@ -1229,11 +1244,8 @@ export class PregelLoop {
   protected _releaseInclusiveWaitingEdges(): boolean {
     let released = false;
     for (const [name, channel] of Object.entries(this.channels)) {
-      // `lc_graph_name` rather than `instanceof`, matching how the rest of the
-      // codebase tells channels apart (and the house lint rule).
-      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
-      const barrier = channel as InclusiveNamedBarrierValue<string>;
-      if (barrier.releaseArrived() === undefined) continue;
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      if (channel.releaseArrived() === undefined) continue;
       // The same version bump `_applyWrites` gives an updated channel, so the
       // target's trigger sees a version newer than the one it last observed.
       this.checkpoint.channel_versions[name] = this.checkpointerGetNextVersion(
@@ -1264,8 +1276,8 @@ export class PregelLoop {
       | { target: string; arrived: string[]; missing: string[] }[]
       | undefined;
     for (const [name, channel] of Object.entries(this.channels)) {
-      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
-      const barrier = channel as InclusiveNamedBarrierValue<string>;
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      const barrier = channel;
       if (!barrier.released) continue;
       releases ??= [];
       releases.push({
@@ -1276,8 +1288,18 @@ export class PregelLoop {
     }
     if (releases === undefined) return;
     for (const task of Object.values(this.tasks)) {
-      const release = releases.find((entry) => entry.target === task.name);
-      if (release === undefined) continue;
+      const matching = releases.filter((entry) => entry.target === task.name);
+      if (matching.length === 0) continue;
+      // Several inclusive edges into one target release together as one task;
+      // the record is their union, so neither edge's arrivals are lost.
+      const release =
+        matching.length === 1
+          ? matching[0]
+          : {
+              target: task.name as string,
+              arrived: [...new Set(matching.flatMap((entry) => entry.arrived))],
+              missing: [...new Set(matching.flatMap((entry) => entry.missing))],
+            };
       const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
         | PregelScratchpad
         | undefined;
