@@ -5,6 +5,7 @@ import {
   ensureHandler,
   type Callbacks,
 } from "@langchain/core/callbacks/manager";
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
@@ -99,6 +100,13 @@ export function filterToUserTags(
  * `.withConfig({ callbacks: [...] })` is preserved when a later config
  * (e.g. `streamEvents` injecting its own internal handler) is merged on
  * top instead of overwriting it.
+ *
+ * Handler instances present on both sides are added once. At a
+ * nested-runnable boundary the same handlers arrive twice — via the ambient
+ * AsyncLocalStorage config and via the child config — and re-registering
+ * them compounds per boundary: with a `LangChainTracer` attached, every
+ * `on_chat_model_stream` event fired three times two subgraph levels deep
+ * (#2570). The Python runtime does not duplicate in this situation.
  */
 function mergeCallbacks(
   base: Callbacks | undefined,
@@ -109,11 +117,15 @@ function mergeCallbacks(
     return Array.isArray(provided) ? [...provided] : provided.copy();
   }
   if (Array.isArray(provided)) {
-    if (Array.isArray(base)) return base.concat(provided);
+    if (Array.isArray(base)) {
+      return base.concat(provided.filter((handler) => !base.includes(handler)));
+    }
     // base is a manager
     const manager = base.copy();
     for (const callback of provided) {
-      manager.addHandler(ensureHandler(callback), true);
+      if (!manager.handlers.includes(callback as BaseCallbackHandler)) {
+        manager.addHandler(ensureHandler(callback), true);
+      }
     }
     return manager;
   }
@@ -121,15 +133,21 @@ function mergeCallbacks(
   if (Array.isArray(base)) {
     const manager = provided.copy();
     for (const callback of base) {
-      manager.addHandler(ensureHandler(callback), true);
+      if (!manager.handlers.includes(callback as BaseCallbackHandler)) {
+        manager.addHandler(ensureHandler(callback), true);
+      }
     }
     return manager;
   }
   // both are managers
   return new CallbackManager(provided._parentRunId, {
-    handlers: Array.from(new Set(base.handlers.concat(provided.handlers))),
-    inheritableHandlers: Array.from(
-      new Set(base.inheritableHandlers.concat(provided.inheritableHandlers))
+    handlers: base.handlers.concat(
+      provided.handlers.filter((handler) => !base.handlers.includes(handler))
+    ),
+    inheritableHandlers: base.inheritableHandlers.concat(
+      provided.inheritableHandlers.filter(
+        (handler) => !base.inheritableHandlers.includes(handler)
+      )
     ),
     tags: Array.from(new Set(base.tags.concat(provided.tags))),
     inheritableTags: Array.from(
