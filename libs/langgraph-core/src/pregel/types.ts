@@ -665,7 +665,8 @@ export interface StateSnapshot {
 }
 
 /**
- * A waiting edge that has armed but not released.
+ * A waiting edge holding writes from some of its listed nodes but not all,
+ * so it has not released.
  */
 export interface WaitingEdgeDescription {
   /**
@@ -678,8 +679,35 @@ export interface WaitingEdgeDescription {
   readonly completed: string[];
   /**
    * Listed nodes that have not written to the edge.
+   *
+   * For an edge collected from a subgraph this is derived from the channel name,
+   * which encodes the listed nodes. Absent when that name cannot be parsed
+   * unambiguously — a node named with the join character produces a split the
+   * barrier's own contents contradict, and a wrong set is worse than none.
    */
-  readonly missing: string[];
+  readonly missing?: string[];
+  /**
+   * The subgraph node path the edge belongs to, outermost first — e.g.
+   * `["ingest", "enrich"]` for an edge two levels down. Absent for this graph's
+   * own edges.
+   *
+   * Prefer this over `namespace` when reporting to a person: it names the nodes
+   * as written in the graph and is the same on every run, while a namespace
+   * carries per-invocation task ids.
+   */
+  readonly path?: string[];
+  /**
+   * The exact checkpoint namespace the edge belongs to, for correlating with a
+   * `getState` call against that subgraph. Absent for this graph's own edges;
+   * present only when `getState` is called with `subgraphs: true`.
+   *
+   * Contains task ids, so it differs between runs of the same graph.
+   *
+   * A snapshot from `getStateHistory` never carries a subgraph's edges: they are
+   * read from that subgraph's latest checkpoint, which does not describe the
+   * moment a historical snapshot describes.
+   */
+  readonly namespace?: string;
 }
 
 /**
