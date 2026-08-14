@@ -287,13 +287,17 @@ export function collectWaitingEdges(
     [];
   for (const [name, channel] of Object.entries(channels)) {
     if (!isWaitingEdgeChannel(name)) continue;
-    const { names, seen } = (channel ?? {}) as {
+    const { names, seen, released } = (channel ?? {}) as {
       names?: unknown;
       seen?: unknown;
+      released?: unknown;
     };
     // Narrows both from `unknown`; no channel carrying this prefix is anything
     // other than a barrier, so this is a type guard rather than a runtime one.
     if (!isNodeNameSet(names) || !isNodeNameSet(seen)) continue;
+    // An inclusive barrier that released at quiescence is not stalled: its
+    // target is a scheduled task, and consume() will clear it.
+    if (released === true) continue;
     // An empty `seen` means the edge released; a full one means it is waiting for
     // its target rather than for a write, which is not a dropped write.
     if (seen.size === 0 || seen.size >= names.size) continue;

@@ -178,6 +178,8 @@ export { RunControl } from "./pregel/runtime.js";
 export * from "./state/index.js";
 
 export { interrupt } from "./interrupt.js";
+export { waitingEdgeRelease } from "./waiting_edge_release.js";
+export type { WaitingEdgeRelease } from "./waiting_edge_release.js";
 export type {
   InferInterruptInputType,
   InferInterruptResumeType,

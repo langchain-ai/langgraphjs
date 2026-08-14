@@ -1110,11 +1110,14 @@ export class Pregel<
     if (nextList.length === 0) {
       for (const [name, channel] of Object.entries(channels)) {
         if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
-        const { seen, names } = channel as unknown as {
+        const { seen, names, released } = channel as unknown as {
           seen: Set<string>;
           names: Set<string>;
+          released: boolean;
         };
-        if (seen.size === 0 || seen.size >= names.size) continue;
+        // A barrier that already released has a real task; only an armed one
+        // needs its target surfaced here.
+        if (released || seen.size === 0 || seen.size >= names.size) continue;
         nextList.push(name.slice(name.lastIndexOf(":") + 1));
       }
     }

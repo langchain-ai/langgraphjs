@@ -773,6 +773,14 @@ export type PregelScratchpad<Resume = unknown> = {
 
   /** The input to the currently executing task */
   currentTaskInput: unknown;
+
+  /**
+   * Set on a task whose trigger is an inclusive waiting edge released at
+   * quiescence: the listed nodes that arrived and the ones that never ran.
+   * Absent when the edge released through ordinary completeness. Read it with
+   * {@link waitingEdgeRelease}.
+   */
+  waitingEdgeRelease?: { target: string; arrived: string[]; missing: string[] };
 };
 
 /**

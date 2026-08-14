@@ -3,6 +3,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Annotation, StateGraph } from "../graph/index.js";
 import { START, END, Send, Command } from "../constants.js";
 import { interrupt } from "../interrupt.js";
+import { waitingEdgeRelease } from "../waiting_edge_release.js";
 
 const State = Annotation.Root({
   ran: Annotation<string[]>({
@@ -456,6 +457,68 @@ describe("inclusive waiting edges", () => {
       configurable: { thread_id: "update-unrelated" },
     })) as { ran: string[] };
     expect(count(result.ran, "join")).toBe(1);
+  });
+
+  it("the released target can tell a partial release from a full one", async () => {
+    // AC4.4: `waitingEdgeRelease()` names the arrived and missing nodes on a
+    // quiescence release, and returns undefined when the edge released
+    // through ordinary completeness.
+    const observed: Array<unknown> = [];
+    const build = (selection: string[]) =>
+      new StateGraph(State)
+        .addNode("w0", mark("w0"))
+        .addNode("w1", mark("w1"))
+        .addNode("join", () => {
+          observed.push(waitingEdgeRelease());
+          return { ran: ["join"] };
+        })
+        .addConditionalEdges(START, () => selection, ["w0", "w1"])
+        .addEdge(["w0", "w1"], "join", { inclusive: true })
+        .addEdge("join", END)
+        .compile();
+
+    await build(["w1"]).invoke({});
+    await build(["w0", "w1"]).invoke({});
+
+    expect(observed).toEqual([
+      { target: "join", arrived: ["w1"], missing: ["w0"] },
+      undefined,
+    ]);
+  });
+
+  it("the release record survives an interruptBefore on the released target", async () => {
+    // The record is derived from the barrier, not captured in memory, so a
+    // pause between the release and the target's superstep cannot lose it.
+    const observed: Array<unknown> = [];
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("join", () => {
+        observed.push(waitingEdgeRelease());
+        return { ran: ["join"] };
+      })
+      .addConditionalEdges(START, () => "w1", ["w0", "w1"])
+      .addEdge(["w0", "w1"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "release-record-interrupt" },
+      interruptBefore: ["join" as const],
+    };
+
+    await graph.invoke({}, config);
+    expect(observed).toEqual([]);
+    const paused = await graph.getState({
+      configurable: { thread_id: "release-record-interrupt" },
+    });
+    expect(paused.next).toEqual(["join"]);
+
+    await graph.invoke(null, {
+      configurable: { thread_id: "release-record-interrupt" },
+    });
+    expect(observed).toEqual([
+      { target: "join", arrived: ["w1"], missing: ["w0"] },
+    ]);
   });
 
   it("two inclusive edges listing each other's targets never settle", async () => {

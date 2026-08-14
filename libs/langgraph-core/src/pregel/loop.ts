@@ -1064,6 +1064,9 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
+    // Covers a resume from a checkpoint written between a release and the
+    // released target's superstep (interruptBefore on the target, or a crash).
+    this._attachWaitingEdgeReleases();
     let taskList = Object.values(this.tasks);
 
     // Full-state checkpoint snapshots are expensive; skip unless a consumer
@@ -1119,6 +1122,7 @@ export class PregelLoop {
             updatedChannels: this.updatedChannels,
           }
         );
+        this._attachWaitingEdgeReleases();
         taskList = Object.values(this.tasks);
       }
       if (taskList.length === 0) {
@@ -1185,13 +1189,15 @@ export class PregelLoop {
   }
 
   /**
-   * Complete every inclusive waiting edge — `addEdge([...], target,
+   * Release every inclusive waiting edge — `addEdge([...], target,
    * { inclusive: true })` — that has received some of its listed nodes but not
-   * all, by feeding it the missing names. The caller invokes this only at
-   * quiescence, where no further write can arrive, so "the nodes that arrived"
-   * is final. The barrier releases through its own completeness rule and
-   * `consume()` clears it as usual, so the edge stays single-shot and re-arms
-   * in a loop, the same as the default barrier.
+   * all. The caller invokes this only at quiescence, where no further write
+   * can arrive, so "the nodes that arrived" is final. The release is a flag on
+   * the barrier rather than fabricated writes — `seen` keeps only the nodes
+   * that actually wrote, so checkpoints stay truthful and the target can be
+   * told exactly which nodes came. `consume()` clears the flag with the
+   * writes, so the edge stays single-shot and re-arms in a loop, the same as
+   * the default barrier.
    *
    * An edge nobody wrote to stays silent: with no writes, there is nothing to
    * run the target on.
@@ -1206,13 +1212,7 @@ export class PregelLoop {
       // codebase tells channels apart (and the house lint rule).
       if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
       const barrier = channel as InclusiveNamedBarrierValue<string>;
-      if (barrier.seen.size === 0 || barrier.seen.size >= barrier.names.size) {
-        continue;
-      }
-      const missing = [...barrier.names].filter(
-        (node) => !barrier.seen.has(node)
-      );
-      barrier.update(missing);
+      if (barrier.releaseArrived() === undefined) continue;
       // The same version bump `_applyWrites` gives an updated channel, so the
       // target's trigger sees a version newer than the one it last observed.
       this.checkpoint.channel_versions[name] = this.checkpointerGetNextVersion(
@@ -1225,6 +1225,45 @@ export class PregelLoop {
       released = true;
     }
     return released;
+  }
+
+  /**
+   * Give every task triggered by a released inclusive edge its release record
+   * — which listed nodes arrived and which never ran — via the task
+   * scratchpad, where {@link waitingEdgeRelease} reads it.
+   *
+   * Derived from the channel each time tasks are prepared, not captured at
+   * release time: the barrier keeps its `released` flag and partial `seen`
+   * until the target's superstep is applied, so the record survives an
+   * `interruptBefore` on the target and a resume from a checkpoint written in
+   * between.
+   */
+  protected _attachWaitingEdgeReleases(): void {
+    let releases:
+      | { target: string; arrived: string[]; missing: string[] }[]
+      | undefined;
+    for (const [name, channel] of Object.entries(this.channels)) {
+      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
+      const barrier = channel as InclusiveNamedBarrierValue<string>;
+      if (!barrier.released) continue;
+      releases ??= [];
+      releases.push({
+        target: name.slice(name.lastIndexOf(CHECKPOINT_NAMESPACE_END) + 1),
+        arrived: [...barrier.seen],
+        missing: [...barrier.names].filter((node) => !barrier.seen.has(node)),
+      });
+    }
+    if (releases === undefined) return;
+    for (const task of Object.values(this.tasks)) {
+      const release = releases.find((entry) => entry.target === task.name);
+      if (release === undefined) continue;
+      const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+        | PregelScratchpad
+        | undefined;
+      if (scratchpad !== undefined) {
+        scratchpad.waitingEdgeRelease = release;
+      }
+    }
   }
 
   async finishAndHandleError(error?: Error) {

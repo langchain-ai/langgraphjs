@@ -1279,7 +1279,9 @@ export class StateGraph<
    * releases with the listed nodes that did complete. A `Send` in flight is a
    * scheduled task, so it holds the release rather than being missed; the edge
    * re-arms after it releases, the same as the default; and an edge that
-   * received nothing stays silent. An interrupted run keeps the edge armed and
+   * received nothing stays silent. Inside `endKey`, `waitingEdgeRelease()`
+   * tells a quiescence release from an ordinary one, naming the nodes that
+   * arrived and the ones that never ran. An interrupted run keeps the edge armed and
    * reports its target in `next`, so a paused run does not read as a finished
    * one — the release happens once the resumed run settles. Because the edge
    * re-arms, a listed node that completes again after a release runs `endKey`
