@@ -357,6 +357,107 @@ describe("inclusive waiting edges", () => {
     expect(count(result.ran, "join")).toBe(2);
   });
 
+  it("a fork from the pre-release checkpoint releases once in the fork", async () => {
+    // Time travel: the armed checkpoint is in history (with `next` naming the
+    // target); re-running from it releases again, once, in the fork only.
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("w2", mark("w2"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "w2"], ["w0", "w1", "w2"])
+      .addEdge(["w1", "w0", "w2"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "fork-armed" } };
+
+    await graph.invoke({}, config);
+    let armedId: string | undefined;
+    for await (const snapshot of graph.getStateHistory(config)) {
+      if (snapshot.waitingEdges?.length) {
+        expect(snapshot.next).toEqual(["join"]);
+        armedId = snapshot.config.configurable?.checkpoint_id as string;
+        break;
+      }
+    }
+    expect(armedId).toBeDefined();
+
+    const fork = (await graph.invoke(null, {
+      configurable: { thread_id: "fork-armed", checkpoint_id: armedId },
+    })) as { ran: string[] };
+    expect(count(fork.ran, "join")).toBe(1);
+  });
+
+  it("updateState as the missing node completes the barrier — join runs once, not twice", async () => {
+    // The manual write and the quiescence release must not stack: once the
+    // barrier is complete, the edge fires through completeness alone.
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("w2", mark("w2"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "w2"], ["w0", "w1", "w2"])
+      .addEdge(["w1", "w0", "w2"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "update-missing" },
+      interruptAfter: ["w1" as const],
+    };
+
+    await graph.invoke({}, config);
+    await graph.updateState(
+      { configurable: { thread_id: "update-missing" } },
+      { ran: ["w0-manual"] },
+      "w0"
+    );
+    const afterUpdate = await graph.getState({
+      configurable: { thread_id: "update-missing" },
+    });
+    expect(afterUpdate.waitingEdges).toBeUndefined();
+    expect(afterUpdate.next).toEqual(["join"]);
+
+    const result = (await graph.invoke(null, {
+      configurable: { thread_id: "update-missing" },
+    })) as { ran: string[] };
+    expect(count(result.ran, "join")).toBe(1);
+  });
+
+  it("an unrelated updateState keeps the edge armed and `next` naming the target", async () => {
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("w2", mark("w2"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "w2"], ["w0", "w1", "w2"])
+      .addEdge(["w1", "w0", "w2"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "update-unrelated" },
+      interruptAfter: ["w1" as const],
+    };
+
+    await graph.invoke({}, config);
+    await graph.updateState(
+      { configurable: { thread_id: "update-unrelated" } },
+      { ran: ["annotation"] },
+      "join"
+    );
+    const afterUpdate = await graph.getState({
+      configurable: { thread_id: "update-unrelated" },
+    });
+    expect(afterUpdate.waitingEdges).toEqual([
+      { target: "join", completed: ["w1", "w2"], missing: ["w0"] },
+    ]);
+    expect(afterUpdate.next).toEqual(["join"]);
+
+    const result = (await graph.invoke(null, {
+      configurable: { thread_id: "update-unrelated" },
+    })) as { ran: string[] };
+    expect(count(result.ran, "join")).toBe(1);
+  });
+
   it("two inclusive edges listing each other's targets never settle", async () => {
     // The OR-join vicious circle: each release re-arms the other edge, so the
     // graph livelocks and ends at the recursion limit — where the same shape

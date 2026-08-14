@@ -40,6 +40,8 @@ type Spec = {
   entrySubset: string[];
   chains: Array<[string, string]>;
   loopFrom: string | undefined;
+  loopTo: string | undefined;
+  loopPasses: number;
   sendFrom: string | undefined;
   sendTo: string | undefined;
   joins: Array<{ target: string; sources: string[]; inclusive: boolean }>;
@@ -61,7 +63,13 @@ const genSpec = (seed: number): Spec => {
     }
   }
 
+  // a bounded loop with a random re-entry point and pass count: `loopFrom`
+  // routes back to `loopTo` until it has itself run `loopPasses` times
   const loopFrom = r() < 0.3 ? workers[workerCount - 1] : undefined;
+  const loopTo = loopFrom
+    ? workers[Math.floor(r() * (workerCount - 1))]
+    : undefined;
+  const loopPasses = 2 + (r() < 0.4 ? 1 : 0);
 
   const sendFrom = r() < 0.3 ? workers[0] : undefined;
   const sendTo = sendFrom
@@ -85,6 +93,8 @@ const genSpec = (seed: number): Spec => {
     entrySubset,
     chains,
     loopFrom,
+    loopTo,
+    loopPasses,
     sendFrom,
     sendTo,
     joins,
@@ -101,13 +111,15 @@ const buildGraph = (spec: Spec, checkpointer?: MemorySaver) => {
   g = g.addConditionalEdges(START, () => spec.entrySubset, spec.workers);
   for (const [from, to] of spec.chains) g = g.addEdge(from, to);
 
-  if (spec.loopFrom) {
+  if (spec.loopFrom && spec.loopTo) {
     const from = spec.loopFrom;
+    const to = spec.loopTo;
+    const passes = spec.loopPasses;
     g = g.addConditionalEdges(
       from,
       (s: { ran: string[] }) =>
-        s.ran.filter((x) => x === from).length < 2 ? "w0" : END,
-      ["w0", END]
+        s.ran.filter((x) => x === from).length < passes ? to : END,
+      [to, END]
     );
   }
   if (spec.sendFrom && spec.sendTo) {
