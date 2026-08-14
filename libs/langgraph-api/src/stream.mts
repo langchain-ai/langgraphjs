@@ -1,4 +1,8 @@
-import { BaseMessageChunk, isBaseMessage } from "@langchain/core/messages";
+import {
+  AIMessageChunk,
+  BaseMessageChunk,
+  isBaseMessage,
+} from "@langchain/core/messages";
 import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import type {
   BaseCheckpointSaver,
@@ -150,6 +154,57 @@ function preprocessDebugCheckpoint(payload: DebugCheckpoint): StreamCheckpoint {
 
 let LANGGRAPH_VERSION: { name: string; version: string } | undefined;
 
+/**
+ * Recover the tool_call args of a message whose chunks came from a provider
+ * that re-sends the cumulative args string per chunk instead of a delta
+ * (#2570). Concatenation is kept during the stream; once the model run ends,
+ * an args string that does not parse, whose chunks form a growing prefix
+ * chain and whose last chunk parses on its own, is replaced by that last
+ * chunk. Anything whose concatenation parses is left untouched, so a
+ * compliant stream never changes; output that was already invalid may be
+ * read as its only parsing interpretation instead of surfacing as
+ * `Malformed args.`.
+ */
+function recoverCumulativeToolArgs(
+  message: BaseMessageChunk,
+  chunksByIndex: Record<number, string[]>
+): AIMessageChunk | null {
+  if (!(message instanceof AIMessageChunk) || !message.tool_call_chunks?.length)
+    return null;
+  let changed = false;
+  const toolCallChunks = message.tool_call_chunks.map((chunk) => {
+    const parts = chunksByIndex[chunk.index ?? 0];
+    if (chunk.args == null || parts == null || parts.length < 2) return chunk;
+    try {
+      JSON.parse(chunk.args);
+      return chunk;
+    } catch {
+      // fall through to the recovery check
+    }
+    for (let i = 1; i < parts.length; i += 1) {
+      if (!parts[i].startsWith(parts[i - 1])) return chunk;
+    }
+    const last = parts[parts.length - 1];
+    try {
+      JSON.parse(last);
+    } catch {
+      return chunk;
+    }
+    changed = true;
+    return { ...chunk, args: last };
+  });
+  if (!changed) return null;
+  return new AIMessageChunk({
+    id: message.id,
+    content: message.content,
+    additional_kwargs: message.additional_kwargs,
+    response_metadata: message.response_metadata,
+    usage_metadata: message.usage_metadata,
+    name: message.name,
+    tool_call_chunks: toolCallChunks,
+  });
+}
+
 export async function* streamState(
   run: Run,
   options: {
@@ -266,6 +321,9 @@ export async function* streamState(
 
   const messages: Record<string, BaseMessageChunk> = {};
   const completedIds = new Set<string>();
+  // raw tool_call args chunks per message id and tool_call index, kept for the
+  // end-of-call recovery of cumulative-args providers (#2570)
+  const argsChunks: Record<string, Record<number, string[]>> = {};
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
@@ -397,7 +455,25 @@ export async function* streamState(
           messages[message.id] = messages[message.id].concat(message);
         }
 
+        for (const chunk of message.tool_call_chunks ?? []) {
+          if (chunk.args == null) continue;
+          const byIndex = (argsChunks[message.id] ??= {});
+          (byIndex[chunk.index ?? 0] ??= []).push(chunk.args);
+        }
+
         yield { event: "messages/partial", data: [messages[message.id]] };
+      } else if (
+        event.event === "on_chat_model_end" &&
+        !event.tags?.includes("nostream")
+      ) {
+        const output: BaseMessageChunk | undefined = event.data.output;
+        const id = output?.id;
+        if (!id || messages[id] == null || argsChunks[id] == null) continue;
+        const recovered = recoverCumulativeToolArgs(messages[id], argsChunks[id]);
+        if (recovered != null) {
+          messages[id] = recovered;
+          yield { event: "messages/partial", data: [recovered] };
+        }
       }
     }
   }
