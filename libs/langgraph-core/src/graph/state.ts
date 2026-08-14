@@ -1279,8 +1279,15 @@ export class StateGraph<
    * releases with the listed nodes that did complete. A `Send` in flight is a
    * scheduled task, so it holds the release rather than being missed; the edge
    * re-arms after it releases, the same as the default; and an edge that
-   * received nothing stays silent. Not compatible with `defer: true` on
-   * `endKey`, which already postpones the node to the end of the run.
+   * received nothing stays silent. An interrupted run keeps the edge armed and
+   * reports its target in `next`, so a paused run does not read as a finished
+   * one — the release happens once the resumed run settles. Because the edge
+   * re-arms, a listed node that completes again after a release runs `endKey`
+   * again: one run per arming, the same accumulation rule the default barrier
+   * has. Two inclusive edges that list each other's targets never settle —
+   * each release re-arms the other — and such a run ends only at the recursion
+   * limit. Not compatible with `defer: true` on `endKey`, which already
+   * postpones the node to the end of the run.
    *
    * Without the option, separate edges plus `defer: true` on `endKey`
    * approximate the same semantics — every arrival is a trigger and deferring

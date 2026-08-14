@@ -301,4 +301,82 @@ describe("inclusive waiting edges", () => {
       builder.addEdge("a", "b", { inclusive: true })
     ).toThrow(/array of start nodes/);
   });
+
+  it("an interrupt at the release point does not read as a finished run", async () => {
+    // Found by fuzzing: interruptAfter can land on the quiescent superstep,
+    // where nothing is scheduled and the edge is armed. Empty `next` is the
+    // documented end-of-run signal, so the armed edge must put its target
+    // there — it will run, at latest when the resumed run settles.
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("w2", mark("w2"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "w2"], ["w0", "w1", "w2"])
+      .addEdge(["w1", "w0", "w2"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "parked-at-release" },
+      interruptAfter: ["w1" as const],
+    };
+
+    await graph.invoke({}, config);
+    const paused = await graph.getState(config);
+    expect(paused.next).toEqual(["join"]);
+    expect(paused.waitingEdges).toEqual([
+      { target: "join", completed: ["w1", "w2"], missing: ["w0"] },
+    ]);
+
+    const result = (await graph.invoke(null, config)) as { ran: string[] };
+    expect(result.ran).toEqual(["w1", "w2", "join"]);
+    const done = await graph.getState(config);
+    expect(done.next).toEqual([]);
+    expect(done.waitingEdges).toBeUndefined();
+  });
+
+  it("a listed node that completes twice re-arms the edge — once per arming", async () => {
+    // Found by fuzzing: w1 is triggered by the entry AND by a chain from w0,
+    // so it completes in two supersteps. The first completeness releases the
+    // edge; the second w1 re-arms it; quiescence releases it again. Two runs
+    // for two armings — the default barrier's accumulation rule, without the
+    // final drop.
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w0", "w1"], ["w0", "w1"])
+      .addEdge("w0", "w1")
+      .addEdge(["w0", "w1"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .compile();
+
+    const result = (await graph.invoke({})) as { ran: string[] };
+
+    expect(count(result.ran, "w1")).toBe(2);
+    expect(count(result.ran, "join")).toBe(2);
+  });
+
+  it("two inclusive edges listing each other's targets never settle", async () => {
+    // The OR-join vicious circle: each release re-arms the other edge, so the
+    // graph livelocks and ends at the recursion limit — where the same shape
+    // with default edges stalls silently. An error beats a silent stall, but
+    // the shape itself is a modelling error; pinned so a change to this
+    // outcome is a decision.
+    const graph = new StateGraph(State)
+      .addNode("a", mark("a"))
+      .addNode("b", mark("b"))
+      .addNode("j1", mark("j1"))
+      .addNode("j2", mark("j2"))
+      .addConditionalEdges(START, () => "a", ["a", "b"])
+      .addEdge(["a", "j2"], "j1", { inclusive: true })
+      .addEdge(["b", "j1"], "j2", { inclusive: true })
+      .addEdge("j1", END)
+      .addEdge("j2", END)
+      .compile();
+
+    await expect(
+      graph.invoke({}, { recursionLimit: 25 })
+    ).rejects.toThrow(/Recursion limit/);
+  });
 });

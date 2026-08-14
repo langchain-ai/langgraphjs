@@ -660,6 +660,11 @@ export interface StateSnapshot {
    *
    * While a run is interrupted, entries here are expected and clear once the
    * remaining nodes complete on resume; `next` is non-empty in that case.
+   *
+   * An edge created with `{ inclusive: true }` never sits here against an
+   * empty `next`: it always fires — at latest when the resumed run settles —
+   * so its `target` is reported in `next` whenever nothing else is scheduled,
+   * and a run paused at the release point does not read as a finished one.
    */
   readonly waitingEdges?: WaitingEdgeDescription[];
 }

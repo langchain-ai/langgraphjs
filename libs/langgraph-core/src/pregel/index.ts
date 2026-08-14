@@ -1102,6 +1102,23 @@ export class Pregel<
       .filter((task) => task.writes.length === 0)
       .map((task) => task.name as string);
 
+    // An armed inclusive edge always fires — through completeness while
+    // anything is scheduled, or at quiescence with the nodes that arrived — so
+    // when no task is scheduled its target is what runs next. Left out, a run
+    // interrupted at the release point would read as a finished one: empty
+    // `next` is the documented "the run is over" signal.
+    if (nextList.length === 0) {
+      for (const [name, channel] of Object.entries(channels)) {
+        if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
+        const { seen, names } = channel as unknown as {
+          seen: Set<string>;
+          names: Set<string>;
+        };
+        if (seen.size === 0 || seen.size >= names.size) continue;
+        nextList.push(name.slice(name.lastIndexOf(":") + 1));
+      }
+    }
+
     const waitingEdges: WaitingEdgeDescription[] = [
       ...collectWaitingEdges(channels),
       ...(subgraphCheckpointer && this._hasSubgraphNode()
