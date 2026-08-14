@@ -1261,12 +1261,25 @@ export class StateGraph<
    *
    * The edge re-arms after it releases, so a loop that runs every listed node
    * again triggers it again. A loop that re-enters only some of them leaves it
-   * waiting for the rest.
+   * waiting for the rest — and the rest may arrive on a later pass, which
+   * triggers `endKey` with writes made in different passes. A router that
+   * alternates between listed nodes releases the edge that way rather than
+   * never.
    *
    * Separate edges into the same target are not equivalent to a waiting edge.
    * They trigger `endKey` on every arrival rather than once for all of them, so
    * when the branches have different lengths `endKey` runs once per superstep
    * in which any of them completes.
+   *
+   * Between those two lies a third thing neither spells: run `endKey` **once**,
+   * with whatever arrived, whether that is every listed node or one of them.
+   * Separate edges plus `defer: true` on `endKey` do that — the separate edges
+   * make every arrival a trigger, and deferring collapses them into a single run
+   * after the rest of the graph has settled. Two things to know before choosing
+   * it: `endKey` then waits for unrelated work elsewhere in the graph as well,
+   * since `defer` means "last", not "after my predecessors"; and a `Send`
+   * addressed to `endKey` still runs it separately, so the single-run property
+   * holds for edges and not for sends.
    *
    * An edge that never released is reported as `waitingEdges` on the snapshot
    * returned by `getState()`, naming the nodes that completed and the ones that
