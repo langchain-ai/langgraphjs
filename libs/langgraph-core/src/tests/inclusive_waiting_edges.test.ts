@@ -4,6 +4,7 @@ import { Annotation, StateGraph } from "../graph/index.js";
 import { START, END, Send, Command } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { waitingEdgeRelease } from "../waiting_edge_release.js";
+import { RunControl } from "../pregel/runtime.js";
 
 const State = Annotation.Root({
   ran: Annotation<string[]>({
@@ -519,6 +520,44 @@ describe("inclusive waiting edges", () => {
     expect(observed).toEqual([
       { target: "join", arrived: ["w1"], missing: ["w0"] },
     ]);
+  });
+
+  it("a drain at the release point reports a resumable stop, not a finished run", async () => {
+    // Found by probing the drain exit: without the guard, a drain landing on
+    // the quiescent superstep resolved the run with the join silently dropped
+    // — the original disease through a different door. An armed inclusive
+    // edge is remaining work, so the drain must surface as one.
+    const control = new RunControl();
+    const graph = new StateGraph(State)
+      .addNode("w0", mark("w0"))
+      .addNode("w1", mark("w1"))
+      .addNode("drainer", () => {
+        control.requestDrain();
+        return { ran: ["drainer"] };
+      })
+      .addNode("join", mark("join"))
+      .addConditionalEdges(START, () => ["w1", "drainer"], [
+        "w0",
+        "w1",
+        "drainer",
+      ])
+      .addEdge(["w0", "w1"], "join", { inclusive: true })
+      .addEdge("join", END)
+      .addEdge("drainer", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "drain-at-release" } };
+
+    await expect(graph.invoke({}, { ...config, control })).rejects.toThrow(
+      /Graph drained/
+    );
+    const paused = await graph.getState(config);
+    expect(paused.next).toEqual(["join"]);
+    expect(paused.waitingEdges).toEqual([
+      { target: "join", completed: ["w1"], missing: ["w0"] },
+    ]);
+
+    const result = (await graph.invoke(null, config)) as { ran: string[] };
+    expect(result.ran).toEqual(["drainer", "w1", "join"]);
   });
 
   it("two inclusive edges listing each other's targets never settle", async () => {

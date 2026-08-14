@@ -1100,10 +1100,15 @@ export class PregelLoop {
       // scheduled — a `Send` in flight would be a pending task. Inclusive
       // waiting edges release here, with the nodes that did arrive; a drain
       // stops the run mid-flight, so it does not count as quiescence.
-      if (
-        !(this.control != null && this.control.drainRequested) &&
-        this._releaseInclusiveWaitingEdges()
-      ) {
+      if (this.control != null && this.control.drainRequested) {
+        // An armed inclusive edge is remaining work — it releases once the
+        // run truly settles — so a drain here must report a resumable stop,
+        // not a completed run that silently dropped its join.
+        if (this._hasArmedInclusiveWaitingEdge()) {
+          this.status = "draining";
+          return false;
+        }
+      } else if (this._releaseInclusiveWaitingEdges()) {
         this.tasks = _prepareNextTasks(
           this.checkpoint,
           this.checkpointPendingWrites,
@@ -1186,6 +1191,22 @@ export class PregelLoop {
     }
 
     return true;
+  }
+
+  /** Is any inclusive waiting edge holding writes without having released? */
+  protected _hasArmedInclusiveWaitingEdge(): boolean {
+    for (const channel of Object.values(this.channels)) {
+      if (channel.lc_graph_name !== "InclusiveNamedBarrierValue") continue;
+      const barrier = channel as InclusiveNamedBarrierValue<string>;
+      if (
+        !barrier.released &&
+        barrier.seen.size > 0 &&
+        barrier.seen.size < barrier.names.size
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
