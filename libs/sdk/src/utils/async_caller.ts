@@ -87,7 +87,7 @@ export class HTTPError extends Error {
     this.response = response;
   }
 
-    static isInstance(error: unknown): error is HTTPError {
+  static isInstance(error: unknown): error is HTTPError {
     return (
       typeof error === "object" &&
       error !== null &&
@@ -129,7 +129,6 @@ export class HTTPError extends Error {
  * means that by default, each call will be retried up to 5 times, with an
  * exponential backoff between each attempt.
  */
-
 
 export class AsyncCaller {
   protected maxConcurrency: AsyncCallerParams["maxConcurrency"];
