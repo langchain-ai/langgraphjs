@@ -295,7 +295,7 @@ export function collectWaitingEdges(
     // Narrows both from `unknown`; no channel carrying this prefix is anything
     // other than a barrier, so this is a type guard rather than a runtime one.
     if (!isNodeNameSet(names) || !isNodeNameSet(seen)) continue;
-    // An inclusive barrier that released at quiescence is not stalled: its
+    // An inclusive barrier that released when the run settled is not stalled: its
     // target is a scheduled task, and consume() will clear it.
     if (released === true) continue;
     // An empty `seen` means the edge released; a full one means it is waiting for

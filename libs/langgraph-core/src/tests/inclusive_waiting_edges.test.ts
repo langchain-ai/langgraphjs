@@ -62,7 +62,7 @@ describe("inclusive waiting edges", () => {
   });
 
   it("does not fire early while a listed node is still on its way", async () => {
-    // Both branches selected, one a superstep deeper: quiescence is not
+    // Both branches selected, one a superstep deeper: the run settling is not
     // reached while `mid -> p2` is pending, so the edge releases through
     // ordinary completeness, exactly once, after p2.
     const graph = new StateGraph(State)
@@ -86,7 +86,7 @@ describe("inclusive waiting edges", () => {
   it("a Send to a listed node holds the release — the target runs exactly once", async () => {
     // The case that killed the two earlier release designs: a conditional
     // skips p2, then a Send delivers it a superstep later. The Send is a
-    // pending task, so there is no quiescence to release at; the barrier
+    // pending task, so the run has not settled and there is nothing to release at; the barrier
     // completes normally and the target runs once.
     const graph = new StateGraph(State)
       .addNode("p1", mark("p1"))
@@ -166,7 +166,7 @@ describe("inclusive waiting edges", () => {
   it("re-arms in a loop; a final incomplete pass still runs the target once", async () => {
     // Pass 1 selects both listed nodes, so the edge releases through
     // completeness and re-arms. Pass 2 selects only one; the run then
-    // quiesces and the re-armed edge releases with that one arrival.
+    // settles and the re-armed edge releases with that one arrival.
     const graph = new StateGraph(State)
       .addNode("fan", mark("fan"))
       .addNode("a", mark("a"))
@@ -246,7 +246,7 @@ describe("inclusive waiting edges", () => {
 
     await graph.invoke({}, config);
     const during = count(ran, "c");
-    // The paused run still answers a query honestly: the edge is armed.
+    // The paused run still answers a query honestly: the edge is holding its writes.
     const paused = await graph.getState(config);
     expect(paused.waitingEdges).toEqual([
       { target: "c", completed: ["a"], missing: ["b"] },
@@ -305,9 +305,9 @@ describe("inclusive waiting edges", () => {
   });
 
   it("an interrupt at the release point does not read as a finished run", async () => {
-    // Found by fuzzing: interruptAfter can land on the quiescent superstep,
-    // where nothing is scheduled and the edge is armed. Empty `next` is the
-    // documented end-of-run signal, so the armed edge must put its target
+    // Found by fuzzing: interruptAfter can land on the settled superstep,
+    // where nothing is scheduled and the edge is holding its writes. Empty `next` is the
+    // documented end-of-run signal, so the holding edge must put its target
     // there — it will run, at latest when the resumed run settles.
     const graph = new StateGraph(State)
       .addNode("w0", mark("w0"))
@@ -337,10 +337,10 @@ describe("inclusive waiting edges", () => {
     expect(done.waitingEdges).toBeUndefined();
   });
 
-  it("a listed node that completes twice re-arms the edge — once per arming", async () => {
+  it("a listed node that completes twice re-arms the edge — once per release cycle", async () => {
     // Found by fuzzing: w1 is triggered by the entry AND by a chain from w0,
     // so it completes in two supersteps. The first completeness releases the
-    // edge; the second w1 re-arms it; quiescence releases it again. Two runs
+    // edge; the second w1 re-arms it; the settled run releases it again. Two runs
     // for two armings — the default barrier's accumulation rule, without the
     // final drop.
     const graph = new StateGraph(State)
@@ -360,7 +360,7 @@ describe("inclusive waiting edges", () => {
   });
 
   it("a fork from the pre-release checkpoint releases once in the fork", async () => {
-    // Time travel: the armed checkpoint is in history (with `next` naming the
+    // Time travel: the pre-release checkpoint is in history (with `next` naming the
     // target); re-running from it releases again, once, in the fork only.
     const graph = new StateGraph(State)
       .addNode("w0", mark("w0"))
@@ -371,7 +371,7 @@ describe("inclusive waiting edges", () => {
       .addEdge(["w1", "w0", "w2"], "join", { inclusive: true })
       .addEdge("join", END)
       .compile({ checkpointer: new MemorySaver() });
-    const config = { configurable: { thread_id: "fork-armed" } };
+    const config = { configurable: { thread_id: "fork-held" } };
 
     await graph.invoke({}, config);
     let armedId: string | undefined;
@@ -385,13 +385,13 @@ describe("inclusive waiting edges", () => {
     expect(armedId).toBeDefined();
 
     const fork = (await graph.invoke(null, {
-      configurable: { thread_id: "fork-armed", checkpoint_id: armedId },
+      configurable: { thread_id: "fork-held", checkpoint_id: armedId },
     })) as { ran: string[] };
     expect(count(fork.ran, "join")).toBe(1);
   });
 
   it("updateState as the missing node completes the barrier — join runs once, not twice", async () => {
-    // The manual write and the quiescence release must not stack: once the
+    // The manual write and the settled-run release must not stack: once the
     // barrier is complete, the edge fires through completeness alone.
     const graph = new StateGraph(State)
       .addNode("w0", mark("w0"))
@@ -425,7 +425,7 @@ describe("inclusive waiting edges", () => {
     expect(count(result.ran, "join")).toBe(1);
   });
 
-  it("an unrelated updateState keeps the edge armed and `next` naming the target", async () => {
+  it("an unrelated updateState keeps the edge holding its writes and `next` naming the target", async () => {
     const graph = new StateGraph(State)
       .addNode("w0", mark("w0"))
       .addNode("w1", mark("w1"))
@@ -462,7 +462,7 @@ describe("inclusive waiting edges", () => {
 
   it("the released target can tell a partial release from a full one", async () => {
     // AC4.4: `waitingEdgeRelease()` names the arrived and missing nodes on a
-    // quiescence release, and returns undefined when the edge released
+    // settled-run release, and returns undefined when the edge released
     // through ordinary completeness.
     const observed: Array<unknown> = [];
     const build = (selection: string[]) =>
@@ -524,8 +524,8 @@ describe("inclusive waiting edges", () => {
 
   it("a drain at the release point reports a resumable stop, not a finished run", async () => {
     // Found by probing the drain exit: without the guard, a drain landing on
-    // the quiescent superstep resolved the run with the join silently dropped
-    // — the original disease through a different door. An armed inclusive
+    // the settled superstep resolved the run with the join silently dropped
+    // — the original disease through a different door. A holding inclusive
     // edge is remaining work, so the drain must surface as one.
     const control = new RunControl();
     const graph = new StateGraph(State)
@@ -562,7 +562,7 @@ describe("inclusive waiting edges", () => {
 
   it("two inclusive edges into one target: one run, and the record is their union", async () => {
     // Found by the four-hats red team: both barriers release at the same
-    // quiescence and trigger ONE task; the first version of the record kept
+    // one settle point and trigger ONE task; the first version of the record kept
     // only the first edge's arrivals.
     const observed: Array<unknown> = [];
     const graph = new StateGraph(State)
@@ -588,7 +588,7 @@ describe("inclusive waiting edges", () => {
     ]);
   });
 
-  it("a Send straight at the armed target runs it separately — edges, not sends", async () => {
+  it("a Send straight at the held target runs it separately — edges, not sends", async () => {
     const graph = new StateGraph(State)
       .addNode("w0", mark("w0"))
       .addNode("w1", mark("w1"))
@@ -609,7 +609,7 @@ describe("inclusive waiting edges", () => {
     expect(count(result.ran, "join")).toBe(2);
   });
 
-  it("removing the option later leaves an armed thread honest, not corrupt", async () => {
+  it("removing the option later leaves a holding thread honest, not corrupt", async () => {
     // Found by the four-hats red team: the inclusive barrier checkpoints
     // [seen, released]; before the restore tolerance, resuming without the
     // flag fed the tuple to the default barrier, whose seen became a set of
@@ -656,7 +656,7 @@ describe("inclusive waiting edges", () => {
     ]);
   });
 
-  it("adding the option to an existing armed thread releases on resume", async () => {
+  it("adding the option to an existing holding thread releases on resume", async () => {
     const saver = new MemorySaver();
     let boom = true;
     const build = (inclusive: boolean) =>

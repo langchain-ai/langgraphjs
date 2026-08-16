@@ -244,7 +244,7 @@ describe("fuzz: inclusive waiting edges across random graph shapes", () => {
       try {
         await graph.invoke({}, config);
         // `next` alone decides whether the run is over — which is what the
-        // armed-inclusive-edge augmentation of `next` guarantees
+        // holding-inclusive-edge augmentation of `next` guarantees
         for (let hop = 0; hop < 20; hop += 1) {
           const snapshot = await graph.getState(config);
           if (snapshot.next.length === 0) break;

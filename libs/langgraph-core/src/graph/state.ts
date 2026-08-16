@@ -1280,19 +1280,19 @@ export class StateGraph<
    * scheduled task, so it holds the release rather than being missed; the edge
    * re-arms after it releases, the same as the default; and an edge that
    * received nothing stays silent. Inside `endKey`, `waitingEdgeRelease()`
-   * tells a quiescence release from an ordinary one, naming the nodes that
-   * arrived and the ones that never ran. An interrupted run keeps the edge armed and
+   * tells a settled-run release from an ordinary one, naming the nodes that
+   * arrived and the ones that never ran. An interrupted run keeps the edge holding its writes and
    * reports its target in `next`, so a paused run does not read as a finished
    * one — the release happens once the resumed run settles. Because the edge
    * re-arms, a listed node that completes again after a release runs `endKey`
-   * again: one run per arming, the same accumulation rule the default barrier
+   * again: one run per release cycle, the same accumulation rule the default barrier
    * has. Two inclusive edges that list each other's targets never settle —
    * each release re-arms the other — and such a run ends only at the recursion
    * limit. A `Send` addressed to `endKey` itself still runs it separately —
    * the single-run property is about edges, not sends. Several inclusive
    * edges into one `endKey` that release together produce a single run whose
    * release record is their union. Removing the option later is safe for
-   * existing threads: an armed edge restores the names it has seen and
+   * existing threads: an edge holding writes restores the names it has seen and
    * follows the default wait-for-all rule from there. Not compatible with
    * `defer: true` on `endKey`, which already postpones the node to the end of
    * the run.

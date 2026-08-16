@@ -1108,9 +1108,9 @@ export class PregelLoop {
       // derivation produced nothing, so nothing is running and nothing is
       // scheduled — a `Send` in flight would be a pending task. Inclusive
       // waiting edges release here, with the nodes that did arrive; a drain
-      // stops the run mid-flight, so it does not count as quiescence.
+      // stops the run mid-flight, so it does not count as the run settling.
       if (this.control != null && this.control.drainRequested) {
-        // An armed inclusive edge is remaining work — it releases once the
+        // An inclusive edge holding writes is remaining work — it releases once the
         // run truly settles — so a drain here must report a resumable stop,
         // not a completed run that silently dropped its join.
         if (
@@ -1227,7 +1227,7 @@ export class PregelLoop {
   /**
    * Release every inclusive waiting edge — `addEdge([...], target,
    * { inclusive: true })` — that has received some of its listed nodes but not
-   * all. The caller invokes this only at quiescence, where no further write
+   * all. The caller invokes this only once the run has settled, where no further write
    * can arrive, so "the nodes that arrived" is final. The release is a flag on
    * the barrier rather than fabricated writes — `seen` keeps only the nodes
    * that actually wrote, so checkpoints stay truthful and the target can be

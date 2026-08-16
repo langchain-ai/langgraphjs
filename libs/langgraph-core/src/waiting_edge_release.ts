@@ -19,7 +19,7 @@ export interface WaitingEdgeRelease {
 /**
  * Call inside a node to learn how the node came to run, when its trigger is
  * an inclusive waiting edge — `addEdge([...], target, { inclusive: true })` —
- * released at quiescence with only some of its listed nodes.
+ * released, once the run settled, with only some of its listed nodes.
  *
  * Returns the arrived and missing node names, or `undefined` when the edge
  * released through ordinary completeness (every listed node ran) or the node

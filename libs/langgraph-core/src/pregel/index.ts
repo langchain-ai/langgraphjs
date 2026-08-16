@@ -1103,8 +1103,8 @@ export class Pregel<
       .filter((task) => task.writes.length === 0)
       .map((task) => task.name as string);
 
-    // An armed inclusive edge always fires — through completeness while
-    // anything is scheduled, or at quiescence with the nodes that arrived — so
+    // An inclusive edge holding writes always fires — through completeness while
+    // anything is scheduled, or once the run settles, with the nodes that arrived — so
     // when no task is scheduled its target is what runs next. Left out, a run
     // interrupted at the release point would read as a finished one: empty
     // `next` is the documented "the run is over" signal.
@@ -1112,7 +1112,7 @@ export class Pregel<
       for (const [name, channel] of Object.entries(channels)) {
         if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
         const { seen, names, released } = channel;
-        // A barrier that already released has a real task; only an armed one
+        // A barrier that already released has a real task; only one still holding writes
         // needs its target surfaced here.
         if (released || seen.size === 0 || seen.size >= names.size) continue;
         nextList.push(name.slice(name.lastIndexOf(":") + 1));

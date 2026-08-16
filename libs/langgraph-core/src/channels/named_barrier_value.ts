@@ -91,7 +91,7 @@ export class NamedBarrierValue<Value> extends BaseChannel<
 /**
  * The barrier behind `addEdge([...], target, { inclusive: true })`. Between
  * supersteps it behaves like {@link NamedBarrierValue}; additionally the
- * Pregel loop may release it at quiescence — no task running, none scheduled,
+ * Pregel loop may release it once the run settles — no task running, none scheduled,
  * so no further write can arrive — while only some of its names were seen.
  *
  * The release is a flag rather than fabricated writes: `seen` keeps only the
