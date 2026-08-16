@@ -455,10 +455,12 @@ export async function* streamState(
           messages[message.id] = messages[message.id].concat(message);
         }
 
-        for (const chunk of message.tool_call_chunks ?? []) {
-          if (chunk.args == null) continue;
-          const byIndex = (argsChunks[message.id] ??= {});
-          (byIndex[chunk.index ?? 0] ??= []).push(chunk.args);
+        if (message instanceof AIMessageChunk) {
+          for (const chunk of message.tool_call_chunks ?? []) {
+            if (chunk.args == null) continue;
+            const byIndex = (argsChunks[message.id] ??= {});
+            (byIndex[chunk.index ?? 0] ??= []).push(chunk.args);
+          }
         }
 
         yield { event: "messages/partial", data: [messages[message.id]] };
@@ -469,7 +471,10 @@ export async function* streamState(
         const output: BaseMessageChunk | undefined = event.data.output;
         const id = output?.id;
         if (!id || messages[id] == null || argsChunks[id] == null) continue;
-        const recovered = recoverCumulativeToolArgs(messages[id], argsChunks[id]);
+        const recovered = recoverCumulativeToolArgs(
+          messages[id],
+          argsChunks[id]
+        );
         if (recovered != null) {
           messages[id] = recovered;
           yield { event: "messages/partial", data: [recovered] };
