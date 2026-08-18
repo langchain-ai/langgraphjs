@@ -31,6 +31,10 @@
  *      iterators in framework bindings — one event-loop tick to
  *      observe terminal-related state (e.g. the final assistant
  *      message landing in `values`) before `isLoading` settles.
+ *      The deferred callback re-checks whether a newer `running`
+ *      arrived in the meantime (HITL interrupt → resume, or SSE
+ *      history replay of interrupted → running) and bails if so,
+ *      so a stale terminal reset cannot stomp an active run.
  *
  * # Why it's safe to register the listener as `controller.onEvent`
  *
@@ -74,6 +78,14 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   #lastTerminalLifecycleSeq = -1;
 
   /**
+   * Highest sequence number of a `running` lifecycle we've observed.
+   * Deferred terminal resets compare against this so an
+   * `interrupted`/`completed`/`failed` whose macrotask fires after a
+   * newer `running` does not incorrectly clear `isLoading`.
+   */
+  #lastRunningLifecycleSeq = -1;
+
+  /**
    * @param params.store      - Store whose `isLoading` slot we drive.
    * @param params.isDisposed - Disposal probe consulted from deferred callbacks.
    */
@@ -94,11 +106,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   /**
    * Reset internal state when rebinding to a new thread.
    *
-   * The terminal-seq guard is per-thread: a new thread's `running`
-   * events are not stale relative to the old thread's terminals.
+   * The seq guards are per-thread: a new thread's lifecycle events
+   * are not stale relative to the old thread's.
    */
   reset(): void {
     this.#lastTerminalLifecycleSeq = -1;
+    this.#lastRunningLifecycleSeq = -1;
   }
 
   /**
@@ -123,6 +136,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       if (seq != null && seq <= this.#lastTerminalLifecycleSeq) {
         return;
       }
+      if (seq != null) {
+        this.#lastRunningLifecycleSeq = Math.max(
+          this.#lastRunningLifecycleSeq,
+          seq
+        );
+      }
       this.#store.setState((s) =>
         s.isLoading ? s : { ...s, isLoading: true }
       );
@@ -142,9 +161,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       // Flip `isLoading=false` on the next macrotask so synchronous
       // consumers iterating events get one tick to observe terminal
       // state (the final values snapshot etc.) before the loading
-      // indicator drops.
+      // indicator drops. Bail if a newer `running` arrived since this
+      // terminal was scheduled (answered HITL interrupt, back-to-back
+      // runs, or history replay of interrupted → running).
       setTimeout(() => {
         if (this.#isDisposed()) return;
+        if (seq != null && this.#lastRunningLifecycleSeq > seq) return;
         this.#store.setState((s) =>
           s.isLoading ? { ...s, isLoading: false } : s
         );

@@ -155,6 +155,41 @@ describe("LifecycleLoadingTracker", () => {
     expect(store.getSnapshot().isLoading).toBe(true);
   });
 
+  it("keeps isLoading true when a newer running supersedes a deferred interrupt reset", () => {
+    // Hydration / SSE replay of an answered HITL interrupt delivers
+    // interrupted → running in the same turn. The interrupt's deferred
+    // isLoading=false must not stomp the subsequent running.
+    const store = makeStore();
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+    });
+
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
+    tracker.handle(lifecycleEvent({ event: "interrupted" }, { seq: 34 }));
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 35 }));
+
+    expect(store.getSnapshot().isLoading).toBe(true);
+
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(true);
+  });
+
+  it("still clears isLoading when a deferred terminal is not superseded", () => {
+    const store = makeStore();
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+    });
+
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
+    tracker.handle(lifecycleEvent({ event: "interrupted" }, { seq: 34 }));
+
+    expect(store.getSnapshot().isLoading).toBe(true);
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(false);
+  });
+
   it("running events without a seq always pass through", () => {
     const store = makeStore();
     const tracker = new LifecycleLoadingTracker({
@@ -204,6 +239,24 @@ describe("LifecycleLoadingTracker", () => {
     // After reset, an old-seq running is no longer considered stale.
     tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
     expect(store.getSnapshot().isLoading).toBe(true);
+  });
+
+  it("reset() clears the running-seq guard so a prior deferred terminal can settle", () => {
+    const store = makeStore();
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+    });
+
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
+    tracker.handle(lifecycleEvent({ event: "interrupted" }, { seq: 34 }));
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 35 }));
+    tracker.reset();
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
+    tracker.handle(lifecycleEvent({ event: "completed" }, { seq: 2 }));
+
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(false);
   });
 
   it("does not emit a redundant store update when isLoading is already true", () => {
