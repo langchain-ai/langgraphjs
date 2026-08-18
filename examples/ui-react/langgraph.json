@@ -6,6 +6,7 @@
     "react-agent": "./src/agents/react-agent.ts:agent",
     "deep-agent": "./src/agents/deep-agent.ts:agent",
     "human-in-the-loop": "./src/agents/human-in-the-loop.ts:agent",
+    "custom-interrupt": "./src/agents/custom-interrupt.ts:agent",
     "headless-tools": "./src/agents/headless-tools.ts:agent",
     "summarization-agent": "./src/agents/summarization-agent.ts:agent",
     "reasoning-agent": "./src/agents/reasoning-agent.ts:agent",

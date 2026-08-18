@@ -5,6 +5,7 @@
     "simple-tool-with-metrics": "./src/agents/simple-tool-with-metrics.ts:graph",
     "research-pipeline": "./src/agents/research-pipeline.ts:graph",
     "human-in-the-loop": "./src/agents/hitl-agent.ts:agent",
+    "custom-interrupt": "./src/agents/custom-interrupt.ts:graph",
     "deep-agent": "./src/agents/deep-agent.ts:agent",
     "a2a-research": "./src/agents/a2a-research.ts:graph"
   },

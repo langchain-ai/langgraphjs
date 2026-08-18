@@ -16,6 +16,7 @@
     "subgraphs:remote": "tsx src/subgraphs/remote.ts",
     "hitl:in-process": "tsx src/human-in-the-loop/in-process.ts",
     "hitl:remote": "tsx src/human-in-the-loop/remote.ts",
+    "hitl:reload": "tsx src/human-in-the-loop/reload-reconciliation.ts",
     "subagents:in-process": "tsx src/subagents/in-process.ts",
     "subagents:remote": "tsx src/subagents/remote.ts",
     "subagent-status:in-process": "tsx src/subagent-status/in-process.ts",

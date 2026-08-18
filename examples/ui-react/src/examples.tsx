@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import type { Transport } from "./api";
 import { BranchingChatView } from "./views/BranchingChatView";
 import { CustomChannelView } from "./views/CustomChannelView";
+import { CustomInterruptView } from "./views/CustomInterruptView";
 import { DeepAgentView } from "./views/DeepAgentView";
 import { FanOutView } from "./views/FanOutView";
 import { HeadlessToolsView } from "./views/HeadlessToolsView";
@@ -82,6 +83,14 @@ export const EXAMPLES: ExampleDefinition[] = [
     category: "agents",
     assistantId: "human-in-the-loop",
     component: HumanInTheLoopView,
+  },
+  {
+    id: "custom-interrupt",
+    title: "Custom Interrupt + Reload",
+    description: "Resolve a custom interrupt, then reload to check hydration.",
+    category: "langgraph",
+    assistantId: "custom-interrupt",
+    component: CustomInterruptView,
   },
   {
     id: "headless-tools",

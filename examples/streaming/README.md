@@ -93,6 +93,20 @@ npx tsx src/human-in-the-loop.ts
 
 Shows: `interrupt()`, `run.interrupted`, `run.interrupts`, `Command({ resume })`, multi-turn `streamEvents(..., { version: "v3" })`
 
+### `human-in-the-loop/reload-reconciliation.ts` — Resolved interrupt reload
+
+Runs a deterministic custom-interrupt graph through the UI stream controller:
+interrupt, respond, submit a follow-up turn, then recreate the controller with
+the same thread id to simulate a page reload. The example asserts that messages
+hydrate while the resolved interrupt stays cleared.
+
+```bash
+pnpm hitl:reload
+```
+
+Shows: `StreamController`, custom `interrupt()`, `respond()`, multi-turn state,
+thread hydration, resolved-interrupt reconciliation
+
 ### `a2a.ts` — A2A protocol over a deployed server
 
 End-to-end deployment example for custom stream transformers. The research
