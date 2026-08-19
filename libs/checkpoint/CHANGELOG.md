@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint
 
+## 0.1.2
+
+### Patch Changes
+
+- a1a8821: fix(checkpoint): narrow re-constructable types in JsonPlusSerializer
+
 ## 0.1.1
 
 ### Patch Changes
