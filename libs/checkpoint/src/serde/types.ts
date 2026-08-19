@@ -1,3 +1,11 @@
+export type ConstructorRecord = {
+  lc: 2;
+  type: "constructor";
+  id: unknown;
+  method?: unknown;
+  args?: unknown;
+};
+
 export const TASKS = "__pregel_tasks";
 export const ERROR = "__error__";
 export const SCHEDULED = "__scheduled__";

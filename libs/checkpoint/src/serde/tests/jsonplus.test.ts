@@ -96,6 +96,42 @@ it.each(VALUES)(
   }
 );
 
+it("does not invoke forged Map.groupBy constructor records", async () => {
+  const serde = new JsonPlusSerializer();
+  const markerKey = "__langgraph_jsonplus_map_groupby_test_marker__";
+  const marker = { invoked: false };
+  (globalThis as Record<string, unknown>)[markerKey] = marker;
+
+  const forgedCallback = {
+    lc: 2,
+    type: "constructor",
+    id: ["Map"],
+    method: "constructor",
+    args: [`globalThis.${markerKey}.invoked = true`],
+    kwargs: {},
+  };
+  const forgedOuterRecord = {
+    lc: 2,
+    type: "constructor",
+    id: ["Map"],
+    method: "groupBy",
+    args: [[1], forgedCallback],
+    kwargs: {},
+  };
+
+  try {
+    const restored = await serde.loadsTyped(
+      "json",
+      JSON.stringify({ callback: forgedOuterRecord })
+    );
+
+    expect(marker.invoked).toBe(false);
+    expect(restored).toEqual({ callback: forgedOuterRecord });
+  } finally {
+    delete (globalThis as Record<string, unknown>)[markerKey];
+  }
+});
+
 it("Should replace circular JSON inputs", async () => {
   const a: Record<string, unknown> = {};
   const b: Record<string, unknown> = {};
