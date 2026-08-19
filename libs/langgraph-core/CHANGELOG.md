@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.4.12
+
+### Patch Changes
+
+- [#2714](https://github.com/langchain-ai/langgraphjs/pull/2714) [`a2a59ec`](https://github.com/langchain-ai/langgraphjs/commit/a2a59ec6f8fdd93d4520d86fceab8a234dacf978) Thanks [@hntrl](https://github.com/hntrl)! - Update checkpoint integrations to require the patched checkpoint serializer release.
+
+- Updated dependencies [[`a2a59ec`](https://github.com/langchain-ai/langgraphjs/commit/a2a59ec6f8fdd93d4520d86fceab8a234dacf978)]:
+  - @langchain/langgraph-checkpoint@1.1.5
+
 ## 1.4.11
 
 ### Patch Changes
