@@ -330,8 +330,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               streamQueue.push(event.data as Message);
             }
           }
-          streamQueue.close();
-          return;
+          if (ac.signal.aborted || this.closed) {
+            streamQueue.close();
+            return;
+          }
+          throw new Error("Protocol SSE stream ended unexpectedly.");
         } catch (error) {
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
