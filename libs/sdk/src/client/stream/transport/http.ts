@@ -256,14 +256,28 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     // once. Do not advance it from observed `seq` values — those are
     // connection-local, and carrying them onto a post-connect reconnect
     // POST filters out the full Redis replay (heartbeats only). Pre-ready
-    // retries still send the caller cursor; only after a successful open
-    // do reconnects omit `since` and rely on durable `event_id` dedup.
+    // retries still send the caller cursor; after a successful open,
+    // reconnects omit `since` and send durable `since_event_id` instead.
     const initialSince =
       typeof (params as SubscribeParams & { since?: unknown }).since ===
       "number"
         ? (params as SubscribeParams & { since: number }).since
         : undefined;
 
+    const initialSinceEventId = (() => {
+      const raw = (
+        params as SubscribeParams & {
+          since_event_id?: unknown;
+          sinceEventId?: unknown;
+        }
+      ).since_event_id;
+      if (typeof raw === "string" && raw.length > 0) return raw;
+      const camel = (params as SubscribeParams & { sinceEventId?: unknown })
+        .sinceEventId;
+      return typeof camel === "string" && camel.length > 0 ? camel : undefined;
+    })();
+
+    let lastDurableEventId = initialSinceEventId;
     let readySettled = false;
 
     const startStream = async () => {
@@ -271,6 +285,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
       while (!ac.signal.aborted && !this.closed) {
         try {
+          const sinceEventId =
+            readySettled && lastDurableEventId != null
+              ? lastDurableEventId
+              : !readySettled
+                ? initialSinceEventId
+                : undefined;
           const response = await this.request(
             streamUrl,
             {
@@ -285,6 +305,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 ...(params.depth != null ? { depth: params.depth } : {}),
                 ...(!readySettled && initialSince != null
                   ? { since: initialSince }
+                  : {}),
+                ...(sinceEventId != null
+                  ? { since_event_id: sinceEventId }
                   : {}),
               }),
               signal: ac.signal,
@@ -327,7 +350,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              streamQueue.push(event.data as Message);
+              const message = event.data as Message;
+              if (
+                message.type === "event" &&
+                typeof message.event_id === "string" &&
+                message.event_id.length > 0
+              ) {
+                lastDurableEventId = message.event_id;
+              }
+              streamQueue.push(message);
             }
           }
           streamQueue.close();

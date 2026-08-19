@@ -70,6 +70,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   readonly #isDisposed: () => boolean;
 
   /**
+   * Optional run-boundary filter. When provided, root lifecycle events
+   * rejected by the gate (replay from other runs) are ignored.
+   */
+  readonly #acceptLifecycle: ((event: Event) => boolean) | undefined;
+
+  /**
    * Highest sequence number of a terminal lifecycle we've observed.
    * `running` events at or below this seq are stale replays and
    * are dropped to avoid flipping the loading flag back on after the
@@ -88,10 +94,16 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   /**
    * @param params.store      - Store whose `isLoading` slot we drive.
    * @param params.isDisposed - Disposal probe consulted from deferred callbacks.
+   * @param params.acceptLifecycle - Optional run-boundary accept predicate.
    */
-  constructor(params: { store: StreamStore<T>; isDisposed: () => boolean }) {
+  constructor(params: {
+    store: StreamStore<T>;
+    isDisposed: () => boolean;
+    acceptLifecycle?: (event: Event) => boolean;
+  }) {
     this.#store = params.store;
     this.#isDisposed = params.isDisposed;
+    this.#acceptLifecycle = params.acceptLifecycle;
   }
 
   /**
@@ -125,6 +137,9 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   handle(event: Event): void {
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
+    if (this.#acceptLifecycle != null && !this.#acceptLifecycle(event)) {
+      return;
+    }
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
     };

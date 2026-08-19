@@ -39,6 +39,8 @@ const EventsFilterSchema = z
     namespaces: z.array(z.array(z.string())).optional(),
     depth: z.number().int().nonnegative().optional(),
     since: z.number().int().nonnegative().optional(),
+    since_event_id: z.string().min(1).optional(),
+    sinceEventId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -500,11 +502,13 @@ export function registerProtocolRoutes(
 
       const body = c.req.valid("json");
       const sinkId = uuidv7();
+      const sinceEventId = body.since_event_id ?? body.sinceEventId;
       const filter: EventSinkFilter = {
         channels: new Set(body.channels),
         namespaces: body.namespaces,
         depth: body.depth,
         since: body.since,
+        ...(sinceEventId != null ? { sinceEventId } : {}),
       };
 
       return streamSSE(c, async (stream) => {

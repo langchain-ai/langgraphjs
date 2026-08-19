@@ -59,6 +59,8 @@ export interface ProtocolSseTransportOptions {
    * that hard-kills the serving pod). On idle the underlying read is aborted,
    * which the reconnect loop treats like any other disconnect and re-opens
    * the SSE without carrying a connection-local `since` (`seq` resets).
+   * After the first successful open, reconnects send durable
+   * `since_event_id` from the last observed `event_id` instead.
    *
    * - `"auto"` (`DEFAULT_IDLE_RECONNECT` from `utils/stream`): arm only once
    *   the server's SSE keep-alive heartbeats (LangGraph Platform:
