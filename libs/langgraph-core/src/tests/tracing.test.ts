@@ -174,7 +174,7 @@ it("merges graph-bound callbacks with invoke-time callbacks in streamEvents (no 
 });
 
 
-it("does not double stream tokens from a nested graph under tracing w", async () => {
+it("does not double stream tokens from a nested graph under tracing", async () => {
   // Regression for double-streaming: tracing installs the real
   // AsyncLocalStorage config, so a nested Pregel entry merges an ambient
   // config against an explicit config that already carries the same
@@ -211,7 +211,7 @@ it("does not double stream tokens from a nested graph under tracing w", async ()
       { streamMode: ["messages", "updates"], subgraphs: true }
     )) {
       if (mode !== "messages") continue;
-      const [message] = data as [BaseMessage];
+      const [message] = data;
       if (
         message?.getType?.() === "ai" &&
         typeof message.content === "string"
@@ -241,7 +241,12 @@ it("does not double stream tokens from a nested graph under tracing w", async ()
       .addEdge("delegate", END)
       .compile({ name: "Outer" });
 
-    await streamAndCollect(outer);
+    await gatherIterator(
+      outer.stream(
+        { messages: [{ role: "user", content: "say hello" }] },
+        { streamMode: ["messages", "updates"], subgraphs: true }
+      )
+    );
     expect(innerText).toBe(ANSWER);
   } finally {
     delete process.env.LANGSMITH_TRACING;
