@@ -1878,10 +1878,7 @@ export class StreamController<
          */
         while (!this.#disposed && pumpGeneration === this.#rootPumpGeneration) {
           for await (const event of subscription) {
-            if (
-              this.#disposed ||
-              pumpGeneration !== this.#rootPumpGeneration
-            ) {
+            if (this.#disposed || pumpGeneration !== this.#rootPumpGeneration) {
               break;
             }
             /**
