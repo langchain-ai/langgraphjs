@@ -1,5 +1,28 @@
 # @langchain/langgraph-sdk
 
+## 1.9.30
+
+### Patch Changes
+
+- [#2691](https://github.com/langchain-ai/langgraphjs/pull/2691) [`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear messages on hydrate(null) with a pending interrupt
+
+  Teardown awaited the paused root pump, so threadId went null while
+  the old conversation stayed on screen. Reset the snapshot first.
+
+- [#2703](https://github.com/langchain-ai/langgraphjs/pull/2703) [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep isLoading true across interrupt→running hydration
+
+  Deferred terminal resets no longer clear isLoading when a newer running lifecycle has already arrived (HITL resume / SSE replay).
+
+- [#2692](https://github.com/langchain-ai/langgraphjs/pull/2692) [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): adopt server metadata on same-id optimistic message echo
+
+  When a `values` snapshot echoes an optimistic human with the same
+  content plus committed `additional_kwargs` (e.g. attachment paths),
+  `stream.messages` now takes the server copy instead of keeping the
+  plain optimistic message until hydration. Preferring is asymmetric:
+  lagging or poorer values snapshots do not strip richer current
+  metadata. In-flight AI token streaming is unchanged: streamed content
+  still wins when it has moved past the snapshot.
+
 ## 1.9.29
 
 ### Patch Changes
