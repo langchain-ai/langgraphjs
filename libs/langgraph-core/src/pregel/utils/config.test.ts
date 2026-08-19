@@ -190,6 +190,127 @@ describe("ensureLangGraphConfig", () => {
     ]);
   });
 
+  class SharedHandler extends BaseCallbackHandler {
+    name = "shared_handler";
+  }
+
+  it("should not duplicate a handler held by both merged managers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    // The situation at a nested-runnable boundary: the ambient config and the
+    // child config both carry managers holding the SAME handler instances, so
+    // a plain concat re-registers every handler once per boundary (#2570).
+    const shared = new SharedHandler();
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(shared, true);
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(shared, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should keep distinct handler instances that share a name", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const first = new SharedHandler();
+    const second = new SharedHandler();
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(first, true);
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(second, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([first, second]);
+    expect(merged.inheritableHandlers).toEqual([first, second]);
+  });
+
+  it("should not duplicate a handler when the same callbacks array is merged twice", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const shared = new SharedHandler();
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [shared] },
+      { callbacks: [shared] }
+    );
+
+    expect(result.callbacks).toEqual([shared]);
+  });
+
+  it("should not re-add an array handler the base manager already holds", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const shared = new SharedHandler();
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(shared, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: [shared] }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should not re-add a base-array handler the provided manager already holds", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const shared = new SharedHandler();
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(shared, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [shared] },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should not re-add ambient handlers arriving again through an explicit config", () => {
+    const shared = new SharedHandler();
+    const ambientManager = new CallbackManager();
+    ambientManager.addHandler(shared, true);
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({ callbacks: ambientManager });
+
+    const childManager = new CallbackManager();
+    childManager.addHandler(shared, true);
+
+    const result = ensureLangGraphConfig({ callbacks: childManager });
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
   it("should not mutate the input configs when merging", () => {
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
