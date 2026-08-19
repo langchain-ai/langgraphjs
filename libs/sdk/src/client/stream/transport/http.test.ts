@@ -499,7 +499,8 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       attempt: 1,
       cause: expect.any(Error),
     });
-    expect(reconnectDelayMs).toHaveBeenCalledExactlyOnceWith(1);
+    expect(reconnectDelayMs).toHaveBeenCalledTimes(1);
+    expect(reconnectDelayMs).toHaveBeenCalledWith(1);
 
     await transport.close();
   });
