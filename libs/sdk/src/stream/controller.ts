@@ -263,6 +263,14 @@ export class StreamController<
    */
   #submitGeneration = 0;
   /**
+   * Monotonic counter bumped at the start of each `#teardownThread`.
+   * The root pump captures the generation when it starts and drops
+   * any event whose generation no longer matches — including queued
+   * events that `SubscriptionHandle.close()` still drains after the
+   * snapshot has already been cleared by `hydrate()`.
+   */
+  #rootPumpGeneration = 0;
+  /**
    * Thread ids this controller minted client-side on first `submit()`.
    * `hydrate()` skips `threads.getState()` for these — we know there
    * is nothing checkpointed yet. Cleared once dispatch commits the
@@ -529,13 +537,16 @@ export class StreamController<
        * Suspense boundary remounted against the new id suspends again.
        */
       this.#resetHydrationPromise();
-      await this.#teardownThread();
       /**
-       * Reset UI-facing snapshot so stale messages/values/tool-calls
-       * from the previous thread don't bleed into the new one. The
-       * new thread's state (if any) is then populated below via
-       * `#applyValues`.
+       * Kick teardown so the synchronous abort (unbind, drop onEvent,
+       * close the root subscription, reset assemblers) runs before we
+       * touch the snapshot. Then reset immediately so the UI does not
+       * wait on pump/close. An interrupted thread parks the root pump
+       * on `waitForResume()`; awaiting teardown *before* this reset
+       * left `threadId` null while `messages` still showed the previous
+       * conversation (`useStream` fire-and-forgets `hydrate()`).
        */
+      const teardown = this.#teardownThread();
       this.rootStore.setState(() => ({
         ...this.#createInitialSnapshot(),
         threadId: this.#currentThreadId,
@@ -548,6 +559,7 @@ export class StreamController<
       this.queueStore.setState(
         () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
       );
+      await teardown;
     }
 
     if (this.#currentThreadId == null) {
@@ -1685,6 +1697,14 @@ export class StreamController<
    * Close the current thread stream and reset per-thread assembly state.
    */
   async #teardownThread(): Promise<void> {
+    /**
+     * Invalidate the in-flight root pump before `close()` unparks it.
+     * `SubscriptionHandle.close()` leaves queued events intact and the
+     * iterator drains them before observing `closed`, so without this
+     * bump a parked interrupted pump would still dispatch stale
+     * `values` / `messages` into a snapshot `hydrate()` already cleared.
+     */
+    this.#rootPumpGeneration += 1;
     const thread = this.#thread;
     this.#thread = undefined;
     this.registry.bind(undefined);
@@ -1697,25 +1717,22 @@ export class StreamController<
      */
     this.#rootEventListeners.delete(this.#lifecycleLoading.listener);
     this.#rootEventListeners.delete(this.#runLifecycleListener);
-    try {
-      await this.#rootSubscription?.unsubscribe();
-    } catch {
-      /* already closed */
-    }
+    /**
+     * Close first so a pump parked on `waitForResume()` (interrupted
+     * run) unparks even if the unsubscribe RPC is slow. `close()` is
+     * idempotent; `unsubscribe()` is then a no-op once closed.
+     */
+    const subscription = this.#rootSubscription;
     this.#rootSubscription = undefined;
+    subscription?.close();
     this.#rootPumpReady = undefined;
     // Reset so a swap to a new thread doesn't carry over a stale
     // deferred flag — `#ensureThread` will set it again if the new
     // thread is self-created.
     this.#rootPumpDeferred = false;
-    try {
-      await this.#rootPump;
-    } catch {
-      /* ignore */
-    }
-    this.#rootPump = undefined;
 
-    // Reset per-thread assembly state.
+    // Reset per-thread assembly state before any awaits so hydrate()
+    // can clear the UI snapshot without waiting on pump/close.
     this.#rootMessages.reset();
     this.#rootToolAssembler = new ToolCallAssembler();
     this.#lifecycleLoading.reset();
@@ -1731,6 +1748,18 @@ export class StreamController<
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
     );
+
+    try {
+      await subscription?.unsubscribe();
+    } catch {
+      /* already closed */
+    }
+    try {
+      await this.#rootPump;
+    } catch {
+      /* ignore */
+    }
+    this.#rootPump = undefined;
 
     if (thread != null) {
       try {
@@ -1759,6 +1788,7 @@ export class StreamController<
    */
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
+    const pumpGeneration = this.#rootPumpGeneration;
     let resolveReady: (() => void) | undefined;
     this.#rootPumpReady = new Promise<void>((resolve) => {
       resolveReady = resolve;
@@ -1823,6 +1853,16 @@ export class StreamController<
           });
         }
         const subscription = await subscriptionPromise;
+        if (pumpGeneration !== this.#rootPumpGeneration) {
+          resolveReady?.();
+          resolveReady = undefined;
+          try {
+            subscription.close();
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
         resolveReady?.();
         resolveReady = undefined;
         this.#rootSubscription = subscription;
@@ -1836,9 +1876,9 @@ export class StreamController<
          * for every resumed iteration until the subscription is
          * permanently closed or the controller is disposed.
          */
-        while (!this.#disposed) {
+        while (!this.#disposed && pumpGeneration === this.#rootPumpGeneration) {
           for await (const event of subscription) {
-            if (this.#disposed) {
+            if (this.#disposed || pumpGeneration !== this.#rootPumpGeneration) {
               break;
             }
             /**
@@ -1879,7 +1919,9 @@ export class StreamController<
                */
             }
           }
-          if (this.#disposed) break;
+          if (this.#disposed || pumpGeneration !== this.#rootPumpGeneration) {
+            break;
+          }
           if (!subscription.isPaused) {
             break;
           }

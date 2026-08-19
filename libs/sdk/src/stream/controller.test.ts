@@ -1467,6 +1467,206 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("hydrate(null) clears messages even when teardown is blocked on a pending interrupt", async () => {
+    // Regression: useStream reuses the controller and fire-and-forgets
+    // hydrate(null) when threadId goes undefined. If the previous thread
+    // is paused at an interrupt, the root pump is parked on
+    // waitForResume() and #teardownThread() awaits that pump. The UI
+    // snapshot must reset independently of that await — otherwise
+    // threadId becomes null while messages keep the old conversation.
+    let resumeTeardown!: () => void;
+    const hungSubscription = {
+      isPaused: true,
+      waitForResume: () =>
+        new Promise<void>((resolve) => {
+          resumeTeardown = resolve;
+        }),
+      unsubscribe: vi.fn(async () => undefined),
+      close: vi.fn(),
+      [Symbol.asyncIterator]() {
+        return {
+          next: async (): Promise<IteratorResult<Event>> => ({
+            done: true,
+            value: undefined,
+          }),
+        };
+      },
+    };
+    const thread = {
+      subscribe: vi.fn(async () => hungSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", content: "old thread message", id: "h-1" },
+            ],
+          },
+          next: [],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: { question: "approve?" } },
+              ],
+            },
+          ],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-interrupted",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    // Let the root pump park on waitForResume().
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const seeded = controller.rootStore.getSnapshot();
+    expect(seeded.messages.map((message) => message.id)).toEqual(["h-1"]);
+    expect(seeded.interrupts.map((interrupt) => interrupt.id)).toEqual([
+      "int-1",
+    ]);
+
+    // Same as useStream: do not await hydrate().
+    void controller.hydrate(null);
+
+    await waitForExpectation(() => {
+      const snapshot = controller.rootStore.getSnapshot();
+      expect(snapshot.threadId).toBeNull();
+      expect(snapshot.messages).toHaveLength(0);
+      expect(snapshot.interrupts).toHaveLength(0);
+      expect(snapshot.interrupt).toBeUndefined();
+      expect(snapshot.isLoading).toBe(false);
+      expect(snapshot.isThreadLoading).toBe(false);
+    });
+
+    resumeTeardown?.();
+    await controller.dispose();
+  });
+
+  it("hydrate(null) ignores buffered root events drained after subscription close", async () => {
+    // Regression for open-swe on #2691: SubscriptionHandle.close() leaves
+    // queued events intact and the iterator drains them before observing
+    // closed. An interrupted pump parked on waitForResume() therefore
+    // still dispatches those events through #onRootEvent after hydrate()
+    // has already cleared rootStore — unless the pump generation guard
+    // drops them.
+    let paused = true;
+    let closed = false;
+    const queue: Event[] = [];
+    let resumeResolve: (() => void) | undefined;
+    const hungSubscription = {
+      get isPaused() {
+        return paused;
+      },
+      waitForResume: () => {
+        if (!paused) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          resumeResolve = resolve;
+        });
+      },
+      unsubscribe: vi.fn(async () => undefined),
+      close: vi.fn(() => {
+        closed = true;
+        paused = false;
+        resumeResolve?.();
+        resumeResolve = undefined;
+      }),
+      buffer(event: Event) {
+        queue.push(event);
+      },
+      [Symbol.asyncIterator]() {
+        return {
+          next: async (): Promise<IteratorResult<Event>> => {
+            // Mirror SubscriptionHandle: drain the queue even after close.
+            if (queue.length > 0) {
+              return { done: false, value: queue.shift()! };
+            }
+            if (closed || paused) {
+              return { done: true, value: undefined };
+            }
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+    const thread = {
+      subscribe: vi.fn(async () => hungSubscription),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", content: "old thread message", id: "h-1" },
+            ],
+          },
+          next: [],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: { question: "approve?" } },
+              ],
+            },
+          ],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-interrupted",
+    });
+    await controller.hydrationPromise;
+    await waitForExpectation(() => {
+      expect(thread.subscribe).toHaveBeenCalled();
+    });
+    // Let the root pump park on waitForResume().
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(controller.rootStore.getSnapshot().messages.map((m) => m.id)).toEqual(
+      ["h-1"]
+    );
+
+    // Events buffered while paused — close() will drain these into the
+    // pump after hydrate() has already reset the snapshot.
+    hungSubscription.buffer(
+      valuesEvent(
+        [{ type: "human", content: "stale buffered message", id: "h-stale" }],
+        99
+      )
+    );
+
+    await controller.hydrate(null);
+
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.threadId).toBeNull();
+    expect(snapshot.messages).toHaveLength(0);
+    expect(snapshot.interrupts).toHaveLength(0);
+    expect(hungSubscription.close).toHaveBeenCalled();
+
+    await controller.dispose();
+  });
+
   it("hydrate(null) clears subgraph discovery from the previous thread", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
