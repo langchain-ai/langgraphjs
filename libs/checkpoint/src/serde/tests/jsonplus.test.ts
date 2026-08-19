@@ -1,7 +1,10 @@
-import { it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { Serializable } from "@langchain/core/load/serializable";
 import { uuid6 } from "../../id.js";
 import { JsonPlusSerializer } from "../jsonplus.js";
+import { emptyCheckpoint } from "../../base.js";
+import { MemorySaver } from "../../memory.js";
 
 const messageWithToolCall = new AIMessage({
   content: "",
@@ -156,6 +159,132 @@ it("Should serialize a Send without a timeout unchanged", async () => {
   const [type, serialized] = await serde.dumpsTyped(packet);
   const loaded = await serde.loadsTyped(type, serialized);
   expect(loaded).toEqual({ node: "worker", args: { x: 1 } });
+});
+
+/**
+ * Stands in for a class that lives outside `@langchain/core` — e.g.
+ * `ChatOpenAI`, whose namespace is `langchain`, not `langchain_core`.
+ * Declared here so the test does not depend on a provider package.
+ */
+class FakeChatModel extends Serializable {
+  lc_namespace = ["langchain", "chat_models", "fake"];
+
+  lc_serializable = true;
+
+  modelName: string;
+
+  constructor(fields: { modelName: string }) {
+    super(fields);
+    this.modelName = fields.modelName;
+  }
+}
+
+/** A class carrying a secret, mirroring how providers serialize credentials. */
+class FakeChatModelWithSecret extends Serializable {
+  lc_namespace = ["langchain", "chat_models", "fake"];
+
+  lc_serializable = true;
+
+  get lc_secrets(): { [key: string]: string } {
+    return { apiKey: "FAKE_API_KEY" };
+  }
+
+  apiKey: string;
+
+  constructor(fields: { apiKey: string }) {
+    super(fields);
+    this.apiKey = fields.apiKey;
+  }
+}
+
+const fakeChatModelsModule = { FakeChatModel, FakeChatModelWithSecret };
+
+describe("Non-core LangChain classes", () => {
+  it("Should throw without an explicit opt-in", async () => {
+    const serde = new JsonPlusSerializer();
+    const [type, serialized] = await serde.dumpsTyped({
+      model: new FakeChatModel({ modelName: "gpt-4o" }),
+    });
+    await expect(serde.loadsTyped(type, serialized)).rejects.toThrow(
+      /Invalid namespace/
+    );
+  });
+
+  it("Should revive a class provided via importMap", async () => {
+    const serde = new JsonPlusSerializer({
+      importMap: { chat_models__fake: fakeChatModelsModule },
+    });
+    const [type, serialized] = await serde.dumpsTyped({
+      model: new FakeChatModel({ modelName: "gpt-4o" }),
+    });
+    const loaded = await serde.loadsTyped(type, serialized);
+    expect(loaded.model).toBeInstanceOf(FakeChatModel);
+    expect(loaded.model.modelName).toBe("gpt-4o");
+  });
+
+  it("Should revive classes nested in arrays, maps and sets", async () => {
+    const serde = new JsonPlusSerializer({
+      importMap: { chat_models__fake: fakeChatModelsModule },
+    });
+    const value = {
+      list: [new FakeChatModel({ modelName: "a" })],
+      map: new Map([["key", new FakeChatModel({ modelName: "b" })]]),
+      deep: { nested: { model: new FakeChatModel({ modelName: "c" }) } },
+    };
+    const [type, serialized] = await serde.dumpsTyped(value);
+    const loaded = await serde.loadsTyped(type, serialized);
+    expect(loaded.list[0]).toBeInstanceOf(FakeChatModel);
+    expect(loaded.map.get("key")).toBeInstanceOf(FakeChatModel);
+    expect(loaded.deep.nested.model).toBeInstanceOf(FakeChatModel);
+    expect(loaded.deep.nested.model.modelName).toBe("c");
+  });
+
+  it("Should resolve secrets via secretsMap", async () => {
+    const serde = new JsonPlusSerializer({
+      importMap: { chat_models__fake: fakeChatModelsModule },
+      secretsMap: { FAKE_API_KEY: "sk-test" },
+    });
+    const [type, serialized] = await serde.dumpsTyped({
+      model: new FakeChatModelWithSecret({ apiKey: "sk-test" }),
+    });
+    expect(new TextDecoder().decode(serialized)).not.toContain("sk-test");
+    const loaded = await serde.loadsTyped(type, serialized);
+    expect(loaded.model).toBeInstanceOf(FakeChatModelWithSecret);
+    expect(loaded.model.apiKey).toBe("sk-test");
+  });
+
+  it("Should still revive langchain_core classes without any options", async () => {
+    const serde = new JsonPlusSerializer();
+    const [type, serialized] = await serde.dumpsTyped({
+      message: new AIMessage("hello"),
+    });
+    const loaded = await serde.loadsTyped(type, serialized);
+    expect(loaded.message).toBeInstanceOf(AIMessage);
+  });
+
+  it("Should round-trip through a checkpointer given a configured serde", async () => {
+    const checkpointer = new MemorySaver(
+      new JsonPlusSerializer({
+        importMap: { chat_models__fake: fakeChatModelsModule },
+      })
+    );
+    const config = { configurable: { thread_id: "1" } };
+    const checkpoint = {
+      ...emptyCheckpoint(),
+      channel_values: { model: new FakeChatModel({ modelName: "gpt-4o" }) },
+    };
+
+    const nextConfig = await checkpointer.put(config, checkpoint, {
+      source: "update",
+      step: 1,
+      parents: {},
+    });
+    const tuple = await checkpointer.getTuple(nextConfig);
+
+    expect(tuple?.checkpoint.channel_values.model).toBeInstanceOf(
+      FakeChatModel
+    );
+  });
 });
 
 it("Should replace circular JSON inputs", async () => {
