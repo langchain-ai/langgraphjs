@@ -29,7 +29,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-sdk": "workspace:~",
     "@langchain/protocol": "^0.0.18",
     "@standard-schema/spec": "1.1.0"
