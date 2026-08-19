@@ -2,6 +2,7 @@
 /* eslint-disable no-instanceof/no-instanceof */
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
+import { type ConstructorRecord } from "./types.js";
 import { stringify } from "./utils/fast-safe-stringify/index.js";
 
 function isLangChainSerializedObject(value: Record<string, unknown>) {
@@ -11,6 +12,80 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
     value.type === "constructor" &&
     Array.isArray(value.id)
   );
+}
+
+function isConstructorRecord(
+  value: Record<string, unknown>
+): value is ConstructorRecord {
+  return value.lc === 2 && value.type === "constructor";
+}
+
+function hasConstructorId(record: ConstructorRecord, name: string): boolean {
+  return (
+    Array.isArray(record.id) && record.id.length === 1 && record.id[0] === name
+  );
+}
+
+function hasNoMethod(record: ConstructorRecord): boolean {
+  return record.method === undefined || record.method === null;
+}
+
+function hasSingleArrayArg(
+  record: ConstructorRecord
+): record is ConstructorRecord & { args: unknown[][] } {
+  return (
+    Array.isArray(record.args) &&
+    record.args.length === 1 &&
+    Array.isArray(record.args[0])
+  );
+}
+
+function reviveConstructorRecord(
+  record: ConstructorRecord
+): unknown | undefined {
+  if (hasConstructorId(record, "Set") && hasNoMethod(record)) {
+    if (!hasSingleArrayArg(record)) return undefined;
+    return new Set(record.args[0]);
+  }
+
+  if (hasConstructorId(record, "Map") && hasNoMethod(record)) {
+    if (
+      !hasSingleArrayArg(record) ||
+      !record.args[0].every(
+        (entry) => Array.isArray(entry) && entry.length === 2
+      )
+    ) {
+      return undefined;
+    }
+    return new Map(record.args[0] as [unknown, unknown][]);
+  }
+
+  if (hasConstructorId(record, "RegExp") && hasNoMethod(record)) {
+    if (
+      !Array.isArray(record.args) ||
+      record.args.length !== 2 ||
+      typeof record.args[0] !== "string" ||
+      typeof record.args[1] !== "string"
+    )
+      return undefined;
+    try {
+      return new RegExp(record.args[0], record.args[1]);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (hasConstructorId(record, "Error") && hasNoMethod(record)) {
+    if (
+      !Array.isArray(record.args) ||
+      record.args.length !== 1 ||
+      typeof record.args[0] !== "string"
+    )
+      return undefined;
+    return new Error(record.args[0]);
+  }
+
+  return undefined;
 }
 
 /**
@@ -36,41 +111,8 @@ async function _reviver(value: any): Promise<any> {
 
       if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
         return undefined;
-      } else if (
-        revivedObj.lc === 2 &&
-        revivedObj.type === "constructor" &&
-        Array.isArray(revivedObj.id)
-      ) {
-        try {
-          const constructorName = revivedObj.id[revivedObj.id.length - 1];
-          let constructor: any;
-
-          switch (constructorName) {
-            case "Set":
-              constructor = Set;
-              break;
-            case "Map":
-              constructor = Map;
-              break;
-            case "RegExp":
-              constructor = RegExp;
-              break;
-            case "Error":
-              constructor = Error;
-              break;
-            default:
-              return revivedObj;
-          }
-          if (revivedObj.method) {
-            return (constructor as any)[revivedObj.method](
-              ...(revivedObj.args || [])
-            );
-          } else {
-            return new (constructor as any)(...(revivedObj.args || []));
-          }
-        } catch (error) {
-          return revivedObj;
-        }
+      } else if (isConstructorRecord(revivedObj)) {
+        return reviveConstructorRecord(revivedObj) ?? revivedObj;
       } else if (isLangChainSerializedObject(revivedObj)) {
         return load(JSON.stringify(revivedObj));
       }
