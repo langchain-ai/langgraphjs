@@ -85,7 +85,7 @@
   "peerDependencies": {
     "@langchain/core": "^0.3.59 || ^1.0.0-alpha",
     "@langchain/langgraph": "^0.2.57 || ^0.3.0 || ^0.4.0 || ^1.0.0-alpha",
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-sdk": "~0.0.70 || ^0.1.0",
     "typescript": "^5.5.4"
   },
@@ -97,7 +97,7 @@
   "devDependencies": {
     "@langchain/core": "^0.3.59",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-sdk": "workspace:*",
     "@types/babel__code-frame": "^7.0.6",
     "@types/node": "^18.15.11",

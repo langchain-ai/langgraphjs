@@ -37,10 +37,10 @@
   },
   "peerDependencies": {
     "@langchain/core": ">=0.2.31 <0.4.0 || ^1.0.0-alpha",
-    "@langchain/langgraph-checkpoint": "workspace:*"
+    "@langchain/langgraph-checkpoint": "workspace:^"
   },
   "devDependencies": {
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-checkpoint-mongodb": "workspace:*",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-redis": "workspace:*",

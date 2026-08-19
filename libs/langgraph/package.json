@@ -32,7 +32,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-sdk": "~0.1.10",
     "uuid": "^10.0.0",
     "zod": "^3.25.32"
@@ -50,7 +50,7 @@
     "@langchain/anthropic": "^0.3.12",
     "@langchain/community": "^0.3.27",
     "@langchain/core": "^0.3.58",
-    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-checkpoint-postgres": "workspace:*",
     "@langchain/langgraph-checkpoint-sqlite": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
