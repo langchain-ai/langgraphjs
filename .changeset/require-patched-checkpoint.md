@@ -9,4 +9,4 @@
 "@langchain/langgraph": patch
 ---
 
-Require the patched checkpoint serializer release across checkpoint integrations and runtime packages.
+Update checkpoint integrations to require the patched checkpoint serializer release.
