@@ -31,10 +31,10 @@
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.48",
-    "@langchain/langgraph-checkpoint": "workspace:^"
+    "@langchain/langgraph-checkpoint": "^1.0.0"
   },
   "devDependencies": {
-    "@langchain/langgraph-checkpoint": "workspace:^",
+    "@langchain/langgraph-checkpoint": "workspace:*",
     "@langchain/scripts": ">=0.1.2 <0.2.0",
     "@tsconfig/recommended": "^1.0.3",
     "@types/node": "^20",
