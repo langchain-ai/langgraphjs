@@ -6,9 +6,10 @@ import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { _AnyIdAIMessage, _AnyIdAIMessageChunk } from "./utils.js";
-import { FakeToolCallingChatModel } from "./utils.models.js";
+import { FakeChatModel, FakeToolCallingChatModel } from "./utils.models.js";
 // Import from main `@langchain/langgraph` endpoint to turn on automatic config passing
 import { Annotation, END, START, StateGraph } from "../web.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { gatherIterator } from "../utils.js";
 import { createReactAgent } from "../prebuilt/react_agent_executor.js";
 
@@ -170,6 +171,87 @@ it("merges graph-bound callbacks with invoke-time callbacks in streamEvents (no 
   expect(boundCb.chainStarts).toBeGreaterThan(0);
   expect(userCb.chainStarts).toBeGreaterThan(0);
   expect(boundCb.chainStarts).toBe(userCb.chainStarts);
+});
+
+
+it("does not double stream tokens from a nested graph under tracing", async () => {
+  // Regression for double-streaming: tracing installs the real
+  // AsyncLocalStorage config, so a nested Pregel entry merges an ambient
+  // config against an explicit config that already carries the same
+  // StreamMessagesHandler. Before the `mergeCallbacks` dedupe fix,
+  // concatenating registered it twice and `streamMode: "messages"`
+  // delivered every token twice.
+  const ANSWER = "Hello world from langgraph";
+
+  const buildInnerGraph = () => {
+    const model = new FakeChatModel({
+      responses: [new AIMessage(ANSWER)],
+    }).withConfig({ runName: "model_call" });
+    return new StateGraph(MessagesAnnotation)
+      .addNode("agent", async () => {
+        // Stream so handleLLMNewToken fires per token.
+        const chunks = await model.stream("say hello");
+        const parts: string[] = [];
+        for await (const chunk of chunks) {
+          if (typeof chunk.content === "string") parts.push(chunk.content);
+        }
+        return { messages: [new AIMessage(parts.join(""))] };
+      })
+      .addEdge(START, "agent")
+      .addEdge("agent", END)
+      .compile({ name: "Inner" });
+  };
+
+  const streamAndCollect = async (
+    graph: ReturnType<typeof buildInnerGraph>
+  ) => {
+    let text = "";
+    for await (const [, mode, data] of await graph.stream(
+      { messages: [{ role: "user", content: "say hello" }] },
+      { streamMode: ["messages", "updates"], subgraphs: true }
+    )) {
+      if (mode !== "messages") continue;
+      const [message] = data;
+      if (
+        message?.getType?.() === "ai" &&
+        typeof message.content === "string"
+      ) {
+        text += message.content;
+      }
+    }
+    return text;
+  };
+
+  // Turn tracing on so the real AsyncLocalStorage config is installed and
+  // the ambient/explicit config merge path is exercised. Override the
+  // fetch implementation langsmith uses (via its well-known symbol key) so
+  // core's auto-built LangChainTracer can't reach the network.
+  process.env.LANGSMITH_TRACING = "true";
+  const fetchKey = Symbol.for("ls:fetch_implementation");
+  const noopFetch = async () => new Response("{}", { status: 200 });
+  (globalThis as Record<symbol, unknown>)[fetchKey] = noopFetch;
+  try {
+    let innerText = "";
+    const outer = new StateGraph(MessagesAnnotation)
+      .addNode("delegate", async () => {
+        innerText = await streamAndCollect(buildInnerGraph());
+        return {};
+      })
+      .addEdge(START, "delegate")
+      .addEdge("delegate", END)
+      .compile({ name: "Outer" });
+
+    await gatherIterator(
+      outer.stream(
+        { messages: [{ role: "user", content: "say hello" }] },
+        { streamMode: ["messages", "updates"], subgraphs: true }
+      )
+    );
+    expect(innerText).toBe(ANSWER);
+  } finally {
+    delete process.env.LANGSMITH_TRACING;
+    delete (globalThis as Record<symbol, unknown>)[fetchKey];
+  }
 });
 
 it("stream events for a multi-node graph", async () => {
