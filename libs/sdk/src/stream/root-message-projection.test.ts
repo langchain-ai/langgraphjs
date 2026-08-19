@@ -1258,6 +1258,40 @@ describe("RootMessageProjection", () => {
       ).toBe(snap.messages);
     });
 
+    it("does not strip seeded metadata when a lagging values replay omits it", async () => {
+      const { store, projection } = makeProjection();
+
+      const seeded = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+        additional_kwargs: {
+          attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+        },
+      });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      await drainFlush();
+
+      // Deferred pump can replay an older same-id snapshot without the
+      // committed kwargs. addOnly keeps absences from removing messages,
+      // but preferValues must not replace the richer seeded copy either.
+      const lagging = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+      });
+      projection.applyValues({ messages: [lagging] } as State, [lagging], {
+        step: 4,
+      });
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].additional_kwargs.attachments).toEqual([
+        { filename: "notes.pdf", path: "uploads/notes.pdf" },
+      ]);
+    });
+
     it("adopts echoed human metadata without clobbering in-flight AI tokens", async () => {
       const { store, projection } = makeProjection();
 
