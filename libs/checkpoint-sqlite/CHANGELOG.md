@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-sqlite
 
+## 0.2.2
+
+### Patch Changes
+
+- 21a8569: Require the patched v0 checkpoint serializer release across checkpoint integrations and runtime packages.
+
 ## 0.2.1
 
 ### Patch Changes

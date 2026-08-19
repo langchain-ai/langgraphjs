@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-validation
 
+## 0.1.2
+
+### Patch Changes
+
+- 21a8569: Require the patched v0 checkpoint serializer release across checkpoint integrations and runtime packages.
+
 ## 0.1.1
 
 ### Patch Changes
