@@ -444,7 +444,11 @@ export class StreamController<
       },
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
       onRunEnd: () => {
-        this.#discardPendingInterruptEvents();
+        // Stop buffering new events, but keep any already-queued
+        // `input.requested` frames. A fast run can emit its interrupt
+        // and terminal before `run.start` returns; `onRunCreated` still
+        // has to classify those frames against `applied_through_seq`.
+        this.#interruptCommandPending = false;
         this.#markLocalRunEnd();
       },
       beginOptimistic: (input) => this.#beginOptimistic(input),

@@ -920,6 +920,132 @@ describe("StreamController", () => {
     await submitPromise;
   });
 
+  it("does not hide the active run's interrupt when a follow-up submit is enqueued", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    let resolveSubmit: (() => void) | undefined;
+    const ordering: ThreadStream["ordering"] = {};
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering,
+      submitRun: vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        });
+        ordering.lastAppliedThroughSeq = 10;
+        return { run_id: "run-active" };
+      }),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, tasks: [] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const onCreated = vi.fn();
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-enqueue-interrupt",
+      onCreated,
+    });
+    await controller.hydrationPromise;
+
+    const first = controller.submit(null);
+    await waitForExpectation(() => expect(resolveSubmit).toBeDefined());
+    resolveSubmit?.();
+    await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+    await controller.submit(null, { multitaskStrategy: "enqueue" });
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("live-from-active-run", {}, [], 12));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["live-from-active-run"]);
+
+    emit(lifecycleEvent("interrupted", 13));
+    await controller.dispose();
+    await first;
+  });
+
+  it("keeps a live interrupt when the run interrupts before run.start returns", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    let resolveSubmit: (() => void) | undefined;
+    const ordering: ThreadStream["ordering"] = {};
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering,
+      submitRun: vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        });
+        ordering.lastAppliedThroughSeq = 10;
+        return { run_id: "run-fast-interrupt" };
+      }),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, tasks: [] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const onCreated = vi.fn();
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-fast-interrupt",
+      onCreated,
+    });
+    await controller.hydrationPromise;
+
+    const submitPromise = controller.submit(null);
+    await waitForExpectation(() => expect(resolveSubmit).toBeDefined());
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("fast-interrupt", {}, [], 11));
+    emit(lifecycleEvent("interrupted", 12));
+
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    resolveSubmit?.();
+    await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["fast-interrupt"]);
+
+    await controller.dispose();
+    await submitPromise;
+  });
+
   it("filters replayed interrupts while accepting newer interrupts after respond", async () => {
     // Fan out to every registered listener — respond()'s background
     // terminal watch also calls thread.onEvent, and a single-slot

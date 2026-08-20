@@ -301,7 +301,6 @@ export class SubmitCoordinator<
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void> {
     if (this.#getDisposed()) return;
-    this.#onSubmitStart();
 
     // Per-submit thread override: rebind first so the rest of the
     // submit operates against the new thread.
@@ -367,6 +366,11 @@ export class SubmitCoordinator<
       this.#enqueueSubmission(input, options);
       return;
     }
+
+    // Only once this submit will actually dispatch a command. Enqueue /
+    // reject return above so they cannot reset the in-flight run's
+    // interrupt replay barrier or drop events buffered for it.
+    this.#onSubmitStart();
 
     // Rollback: abort the previous run before starting a new one.
     this.#runAbort?.abort();
