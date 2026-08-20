@@ -49,7 +49,7 @@ good code into the codebase.
 ### 🏭 Release process
 
 As of now, LangGraph has an ad hoc release process: releases are cut with high frequency via by
-a developer and published to [npm](https://www.npmjs.com/package/@angchain/langgraph).
+a developer and published to [npm](https://www.npmjs.com/package/@langchain/langgraph).
 
 LangChain follows the [semver](https://semver.org/) versioning standard. However, as pre-1.0 software,
 even patch releases may contain [non-backwards-compatible changes](https://semver.org/#spec-item-4).
@@ -85,7 +85,7 @@ with if you plan to contribute:
 Clone this repo, then cd into it:
 
 ```bash
-cd langgraph
+cd langgraphjs
 ```
 
 Next, try running the following common tasks:
@@ -93,10 +93,10 @@ Next, try running the following common tasks:
 ## ✅ Common Tasks
 
 Our goal is to make it as easy as possible for you to contribute to this project.
-All of the below commands should be run from within a workspace directory (e.g. `langgraph`) unless otherwise noted.
+All of the below commands should be run from the repository root (e.g. `langgraphjs`) unless otherwise noted.
 
 ```bash
-cd langgraph
+cd langgraphjs
 ```
 
 ### Setup
@@ -161,10 +161,10 @@ pnpm test
 
 #### Running a single test
 
-To run a single test, run the following from within a workspace:
+To run a single test, run the following from the repository root:
 
 ```bash
-pnpm test:single /path/to/yourtest.test.ts
+pnpm --filter @langchain/langgraph test src/graph/message.test.ts
 ```
 
 This is useful for developing individual features.
@@ -174,10 +174,10 @@ This is useful for developing individual features.
 If you add support for a new external API, please add a new integration test.
 Integration tests should be called `*.int.test.ts`.
 
-Note that most integration tests require credentials or other setup. You will likely need to set up a `libs/langgraph/.env` file
-like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph/.env.example).
+Note that most integration tests require credentials or other setup. You will likely need to set up a `libs/langgraph-core/.env` file
+like the example [here](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/.env.example).
 
-We generally recommend only running integration tests with `pnpm test:single`, but if you want to run all integration tests, run:
+We generally recommend only running the relevant integration test with `pnpm --filter @langchain/langgraph test:int src/tests/chatbot.int.test.ts`, but if you want to run all integration tests, run:
 
 ```bash
 pnpm test:int
