@@ -1,5 +1,16 @@
 # @langchain/langgraph-sdk
 
+## 1.9.31
+
+### Patch Changes
+
+- [#2722](https://github.com/langchain-ai/langgraphjs/pull/2722) [`7b0fd47`](https://github.com/langchain-ai/langgraphjs/commit/7b0fd47287eb841d8f1068de93b46f49cab3c04d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): don't re-show resolved interrupts after reload
+
+  After a reload, the next submit used to replay the old `input.requested`
+  event, so the HITL form came back even though the interrupt was already
+  answered. Keep filtering historical interrupts after the command is
+  accepted, using the response's `applied_through_seq` as the cutoff.
+
 ## 1.9.30
 
 ### Patch Changes
