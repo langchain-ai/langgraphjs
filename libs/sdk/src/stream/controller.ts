@@ -248,11 +248,24 @@ export class StreamController<
    * SSE replay re-adds historically-requested interrupts that have
    * since been resolved (no `input.responded` event exists in the
    * protocol, so the SDK has no other way to tell replay from live
-   * for an idle thread). `null` outside the hydrate-window so
-   * genuinely new live interrupts on an active run aren't filtered;
-   * cleared at the start of `submit()` for the same reason.
+   * for an idle thread). After a command is accepted, events newer
+   * than {@link #interruptReplayThroughSeq} bypass the allowlist.
    */
   #hydratedActiveInterruptIds: Set<string> | null = null;
+  /**
+   * Highest event sequence already applied when the latest run command
+   * was accepted. Interrupts outside the hydrate-time allowlist remain
+   * filtered through this sequence, while newer events are live output
+   * from the newly-started run and must be accepted.
+   */
+  #interruptReplayThroughSeq: number | undefined;
+  /**
+   * Unknown interrupt events received between local command dispatch and its
+   * response. The response supplies the sequence barrier needed to classify
+   * each event as historical replay or live output from the new run.
+   */
+  #pendingInterruptEvents: Event[] = [];
+  #interruptCommandPending = false;
   /**
    * Monotonic counter bumped at the start of each `submit()` and used
    * by {@link hydrate} to skip its post-fetch allowlist write when a
@@ -415,18 +428,25 @@ export class StreamController<
       awaitResumedRunTerminal: (signal) =>
         this.#awaitResumedRunTerminal(signal),
       onSubmitStart: () => {
-        // Clear the hydrate-window allowlist so genuinely-new live
-        // interrupts on the just-started run (submit *or* respond /
-        // respondAll via dispatchResume) aren't filtered. Bump the
-        // generation so any in-flight hydrate skips its allowlist
-        // write on return (see #hydratedActiveInterruptIds).
-        this.#hydratedActiveInterruptIds = null;
+        // Bump the generation so any in-flight hydrate skips its
+        // allowlist write on return. Keep an existing allowlist until
+        // dispatch is accepted: the root pump may still be replaying
+        // historical events while the command is in flight.
         this.#submitGeneration += 1;
+        this.#interruptCommandPending =
+          this.#hydratedActiveInterruptIds != null;
+        this.#pendingInterruptEvents = [];
       },
       onRunStart: () => this.#markLocalRunStart(),
-      onRunCreated: (runId) => this.#notifyCreated(runId),
+      onRunCreated: (runId) => {
+        this.#advanceInterruptReplayBarrier();
+        this.#notifyCreated(runId);
+      },
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
-      onRunEnd: () => this.#markLocalRunEnd(),
+      onRunEnd: () => {
+        this.#discardPendingInterruptEvents();
+        this.#markLocalRunEnd();
+      },
       beginOptimistic: (input) => this.#beginOptimistic(input),
       settleOptimistic: (handle, event) =>
         this.#settleOptimistic(handle, event),
@@ -741,11 +761,12 @@ export class StreamController<
           interrupt: activeInterrupts[0],
         }));
         // Only seed the allowlist when no submit started while the
-        // state fetch was in flight. If one did, the cleared
-        // (null) allowlist must stay null so the new run's live
-        // interrupts are not filtered.
+        // state fetch was in flight. If one did, leave the existing
+        // filter untouched so this stale fetch cannot overwrite the
+        // active run's replay boundary.
         if (this.#submitGeneration === generationAtFetch) {
           this.#hydratedActiveInterruptIds = activeIds;
+          this.#interruptReplayThroughSeq = undefined;
         }
       }
     } catch (error) {
@@ -1388,9 +1409,11 @@ export class StreamController<
           config: options?.config,
           metadata: options?.metadata,
         });
+        this.#advanceInterruptReplayBarrier();
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
       }, prepared?.handle);
     } catch (error) {
+      this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
       }
@@ -1485,11 +1508,13 @@ export class StreamController<
           config: options?.config,
           metadata: options?.metadata,
         });
+        this.#advanceInterruptReplayBarrier();
         for (const { interrupt_id: interruptId } of responses) {
           this.#markInterruptResolvedInRootStore(interruptId);
         }
       }, prepared?.handle);
     } catch (error) {
+      this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
       }
@@ -1745,6 +1770,8 @@ export class StreamController<
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
+    this.#interruptReplayThroughSeq = undefined;
+    this.#discardPendingInterruptEvents();
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
     );
@@ -2339,17 +2366,24 @@ export class StreamController<
     ) {
       return;
     }
-    // Strict allowlist when populated by the most-recent hydrate: SSE
-    // replay of `input.requested` carries no signal distinguishing
-    // historical (already-resolved) interrupts from live ones, so we
-    // accept only ids the server reported as currently active in
-    // `state.tasks[].interrupts`. `null` (outside the hydrate window
-    // / after a submit clears it) disables filtering entirely so new
-    // live interrupts on an active run pass through.
-    if (
+    // Before a run command is accepted, accept only ids the hydrated
+    // state reported as active. After acceptance, the command response's
+    // `applied_through_seq` separates replayed history from live events:
+    // unknown ids at or below the barrier are stale, while newer ids are
+    // interrupts raised by the new run.
+    const eventSeq = typeof event.seq === "number" ? event.seq : undefined;
+    const isUnknownInterrupt =
       this.#hydratedActiveInterruptIds != null &&
-      !this.#hydratedActiveInterruptIds.has(interruptId)
-    ) {
+      !this.#hydratedActiveInterruptIds.has(interruptId);
+    if (isUnknownInterrupt && this.#interruptCommandPending) {
+      this.#pendingInterruptEvents.push(event);
+      return;
+    }
+    const isHistoricalUnknownInterrupt =
+      isUnknownInterrupt &&
+      (this.#interruptReplayThroughSeq == null ||
+        (eventSeq != null && eventSeq <= this.#interruptReplayThroughSeq));
+    if (isHistoricalUnknownInterrupt) {
       return;
     }
     const namespace = Array.isArray(event.params.namespace)
@@ -2365,6 +2399,38 @@ export class StreamController<
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
     });
+  }
+
+  /**
+   * Convert the hydrate-time allowlist into a replay barrier after a command
+   * is accepted. Built-in transports update `lastAppliedThroughSeq` from the
+   * command response before resolving `submitRun` / `respondInput`.
+   */
+  #advanceInterruptReplayBarrier(): void {
+    if (this.#hydratedActiveInterruptIds == null) {
+      this.#discardPendingInterruptEvents();
+      return;
+    }
+    const throughSeq = this.#thread?.ordering?.lastAppliedThroughSeq;
+    if (typeof throughSeq === "number") {
+      this.#interruptReplayThroughSeq = throughSeq;
+    } else {
+      // Custom transports may not implement sequence metadata. Preserve the
+      // previous behavior so their genuinely new interrupts are not dropped.
+      this.#hydratedActiveInterruptIds = null;
+      this.#interruptReplayThroughSeq = undefined;
+    }
+    this.#interruptCommandPending = false;
+    const pendingEvents = this.#pendingInterruptEvents;
+    this.#pendingInterruptEvents = [];
+    for (const event of pendingEvents) {
+      this.#recordInterrupt(event);
+    }
+  }
+
+  #discardPendingInterruptEvents(): void {
+    this.#interruptCommandPending = false;
+    this.#pendingInterruptEvents = [];
   }
 
   /**
