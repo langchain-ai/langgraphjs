@@ -89,6 +89,7 @@ describe("RunProtocolSession", () => {
         type: "event",
         event_id: expect.any(String),
         seq: expect.any(Number),
+        run_id: "00000000-0000-7000-8000-000000000001",
         method: "input.requested",
         params: {
           namespace: [],
@@ -105,6 +106,7 @@ describe("RunProtocolSession", () => {
         type: "event",
         event_id: expect.any(String),
         seq: expect.any(Number),
+        run_id: "00000000-0000-7000-8000-000000000001",
         method: "values",
         params: {
           namespace: [],
@@ -151,6 +153,7 @@ describe("RunProtocolSession", () => {
         type: "event",
         event_id: expect.any(String),
         seq: expect.any(Number),
+        run_id: "00000000-0000-7000-8000-000000000001",
         method: "updates",
         params: {
           namespace: ["gp_two", "p_two"],
@@ -192,6 +195,7 @@ describe("RunProtocolSession", () => {
         type: "event",
         event_id: expect.any(String),
         seq: expect.any(Number),
+        run_id: "00000000-0000-7000-8000-000000000001",
         method: "lifecycle",
         params: {
           namespace: ["worker:0"],
@@ -310,6 +314,7 @@ describe("RunProtocolSession", () => {
       type: "event",
       event_id: expect.any(String),
       seq: expect.any(Number),
+      run_id: "00000000-0000-7000-8000-000000000001",
       method: "values",
       params: {
         namespace: ["tools:call_123", "model:worker_456"],
@@ -354,6 +359,7 @@ describe("RunProtocolSession", () => {
 
     expect(events[0]).toMatchObject({
       type: "event",
+      run_id: "00000000-0000-7000-8000-000000000001",
       method: "messages",
       params: {
         namespace: ["tools:call_123", "model:worker_456"],
@@ -507,6 +513,7 @@ describe("RunProtocolSession", () => {
         type: "event",
         event_id: expect.any(String),
         seq: expect.any(Number),
+        run_id: "00000000-0000-7000-8000-000000000001",
         method: "values",
         params: {
           namespace: [],
