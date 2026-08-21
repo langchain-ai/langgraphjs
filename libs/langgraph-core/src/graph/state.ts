@@ -101,6 +101,7 @@ import {
 } from "./types.js";
 import type { StreamTransformer } from "../stream/types.js";
 import type { Pregel } from "../pregel/index.js";
+import type { GraphVersion, StateMigration } from "../pregel/migrations.js";
 
 const ROOT = "__root__";
 
@@ -1404,6 +1405,9 @@ export class StateGraph<
     name,
     description,
     transformers,
+    graphVersion,
+    legacyGraphVersion,
+    stateMigrations,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
     store?: BaseStore;
@@ -1412,6 +1416,12 @@ export class StateGraph<
     interruptAfter?: N[] | All;
     name?: string;
     description?: string;
+    /** Version of the graph deployment used to write checkpoints. */
+    graphVersion?: GraphVersion;
+    /** Version assigned to checkpoints created before graph versioning. */
+    legacyGraphVersion?: GraphVersion;
+    /** Migrations used to bring older checkpoints to `graphVersion`. */
+    stateMigrations?: readonly StateMigration[];
     /**
      * Stream transformer factories baked into the compiled graph.  These run
      * automatically for every `streamEvents(..., { version: "v3" })` call,
@@ -1458,6 +1468,9 @@ export class StateGraph<
         name,
         description,
         transformers,
+        graphVersion,
+        legacyGraphVersion,
+        stateMigrations,
         defaultErrorHandlerNode:
           defaultErrorHandlerSpec !== undefined
             ? DEFAULT_ERROR_HANDLER_NODE
@@ -1484,6 +1497,9 @@ export class StateGraph<
     name,
     description,
     transformers,
+    graphVersion,
+    legacyGraphVersion,
+    stateMigrations,
     defaultErrorHandlerNode,
   }: {
     checkpointer?: BaseCheckpointSaver | boolean;
@@ -1493,6 +1509,9 @@ export class StateGraph<
     interruptAfter?: N[] | All;
     name?: string;
     description?: string;
+    graphVersion?: GraphVersion;
+    legacyGraphVersion?: GraphVersion;
+    stateMigrations?: readonly StateMigration[];
     transformers?: TTransformers;
     defaultErrorHandlerNode?: string;
   }): CompiledStateGraph<
@@ -1556,6 +1575,9 @@ export class StateGraph<
       cache,
       name,
       description,
+      graphVersion,
+      legacyGraphVersion,
+      stateMigrations,
       userInterrupt,
       streamTransformers: transformers,
     });
