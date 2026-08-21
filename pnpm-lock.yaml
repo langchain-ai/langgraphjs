@@ -2307,18 +2307,12 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
-      svelte:
-        specifier: ^5.56.8
-        version: 5.56.8(@typescript-eslint/types@8.59.2)
       typescript:
         specifier: ^4.9.5 || ^5.4.5
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@18.19.130)(@vitest/browser-playwright@4.1.10)(@vitest/browser-webdriverio@4.1.10)(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(vite@8.2.0(@types/node@18.19.130)(esbuild@0.28.1)(jiti@2.6.1)(sass@1.101.0)(tsx@4.21.0)(yaml@2.9.0))
-      vue:
-        specifier: ^3.5.40
-        version: 3.5.40(typescript@5.9.3)
       ws:
         specifier: ^8.21.0
         version: 8.21.0
@@ -8502,6 +8496,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
