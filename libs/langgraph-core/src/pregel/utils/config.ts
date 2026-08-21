@@ -6,12 +6,13 @@ import {
   type Callbacks,
 } from "@langchain/core/callbacks/manager";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
-import { LangGraphRunnableConfig } from "../runnable_types.js";
+import { LangGraphRunnableConfig, Runtime } from "../runnable_types.js";
 import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   CONFIG_KEY_READ,
   CONFIG_KEY_SCRATCHPAD,
+  CONFIG_KEY_TASK_ID,
 } from "../../constants.js";
 
 const COPIABLE_KEYS = ["tags", "metadata", "callbacks", "configurable"];
@@ -380,6 +381,69 @@ export function getCurrentTaskInput<T = unknown>(
   }
 
   return runConfig!.configurable![CONFIG_KEY_SCRATCHPAD]!.currentTaskInput as T;
+}
+
+/**
+ * A helper utility function that returns the {@link Runtime} for the currently
+ * executing graph run. Equivalent of Python langgraph's `get_runtime()`.
+ *
+ * Returns a fresh, frozen projection of the runtime carried by the current
+ * execution configuration: `context`, `configurable`, `store`, `writer`,
+ * `interrupt`, `signal`, `heartbeat`, `executionInfo`, `serverInfo`, and
+ * `control`. Absent `writer`/`heartbeat` are replaced with no-ops so calling
+ * them never crashes; `previous` is not carried on the runtime — use
+ * `getPreviousState()` instead.
+ *
+ * The type parameter is typing-only (no runtime validation), mirroring
+ * Python's `context_schema` argument.
+ *
+ * Note: This relies on `node:async_hooks` / `AsyncLocalStorage`, which is
+ * available in many JavaScript environments (Node.js, Deno, Cloudflare
+ * Workers) but not in web browsers. In environments without
+ * `AsyncLocalStorage` support, read the runtime fields from the `config`
+ * (second argument) that your node/tool function receives directly.
+ *
+ * Tip: Inside a tool run by a `ToolNode`, prefer the second tool argument
+ * (typed as `ToolRuntime` from `@langchain/core/tools`). It carries the full
+ * runtime, including `context`/`executionInfo`, in every runtime — the
+ * ambient config inside a tool func is reduced by `@langchain/core` to
+ * standard `RunnableConfig` keys (`configurable`, `signal`, `store`).
+ *
+ * @returns the {@link Runtime} for the current graph run
+ * @throws an `Error` when called outside of an active graph execution
+ */
+export function getRuntime<
+  TContext = Record<string, unknown>,
+>(): Runtime<TContext> {
+  const runConfig = AsyncLocalStorageProviderSingleton.getRunnableConfig() as
+    | LangGraphRunnableConfig
+    | undefined;
+
+  if (
+    runConfig === undefined ||
+    runConfig.configurable?.[CONFIG_KEY_TASK_ID] === undefined
+  ) {
+    throw new Error(
+      [
+        "getRuntime() called outside of an active graph execution.",
+        "Call it from within a node, task, tool, or middleware executing inside a LangGraph graph.",
+        "Note: ambient access relies on AsyncLocalStorage, which some environments (e.g. web browsers) do not provide.",
+      ].join("\n")
+    );
+  }
+
+  return Object.freeze({
+    configurable: runConfig.configurable,
+    context: runConfig.context,
+    store: runConfig.store,
+    writer: runConfig.writer ?? runConfig.configurable?.writer ?? (() => {}),
+    interrupt: runConfig.interrupt,
+    signal: runConfig.signal,
+    heartbeat: runConfig.heartbeat ?? (() => {}),
+    executionInfo: runConfig.executionInfo,
+    serverInfo: runConfig.serverInfo,
+    control: runConfig.control,
+  }) as Runtime<TContext>;
 }
 
 export function recastCheckpointNamespace(namespace: string): string {

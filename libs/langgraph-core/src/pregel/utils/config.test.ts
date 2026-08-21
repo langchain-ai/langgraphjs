@@ -8,6 +8,7 @@ import {
   getStore,
   getWriter,
   getConfig,
+  getRuntime,
   recastCheckpointNamespace,
   getParentCheckpointNamespace,
 } from "./config.js";
@@ -605,6 +606,126 @@ describe("getStore, getWriter, getConfig", () => {
     const result = getConfig();
 
     expect(result).toBe(mockConfig);
+  });
+});
+
+describe("getRuntime", () => {
+  // Save original to restore after tests
+  const originalGetRunnableConfig =
+    AsyncLocalStorageProviderSingleton.getRunnableConfig;
+
+  beforeEach(() => {
+    // Reset the mock before each test
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi.fn();
+  });
+
+  afterAll(() => {
+    // Restore the original after all tests
+    AsyncLocalStorageProviderSingleton.getRunnableConfig =
+      originalGetRunnableConfig;
+  });
+
+  it("should throw when there is no ambient config", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    expect(() => getRuntime()).toThrowError(
+      /getRuntime\(\) called outside of an active graph execution/
+    );
+  });
+
+  it("should throw when the ambient config is not a graph task config", () => {
+    // A plain (non-graph) runnable config has no task-internals marker
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({ tags: ["plain-runnable"] });
+
+    expect(() => getRuntime()).toThrowError(
+      /getRuntime\(\) called outside of an active graph execution/
+    );
+  });
+
+  it("should project all runtime fields off the ambient task config", () => {
+    const mockStore = {} as BaseStore;
+    const signal = new AbortController().signal;
+    const interrupt = () => undefined;
+    const control = {} as never;
+    const executionInfo = {
+      checkpointId: "cp-1",
+      checkpointNs: "",
+      taskId: "task-1",
+      threadId: "t-1",
+      runId: "run-1",
+      nodeAttempt: 1,
+    };
+    const serverInfo = {
+      assistantId: "asst-1",
+      graphId: "graph-1",
+    };
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: { thread_id: "t-1", __pregel_task_id: "task-1" },
+        context: { user_id: "user-1" },
+        store: mockStore,
+        interrupt,
+        signal,
+        executionInfo,
+        serverInfo,
+        control,
+      });
+
+    const runtime = getRuntime();
+
+    expect(Object.isFrozen(runtime)).toBe(true);
+    expect(runtime.configurable).toEqual({
+      thread_id: "t-1",
+      __pregel_task_id: "task-1",
+    });
+    expect(runtime.context).toEqual({ user_id: "user-1" });
+    expect(runtime.store).toBe(mockStore);
+    expect(runtime.interrupt).toBe(interrupt);
+    expect(runtime.signal).toBe(signal);
+    expect(runtime.executionInfo).toBe(executionInfo);
+    expect(runtime.serverInfo).toBe(serverInfo);
+    expect(runtime.control).toBe(control);
+  });
+
+  it("should default writer and heartbeat to no-ops when absent", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: { __pregel_task_id: "task-1" },
+      });
+
+    const runtime = getRuntime();
+
+    expect(() => runtime.writer({ any: "chunk" })).not.toThrow();
+    expect(() => runtime.heartbeat?.()).not.toThrow();
+  });
+
+  it("should pass an existing writer through, including from configurable", () => {
+    const mockWriter = () => undefined;
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: { __pregel_task_id: "task-1", writer: mockWriter },
+      });
+
+    expect(getRuntime().writer).toBe(mockWriter);
+  });
+
+  it("should cast the context to the provided generic type", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue({
+        configurable: { __pregel_task_id: "task-1" },
+        context: { user_id: "user-1" },
+      });
+
+    const runtime = getRuntime<{ user_id: string }>();
+    expect(runtime.context?.user_id).toBe("user-1");
   });
 });
 
