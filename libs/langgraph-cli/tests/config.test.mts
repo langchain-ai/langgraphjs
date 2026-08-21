@@ -230,6 +230,24 @@ describe("config to docker", () => {
     `);
   });
 
+  it("resolves graphs from later faux local deps", async () => {
+    const config = getConfig({
+      ...DEFAULT_CONFIG,
+      dependencies: ["./graphs", "."],
+      graphs: { agent: "./agent.py:graph" },
+    });
+
+    const actual = await configToDocker(
+      PATH_TO_CONFIG,
+      config,
+      await assembleLocalDeps(PATH_TO_CONFIG, config)
+    );
+
+    expect(actual).toContain(
+      `ENV LANGSERVE_GRAPHS='{"agent":"/deps/__outer_unit_tests/unit_tests/agent.py:graph"}'`
+    );
+  });
+
   it("pyproject", async () => {
     const pyproject = path.resolve(__dirname, "./unit_tests/pyproject.toml");
     await fs.writeFile(
