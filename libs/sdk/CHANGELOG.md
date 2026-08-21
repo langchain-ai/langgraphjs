@@ -1,5 +1,18 @@
 # @langchain/langgraph-sdk
 
+## 1.9.32
+
+### Patch Changes
+
+- [#2727](https://github.com/langchain-ai/langgraphjs/pull/2727) [`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): drop unused svelte and vue peer dependencies
+
+  The Svelte and Vue adapters live in `@langchain/svelte` and
+  `@langchain/vue`, but the core SDK still declared both as optional peers.
+  Scanners like Socket count optional peers as part of the package graph, so
+  the SDK was being flagged for obfuscated-code alerts in `clsx` and
+  `entities` — packages it never loads. React stays a peer because `./react`
+  and `./react-ui` still ship here.
+
 ## 1.9.31
 
 ### Patch Changes
