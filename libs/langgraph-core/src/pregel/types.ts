@@ -644,6 +644,70 @@ export interface StateSnapshot {
    * Tasks to execute in this step. If already attempted, may contain an error.
    */
   readonly tasks: PregelTaskDescription[];
+  /**
+   * Waiting edges — created by `addEdge([...], target)` — holding writes from
+   * some of their listed nodes but not all, so the edge has not released.
+   *
+   * A non-empty entry alongside an empty `next` means the run ended without
+   * releasing the edge, so the writes listed in `completed` were discarded and
+   * `target` did not run for them.
+   *
+   * It does not mean `target` never ran, because it can also be reached without
+   * the edge: an edge inside a loop releases on each complete pass and re-arms,
+   * so a final incomplete pass is reported while earlier passes did run, and a
+   * `Send` or `Command` may route to `target` directly. Read an entry as "these
+   * writes were dropped", not as "this node was never executed".
+   *
+   * While a run is interrupted, entries here are expected and clear once the
+   * remaining nodes complete on resume; `next` is non-empty in that case.
+   */
+  readonly waitingEdges?: WaitingEdgeDescription[];
+}
+
+/**
+ * A waiting edge holding writes from some of its listed nodes but not all,
+ * so it has not released.
+ */
+export interface WaitingEdgeDescription {
+  /**
+   * The node the edge feeds.
+   */
+  readonly target: string;
+  /**
+   * Listed nodes that have completed and written to the edge.
+   */
+  readonly completed: string[];
+  /**
+   * Listed nodes that have not written to the edge.
+   *
+   * For an edge collected from a subgraph this is derived from the channel name,
+   * which encodes the listed nodes. Absent when that name cannot be parsed
+   * unambiguously — a node named with the join character produces a split the
+   * barrier's own contents contradict, and a wrong set is worse than none.
+   */
+  readonly missing?: string[];
+  /**
+   * The subgraph node path the edge belongs to, outermost first — e.g.
+   * `["ingest", "enrich"]` for an edge two levels down. Absent for this graph's
+   * own edges.
+   *
+   * Prefer this over `namespace` when reporting to a person: it names the nodes
+   * as written in the graph and is the same on every run, while a namespace
+   * carries per-invocation task ids.
+   */
+  readonly path?: string[];
+  /**
+   * The exact checkpoint namespace the edge belongs to, for correlating with a
+   * `getState` call against that subgraph. Absent for this graph's own edges;
+   * present only when `getState` is called with `subgraphs: true`.
+   *
+   * Contains task ids, so it differs between runs of the same graph.
+   *
+   * A snapshot from `getStateHistory` never carries a subgraph's edges: they are
+   * read from that subgraph's latest checkpoint, which does not describe the
+   * moment a historical snapshot describes.
+   */
+  readonly namespace?: string;
 }
 
 /**
