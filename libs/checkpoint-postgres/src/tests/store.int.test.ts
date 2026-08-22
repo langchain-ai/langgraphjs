@@ -1527,3 +1527,188 @@ describe("PostgresStore Migration System", () => {
     }
   });
 });
+
+describe("PostgresStore with schemaSetup: verify", () => {
+  const customSchema = "preprovisioned_store_schema";
+
+  // Create a fresh, empty database and return its connection string.
+  const createFreshDb = async (): Promise<string> => {
+    const dbName = `crud_test_schema_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL!.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  const provisionSchema = async (connString: string): Promise<void> => {
+    const pool = new Pool({ connectionString: connString });
+    try {
+      await pool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await pool.end();
+    }
+  };
+
+  it("verifies and uses a pre-provisioned schema without creating it", async () => {
+    const connString = await createFreshDb();
+    await provisionSchema(connString);
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      schemaSetup: "verify",
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).resolves.not.toThrow();
+
+    await store.put(["ns"], "key1", { data: "value1" });
+    const item = await store.get(["ns"], "key1");
+    expect(item?.value).toEqual({ data: "value1" });
+
+    // Re-running setup() must be idempotent against an already-migrated schema.
+    await expect(store.setup()).resolves.not.toThrow();
+  });
+
+  it("throws a clear error when the schema does not exist", async () => {
+    const connString = await createFreshDb();
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      schemaSetup: "verify",
+    });
+    testStores.push(store);
+
+    // Match the schema-guard message specifically, not just any error that
+    // happens to mention the schema name.
+    await expect(store.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
+    );
+  });
+
+  it("honors schemaSetup: verify through lazy auto-setup (no explicit setup call)", async () => {
+    const connString = await createFreshDb();
+    await provisionSchema(connString);
+
+    // ensureTables defaults to true, so the first operation triggers
+    // auto-setup. With schemaSetup: "verify" it must not issue CREATE SCHEMA.
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      schemaSetup: "verify",
+    });
+    testStores.push(store);
+
+    await store.put(["ns"], "lazy", { data: "ok" });
+    const item = await store.get(["ns"], "lazy");
+    expect(item?.value).toEqual({ data: "ok" });
+  });
+
+  it("still creates the schema by default (regression)", async () => {
+    const connString = await createFreshDb();
+
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).resolves.not.toThrow();
+
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query(
+        `SELECT schema_name FROM information_schema.schemata WHERE schema_name = $1`,
+        [customSchema]
+      );
+      expect(result.rows.length).toBe(1);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+describe("PostgresStore concurrent first-operation setup", () => {
+  const customSchema = "preprovisioned_store_schema";
+
+  const createFreshDb = async (): Promise<string> => {
+    const dbName = `crud_test_concurrent_${Date.now()}_${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const pool = new Pool({ connectionString: TEST_POSTGRES_URL });
+    try {
+      await pool.query(`CREATE DATABASE ${dbName}`);
+    } finally {
+      await pool.end();
+    }
+    return `${TEST_POSTGRES_URL!.split("/").slice(0, -1).join("/")}/${dbName}`;
+  };
+
+  it("runs migrations exactly once when operations race on a fresh store", async () => {
+    const connString = await createFreshDb();
+
+    // No explicit setup(): ensureTables defaults to true, so each of these
+    // operations hits the lazy-setup guard. Without single-flighting, the
+    // concurrent first ops would each replay the full migration set.
+    const store = PostgresStore.fromConnString(connString);
+    testStores.push(store);
+
+    await Promise.all([
+      store.put(["ns"], "a", { data: 1 }),
+      store.put(["ns"], "b", { data: 2 }),
+      store.get(["ns"], "a"),
+      store.get(["ns"], "b"),
+      store.put(["ns"], "c", { data: 3 }),
+    ]);
+
+    // Each migration version must appear exactly once — duplicate rows are the
+    // observable signature of a concurrent double-migration.
+    const pool = new Pool({ connectionString: connString });
+    try {
+      const result = await pool.query<{ v: number }>(
+        `SELECT v FROM store_migrations ORDER BY v`
+      );
+      const versions = result.rows.map((r) => r.v);
+      expect(versions.length).toBeGreaterThan(0);
+      expect(new Set(versions).size).toBe(versions.length);
+    } finally {
+      await pool.end();
+    }
+
+    // Data operations succeeded despite the racing setup.
+    expect((await store.get(["ns"], "a"))?.value).toEqual({ data: 1 });
+    expect((await store.get(["ns"], "c"))?.value).toEqual({ data: 3 });
+  });
+
+  it("retries setup after a failure once the condition is corrected", async () => {
+    const connString = await createFreshDb();
+
+    // schemaSetup: "verify" against a missing schema fails the first attempt.
+    const store = PostgresStore.fromConnString(connString, {
+      schema: customSchema,
+      schemaSetup: "verify",
+    });
+    testStores.push(store);
+
+    await expect(store.setup()).rejects.toThrow(
+      /does not exist[\s\S]*"schemaSetup" is "verify"/
+    );
+
+    // Provision the schema out-of-band, then a fresh attempt must succeed —
+    // the failed run must not have been cached.
+    const provisionPool = new Pool({ connectionString: connString });
+    try {
+      await provisionPool.query(`CREATE SCHEMA "${customSchema}"`);
+    } finally {
+      await provisionPool.end();
+    }
+
+    await expect(store.setup()).resolves.not.toThrow();
+    await store.put(["ns"], "after-retry", { data: "ok" });
+    expect((await store.get(["ns"], "after-retry"))?.value).toEqual({
+      data: "ok",
+    });
+  });
+});
