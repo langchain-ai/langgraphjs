@@ -448,7 +448,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
   it("reconnects after clean EOF and continues on the original handle", async () => {
     let streamOpens = 0;
     const onReconnect = vi.fn();
-    const reconnectDelayMs = vi.fn(() => 0);
+    const reconnectDelayMs = vi.fn((_attempt: number) => 0);
     const fetchImpl = vi.fn(
       (input: URL | RequestInfo, init?: RequestInit) => {
         if (!String(input).includes("/stream/events")) {
@@ -502,6 +502,47 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(reconnectDelayMs).toHaveBeenCalledTimes(1);
     expect(reconnectDelayMs).toHaveBeenCalledWith(1);
 
+    await transport.close();
+  });
+
+  it("exhausts the consecutive-failure budget on empty 200 responses", async () => {
+    const onReconnect = vi.fn();
+    const reconnectDelayMs = vi.fn((_attempt: number) => 0);
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      )
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 2,
+      reconnectDelayMs,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+    const iterator = handle.events[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).rejects.toThrow(
+      "Protocol SSE stream ended unexpectedly."
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(onReconnect.mock.calls.map(([options]) => options.attempt)).toEqual([
+      1, 2,
+    ]);
+    expect(reconnectDelayMs.mock.calls.map(([attempt]) => attempt)).toEqual([
+      1, 2,
+    ]);
+
+    handle.close();
     await transport.close();
   });
 

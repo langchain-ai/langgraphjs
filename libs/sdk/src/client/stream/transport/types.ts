@@ -44,7 +44,9 @@ export interface ProtocolSseTransportOptions {
   asyncCaller?: AsyncCaller;
   paths?: ProtocolTransportPaths;
   /**
-   * Maximum reconnect attempts after an unexpected SSE disconnect.
+   * Maximum consecutive reconnect attempts after an unexpected SSE
+   * disconnect. Receiving a decoded event resets the attempt counter, while a
+   * successful response that ends before delivering an event does not.
    * Defaults to `DEFAULT_MAX_RECONNECT_ATTEMPTS` from `utils/reconnect`.
    * Set to 0 to disable automatic reconnection.
    *
