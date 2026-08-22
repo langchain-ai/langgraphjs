@@ -22,6 +22,16 @@ import type { JSONSchema7, JSONSchema7TypeName } from "json-schema";
 const REGEX_FILE_NAME_OR_SPACE = /(\bimport\(".*?"\)|".*?")\.| /g;
 const REGEX_TJS_JSDOC = /^-([\w]+)\s+(\S|\S[\s\S]*\S)\s*$/g;
 const REGEX_GROUP_JSDOC = /^[.]?([\w]+)\s+(\S|\S[\s\S]*\S)\s*$/g;
+const REGEX_GENERIC_ARGS = /<[\s\S]*$/;
+
+// Strip generic args so a generic subclass (extends clause keeps its own
+// free type-param names) still keys to the same base as a concrete one
+// (extends clause gets the base's defaults substituted in). Not anchored
+// on a trailing `>` — very long instantiations get "..."-truncated by
+// TS's typeToString before they ever reach here.
+function inheritingTypeKey(name: string): string {
+  return name.replace(REGEX_GENERIC_ARGS, "");
+}
 /**
  * Resolve required file, his path and a property name,
  *      pattern: require([file_path]).[property_name]
@@ -875,13 +885,15 @@ class JsonSchemaGenerator {
             }
           }
         } else {
-          // Report that type could not be processed
-          const error = new TypeError(
-            "Unsupported type: " + propertyTypeString
+          // Type couldn't be modeled as JSON schema (e.g. a deferred
+          // conditional/mapped type left unresolved by a generic class used
+          // without concrete type arguments, like langchain v1's
+          // `AIMessage.tool_calls: $InferToolCalls<TStructure>[]`). Leave it
+          // unconstrained rather than aborting the whole symbol's schema,
+          // same as the Any/Unknown case above.
+          console.warn(
+            "Unsupported type, leaving unconstrained: " + propertyTypeString
           );
-          (error as any).type = propertyType;
-          throw error;
-          // definition = this.getTypeDefinition(propertyType, tc);
         }
       }
     }
@@ -1277,16 +1289,19 @@ class JsonSchemaGenerator {
       undefined,
       ts.TypeFormatFlags.UseFullyQualifiedType
     );
+    const inheritingTypesKey = inheritingTypeKey(fullName);
 
     const modifierFlags = ts.getCombinedModifierFlags(node);
 
     if (
       modifierFlags & ts.ModifierFlags.Abstract &&
-      this.inheritingTypes[fullName]
+      this.inheritingTypes[inheritingTypesKey]
     ) {
-      const oneOf = this.inheritingTypes[fullName].map((typename) => {
-        return this.getTypeDefinition(this.allSymbols[typename]);
-      });
+      const oneOf = this.inheritingTypes[inheritingTypesKey].map(
+        (typename) => {
+          return this.getTypeDefinition(this.allSymbols[typename]);
+        }
+      );
 
       definition.oneOf = oneOf;
     } else {
@@ -1985,10 +2000,12 @@ export function buildGenerator(
         const baseTypes = nodeType.getBaseTypes() || [];
 
         baseTypes.forEach((baseType) => {
-          var baseName = tc.typeToString(
-            baseType,
-            undefined,
-            ts.TypeFormatFlags.UseFullyQualifiedType
+          var baseName = inheritingTypeKey(
+            tc.typeToString(
+              baseType,
+              undefined,
+              ts.TypeFormatFlags.UseFullyQualifiedType
+            )
           );
           if (!inheritingTypes[baseName]) {
             inheritingTypes[baseName] = [];
