@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
 import { messagesProjection } from "./projections/messages.js";
-import type { ThreadStream } from "../client/stream/index.js";
+import { ThreadStream } from "../client/stream/index.js";
+import { ProtocolSseTransportAdapter } from "../client/stream/transport/http.js";
 
 interface State {
   messages?: unknown[];
@@ -206,6 +207,37 @@ function namespacedLifecycleEvent(
   } as Event;
 }
 
+function protocolEventStreamResponse(
+  events: Event[],
+  options: {
+    keepOpen?: boolean;
+    onStart?: (
+      controller: ReadableStreamDefaultController<Uint8Array>
+    ) => void;
+  } = {}
+): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const event of events) {
+          controller.enqueue(
+            encoder.encode(
+              `event: ${event.method}\ndata: ${JSON.stringify(event)}\n\n`
+            )
+          );
+        }
+        options.onStart?.(controller);
+        if (!options.keepOpen) controller.close();
+      },
+    }),
+    {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }
+  );
+}
+
 async function waitForExpectation(assertion: () => void): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
@@ -224,6 +256,173 @@ async function waitForExpectation(assertion: () => void): Promise<void> {
 describe("StreamController", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("keeps both SSE pumps live across repeated clean EOFs between runs", async () => {
+    type Pump = "root" | "watcher";
+    const repeatedLiveEofs = 6;
+    const streamOpens: Record<Pump, number> = { root: 0, watcher: 0 };
+    const finalStreams: Partial<
+      Record<Pump, ReadableStreamDefaultController<Uint8Array>>
+    > = {};
+    const onReconnect = vi.fn();
+    const reconnectDelayMs = vi.fn(() => 0);
+    const encoder = new TextEncoder();
+    let commandRequests = 0;
+
+    const fetchImpl = vi.fn(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        if (!String(input).includes("/stream/events")) {
+          commandRequests += 1;
+          const command = JSON.parse(String(init?.body)) as { id?: number };
+          return new Response(
+            JSON.stringify({
+              type: "success",
+              id: command.id ?? 1,
+              result: { run_id: "run-2" },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
+        const body = JSON.parse(String(init?.body)) as {
+          namespaces?: string[][];
+        };
+        const pump: Pump = body.namespaces != null ? "root" : "watcher";
+        streamOpens[pump] += 1;
+        const open = streamOpens[pump];
+
+        if (open <= repeatedLiveEofs) {
+          const event =
+            pump === "root"
+              ? valuesEvent(
+                  [
+                    {
+                      type: "ai",
+                      content: "run 1 response",
+                      id: "run-1-ai",
+                    },
+                  ],
+                  open
+                )
+              : namespacedLifecycleEvent(
+                  [`worker:run-1-${open}`],
+                  "started",
+                  100 + open
+                );
+          return protocolEventStreamResponse([event]);
+        }
+
+        return protocolEventStreamResponse([], {
+          keepOpen: true,
+          onStart(controller) {
+            finalStreams[pump] = controller;
+            init?.signal?.addEventListener("abort", () => controller.close(), {
+              once: true,
+            });
+          },
+        });
+      }
+    ) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: "thread-repeated-eof",
+      fetch: fetchImpl,
+      maxReconnectAttempts: 5,
+      reconnectDelayMs,
+      onReconnect,
+      idleReconnect: 0,
+    });
+    const thread = new ThreadStream(transport, { assistantId: "deep-agent" });
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["agent"],
+          tasks: [],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep-agent",
+      client: client as never,
+      threadId: "thread-repeated-eof",
+      maxReconnectAttempts: 5,
+      reconnectDelayMs,
+      onReconnect,
+    });
+
+    try {
+      await controller.hydrationPromise;
+      await waitForExpectation(() => {
+        expect(
+          controller.rootStore.getSnapshot().messages.map((message) =>
+            message.text
+          )
+        ).toEqual(["run 1 response"]);
+        expect(streamOpens).toEqual({ root: 7, watcher: 7 });
+      });
+
+      const submission = controller.submit({
+        messages: [{ type: "human", content: "run 2", id: "run-2-human" }],
+      });
+      await waitForExpectation(() => {
+        expect(commandRequests).toBe(1);
+      });
+
+      const run2Values = valuesEvent(
+        [
+          { type: "human", content: "run 2", id: "run-2-human" },
+          { type: "ai", content: "run 2 response", id: "run-2-ai" },
+        ],
+        1_000
+      );
+      const nestedInterrupt = inputRequestedEvent(
+        "nested-run-2",
+        { prompt: "Approve run 2?" },
+        ["worker:run-2"]
+      );
+      const interrupted = lifecycleEvent("interrupted", 1_002);
+
+      finalStreams.root?.enqueue(
+        encoder.encode(
+          `event: values\ndata: ${JSON.stringify(run2Values)}\n\n` +
+            `event: lifecycle\ndata: ${JSON.stringify(interrupted)}\n\n`
+        )
+      );
+      finalStreams.watcher?.enqueue(
+        encoder.encode(
+          `event: input.requested\ndata: ${JSON.stringify(nestedInterrupt)}\n\n`
+        )
+      );
+      await submission;
+
+      const snapshot = controller.rootStore.getSnapshot();
+      expect(snapshot.messages.map((message) => message.text)).toEqual([
+        "run 2",
+        "run 2 response",
+      ]);
+      expect(snapshot.interrupts).toEqual([
+        expect.objectContaining({
+          id: "nested-run-2",
+          namespace: ["worker:run-2"],
+        }),
+      ]);
+      expect(streamOpens).toEqual({ root: 7, watcher: 7 });
+      expect(onReconnect).toHaveBeenCalledTimes(12);
+      expect(
+        onReconnect.mock.calls.map(([options]) => options.attempt)
+      ).toEqual(Array.from({ length: 12 }, () => 1));
+      expect(reconnectDelayMs).toHaveBeenCalledTimes(12);
+    } finally {
+      await controller.dispose();
+    }
   });
 
   it("mirrors root interrupts observed by the wildcard watcher into root state", async () => {

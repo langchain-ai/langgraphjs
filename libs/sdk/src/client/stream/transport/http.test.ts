@@ -25,6 +25,32 @@ function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
     .filter((body): body is Record<string, unknown> => body != null);
 }
 
+function protocolEventResponse(
+  eventId: string,
+  seq: number,
+  options: {
+    keepOpen?: boolean;
+    onStart?: (
+      controller: ReadableStreamDefaultController<Uint8Array>
+    ) => void;
+  } = {}
+): Response {
+  const frame = `event: values\ndata: {"type":"event","method":"values","seq":${seq},"event_id":"${eventId}"}\n\n`;
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(frame));
+        options.onStart?.(controller);
+        if (!options.keepOpen) controller.close();
+      },
+    }),
+    {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }
+  );
+}
+
 describe("ProtocolSseTransportAdapter URL resolution", () => {
   it("preserves apiUrl path prefix for protocol commands", async () => {
     const { calls, fetch } = createFetchRecorder();
@@ -418,6 +444,190 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
 
     await transport.close();
   });
+
+  it("reconnects after clean EOF and continues on the original handle", async () => {
+    let streamOpens = 0;
+    const onReconnect = vi.fn();
+    const reconnectDelayMs = vi.fn((_attempt: number) => 0);
+    const fetchImpl = vi.fn(
+      (input: URL | RequestInfo, init?: RequestInit) => {
+        if (!String(input).includes("/stream/events")) {
+          return Promise.resolve(protocolSuccessResponse());
+        }
+        streamOpens += 1;
+        if (streamOpens === 1) {
+          return Promise.resolve(protocolEventResponse("e1", 1));
+        }
+        return Promise.resolve(
+          protocolEventResponse("e2", 2, {
+            keepOpen: true,
+            onStart(controller) {
+              init?.signal?.addEventListener(
+                "abort",
+                () => controller.close(),
+                { once: true }
+              );
+            },
+          })
+        );
+      }
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (message.event_id === "e2") break;
+    }
+
+    expect(received.map((message) => message.event_id)).toEqual(["e1", "e2"]);
+    expect(streamOpens).toBe(2);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(onReconnect).toHaveBeenCalledWith({
+      attempt: 1,
+      cause: expect.any(Error),
+    });
+    expect(reconnectDelayMs).toHaveBeenCalledTimes(1);
+    expect(reconnectDelayMs).toHaveBeenCalledWith(1);
+
+    await transport.close();
+  });
+
+  it("exhausts the consecutive-failure budget on empty 200 responses", async () => {
+    const onReconnect = vi.fn();
+    const reconnectDelayMs = vi.fn((_attempt: number) => 0);
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      )
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 2,
+      reconnectDelayMs,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+    const iterator = handle.events[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).rejects.toThrow(
+      "Protocol SSE stream ended unexpectedly."
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(onReconnect.mock.calls.map(([options]) => options.attempt)).toEqual([
+      1, 2,
+    ]);
+    expect(reconnectDelayMs.mock.calls.map(([attempt]) => attempt)).toEqual([
+      1, 2,
+    ]);
+
+    handle.close();
+    await transport.close();
+  });
+
+  it("fails without reconnecting when clean EOF exhausts the retry budget", async () => {
+    const onReconnect = vi.fn();
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(protocolEventResponse("e1", 1))
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+    const iterator = handle.events[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { event_id: "e1" },
+    });
+    await expect(iterator.next()).rejects.toThrow(
+      "Protocol SSE stream ended unexpectedly."
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    handle.close();
+    await transport.close();
+  });
+
+  it.each(["handle", "transport"] as const)(
+    "does not reconnect after explicit %s close",
+    async (closeMode) => {
+      const onReconnect = vi.fn();
+      let streamController:
+        | ReadableStreamDefaultController<Uint8Array>
+        | undefined;
+      const fetchImpl = vi.fn(() =>
+        Promise.resolve(
+          protocolEventResponse("e1", 1, {
+            keepOpen: true,
+            onStart(controller) {
+              streamController = controller;
+            },
+          })
+        )
+      ) as MockFetch;
+
+      const transport = new ProtocolSseTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: THREAD_ID,
+        fetch: fetchImpl,
+        maxReconnectAttempts: 3,
+        reconnectDelayMs: () => 0,
+        onReconnect,
+        idleReconnect: 0,
+      });
+
+      const handle = transport.openEventStream({ channels: ["values"] });
+      await handle.ready;
+      const iterator = handle.events[Symbol.asyncIterator]();
+      await expect(iterator.next()).resolves.toMatchObject({
+        done: false,
+        value: { event_id: "e1" },
+      });
+
+      if (closeMode === "handle") {
+        handle.close();
+      } else {
+        await transport.close();
+      }
+      streamController?.close();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(onReconnect).not.toHaveBeenCalled();
+      await transport.close();
+    }
+  );
 
   it("honors caller since on the initial open but omits it on reconnect", async () => {
     let streamOpens = 0;

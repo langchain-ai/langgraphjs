@@ -323,6 +323,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           const iterable = IterableReadableStream.fromReadableStream(stream);
 
           for await (const event of iterable) {
+            // A decoded SSE event proves this connection was live. Treat the
+            // retry limit as a consecutive-failure budget so healthy streams
+            // can reconnect throughout a long-lived handle, while repeated
+            // `200 -> immediate EOF` responses still exhaust the budget.
+            attempt = 0;
             if (ac.signal.aborted || this.closed) {
               break;
             }
@@ -330,8 +335,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               streamQueue.push(event.data as Message);
             }
           }
-          streamQueue.close();
-          return;
+          if (ac.signal.aborted || this.closed) {
+            streamQueue.close();
+            return;
+          }
+          throw new Error("Protocol SSE stream ended unexpectedly.");
         } catch (error) {
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
