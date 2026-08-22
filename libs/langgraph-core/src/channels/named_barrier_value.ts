@@ -27,10 +27,16 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     this.seen = new Set<Value>();
   }
 
-  fromCheckpoint(checkpoint?: Value[]) {
+  fromCheckpoint(checkpoint?: Value[] | [Value[], boolean]) {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      empty.seen = new Set(checkpoint);
+      // A thread checkpointed while the target had `defer: true` hands us the
+      // AfterFinish variant's [seen, finished] tuple; take the seen list.
+      empty.seen = new Set(
+        Array.isArray(checkpoint[0])
+          ? (checkpoint[0] as Value[])
+          : (checkpoint as Value[])
+      );
     }
     return empty as this;
   }
@@ -105,12 +111,18 @@ export class NamedBarrierValueAfterFinish<Value> extends BaseChannel<
     this.finished = false;
   }
 
-  fromCheckpoint(checkpoint?: [Value[], boolean]) {
+  fromCheckpoint(checkpoint?: [Value[], boolean] | Value[]) {
     const empty = new NamedBarrierValueAfterFinish<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      const [seen, finished] = checkpoint;
-      empty.seen = new Set(seen);
-      empty.finished = finished;
+      if (Array.isArray(checkpoint[0])) {
+        const [seen, finished] = checkpoint as [Value[], boolean];
+        empty.seen = new Set(seen);
+        empty.finished = finished;
+      } else {
+        // A thread checkpointed while the target had no `defer` hands us
+        // NamedBarrierValue's bare seen list.
+        empty.seen = new Set(checkpoint as Value[]);
+      }
     }
     return empty as this;
   }
