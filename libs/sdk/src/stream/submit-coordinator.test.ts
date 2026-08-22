@@ -73,6 +73,7 @@ function makeRootStore(): StreamStore<RootSnapshot<State, unknown>> {
     interrupts: [],
     interrupt: undefined,
     isLoading: false,
+    isRunning: false,
     isThreadLoading: false,
     error: undefined,
     threadId: "thread-1",
