@@ -211,6 +211,8 @@ export function putTests<T extends BaseCheckpointSaver>(
         "TODO: MongoDBSaver doesn't store channel deltas",
       "@langchain/langgraph-checkpoint-sqlite":
         "TODO: SQLiteSaver doesn't store channel deltas",
+      "@langchain/langgraph-checkpoint-oracledb":
+        "Oracle follows Python by storing small JSON channel values inline",
     })(
       "should only store channel_values that have changed (based on newVersions)",
       async () => {

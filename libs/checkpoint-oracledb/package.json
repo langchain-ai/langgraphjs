@@ -1,0 +1,85 @@
+{
+  "name": "@langchain/langgraph-checkpoint-oracledb",
+  "version": "0.0.0",
+  "description": "Oracle AI Database integration for LangGraph",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/langchain-ai/langgraphjs.git",
+    "directory": "libs/checkpoint-oracledb"
+  },
+  "scripts": {
+    "build": "pnpm turbo build:internal --filter=@langchain/langgraph-checkpoint-oracledb",
+    "build:internal": "pnpm --filter @langchain/build compile @langchain/langgraph-checkpoint-oracledb",
+    "clean": "rm -rf dist/ dist-cjs/ .turbo/",
+    "lint:eslint": "NODE_OPTIONS=--max-old-space-size=4096 eslint --cache --ext .ts,.js src/",
+    "lint:dpdm": "dpdm --exit-code circular:1 --no-warning --no-tree src/*.ts src/**/*.ts",
+    "prepublish": "pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:int": "vitest run --mode int"
+  },
+  "author": "LangChain",
+  "license": "MIT",
+  "dependencies": {
+    "@msgpack/msgpack": "^3.1.2",
+    "@types/oracledb": "^6.9.0",
+    "oracledb": "^6.9.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.1.44",
+    "@langchain/langgraph-checkpoint": "^1.0.0"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-checkpoint": "workspace:*",
+    "@langchain/langgraph-checkpoint-validation": "workspace:*",
+    "@langchain/scripts": ">=0.1.2 <0.2.0",
+    "@tsconfig/recommended": "^1.0.3",
+    "dotenv": "^16.3.1",
+    "dpdm": "^3.12.0",
+    "rollup": "^4.62.3",
+    "tsx": "^4.19.3",
+    "typescript": "^4.9.5 || ^5.4.5",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "exports": {
+    ".": {
+      "typedoc": "./src/index.ts",
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "input": "./src/index.ts"
+    },
+    "./store": {
+      "input": "./src/store/index.ts",
+      "typedoc": "./src/store/index.ts",
+      "import": {
+        "types": "./dist/store/index.d.ts",
+        "default": "./dist/store/index.js"
+      },
+      "require": {
+        "types": "./dist/store/index.d.cts",
+        "default": "./dist/store/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "LICENSE-3rd-party.txt"
+  ]
+}
