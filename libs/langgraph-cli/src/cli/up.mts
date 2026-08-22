@@ -5,7 +5,7 @@ import { getConfig } from "../utils/config.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { logger } from "../utils/logging.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
-import { configToCompose, getBaseImage } from "../docker/docker.mjs";
+import { configToCompose, resolveBaseImage } from "../docker/docker.mjs";
 import { getExecaOptions } from "../docker/shell.mjs";
 import { $ } from "execa";
 import { createHash } from "node:crypto";
@@ -112,9 +112,9 @@ builder
     const exec = $(execOpts);
 
     if (!config._INTERNAL_docker_tag && params.pull) {
-      // pull the image
-      logger.info(`Pulling image ${getBaseImage(config)}...`);
-      await stream(exec`docker pull ${getBaseImage(config)}`);
+      const baseImage = await resolveBaseImage(config);
+      logger.info(`Pulling image ${baseImage}...`);
+      await stream(exec`docker pull ${baseImage}`);
     }
 
     // remove dangling images
