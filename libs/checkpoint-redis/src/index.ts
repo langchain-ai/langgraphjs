@@ -14,7 +14,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
-import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import {
+  assertSafeKeyComponent,
+  escapeRediSearchTagValue,
+  isIndexAlreadyExistsError,
+} from "./utils.js";
 import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 // Type for Redis client - supports both standalone and cluster
@@ -1124,7 +1128,7 @@ export class RedisSaver extends BaseCheckpointSaver {
         });
       } catch (error: any) {
         // Ignore if index already exists
-        if (!error.message?.includes("Index already exists")) {
+        if (!isIndexAlreadyExistsError(error)) {
           console.error(
             `Failed to create index ${schema.index}:`,
             error.message
