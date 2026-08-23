@@ -11,9 +11,10 @@ import {
   cancel,
   confirm,
 } from "@clack/prompts";
-import zipExtract from "extract-zip";
 import color from "picocolors";
 import dedent from "dedent";
+
+import { downloadAndExtract } from "./utils/extract.js";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -82,54 +83,6 @@ const TEMPLATE_ID_TO_CONFIG = Object.entries(TEMPLATES).reduce(
 );
 
 const TEMPLATE_IDS = Object.keys(TEMPLATE_ID_TO_CONFIG);
-
-async function downloadAndExtract(url: string, targetPath: string) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok)
-      throw new Error(`Failed to download: ${response.statusText}`);
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    await fs.mkdir(targetPath, { recursive: true });
-
-    // Create a temporary file to store the zip
-    const tempFile = path.join(targetPath, "temp.zip");
-    await fs.writeFile(tempFile, buffer);
-
-    // Extract the zip file
-    await zipExtract(tempFile, { dir: targetPath });
-
-    // Clean up temp file
-    await fs.unlink(tempFile);
-
-    // Move files from the extracted directory to target path
-    const extractedDir = (await fs.readdir(targetPath)).find((f) =>
-      f.endsWith("-main")
-    );
-    if (extractedDir) {
-      const fullExtractedPath = path.join(targetPath, extractedDir);
-      const files = await fs.readdir(fullExtractedPath);
-      await Promise.all(
-        files.map((file) =>
-          fs.rename(
-            path.join(fullExtractedPath, file),
-            path.join(targetPath, file)
-          )
-        )
-      );
-      await fs.rmdir(fullExtractedPath);
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      throw new Error(
-        `Failed to download and extract template: ${error.message}`
-      );
-    }
-    throw new Error("Failed to download and extract template");
-  }
-}
 
 export async function createNew(projectPath?: string, templateId?: string) {
   if (templateId) {

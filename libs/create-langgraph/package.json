@@ -29,7 +29,7 @@
     "@commander-js/extra-typings": "^13.0.0",
     "commander": "^13.0.0",
     "dedent": "^1.5.3",
-    "extract-zip": "^2.0.1",
+    "node-stream-zip": "^1.16.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
