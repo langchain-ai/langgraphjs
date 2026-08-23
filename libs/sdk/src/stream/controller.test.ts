@@ -112,14 +112,18 @@ function inputRequestedEvent(
   } as Event;
 }
 
-function valuesEvent(messages: unknown[], seq: number): Event {
+function valuesEvent(
+  messages: unknown[],
+  seq: number,
+  namespace: string[] = []
+): Event {
   return {
     type: "event",
     event_id: `values-${seq}`,
     seq,
     method: "values",
     params: {
-      namespace: [],
+      namespace,
       timestamp: 0,
       data: {
         messages,
@@ -156,14 +160,19 @@ function lifecycleEvent(event: string, seq: number): Event {
   } as Event;
 }
 
-function messageStartEvent(id: string, seq: number, role = "ai"): Event {
+function messageStartEvent(
+  id: string,
+  seq: number,
+  role = "ai",
+  namespace: string[] = []
+): Event {
   return {
     type: "event",
     event_id: `msg-start-${id}-${seq}`,
     seq,
     method: "messages",
     params: {
-      namespace: [],
+      namespace,
       timestamp: 0,
       data: { event: "message-start", id, role },
     },
@@ -1472,6 +1481,64 @@ describe("StreamController", () => {
       "ai-1",
     ]);
     expect((messages[1] as { text?: string }).text).toBe("All done.");
+
+    await controller.dispose();
+  });
+
+  it("keeps discovered subgraph messages out of root state", async () => {
+    const rootSubscription = makePushableSubscription();
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "subgraph-agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    await rootSubscription.started;
+    expect(onEvent).toBeDefined();
+
+    const subgraphNamespace = [
+      "worker:00000000-0000-0000-0000-000000000001",
+    ];
+    const discoveryEvent = valuesEvent([], 1, subgraphNamespace);
+    onEvent?.(discoveryEvent);
+    rootSubscription.push(discoveryEvent);
+
+    expect(
+      [...controller.subgraphStore.getSnapshot().values()].map(
+        (subgraph) => subgraph.namespace
+      )
+    ).toContainEqual(subgraphNamespace);
+
+    rootSubscription.push(
+      messageStartEvent("child-message", 2, "ai", subgraphNamespace)
+    );
+    rootSubscription.push(
+      messageStartEvent("root-message", 3, "ai", ["model:root-run"])
+    );
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().messages.map((message) => message.id)
+      ).toEqual(["root-message"]);
+    });
 
     await controller.dispose();
   });
