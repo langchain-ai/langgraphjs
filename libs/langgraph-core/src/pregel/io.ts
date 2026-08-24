@@ -101,11 +101,16 @@ export function* mapCommand(
       Object.keys(cmd.resume).every(isXXH3)
     ) {
       for (const [tid, resume] of Object.entries(cmd.resume)) {
-        const existing =
+        // The prior write's value is itself the accumulated resume LIST.
+        // Wrapping it as an element ([prevList, next]) nests one level per
+        // respond and breaks `_scratchpad`'s single `.flat()`. Concatenate
+        // instead, matching the Python implementation's flat accumulation.
+        const existing = (
           pendingWrites
             .filter((w) => w[0] === tid && w[1] === RESUME)
             .map((w) => w[2])
-            .slice(0, 1) ?? [];
+            .slice(0, 1) ?? []
+        ).flat();
         existing.push(resume);
         yield [tid, RESUME, existing];
       }
