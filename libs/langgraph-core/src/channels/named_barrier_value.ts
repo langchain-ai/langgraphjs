@@ -120,8 +120,9 @@ export class NamedBarrierValueAfterFinish<Value> extends BaseChannel<
         empty.finished = finished;
       } else {
         // A thread checkpointed while the target had no `defer` hands us
-        // NamedBarrierValue's bare seen list.
+        // NamedBarrierValue's bare seen list; it was already satisfied.
         empty.seen = new Set(checkpoint as Value[]);
+        empty.finished = true;
       }
     }
     return empty as this;

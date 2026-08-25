@@ -23,7 +23,7 @@ describe("barrier checkpoint restore across a defer change", () => {
     expect(restored.isAvailable()).toBe(true);
   });
 
-  it("restores seen from the non-defer bare list", () => {
+  it("restores seen from the non-defer bare list, already finished", () => {
     const withoutDefer = new NamedBarrierValue<string>(new Set(["a", "b"]));
     withoutDefer.update(["a"]);
 
@@ -32,9 +32,9 @@ describe("barrier checkpoint restore across a defer change", () => {
     ).fromCheckpoint(withoutDefer.checkpoint());
 
     expect([...restored.seen]).toEqual(["a"]);
-    expect(restored.finished).toBe(false);
+    expect(restored.finished).toBe(true);
+    expect(restored.isAvailable()).toBe(false);
     restored.update(["b"]);
-    expect(restored.finish()).toBe(true);
     expect(restored.isAvailable()).toBe(true);
   });
 
@@ -98,5 +98,35 @@ describe("barrier checkpoint restore across a defer change", () => {
     const result = (await graph.invoke(null, config)) as { ran: string[] };
 
     expect(result.ran.filter((n) => n === "join")).toHaveLength(1);
+  });
+
+  const buildFanIn = (defer: boolean, saver: MemorySaver) =>
+    new StateGraph(State)
+      .addNode("a1", mark("a1"))
+      .addNode("a2", mark("a2"))
+      .addNode("c", mark("c"), defer ? { defer: true } : undefined)
+      .addEdge(START, "a1")
+      .addEdge(START, "a2")
+      .addEdge(["a1", "a2"], "c")
+      .compile({ checkpointer: saver, interruptBefore: ["c"] });
+
+  it("fires the fan-in node on resume with no manual write, defer false -> true", async () => {
+    const saver = new MemorySaver();
+    const config = { configurable: { thread_id: "clean-resume-1" } };
+    await buildFanIn(false, saver).invoke({}, config);
+    const result = (await buildFanIn(true, saver).invoke(null, config)) as {
+      ran: string[];
+    };
+    expect(result.ran).toContain("c");
+  });
+
+  it("fires the fan-in node on resume with no manual write, defer true -> false", async () => {
+    const saver = new MemorySaver();
+    const config = { configurable: { thread_id: "clean-resume-2" } };
+    await buildFanIn(true, saver).invoke({}, config);
+    const result = (await buildFanIn(false, saver).invoke(null, config)) as {
+      ran: string[];
+    };
+    expect(result.ran).toContain("c");
   });
 });
