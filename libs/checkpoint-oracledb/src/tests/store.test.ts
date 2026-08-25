@@ -1,7 +1,10 @@
 // Copyright (c) 2026, Oracle and/or its affiliates.
 import oracledb from "oracledb";
 import { describe, expect, test, vi } from "vitest";
-import type { IndexConfig } from "@langchain/langgraph-checkpoint";
+import {
+  InvalidNamespaceError,
+  type IndexConfig,
+} from "@langchain/langgraph-checkpoint";
 
 import { OracleStore } from "../store/index.js";
 import { ORACLE_VECTOR_MAX_DIMENSIONS } from "../store/constants.js";
@@ -215,6 +218,38 @@ describe("OracleStore runtime validation", () => {
     await expect(
       store.put(["ttl"], "item", { value: true }, undefined, { ttl: 0 })
     ).rejects.toThrow("put options.ttl must be a finite number greater than 0");
+  });
+
+  test("rejects dotted namespaces before an aliased read", async () => {
+    const connection = {
+      async execute() {
+        return {
+          rows: [
+            {
+              PREFIX: "tenant.secret",
+              KEY: "item",
+              VALUE: { sensitive: true },
+              CREATED_AT: new Date(),
+              UPDATED_AT: new Date(),
+            },
+          ],
+        };
+      },
+      async close() {},
+    };
+    const store = new OracleStore({
+      pool: {
+        async getConnection() {
+          return connection;
+        },
+        async close() {},
+      } as never,
+      ensureTable: false,
+    });
+
+    await expect(store.get(["tenant.secret"], "item")).rejects.toBeInstanceOf(
+      InvalidNamespaceError
+    );
   });
 
   test("starts and stops the configured TTL sweeper", async () => {

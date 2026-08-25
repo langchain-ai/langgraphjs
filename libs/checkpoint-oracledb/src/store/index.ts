@@ -1693,6 +1693,7 @@ WHEN NOT MATCHED THEN INSERT (
   }
 
   private async getOp(op: GetOperation): Promise<Item | null> {
+    validateNamespace(op.namespace);
     validateNamespacePathLength(op.namespace);
     validateStoreKey(op.key);
     const result = await this.withConnection((connection) =>
