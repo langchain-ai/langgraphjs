@@ -35,10 +35,6 @@ export {
 export interface ExtendedRunStartParams extends RunStartParams {
   forkFrom?: string;
   multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
-  langsmith_tracer?: {
-    project_name?: string;
-    example_id?: string;
-  };
 }
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;
