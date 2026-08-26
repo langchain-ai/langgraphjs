@@ -88,7 +88,12 @@ export function pushMessage(
     ).split("|");
 
     if (messagesHandler) {
-      messagesHandler._emit([namespace, metadata], validMessage, undefined, false);
+      messagesHandler._emit(
+        [namespace, metadata],
+        validMessage,
+        undefined,
+        false
+      );
     } else if (protocolMessagesHandler) {
       // streamEvents v3 registers StreamProtocolMessagesHandler instead of
       // StreamMessagesHandler; without this branch, pushed messages are
