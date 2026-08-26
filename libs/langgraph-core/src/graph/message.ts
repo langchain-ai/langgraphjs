@@ -7,6 +7,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { StateGraph } from "./state.js";
 import { ensureLangGraphConfig } from "../pregel/utils/config.js";
 import type { StreamMessagesHandler } from "../pregel/messages.js";
+import type { StreamProtocolMessagesHandler } from "../pregel/messages-v2.js";
 import { messagesStateReducer, type Messages } from "./messages_reducer.js";
 
 /** @ignore */
@@ -75,14 +76,23 @@ export function pushMessage(
     (cb): cb is StreamMessagesHandler =>
       "name" in cb && cb.name === "StreamMessagesHandler"
   );
+  const protocolMessagesHandler = callbacks.find(
+    (cb): cb is StreamProtocolMessagesHandler =>
+      "name" in cb && cb.name === "StreamProtocolMessagesHandler"
+  );
 
-  if (messagesHandler) {
+  if (messagesHandler || protocolMessagesHandler) {
     const metadata = config.metadata ?? {};
     const namespace = (
       (metadata.langgraph_checkpoint_ns ?? "") as string
     ).split("|");
 
-    messagesHandler._emit(
+    messagesHandler?._emit([namespace, metadata], validMessage, undefined, false);
+    // streamEvents v3 registers StreamProtocolMessagesHandler instead of
+    // StreamMessagesHandler; without this branch, pushed messages are
+    // silently absent from the live `messages` channel and only surface in
+    // state at node end.
+    protocolMessagesHandler?.emitFinalMessage(
       [namespace, metadata],
       validMessage,
       undefined,
