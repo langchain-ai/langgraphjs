@@ -87,17 +87,22 @@ export function pushMessage(
       (metadata.langgraph_checkpoint_ns ?? "") as string
     ).split("|");
 
-    messagesHandler?._emit([namespace, metadata], validMessage, undefined, false);
-    // streamEvents v3 registers StreamProtocolMessagesHandler instead of
-    // StreamMessagesHandler; without this branch, pushed messages are
-    // silently absent from the live `messages` channel and only surface in
-    // state at node end.
-    protocolMessagesHandler?.emitFinalMessage(
-      [namespace, metadata],
-      validMessage,
-      undefined,
-      false
-    );
+    if (messagesHandler) {
+      messagesHandler._emit([namespace, metadata], validMessage, undefined, false);
+    } else if (protocolMessagesHandler) {
+      // streamEvents v3 registers StreamProtocolMessagesHandler instead of
+      // StreamMessagesHandler; without this branch, pushed messages are
+      // silently absent from the live `messages` channel and only surface in
+      // state at node end. else-if: the handlers are mutually exclusive per
+      // stream, and a single emission path avoids double emits if a caller
+      // ever registers both.
+      protocolMessagesHandler.emitFinalMessage(
+        [namespace, metadata],
+        validMessage,
+        undefined,
+        false
+      );
+    }
   }
 
   if (stateKey) {
