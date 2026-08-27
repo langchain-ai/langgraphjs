@@ -114,7 +114,10 @@ jobs:
       matrix:
         # See Node.js release schedule at https://nodejs.org/en/about/releases/
         os: [ubuntu-latest]
-        node-version: [22.x, 24.x, 26.x]
+        # Node 26.8.x deterministically drops the final streamed token in
+        # tracing.test.ts. Keep the Node 26 coverage on the last known-good
+        # release until the upstream runtime regression is resolved.
+        node-version: [22.x, 24.x, 26.7.0]
         include:
           - os: windows-latest
             node-version: 22.x
