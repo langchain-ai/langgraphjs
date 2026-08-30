@@ -400,6 +400,9 @@ export class PregelLoop {
       }
     );
     this.checkpointerPromises.add(tracked);
+    // Detached observer: without it a rejection before the finalize barrier is
+    // unhandled. `tracked` still rejects, so the barrier's Promise.all sees it.
+    tracked.catch(() => {});
   }
 
   /**
@@ -732,14 +735,20 @@ export class PregelLoop {
     metadata: CheckpointMetadata;
     newVersions: Record<string, string | number>;
   }) {
+    const put = () =>
+      this.checkpointer?.put(
+        input.config,
+        input.checkpoint,
+        input.metadata,
+        input.newVersions
+      );
+    // Matches Python's `try/finally`: put() attempts even after a failed
+    // predecessor, and the earlier failure still propagates down the chain.
     this._checkpointerChainedPromise = this._checkpointerChainedPromise.then(
-      () => {
-        return this.checkpointer?.put(
-          input.config,
-          input.checkpoint,
-          input.metadata,
-          input.newVersions
-        );
+      () => put(),
+      async (error) => {
+        await put();
+        throw error;
       }
     );
     this._trackCheckpointerPromise(this._checkpointerChainedPromise);
