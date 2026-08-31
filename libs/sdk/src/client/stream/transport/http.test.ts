@@ -331,6 +331,38 @@ describe("ProtocolSseTransportAdapter AsyncCaller", () => {
 });
 
 describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
+  it("rejects non-SSE content types before marking the stream ready", async () => {
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      )
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+
+    await expect(handle.ready).rejects.toThrow(
+      "Expected response header Content-Type to contain 'text/event-stream'"
+    );
+    await expect(
+      handle.events[Symbol.asyncIterator]().next()
+    ).rejects.toThrow(
+      "Expected response header Content-Type to contain 'text/event-stream'"
+    );
+
+    await transport.close();
+  });
+
   it("reconnects after a mid-stream failure when a custom auth fetch is supplied", async () => {
     let streamOpens = 0;
     const onReconnect = vi.fn();

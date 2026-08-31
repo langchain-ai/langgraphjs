@@ -2259,8 +2259,8 @@ importers:
   libs/sdk:
     dependencies:
       '@langchain/protocol':
-        specifier: ^0.0.18
-        version: 0.0.18
+        specifier: ^0.0.19
+        version: 0.0.19
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -3908,6 +3908,9 @@ packages:
 
   '@langchain/protocol@0.0.18':
     resolution: {integrity: sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ==}
+
+  '@langchain/protocol@0.0.19':
+    resolution: {integrity: sha512-9hKcRrH7cBX6gfutdfXPoft1OCchHe4FEpALoDJMl5Qu+n/YG5ynZmyu8+8cxORlPwHBoKTxggvXz+76M1yX1Q==}
 
   '@langchain/quickjs@1.0.0':
     resolution: {integrity: sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA==}
@@ -14027,6 +14030,8 @@ snapshots:
   '@langchain/protocol@0.0.16': {}
 
   '@langchain/protocol@0.0.18': {}
+
+  '@langchain/protocol@0.0.19': {}
 
   '@langchain/quickjs@1.0.0(deepagents@1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.9(@opentelemetry/api@1.9.0)(openai@6.48.0(ws@8.21.1)(zod@4.3.6))(ws@8.21.1))(openai@6.48.0(ws@8.21.1)(zod@4.3.6))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.3.6)))':
     dependencies:
