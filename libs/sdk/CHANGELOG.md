@@ -1,5 +1,56 @@
 # @langchain/langgraph-sdk
 
+## 1.10.0
+
+### Minor Changes
+
+- [#2745](https://github.com/langchain-ai/langgraphjs/pull/2745) [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975) Thanks [@mdrxy](https://github.com/mdrxy)! - Add LangSmith replica routing to thread-stream run starts.
+
+### Patch Changes
+
+- [#2727](https://github.com/langchain-ai/langgraphjs/pull/2727) [`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): drop unused svelte and vue peer dependencies
+
+  The Svelte and Vue adapters live in `@langchain/svelte` and
+  `@langchain/vue`, but the core SDK still declared both as optional peers.
+  Scanners like Socket count optional peers as part of the package graph, so
+  the SDK was being flagged for obfuscated-code alerts in `clsx` and
+  `entities` — packages it never loads. React stays a peer because `./react`
+  and `./react-ui` still ship here.
+
+## 1.9.31
+
+### Patch Changes
+
+- [#2722](https://github.com/langchain-ai/langgraphjs/pull/2722) [`7b0fd47`](https://github.com/langchain-ai/langgraphjs/commit/7b0fd47287eb841d8f1068de93b46f49cab3c04d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): don't re-show resolved interrupts after reload
+
+  After a reload, the next submit used to replay the old `input.requested`
+  event, so the HITL form came back even though the interrupt was already
+  answered. Keep filtering historical interrupts after the command is
+  accepted, using the response's `applied_through_seq` as the cutoff.
+
+## 1.9.30
+
+### Patch Changes
+
+- [#2691](https://github.com/langchain-ai/langgraphjs/pull/2691) [`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear messages on hydrate(null) with a pending interrupt
+
+  Teardown awaited the paused root pump, so threadId went null while
+  the old conversation stayed on screen. Reset the snapshot first.
+
+- [#2703](https://github.com/langchain-ai/langgraphjs/pull/2703) [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep isLoading true across interrupt→running hydration
+
+  Deferred terminal resets no longer clear isLoading when a newer running lifecycle has already arrived (HITL resume / SSE replay).
+
+- [#2692](https://github.com/langchain-ai/langgraphjs/pull/2692) [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): adopt server metadata on same-id optimistic message echo
+
+  When a `values` snapshot echoes an optimistic human with the same
+  content plus committed `additional_kwargs` (e.g. attachment paths),
+  `stream.messages` now takes the server copy instead of keeping the
+  plain optimistic message until hydration. Preferring is asymmetric:
+  lagging or poorer values snapshots do not strip richer current
+  metadata. In-flight AI token streaming is unchanged: streamed content
+  still wins when it has moved past the snapshot.
+
 ## 1.9.29
 
 ### Patch Changes

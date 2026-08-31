@@ -1,5 +1,26 @@
 # @langchain/react
 
+## 1.0.33
+
+### Patch Changes
+
+- Updated dependencies [[`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d), [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975)]:
+  - @langchain/langgraph-sdk@1.10.0
+
+## 1.0.32
+
+### Patch Changes
+
+- Updated dependencies [[`7b0fd47`](https://github.com/langchain-ai/langgraphjs/commit/7b0fd47287eb841d8f1068de93b46f49cab3c04d)]:
+  - @langchain/langgraph-sdk@1.9.31
+
+## 1.0.31
+
+### Patch Changes
+
+- Updated dependencies [[`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f), [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924), [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5)]:
+  - @langchain/langgraph-sdk@1.9.30
+
 ## 1.0.30
 
 ### Patch Changes
