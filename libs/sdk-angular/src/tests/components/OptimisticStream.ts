@@ -114,7 +114,10 @@ export class OptimisticDefaultStreamComponent extends OptimisticBaseComponent {
 })
 export class OptimisticErrorStreamComponent extends OptimisticBaseComponent {
   readonly stream = injectStream<StreamState>({
-    assistantId: "errorAgent",
+    // Fail before the server can echo the optimistic message. A graph that
+    // starts running may emit its input as a values snapshot first, correctly
+    // resolving the message to "sent" even if a later node errors.
+    assistantId: "missing_graph",
     apiUrl,
   });
 

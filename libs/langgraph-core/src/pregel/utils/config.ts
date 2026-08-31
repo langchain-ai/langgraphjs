@@ -127,9 +127,9 @@ function mergeCallbacks(
   }
   // both are managers
   return new CallbackManager(provided._parentRunId, {
-    handlers: base.handlers.concat(provided.handlers),
-    inheritableHandlers: base.inheritableHandlers.concat(
-      provided.inheritableHandlers
+    handlers: Array.from(new Set(base.handlers.concat(provided.handlers))),
+    inheritableHandlers: Array.from(
+      new Set(base.inheritableHandlers.concat(provided.inheritableHandlers))
     ),
     tags: Array.from(new Set(base.tags.concat(provided.tags))),
     inheritableTags: Array.from(

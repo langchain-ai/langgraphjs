@@ -292,6 +292,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             { stream: true }
           );
 
+          const contentType = response.headers
+            .get("content-type")
+            ?.split(";")[0];
+          if (contentType && !contentType.includes("text/event-stream")) {
+            throw new Error(
+              `Expected response header Content-Type to contain 'text/event-stream', got '${contentType}'`
+            );
+          }
+
           if (!readySettled) {
             readySettled = true;
             resolveReady();
