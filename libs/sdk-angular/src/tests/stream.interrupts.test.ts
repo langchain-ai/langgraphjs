@@ -3,6 +3,7 @@ import { render } from "vitest-browser-angular";
 
 import { InterruptStreamComponent } from "./components/InterruptStream.js";
 import { InterruptReconnectStreamComponent } from "./components/InterruptReconnectStream.js";
+import { InterruptReloadStreamComponent } from "./components/InterruptReloadStream.js";
 import { MultiInterruptStreamComponent } from "./components/MultiInterruptStream.js";
 
 it("surfaces the first interrupt on submit()", async () => {
@@ -120,6 +121,64 @@ it(
     await expect
       .element(screen.getByTestId("interrupt-count"))
       .toHaveTextContent("0");
+  }
+);
+
+it(
+  "keeps a resolved interrupt hidden after a reload and a follow-up submit",
+  { timeout: 30_000 },
+  async () => {
+    const screen = await render(InterruptReloadStreamComponent);
+
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("interrupt-count"), { timeout: 10_000 })
+      .toHaveTextContent("1");
+
+    await screen.getByTestId("resume").click();
+    await expect
+      .element(screen.getByTestId("completed-turns"), { timeout: 10_000 })
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("interrupt-count"))
+      .toHaveTextContent("0");
+
+    await screen.getByTestId("reload").click();
+    await expect
+      .element(screen.getByTestId("session"), { timeout: 10_000 })
+      .toHaveTextContent("1");
+    await expect
+      .element(screen.getByTestId("thread-loading"), { timeout: 10_000 })
+      .toHaveTextContent("Ready");
+
+    await screen.getByTestId("submit").click();
+    await expect
+      .element(screen.getByTestId("completed-turns"), { timeout: 10_000 })
+      .toHaveTextContent("2");
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Not loading");
+    await expect
+      .poll(
+        () =>
+          Number(
+            screen.getByTestId("replayed-frames").element().textContent ?? "0"
+          ),
+        { timeout: 5_000 }
+      )
+      .toBeGreaterThan(0);
+
+    const observedIds = new Set<string>();
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline) {
+      const ids = screen
+        .getByTestId("interrupt-ids")
+        .element()
+        .textContent?.trim();
+      if (ids) observedIds.add(ids);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect([...observedIds]).toEqual([]);
   }
 );
 

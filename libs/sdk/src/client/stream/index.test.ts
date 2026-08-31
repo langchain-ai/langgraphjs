@@ -157,6 +157,29 @@ describe("ThreadStream", () => {
     }
   });
 
+  it("forwards LangSmith replica routing on run.start", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+    await thread.run.start({
+      input: { step: 1 },
+      langsmith_tracer: {
+        project_name: "replica-project",
+        example_id: "example-1",
+      },
+    });
+
+    const command = transport.sentCommands.find(
+      (item) => item.method === "run.start"
+    );
+    expect(command?.params).toMatchObject({
+      langsmith_tracer: {
+        project_name: "replica-project",
+        example_id: "example-1",
+      },
+    });
+  });
+
   it("exposes the bound assistantId as thread.assistantId", () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, {

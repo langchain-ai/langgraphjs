@@ -1,5 +1,13 @@
 # LangGraphJS Development Guide
 
+<corridor>
+
+## Corridor security analysis
+
+Before generating or modifying code, create a plan and use Corridor's `analyzePlan` tool to analyze it. Apply the resulting security guidance before writing code.
+
+</corridor>
+
 ## Build & Test Commands
 - Build: `pnpm build`
 - Lint: `pnpm lint` (fix with `pnpm lint:fix`) — uses oxlint

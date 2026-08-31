@@ -16,6 +16,10 @@ import {
   CHECKPOINT_NAMESPACE_END,
 } from "../../constants.js";
 
+class SentinelHandler extends BaseCallbackHandler {
+  name = "sentinel";
+}
+
 describe("ensureLangGraphConfig", () => {
   // Save original to restore after tests
   const originalGetRunnableConfig =
@@ -133,9 +137,6 @@ describe("ensureLangGraphConfig", () => {
       .fn()
       .mockReturnValue(undefined);
 
-    class SentinelHandler extends BaseCallbackHandler {
-      name = "sentinel";
-    }
     const cbA = new SentinelHandler();
     const cbB = new SentinelHandler();
 
@@ -188,6 +189,65 @@ describe("ensureLangGraphConfig", () => {
       "base-inheritable",
       "provided-inheritable",
     ]);
+  });
+
+  it("should dedupe a shared handler instance when both callbacks are managers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    // Every nested Pregel entry merges the ambient config against an explicit
+    // config that already carries the same inherited handler. CallbackManager
+    // fans each event out per array entry, so concatenating made the
+    // duplicated StreamMessagesHandler emit every token twice.
+    const shared = new SentinelHandler();
+
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(shared, true);
+
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(shared, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toHaveLength(1);
+    expect(merged.handlers[0]).toBe(shared);
+    expect(merged.inheritableHandlers).toHaveLength(1);
+    expect(merged.inheritableHandlers[0]).toBe(shared);
+  });
+
+  it("should keep distinct handlers that share a name when both callbacks are managers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    // Dedupe is by identity, not by name: two LangChainTracers both answer to
+    // "langchain_tracer", so collapsing by name would drop a live handler.
+    const outer = new SentinelHandler();
+    const inner = new SentinelHandler();
+
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(outer, true);
+
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(inner, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toHaveLength(2);
+    expect(merged.handlers[0]).toBe(outer);
+    expect(merged.handlers[1]).toBe(inner);
+    expect(merged.inheritableHandlers).toHaveLength(2);
+    expect(merged.inheritableHandlers[0]).toBe(outer);
+    expect(merged.inheritableHandlers[1]).toBe(inner);
   });
 
   it("should not mutate the input configs when merging", () => {

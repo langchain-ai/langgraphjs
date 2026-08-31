@@ -3,6 +3,7 @@ import { render } from "vitest-browser-react";
 
 import { InterruptStream } from "./components/InterruptStream.js";
 import { InterruptReconnectStream } from "./components/InterruptReconnectStream.js";
+import { InterruptReloadStream } from "./components/InterruptReloadStream.js";
 import { MultiInterruptStream } from "./components/MultiInterruptStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
@@ -116,6 +117,96 @@ it(
       await expect
         .element(screen.getByTestId("interrupt-count"))
         .toHaveTextContent("0");
+    } finally {
+      await cleanupRender(screen);
+    }
+  }
+);
+
+it(
+  "keeps a resolved interrupt hidden after a reload and a follow-up submit",
+  { timeout: 30_000 },
+  async () => {
+    // Regression: a reloaded session has no memory of the interrupt it
+    // resolved before the reload. The follow-up submit opens fresh pumps
+    // that replay the thread's history, and that historical
+    // `input.requested` used to re-surface the resolved form.
+    const screen = await render(<InterruptReloadStream apiUrl={apiUrl} />);
+
+    try {
+      await screen.getByTestId("submit").click();
+
+      await expect
+        .element(screen.getByTestId("interrupt-count"), { timeout: 10_000 })
+        .toHaveTextContent("1");
+
+      const resolvedInterruptId = screen
+        .getByTestId("interrupt-ids")
+        .element()
+        .textContent?.trim();
+      expect(resolvedInterruptId).toBeTruthy();
+
+      await screen.getByTestId("resume").click();
+
+      await expect
+        .element(screen.getByTestId("completed-turns"), { timeout: 10_000 })
+        .toHaveTextContent("1");
+      await expect
+        .element(screen.getByTestId("interrupt-count"))
+        .toHaveTextContent("0");
+
+      await screen.getByTestId("reload").click();
+
+      await expect
+        .element(screen.getByTestId("session"), { timeout: 10_000 })
+        .toHaveTextContent("1");
+      await expect
+        .element(screen.getByTestId("thread-loading"), { timeout: 10_000 })
+        .toHaveTextContent("Ready");
+
+      // Hydration alone already filtered the resolved interrupt before
+      // this fix; the replay only leaks once a new run is dispatched.
+      await expect
+        .element(screen.getByTestId("interrupt-count"))
+        .toHaveTextContent("0");
+      await expect
+        .element(screen.getByTestId("completed-turns"))
+        .toHaveTextContent("1");
+
+      await screen.getByTestId("submit").click();
+
+      await expect
+        .element(screen.getByTestId("completed-turns"), { timeout: 10_000 })
+        .toHaveTextContent("2");
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 10_000 })
+        .toHaveTextContent("Not loading");
+
+      // Guard the setup itself: without the replayed interrupt on the
+      // wire this test would pass for the wrong reason.
+      await expect
+        .poll(
+          () =>
+            Number(
+              screen.getByTestId("replayed-frames").element().textContent ?? "0"
+            ),
+          { timeout: 5_000 }
+        )
+        .toBeGreaterThan(0);
+
+      // The replayed event can land after the run settles, so watch for a
+      // window rather than sampling a single frame.
+      const observedIds = new Set<string>();
+      const deadline = Date.now() + 1_000;
+      while (Date.now() < deadline) {
+        const ids = screen
+          .getByTestId("interrupt-ids")
+          .element()
+          .textContent?.trim();
+        if (ids) observedIds.add(ids);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect([...observedIds]).toEqual([]);
     } finally {
       await cleanupRender(screen);
     }
