@@ -1,3 +1,4 @@
+import type { AIMessageChunk } from "@langchain/core/messages";
 import type { Event } from "@langchain/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -159,6 +160,94 @@ describe("MessageAssembler", () => {
       name: "search",
       args: '{"q":"test"}',
     });
+  });
+
+  it("accumulates tool-call args across block-delta events", () => {
+    // Regression test: the Python v3 emitter streams tool-call arguments as
+    // ``delta: { type: "block-delta", fields: { ... } }``, where each event
+    // carries only the next ``args`` fragment. The ``{...current, ...fields}``
+    // spread in ``applyCoreEventDelta`` replaced the fragments already
+    // captured, so the block held nothing but the newest one. A bare fragment
+    // does not parse, so ``collapseToolCallChunks`` moved the call to
+    // ``invalid_tool_calls`` and ``AIMessageChunk`` dropped it from
+    // ``tool_calls`` — blinking the tool card out for every fragment that was
+    // not self-contained JSON.
+    const assembler = new MessageAssembler();
+    const fragments = [
+      '{"start_time": "2026-08-31T12:00:00Z"',
+      ', "end_time":',
+      ' "2026-08-31T13:00',
+      ':00Z"}',
+    ];
+
+    assembler.consume(
+      eventOf("messages", { event: "message-start", id: "msg_bd" }, {
+        namespace: ["agent_1"],
+        node: "writer",
+      }) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-start",
+          index: 0,
+          content: {
+            type: "tool_call_chunk",
+            id: "tool_block_delta",
+            name: "search",
+            args: "",
+          },
+        },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    let accumulated = "";
+    for (const args of fragments) {
+      accumulated += args;
+      const update = assembler.consume(
+        eventOf(
+          "messages",
+          {
+            event: "content-block-delta",
+            index: 0,
+            delta: {
+              type: "block-delta",
+              fields: {
+                type: "tool_call_chunk",
+                id: "tool_block_delta",
+                name: "search",
+                args,
+              },
+            },
+          } as unknown as Extract<
+            Event,
+            { method: "messages" }
+          >["params"]["data"],
+          { namespace: ["agent_1"], node: "writer" }
+        ) as Extract<Event, { method: "messages" }>
+      );
+
+      expect(update?.message.blocks[0]).toEqual({
+        type: "tool_call_chunk",
+        id: "tool_block_delta",
+        name: "search",
+        args: accumulated,
+      });
+
+      // A growing prefix of valid JSON parses at every length, so the call
+      // stays visible in ``tool_calls`` throughout — not only on the fragments
+      // that happen to be self-contained.
+      const message = assembledMessageToBaseMessage(
+        update.message,
+        "ai"
+      ) as AIMessageChunk;
+      expect(message.tool_calls?.map((call) => call.id)).toEqual([
+        "tool_block_delta",
+      ]);
+      expect(message.invalid_tool_calls).toEqual([]);
+    }
   });
 
   it("handles text delta concatenation", () => {
