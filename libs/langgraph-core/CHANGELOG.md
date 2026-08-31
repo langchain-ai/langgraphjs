@@ -1,5 +1,35 @@
 # @langchain/langgraph
 
+## 1.4.13
+
+### Patch Changes
+
+- Updated dependencies [[`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d), [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975)]:
+  - @langchain/langgraph-sdk@1.10.0
+
+## 1.4.12
+
+### Patch Changes
+
+- [#2714](https://github.com/langchain-ai/langgraphjs/pull/2714) [`a2a59ec`](https://github.com/langchain-ai/langgraphjs/commit/a2a59ec6f8fdd93d4520d86fceab8a234dacf978) Thanks [@hntrl](https://github.com/hntrl)! - Update checkpoint integrations to require the patched checkpoint serializer release.
+
+- Updated dependencies [[`a2a59ec`](https://github.com/langchain-ai/langgraphjs/commit/a2a59ec6f8fdd93d4520d86fceab8a234dacf978)]:
+  - @langchain/langgraph-checkpoint@1.1.5
+
+## 1.4.11
+
+### Patch Changes
+
+- [#2706](https://github.com/langchain-ai/langgraphjs/pull/2706) [`eaa5472`](https://github.com/langchain-ai/langgraphjs/commit/eaa5472fa480fad2671659d1c9ed0686a55d42bd) Thanks [@zduric-langchain](https://github.com/zduric-langchain)! - fix(langgraph): dedupe merged callback handlers by identity
+
+  `mergeCallbacks` concatenated `handlers` and `inheritableHandlers` while
+  deduping `tags`, so a handler inherited by both the ambient and the explicit
+  config picked up an extra registration at every graph boundary. With tracing
+  on, a nested `streamMode: "messages"` run delivered every token twice.
+
+- Updated dependencies [[`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f), [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924), [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5)]:
+  - @langchain/langgraph-sdk@1.9.30
+
 ## 1.4.10
 
 ### Patch Changes

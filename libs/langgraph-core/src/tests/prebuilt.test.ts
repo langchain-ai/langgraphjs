@@ -2908,8 +2908,7 @@ describe("ToolNode", () => {
     expect(observedUserId).toBe("user_123");
   });
 
-  // Unskip once @langchain/core passes toolCallId as 8th param to handleToolStart (see langchainjs PR #10102)
-  it.skip("passes toolCallId to handleToolStart when invoking a tool", async () => {
+  it("passes toolCallId to handleToolStart when invoking a tool", async () => {
     let capturedToolCallId: string | undefined;
     const recordingTool = tool(async (_args: { x: number }) => "ok", {
       name: "recorder",

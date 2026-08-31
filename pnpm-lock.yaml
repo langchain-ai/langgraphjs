@@ -2259,8 +2259,8 @@ importers:
   libs/sdk:
     dependencies:
       '@langchain/protocol':
-        specifier: ^0.0.18
-        version: 0.0.18
+        specifier: ^0.0.19
+        version: 0.0.19
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2307,18 +2307,12 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
-      svelte:
-        specifier: ^5.56.8
-        version: 5.56.8(@typescript-eslint/types@8.59.2)
       typescript:
         specifier: ^4.9.5 || ^5.4.5
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@18.19.130)(@vitest/browser-playwright@4.1.10)(@vitest/browser-webdriverio@4.1.10)(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(vite@8.2.0(@types/node@18.19.130)(esbuild@0.28.1)(jiti@2.6.1)(sass@1.101.0)(tsx@4.21.0)(yaml@2.9.0))
-      vue:
-        specifier: ^3.5.40
-        version: 3.5.40(typescript@5.9.3)
       ws:
         specifier: ^8.21.0
         version: 8.21.0
@@ -3914,6 +3908,9 @@ packages:
 
   '@langchain/protocol@0.0.18':
     resolution: {integrity: sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ==}
+
+  '@langchain/protocol@0.0.19':
+    resolution: {integrity: sha512-9hKcRrH7cBX6gfutdfXPoft1OCchHe4FEpALoDJMl5Qu+n/YG5ynZmyu8+8cxORlPwHBoKTxggvXz+76M1yX1Q==}
 
   '@langchain/quickjs@1.0.0':
     resolution: {integrity: sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA==}
@@ -8502,6 +8499,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -14032,6 +14030,8 @@ snapshots:
   '@langchain/protocol@0.0.16': {}
 
   '@langchain/protocol@0.0.18': {}
+
+  '@langchain/protocol@0.0.19': {}
 
   '@langchain/quickjs@1.0.0(deepagents@1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.8.9(@opentelemetry/api@1.9.0)(openai@6.48.0(ws@8.21.1)(zod@4.3.6))(ws@8.21.1))(openai@6.48.0(ws@8.21.1)(zod@4.3.6))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.3.6)))':
     dependencies:
