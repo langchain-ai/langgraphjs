@@ -136,7 +136,7 @@ export function task<ArgsT extends unknown[], OutputT>(
 
   const cachePolicy =
     options.cachePolicy ??
-    // `cache` was mistakingly used as an alias for `cachePolicy` in v0.3.x,
+    // `cache` was mistakenly used as an alias for `cachePolicy` in v0.3.x,
     // TODO: remove in 1.x
     ("cache" in options ? (options.cache as CachePolicy) : undefined);
 
