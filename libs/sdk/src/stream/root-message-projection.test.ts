@@ -448,8 +448,15 @@ describe("RootMessageProjection", () => {
         blockStartEvent(0, { type: "text", text: "streamed" })
       );
 
-      // Values arrives with [human, ai] ordering and a stale ai content.
-      const human = new HumanMessage({ id: "h1", content: "hi" });
+      // Values arrives with [human, ai] ordering, human metadata
+      // enrichment, and stale ai content.
+      const human = new HumanMessage({
+        id: "h1",
+        content: "hi",
+        additional_kwargs: {
+          attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+        },
+      });
       const aiFromValues = new AIMessage({ id: "a1", content: "stale" });
       projection.applyValues(
         { messages: [human, aiFromValues] } as State,
@@ -460,6 +467,9 @@ describe("RootMessageProjection", () => {
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(2);
       expect(snap.messages[0]).toBe(human);
+      expect(snap.messages[0].additional_kwargs.attachments).toEqual([
+        { filename: "notes.pdf", path: "uploads/notes.pdf" },
+      ]);
       // Streamed AIMessage retained for its in-flight content.
       expect(snap.messages[1].text).toBe("streamed");
     });
@@ -1214,6 +1224,108 @@ describe("RootMessageProjection", () => {
         "h1",
         "a1",
       ]);
+    });
+
+    it("replaces the optimistic human with server-authored additional_kwargs on echo", async () => {
+      const { store, projection } = makeProjection();
+
+      const optimistic = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+      });
+      projection.appendOptimistic([optimistic]);
+      await drainFlush();
+
+      const echoed = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+        additional_kwargs: {
+          attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+        },
+      });
+      projection.applyValues({ messages: [echoed] } as State, [echoed]);
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].additional_kwargs.attachments).toEqual([
+        { filename: "notes.pdf", path: "uploads/notes.pdf" },
+      ]);
+      // applyValues mirrors the reconciled list into values.messages, so
+      // both transcript surfaces must carry the committed metadata.
+      expect(
+        (snap.values as State).messages as typeof snap.messages
+      ).toBe(snap.messages);
+    });
+
+    it("does not strip seeded metadata when a lagging values replay omits it", async () => {
+      const { store, projection } = makeProjection();
+
+      const seeded = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+        additional_kwargs: {
+          attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+        },
+      });
+      projection.applyValues({ messages: [seeded] } as State, [seeded], {
+        step: 5,
+      });
+      await drainFlush();
+
+      // Deferred pump can replay an older same-id snapshot without the
+      // committed kwargs. addOnly keeps absences from removing messages,
+      // but preferValues must not replace the richer seeded copy either.
+      const lagging = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+      });
+      projection.applyValues({ messages: [lagging] } as State, [lagging], {
+        step: 4,
+      });
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      expect(snap.messages[0].additional_kwargs.attachments).toEqual([
+        { filename: "notes.pdf", path: "uploads/notes.pdf" },
+      ]);
+    });
+
+    it("adopts echoed human metadata without clobbering in-flight AI tokens", async () => {
+      const { store, projection } = makeProjection();
+
+      const optimistic = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+      });
+      projection.appendOptimistic([optimistic], undefined, { sync: true });
+
+      projection.handleMessage(startEvent({ id: "a1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "text", text: "streamed" })
+      );
+
+      const echoed = new HumanMessage({
+        id: "h1",
+        content: "see attached",
+        additional_kwargs: {
+          attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+        },
+      });
+      const aiFromValues = new AIMessage({ id: "a1", content: "stale" });
+      projection.applyValues(
+        { messages: [echoed, aiFromValues] } as State,
+        [echoed, aiFromValues]
+      );
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages.map((m) => m.id)).toEqual(["h1", "a1"]);
+      expect(snap.messages[0].additional_kwargs.attachments).toEqual([
+        { filename: "notes.pdf", path: "uploads/notes.pdf" },
+      ]);
+      expect(snap.messages[1].text).toBe("streamed");
     });
   });
 

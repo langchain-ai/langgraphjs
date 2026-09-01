@@ -195,7 +195,7 @@ When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.in
 | Surface | What it contains | Use for |
 | ------- | ---------------- | ------- |
 | `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
-| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting + namespace for `respond()` |
+| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting nested / all interrupts |
 
 ```ts
 for (const intr of stream.interrupts.value) {
@@ -205,28 +205,27 @@ for (const intr of stream.interrupts.value) {
 
 ## Subgraph interrupts and namespace
 
-Subgraph interrupts carry a non-empty protocol `namespace` tuple (for example `["task:research"]`). The server validates it on resume. Read it from `getThread()?.interrupts` — nested entries may not appear on `stream.interrupts`:
+Subgraph interrupts carry a non-empty protocol `namespace` tuple (for example `["task:research"]`). The server validates it on resume. Nested entries may not appear on `stream.interrupts`, but passing `{ interruptId }` is enough — the SDK resolves `namespace` from `getThread()?.interrupts`:
 
 ```ts
 const thread = stream.getThread();
 for (const entry of thread?.interrupts ?? []) {
   await stream.respond(buildResponse(entry.payload), {
     interruptId: entry.interruptId,
-    namespace: entry.namespace,
   });
 }
 ```
 
 ## `respond(response, options?)`
 
-When multiple interrupts are active (subagents, fan-out, nested graphs), pass `options.interruptId` (and `options.namespace` for subgraph interrupts):
+When multiple interrupts are active (subagents, fan-out, nested graphs), pass `options.interruptId`. When `options.namespace` is omitted, it is resolved from `getThread()?.interrupts` by that id:
 
 ```ts
 await stream.respond({ approved: true });
 
 await stream.respond(
   { approved: true },
-  { interruptId: myInterrupt.id!, namespace: entry.namespace },
+  { interruptId: myInterrupt.id! },
 );
 ```
 

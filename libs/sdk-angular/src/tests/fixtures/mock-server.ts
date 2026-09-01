@@ -47,6 +47,9 @@ import type { TestProject } from "vitest/node";
 
 import { getLocationTool } from "./browser-fixtures.js";
 import { graph as multiInterruptGraph } from "./multi-interrupt-graph.js";
+import { graph as nestedInterruptGraph } from "./nested-interrupt-graph.js";
+import { graph as deepAgentInterruptGraph } from "./deep-agent-interrupt.js";
+import { graph as interruptOnceGraph } from "./interrupt-once-graph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -690,8 +693,11 @@ const interruptCardGraph = createAgent({
 const graphs: Record<string, AnyPregel> = {
   agent,
   interruptAgent,
+  interrupt_once_graph: interruptOnceGraph as unknown as AnyPregel,
   interrupt_card_graph: interruptCardGraph,
   multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
+  nested_interrupt_graph: nestedInterruptGraph as unknown as AnyPregel,
+  deep_agent_interrupt: deepAgentInterruptGraph as unknown as AnyPregel,
   parentAgent,
   slow_graph: slowGraph,
   stateful_values_graph: statefulValuesGraph,

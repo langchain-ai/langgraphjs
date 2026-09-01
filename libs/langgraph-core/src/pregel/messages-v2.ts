@@ -169,7 +169,13 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     this.streamFn([meta[0], "messages", [data, metadata]]);
   }
 
-  private emitFinalMessage(
+  /**
+   * Emit a complete message as protocol events (message-start, content
+   * blocks, message-finish). Public so `pushMessage` can deliver manually
+   * created messages when this handler is registered (streamEvents v3),
+   * mirroring `StreamMessagesHandler._emit` on the classic path.
+   */
+  emitFinalMessage(
     meta: Meta,
     message: BaseMessage,
     runId: string | undefined,

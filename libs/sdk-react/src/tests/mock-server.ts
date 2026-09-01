@@ -21,7 +21,10 @@ import { graph as createAgentGraph } from "./fixtures/create-agent.js";
 import { graph as deepAgentGraph } from "./fixtures/deep-agent.js";
 import { graph as interruptGraph } from "./fixtures/interrupt-graph.js";
 import { graph as interruptCardGraph } from "./fixtures/interrupt-card-graph.js";
+import { graph as interruptOnceGraph } from "./fixtures/interrupt-once-graph.js";
 import { graph as multiInterruptGraph } from "./fixtures/multi-interrupt-graph.js";
+import { graph as nestedInterruptGraph } from "./fixtures/nested-interrupt-graph.js";
+import { graph as deepAgentInterruptGraph } from "./fixtures/deep-agent-interrupt.js";
 import { graph as errorGraph } from "./fixtures/error-graph.js";
 import { graph as subgraphGraph } from "./fixtures/subgraph-graph.js";
 import { graph as embeddedSubgraphGraph } from "./fixtures/embedded-subgraph-graph.js";
@@ -79,7 +82,10 @@ const graphs: Record<string, AnyPregel> = {
   deep_agent: deepAgentGraph as unknown as AnyPregel,
   interrupt_graph: interruptGraph as unknown as AnyPregel,
   interrupt_card_graph: interruptCardGraph as unknown as AnyPregel,
+  interrupt_once_graph: interruptOnceGraph as unknown as AnyPregel,
   multi_interrupt_graph: multiInterruptGraph as unknown as AnyPregel,
+  nested_interrupt_graph: nestedInterruptGraph as unknown as AnyPregel,
+  deep_agent_interrupt: deepAgentInterruptGraph as unknown as AnyPregel,
   error_graph: errorGraph as unknown as AnyPregel,
   subgraph_graph: subgraphGraph as unknown as AnyPregel,
   embedded_subgraph_graph: embeddedSubgraphGraph as unknown as AnyPregel,

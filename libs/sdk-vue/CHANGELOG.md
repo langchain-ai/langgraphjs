@@ -1,5 +1,38 @@
 # @langchain/vue
 
+## 1.0.33
+
+### Patch Changes
+
+- Updated dependencies [[`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d), [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975)]:
+  - @langchain/langgraph-sdk@1.10.0
+
+## 1.0.32
+
+### Patch Changes
+
+- Updated dependencies [[`7b0fd47`](https://github.com/langchain-ai/langgraphjs/commit/7b0fd47287eb841d8f1068de93b46f49cab3c04d)]:
+  - @langchain/langgraph-sdk@1.9.31
+
+## 1.0.31
+
+### Patch Changes
+
+- Updated dependencies [[`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f), [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924), [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5)]:
+  - @langchain/langgraph-sdk@1.9.30
+
+## 1.0.30
+
+### Patch Changes
+
+- [#2676](https://github.com/langchain-ai/langgraphjs/pull/2676) [`b3c1ceb`](https://github.com/langchain-ai/langgraphjs/commit/b3c1ceb2cc16dcb15e7a9c1178fe6ddb98e5a93f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): resolve respond() namespace from interrupt id
+
+  When callers pass `{ interruptId }` without `namespace`, look the
+  namespace up on `thread.interrupts` instead of defaulting to root.
+
+- Updated dependencies [[`f9c0e88`](https://github.com/langchain-ai/langgraphjs/commit/f9c0e885e25149fe614d7d2002c884b80ab54484), [`3958305`](https://github.com/langchain-ai/langgraphjs/commit/3958305d3ee89419abc496f28602cf4b38f2a6b3), [`4c0fd78`](https://github.com/langchain-ai/langgraphjs/commit/4c0fd78485e1778234ddb56c7579f8d823946f18), [`5be518f`](https://github.com/langchain-ai/langgraphjs/commit/5be518fe18f2497a28957dfec85522997e6df4f3), [`b3c1ceb`](https://github.com/langchain-ai/langgraphjs/commit/b3c1ceb2cc16dcb15e7a9c1178fe6ddb98e5a93f)]:
+  - @langchain/langgraph-sdk@1.9.29
+
 ## 1.0.29
 
 ### Patch Changes

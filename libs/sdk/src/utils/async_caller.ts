@@ -160,8 +160,10 @@ export class AsyncCaller {
               if (error instanceof Error) {
                 throw error;
               } else if (isResponse(error)) {
+                // Always attach the failed Response so callers can inspect
+                // error.response without registering onFailedResponseHook.
                 throw await HTTPError.fromResponse(error, {
-                  includeResponse: !!onFailedResponseHook,
+                  includeResponse: true,
                 });
               } else {
                 throw new Error(error);

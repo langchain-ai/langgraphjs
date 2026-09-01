@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const nonAngularFiles = [
   /mock-server\.ts/,
+  /interrupt-once-graph\.ts/,
+  /durable-replay-fetch\.ts/,
   /multi-interrupt-graph\.ts/,
+  /nested-interrupt-graph\.ts/,
+  /deep-agent-interrupt\.ts/,
   /vitest-browser-shim\.ts/,
   /\.test-d\.ts$/,
 ];
