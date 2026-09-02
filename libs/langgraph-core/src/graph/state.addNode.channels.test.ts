@@ -5,8 +5,8 @@
  * keys. Wide `string` / `Record` / deprecated `{ channels }` keys stay legal;
  * the runtime guard remains authoritative for anything the types cannot see.
  *
- * Union-literal keys: the check is non-distributive. A value of type
- * `"channel" | "ok"` is rejected rather than silently narrowed to `"ok"`.
+ * Union-literal keys: a mixed `"channel" | "ok"` is rejected (the check is
+ * non-distributive) rather than silently narrowed to `"ok"`.
  */
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { z } from "zod";
@@ -196,16 +196,19 @@ describe("addNode channel-name collisions", () => {
   });
 
   describe("union-literal keys", () => {
-    it("allows a mixed union; runtime remains authoritative", () => {
+    it("type-errors a mixed union rather than silently narrowing", () => {
       const State = Annotation.Root({ judge: Annotation<string>() });
       const graph = new StateGraph(State);
-      // Decision: `K extends GraphChannelKeys` is not satisfied by a mixed
-      // union (`"judge" | "process"`), so this stays legal at compile time
-      // rather than silently narrowing or erroring. A runtime value that is
-      // actually a channel key still throws.
+      // Runtime value is the legal member; the type is the mixed union.
       const name = "process" as "judge" | "process";
-      graph.addNode(name, (state) => ({ judge: state.judge }));
-      expect(Object.keys(graph.nodes)).toContain("process");
+
+      // Non-distributive: the whole union is rejected rather than silently
+      // narrowing to "process". Do not call — this value would not throw.
+      const unused = () => {
+        // @ts-expect-error union includes the channel key "judge"
+        graph.addNode(name, (state) => ({ judge: state.judge }));
+      };
+      expectTypeOf(unused).toBeFunction();
     });
   });
 
