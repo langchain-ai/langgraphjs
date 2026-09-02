@@ -346,6 +346,17 @@ type AllowedNodeKey<K extends string, S, I, O> = string extends K
     : never;
 
 /**
+ * Intersected onto object-map `addNode` / `addSequence` arguments so a
+ * colliding key makes the whole argument `never` (the overload still
+ * matches; otherwise TypeScript falls back to `Graph.addNode`).
+ */
+type RejectChannelCollision<K extends string, S, I, O> = [
+  K,
+] extends [AllowedNodeKey<K, S, I, O>]
+  ? unknown
+  : never;
+
+/**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
  *
@@ -967,10 +978,10 @@ export class StateGraph<
   }
 
   override addNode<
-    K extends AllowedNodeKey<K, S, I, O>,
+    K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap
+    nodes: NodeMap & RejectChannelCollision<K, S, I, O>
   ): StateGraph<
     SD,
     S,
@@ -996,12 +1007,12 @@ export class StateGraph<
   >;
 
   override addNode<
-    K extends AllowedNodeKey<K, S, I, O>,
+    K extends string,
     NodeInput = S,
     NodeOutput extends U = U,
   >(
     nodes: [
-      key: K,
+      key: AllowedNodeKey<K, S, I, O>,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
       options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
     ][]
@@ -1017,11 +1028,11 @@ export class StateGraph<
   >;
 
   override addNode<
-    K extends AllowedNodeKey<K, S, I, O>,
+    K extends string,
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
-    key: K,
+    key: AllowedNodeKey<K, S, I, O>,
     action: NodeAction<
       ExtractStateType<InputSchema>,
       NodeOutput,
@@ -1047,11 +1058,11 @@ export class StateGraph<
   >;
 
   override addNode<
-    K extends AllowedNodeKey<K, S, I, O>,
+    K extends string,
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
-    key: K,
+    key: AllowedNodeKey<K, S, I, O>,
     action: NodeAction<
       ExtractStateType<InputSchema>,
       NodeOutput,
@@ -1076,12 +1087,8 @@ export class StateGraph<
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   >;
 
-  override addNode<
-    K extends AllowedNodeKey<K, S, I, O>,
-    NodeInput = S,
-    NodeOutput extends U = U,
-  >(
-    key: K,
+  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
+    key: AllowedNodeKey<K, S, I, O>,
     action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<
@@ -1095,8 +1102,8 @@ export class StateGraph<
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   >;
 
-  override addNode<K extends AllowedNodeKey<K, S, I, O>, NodeInput = S>(
-    key: K,
+  override addNode<K extends string, NodeInput = S>(
+    key: AllowedNodeKey<K, S, I, O>,
     action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
@@ -1317,13 +1324,9 @@ export class StateGraph<
     return this;
   }
 
-  addSequence<
-    K extends AllowedNodeKey<K, S, I, O>,
-    NodeInput = S,
-    NodeOutput extends U = U,
-  >(
+  addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes: [
-      key: K,
+      key: AllowedNodeKey<K, S, I, O>,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
       options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
     ][]
@@ -1339,10 +1342,10 @@ export class StateGraph<
   >;
 
   addSequence<
-    K extends AllowedNodeKey<K, S, I, O>,
+    K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap
+    nodes: NodeMap & RejectChannelCollision<K, S, I, O>
   ): StateGraph<
     SD,
     S,
