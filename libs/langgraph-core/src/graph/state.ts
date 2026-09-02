@@ -346,15 +346,22 @@ type AllowedNodeKey<K extends string, S, I, O> = string extends K
     : never;
 
 /**
- * Intersected onto object-map `addNode` / `addSequence` arguments so a
- * colliding key makes the whole argument `never` (the overload still
- * matches; otherwise TypeScript falls back to `Graph.addNode`).
+ * Intersected onto a node key so a statically known collision becomes
+ * `K & never`. `K` stays inferable (naked in the intersection).
  */
 type RejectChannelCollision<K extends string, S, I, O> = [
   K,
 ] extends [AllowedNodeKey<K, S, I, O>]
   ? unknown
   : never;
+
+/**
+ * Intersected onto object-map arguments so a colliding key's *property*
+ * becomes `never` (avoids falling back to `Graph.addNode`).
+ */
+type CollidingChannelProps<K extends string, S, I, O> = {
+  [P in string extends K ? never : K & GraphChannelKeys<S, I, O>]: never;
+};
 
 /**
  * A graph whose nodes communicate by reading and writing to a shared state.
@@ -981,7 +988,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap & RejectChannelCollision<K, S, I, O>
+    nodes: NodeMap & CollidingChannelProps<K, S, I, O>
   ): StateGraph<
     SD,
     S,
@@ -1012,7 +1019,7 @@ export class StateGraph<
     NodeOutput extends U = U,
   >(
     nodes: [
-      key: AllowedNodeKey<K, S, I, O>,
+      key: K & RejectChannelCollision<K, S, I, O>,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
       options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
     ][]
@@ -1032,7 +1039,7 @@ export class StateGraph<
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
-    key: AllowedNodeKey<K, S, I, O>,
+    key: K & RejectChannelCollision<K, S, I, O>,
     action: NodeAction<
       ExtractStateType<InputSchema>,
       NodeOutput,
@@ -1062,7 +1069,7 @@ export class StateGraph<
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
-    key: AllowedNodeKey<K, S, I, O>,
+    key: K & RejectChannelCollision<K, S, I, O>,
     action: NodeAction<
       ExtractStateType<InputSchema>,
       NodeOutput,
@@ -1088,7 +1095,7 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    key: AllowedNodeKey<K, S, I, O>,
+    key: K & RejectChannelCollision<K, S, I, O>,
     action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<
@@ -1103,7 +1110,7 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S>(
-    key: AllowedNodeKey<K, S, I, O>,
+    key: K & RejectChannelCollision<K, S, I, O>,
     action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
@@ -1326,7 +1333,7 @@ export class StateGraph<
 
   addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes: [
-      key: AllowedNodeKey<K, S, I, O>,
+      key: K & RejectChannelCollision<K, S, I, O>,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
       options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
     ][]
@@ -1345,7 +1352,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap & RejectChannelCollision<K, S, I, O>
+    nodes: NodeMap & CollidingChannelProps<K, S, I, O>
   ): StateGraph<
     SD,
     S,
@@ -1413,7 +1420,9 @@ export class StateGraph<
 
       const validKey = key as unknown as N;
       this.addNode(
-        key as K,
+        // Public overloads intersect the collision check; this call is
+        // internal after the key has already been accepted.
+        key as K & RejectChannelCollision<K, S, I, O>,
         action as NodeAction<
           NodeInput,
           NodeOutput,

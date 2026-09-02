@@ -196,17 +196,19 @@ describe("addNode channel-name collisions", () => {
   });
 
   describe("union-literal keys", () => {
-    it("rejects a union that includes any constructor-time channel key", () => {
+    it("type-errors a union that includes any constructor-time channel key", () => {
       const State = Annotation.Root({ judge: Annotation<string>() });
       const graph = new StateGraph(State);
+      // Runtime value is the legal member; the type is the mixed union.
       const name = "process" as "judge" | "process";
 
       // Non-distributive: the whole union is rejected rather than silently
-      // narrowing to the non-colliding member ("process").
-      expect(() => {
+      // narrowing to "process". Do not call — this value would not throw.
+      const unused = () => {
         // @ts-expect-error union includes the channel key "judge"
         graph.addNode(name, (state) => ({ judge: state.judge }));
-      }).toThrow(CHANNEL_COLLISION);
+      };
+      expectTypeOf(unused).toBeFunction();
     });
   });
 
@@ -216,8 +218,8 @@ describe("addNode channel-name collisions", () => {
       const graph = new StateGraph(State);
 
       expect(() => {
-        // @ts-expect-error "judge" is already a state channel
         graph.addNode({
+          // @ts-expect-error "judge" is already a state channel
           judge: (state: typeof State.State) => ({ judge: state.judge }),
         });
       }).toThrow(CHANNEL_COLLISION);
@@ -237,9 +239,9 @@ describe("addNode channel-name collisions", () => {
       const graph = new StateGraph(State);
 
       expect(() => {
-        // @ts-expect-error "judge" is already a state channel
         graph.addNode([
           [
+            // @ts-expect-error "judge" is already a state channel
             "judge",
             (state: typeof State.State) => ({ judge: state.judge }),
           ],
@@ -252,8 +254,8 @@ describe("addNode channel-name collisions", () => {
       const graph = new StateGraph(State);
 
       expect(() => {
-        // @ts-expect-error "judge" is already a state channel
         graph.addSequence({
+          // @ts-expect-error "judge" is already a state channel
           judge: (state: typeof State.State) => ({ judge: state.judge }),
         });
       }).toThrow(CHANNEL_COLLISION);
