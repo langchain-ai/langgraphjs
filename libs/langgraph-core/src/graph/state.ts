@@ -971,13 +971,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: IfAllowedNodeKey<
-      Extract<keyof NodeMap, string>,
-      S,
-      I,
-      O,
-      NodeMap
-    >
+    nodes: IfAllowedNodeKey<Extract<keyof NodeMap, string>, S, I, O, NodeMap>
   ): StateGraph<
     SD,
     S,
@@ -1002,11 +996,7 @@ export class StateGraph<
     >
   >;
 
-  override addNode<
-    K extends string,
-    NodeInput = S,
-    NodeOutput extends U = U,
-  >(
+  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     nodes: IfAllowedNodeKey<
       K,
       S,
@@ -1014,13 +1004,7 @@ export class StateGraph<
       O,
       [
         key: K,
-        action: NodeAction<
-          NodeInput,
-          NodeOutput,
-          C,
-          InterruptType,
-          WriterType
-        >,
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
         options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
       ][]
     >
@@ -1119,13 +1103,7 @@ export class StateGraph<
       I,
       O,
       [
-        action: NodeAction<
-          NodeInput,
-          NodeOutput,
-          C,
-          InterruptType,
-          WriterType
-        >,
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
         options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
       ]
     >
@@ -1378,13 +1356,7 @@ export class StateGraph<
       O,
       [
         key: K,
-        action: NodeAction<
-          NodeInput,
-          NodeOutput,
-          C,
-          InterruptType,
-          WriterType
-        >,
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
         options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
       ][]
     >
@@ -1403,13 +1375,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: IfAllowedNodeKey<
-      Extract<keyof NodeMap, string>,
-      S,
-      I,
-      O,
-      NodeMap
-    >
+    nodes: IfAllowedNodeKey<Extract<keyof NodeMap, string>, S, I, O, NodeMap>
   ): StateGraph<
     SD,
     S,
