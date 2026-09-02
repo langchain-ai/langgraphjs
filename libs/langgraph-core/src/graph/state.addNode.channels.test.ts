@@ -239,9 +239,9 @@ describe("addNode channel-name collisions", () => {
       const graph = new StateGraph(State);
 
       expect(() => {
+        // @ts-expect-error "judge" is already a state channel
         graph.addNode([
           [
-            // @ts-expect-error "judge" is already a state channel
             "judge",
             (state: typeof State.State) => ({ judge: state.judge }),
           ],

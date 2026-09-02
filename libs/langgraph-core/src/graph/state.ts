@@ -971,7 +971,13 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: IfAllowedNodeKey<K, S, I, O, NodeMap>
+    nodes: IfAllowedNodeKey<
+      Extract<keyof NodeMap, string>,
+      S,
+      I,
+      O,
+      NodeMap
+    >
   ): StateGraph<
     SD,
     S,
@@ -1397,7 +1403,13 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: IfAllowedNodeKey<K, S, I, O, NodeMap>
+    nodes: IfAllowedNodeKey<
+      Extract<keyof NodeMap, string>,
+      S,
+      I,
+      O,
+      NodeMap
+    >
   ): StateGraph<
     SD,
     S,
@@ -1464,8 +1476,10 @@ export class StateGraph<
       }
 
       const validKey = key as unknown as N;
+      // Public overloads enforce channel-name collisions; this call is
+      // internal after the key has already been accepted.
       this.addNode(
-        key as K,
+        key as string,
         action as NodeAction<
           NodeInput,
           NodeOutput,
