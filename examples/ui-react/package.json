@@ -11,15 +11,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/anthropic": "^1.5.2",
-    "@langchain/core": "^1.2.4",
+    "@langchain/anthropic": "^1.5.8",
+    "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-sdk": "workspace:*",
     "@langchain/quickjs": "^1.0.0",
     "@langchain/react": "workspace:*",
     "@uiw/react-json-view": "^2.0.0-alpha.38",
     "deepagents": "^1.10.5",
-    "langchain": "^1.5.4",
+    "langchain": "^1.5.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "streamdown": "^2.5.0",

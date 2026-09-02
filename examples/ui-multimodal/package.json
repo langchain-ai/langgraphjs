@@ -12,12 +12,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.4",
+    "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.5.5",
+    "@langchain/openai": "^1.5.10",
     "@langchain/react": "workspace:*",
     "deepagents": "^1.10.5",
-    "langchain": "1.5.4",
+    "langchain": "1.5.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.3.6"
