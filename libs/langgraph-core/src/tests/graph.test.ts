@@ -12,6 +12,7 @@ describe("State", () => {
       channels: { existingStateAttributeKey: null },
     });
     expect(() => {
+      // @ts-expect-error existingStateAttributeKey is already a state channel
       stateGraph.addNode("existingStateAttributeKey", (_) => ({}));
     }).toThrow("existingStateAttributeKey");
 

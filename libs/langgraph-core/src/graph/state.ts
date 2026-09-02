@@ -310,6 +310,42 @@ type Prettify<T> = {
 } & {};
 
 /**
+ * Literal string keys of `T`, or `never` when `T` has a wide `string` index
+ * signature (`Record` schemas, the deprecated `{ channels }` constructor,
+ * etc.). The runtime guard stays authoritative for those cases.
+ */
+type KnownStringKeys<T> = string extends keyof T
+  ? never
+  : Extract<keyof T, string>;
+
+/**
+ * Constructor-time channel names: the union of state, input, and output
+ * schema keys. Private channels added later via `addNode(..., { input })`
+ * are intentionally excluded (runtime remains authoritative).
+ *
+ * `I` and `O` are schema definitions (`AnnotationRoot`, `StateSchema`, Zod,
+ * or a raw `StateDefinition`), so keys are taken from `ExtractStateType`
+ * rather than `keyof I` / `keyof O`.
+ */
+type GraphChannelKeys<S, I, O> =
+  | KnownStringKeys<S>
+  | KnownStringKeys<ExtractStateType<I>>
+  | KnownStringKeys<ExtractStateType<O>>;
+
+/**
+ * Node key allowed by the compile-time channel-name check.
+ *
+ * Wide `string` keys stay allowed. A union that includes any known channel
+ * key is rejected (the check is non-distributive) so a value of type
+ * `"channel" | "ok"` does not silently narrow to `"ok"`.
+ */
+type AllowedNodeKey<K extends string, S, I, O> = string extends K
+  ? K
+  : [K & GraphChannelKeys<S, I, O>] extends [never]
+    ? K
+    : never;
+
+/**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
  *
@@ -931,7 +967,7 @@ export class StateGraph<
   }
 
   override addNode<
-    K extends string,
+    K extends AllowedNodeKey<K, S, I, O>,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
@@ -959,7 +995,11 @@ export class StateGraph<
     >
   >;
 
-  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
+  override addNode<
+    K extends AllowedNodeKey<K, S, I, O>,
+    NodeInput = S,
+    NodeOutput extends U = U,
+  >(
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
@@ -977,7 +1017,7 @@ export class StateGraph<
   >;
 
   override addNode<
-    K extends string,
+    K extends AllowedNodeKey<K, S, I, O>,
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
@@ -1007,7 +1047,7 @@ export class StateGraph<
   >;
 
   override addNode<
-    K extends string,
+    K extends AllowedNodeKey<K, S, I, O>,
     InputSchema extends StateDefinitionInit,
     NodeOutput extends U = U,
   >(
@@ -1036,7 +1076,11 @@ export class StateGraph<
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   >;
 
-  override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
+  override addNode<
+    K extends AllowedNodeKey<K, S, I, O>,
+    NodeInput = S,
+    NodeOutput extends U = U,
+  >(
     key: K,
     action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
@@ -1051,7 +1095,7 @@ export class StateGraph<
     MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
   >;
 
-  override addNode<K extends string, NodeInput = S>(
+  override addNode<K extends AllowedNodeKey<K, S, I, O>, NodeInput = S>(
     key: K,
     action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
     options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
@@ -1273,7 +1317,11 @@ export class StateGraph<
     return this;
   }
 
-  addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
+  addSequence<
+    K extends AllowedNodeKey<K, S, I, O>,
+    NodeInput = S,
+    NodeOutput extends U = U,
+  >(
     nodes: [
       key: K,
       action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
@@ -1291,7 +1339,7 @@ export class StateGraph<
   >;
 
   addSequence<
-    K extends string,
+    K extends AllowedNodeKey<K, S, I, O>,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
     nodes: NodeMap
