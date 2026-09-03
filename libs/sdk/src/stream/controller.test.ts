@@ -3792,4 +3792,93 @@ describe("StreamController", () => {
 
     await controller.dispose();
   });
+
+  it("does not drop optimistic messages from a submit that races hydrate", async () => {
+    // Regression: hydrate drops unpersisted optimistic messages after
+    // getState(). A submit that starts while that fetch is in flight adds a
+    // message the snapshot cannot contain; dropping it treats a live
+    // optimistic write as never-persisted. Mirror the generation guard
+    // already used for interrupt-allowlist seeding a few lines below.
+    let hydrateCount = 0;
+    let resolveSecondGetState!: (value: {
+      values: { messages: unknown[] };
+      next: string[];
+    }) => void;
+    const getState = vi.fn(() => {
+      hydrateCount += 1;
+      if (hydrateCount === 1) {
+        return Promise.resolve({
+          values: { messages: [] },
+          next: ["agent"],
+        });
+      }
+      return new Promise<{
+        values: { messages: unknown[] };
+        next: string[];
+      }>((resolve) => {
+        resolveSecondGetState = resolve;
+      });
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(async () => ({ run_id: "run-1" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "assistant",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    const rehydrate = controller.hydrate("thread-1");
+    await waitForExpectation(() => {
+      expect(getState).toHaveBeenCalledTimes(2);
+    });
+
+    const submitPromise = controller.submit({
+      messages: [{ type: "human", content: "hello while hydrating" }],
+    });
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore
+          .getSnapshot()
+          .messages.some(
+            (m) =>
+              typeof m === "object" &&
+              m != null &&
+              "content" in m &&
+              (m as { content?: unknown }).content === "hello while hydrating"
+          )
+      ).toBe(true);
+    });
+
+    resolveSecondGetState({ values: { messages: [] }, next: ["agent"] });
+    await rehydrate;
+
+    expect(
+      controller.rootStore
+        .getSnapshot()
+        .messages.some(
+          (m) =>
+            typeof m === "object" &&
+            m != null &&
+            "content" in m &&
+            (m as { content?: unknown }).content === "hello while hydrating"
+        )
+    ).toBe(true);
+
+    await controller.dispose();
+    await submitPromise.catch(() => undefined);
+  });
 });

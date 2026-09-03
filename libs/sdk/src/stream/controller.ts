@@ -618,6 +618,13 @@ export class StreamController<
     // Thread id this hydrate cycle is fetching for; used to detect a thread
     // clear/swap across the getState() await below.
     const hydratedThreadId = this.#currentThreadId;
+    /**
+     * Generation snapshot taken before the state fetch. A submit that
+     * starts while the fetch is in flight adds an optimistic message the
+     * fetched snapshot cannot contain yet; the convergence drop below
+     * must not treat that message as never-persisted and remove it.
+     */
+    const generationAtHydrateStart = this.#submitGeneration;
     let hydrationError: unknown;
     let threadExists = false;
     // True only when getState 404s — the id is bound in the client but
@@ -722,7 +729,10 @@ export class StreamController<
        * excluded from `unpersistedOptimisticIds()`.
        */
       const unpersisted = this.#messageMetadata.unpersistedOptimisticIds();
-      if (unpersisted.size > 0) {
+      if (
+        unpersisted.size > 0 &&
+        this.#submitGeneration === generationAtHydrateStart
+      ) {
         this.#rootMessages.dropOptimisticMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
