@@ -13,9 +13,9 @@ interface Props {
 }
 
 /**
- * Resume parallel interrupts one-at-a-time (the pattern that used to
- * leave `stream.interrupts` stale/empty while the server still had
- * pending siblings).
+ * Resume parallel interrupts one-at-a-time, then finish with respondAll.
+ * Guards the stale-empty `stream.interrupts` regression: after a partial
+ * sequential resume the UI must not look "done" while siblings remain.
  */
 export function MultiInterruptSequentialStream({
   apiUrl,
@@ -40,20 +40,8 @@ export function MultiInterruptSequentialStream({
       <div data-testid="thread-interrupt-count">
         {pendingInterrupts.length}
       </div>
-      <div data-testid="interrupt-ids">
-        {thread.interrupts
-          .map((entry) => entry.id)
-          .filter((id): id is string => typeof id === "string")
-          .sort()
-          .join(",")}
-      </div>
       <div data-testid="completed">
         {thread.values?.completed ? "true" : "false"}
-      </div>
-      <div data-testid="decisions">
-        {thread.values?.decisions
-          ? JSON.stringify(thread.values.decisions)
-          : "{}"}
       </div>
       <div data-testid="loading">
         {thread.isLoading ? "Loading..." : "Not loading"}
@@ -108,6 +96,42 @@ export function MultiInterruptSequentialStream({
         }}
       >
         Resume next
+      </button>
+      <button
+        data-testid="resume-all"
+        onClick={() => {
+          const interrupts = thread.getThread()?.interrupts ?? [];
+          if (interrupts.length === 0) return;
+          setResumeError("");
+          void thread
+            .respondAll(
+              Object.fromEntries(
+                interrupts.map((entry) => {
+                  const action =
+                    entry.payload != null &&
+                    typeof entry.payload === "object" &&
+                    "action" in entry.payload
+                      ? String(
+                          (entry.payload as { action?: unknown }).action ?? ""
+                        )
+                      : "";
+                  return [
+                    entry.interruptId,
+                    action === "A"
+                      ? { approved: true }
+                      : { approved: false },
+                  ];
+                })
+              )
+            )
+            .catch((error: unknown) => {
+              setResumeError(
+                error instanceof Error ? error.message : String(error)
+              );
+            });
+        }}
+      >
+        Resume all
       </button>
       <button
         data-testid="follow-up-submit"

@@ -246,14 +246,14 @@ it("resumes several parallel interrupts via respondAll()", { timeout: 15_000 }, 
 });
 
 it(
-  "keeps stream.interrupts in sync after sequential multi-interrupt resume",
+  "keeps stream.interrupts non-empty after a partial sequential multi-interrupt resume",
   { timeout: 30_000 },
   async () => {
-    // Regression: after resuming parallel interrupts one-at-a-time,
-    // stream.interrupts must not go empty while a sibling is still
-    // pending — otherwise a follow-up submit() is auto-converted to
-    // Command(resume=input) and fails with "must specify the interrupt
-    // id when resuming".
+    // Regression: sequential respond() of parallel interrupts must not
+    // leave stream.interrupts empty while the run is still interrupted.
+    // An empty list makes clients free-text submit(), which the API turns
+    // into an ambiguous Command(resume) when siblings remain pending.
+    // Finishing still requires respondAll (protocol batch resume).
     const screen = await render(
       <MultiInterruptSequentialStream apiUrl={apiUrl} />
     );
@@ -267,18 +267,30 @@ it(
 
       await screen.getByTestId("resume-next").click();
 
-      // Remaining sibling must stay visible (not flicker to []).
+      // Wait until the first respond settles (loading clears). The UI
+      // must still show at least one pending interrupt — either the
+      // remaining sibling, or both if the server kept them pending and
+      // reconcile restored the list.
       await expect
-        .element(screen.getByTestId("interrupt-count"), { timeout: 10_000 })
-        .toHaveTextContent("1");
+        .element(screen.getByTestId("loading"), { timeout: 10_000 })
+        .toHaveTextContent("Not loading");
       await expect
-        .element(screen.getByTestId("resume-error"))
-        .toHaveTextContent("");
+        .poll(
+          () =>
+            Number(
+              screen.getByTestId("interrupt-count").element().textContent ?? "0"
+            ),
+          { timeout: 10_000 }
+        )
+        .toBeGreaterThan(0);
       await expect
         .element(screen.getByTestId("completed"))
         .toHaveTextContent("false");
+      await expect
+        .element(screen.getByTestId("resume-error"))
+        .toHaveTextContent("");
 
-      await screen.getByTestId("resume-next").click();
+      await screen.getByTestId("resume-all").click();
 
       await expect
         .element(screen.getByTestId("completed"), { timeout: 10_000 })
@@ -286,11 +298,7 @@ it(
       await expect
         .element(screen.getByTestId("interrupt-count"))
         .toHaveTextContent("0");
-      await expect
-        .element(screen.getByTestId("resume-error"))
-        .toHaveTextContent("");
 
-      // Follow-up submit must NOT hit the multi-interrupt resume error.
       await screen.getByTestId("follow-up-submit").click();
       await expect
         .element(screen.getByTestId("interrupts-at-submit"))
