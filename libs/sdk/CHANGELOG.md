@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.10.1
+
+### Patch Changes
+
+- [#2718](https://github.com/langchain-ai/langgraphjs/pull/2718) [`dd287b4`](https://github.com/langchain-ai/langgraphjs/commit/dd287b4c872db094e2fbc87e685da005a6ccdb90) Thanks [@jstar0](https://github.com/jstar0)! - Reject protocol SSE stream responses with non-SSE content types before marking subscriptions ready.
+
 ## 1.10.0
 
 ### Minor Changes

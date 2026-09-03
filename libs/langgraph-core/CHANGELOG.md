@@ -1,5 +1,14 @@
 # @langchain/langgraph
 
+## 1.4.14
+
+### Patch Changes
+
+- [#2747](https://github.com/langchain-ai/langgraphjs/pull/2747) [`5ce7f42`](https://github.com/langchain-ai/langgraphjs/commit/5ce7f42a345f826d568c07e7a9e5783ed1dce95e) Thanks [@t3s7r](https://github.com/t3s7r)! - fix(langgraph): pushMessage emits on the streamEvents v3 messages channel
+
+- Updated dependencies [[`dd287b4`](https://github.com/langchain-ai/langgraphjs/commit/dd287b4c872db094e2fbc87e685da005a6ccdb90)]:
+  - @langchain/langgraph-sdk@1.10.1
+
 ## 1.4.13
 
 ### Patch Changes
