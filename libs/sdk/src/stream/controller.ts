@@ -2496,12 +2496,24 @@ export class StreamController<
    * does not re-emit `input.requested` for them (session map already
    * holds the id), this restore keeps `stream.interrupts` truthful so
    * callers do not free-text `submit()` into an ambiguous resume.
+   *
+   * Uses the same transport-aware state fetch as {@link hydrate}, and
+   * drops the result if the thread swapped or a new submit/respond
+   * started while the fetch was in flight.
    */
   async #reconcilePendingInterruptsFromServer(): Promise<void> {
     const threadId = this.#currentThreadId;
     if (threadId == null || this.#disposed) return;
+    const generationAtFetch = this.#submitGeneration;
     try {
-      const state = await this.#options.client.threads.getState(threadId);
+      const state = await this.#fetchHydrationState();
+      if (
+        this.#disposed ||
+        this.#currentThreadId !== threadId ||
+        this.#submitGeneration !== generationAtFetch
+      ) {
+        return;
+      }
       if (!Array.isArray(state?.tasks)) return;
       const { activeInterrupts, activeIds } =
         collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
@@ -2719,9 +2731,7 @@ function extractAndCoerceMessagesWithFallback(
  * reconcile path so both stay aligned on namespace derivation and
  * id dedupe.
  */
-function collectActiveInterruptsFromTasks<InterruptType>(
-  tasks: unknown[]
-): {
+function collectActiveInterruptsFromTasks<InterruptType>(tasks: unknown[]): {
   activeInterrupts: Interrupt<InterruptType>[];
   activeIds: Set<string>;
 } {
