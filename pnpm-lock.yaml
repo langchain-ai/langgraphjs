@@ -1757,9 +1757,9 @@ importers:
       dedent:
         specifier: ^1.5.3
         version: 1.7.2
-      extract-zip:
-        specifier: ^2.0.1
-        version: 2.0.1
+      node-stream-zip:
+        specifier: ^1.16.0
+        version: 1.16.0
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -10301,6 +10301,10 @@ packages:
   node-stdlib-browser@1.3.1:
     resolution: {integrity: sha512-X75ZN8DCLftGM5iKwoYLA3rjnrAEs97MkzvSd4q2746Tgpg8b8XWiBGiBG4ZpgcAqBgtgPHTiAc8ZMCvZuikDw==}
     engines: {node: '>=10'}
+
+  node-stream-zip@1.16.0:
+    resolution: {integrity: sha512-ObaRrRoR8T68wF6suxHd7R4XQNamij6ZQHrwG7Dx1D2zeHcDNLsIOBcWrIwtDm7AsCXBguaPHgXhcjxDa2szrg==}
+    engines: {node: '>=0.12.0'}
 
   nopt@7.2.1:
     resolution: {integrity: sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==}
@@ -21281,6 +21285,8 @@ snapshots:
       url: 0.11.4
       util: 0.12.5
       vm-browserify: 1.1.2
+
+  node-stream-zip@1.16.0: {}
 
   nopt@7.2.1:
     dependencies:
