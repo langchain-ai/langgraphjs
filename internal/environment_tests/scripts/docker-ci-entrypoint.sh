@@ -102,7 +102,7 @@ console.log(`Pinned @langchain/core to ${coreVersion}`);
 EOF
 
 # Install production dependencies only
-pnpm install --prod
+pnpm install --prod --link-workspace-packages
 
 # Check the build command completes successfully
 pnpm build
