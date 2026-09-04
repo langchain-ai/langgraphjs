@@ -1,2 +1,6 @@
 packages:
-  - 'libs/*'
+  - "libs/*"
+
+overrides:
+  "@langchain/langgraph-sdk": workspace:*
+  "@langchain/langgraph-checkpoint": workspace:*

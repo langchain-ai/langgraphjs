@@ -33,12 +33,6 @@ for item in .[!.]*; do
 done
 cd /app
 
-cat >> pnpm-workspace.yaml <<'EOF'
-overrides:
-  "@langchain/langgraph-sdk": workspace:*
-  "@langchain/langgraph-checkpoint": workspace:*
-EOF
-
 # Copy workspace packages
 mkdir -p ./libs/langgraph/
 mkdir -p ./libs/langgraph-core/
