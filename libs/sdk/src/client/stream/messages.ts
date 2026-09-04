@@ -126,11 +126,25 @@ function applyCoreEventDelta(
       if (event.delta.encoding) merged.encoding = event.delta.encoding;
       return merged as unknown as CoreContentBlock;
     }
-    case "block-delta":
+    case "block-delta": {
+      const fields = event.delta.fields as CoreContentBlock | undefined;
+      // ``block-delta`` is how tool-call arguments stream: each event carries
+      // the next ``args`` fragment, not the accumulated string. Spreading the
+      // fields over ``current`` would replace the fragments already captured,
+      // leaving the block with only the newest one — so route chunk blocks
+      // through the same accumulating merge the ``content`` path uses.
+      if (
+        (current?.type === "tool_call_chunk" ||
+          current?.type === "server_tool_call_chunk") &&
+        fields?.type === current.type
+      ) {
+        return applyCoreContentDelta(current, fields);
+      }
       return {
         ...(current ?? {}),
         ...event.delta.fields,
       } as CoreContentBlock;
+    }
   }
 }
 
