@@ -450,16 +450,56 @@ describe("StreamMessagesHandler", () => {
       const message = new AIMessage({ content: "chain result" });
       handler.handleChainEnd(message, runId);
 
-      // Should emit the message with dedupe=true
+      // Should emit the message with dedupe=true and its output index
       expect(handler._emit).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ content: "chain result" }),
         runId,
         true,
+        0,
       );
 
       // Should clean up
       expect(handler.metadatas[runId]).toBeUndefined();
+    });
+
+    it("should give distinct ids to id-less messages of the same run", () => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+
+      // Both messages are returned by the same node and neither carries an id —
+      // the shape produced by a graph that appends a message to a subagent's
+      // output. They used to share `stableMessageIdMap[runId]`, and
+      // `messagesStateReducer` deduplicates by id, so one of them silently
+      // disappeared from the graph state under `streamMode: "messages"` while
+      // `"updates"` and `"values"` kept both.
+      const first = new AIMessage({ content: "appended by the caller" });
+      const second = new AIMessage({ content: "transferring back" });
+
+      handler.handleChainEnd([first, second], runId);
+
+      expect(first.id).toBeDefined();
+      expect(second.id).toBeDefined();
+      expect(first.id).not.toBe(second.id);
+    });
+
+    it("should not renumber messages that already carry an id", () => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+
+      const withId = new AIMessage({ id: "caller-chosen", content: "kept" });
+      const withoutId = new AIMessage({ content: "assigned" });
+
+      handler.handleChainEnd([withId, withoutId], runId);
+
+      expect(withId.id).toBe("caller-chosen");
+      expect(withoutId.id).not.toBe("caller-chosen");
     });
 
     it("should emit messages from an array output", () => {
