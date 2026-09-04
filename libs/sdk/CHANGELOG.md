@@ -1,5 +1,26 @@
 # @langchain/langgraph-sdk
 
+## 1.10.2
+
+### Patch Changes
+
+- [#2788](https://github.com/langchain-ai/langgraphjs/pull/2788) [`3d0bc90`](https://github.com/langchain-ai/langgraphjs/commit/3d0bc90635fa4748d14a4bedb1289448f18a9e92) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply in-place message metadata updates from values
+
+  Same-id `values` snapshots that mutate nested metadata (e.g. HITL card
+  `status: accepted → done`) without changing content were treated as no-ops
+  because enrichment only accepted shallow key-supersets. Prefer values when
+  they retain every nested key and only mutate leaves or add keys, so
+  `useStream().values` reflects the update.
+
+- [#2780](https://github.com/langchain-ai/langgraphjs/pull/2780) [`ac72c3d`](https://github.com/langchain-ai/langgraphjs/commit/ac72c3d270bc491f4a73abab4e3058ff090987c2) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep stream.interrupts truthful after sequential multi-interrupt resume
+
+  Locally-resolved interrupt ids are no longer permanently suppressed: live
+  `input.requested` events after the resume barrier can reappear, and a
+  post-resume reconcile against `threads.getState().tasks[].interrupts`
+  restores siblings the server still has pending. Prevents a stale-empty
+  `stream.interrupts` from driving a free-text `submit()` into an ambiguous
+  `Command(resume=…)` when multiple interrupts remain.
+
 ## 1.10.1
 
 ### Patch Changes
