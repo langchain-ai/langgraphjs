@@ -6,6 +6,7 @@ import {
   configToDocker,
   configToWatch,
   getBaseImage,
+  resolveBaseImage,
 } from "../src/docker/docker.mjs";
 import { type Config, getConfig } from "../src/utils/config.mjs";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,24 @@ import * as fs from "node:fs/promises";
 import * as yaml from "yaml";
 
 const dedenter = dedent.withOptions({ escapeSpecialCharacters: false });
+
+const withMockPyPiVersions = async <T,>(
+  versions: string[],
+  run: () => Promise<T>
+): Promise<T> => {
+  const originalFetch = globalThis.fetch;
+  const releases = Object.fromEntries(versions.map((version) => [version, {}]));
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    expect(String(input)).toBe("https://pypi.org/pypi/langgraph-api/json");
+    return new Response(JSON.stringify({ releases }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+};
 
 const DEFAULT_CONFIG = {
   dockerfile_lines: [],
@@ -1079,6 +1098,41 @@ describe("getBaseImage", () => {
     );
   });
 
+  it("resolves compatible api_version range for node images", async () => {
+    const config = getConfig({
+      node_version: "20",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: ">~=0.11.0rc2",
+    });
+
+    await withMockPyPiVersions(
+      ["0.11.0rc2", "0.11.0", "0.11.1", "0.12.0rc1", "0.12.0"],
+      async () => {
+        await expect(resolveBaseImage(config)).resolves.toBe(
+          "langchain/langgraphjs-api:0.12.0-node20"
+        );
+      }
+    );
+  });
+
+  it("resolves compatible api_version range within release line", async () => {
+    const config = getConfig({
+      python_version: "3.12",
+      dependencies: ["."],
+      graphs: { agent: "./agent.py:graph" },
+      api_version: "~=0.11.0rc2",
+    });
+
+    await withMockPyPiVersions(
+      ["0.11.0rc2", "0.11.0", "0.11.1", "0.12.0"],
+      async () => {
+        await expect(resolveBaseImage(config)).resolves.toBe(
+          "langchain/langgraph-api:0.11.1-py3.12"
+        );
+      }
+    );
+  });
+
   it("_INTERNAL_docker_tag takes precedence", () => {
     const config = getConfig({
       node_version: "22",
@@ -1308,6 +1362,17 @@ it("node config and python config", () => {
     )
     .toThrow();
 
+  // Invalid api_version range operator
+  expect
+    .soft(() =>
+      getConfig({
+        node_version: "22",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "~>=0.11.0rc2",
+      })
+    )
+    .toThrow();
+
   // Valid api_version with compact suffix
   expect(
     getConfig({
@@ -1336,5 +1401,20 @@ it("node config and python config", () => {
     graphs: { agent: "./agent.js:graph" },
     env: {},
     api_version: "0.7.29-rc.0",
+  });
+
+  // Valid compatible api_version range
+  expect(
+    getConfig({
+      node_version: "22",
+      graphs: { agent: "./agent.js:graph" },
+      api_version: ">~=0.11.0rc2",
+    })
+  ).toEqual({
+    node_version: "22",
+    dockerfile_lines: [],
+    graphs: { agent: "./agent.js:graph" },
+    env: {},
+    api_version: ">~=0.11.0rc2",
   });
 });
