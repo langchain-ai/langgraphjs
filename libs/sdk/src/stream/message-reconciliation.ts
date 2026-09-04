@@ -151,12 +151,29 @@ export function buildMessageIndex(
  * channel `usage_metadata`, etc.) merely because the two messages differ.
  * Values that would drop nested metadata keys keep the current copy.
  *
+ * In-place leaf mutations are only applied when
+ * {@link ShouldPreferValuesMessageOptions.allowInPlaceMutations} is true
+ * (the default). Callers pass `false` for stale/`addOnly` reconnect
+ * snapshots so an older `accepted` card cannot overwrite a newer `done`.
+ *
  * Streamed content still wins when it has moved past this snapshot, so
  * in-flight token streaming is not overwritten by a lagging values event.
  */
+export interface ShouldPreferValuesMessageOptions {
+  /**
+   * When false, only prefer values for key-adding enrichment (or filling
+   * empty metadata), not for same-key nested leaf mutations. Used for
+   * lagging reconnect/`addOnly` snapshots.
+   *
+   * @default true
+   */
+  readonly allowInPlaceMutations?: boolean;
+}
+
 export function shouldPreferValuesMessage(
   valuesMessage: BaseMessage,
-  streamedMessage: BaseMessage
+  streamedMessage: BaseMessage,
+  options?: ShouldPreferValuesMessageOptions
 ): boolean {
   if (shouldPreferValuesMessageForToolCalls(valuesMessage, streamedMessage)) {
     return true;
@@ -164,7 +181,7 @@ export function shouldPreferValuesMessage(
   if (!jsonishEqual(valuesMessage.content, streamedMessage.content)) {
     return false;
   }
-  return valuesAddsMetadataEnrichment(valuesMessage, streamedMessage);
+  return valuesAddsMetadataEnrichment(valuesMessage, streamedMessage, options);
 }
 
 /** Metadata fields that a values echo may enrich on a same-id message. */
@@ -179,14 +196,17 @@ const METADATA_ENRICHMENT_KEYS = [
  * fields already present on the current copy.
  *
  * Covers both key additions (optimistic human gaining
- * `additional_kwargs.attachments`) and in-place nested mutations of
+ * `additional_kwargs.attachments`) and — when
+ * `allowInPlaceMutations` is true — in-place nested mutations of
  * existing keys (HITL card `status: accepted → done`) as long as every
  * nested key on the current field is retained.
  */
 function valuesAddsMetadataEnrichment(
   valuesMessage: BaseMessage,
-  streamedMessage: BaseMessage
+  streamedMessage: BaseMessage,
+  options?: ShouldPreferValuesMessageOptions
 ): boolean {
+  const allowInPlaceMutations = options?.allowInPlaceMutations !== false;
   const valuesRecord = valuesMessage as unknown as Record<string, unknown>;
   const streamedRecord = streamedMessage as unknown as Record<string, unknown>;
 
@@ -207,11 +227,21 @@ function valuesAddsMetadataEnrichment(
       enriches = true;
       continue;
     }
-    // Both non-empty and differ: prefer values when it retains every
-    // nested key from the current field (nested value mutations and
-    // added keys allowed). Dropping keys would erase richer current
-    // metadata — keep the current copy.
-    if (retainsAllNestedKeys(valuesField, streamedField)) {
+    // Both non-empty and differ.
+    if (allowInPlaceMutations) {
+      // Prefer values when it retains every nested key (leaf mutations
+      // and added keys allowed). Dropping keys would erase richer
+      // current metadata — keep the current copy.
+      if (retainsAllNestedKeys(valuesField, streamedField)) {
+        enriches = true;
+        continue;
+      }
+      return false;
+    }
+    // Stale/addOnly snapshots: only treat as enrichment when values is
+    // a shallow key-superset with equal existing values. Same-key leaf
+    // mutations must not roll current metadata backward.
+    if (isObjectShallowSuperset(valuesField, streamedField)) {
       enriches = true;
       continue;
     }
@@ -228,6 +258,41 @@ function isEmptyMeta(value: unknown): boolean {
     return Object.keys(value as Record<string, unknown>).length === 0;
   }
   return false;
+}
+
+/**
+ * True when `candidate` is a shallow object superset of `baseline`:
+ * every baseline key is present with an equal value, and candidate has
+ * at least one extra key.
+ */
+function isObjectShallowSuperset(
+  candidate: unknown,
+  baseline: unknown
+): boolean {
+  if (
+    candidate == null ||
+    baseline == null ||
+    typeof candidate !== "object" ||
+    typeof baseline !== "object" ||
+    Array.isArray(candidate) ||
+    Array.isArray(baseline)
+  ) {
+    return false;
+  }
+  const candidateRecord = candidate as Record<string, unknown>;
+  const baselineRecord = baseline as Record<string, unknown>;
+  const baselineKeys = Object.keys(baselineRecord);
+  const candidateKeys = Object.keys(candidateRecord);
+  if (candidateKeys.length <= baselineKeys.length) return false;
+  for (const key of baselineKeys) {
+    if (!Object.prototype.hasOwnProperty.call(candidateRecord, key)) {
+      return false;
+    }
+    if (!jsonishEqual(candidateRecord[key], baselineRecord[key])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

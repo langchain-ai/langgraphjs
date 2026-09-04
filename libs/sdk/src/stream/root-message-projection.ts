@@ -457,7 +457,12 @@ export class RootMessageProjection<
       currentMessages: baselineMessages,
       currentIndexById: this.#indexById,
       previousValueMessageIds: this.#valuesMessageIds,
-      preferValuesMessage: shouldPreferValuesMessage,
+      preferValuesMessage: (valuesMessage, streamedMessage) =>
+        shouldPreferValuesMessage(valuesMessage, streamedMessage, {
+          // Lagging reconnect snapshots must not roll nested metadata
+          // backward (e.g. card status done → accepted).
+          allowInPlaceMutations: !addOnly,
+        }),
       addOnly,
     });
     // A stale replay snapshot must not shrink the authoritative id set:

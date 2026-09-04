@@ -1301,6 +1301,43 @@ describe("RootMessageProjection", () => {
       ).toBe("done");
     });
 
+    it("does not roll card status backward on a lagging addOnly values replay", async () => {
+      const { store, projection } = makeProjection();
+
+      const done = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "done" },
+        },
+      });
+      projection.applyValues({ messages: [done] } as State, [done], {
+        step: 5,
+      });
+      await drainFlush();
+
+      const accepted = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "accepted" },
+        },
+      });
+      projection.applyValues({ messages: [accepted] } as State, [accepted], {
+        step: 4,
+      });
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(
+        (
+          (snap.messages[0] as AIMessage).response_metadata as {
+            card: { status: string };
+          }
+        ).card.status
+      ).toBe("done");
+    });
+
     it("does not strip seeded metadata when a lagging values replay omits it", async () => {
       const { store, projection } = makeProjection();
 

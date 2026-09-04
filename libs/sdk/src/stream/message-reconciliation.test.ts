@@ -267,6 +267,52 @@ describe("reconcileMessagesFromValues", () => {
     ).toBe("done");
   });
 
+  it("does not prefer stale leaf mutations when allowInPlaceMutations is false", () => {
+    // Reconnect/addOnly: seeded current has done; lagging values still
+    // says accepted. Must keep current — not roll status backward.
+    const done = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+    const accepted = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "accepted" },
+      },
+    });
+
+    expect(
+      shouldPreferValuesMessage(accepted, done, {
+        allowInPlaceMutations: false,
+      })
+    ).toBe(false);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [accepted],
+      currentMessages: [done],
+      currentIndexById: buildMessageIndex([done]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: (valuesMessage, streamedMessage) =>
+        shouldPreferValuesMessage(valuesMessage, streamedMessage, {
+          allowInPlaceMutations: false,
+        }),
+      addOnly: true,
+    });
+
+    expect(result.messages).toEqual([done]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status
+    ).toBe("done");
+  });
+
   it("still keeps richer current metadata when values would drop nested keys", () => {
     const richer = new AIMessage({
       id: "assistant-1",
