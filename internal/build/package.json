@@ -10,7 +10,7 @@
     "watch": "tsx cli.ts --watch"
   },
   "dependencies": {
-    "@arethetypeswrong/core": "^0.18.2",
+    "@arethetypeswrong/core": "^0.18.5",
     "@tsconfig/recommended": "^1.0.10",
     "@typescript/native-preview": "^7.0.0-dev.20250730.1",
     "prettier": "^3.6.2",
