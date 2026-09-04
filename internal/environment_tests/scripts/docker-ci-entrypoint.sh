@@ -61,19 +61,46 @@ for pkg in libs/*/; do
   fi
 done
 
-# Remove workspace devDependencies that aren't available in this limited workspace
-# This is needed because pnpm validates all workspace references even with --prod
-for pkg in libs/*/; do
-  if [ -f "$pkg/package.json" ]; then
-    # Remove devDependencies that reference workspace packages not in our limited set
-    sed -i 's/"@langchain\/langgraph-checkpoint-postgres": "workspace:\*",*//g' "$pkg/package.json"
-    sed -i 's/"@langchain\/langgraph-checkpoint-sqlite": "workspace:\*",*//g' "$pkg/package.json"
-    sed -i 's/"@langchain\/langgraph-api": "workspace:[^"]*",*//g' "$pkg/package.json"
-    # `@langchain/build` is an internal build-only package (lives under internal/,
-    # not libs/) and is never executed here since the libs ship prebuilt dist/.
-    sed -i 's/"@langchain\/build": "workspace:[^"]*",*//g' "$pkg/package.json"
-  fi
-done
+# Remove workspace / registry deps that aren't available or needed in this
+# limited export-test workspace. pnpm still resolves them from package.json
+# even with --prod, and registry packages like `deepagents` depend on
+# `@langchain/langgraph-sdk` at a version range that can point at an
+# unpublished workspace bump (e.g. 1.10.1) and fail the install.
+node <<'EOF'
+const fs = require("fs");
+const path = require("path");
+
+const DROP_DEPS = new Set([
+  "@langchain/langgraph-checkpoint-postgres",
+  "@langchain/langgraph-checkpoint-sqlite",
+  "@langchain/langgraph-api",
+  "@langchain/build",
+  // Test-only registry packages that pull @langchain/langgraph-sdk from npm.
+  "deepagents",
+  "langchain",
+]);
+
+for (const entry of fs.readdirSync("libs", { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const pkgPath = path.join("libs", entry.name, "package.json");
+  if (!fs.existsSync(pkgPath)) continue;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  let changed = false;
+  for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
+    const section = pkg[field];
+    if (section == null || typeof section !== "object") continue;
+    for (const name of DROP_DEPS) {
+      if (Object.prototype.hasOwnProperty.call(section, name)) {
+        delete section[name];
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    fs.writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  }
+}
+EOF
 
 # Match the test app's direct @langchain/core dependency to the local LangGraph peer.
 # This lets the environment tests follow dev builds that are not covered by ^1.x.
