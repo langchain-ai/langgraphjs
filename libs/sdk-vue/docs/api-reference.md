@@ -76,6 +76,7 @@ replacements — see [`v1-migration.md`](./v1-migration.md) §3.
 | `interrupts` | `ShallowRef<Interrupt[]>` | All pending root interrupts. |
 | `interrupt` | `ComputedRef<Interrupt \| undefined>` | Convenience: `interrupts.value[0]`. In `<script setup>`, read the payload with `stream.interrupt.value?.value` (Vue ref unwrap + SDK `Interrupt.value`). In `<template>`, `stream.interrupt.value` is enough — see [Interrupts](./interrupts.md#script-vs-template-access). |
 | `isLoading` | `ComputedRef<boolean>` | `true` while a run is in flight or hydration hasn't finished. |
+| `status` | `ComputedRef<"idle" \| "submitting" \| "streaming" \| "error">` | High-level run phase. `"submitting"` = dispatched but not yet running; `"streaming"` = actively running; `"error"` = last run/hydrate errored. A single readable value vs combining `isLoading`/`error`. |
 | `isThreadLoading` | `ComputedRef<boolean>` | `true` only during initial thread hydration. |
 | `error` | `ComputedRef<unknown>` | Last error surfaced by the controller. |
 | `threadId` | `ComputedRef<string \| null>` | Currently-bound thread. |

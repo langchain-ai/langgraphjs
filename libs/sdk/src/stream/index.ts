@@ -127,6 +127,9 @@ export type {
 
 export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
 
+export { deriveStreamStatus } from "./status.js";
+export type { StreamStatus } from "./status.js";
+
 // Types framework bindings (React, Vue, Svelte, Angular) typically
 // need when wrapping the projection factories. Re-exported here so
 // bindings can reach them without a deep subpath import.
