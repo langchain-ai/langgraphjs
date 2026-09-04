@@ -126,10 +126,22 @@ function mergeCallbacks(
     return manager;
   }
   // both are managers
+  const dedupeHandlers = (
+    handlers: CallbackManager["handlers"]
+  ): CallbackManager["handlers"] =>
+    handlers.filter(
+      (handler, index) =>
+        handlers.findIndex(
+          (candidate) =>
+            candidate === handler ||
+            (candidate.name === "StreamMessagesHandler" &&
+              handler.name === "StreamMessagesHandler")
+        ) === index
+    );
   return new CallbackManager(provided._parentRunId, {
-    handlers: Array.from(new Set(base.handlers.concat(provided.handlers))),
-    inheritableHandlers: Array.from(
-      new Set(base.inheritableHandlers.concat(provided.inheritableHandlers))
+    handlers: dedupeHandlers(base.handlers.concat(provided.handlers)),
+    inheritableHandlers: dedupeHandlers(
+      base.inheritableHandlers.concat(provided.inheritableHandlers)
     ),
     tags: Array.from(new Set(base.tags.concat(provided.tags))),
     inheritableTags: Array.from(
