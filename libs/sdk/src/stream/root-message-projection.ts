@@ -498,10 +498,12 @@ export class RootMessageProjection<
    * emits a `values` snapshot containing the same ids,
    * {@link applyValues} → {@link reconcileMessagesFromValues} takes over
    * (server ordering wins; the echoed message replaces the optimistic
-   * one when content matches *and* values adds metadata the optimistic
-   * copy lacks, so server-authored `additional_kwargs` is visible
-   * without waiting for hydration — lagging/poorer snapshots do not
-   * strip richer current metadata).
+   * one when content matches *and* values adds or mutates nested
+   * metadata without dropping keys the optimistic copy already has, so
+   * server-authored `additional_kwargs` / in-place
+   * `response_metadata` updates are visible without waiting for
+   * hydration — lagging/poorer snapshots do not strip richer current
+   * metadata).
    * In-flight streamed content still wins when it has moved past the
    * snapshot.
    *
