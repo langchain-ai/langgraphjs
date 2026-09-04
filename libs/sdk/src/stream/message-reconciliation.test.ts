@@ -228,4 +228,128 @@ describe("reconcileMessagesFromValues", () => {
 
     expect(result.messages).toBe(current);
   });
+
+  it("prefers values when response_metadata mutates nested fields in place", () => {
+    // Customer flow: HITL card status accepted → done on the same message id.
+    // Content is unchanged; only nested response_metadata.card.status updates.
+    const accepted = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "accepted" },
+      },
+    });
+    const done = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+
+    expect(shouldPreferValuesMessage(done, accepted)).toBe(true);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [done],
+      currentMessages: [accepted],
+      currentIndexById: buildMessageIndex([accepted]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([done]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status
+    ).toBe("done");
+  });
+
+  it("does not prefer stale leaf mutations when allowInPlaceMutations is false", () => {
+    // Reconnect/addOnly: seeded current has done; lagging values still
+    // says accepted. Must keep current — not roll status backward.
+    const done = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+    const accepted = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "accepted" },
+      },
+    });
+
+    expect(
+      shouldPreferValuesMessage(accepted, done, {
+        allowInPlaceMutations: false,
+      })
+    ).toBe(false);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [accepted],
+      currentMessages: [done],
+      currentIndexById: buildMessageIndex([done]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: (valuesMessage, streamedMessage) =>
+        shouldPreferValuesMessage(valuesMessage, streamedMessage, {
+          allowInPlaceMutations: false,
+        }),
+      addOnly: true,
+    });
+
+    expect(result.messages).toEqual([done]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status
+    ).toBe("done");
+  });
+
+  it("still keeps richer current metadata when values would drop nested keys", () => {
+    const richer = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: {
+          action: "confirm",
+          status: "accepted",
+          detail: "keep me",
+        },
+      },
+    });
+    const poorer = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+
+    expect(shouldPreferValuesMessage(poorer, richer)).toBe(false);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [poorer],
+      currentMessages: [richer],
+      currentIndexById: buildMessageIndex([richer]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([richer]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { detail: string };
+        }
+      ).card.detail
+    ).toBe("keep me");
+  });
 });

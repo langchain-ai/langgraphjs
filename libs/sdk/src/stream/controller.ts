@@ -238,6 +238,16 @@ export class StreamController<
   #threadEventUnsubscribe: (() => void) | undefined;
   #disposed = false;
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Interrupt ids this controller has locally marked resolved via
+   * {@link respond} / {@link respondAll}. Used only to suppress
+   * *historical* SSE replay of those `input.requested` events (there
+   * is no `input.responded` protocol event). Live events after the
+   * resume barrier — or a post-resume reconcile against
+   * `state.tasks[].interrupts` — clear an id from this set so a
+   * still-pending server interrupt can reappear on
+   * `rootStore.interrupts`.
+   */
   readonly #resolvedInterrupts = new Set<string>();
   /**
    * Set of interrupt IDs the server reports as currently *active* on
@@ -729,35 +739,13 @@ export class StreamController<
        */
       if (Array.isArray(state?.tasks)) {
         const generationAtFetch = this.#submitGeneration;
-        const activeInterrupts: Interrupt<InterruptType>[] = [];
-        const activeIds = new Set<string>();
-        for (const task of state.tasks) {
-          if (!Array.isArray(task?.interrupts)) continue;
-          const checkpointNs = (
-            task as { checkpoint?: { checkpoint_ns?: unknown } | null }
-          )?.checkpoint?.checkpoint_ns;
-          const namespace =
-            typeof checkpointNs === "string" && checkpointNs.length > 0
-              ? checkpointNs.split("|").filter((segment) => segment.length > 0)
-              : [...ROOT_NAMESPACE];
-          for (const interrupt of task.interrupts) {
-            const typed = interrupt as
-              | { id?: string; value?: unknown; namespace?: string[] }
-              | null
-              | undefined;
-            const id = typed?.id;
-            if (typeof id !== "string" || activeIds.has(id)) continue;
-            activeIds.add(id);
-            activeInterrupts.push(
-              normalizeInterruptForClient({
-                id,
-                value: typed?.value as InterruptType,
-                namespace: Array.isArray(typed?.namespace)
-                  ? [...typed.namespace]
-                  : namespace,
-              })
-            );
-          }
+        const { activeInterrupts, activeIds } =
+          collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
+        // Server still lists these as pending — drop any local
+        // "resolved" tombstone so live replay / later reconcile can
+        // keep them visible.
+        for (const id of activeIds) {
+          this.#resolvedInterrupts.delete(id);
         }
         this.rootStore.setState((s) => ({
           ...s,
@@ -2364,10 +2352,7 @@ export class StreamController<
       payload?: unknown;
     };
     const interruptId = data?.interrupt_id;
-    if (
-      typeof interruptId !== "string" ||
-      this.#resolvedInterrupts.has(interruptId)
-    ) {
+    if (typeof interruptId !== "string") {
       return;
     }
     // Before a run command is accepted, accept only ids the hydrated
@@ -2376,6 +2361,20 @@ export class StreamController<
     // unknown ids at or below the barrier are stale, while newer ids are
     // interrupts raised by the new run.
     const eventSeq = typeof event.seq === "number" ? event.seq : undefined;
+    // Locally-resolved ids: still drop historical replay, but accept a
+    // live reappearance (server still pending after sequential
+    // multi-interrupt resume, or the same interrupt site re-raised).
+    if (this.#resolvedInterrupts.has(interruptId)) {
+      const isLiveReappearance =
+        this.#hydratedActiveInterruptIds == null ||
+        (typeof this.#interruptReplayThroughSeq === "number" &&
+          eventSeq != null &&
+          eventSeq > this.#interruptReplayThroughSeq);
+      if (!isLiveReappearance) {
+        return;
+      }
+      this.#resolvedInterrupts.delete(interruptId);
+    }
     const isUnknownInterrupt =
       this.#hydratedActiveInterruptIds != null &&
       !this.#hydratedActiveInterruptIds.has(interruptId);
@@ -2461,8 +2460,12 @@ export class StreamController<
   }
 
   /**
-   * Mark an interrupt resolved for replay filtering and mirror the
-   * removal into the root snapshot the framework hooks read.
+   * Mark an interrupt resolved for historical-replay filtering and
+   * mirror the removal into the root snapshot the framework hooks read.
+   *
+   * Tombstones are not permanent: a live `input.requested` after the
+   * resume barrier, or {@link #reconcilePendingInterruptsFromServer},
+   * clears the id when the server still reports it as pending.
    */
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
@@ -2482,6 +2485,50 @@ export class StreamController<
         interrupt: interrupts[0],
       };
     });
+  }
+
+  /**
+   * Re-sync `rootStore.interrupts` from the server's authoritative
+   * `state.tasks[].interrupts` after a resumed run settles.
+   *
+   * Sequential `respond()` of parallel interrupts optimistically clears
+   * each id client-side. When the server still has siblings pending and
+   * does not re-emit `input.requested` for them (session map already
+   * holds the id), this restore keeps `stream.interrupts` truthful so
+   * callers do not free-text `submit()` into an ambiguous resume.
+   *
+   * Uses the same transport-aware state fetch as {@link hydrate}, and
+   * drops the result if the thread swapped or a new submit/respond
+   * started while the fetch was in flight.
+   */
+  async #reconcilePendingInterruptsFromServer(): Promise<void> {
+    const threadId = this.#currentThreadId;
+    if (threadId == null || this.#disposed) return;
+    const generationAtFetch = this.#submitGeneration;
+    try {
+      const state = await this.#fetchHydrationState();
+      if (
+        this.#disposed ||
+        this.#currentThreadId !== threadId ||
+        this.#submitGeneration !== generationAtFetch
+      ) {
+        return;
+      }
+      if (!Array.isArray(state?.tasks)) return;
+      const { activeInterrupts, activeIds } =
+        collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
+      for (const id of activeIds) {
+        this.#resolvedInterrupts.delete(id);
+      }
+      this.rootStore.setState((s) => ({
+        ...s,
+        interrupts: activeInterrupts,
+        interrupt: activeInterrupts[0],
+      }));
+      this.#hydratedActiveInterruptIds = activeIds;
+    } catch {
+      /* best-effort — leave the optimistic interrupt list alone */
+    }
   }
 
   /**
@@ -2515,14 +2562,26 @@ export class StreamController<
    * but before `respondInput` calls `#prepareForNextRun`; accepting that
    * terminal would unsubscribe the watcher before the resumed run's `failed`
    * terminal arrives.
+   *
+   * On `interrupted` / `completed`, reconciles pending interrupts from
+   * server state so optimistic clears from {@link respond} cannot leave
+   * `stream.interrupts` empty while the checkpoint still has siblings.
    */
-  #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
+  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
-    return this.#awaitRootTerminal(signal, {
+    const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
+    if (
+      !signal.aborted &&
+      !this.#disposed &&
+      (terminal.event === "interrupted" || terminal.event === "completed")
+    ) {
+      await this.#reconcilePendingInterruptsFromServer();
+    }
+    return terminal;
   }
 
   #awaitRootTerminal(
@@ -2663,6 +2722,54 @@ function extractAndCoerceMessagesWithFallback(
   return ensureMessageInstances(
     raw as (Message | BaseMessage)[]
   ) as BaseMessage[];
+}
+
+/**
+ * Collect pending interrupts from a `threads.getState()` `tasks` array.
+ *
+ * Shared by {@link StreamController.hydrate} and the post-resume
+ * reconcile path so both stay aligned on namespace derivation and
+ * id dedupe.
+ */
+function collectActiveInterruptsFromTasks<InterruptType>(tasks: unknown[]): {
+  activeInterrupts: Interrupt<InterruptType>[];
+  activeIds: Set<string>;
+} {
+  const activeInterrupts: Interrupt<InterruptType>[] = [];
+  const activeIds = new Set<string>();
+  for (const task of tasks) {
+    if (!Array.isArray((task as { interrupts?: unknown } | null)?.interrupts)) {
+      continue;
+    }
+    const typedTask = task as {
+      interrupts: unknown[];
+      checkpoint?: { checkpoint_ns?: unknown } | null;
+    };
+    const checkpointNs = typedTask.checkpoint?.checkpoint_ns;
+    const namespace =
+      typeof checkpointNs === "string" && checkpointNs.length > 0
+        ? checkpointNs.split("|").filter((segment) => segment.length > 0)
+        : [...ROOT_NAMESPACE];
+    for (const interrupt of typedTask.interrupts) {
+      const typed = interrupt as
+        | { id?: string; value?: unknown; namespace?: string[] }
+        | null
+        | undefined;
+      const id = typed?.id;
+      if (typeof id !== "string" || activeIds.has(id)) continue;
+      activeIds.add(id);
+      activeInterrupts.push(
+        normalizeInterruptForClient({
+          id,
+          value: typed?.value as InterruptType,
+          namespace: Array.isArray(typed?.namespace)
+            ? [...typed.namespace]
+            : namespace,
+        })
+      );
+    }
+  }
+  return { activeInterrupts, activeIds };
 }
 
 // Unused import guard — `AIMessage` is only referenced by type tests.

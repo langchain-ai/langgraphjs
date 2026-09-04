@@ -1258,6 +1258,86 @@ describe("RootMessageProjection", () => {
       ).toBe(snap.messages);
     });
 
+    it("applies in-place response_metadata mutations from a later values snapshot", async () => {
+      // Customer HITL flow: card status accepted (after respond) → done
+      // (after tool runs). Same message id, same content; only nested
+      // response_metadata.card.status changes. Must surface on both
+      // messages and values.messages (useStream().values).
+      const { store, projection } = makeProjection();
+
+      const accepted = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "accepted" },
+        },
+      });
+      projection.applyValues({ messages: [accepted] } as State, [accepted]);
+      await drainFlush();
+
+      const done = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "done" },
+        },
+      });
+      projection.applyValues({ messages: [done] } as State, [done]);
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(snap.messages).toHaveLength(1);
+      const cardStatus = (
+        (snap.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status;
+      expect(cardStatus).toBe("done");
+      expect(
+        (
+          ((snap.values as State).messages as AIMessage[])[0]
+            .response_metadata as { card: { status: string } }
+        ).card.status
+      ).toBe("done");
+    });
+
+    it("does not roll card status backward on a lagging addOnly values replay", async () => {
+      const { store, projection } = makeProjection();
+
+      const done = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "done" },
+        },
+      });
+      projection.applyValues({ messages: [done] } as State, [done], {
+        step: 5,
+      });
+      await drainFlush();
+
+      const accepted = new AIMessage({
+        id: "a1",
+        content: "Please confirm",
+        response_metadata: {
+          card: { action: "confirm", status: "accepted" },
+        },
+      });
+      projection.applyValues({ messages: [accepted] } as State, [accepted], {
+        step: 4,
+      });
+      await drainFlush();
+
+      const snap = store.getSnapshot();
+      expect(
+        (
+          (snap.messages[0] as AIMessage).response_metadata as {
+            card: { status: string };
+          }
+        ).card.status
+      ).toBe("done");
+    });
+
     it("does not strip seeded metadata when a lagging values replay omits it", async () => {
       const { store, projection } = makeProjection();
 

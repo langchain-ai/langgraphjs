@@ -1,5 +1,28 @@
 # @langchain/react
 
+## 1.0.35
+
+### Patch Changes
+
+- [#2780](https://github.com/langchain-ai/langgraphjs/pull/2780) [`ac72c3d`](https://github.com/langchain-ai/langgraphjs/commit/ac72c3d270bc491f4a73abab4e3058ff090987c2) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep stream.interrupts truthful after sequential multi-interrupt resume
+
+  Locally-resolved interrupt ids are no longer permanently suppressed: live
+  `input.requested` events after the resume barrier can reappear, and a
+  post-resume reconcile against `threads.getState().tasks[].interrupts`
+  restores siblings the server still has pending. Prevents a stale-empty
+  `stream.interrupts` from driving a free-text `submit()` into an ambiguous
+  `Command(resume=…)` when multiple interrupts remain.
+
+- Updated dependencies [[`3d0bc90`](https://github.com/langchain-ai/langgraphjs/commit/3d0bc90635fa4748d14a4bedb1289448f18a9e92), [`ac72c3d`](https://github.com/langchain-ai/langgraphjs/commit/ac72c3d270bc491f4a73abab4e3058ff090987c2)]:
+  - @langchain/langgraph-sdk@1.10.2
+
+## 1.0.34
+
+### Patch Changes
+
+- Updated dependencies [[`dd287b4`](https://github.com/langchain-ai/langgraphjs/commit/dd287b4c872db094e2fbc87e685da005a6ccdb90)]:
+  - @langchain/langgraph-sdk@1.10.1
+
 ## 1.0.33
 
 ### Patch Changes
