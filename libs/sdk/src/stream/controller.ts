@@ -2047,17 +2047,23 @@ export class StreamController<
      *     `useToolCalls(stream, subagent)`.
      *
      * We therefore drop `messages` events from any namespace that
-     * contains a `task:*` or `tools:*` segment; the authoritative
-     * tool-result text lands in `root.messages` via the root
+     * contains a `task:*` or `tools:*` segment, as well as an exact
+     * namespace already confirmed by discovery as a subgraph host. The
+     * latter remains available through its scoped message projection;
+     * ordinary depth-one node namespaces that have not been discovered
+     * as subgraphs continue to feed the root projection. Authoritative
+     * tool-result text still lands in `root.messages` via the root
      * `values.messages` snapshot merge in `#applyValues`.
      */
     const isInternalNamespace = isInternalWorkNamespace(event.params.namespace);
     const hasLegacySubagentNamespace = isLegacySubagentNamespace(
       event.params.namespace
     );
-
     if (event.method === "messages") {
-      if (!isInternalNamespace) {
+      const isDiscoveredSubgraphNamespace = this.#subgraphs.snapshot.has(
+        namespaceKey(event.params.namespace)
+      );
+      if (!isInternalNamespace && !isDiscoveredSubgraphNamespace) {
         this.#rootMessages.handleMessage(event as MessagesEvent);
       }
       return;
