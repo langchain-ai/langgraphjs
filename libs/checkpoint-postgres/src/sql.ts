@@ -1,3 +1,4 @@
+import type pg from "pg";
 import { type Checkpoint, TASKS } from "@langchain/langgraph-checkpoint";
 
 export interface SQL_STATEMENTS {
@@ -130,8 +131,35 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
 export const tableExistsSQL = (schema: string, table: string) => {
   const tableWithoutSchema = table.split(".")[1];
   return `SELECT EXISTS (
-  SELECT FROM information_schema.tables 
+  SELECT FROM information_schema.tables
   WHERE  table_schema = '${schema}'
   AND    table_name   = '${tableWithoutSchema}'
   );`;
+};
+
+export const schemaExistsSQL = `SELECT EXISTS (
+  SELECT FROM information_schema.schemata
+  WHERE  schema_name = $1
+);`;
+
+/**
+ * Verify that the given schema already exists, throwing a clear error if not.
+ *
+ * Used by `setup()` when `schemaSetup` is `"verify"`: the schema must be
+ * provisioned out-of-band (e.g. by a DBA) because the connecting role is not
+ * permitted to create schemas. Shared by both the checkpointer and the store
+ * so the check and its error message stay in one place.
+ */
+export const assertSchemaExists = async (
+  client: pg.PoolClient,
+  schema: string
+): Promise<void> => {
+  const result = await client.query(schemaExistsSQL, [schema]);
+  if (!result.rows[0]?.exists) {
+    throw new Error(
+      `Schema "${schema}" does not exist (or is not visible to the current role). ` +
+        `It was expected to already exist because "schemaSetup" is "verify". ` +
+        `Create the schema (or grant access to it) out-of-band, or set "schemaSetup" to "create".`
+    );
+  }
 };
