@@ -290,7 +290,7 @@ For more on defining graph state using Zod, see the [defining graph state how-to
 
 In LangGraph, nodes are typically JavaScript/TypeScript functions (sync or `async`) where the **first** positional argument is the [state](#state), and (optionally), the **second** positional argument is a "config", containing optional [configurable parameters](#configuration) (such as a `thread_id`).
 
-Similar to `NetworkX`, you add these nodes to a graph using the [addNode](/langgraphjs/reference/classes/langgraph.StateGraph.html#addNode) method:
+Similar to `NetworkX`, you add these nodes to a graph using the [addNode](/langgraphjs/reference/classes/langgraph.StateGraph.html#addNode) method. Node names share a namespace with the graph's state, input, and output channel names, and a collision throws synchronously in `addNode`.
 
 ```typescript
 import { RunnableConfig } from "@langchain/core/runnables";
