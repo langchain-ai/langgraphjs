@@ -39,6 +39,7 @@ export {
 } from "./graph/index.js";
 export type {
   StateSnapshot,
+  WaitingEdgeDescription,
   StreamMode,
   StreamOutputMap,
   PregelParams,
