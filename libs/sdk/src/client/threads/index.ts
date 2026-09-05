@@ -75,7 +75,7 @@ export class ThreadsClient<
       json: {
         metadata: {
           ...payload?.metadata,
-          graph_id: payload?.graphId,
+          ...(payload?.graphId ? { graph_id: payload.graphId } : {}),
         },
         thread_id: payload?.threadId,
         if_exists: payload?.ifExists,
