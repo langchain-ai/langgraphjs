@@ -1,6 +1,6 @@
 {
   "name": "@langchain/vue",
-  "version": "1.0.35",
+  "version": "1.0.36-rc.0",
   "description": "Vue integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {

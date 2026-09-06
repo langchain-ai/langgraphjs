@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.10.3-rc.0
+
+### Patch Changes
+
+- [#2762](https://github.com/langchain-ai/langgraphjs/pull/2762) [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105) Thanks [@JessYanCoding](https://github.com/JessYanCoding)! - Send `checkpoint_id` in the `runs.stream()` request body, so a `checkpointId` passed to `client.runs.stream()` forks from the requested checkpoint instead of being silently dropped. Matches `runs.create()` and `runs.wait()`, which already send it.
+
 ## 1.10.2
 
 ### Patch Changes

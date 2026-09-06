@@ -1,5 +1,15 @@
 # @langchain/langgraph-api
 
+## 1.4.6-rc.0
+
+### Patch Changes
+
+- [#2751](https://github.com/langchain-ai/langgraphjs/pull/2751) [`0a9611a`](https://github.com/langchain-ai/langgraphjs/commit/0a9611af927bd7933e6eb96161acd86584f0d4b0) Thanks [@t3s7r](https://github.com/t3s7r)! - fix(api): `run.start` with input on a cancelled thread no longer folds the input into `Command(resume)`. A cancelled run shares the "interrupted" status with a genuine `interrupt()` pause, but has no pending interrupt to consume the resume value, so the submitted message was silently dropped. The input-vs-resume decision now keys on whether the thread actually has pending interrupts (both in the protocol service and the embed protocol).
+- Updated dependencies [[`83a4b62`](https://github.com/langchain-ai/langgraphjs/commit/83a4b62be99488f17f3d7370a064f635e7c05a2e), [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105)]:
+  - @langchain/langgraph@1.4.15-rc.0
+  - @langchain/langgraph-sdk@1.10.3-rc.0
+  - @langchain/langgraph-ui@1.4.6-rc.0
+
 ## 1.4.5
 
 ### Patch Changes
