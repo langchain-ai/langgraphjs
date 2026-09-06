@@ -8,7 +8,6 @@
   
   Transform the payloads recorded on a node's own trace run while retaining its span and timing. Processors receive raw values and fall back to the original payload if they throw. Graph state, root runs, and child runs remain unchanged when processors do not mutate their arguments.
   
-  Matches Python's callback-level behavior: transforms also affect chain events and message streaming, so omitting outputs can suppress messages returned directly by nodes and omitting inputs can affect message deduplication.
 - Updated dependencies [[`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105)]:
   - @langchain/langgraph-sdk@1.10.3-rc.0
 
