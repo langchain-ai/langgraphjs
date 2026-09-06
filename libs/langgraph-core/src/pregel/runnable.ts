@@ -4,7 +4,6 @@ import {
   getCallbackManagerForConfig,
   patchConfig,
   raceWithSignal,
-  Runnable,
   RunnableSequence,
   type RunnableBatchOptions,
   type RunnableConfig,
@@ -133,19 +132,49 @@ export class RunnableSeq<
     options?: Partial<RunnableConfig> | Partial<RunnableConfig>[],
     batchOptions?: RunnableBatchOptions
   ): Promise<(RunOutput | Error)[]>;
-  override batch(
+  override async batch(
     inputs: RunInput[],
     options?: Partial<RunnableConfig> | Partial<RunnableConfig>[],
     batchOptions?: RunnableBatchOptions
   ): Promise<(RunOutput | Error)[]> {
-    // The base batch implementation calls our invoke for each input, preserving
-    // concurrency limits and returnExceptions without bypassing trace policies.
-    return Runnable.prototype.batch.call(
-      this,
-      inputs,
-      options,
-      batchOptions
-    ) as Promise<(RunOutput | Error)[]>;
+    const configList = this._getOptionsList(options ?? {}, inputs.length);
+    const managers = await Promise.all(
+      configList.map(async (config, i) => {
+        const manager = await this.startTrace(inputs[i], config);
+        delete config.runId;
+        return manager;
+      })
+    );
+    let outputs: unknown[] = inputs;
+    try {
+      // Preserve RunnableSequence's step-wise batching so child runnables can
+      // use their native batch implementations and handle returnExceptions.
+      for (let i = 0; i < this.steps.length; i += 1) {
+        outputs = await raceWithSignal(
+          this.steps[i].batch(
+            outputs,
+            managers.map((manager, j) =>
+              patchConfig(configList[j], {
+                callbacks: manager?.getChild(
+                  this.omitSequenceTags ? undefined : `seq:step:${i + 1}`
+                ),
+              })
+            ),
+            batchOptions
+          ),
+          configList[0]?.signal
+        );
+      }
+    } catch (error) {
+      await Promise.all(
+        managers.map((manager) => manager?.handleChainError(error))
+      );
+      throw error;
+    }
+    await Promise.all(
+      managers.map((manager, i) => this.endTrace(outputs[i], manager))
+    );
+    return outputs as (RunOutput | Error)[];
   }
 
   override async *_streamIterator(input: RunInput, options?: RunnableConfig) {
