@@ -2167,6 +2167,423 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("re-surfaces still-pending interrupts after sequential respond if the server re-emits them", async () => {
+    // User report: sequential respond of parallel interrupts clears
+    // stream.interrupts client-side, but the server still has them
+    // pending. A follow-up submit() is then auto-converted to
+    // Command(resume=input) and fails with "must specify the interrupt
+    // id when resuming". If the server re-emits the still-pending
+    // input.requested events (or they arrive via the lifecycle
+    // watcher), the client must not permanently suppress them via
+    // #resolvedInterrupts.
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: { prompt: "First?" } },
+                { id: "int-2", value: { prompt: "Second?" } },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-multi-stale",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1", "int-2"]);
+
+    // Sequential resume — client marks each resolved. Server (in the
+    // user report) still has both pending.
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    // Server re-emits the still-pending interrupts as live events on
+    // the resumed run (seq above the respond barrier).
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 11));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 12));
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1", "int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("reconciles still-pending interrupts from getState after resume settles", async () => {
+    // When the server keeps siblings pending but does not re-emit
+    // input.requested (session map already holds the id), the resumed
+    // run's interrupted terminal must pull tasks[].interrupts so
+    // stream.interrupts is not left empty after sequential respond.
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    let respondCount = 0;
+    const respondInput = vi.fn(async () => {
+      respondCount += 1;
+      ordering.lastAppliedThroughSeq = 10 + respondCount;
+    });
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValue({
+        values: {},
+        next: ["review"],
+        // Server still reports both pending despite sequential respond.
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-multi-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    emit(lifecycleEvent("running", 20));
+    emit(lifecycleEvent("interrupted", 21));
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+      ).toEqual(["int-1", "int-2"]);
+    });
+    expect(getState.mock.calls.length).toBeGreaterThan(1);
+
+    await controller.dispose();
+  });
+
+  it("reconciles pending interrupts via transport.getState when present", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    const transportGetState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValue({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [{ id: "int-2", value: { prompt: "Second?" } }],
+          },
+        ],
+      });
+    const clientGetState = vi.fn(async () => {
+      throw new Error("client getState should not run during reconcile");
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: clientGetState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "custom-backend",
+      client: client as never,
+      threadId: "thread-transport-reconcile",
+      transport: { getState: transportGetState } as never,
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    emit(lifecycleEvent("running", 11));
+    emit(lifecycleEvent("interrupted", 12));
+
+    await waitForExpectation(() => {
+      expect(transportGetState.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(clientGetState).not.toHaveBeenCalled();
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("drops a stale post-resume interrupt reconcile after thread swap", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    let resolveReconcileGetState!: (value: unknown) => void;
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveReconcileGetState = resolve;
+          })
+      )
+      .mockResolvedValue({
+        values: { messages: [{ type: "human", content: "other thread" }] },
+        next: [],
+        tasks: [],
+      });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const otherThread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn((id: string) =>
+          id === "thread-other" ? otherThread : thread
+        ),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-stale-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    emit(lifecycleEvent("running", 20));
+    emit(lifecycleEvent("interrupted", 21));
+
+    await waitForExpectation(() => {
+      expect(resolveReconcileGetState).toBeDefined();
+    });
+
+    await controller.hydrate("thread-other");
+    resolveReconcileGetState({
+      values: {},
+      next: ["review"],
+      tasks: [
+        {
+          interrupts: [
+            { id: "int-1", value: { prompt: "First?" } },
+            { id: "int-2", value: { prompt: "Second?" } },
+          ],
+        },
+      ],
+    });
+
+    // Give the abandoned reconcile a tick; it must not overwrite the
+    // new thread's empty interrupt list with the old thread's tasks.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+    expect(controller.rootStore.getSnapshot().threadId).toBe("thread-other");
+
+    await controller.dispose();
+  });
+
   it("respond() resolves namespace from thread.interrupts when only interruptId is provided", async () => {
     const respondInput = vi.fn(async () => undefined);
     const nestedNamespace = ["subgraph:child", "tools:tc-1"];

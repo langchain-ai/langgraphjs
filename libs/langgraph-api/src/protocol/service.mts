@@ -452,23 +452,17 @@ export class ProtocolService {
     params: NormalizedRunStart
   ) {
     const assistantId = getAssistantId(params.assistant_id);
-    const currentRun =
-      record.currentRunId != null
-        ? await this.bindings.runs.get(
-            record.currentRunId,
-            record.threadId,
-            record.auth
-          )
-        : null;
-    const currentStatus = currentRun?.status;
     const hasPendingInterrupts =
       params.input != null
         ? await this.hasPendingInterruptsForThread(record.threadId, record.auth)
         : false;
-    const isResume =
-      params.input != null &&
-      ((currentRun != null && currentStatus === "interrupted") ||
-        hasPendingInterrupts);
+    // Resume only when the thread actually has a pending `interrupt()`.
+    // A cancelled run also ends with status "interrupted" but has no
+    // pending interrupt to consume the resume value, so folding the
+    // input into `Command(resume)` there would silently drop the user's
+    // message; a cancelled thread must get plain input (a fresh run from
+    // the checkpoint that applies the input to state).
+    const isResume = params.input != null && hasPendingInterrupts;
 
     /**
      * Fork/time-travel replays from `config.configurable.checkpoint_id`

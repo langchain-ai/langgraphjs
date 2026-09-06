@@ -1,5 +1,12 @@
 # @langchain/langgraph-cua
 
+## 1.0.3-rc.0
+
+### Patch Changes
+
+- Updated dependencies [[`83a4b62`](https://github.com/langchain-ai/langgraphjs/commit/83a4b62be99488f17f3d7370a064f635e7c05a2e)]:
+  - @langchain/langgraph@1.4.15-rc.0
+
 ## 1.0.2
 
 ## 1.0.2-rc.0

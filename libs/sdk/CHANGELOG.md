@@ -1,5 +1,55 @@
 # @langchain/langgraph-sdk
 
+## 1.10.3-rc.0
+
+### Patch Changes
+
+- [#2762](https://github.com/langchain-ai/langgraphjs/pull/2762) [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105) Thanks [@JessYanCoding](https://github.com/JessYanCoding)! - Send `checkpoint_id` in the `runs.stream()` request body, so a `checkpointId` passed to `client.runs.stream()` forks from the requested checkpoint instead of being silently dropped. Matches `runs.create()` and `runs.wait()`, which already send it.
+
+## 1.10.2
+
+### Patch Changes
+
+- [#2788](https://github.com/langchain-ai/langgraphjs/pull/2788) [`3d0bc90`](https://github.com/langchain-ai/langgraphjs/commit/3d0bc90635fa4748d14a4bedb1289448f18a9e92) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply in-place message metadata updates from values
+
+  Same-id `values` snapshots that mutate nested metadata (e.g. HITL card
+  `status: accepted → done`) without changing content were treated as no-ops
+  because enrichment only accepted shallow key-supersets. Prefer values when
+  they retain every nested key and only mutate leaves or add keys, so
+  `useStream().values` reflects the update.
+
+- [#2780](https://github.com/langchain-ai/langgraphjs/pull/2780) [`ac72c3d`](https://github.com/langchain-ai/langgraphjs/commit/ac72c3d270bc491f4a73abab4e3058ff090987c2) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep stream.interrupts truthful after sequential multi-interrupt resume
+
+  Locally-resolved interrupt ids are no longer permanently suppressed: live
+  `input.requested` events after the resume barrier can reappear, and a
+  post-resume reconcile against `threads.getState().tasks[].interrupts`
+  restores siblings the server still has pending. Prevents a stale-empty
+  `stream.interrupts` from driving a free-text `submit()` into an ambiguous
+  `Command(resume=…)` when multiple interrupts remain.
+
+## 1.10.1
+
+### Patch Changes
+
+- [#2718](https://github.com/langchain-ai/langgraphjs/pull/2718) [`dd287b4`](https://github.com/langchain-ai/langgraphjs/commit/dd287b4c872db094e2fbc87e685da005a6ccdb90) Thanks [@jstar0](https://github.com/jstar0)! - Reject protocol SSE stream responses with non-SSE content types before marking subscriptions ready.
+
+## 1.10.0
+
+### Minor Changes
+
+- [#2745](https://github.com/langchain-ai/langgraphjs/pull/2745) [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975) Thanks [@mdrxy](https://github.com/mdrxy)! - Add LangSmith replica routing to thread-stream run starts.
+
+### Patch Changes
+
+- [#2727](https://github.com/langchain-ai/langgraphjs/pull/2727) [`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): drop unused svelte and vue peer dependencies
+
+  The Svelte and Vue adapters live in `@langchain/svelte` and
+  `@langchain/vue`, but the core SDK still declared both as optional peers.
+  Scanners like Socket count optional peers as part of the package graph, so
+  the SDK was being flagged for obfuscated-code alerts in `clsx` and
+  `entities` — packages it never loads. React stays a peer because `./react`
+  and `./react-ui` still ship here.
+
 ## 1.9.31
 
 ### Patch Changes
