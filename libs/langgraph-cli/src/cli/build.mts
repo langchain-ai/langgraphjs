@@ -2,7 +2,7 @@ import { getDockerCapabilities } from "../docker/compose.mjs";
 import {
   assembleLocalDeps,
   configToDocker,
-  getBaseImage,
+  resolveBaseImage,
 } from "../docker/docker.mjs";
 import { getExecaOptions } from "../docker/shell.mjs";
 import { getConfig } from "../utils/config.mjs";
@@ -60,7 +60,7 @@ builder
 
     let exec = $({ ...opts, input });
     if (params.pull) {
-      await stream(exec`docker pull ${getBaseImage(config)}`);
+      await stream(exec`docker pull ${await resolveBaseImage(config)}`);
     }
 
     exec = $({ ...opts, input });
