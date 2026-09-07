@@ -2,13 +2,12 @@ import { $, type ExecaScriptMethod } from "execa";
 import { homedir } from "node:os";
 let PATH: string | undefined = undefined;
 
-// TODO: macOS related only
 async function getUserShell() {
-  const dscl = await $({
-    shell: true,
-  })`dscl . -read ~/ UserShell | sed 's/UserShell: //'`;
+  return process.env.SHELL || "/bin/sh";
+}
 
-  return dscl.stdout.trim();
+async function getProcessPath() {
+  return process.env.PATH || "";
 }
 
 async function verifyDockerPath(PATH: string) {
@@ -16,9 +15,8 @@ async function verifyDockerPath(PATH: string) {
   return PATH;
 }
 
-// TODO: macOS related only
 async function extractPathFromShell() {
-  const pathToShell = await getUserShell().catch(() => "/bin/zsh");
+  const pathToShell = await getUserShell();
 
   const args = pathToShell.includes("csh")
     ? ["-c", "echo $PATH"]
@@ -27,13 +25,14 @@ async function extractPathFromShell() {
   return shell.stdout.trim();
 }
 
-// TODO: macOS related only
 async function guessUserPath() {
   return [
     "/bin",
     "/usr/bin",
+    "/usr/local/bin",
     "/sbin",
     "/usr/sbin",
+    "/usr/local/sbin",
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
     `${homedir()}/.local/bin`,
@@ -51,23 +50,26 @@ async function guessUserPath() {
 async function getLoginPath() {
   if (PATH) return { PATH };
 
-  const [fromShell, fromBackup] = await Promise.allSettled(
-    [extractPathFromShell(), guessUserPath()].map((promise) =>
+  const [fromProcess, fromShell, fromBackup] = await Promise.allSettled(
+    [getProcessPath(), extractPathFromShell(), guessUserPath()].map((promise) =>
       promise.then(verifyDockerPath)
     )
   );
 
-  if (fromShell.status === "fulfilled") {
+  if (fromProcess.status === "fulfilled") {
+    PATH = fromProcess.value;
+  } else if (fromShell.status === "fulfilled") {
     PATH = fromShell.value;
   } else if (fromBackup.status === "fulfilled") {
     PATH = fromBackup.value;
   } else {
     console.error(
-      "Failed to get PATH from shell or backup",
+      "Failed to get PATH from process, shell, or backup",
+      fromProcess.reason,
       fromShell.reason,
       fromBackup.reason
     );
-    throw fromShell.reason || fromBackup.reason;
+    throw fromProcess.reason || fromShell.reason || fromBackup.reason;
   }
 
   return { PATH };
