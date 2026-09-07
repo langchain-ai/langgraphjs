@@ -3,6 +3,7 @@ import {
   getTablesWithSchema,
   getSQLStatements,
   tableExistsSQL,
+  schemaExistsSQL,
 } from "../sql.js";
 import { getStoreTablesWithSchema } from "../store/sql.js";
 import { getMigrations } from "../migrations.js";
@@ -137,5 +138,18 @@ describe("tableExistsSQL", () => {
     // so it should use single quotes (not double quotes)
     expect(sql).toContain("table_schema = 'my-schema'");
     expect(sql).toContain("table_name   = 'checkpoints'");
+  });
+});
+
+describe("schemaExistsSQL", () => {
+  it("should query information_schema.schemata", () => {
+    expect(schemaExistsSQL).toContain("information_schema.schemata");
+  });
+
+  it("should produce a well-formed EXISTS query parameterized by schema", () => {
+    expect(schemaExistsSQL).toContain("SELECT EXISTS");
+    // The schema is passed as a query parameter ($1) rather than interpolated
+    // into the SQL string, to avoid SQL injection.
+    expect(schemaExistsSQL).toContain("schema_name = $1");
   });
 });

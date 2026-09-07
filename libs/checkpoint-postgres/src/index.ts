@@ -20,15 +20,40 @@ import {
   type SQL_TYPES,
   getSQLStatements,
   getTablesWithSchema,
+  assertSchemaExists,
 } from "./sql.js";
 
 /** @inline */
 interface PostgresSaverOptions {
   schema: string;
+  /**
+   * What `setup()` does about the schema.
+   *
+   * When `"create"` (default), `setup()` runs `CREATE SCHEMA IF NOT EXISTS`.
+   * When `"verify"`, `setup()` instead checks the schema already exists and
+   * throws if it does not — useful for least-privilege roles that are not
+   * permitted to create schemas. Table migrations still run either way.
+   *
+   * @default "create"
+   */
+  schemaSetup: "create" | "verify";
+  /**
+   * Whether the first database operation should run `setup()` automatically.
+   *
+   * When `true` (default), the checkpointer lazily runs `setup()` the first
+   * time it touches the database, so calling `setup()` explicitly is optional.
+   * When `false`, no auto-setup occurs and `setup()` must be called explicitly
+   * before use — useful when migrations are run out-of-band.
+   *
+   * @default true
+   */
+  ensureTables: boolean;
 }
 
 const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
+  schemaSetup: "create",
+  ensureTables: true,
 };
 
 const _ensureCompleteOptions = (
@@ -37,6 +62,8 @@ const _ensureCompleteOptions = (
   return {
     ...options,
     schema: options?.schema ?? _defaultOptions.schema,
+    schemaSetup: options?.schemaSetup ?? _defaultOptions.schemaSetup,
+    ensureTables: options?.ensureTables ?? _defaultOptions.ensureTables,
   };
 };
 
@@ -57,11 +84,15 @@ const { Pool } = pg;
  *   "postgresql://user:password@localhost:5432/db",
  *   // optional configuration object
  *   {
- *     schema: "custom_schema" // defaults to "public"
+ *     schema: "custom_schema", // defaults to "public"
+ *     schemaSetup: "verify", // defaults to "create"; "verify" checks the schema exists instead of creating it
+ *     ensureTables: false // defaults to true; when false, you must call setup() explicitly before use
  *   }
  * );
  *
- * // NOTE: you need to call .setup() the first time you're using your checkpointer
+ * // With the default `ensureTables: true`, setup runs automatically on first
+ * // use. Call setup() explicitly only when `ensureTables` is false, or to
+ * // provision tables ahead of time:
  * await checkpointer.setup();
  *
  * const graph = createReactAgent({
@@ -90,6 +121,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected isSetup: boolean;
 
+  private setupPromise?: Promise<void>;
+
   constructor(
     pool: pg.Pool,
     serde?: SerializerProtocol,
@@ -114,6 +147,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * const checkpointer = PostgresSaver.fromConnString(connString, {
    *  schema: "custom_schema" // defaults to "public"
    * });
+   * // setup() is optional with the default `ensureTables: true`.
    * await checkpointer.setup();
    */
   static fromConnString(
@@ -128,16 +162,54 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * Set up the checkpoint database asynchronously.
    *
    * This method creates the necessary tables in the Postgres database if they don't
-   * already exist and runs database migrations. It MUST be called directly by the user
-   * the first time checkpointer is used.
+   * already exist and runs database migrations.
+   *
+   * Calling this explicitly is optional: by default (`ensureTables: true`) the first
+   * database operation runs `setup()` automatically. Call it explicitly when
+   * `ensureTables` is `false`, or to provision tables ahead of first use. It is safe
+   * to call concurrently — the underlying migration run is single-flighted, so racing
+   * operations share one run rather than each replaying migrations, and a failed run
+   * is not cached (the next call retries).
+   *
+   * By default the target schema is created via `CREATE SCHEMA IF NOT EXISTS`. If the
+   * `schemaSetup` option was set to `"verify"` (e.g. for least-privilege roles that may
+   * not create schemas), this method instead verifies the schema already exists and
+   * throws if it does not. Table migrations run either way.
    */
   async setup(): Promise<void> {
+    if (this.isSetup) return;
+
+    this.setupPromise ??= this.runSetupOnce();
+    try {
+      await this.setupPromise;
+    } catch (error) {
+      this.setupPromise = undefined;
+      throw error;
+    }
+  }
+
+  /**
+   * Run lazy auto-setup on the first database operation when `ensureTables`
+   * is enabled. A no-op once setup has completed or when `ensureTables` is
+   * `false` (in which case the user must call `setup()` explicitly).
+   */
+  private async ensureSetup(): Promise<void> {
+    if (this.options.ensureTables && !this.isSetup) {
+      await this.setup();
+    }
+  }
+
+  private async runSetupOnce(): Promise<void> {
     const client = await this.pool.connect();
     const SCHEMA_TABLES = getTablesWithSchema(this.options.schema);
     try {
-      await client.query(
-        `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
-      );
+      if (this.options.schemaSetup === "create") {
+        await client.query(
+          `CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`
+        );
+      } else {
+        await assertSchemaExists(client, this.options.schema);
+      }
       let version = -1;
       const MIGRATIONS = getMigrations(this.options.schema);
 
@@ -170,6 +242,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
           [v]
         );
       }
+
+      this.isSetup = true;
     } finally {
       client.release();
     }
@@ -360,6 +434,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
    * @returns The retrieved checkpoint tuple, or undefined.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    await this.ensureSetup();
     const {
       thread_id,
       checkpoint_ns = "",
@@ -443,6 +518,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncGenerator<CheckpointTuple> {
+    await this.ensureSetup();
     const { filter, before, limit } = options ?? {};
     const [where, args] = this._searchWhere(config, filter, before);
     let query = `${this.SQL_STATEMENTS.SELECT_SQL}${where} ORDER BY checkpoint_id DESC`;
@@ -561,6 +637,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata,
     newVersions: ChannelVersions
   ): Promise<RunnableConfig> {
+    await this.ensureSetup();
     if (config.configurable === undefined) {
       throw new Error(`Missing "configurable" field in "config" param`);
     }
@@ -633,6 +710,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     writes: PendingWrite[],
     taskId: string
   ): Promise<void> {
+    await this.ensureSetup();
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
       ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
       : this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL;
@@ -664,6 +742,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    await this.ensureSetup();
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");

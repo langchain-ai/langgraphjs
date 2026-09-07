@@ -28,10 +28,38 @@ import {
   StoreMigrationConfig,
 } from "./store-migrations.js";
 import { getStoreTablesWithSchema } from "./sql.js";
+import { assertSchemaExists } from "../sql.js";
 
 export type * from "./modules/types.js";
 
 const { Pool } = pg;
+
+/**
+ * `PostgresStoreConfig` with every default-able field resolved to a concrete
+ * value. `connectionOptions` is required from the caller, so it has no default
+ * and stays mandatory.
+ */
+type ResolvedPostgresStoreConfig = PostgresStoreConfig & {
+  schema: string;
+  schemaSetup: "create" | "verify";
+  ensureTables: boolean;
+  textSearchLanguage: string;
+};
+
+/**
+ * Resolve a user-supplied config into a complete config by filling in defaults
+ * for any omitted default-able field. Centralizes defaults in one place,
+ * mirroring `PostgresSaver`'s `_ensureCompleteOptions`.
+ */
+const _ensureCompleteConfig = (
+  config: PostgresStoreConfig
+): ResolvedPostgresStoreConfig => ({
+  ...config,
+  schema: config.schema ?? "public",
+  schemaSetup: config.schemaSetup ?? "create",
+  ensureTables: config.ensureTables ?? true,
+  textSearchLanguage: config.textSearchLanguage ?? "english",
+});
 
 /**
  * PostgreSQL implementation of the BaseStore interface.
@@ -50,26 +78,32 @@ export class PostgresStore extends BaseStore {
 
   private isSetup: boolean = false;
 
+  private setupPromise?: Promise<void>;
+
   private isClosed: boolean = false;
 
   private ensureTables: boolean;
 
+  private schemaSetup: "create" | "verify";
+
   constructor(config: PostgresStoreConfig) {
     super();
 
+    const resolved = _ensureCompleteConfig(config);
+
     // Create connection pool
     const pool =
-      typeof config.connectionOptions === "string"
-        ? new Pool({ connectionString: config.connectionOptions })
-        : new Pool(config.connectionOptions);
+      typeof resolved.connectionOptions === "string"
+        ? new Pool({ connectionString: resolved.connectionOptions })
+        : new Pool(resolved.connectionOptions);
 
     // Initialize core and modules
     this.core = new DatabaseCore(
       pool,
-      config.schema || "public",
-      config.ttl,
-      config.index,
-      config.textSearchLanguage
+      resolved.schema,
+      resolved.ttl,
+      resolved.index,
+      resolved.textSearchLanguage
     );
 
     this.vectorOps = new VectorOperations(this.core);
@@ -77,7 +111,8 @@ export class PostgresStore extends BaseStore {
     this.searchOps = new SearchOperations(this.core, this.vectorOps);
     this.ttlManager = new TTLManager(this.core);
 
-    this.ensureTables = config.ensureTables ?? true;
+    this.ensureTables = resolved.ensureTables;
+    this.schemaSetup = resolved.schemaSetup;
   }
 
   /**
@@ -196,10 +231,26 @@ export class PostgresStore extends BaseStore {
 
   /**
    * Initialize the store by running migrations to create necessary tables and indexes.
+   *
+   * Safe to call concurrently: the underlying migration run is single-flighted,
+   * so multiple operations racing on a fresh store share one `setup()` rather
+   * than each replaying migrations. A failed run is not cached — the next call
+   * retries, so a corrected condition (e.g. a schema created out-of-band after
+   * a `schemaSetup: "verify"` failure) can succeed.
    */
   async setup(): Promise<void> {
     if (this.isSetup) return;
 
+    this.setupPromise ??= this.runSetupOnce();
+    try {
+      await this.setupPromise;
+    } catch (error) {
+      this.setupPromise = undefined;
+      throw error;
+    }
+  }
+
+  private async runSetupOnce(): Promise<void> {
     await this.runStoreMigrations();
     this.isSetup = true;
 
@@ -217,7 +268,13 @@ export class PostgresStore extends BaseStore {
     const STORE_TABLES = getStoreTablesWithSchema(this.core.schema);
 
     try {
-      await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
+      if (this.schemaSetup === "create") {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS "${this.core.schema}"`);
+      } else {
+        // The option is read from the constructor (not setup()), so the store's
+        // lazy auto-setup paths honor it too.
+        await assertSchemaExists(client, this.core.schema);
+      }
 
       let version = -1;
 
