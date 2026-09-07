@@ -91,3 +91,35 @@ export function assertSafeKeyComponent(
     );
   }
 }
+
+/**
+ * Returns whether an error indicates that an FT index already exists.
+ *
+ * Redis (RediSearch) and Valkey-search use different reply text for the same
+ * condition when `FT.CREATE` is issued against a name that is already
+ * registered:
+ *
+ * - Redis:   `"Index already exists"`
+ * - Valkey:  `"Index <name> in database <db> already exists."`
+ *
+ * Callers that implement "create index if not exists" (there is no native
+ * `IF NOT EXISTS` on `FT.CREATE`) must treat both forms as success-no-op
+ * rather than a hard failure. Matching only the Redis string would miss
+ * Valkey; matching only `"already exists"` would be too broad and could
+ * swallow unrelated errors. This helper accepts either dialect by requiring
+ * both `"index"` and `"already exists"`, with an optional `"database"`
+ * branch for the Valkey wording.
+ *
+ * @param {unknown} err Error thrown by the client (or any value whose string
+ *                      form may contain the server reply).
+ * @returns {boolean} `true` if `err` looks like an index-already-exists reply.
+ */
+export function isIndexAlreadyExistsError(err: any): boolean {
+  const msg = String(err?.message ?? err).toLowerCase();
+  // Redis: "index already exists"
+  // Valkey: "index xxx in database 0 already exists"
+  return (
+    msg.includes("index already exists") ||
+    (msg.includes("index") && msg.includes("already exists"))
+  );
+}
