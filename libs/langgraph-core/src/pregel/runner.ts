@@ -6,6 +6,7 @@ import {
   PregelScratchpad,
 } from "./types.js";
 import {
+  AbortSignalFanOut,
   CachePolicy,
   combineAbortSignals,
   patchConfigurable,
@@ -319,85 +320,117 @@ export class PregelRunner {
         })
       : undefined;
 
-    while (
-      (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
-      tasks.length
-    ) {
-      for (
-        ;
-        Object.values(executingTasksMap).length <
-          (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
-        startedTasksCount += 1
-      ) {
-        const task = tasks[startedTasksCount];
+    const composedAbortSignal = signals?.composedAbortSignal;
+    const fanOut =
+      composedAbortSignal != null && tasks.length > 1
+        ? new AbortSignalFanOut(composedAbortSignal)
+        : undefined;
+    const taskSignals = new Map<string, AbortSignal | undefined>();
 
-        executingTasksMap[task.id] = _runWithRetry(
-          task,
-          retryPolicy,
-          { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
-          signals?.composedAbortSignal
-        ).catch((error) => {
-          return {
+    const signalForTask = (taskId: string): AbortSignal | undefined => {
+      if (composedAbortSignal == null) {
+        return undefined;
+      }
+      if (fanOut == null) {
+        return composedAbortSignal;
+      }
+      const existing = taskSignals.get(taskId);
+      if (existing != null) {
+        return existing;
+      }
+      const forked = fanOut.fork();
+      taskSignals.set(taskId, forked);
+      return forked;
+    };
+
+    try {
+      while (
+        (startedTasksCount === 0 ||
+          Object.keys(executingTasksMap).length > 0) &&
+        tasks.length
+      ) {
+        for (
+          ;
+          Object.values(executingTasksMap).length <
+            (maxConcurrency ?? tasks.length) &&
+          startedTasksCount < tasks.length;
+          startedTasksCount += 1
+        ) {
+          const task = tasks[startedTasksCount];
+
+          executingTasksMap[task.id] = _runWithRetry(
             task,
-            error,
-            signalAborted: signals?.composedAbortSignal?.aborted,
-          };
-        });
-      }
-
-      const settledTask = await Promise.race([
-        ...Object.values(executingTasksMap),
-        ...(abortPromise ? [abortPromise] : []),
-        barrier.wait,
-      ]);
-
-      if (settledTask === PROMISE_ADDED_SYMBOL) {
-        continue;
-      }
-
-      const settled = settledTask as SettledPregelTask;
-      const { task: settledPregelTask, error: settledError } = settled;
-
-      // If the task failed (after exhausting its retry policy) and the node has
-      // a registered error handler, schedule that handler to run within this
-      // same tick instead of aborting the run. GraphBubbleUp errors (e.g.
-      // interrupts / parent commands) are never routed to error handlers.
-      if (
-        settledError !== undefined &&
-        !isGraphBubbleUp(settledError) &&
-        !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
-        this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
-          undefined
-      ) {
-        const handlerTask = this.loop.scheduleErrorHandler(
-          settledPregelTask,
-          settledError
-        );
-        if (handlerTask !== undefined) {
-          executingTasksMap[handlerTask.id] = _runWithRetry(
-            handlerTask,
             retryPolicy,
-            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
-            signals?.composedAbortSignal
+            { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
+            signalForTask(task.id)
           ).catch((error) => {
             return {
-              task: handlerTask,
+              task,
               error,
-              signalAborted: signals?.composedAbortSignal?.aborted,
+              signalAborted: composedAbortSignal?.aborted,
             };
           });
-          barrier.next();
         }
+
+        const settledTask = await Promise.race([
+          ...Object.values(executingTasksMap),
+          ...(abortPromise ? [abortPromise] : []),
+          barrier.wait,
+        ]);
+
+        if (settledTask === PROMISE_ADDED_SYMBOL) {
+          continue;
+        }
+
+        const settled = settledTask as SettledPregelTask;
+        const { task: settledPregelTask, error: settledError } = settled;
+
+        // If the task failed (after exhausting its retry policy) and the node has
+        // a registered error handler, schedule that handler to run within this
+        // same tick instead of aborting the run. GraphBubbleUp errors (e.g.
+        // interrupts / parent commands) are never routed to error handlers.
+        if (
+          settledError !== undefined &&
+          !isGraphBubbleUp(settledError) &&
+          !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
+          this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
+            undefined
+        ) {
+          const handlerTask = this.loop.scheduleErrorHandler(
+            settledPregelTask,
+            settledError
+          );
+          if (handlerTask !== undefined) {
+            executingTasksMap[handlerTask.id] = _runWithRetry(
+              handlerTask,
+              retryPolicy,
+              { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
+              signalForTask(handlerTask.id)
+            ).catch((error) => {
+              return {
+                task: handlerTask,
+                error,
+                signalAborted: composedAbortSignal?.aborted,
+              };
+            });
+            barrier.next();
+          }
+        }
+
+        yield settled;
+
+        const settledTaskId = (settledTask as SettledPregelTask).task.id;
+        fanOut?.release(taskSignals.get(settledTaskId));
+        taskSignals.delete(settledTaskId);
+        delete executingTasksMap[settledTaskId];
       }
-
-      yield settled;
-
+    } finally {
       if (listener != null) {
         timeoutOrCancelSignal.signal?.removeEventListener("abort", listener);
         timeoutOrCancelSignal.dispose?.();
       }
-
-      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+      fanOut?.dispose();
+      taskSignals.clear();
     }
   }
 
