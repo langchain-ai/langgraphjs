@@ -960,21 +960,25 @@ export class StreamOrchestrator<
 
     return this.stream.start(
       async (signal) => {
-        usableThreadId = this.#threadId;
+        usableThreadId = this.#threadId ?? submitOptions?.threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
         }
-        if (!usableThreadId) {
+        if (!this.#threadId) {
+          const hintedThreadId = usableThreadId;
           const threadPromise = client.threads.create({
-            threadId: submitOptions?.threadId,
+            threadId: hintedThreadId,
+            ifExists: "do_nothing",
             metadata: submitOptions?.metadata,
           });
 
-          this.#threadIdPromise = threadPromise.then((t) => t.thread_id);
+          this.#threadIdPromise = threadPromise.then(
+            (t) => hintedThreadId ?? t.thread_id
+          );
 
           const thread = await threadPromise;
 
-          usableThreadId = thread.thread_id;
+          usableThreadId = hintedThreadId ?? thread.thread_id;
           this.#setThreadIdFromSubmit(usableThreadId);
         }
 
