@@ -114,6 +114,8 @@ export {
   type RetryPolicy,
   type CachePolicy,
   type TimeoutPolicy,
+  type TracePolicy,
+  omitPayload,
 } from "./pregel/utils/index.js";
 export {
   Send,
