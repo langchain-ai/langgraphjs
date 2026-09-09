@@ -207,10 +207,13 @@ function namespacedLifecycleEvent(
   } as Event;
 }
 
-async function waitForExpectation(assertion: () => void): Promise<void> {
+async function waitForExpectation(
+  assertion: () => void,
+  timeoutMs = 500
+): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
-  while (Date.now() - started < 500) {
+  while (Date.now() - started < timeoutMs) {
     try {
       assertion();
       return;
@@ -881,6 +884,116 @@ describe("StreamController", () => {
         controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
       ).toEqual(["pending-at-refresh"]);
     });
+
+    await controller.dispose();
+  });
+
+  function passiveRejoinFixture(
+    states: Array<Record<string, unknown>>
+  ): {
+    controller: StreamController<State, unknown>;
+    emit: (event: Event) => void;
+    getState: ReturnType<typeof vi.fn>;
+  } {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    let calls = 0;
+    const getState = vi.fn(async () => {
+      const state = states[Math.min(calls, states.length - 1)];
+      calls += 1;
+      return state;
+    });
+    const client = {
+      threads: { getState, stream: vi.fn(() => thread) },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-passive-rejoin",
+    });
+    return { controller, emit: (event) => onEvent?.(event), getState };
+  }
+
+  const runningAtRefresh = {
+    values: {},
+    next: ["ask"],
+    tasks: [],
+    checkpoint: { checkpoint_id: "checkpoint-at-refresh" },
+  };
+  const interruptedOn = (id: string) => ({
+    values: {},
+    next: ["ask"],
+    tasks: [{ interrupts: [{ id, value: { question: "approve?" } }] }],
+    checkpoint: { checkpoint_id: "checkpoint-after-refresh" },
+  });
+  const finishedIdle = { values: {}, next: [], tasks: [] };
+
+  it("shows an interrupt raised after a passive rejoin without a checkpoints event", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    });
+    expect(getState).toHaveBeenCalledTimes(2);
+
+    await controller.dispose();
+  });
+
+  it("waits for the server to commit the interrupt before showing it", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      runningAtRefresh,
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    }, 3_000);
+    expect(getState).toHaveBeenCalledTimes(3);
+
+    await controller.dispose();
+  });
+
+  it("drops replayed interrupts the server no longer lists", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      finishedIdle,
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("resolved-long-ago", {}, [], 3));
+    emit(lifecycleEvent("interrupted", 4));
+    await waitForExpectation(() => expect(getState).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+
+    emit(lifecycleEvent("interrupted", 5));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getState).toHaveBeenCalledTimes(2);
 
     await controller.dispose();
   });
