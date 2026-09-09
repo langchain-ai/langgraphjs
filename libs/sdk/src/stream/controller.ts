@@ -242,6 +242,7 @@ export class StreamController<
    */
   #rootPumpDeferred = false;
   #threadEventUnsubscribe: (() => void) | undefined;
+  #threadErrorUnsubscribe: (() => void) | undefined;
   #disposed = false;
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -1735,6 +1736,8 @@ export class StreamController<
     this.registry.bind(undefined);
     this.#threadEventUnsubscribe?.();
     this.#threadEventUnsubscribe = undefined;
+    this.#threadErrorUnsubscribe?.();
+    this.#threadErrorUnsubscribe = undefined;
     /**
      * Persistent lifecycle driver is scoped to the current thread
      * stream. Remove it so a swap to a new thread starts with a clean
@@ -1833,6 +1836,9 @@ export class StreamController<
     this.#threadEventUnsubscribe = thread.onEvent((event) =>
       this.#onWildcardEvent(event)
     );
+    this.#threadErrorUnsubscribe = thread.onError((error) => {
+      this.rootStore.setState((s) => ({ ...s, error, isLoading: false }));
+    });
 
     /**
      * Persistent isLoading driver. Drives `isLoading` from
@@ -2692,6 +2698,7 @@ export class StreamController<
         settled = true;
         unsubscribeRoot?.();
         unsubscribeThread?.();
+        unsubscribeError?.();
         signal.removeEventListener("abort", finishAborted);
         resolve(result);
       }
@@ -2724,6 +2731,9 @@ export class StreamController<
       };
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
+      const unsubscribeError = this.#thread?.onError((error) =>
+        finish({ event: "failed", error: error.message })
+      );
       if (signal.aborted) {
         finishAborted();
       } else {
