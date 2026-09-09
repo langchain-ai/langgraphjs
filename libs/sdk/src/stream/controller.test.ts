@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
 import { messagesProjection } from "./projections/messages.js";
-import type { ThreadStream } from "../client/stream/index.js";
+import { ThreadStream } from "../client/stream/index.js";
+import { MockSseTransport } from "../client/stream/test/utils.js";
 
 interface State {
   messages?: unknown[];
@@ -840,6 +841,88 @@ describe("StreamController", () => {
     expect(
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual(["interrupt-active"]);
+
+    await controller.dispose();
+  });
+
+  it("accepts a replayed interrupt newer than the hydrated state", async () => {
+    const transport = new MockSseTransport({
+      threadId: "thread-refresh-active",
+    });
+    const thread = new ThreadStream(transport, {
+      assistantId: "human-in-the-loop",
+    });
+    transport.pushEvent(inputRequestedEvent("resolved-before-refresh", {}, [], 9));
+    transport.pushEvent(checkpointsEvent(1, 10, "checkpoint-at-refresh"));
+    transport.pushEvent(inputRequestedEvent("pending-at-refresh", {}, [], 12));
+
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [],
+          checkpoint: { checkpoint_id: "checkpoint-at-refresh" },
+          metadata: { step: 1 },
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-refresh-active",
+    });
+    await controller.hydrationPromise;
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["pending-at-refresh"]);
+    });
+
+    await controller.dispose();
+  });
+
+  it("buffers unknown inputs until replay reaches the hydrated checkpoint", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [],
+          checkpoint: { checkpoint_id: "checkpoint-at-refresh" },
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-refresh-cross-stream-order",
+    });
+    await controller.hydrationPromise;
+
+    onEvent?.(inputRequestedEvent("pending-at-refresh", {}, [], 12));
+    expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+
+    onEvent?.(inputRequestedEvent("resolved-before-refresh", {}, [], 9));
+    onEvent?.(checkpointsEvent(1, 10, "checkpoint-at-refresh"));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+    ).toEqual(["pending-at-refresh"]);
 
     await controller.dispose();
   });

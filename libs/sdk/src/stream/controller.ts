@@ -262,13 +262,17 @@ export class StreamController<
    * than {@link #interruptReplayThroughSeq} bypass the allowlist.
    */
   #hydratedActiveInterruptIds: Set<string> | null = null;
+  /** Checkpoint whose replay establishes the hydrate-time interrupt cutoff. */
+  #hydratedInterruptCheckpointId: string | undefined;
   /**
-   * Highest event sequence already applied when the latest run command
-   * was accepted. Interrupts outside the hydrate-time allowlist remain
-   * filtered through this sequence, while newer events are live output
-   * from the newly-started run and must be accepted.
+   * Highest event sequence represented by hydration or already applied when
+   * the latest run command was accepted. Interrupts outside the hydrate-time
+   * allowlist remain filtered through this sequence, while newer events are
+   * live output and must be accepted.
    */
   #interruptReplayThroughSeq: number | undefined;
+  /** Unknown inputs waiting for replay to reach the hydrated checkpoint. */
+  #pendingHydrationInterruptEvents: Event[] = [];
   /**
    * Unknown interrupt events received between local command dispatch and its
    * response. The response supplies the sequence barrier needed to classify
@@ -445,7 +449,9 @@ export class StreamController<
         this.#submitGeneration += 1;
         this.#interruptCommandPending =
           this.#hydratedActiveInterruptIds != null;
-        this.#pendingInterruptEvents = [];
+        this.#pendingInterruptEvents = this.#pendingHydrationInterruptEvents;
+        this.#pendingHydrationInterruptEvents = [];
+        this.#hydratedInterruptCheckpointId = undefined;
       },
       onRunStart: () => this.#markLocalRunStart(),
       onRunCreated: (runId) => {
@@ -758,6 +764,8 @@ export class StreamController<
         // active run's replay boundary.
         if (this.#submitGeneration === generationAtFetch) {
           this.#hydratedActiveInterruptIds = activeIds;
+          this.#hydratedInterruptCheckpointId =
+            state.checkpoint?.checkpoint_id ?? undefined;
           this.#interruptReplayThroughSeq = undefined;
         }
       }
@@ -1762,7 +1770,9 @@ export class StreamController<
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
+    this.#hydratedInterruptCheckpointId = undefined;
     this.#interruptReplayThroughSeq = undefined;
+    this.#pendingHydrationInterruptEvents = [];
     this.#discardPendingInterruptEvents();
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
@@ -1978,6 +1988,7 @@ export class StreamController<
     }
     this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
+    this.#advanceInterruptReplayBarrierFromCheckpoint(event);
 
     /**
      * `input.requested` events (including HITL inside a subagent /
@@ -2382,6 +2393,14 @@ export class StreamController<
       this.#pendingInterruptEvents.push(event);
       return;
     }
+    if (
+      isUnknownInterrupt &&
+      this.#interruptReplayThroughSeq == null &&
+      this.#hydratedInterruptCheckpointId != null
+    ) {
+      this.#pendingHydrationInterruptEvents.push(event);
+      return;
+    }
     const isHistoricalUnknownInterrupt =
       isUnknownInterrupt &&
       (this.#interruptReplayThroughSeq == null ||
@@ -2402,6 +2421,33 @@ export class StreamController<
       const interrupts = [...s.interrupts, interrupt];
       return { ...s, interrupts, interrupt: interrupts[0] };
     });
+  }
+
+  /** Establish the hydration cutoff when ordered replay reaches its checkpoint. */
+  #advanceInterruptReplayBarrierFromCheckpoint(event: Event): void {
+    if (
+      event.method !== "checkpoints" ||
+      this.#hydratedInterruptCheckpointId == null ||
+      !isRootNamespace(event.params.namespace)
+    ) {
+      return;
+    }
+    const data = event.params.data as { id?: unknown } | null;
+    if (
+      data?.id !== this.#hydratedInterruptCheckpointId ||
+      typeof event.seq !== "number"
+    ) {
+      return;
+    }
+    this.#interruptReplayThroughSeq = event.seq;
+    this.#hydratedInterruptCheckpointId = undefined;
+    const pendingEvents = this.#pendingHydrationInterruptEvents.sort(
+      (a, b) => (a.seq ?? 0) - (b.seq ?? 0)
+    );
+    this.#pendingHydrationInterruptEvents = [];
+    for (const pendingEvent of pendingEvents) {
+      this.#recordInterrupt(pendingEvent);
+    }
   }
 
   /**
