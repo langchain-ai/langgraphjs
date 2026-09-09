@@ -25,6 +25,15 @@ function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
     .filter((body): body is Record<string, unknown> => body != null);
 }
 
+function streamEventLastEventIds(fetchImpl: MockFetch): Array<string | null> {
+  return fetchImpl.mock.calls
+    .filter((call: unknown[]) => String(call[0]).includes("/stream/events"))
+    .map((call: unknown[]) => {
+      const init = call[1] as RequestInit | undefined;
+      return new Headers(init?.headers).get("last-event-id");
+    });
+}
+
 describe("ProtocolSseTransportAdapter URL resolution", () => {
   it("preserves apiUrl path prefix for protocol commands", async () => {
     const { calls, fetch } = createFetchRecorder();
@@ -447,6 +456,84 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(streamBodies).toHaveLength(2);
     expect(streamBodies[0]).not.toHaveProperty("since");
     expect(streamBodies[1]).not.toHaveProperty("since");
+    expect(streamEventLastEventIds(fetchImpl)).toEqual([null, null]);
+
+    await transport.close();
+  });
+
+  it("resumes from the last event_id on reconnect, not the whole tape", async () => {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      if (streamOpens === 1) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    'event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"1788-0"}\n\n'
+                  )
+                );
+                controller.enqueue(
+                  encoder.encode(
+                    'event: lifecycle\ndata: {"type":"event","method":"lifecycle","seq":2,"event_id":"synth:r:lc||running"}\n\n'
+                  )
+                );
+                setTimeout(() => {
+                  controller.error(new TypeError("net::ERR_QUIC_PROTOCOL_ERROR"));
+                }, 10);
+              },
+            }),
+            { status: 200, headers: { "content-type": "text/event-stream" } }
+          )
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: lifecycle\ndata: {"type":"event","method":"lifecycle","seq":3,"event_id":"synth:r:lc||completed"}\n\n'
+                )
+              );
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values", "lifecycle"] });
+    await handle.ready;
+
+    const received: Array<{ event_id?: string }> = [];
+    for await (const message of handle.events) {
+      received.push(message as { event_id?: string });
+      if (received.some((m) => m.event_id === "synth:r:lc||completed")) break;
+    }
+
+    expect(streamOpens).toBe(2);
+    const streamBodies = streamEventBodies(fetchImpl);
+    expect(streamBodies).toHaveLength(2);
+    expect(streamBodies[0]).not.toHaveProperty("last_event_id");
+    expect(streamBodies[1]).not.toHaveProperty("last_event_id");
+    expect(streamEventLastEventIds(fetchImpl)).toEqual([null, "1788-0"]);
 
     await transport.close();
   });
