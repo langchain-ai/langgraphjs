@@ -2260,11 +2260,10 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("reconciles still-pending interrupts from getState after resume settles", async () => {
-    // When the server keeps siblings pending but does not re-emit
-    // input.requested (session map already holds the id), the resumed
-    // run's interrupted terminal must pull tasks[].interrupts so
-    // stream.interrupts is not left empty after sequential respond.
+  it("does not restore consumed interrupts from stale state after resume settles", async () => {
+    // A checkpoint can retain the original interrupt batch after the
+    // corresponding responses were accepted. Reconcile must preserve
+    // the local consumed-interrupt tombstones.
     const eventListeners = new Set<(event: Event) => void>();
     const ordering: ThreadStream["ordering"] = {};
     let respondCount = 0;
@@ -2289,7 +2288,7 @@ describe("StreamController", () => {
       .mockResolvedValue({
         values: {},
         next: ["review"],
-        // Server still reports both pending despite sequential respond.
+        // Server returns the original checkpoint batch despite both responses.
         tasks: [
           {
             interrupts: [
@@ -2354,11 +2353,100 @@ describe("StreamController", () => {
     emit(lifecycleEvent("interrupted", 21));
 
     await waitForExpectation(() => {
-      expect(
-        controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
-      ).toEqual(["int-1", "int-2"]);
+      expect(getState.mock.calls.length).toBeGreaterThan(1);
     });
-    expect(getState.mock.calls.length).toBeGreaterThan(1);
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    await controller.dispose();
+  });
+
+  it("keeps a consumed interrupt hidden when reconcile returns the original batch", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const threadInterrupts = [
+      {
+        interruptId: "int-1",
+        payload: { prompt: "First?" },
+        namespace: [],
+      },
+      {
+        interruptId: "int-2",
+        payload: { prompt: "Second?" },
+        namespace: [],
+      },
+    ];
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+      threadInterrupts.splice(
+        threadInterrupts.findIndex(
+          (interrupt) => interrupt.interruptId === "int-1"
+        ),
+        1
+      );
+    });
+    const interruptTasks = [
+      {
+        interrupts: [
+          { id: "int-1", value: { prompt: "First?" } },
+          { id: "int-2", value: { prompt: "Second?" } },
+        ],
+      },
+    ];
+    const getState = vi.fn(async () => ({
+      values: {},
+      next: ["review"],
+      tasks: interruptTasks,
+    }));
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: threadInterrupts,
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-consumed-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    emit(lifecycleEvent("running", 11));
+    emit(lifecycleEvent("interrupted", 12));
+
+    await waitForExpectation(() => {
+      expect(getState.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
 
     await controller.dispose();
   });
