@@ -1,5 +1,19 @@
 # @langchain/langgraph-sdk
 
+## 1.10.3-rc.1
+
+### Patch Changes
+
+- [#2809](https://github.com/langchain-ai/langgraphjs/pull/2809) [`11a4535`](https://github.com/langchain-ai/langgraphjs/commit/11a4535762b04f8f28cc98eb7b1e4b682b69e91a) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): appropriately track persisted seq for stream replay
+  
+  Sequences weren't being appropriately attributed when rehydrating the page (e.g. on refresh). This meant we'd lose stream information on `useStream` on reloads. This has been fixed by adding a lookup step to determine what the most appropriate sequence index is to track in the event stream.:x
+
+- [#2808](https://github.com/langchain-ai/langgraphjs/pull/2808) [`55fa26b`](https://github.com/langchain-ai/langgraphjs/commit/55fa26be9290fbd89a6e0acb232f04cbc6dedb22) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): coalesce locally resolved interrupts
+  
+  when resolving interrupts using `useStream`, there was a case where we prioritized the remote state values (which we lookup in React Strict mode on every page transition) over the local interrupt responses we know we've responded with.
+  
+  This has since been fixed to first prioritize the local cache of interrupts, resolved against the remote state values when a run hits a terminal event
+
 ## 1.10.3-rc.0
 
 ### Patch Changes
