@@ -1,5 +1,35 @@
 # @langchain/langgraph-sdk
 
+## 1.10.3-rc.2
+
+### Patch Changes
+
+- [#2813](https://github.com/langchain-ai/langgraphjs/pull/2813) [`4fc118f`](https://github.com/langchain-ai/langgraphjs/commit/4fc118fcde8fd6d977c03c8a0a7071912df1873a) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): show interrupts raised after a passive thread rejoin
+  
+  After a page refresh mid-run, `useStream` filtered every interrupt it did not
+  already know from the hydrated thread state as replayed history, and waited
+  for a `checkpoints` event to lift that filter. Current runtimes never emit
+  that event and the replay buffer trims it on long runs, so interrupts raised
+  after the refresh never appeared until the next reload. Unknown interrupts are
+  now settled against the server's thread state when the run reaches a terminal
+  lifecycle: the ones the server lists as pending are shown, the rest are
+  dropped as history.
+
+- [#2812](https://github.com/langchain-ai/langgraphjs/pull/2812) [`db4bdad`](https://github.com/langchain-ai/langgraphjs/commit/db4bdad61ddfc6c1113269b131ac2efde3eecf69) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): recover from a server-side thread stream drop instead of freezing
+  
+  The protocol SSE transport now reconnects when the server closes the event
+  stream cleanly. The thread stream is open-ended, so a clean close only happens
+  when the server's own upstream consumer died or it is restarting; before, the
+  client treated it as the end of the thread and the UI froze mid-run with no
+  error. A connection that delivered events also resets the reconnect budget, so
+  long-lived pages survive repeated deploys. `maxReconnectAttempts: 0` keeps the
+  old end-on-close behavior.
+  
+  Unsolicited server error frames (no command id) and a shared stream that gives
+  up reconnecting now reach `stream.error`: `ThreadStream.onError` exposes them,
+  `useStream` sets `error`, clears `isLoading`, and settles the in-flight
+  `submit()` as failed.
+
 ## 1.10.3-rc.1
 
 ### Patch Changes
