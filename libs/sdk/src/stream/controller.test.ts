@@ -235,6 +235,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -281,6 +282,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -345,6 +347,7 @@ describe("StreamController", () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -450,6 +453,7 @@ describe("StreamController", () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -523,6 +527,7 @@ describe("StreamController", () => {
     const onCompleted = vi.fn();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -563,6 +568,7 @@ describe("StreamController", () => {
   it("prefers transport.getState over client.threads.getState", async () => {
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -601,6 +607,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -650,6 +657,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -696,6 +704,7 @@ describe("StreamController", () => {
   it("hydrate seeds nested task interrupt namespaces from checkpoint_ns", async () => {
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -746,6 +755,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -799,6 +809,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -857,6 +868,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -984,6 +996,7 @@ describe("StreamController", () => {
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1060,6 +1073,7 @@ describe("StreamController", () => {
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1120,6 +1134,7 @@ describe("StreamController", () => {
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1191,6 +1206,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1266,6 +1282,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -1307,6 +1324,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1413,6 +1431,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1462,6 +1481,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1508,6 +1528,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1551,6 +1572,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1620,6 +1642,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1692,6 +1715,7 @@ describe("StreamController", () => {
     const subscribe = vi.fn(async () => makeNeverEndingSubscription());
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1725,6 +1749,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1782,6 +1807,7 @@ describe("StreamController", () => {
     };
     const thread = {
       subscribe: vi.fn(async () => hungSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1892,6 +1918,7 @@ describe("StreamController", () => {
     };
     const thread = {
       subscribe: vi.fn(async () => hungSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1959,6 +1986,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2001,6 +2029,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -2036,6 +2065,7 @@ describe("StreamController", () => {
 
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -2086,6 +2116,7 @@ describe("StreamController", () => {
 
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -2132,6 +2163,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2185,6 +2217,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2251,6 +2284,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2317,6 +2351,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -2434,6 +2469,7 @@ describe("StreamController", () => {
       });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -2535,6 +2571,7 @@ describe("StreamController", () => {
     }));
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -2619,6 +2656,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -2716,6 +2754,7 @@ describe("StreamController", () => {
       });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -2741,6 +2780,7 @@ describe("StreamController", () => {
     } as unknown as ThreadStream;
     const otherThread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -2811,6 +2851,7 @@ describe("StreamController", () => {
     const nestedNamespace = ["subgraph:child", "tools:tc-1"];
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2856,6 +2897,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2901,6 +2943,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2947,6 +2990,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3002,6 +3046,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3052,6 +3097,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3116,6 +3162,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3158,6 +3205,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3210,6 +3258,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3275,6 +3324,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3335,6 +3385,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3404,11 +3455,62 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("surfaces a thread stream failure on rootStore.error and settles submit()", async () => {
+    const errorListeners = new Set<(error: Error) => void>();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        errorListeners.add(listener);
+        return vi.fn(() => {
+          errorListeners.delete(listener);
+        });
+      }),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering: {},
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, tasks: [] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    const submitPromise = controller.submit(null);
+    await waitForExpectation(() => expect(submitRun).toHaveBeenCalled());
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    for (const listener of errorListeners) {
+      listener(new Error("Thread event stream failed: redis gone"));
+    }
+
+    await submitPromise;
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.isLoading).toBe(false);
+    expect((snapshot.error as Error | undefined)?.message).toBe(
+      "Thread event stream failed: redis gone"
+    );
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces a failed resumed run on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3471,6 +3573,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3510,6 +3613,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3568,6 +3672,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3977,6 +4082,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],

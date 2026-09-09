@@ -268,6 +268,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     const startStream = async () => {
       let attempt = 0;
+      let receivedEvent = false;
 
       while (!ac.signal.aborted && !this.closed) {
         try {
@@ -336,12 +337,27 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
+              receivedEvent = true;
               streamQueue.push(event.data as Message);
             }
           }
-          streamQueue.close();
-          return;
+          if (
+            ac.signal.aborted ||
+            this.closed ||
+            this.maxReconnectAttempts <= 0
+          ) {
+            streamQueue.close();
+            return;
+          }
+          // The thread stream is open-ended: the server only ends it when
+          // its own upstream consumer died or it is shutting down, so a
+          // clean close is a disconnect, not the end of the thread.
+          throw new Error("Event stream closed by the server");
         } catch (error) {
+          if (receivedEvent) {
+            attempt = 0;
+            receivedEvent = false;
+          }
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
               rejectReady(error);

@@ -625,6 +625,7 @@ export class ThreadStream<
   // to consume discovery and interrupt events without opening extra
   // server subscriptions.
   readonly #onEventListeners = new Set<(event: Event) => void>();
+  readonly #onErrorListeners = new Set<(error: Error) => void>();
 
   #messagesIterable?: AsyncIterable<StreamingMessageHandle>;
   #valuesProjection?: AsyncIterable<unknown> & PromiseLike<unknown>;
@@ -1411,6 +1412,18 @@ export class ThreadStream<
   }
 
   /**
+   * Register a listener for stream-level failures: an unsolicited server
+   * error frame, or the transport giving up on reconnecting. Returns an
+   * unsubscribe function.
+   */
+  onError(listener: (error: Error) => void): () => void {
+    this.#onErrorListeners.add(listener);
+    return () => {
+      this.#onErrorListeners.delete(listener);
+    };
+  }
+
+  /**
    * Lazily open the wildcard discovery watcher stream.
    *
    * Idempotent. Used by both transports, but through different
@@ -1620,6 +1633,16 @@ export class ThreadStream<
     }
   }
 
+  #fireOnError(error: Error): void {
+    for (const listener of this.#onErrorListeners) {
+      try {
+        listener(error);
+      } catch {
+        // A throwing listener must not block delivery to the others.
+      }
+    }
+  }
+
   async close(): Promise<void> {
     if (this.#closed) {
       return;
@@ -1657,6 +1680,7 @@ export class ThreadStream<
     const lifecycleWatcherStartPromise = this.#lifecycleWatcherStartPromise;
     this.#lifecycleWatcherStartPromise = undefined;
     this.#onEventListeners.clear();
+    this.#onErrorListeners.clear();
     for (const subscription of this.#subscriptions.values()) {
       subscription.close();
     }
@@ -2094,6 +2118,7 @@ export class ThreadStream<
     for (const subscription of this.#subscriptions.values()) {
       subscription.close();
     }
+    this.#fireOnError(normalized);
   }
 
   /**
@@ -2412,6 +2437,9 @@ export class ThreadStream<
     const pending =
       messageId === undefined ? undefined : this.#pending.get(messageId);
     if (!pending) {
+      if (message.type === "error" && message.id == null) {
+        this.#fireOnError(new ProtocolError(message));
+      }
       return;
     }
     if (messageId !== undefined) {
