@@ -35,6 +35,8 @@ import {
 } from "../../../utils/reconnect.js";
 import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
 
+const STREAM_ENTRY_ID = /^\d+-\d+(\.\d+)?$/;
+
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
  * commands plus SSE event streams. Bound to a `threadId` at construction
@@ -265,9 +267,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         : undefined;
 
     let readySettled = false;
-    // Only `event_id` can seek the server's tape; `seq` is per-connection. A
-    // filter rotation opens a new stream (readySettled=false), so the cursor
-    // never crosses rotations.
+    // Header, not body: server body schemas are strict and reject unknown
+    // keys. Only durable `ms-seq` ids are sent; anything else is rejected.
     let lastEventId: string | undefined;
 
     const startStream = async () => {
@@ -282,6 +283,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               headers: {
                 "content-type": "application/json",
                 accept: "text/event-stream",
+                ...(readySettled && lastEventId != null
+                  ? { "last-event-id": lastEventId }
+                  : {}),
               },
               body: JSON.stringify({
                 channels: params.channels,
@@ -289,9 +293,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 ...(params.depth != null ? { depth: params.depth } : {}),
                 ...(!readySettled && initialSince != null
                   ? { since: initialSince }
-                  : {}),
-                ...(readySettled && lastEventId != null
-                  ? { last_event_id: lastEventId }
                   : {}),
               }),
               signal: ac.signal,
@@ -345,10 +346,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             if (isRecord(event.data)) {
               const message = event.data as Message;
               const eventId = (message as { event_id?: unknown }).event_id;
-              // `synth:` ids have no tape position; only real entry ids resume.
               if (
                 typeof eventId === "string" &&
-                !eventId.startsWith("synth:")
+                STREAM_ENTRY_ID.test(eventId)
               ) {
                 lastEventId = eventId;
               }

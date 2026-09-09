@@ -25,6 +25,15 @@ function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
     .filter((body): body is Record<string, unknown> => body != null);
 }
 
+function streamEventLastEventIds(fetchImpl: MockFetch): Array<string | null> {
+  return fetchImpl.mock.calls
+    .filter((call: unknown[]) => String(call[0]).includes("/stream/events"))
+    .map((call: unknown[]) => {
+      const init = call[1] as RequestInit | undefined;
+      return new Headers(init?.headers).get("last-event-id");
+    });
+}
+
 describe("ProtocolSseTransportAdapter URL resolution", () => {
   it("preserves apiUrl path prefix for protocol commands", async () => {
     const { calls, fetch } = createFetchRecorder();
@@ -447,6 +456,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     expect(streamBodies).toHaveLength(2);
     expect(streamBodies[0]).not.toHaveProperty("since");
     expect(streamBodies[1]).not.toHaveProperty("since");
+    expect(streamEventLastEventIds(fetchImpl)).toEqual([null, null]);
 
     await transport.close();
   });
@@ -522,7 +532,8 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     const streamBodies = streamEventBodies(fetchImpl);
     expect(streamBodies).toHaveLength(2);
     expect(streamBodies[0]).not.toHaveProperty("last_event_id");
-    expect(streamBodies[1]).toMatchObject({ last_event_id: "1788-0" });
+    expect(streamBodies[1]).not.toHaveProperty("last_event_id");
+    expect(streamEventLastEventIds(fetchImpl)).toEqual([null, "1788-0"]);
 
     await transport.close();
   });
