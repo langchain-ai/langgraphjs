@@ -2616,9 +2616,9 @@ export class StreamController<
       } finally {
         this.#settleParkedInterruptsPromise = undefined;
       }
-    }
-    this.#settleParkedInterruptsPromise ??= makePromise()
-    return this.#settleParkedInterruptsPromise
+    };
+    this.#settleParkedInterruptsPromise ??= makePromise();
+    return this.#settleParkedInterruptsPromise;
   }
 
   /**
