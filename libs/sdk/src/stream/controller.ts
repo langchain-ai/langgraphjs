@@ -242,11 +242,9 @@ export class StreamController<
    * Interrupt ids this controller has locally marked resolved via
    * {@link respond} / {@link respondAll}. Used only to suppress
    * *historical* SSE replay of those `input.requested` events (there
-   * is no `input.responded` protocol event). Live events after the
-   * resume barrier — or a post-resume reconcile against
-   * `state.tasks[].interrupts` — clear an id from this set so a
-   * still-pending server interrupt can reappear on
-   * `rootStore.interrupts`.
+   * is no `input.responded` protocol event). A live event after the
+   * resume barrier clears an id from this set so an interrupt raised
+   * again by a later run can reappear on `rootStore.interrupts`.
    */
   readonly #resolvedInterrupts = new Set<string>();
   /**
@@ -2510,8 +2508,7 @@ export class StreamController<
    * mirror the removal into the root snapshot the framework hooks read.
    *
    * Tombstones are not permanent: a live `input.requested` after the
-   * resume barrier, or {@link #reconcilePendingInterruptsFromServer},
-   * clears the id when the server still reports it as pending.
+   * resume barrier clears the id when the same interrupt is raised again.
    */
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
@@ -2538,10 +2535,11 @@ export class StreamController<
    * `state.tasks[].interrupts` after a resumed run settles.
    *
    * Sequential `respond()` of parallel interrupts optimistically clears
-   * each id client-side. When the server still has siblings pending and
-   * does not re-emit `input.requested` for them (session map already
-   * holds the id), this restore keeps `stream.interrupts` truthful so
-   * callers do not free-text `submit()` into an ambiguous resume.
+   * each targeted id client-side. The server checkpoint can continue to
+   * list the original interrupt batch after accepting a partial response,
+   * so locally-resolved ids remain filtered while untouched siblings are
+   * restored. This keeps `stream.interrupts` truthful without re-exposing
+   * an already-consumed interrupt.
    *
    * Uses the same transport-aware state fetch as {@link hydrate}, and
    * drops the result if the thread swapped or a new submit/respond
@@ -2563,13 +2561,14 @@ export class StreamController<
       if (!Array.isArray(state?.tasks)) return;
       const { activeInterrupts, activeIds } =
         collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
-      for (const id of activeIds) {
-        this.#resolvedInterrupts.delete(id);
-      }
+      const pendingInterrupts = activeInterrupts.filter(
+        (interrupt) =>
+          interrupt.id == null || !this.#resolvedInterrupts.has(interrupt.id)
+      );
       this.rootStore.setState((s) => ({
         ...s,
-        interrupts: activeInterrupts,
-        interrupt: activeInterrupts[0],
+        interrupts: pendingInterrupts,
+        interrupt: pendingInterrupts[0],
       }));
       this.#hydratedActiveInterruptIds = activeIds;
     } catch {
