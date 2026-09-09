@@ -265,6 +265,10 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         : undefined;
 
     let readySettled = false;
+    // Only `event_id` can seek the server's tape; `seq` is per-connection. A
+    // filter rotation opens a new stream (readySettled=false), so the cursor
+    // never crosses rotations.
+    let lastEventId: string | undefined;
 
     const startStream = async () => {
       let attempt = 0;
@@ -285,6 +289,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
                 ...(params.depth != null ? { depth: params.depth } : {}),
                 ...(!readySettled && initialSince != null
                   ? { since: initialSince }
+                  : {}),
+                ...(readySettled && lastEventId != null
+                  ? { last_event_id: lastEventId }
                   : {}),
               }),
               signal: ac.signal,
@@ -336,7 +343,16 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              streamQueue.push(event.data as Message);
+              const message = event.data as Message;
+              const eventId = (message as { event_id?: unknown }).event_id;
+              // `synth:` ids have no tape position; only real entry ids resume.
+              if (
+                typeof eventId === "string" &&
+                !eventId.startsWith("synth:")
+              ) {
+                lastEventId = eventId;
+              }
+              streamQueue.push(message);
             }
           }
           streamQueue.close();
