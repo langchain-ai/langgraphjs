@@ -889,7 +889,7 @@ describe("StreamController", () => {
   });
 
   function passiveRejoinFixture(
-    states: Array<Record<string, unknown>>
+    states: Array<Record<string, unknown> | Error>
   ): {
     controller: StreamController<State, unknown>;
     emit: (event: Event) => void;
@@ -910,6 +910,7 @@ describe("StreamController", () => {
     const getState = vi.fn(async () => {
       const state = states[Math.min(calls, states.length - 1)];
       calls += 1;
+      if (state instanceof Error) throw state;
       return state;
     });
     const client = {
@@ -962,6 +963,26 @@ describe("StreamController", () => {
     const { controller, emit, getState } = passiveRejoinFixture([
       runningAtRefresh,
       runningAtRefresh,
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    }, 3_000);
+    expect(getState).toHaveBeenCalledTimes(3);
+
+    await controller.dispose();
+  });
+
+  it("retries a failed state fetch while settling parked interrupts", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      new Error("502 from the load balancer"),
       interruptedOn("raised-after-refresh"),
     ]);
     await controller.hydrationPromise;

@@ -2611,10 +2611,14 @@ export class StreamController<
     if (this.#parkedInterruptSettleInFlight) return;
     this.#parkedInterruptSettleInFlight = true;
     try {
+      const threadId = this.#currentThreadId;
+      const generation = this.#submitGeneration;
       const deadline = Date.now() + PARKED_INTERRUPT_SETTLE_MS;
       for (;;) {
         if (
           this.#disposed ||
+          this.#currentThreadId !== threadId ||
+          this.#submitGeneration !== generation ||
           this.#pendingHydrationInterruptEvents.length === 0
         ) {
           return;
@@ -2625,14 +2629,18 @@ export class StreamController<
               (event.params.data as { interrupt_id?: string }).interrupt_id
           )
         );
+        // A null state is a failed or unusable fetch; the terminal that
+        // started this loop will not come again, so keep trying until the
+        // deadline rather than stranding the parked interrupts.
         const state = await this.#reconcilePendingInterruptsFromServer();
-        if (state == null) return;
-        const settled = [...(this.#hydratedActiveInterruptIds ?? [])].some(
-          (id) => parkedIds.has(id)
-        );
-        if (settled || !isThreadStateActive(state)) {
-          this.#pendingHydrationInterruptEvents = [];
-          return;
+        if (state != null) {
+          const settled = [...(this.#hydratedActiveInterruptIds ?? [])].some(
+            (id) => parkedIds.has(id)
+          );
+          if (settled || !isThreadStateActive(state)) {
+            this.#pendingHydrationInterruptEvents = [];
+            return;
+          }
         }
         if (Date.now() >= deadline) return;
         await new Promise<void>((resolve) => {
