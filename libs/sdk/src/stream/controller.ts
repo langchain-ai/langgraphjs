@@ -180,6 +180,12 @@ export const ROOT_PUMP_CHANNELS: readonly Channel[] = [
   "tools",
 ];
 
+// The server writes an interrupt into thread state shortly after it streams
+// the `input.requested` event, so a state fetch on the terminal lifecycle can
+// miss it; mirrors the server's own interrupt settle window.
+const PARKED_INTERRUPT_SETTLE_MS = 5_000;
+const PARKED_INTERRUPT_SETTLE_POLL_MS = 500;
+
 interface ResolvedInterrupt {
   interruptId: string;
   namespace: string[];
@@ -267,6 +273,9 @@ export class StreamController<
    * from the newly-started run and must be accepted.
    */
   #interruptReplayThroughSeq: number | undefined;
+  /** Unknown inputs waiting to be classified as live or replayed history. */
+  #pendingHydrationInterruptEvents: Event[] = [];
+  #parkedInterruptSettleInFlight = false;
   /**
    * Unknown interrupt events received between local command dispatch and its
    * response. The response supplies the sequence barrier needed to classify
@@ -443,7 +452,8 @@ export class StreamController<
         this.#submitGeneration += 1;
         this.#interruptCommandPending =
           this.#hydratedActiveInterruptIds != null;
-        this.#pendingInterruptEvents = [];
+        this.#pendingInterruptEvents = this.#pendingHydrationInterruptEvents;
+        this.#pendingHydrationInterruptEvents = [];
       },
       onRunStart: () => this.#markLocalRunStart(),
       onRunCreated: (runId) => {
@@ -1761,6 +1771,7 @@ export class StreamController<
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
     this.#interruptReplayThroughSeq = undefined;
+    this.#pendingHydrationInterruptEvents = [];
     this.#discardPendingInterruptEvents();
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
@@ -1986,6 +1997,7 @@ export class StreamController<
      * resume targeting.
      */
     this.#recordInterrupt(event);
+    this.#settleParkedInterruptsOnTerminal(event);
   }
 
   /**
@@ -2380,10 +2392,16 @@ export class StreamController<
       this.#pendingInterruptEvents.push(event);
       return;
     }
+    const barrier = this.#interruptReplayThroughSeq;
+    if (isUnknownInterrupt && barrier == null) {
+      this.#pendingHydrationInterruptEvents.push(event);
+      return;
+    }
     const isHistoricalUnknownInterrupt =
       isUnknownInterrupt &&
-      (this.#interruptReplayThroughSeq == null ||
-        (eventSeq != null && eventSeq <= this.#interruptReplayThroughSeq));
+      barrier != null &&
+      eventSeq != null &&
+      eventSeq <= barrier;
     if (isHistoricalUnknownInterrupt) {
       return;
     }
@@ -2499,9 +2517,9 @@ export class StreamController<
    * drops the result if the thread swapped or a new submit/respond
    * started while the fetch was in flight.
    */
-  async #reconcilePendingInterruptsFromServer(): Promise<void> {
+  async #reconcilePendingInterruptsFromServer(): Promise<ThreadState<StateType> | null> {
     const threadId = this.#currentThreadId;
-    if (threadId == null || this.#disposed) return;
+    if (threadId == null || this.#disposed) return null;
     const generationAtFetch = this.#submitGeneration;
     try {
       const state = await this.#fetchHydrationState();
@@ -2510,9 +2528,9 @@ export class StreamController<
         this.#currentThreadId !== threadId ||
         this.#submitGeneration !== generationAtFetch
       ) {
-        return;
+        return null;
       }
-      if (!Array.isArray(state?.tasks)) return;
+      if (!Array.isArray(state?.tasks)) return null;
       const { activeInterrupts, activeIds } =
         collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
       const pendingInterrupts = activeInterrupts.filter(
@@ -2525,8 +2543,79 @@ export class StreamController<
         interrupt: pendingInterrupts[0],
       }));
       this.#hydratedActiveInterruptIds = activeIds;
+      return state;
     } catch {
       /* best-effort — leave the optimistic interrupt list alone */
+      return null;
+    }
+  }
+
+  #settleParkedInterruptsOnTerminal(event: Event): void {
+    if (this.#pendingHydrationInterruptEvents.length === 0) return;
+    if (event.method !== "lifecycle") return;
+    if (!isRootNamespace(event.params.namespace)) return;
+    const status = (event as LifecycleEvent).params.data?.event;
+    if (
+      status !== "interrupted" &&
+      status !== "completed" &&
+      status !== "failed"
+    ) {
+      return;
+    }
+    void this.#settleParkedInterrupts();
+  }
+
+  /**
+   * Decide parked interrupts with server state instead of a stream marker.
+   *
+   * After a passive rejoin the stream cannot tell a replayed, already
+   * resolved `input.requested` from one the current run just raised: the
+   * SSE replays the thread buffer on connect with no marker for where the
+   * replay ends. `state.tasks[].interrupts` is authoritative: parked ids it
+   * lists are live, the rest are history.
+   */
+  async #settleParkedInterrupts(): Promise<void> {
+    if (this.#parkedInterruptSettleInFlight) return;
+    this.#parkedInterruptSettleInFlight = true;
+    try {
+      const threadId = this.#currentThreadId;
+      const generation = this.#submitGeneration;
+      const deadline = Date.now() + PARKED_INTERRUPT_SETTLE_MS;
+      for (;;) {
+        if (
+          this.#disposed ||
+          this.#currentThreadId !== threadId ||
+          this.#submitGeneration !== generation ||
+          this.#pendingHydrationInterruptEvents.length === 0
+        ) {
+          return;
+        }
+        const parkedIds = new Set(
+          this.#pendingHydrationInterruptEvents.map(
+            (event) =>
+              (event.params.data as { interrupt_id?: string }).interrupt_id
+          )
+        );
+        // A null state is a failed or unusable fetch; the terminal that
+        // started this loop will not come again, so keep trying until the
+        // deadline rather than stranding the parked interrupts.
+        const state = await this.#reconcilePendingInterruptsFromServer();
+        if (state != null) {
+          const settled = [...(this.#hydratedActiveInterruptIds ?? [])].some(
+            (id) => parkedIds.has(id)
+          );
+          if (settled || !isThreadStateActive(state)) {
+            this.#pendingHydrationInterruptEvents = [];
+            return;
+          }
+        }
+        if (Date.now() >= deadline) return;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, PARKED_INTERRUPT_SETTLE_POLL_MS);
+        });
+      }
+    } finally {
+      this.#parkedInterruptSettleInFlight = false;
     }
   }
 
