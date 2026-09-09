@@ -2399,14 +2399,16 @@ export class StreamController<
       this.#pendingInterruptEvents.push(event);
       return;
     }
-    if (isUnknownInterrupt && this.#interruptReplayThroughSeq == null) {
+    const barrier = this.#interruptReplayThroughSeq;
+    if (isUnknownInterrupt && barrier == null) {
       this.#pendingHydrationInterruptEvents.push(event);
       return;
     }
     const isHistoricalUnknownInterrupt =
       isUnknownInterrupt &&
+      barrier != null &&
       eventSeq != null &&
-      eventSeq <= this.#interruptReplayThroughSeq;
+      eventSeq <= barrier;
     if (isHistoricalUnknownInterrupt) {
       return;
     }
