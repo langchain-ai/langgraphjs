@@ -1,5 +1,5 @@
 import type { Event } from "@langchain/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ProtocolError,
@@ -12,6 +12,7 @@ import {
   ToolCallAssembler,
   parseToolOutput,
 } from "./handles/tools.js";
+import { Client } from "../../index.js";
 import type { ThreadExtension } from "./types.js";
 import {
   MockSseTransport,
@@ -21,6 +22,92 @@ import {
 } from "./test/utils.js";
 
 describe("ThreadStream", () => {
+  it("resumes paused subscriptions when a server-queued run starts without a local command", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+    const subscription = await thread.subscribe({ channels: ["lifecycle", "values"] });
+    transport.pushEvent(eventOf("lifecycle", { event: "completed" }, { seq: 10, eventId: "first-terminal" }));
+    await nextValue(subscription);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(subscription.isPaused).toBe(true);
+    transport.pushEvent(eventOf("lifecycle", { event: "running" }, { seq: 11, eventId: "queued-running" }));
+    await subscription.waitForResume();
+    expect((await nextValue(subscription)).params.data).toEqual({ event: "running" });
+    expect(subscription.isPaused).toBe(false);
+    transport.pushEvent(eventOf("values", { count: 2 }, { seq: 12, eventId: "queued-values" }));
+    expect((await nextValue(subscription)).params.data).toEqual({ count: 2 });
+    expect(transport.sentCommands.filter((command) => command.method === "run.start")).toEqual([]);
+    await thread.close();
+  });
+
+  it("resumes when the lifecycle watcher sees running before the content pump", async () => {
+    const watcher = new MockSseTransport();
+    class SplitTransport extends MockSseTransport {
+      override openEventStream(params: Parameters<MockSseTransport["openEventStream"]>[0]) {
+        return params.channels.length === 2 && params.channels.includes("input")
+          ? watcher.openEventStream(params)
+          : super.openEventStream(params);
+      }
+    }
+    const transport = new SplitTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+    const subscription = await thread.subscribe({ channels: ["lifecycle", "values"] });
+    thread.startLifecycleWatcher();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    transport.pushEvent(eventOf("lifecycle", { event: "completed" }, { seq: 10, eventId: "terminal" }));
+    await nextValue(subscription);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(subscription.isPaused).toBe(true);
+    const running = eventOf("lifecycle", { event: "running" }, { seq: 11, eventId: "next-running" });
+    watcher.pushEvent(running);
+    await subscription.waitForResume();
+    transport.pushEvent(running);
+    expect((await nextValue(subscription)).params.data).toEqual({ event: "running" });
+    transport.pushEvent(eventOf("values", { count: 2 }, { seq: 12, eventId: "next-values" }));
+    expect((await nextValue(subscription)).params.data).toEqual({ count: 2 });
+    await thread.close();
+  });
+
+  it("enqueue sends run.start without clearing interrupts or resuming a paused pump", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "agent" });
+    const subscription = await thread.subscribe({ channels: ["lifecycle", "input"] });
+    transport.pushEvent(eventOf("input.requested", { interrupt_id: "pending", payload: {} }, { seq: 1, eventId: "input" }));
+    await nextValue(subscription);
+    transport.pushEvent(eventOf("lifecycle", { event: "interrupted" }, { seq: 2, eventId: "terminal" }));
+    await nextValue(subscription);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const opened = transport.totalStreamCount;
+    await thread.submitRun({ input: { count: 2 }, multitaskStrategy: "enqueue", forkFrom: "checkpoint" });
+    expect(subscription.isPaused).toBe(true);
+    expect(thread.interrupts).toHaveLength(1);
+    expect(thread.interrupted).toBe(true);
+    expect(transport.streamHandles.slice(0, opened).every((handle) => !handle.closed)).toBe(true);
+    expect(transport.sentCommands.at(-1)).toMatchObject({ method: "run.start", params: { multitaskStrategy: "enqueue", config: { configurable: { checkpoint_id: "checkpoint" } } } });
+    await thread.close();
+  });
+
+  it("enqueue uses the protocol command route and its explicit fetch/auth configuration", async () => {
+    const restFetch = vi.fn();
+    const protocolFetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const command = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ type: "success", id: command.id, result: { run_id: "accepted" } }), { headers: { "content-type": "application/json" } });
+    });
+    const client = new Client({ apiUrl: "https://protocol.example", apiKey: "test-key", defaultHeaders: { "x-tenant": "tenant" }, callerOptions: { fetch: restFetch }, onRequest: (_url, init) => { const headers = new Headers(init.headers); headers.set("x-hook", "hook"); return { ...init, headers }; } });
+    const thread = client.threads.stream("thread", { assistantId: "agent", fetch: protocolFetch, maxReconnectAttempts: 0 });
+    await thread.submitRun({ input: {}, multitaskStrategy: "enqueue" });
+    await thread.close();
+    expect(restFetch).not.toHaveBeenCalled();
+    const commandCall = protocolFetch.mock.calls.find(([url]) => String(url).endsWith("/commands"));
+    expect(commandCall).toBeDefined();
+    const [url, init] = commandCall!;
+    expect(String(url)).toBe("https://protocol.example/threads/thread/commands");
+    expect(JSON.parse(String(init?.body))).toMatchObject({ method: "run.start", params: { assistant_id: "agent", multitaskStrategy: "enqueue" } });
+    expect(new Headers(init?.headers).get("x-api-key")).toBe("test-key");
+    expect(new Headers(init?.headers).get("x-tenant")).toBe("tenant");
+    expect(new Headers(init?.headers).get("x-hook")).toBe("hook");
+  });
+
   it("routes subscribed events by channel and namespace", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

@@ -23,6 +23,7 @@ interface StreamState {
         {{ stream.isLoading() ? "Loading..." : "Not loading" }}
       </div>
       <div data-testid="message-count">{{ stream.messages().length }}</div>
+      <div data-testid="queue-error">{{ str(stream.error()) }}</div>
       <div data-testid="queue-size">{{ queue.size() }}</div>
       <div data-testid="queue-entries">
         {{ queueEntriesStr() }}
@@ -78,7 +79,7 @@ export class QueueStreamComponent {
   }
 
   onSubmitFirst() {
-    this.submitEnqueue("Msg1");
+    void this.stream.submit({ messages: [new HumanMessage("Msg1")] });
   }
 
   private submitEnqueue(content: string) {
@@ -86,7 +87,7 @@ export class QueueStreamComponent {
       messages: [new HumanMessage(content)],
     }, {
       multitaskStrategy: "enqueue",
-    });
+    }).catch(() => undefined);
   }
 
   onSubmitThree() {

@@ -1,3 +1,4 @@
+import type { RunsClient } from "../runs/index.js";
 import type {
   Command,
   CommandResponse,
@@ -109,6 +110,14 @@ export interface TransportAdapter {
  * `AgentServerAdapter`.
  */
 export interface AgentServerAdapter extends TransportAdapter {
+  /** Optional server queue API; methods must honor the explicit thread id across rebinds. */
+  serverQueue?: Pick<RunsClient, "list" | "get" | "cancel" | "cancelMany"> & {
+    join(
+      threadId: string,
+      runId: string,
+      options?: { signal?: AbortSignal; cancelOnDisconnect?: boolean }
+    ): Promise<unknown>;
+  };
   /**
    * Fetch the latest checkpointed state for the bound thread via
    * `GET /threads/:threadId/state` (or an adapter-specific override).

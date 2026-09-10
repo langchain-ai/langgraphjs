@@ -152,6 +152,8 @@ export interface UseStreamCommonOptions<
   StateType extends object,
   ThreadIdType = string | null,
 > {
+  /** Explicit server run observation/cancellation capability, using the same auth and fetch as the transport. */
+  serverQueue?: AgentServerAdapter["serverQueue"];
   threadId?: ThreadIdType;
   onThreadId?: (threadId: string) => void;
   /**
@@ -358,6 +360,8 @@ export interface StreamControllerOptions<
   assistantId: string;
   /** Client used to construct `ThreadStream`s. */
   client: Client<StateType>;
+  /** Opt in to server queue observation and cancellation using the configured run client. */
+  serverQueue?: AgentServerAdapter["serverQueue"];
   /** Initial thread id; if `null`, one is generated on first submit. */
   threadId?: string | null;
   /**
@@ -440,8 +444,9 @@ export interface StreamSubmitOptions<
    * - `"interrupt"` — server-side cancel of the in-flight run, then
    *   start the new one.
    * - `"enqueue"` — do NOT abort the active run; the new submission
-   *   lands in {@link StreamController.queueStore} and is forwarded
-   *   once the current run terminates.
+   *   is sent immediately to the server queue. Resolves on acceptance;
+   *   {@link StreamController.queueStore} mirrors pending runs. Requires the
+   *   explicit `serverQueue` observation and cancellation capability.
    * - `"reject"` — error out client-side when a run is already in
    *   flight.
    *

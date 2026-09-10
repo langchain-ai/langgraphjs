@@ -33,7 +33,7 @@
     void stream.submit(
       { messages: [new HumanMessage(content)] },
       { multitaskStrategy: "enqueue" },
-    );
+    ).catch(() => undefined);
   }
 
   const entriesText = $derived(
@@ -57,11 +57,12 @@
     {stream.isLoading ? "Loading..." : "Not loading"}
   </div>
   <div data-testid="message-count">{stream.messages.length}</div>
+  <div data-testid="queue-error">{String(stream.error ?? "")}</div>
   <div data-testid="queue-size">{queue.size}</div>
   <div data-testid="queue-entries">{entriesText}</div>
   <button
     data-testid="submit-first"
-    onclick={() => enqueue("Msg1")}
+    onclick={() => void stream.submit({ messages: [new HumanMessage("Msg1")] })}
   >
     Submit First
   </button>

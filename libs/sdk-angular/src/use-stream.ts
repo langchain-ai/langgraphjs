@@ -508,6 +508,7 @@ export function useStream<
     client: client as unknown as Client<StateType>,
     threadId: untracked(() => threadIdInput()),
     transport,
+    serverQueue: options.serverQueue,
     fetch: hasCustomAdapter ? undefined : asBag.fetch,
     webSocketFactory: hasCustomAdapter ? undefined : asBag.webSocketFactory,
     maxReconnectAttempts: hasCustomAdapter

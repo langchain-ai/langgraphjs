@@ -33,7 +33,7 @@ export const QueueStream = defineComponent({
       void stream.submit(
         { messages: [new HumanMessage(content)] },
         { multitaskStrategy: "enqueue" },
-      );
+      ).catch(() => undefined);
     };
 
     const entriesText = () =>
@@ -64,10 +64,11 @@ export const QueueStream = defineComponent({
           ))}
         </div>
 
+        <div data-testid="queue-error">{String(stream.error.value ?? "")}</div>
         <div data-testid="queue-size">{queue.size.value}</div>
         <div data-testid="queue-entries">{entriesText()}</div>
 
-        <button data-testid="submit-first" onClick={() => enqueue("Msg1")}>
+        <button data-testid="submit-first" onClick={() => void stream.submit({ messages: [new HumanMessage("Msg1")] })}>
           Submit First
         </button>
         <button

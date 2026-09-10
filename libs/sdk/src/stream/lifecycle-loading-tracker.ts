@@ -109,6 +109,10 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
    * The seq guards are per-thread: a new thread's lifecycle events
    * are not stale relative to the old thread's.
    */
+  get hasRunningAfterTerminal(): boolean {
+    return this.#lastRunningLifecycleSeq > this.#lastTerminalLifecycleSeq;
+  }
+
   reset(): void {
     this.#lastTerminalLifecycleSeq = -1;
     this.#lastRunningLifecycleSeq = -1;

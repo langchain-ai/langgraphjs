@@ -884,6 +884,10 @@ export class ThreadStream<
     } else {
       this.interrupts.length = 0;
     }
+    this.#resumeSubscriptions();
+  }
+
+  #resumeSubscriptions(): void {
     if (this.#terminalPauseTimer != null) {
       clearTimeout(this.#terminalPauseTimer);
       this.#terminalPauseTimer = undefined;
@@ -1358,7 +1362,7 @@ export class ThreadStream<
      */
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
-    this.#prepareForNextRun();
+    if (params.multitaskStrategy !== "enqueue") this.#prepareForNextRun();
     // See `this.run.start` for the gating rationale — the lifecycle
     // watcher must register synchronously (so subagent discovery and
     // its downstream `useToolCalls` / `useMessages` subscriptions
@@ -1603,6 +1607,12 @@ export class ThreadStream<
   #applyThreadLevelEffects(event: Event): void {
     if (event.method === "lifecycle") {
       const lifecycle = event as LifecycleEvent;
+      if (
+        lifecycle.params.namespace.length === 0 &&
+        lifecycle.params.data.event === "running"
+      ) {
+        this.#resumeSubscriptions();
+      }
       if (lifecycle.params.data.event === "interrupted") {
         this.interrupted = true;
       }
