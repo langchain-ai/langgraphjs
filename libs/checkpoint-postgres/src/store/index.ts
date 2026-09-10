@@ -22,7 +22,10 @@ import { DatabaseCore } from "./modules/database-core.js";
 import { VectorOperations } from "./modules/vector-operations.js";
 import { CrudOperations } from "./modules/crud-operations.js";
 import { SearchOperations } from "./modules/search-operations.js";
-import { namespaceMatchCondition, validateNamespace } from "./modules/utils.js";
+import {
+  namespaceListingCondition,
+  validateNamespace,
+} from "./modules/utils.js";
 import { TTLManager } from "./modules/ttl-manager.js";
 import {
   getStoreMigrations,
@@ -336,7 +339,7 @@ export class PostgresStore extends BaseStore {
           isRoot: condition.matchType === "prefix",
         });
         conditions.push(
-          namespaceMatchCondition(condition.path, condition.matchType, params)
+          namespaceListingCondition(condition.path, condition.matchType, params)
         );
         paramIndex = params.length + 1;
       }

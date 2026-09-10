@@ -72,3 +72,22 @@ export function namespaceMatchCondition(
   );
   return `(${column} = $${paramIndex} OR ${column} LIKE $${paramIndex + 1} ESCAPE E'\\\\')`;
 }
+
+/** Listing wildcards span one segment; stars inside a label remain literal. */
+export function namespaceListingCondition(
+  namespace: string[],
+  matchType: "prefix" | "suffix",
+  params: unknown[]
+): string {
+  if (!namespace.includes("*")) {
+    return namespaceMatchCondition(namespace, matchType, params);
+  }
+  const body = namespace
+    .map((label) =>
+      label === "*" ? "[^:]+" : label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    )
+    .join(":");
+  // PostgreSQL's \Z anchors at the actual end, including for newline labels.
+  params.push(matchType === "prefix" ? `^${body}(:|\\Z)` : `(^|:)${body}\\Z`);
+  return `namespace_path ~ $${params.length}`;
+}

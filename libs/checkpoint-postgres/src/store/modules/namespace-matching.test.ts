@@ -107,6 +107,32 @@ describe("namespace query boundaries", () => {
     await store.stop();
   });
 
+  it("binds wildcard listing conditions before pagination", async () => {
+    vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(
+      async () => client
+    );
+    const store = new PostgresStore({
+      connectionOptions: {},
+      ensureTables: false,
+    });
+    await store.listNamespaces({
+      prefix: ["cache", "*", "v1"],
+      suffix: ["*", "v1"],
+      limit: 7,
+      offset: 2,
+    });
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain("namespace_path ~ $1 AND namespace_path ~ $2");
+    expect(sql).toContain("LIMIT $3 OFFSET $4");
+    expect(params).toEqual([
+      "^cache:[^:]+:v1(:|\\Z)",
+      "(^|:)[^:]+:v1\\Z",
+      7,
+      2,
+    ]);
+    await store.stop();
+  });
+
   it("allows a reserved root label only in suffix filters", async () => {
     vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(
       async () => client

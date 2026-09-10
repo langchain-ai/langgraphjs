@@ -64,7 +64,7 @@ export class SearchOperations {
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `;
 
-    let paramIndex = 3;
+    let paramIndex = params.length + 1;
 
     // Add filter conditions using advanced filtering
     if (filter && Object.keys(filter).length > 0) {
@@ -121,6 +121,8 @@ export class SearchOperations {
       );
     }
 
+    const embeddingParam = params.push(`[${queryEmbedding.join(",")}]`);
+
     let sqlQuery = `
       SELECT DISTINCT 
         s.namespace_path, 
@@ -128,15 +130,14 @@ export class SearchOperations {
         s.value, 
         s.created_at, 
         s.updated_at,
-        MIN(v.embedding <=> $3) as similarity_score
+        MIN(v.embedding <=> $${embeddingParam}) as similarity_score
       FROM "${this.core.schema}".store s
       JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
       WHERE ${namespaceCondition}
         AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
     `;
 
-    params.push(`[${queryEmbedding.join(",")}]`);
-    let paramIndex = 4;
+    let paramIndex = params.length + 1;
 
     // Add filter conditions
     if (filter && Object.keys(filter).length > 0) {
@@ -189,6 +190,9 @@ export class SearchOperations {
       );
       const { filter, limit = 10, offset = 0, query, refreshTtl } = options;
 
+      const queryParam = params.push(query || null);
+      const languageParam = params.push(this.core.textSearchLanguage);
+
       let sqlQuery = `
         SELECT 
           namespace_path, 
@@ -197,8 +201,8 @@ export class SearchOperations {
           created_at, 
           updated_at,
           CASE 
-            WHEN $3::text IS NOT NULL THEN
-              ts_rank(to_tsvector($4::regconfig, value::text), plainto_tsquery($4::regconfig, $3::text))
+            WHEN $${queryParam}::text IS NOT NULL THEN
+              ts_rank(to_tsvector($${languageParam}::regconfig, value::text), plainto_tsquery($${languageParam}::regconfig, $${queryParam}::text))
             ELSE 0
           END as score
         FROM "${this.core.schema}".store
@@ -206,8 +210,7 @@ export class SearchOperations {
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
 
-      params.push(query || null, this.core.textSearchLanguage);
-      let paramIndex = 5;
+      let paramIndex = params.length + 1;
 
       // Add filter conditions using advanced filtering
       if (filter && Object.keys(filter).length > 0) {
@@ -222,7 +225,7 @@ export class SearchOperations {
       // Add full-text search if query is provided
       if (query) {
         sqlQuery += ` AND (
-          to_tsvector($4::regconfig, value::text) @@ plainto_tsquery($4::regconfig, $3::text)
+          to_tsvector($${languageParam}::regconfig, value::text) @@ plainto_tsquery($${languageParam}::regconfig, $${queryParam}::text)
           OR value::text ILIKE $${paramIndex}
         )`;
         params.push(`%${query}%`);
@@ -311,22 +314,24 @@ export class SearchOperations {
         );
       }
 
+      const embeddingParam = params.push(`[${queryEmbedding.join(",")}]`);
+
       // Choose distance operator based on metric
       let distanceOp: string;
       let scoreTransform: string;
       switch (distanceMetric) {
         case "l2":
           distanceOp = "<->";
-          scoreTransform = "1 / (1 + MIN(v.embedding <-> $3))"; // Convert L2 distance to similarity
+          scoreTransform = `1 / (1 + MIN(v.embedding <-> $${embeddingParam}))`; // Convert L2 distance to similarity
           break;
         case "inner_product":
           distanceOp = "<#>";
-          scoreTransform = "MIN(v.embedding <#> $3)"; // Inner product (higher is better)
+          scoreTransform = `MIN(v.embedding <#> $${embeddingParam})`; // Inner product (higher is better)
           break;
         case "cosine":
         default:
           distanceOp = "<=>";
-          scoreTransform = "1 - MIN(v.embedding <=> $3)"; // Convert cosine distance to similarity
+          scoreTransform = `1 - MIN(v.embedding <=> $${embeddingParam})`; // Convert cosine distance to similarity
           break;
       }
 
@@ -344,15 +349,14 @@ export class SearchOperations {
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
       `;
 
-      params.push(`[${queryEmbedding.join(",")}]`);
-      let paramIndex = 4;
+      let paramIndex = params.length + 1;
 
       // Add similarity threshold
       if (similarityThreshold > 0) {
         if (distanceMetric === "inner_product") {
-          sqlQuery += ` AND v.embedding <#> $3 >= $${paramIndex}`;
+          sqlQuery += ` AND v.embedding <#> $${embeddingParam} >= $${paramIndex}`;
         } else {
-          sqlQuery += ` AND v.embedding ${distanceOp} $3 <= $${paramIndex}`;
+          sqlQuery += ` AND v.embedding ${distanceOp} $${embeddingParam} <= $${paramIndex}`;
         }
         params.push(
           distanceMetric === "cosine"
@@ -442,6 +446,12 @@ export class SearchOperations {
         );
       }
 
+      const embeddingParam = params.push(`[${queryEmbedding.join(",")}]`);
+      const weightParam = params.push(vectorWeight);
+      const queryParam = params.push(query);
+      const thresholdParam = params.push(1 - similarityThreshold);
+      const languageParam = params.push(this.core.textSearchLanguage);
+
       let sqlQuery = `
         SELECT DISTINCT 
           s.namespace_path, 
@@ -450,27 +460,20 @@ export class SearchOperations {
           s.created_at, 
           s.updated_at,
           (
-            $4 * (1 - MIN(v.embedding <=> $3)) +
-            (1 - $4) * ts_rank(to_tsvector($7::regconfig, s.value::text), plainto_tsquery($7::regconfig, $5))
+            $${weightParam} * (1 - MIN(v.embedding <=> $${embeddingParam})) +
+            (1 - $${weightParam}) * ts_rank(to_tsvector($${languageParam}::regconfig, s.value::text), plainto_tsquery($${languageParam}::regconfig, $${queryParam}))
           ) as hybrid_score
         FROM "${this.core.schema}".store s
         JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
         WHERE ${namespaceCondition}
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
           AND (
-            to_tsvector($7::regconfig, s.value::text) @@ plainto_tsquery($7::regconfig, $5)
-            OR v.embedding <=> $3 <= $6
+            to_tsvector($${languageParam}::regconfig, s.value::text) @@ plainto_tsquery($${languageParam}::regconfig, $${queryParam})
+            OR v.embedding <=> $${embeddingParam} <= $${thresholdParam}
           )
       `;
 
-      params.push(
-        `[${queryEmbedding.join(",")}]`,
-        vectorWeight,
-        query,
-        1 - similarityThreshold,
-        this.core.textSearchLanguage
-      );
-      let paramIndex = 8;
+      let paramIndex = params.length + 1;
 
       // Add filter conditions
       if (filter && Object.keys(filter).length > 0) {

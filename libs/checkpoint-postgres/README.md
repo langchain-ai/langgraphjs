@@ -140,7 +140,11 @@ const testCheckpointer = PostgresSaver.fromConnString(
 `PostgresStore` matches namespace prefixes and suffixes by complete segments.
 For example, searching `["tenant", "a"]` includes that namespace and
 `["tenant", "a", "notes"]`, but excludes `["tenant", "ab"]`. The same boundary
-rules apply to `listNamespaces` prefix and suffix filters.
+rules apply to `listNamespaces` prefix and suffix filters. In listing filters,
+`*` matches exactly one segment: `["cache", "*", "v1"]` matches
+`["cache", "docs", "v1"]`, but not `["cache", "docs", "extra", "v1"]`.
+A star inside a label, such as `"docs*"`, remains literal. Search prefixes also
+remain literal, including a segment named `"*"`.
 
 Namespace labels cannot be empty or contain `.`, `:`, `%`, `_`, or `\`.
 The root segment cannot be `langgraph`; suffix filters may contain this label
