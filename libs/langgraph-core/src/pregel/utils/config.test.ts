@@ -394,6 +394,39 @@ describe("ensureLangGraphConfig", () => {
     expect(merged.handlers).toHaveLength(1);
   });
 
+  it("should call the current method after the raw callback's method is replaced between merges", async () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const calls: string[] = [];
+    const rawCallback: { handleChainEnd: () => void } = {
+      handleChainEnd: () => {
+        calls.push("first");
+      },
+    };
+
+    const level0 = ensureLangGraphConfig(
+      { callbacks: new CallbackManager() },
+      { callbacks: [rawCallback] }
+    );
+    const mgr0 = level0.callbacks as CallbackManager;
+    await (mgr0.handlers[0] as unknown as typeof rawCallback).handleChainEnd();
+
+    rawCallback.handleChainEnd = () => {
+      calls.push("replacement");
+    };
+
+    const level1 = ensureLangGraphConfig(
+      { callbacks: new CallbackManager() },
+      { callbacks: [rawCallback] }
+    );
+    const mgr1 = level1.callbacks as CallbackManager;
+    await (mgr1.handlers[0] as unknown as typeof rawCallback).handleChainEnd();
+
+    expect(calls).toEqual(["first", "replacement"]);
+  });
+
   it("should not re-add an array handler the base manager already holds", () => {
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()

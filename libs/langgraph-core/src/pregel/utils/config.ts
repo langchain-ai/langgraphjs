@@ -127,7 +127,10 @@ function ensureStableHandler(
   }
   if ("name" in callback) return callback;
   const cached = stableHandlerWrappers.get(callback);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    Object.assign(cached, callback);
+    return cached;
+  }
   const wrapped = ensureHandler(callback);
   stableHandlerWrappers.set(callback, wrapped);
   return wrapped;
