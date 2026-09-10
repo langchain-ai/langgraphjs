@@ -37,7 +37,7 @@
     "langchain": "^1.5.10",
     "react": "^19.2.8",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "vitest-browser-react": "^2.2.0",
     "webdriverio": "^9.25.0",
     "zod": "^4.3.6"
