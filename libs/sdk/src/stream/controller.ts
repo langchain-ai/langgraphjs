@@ -180,6 +180,12 @@ export const ROOT_PUMP_CHANNELS: readonly Channel[] = [
   "tools",
 ];
 
+// The server writes an interrupt into thread state shortly after it streams
+// the `input.requested` event, so a state fetch on the terminal lifecycle can
+// miss it; mirrors the server's own interrupt settle window.
+const PARKED_INTERRUPT_SETTLE_MS = 5_000;
+const PARKED_INTERRUPT_SETTLE_POLL_MS = 500;
+
 interface ResolvedInterrupt {
   interruptId: string;
   namespace: string[];
@@ -236,8 +242,17 @@ export class StreamController<
    */
   #rootPumpDeferred = false;
   #threadEventUnsubscribe: (() => void) | undefined;
+  #threadErrorUnsubscribe: (() => void) | undefined;
   #disposed = false;
   #pendingDisposeTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Interrupt ids this controller has locally marked resolved via
+   * {@link respond} / {@link respondAll}. Used only to suppress
+   * *historical* SSE replay of those `input.requested` events (there
+   * is no `input.responded` protocol event). A live event after the
+   * resume barrier clears an id from this set so an interrupt raised
+   * again by a later run can reappear on `rootStore.interrupts`.
+   */
   readonly #resolvedInterrupts = new Set<string>();
   /**
    * Set of interrupt IDs the server reports as currently *active* on
@@ -259,6 +274,9 @@ export class StreamController<
    * from the newly-started run and must be accepted.
    */
   #interruptReplayThroughSeq: number | undefined;
+  /** Unknown inputs waiting to be classified as live or replayed history. */
+  #pendingHydrationInterruptEvents: Event[] = [];
+  #settleParkedInterruptsPromise: Promise<void> | undefined;
   /**
    * Unknown interrupt events received between local command dispatch and its
    * response. The response supplies the sequence barrier needed to classify
@@ -435,7 +453,8 @@ export class StreamController<
         this.#submitGeneration += 1;
         this.#interruptCommandPending =
           this.#hydratedActiveInterruptIds != null;
-        this.#pendingInterruptEvents = [];
+        this.#pendingInterruptEvents = this.#pendingHydrationInterruptEvents;
+        this.#pendingHydrationInterruptEvents = [];
       },
       onRunStart: () => this.#markLocalRunStart(),
       onRunCreated: (runId) => {
@@ -729,35 +748,13 @@ export class StreamController<
        */
       if (Array.isArray(state?.tasks)) {
         const generationAtFetch = this.#submitGeneration;
-        const activeInterrupts: Interrupt<InterruptType>[] = [];
-        const activeIds = new Set<string>();
-        for (const task of state.tasks) {
-          if (!Array.isArray(task?.interrupts)) continue;
-          const checkpointNs = (
-            task as { checkpoint?: { checkpoint_ns?: unknown } | null }
-          )?.checkpoint?.checkpoint_ns;
-          const namespace =
-            typeof checkpointNs === "string" && checkpointNs.length > 0
-              ? checkpointNs.split("|").filter((segment) => segment.length > 0)
-              : [...ROOT_NAMESPACE];
-          for (const interrupt of task.interrupts) {
-            const typed = interrupt as
-              | { id?: string; value?: unknown; namespace?: string[] }
-              | null
-              | undefined;
-            const id = typed?.id;
-            if (typeof id !== "string" || activeIds.has(id)) continue;
-            activeIds.add(id);
-            activeInterrupts.push(
-              normalizeInterruptForClient({
-                id,
-                value: typed?.value as InterruptType,
-                namespace: Array.isArray(typed?.namespace)
-                  ? [...typed.namespace]
-                  : namespace,
-              })
-            );
-          }
+        const { activeInterrupts, activeIds } =
+          collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
+        // Server still lists these as pending — drop any local
+        // "resolved" tombstone so live replay / later reconcile can
+        // keep them visible.
+        for (const id of activeIds) {
+          this.#resolvedInterrupts.delete(id);
         }
         this.rootStore.setState((s) => ({
           ...s,
@@ -1739,6 +1736,8 @@ export class StreamController<
     this.registry.bind(undefined);
     this.#threadEventUnsubscribe?.();
     this.#threadEventUnsubscribe = undefined;
+    this.#threadErrorUnsubscribe?.();
+    this.#threadErrorUnsubscribe = undefined;
     /**
      * Persistent lifecycle driver is scoped to the current thread
      * stream. Remove it so a swap to a new thread starts with a clean
@@ -1775,6 +1774,7 @@ export class StreamController<
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
     this.#interruptReplayThroughSeq = undefined;
+    this.#pendingHydrationInterruptEvents = [];
     this.#discardPendingInterruptEvents();
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
@@ -1836,6 +1836,9 @@ export class StreamController<
     this.#threadEventUnsubscribe = thread.onEvent((event) =>
       this.#onWildcardEvent(event)
     );
+    this.#threadErrorUnsubscribe = thread.onError((error) => {
+      this.rootStore.setState((s) => ({ ...s, error, isLoading: false }));
+    });
 
     /**
      * Persistent isLoading driver. Drives `isLoading` from
@@ -2000,6 +2003,7 @@ export class StreamController<
      * resume targeting.
      */
     this.#recordInterrupt(event);
+    this.#settleParkedInterruptsOnTerminal(event);
   }
 
   /**
@@ -2364,10 +2368,7 @@ export class StreamController<
       payload?: unknown;
     };
     const interruptId = data?.interrupt_id;
-    if (
-      typeof interruptId !== "string" ||
-      this.#resolvedInterrupts.has(interruptId)
-    ) {
+    if (typeof interruptId !== "string") {
       return;
     }
     // Before a run command is accepted, accept only ids the hydrated
@@ -2376,6 +2377,20 @@ export class StreamController<
     // unknown ids at or below the barrier are stale, while newer ids are
     // interrupts raised by the new run.
     const eventSeq = typeof event.seq === "number" ? event.seq : undefined;
+    // Locally-resolved ids: still drop historical replay, but accept a
+    // live reappearance (server still pending after sequential
+    // multi-interrupt resume, or the same interrupt site re-raised).
+    if (this.#resolvedInterrupts.has(interruptId)) {
+      const isLiveReappearance =
+        this.#hydratedActiveInterruptIds == null ||
+        (typeof this.#interruptReplayThroughSeq === "number" &&
+          eventSeq != null &&
+          eventSeq > this.#interruptReplayThroughSeq);
+      if (!isLiveReappearance) {
+        return;
+      }
+      this.#resolvedInterrupts.delete(interruptId);
+    }
     const isUnknownInterrupt =
       this.#hydratedActiveInterruptIds != null &&
       !this.#hydratedActiveInterruptIds.has(interruptId);
@@ -2383,10 +2398,16 @@ export class StreamController<
       this.#pendingInterruptEvents.push(event);
       return;
     }
+    const barrier = this.#interruptReplayThroughSeq;
+    if (isUnknownInterrupt && barrier == null) {
+      this.#pendingHydrationInterruptEvents.push(event);
+      return;
+    }
     const isHistoricalUnknownInterrupt =
       isUnknownInterrupt &&
-      (this.#interruptReplayThroughSeq == null ||
-        (eventSeq != null && eventSeq <= this.#interruptReplayThroughSeq));
+      barrier != null &&
+      eventSeq != null &&
+      eventSeq <= barrier;
     if (isHistoricalUnknownInterrupt) {
       return;
     }
@@ -2461,8 +2482,11 @@ export class StreamController<
   }
 
   /**
-   * Mark an interrupt resolved for replay filtering and mirror the
-   * removal into the root snapshot the framework hooks read.
+   * Mark an interrupt resolved for historical-replay filtering and
+   * mirror the removal into the root snapshot the framework hooks read.
+   *
+   * Tombstones are not permanent: a live `input.requested` after the
+   * resume barrier clears the id when the same interrupt is raised again.
    */
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
@@ -2482,6 +2506,125 @@ export class StreamController<
         interrupt: interrupts[0],
       };
     });
+  }
+
+  /**
+   * Re-sync `rootStore.interrupts` from the server's authoritative
+   * `state.tasks[].interrupts` after a resumed run settles.
+   *
+   * Sequential `respond()` of parallel interrupts optimistically clears
+   * each targeted id client-side. The server checkpoint can continue to
+   * list the original interrupt batch after accepting a partial response,
+   * so locally-resolved ids remain filtered while untouched siblings are
+   * restored. This keeps `stream.interrupts` truthful without re-exposing
+   * an already-consumed interrupt.
+   *
+   * Uses the same transport-aware state fetch as {@link hydrate}, and
+   * drops the result if the thread swapped or a new submit/respond
+   * started while the fetch was in flight.
+   */
+  async #reconcilePendingInterruptsFromServer(): Promise<ThreadState<StateType> | null> {
+    const threadId = this.#currentThreadId;
+    if (threadId == null || this.#disposed) return null;
+    const generationAtFetch = this.#submitGeneration;
+    try {
+      const state = await this.#fetchHydrationState();
+      if (
+        this.#disposed ||
+        this.#currentThreadId !== threadId ||
+        this.#submitGeneration !== generationAtFetch
+      ) {
+        return null;
+      }
+      if (!Array.isArray(state?.tasks)) return null;
+      const { activeInterrupts, activeIds } =
+        collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
+      const pendingInterrupts = activeInterrupts.filter(
+        (interrupt) =>
+          interrupt.id == null || !this.#resolvedInterrupts.has(interrupt.id)
+      );
+      this.rootStore.setState((s) => ({
+        ...s,
+        interrupts: pendingInterrupts,
+        interrupt: pendingInterrupts[0],
+      }));
+      this.#hydratedActiveInterruptIds = activeIds;
+      return state;
+    } catch {
+      /* best-effort — leave the optimistic interrupt list alone */
+      return null;
+    }
+  }
+
+  #settleParkedInterruptsOnTerminal(event: Event): void {
+    if (this.#pendingHydrationInterruptEvents.length === 0) return;
+    if (event.method !== "lifecycle") return;
+    if (!isRootNamespace(event.params.namespace)) return;
+    const status = (event as LifecycleEvent).params.data?.event;
+    if (
+      status !== "interrupted" &&
+      status !== "completed" &&
+      status !== "failed"
+    ) {
+      return;
+    }
+    void this.#settleParkedInterrupts();
+  }
+
+  /**
+   * Decide parked interrupts with server state instead of a stream marker.
+   *
+   * After a passive rejoin the stream cannot tell a replayed, already
+   * resolved `input.requested` from one the current run just raised: the
+   * SSE replays the thread buffer on connect with no marker for where the
+   * replay ends. `state.tasks[].interrupts` is authoritative: parked ids it
+   * lists are live, the rest are history.
+   */
+  async #settleParkedInterrupts(): Promise<void> {
+    const makePromise = async () => {
+      try {
+        const threadId = this.#currentThreadId;
+        const generation = this.#submitGeneration;
+        const deadline = Date.now() + PARKED_INTERRUPT_SETTLE_MS;
+        for (;;) {
+          if (
+            this.#disposed ||
+            this.#currentThreadId !== threadId ||
+            this.#submitGeneration !== generation ||
+            this.#pendingHydrationInterruptEvents.length === 0
+          ) {
+            return;
+          }
+          const parkedIds = new Set(
+            this.#pendingHydrationInterruptEvents.map(
+              (event) =>
+                (event.params.data as { interrupt_id?: string }).interrupt_id
+            )
+          );
+          // A null state is a failed or unusable fetch; the terminal that
+          // started this loop will not come again, so keep trying until the
+          // deadline rather than stranding the parked interrupts.
+          const state = await this.#reconcilePendingInterruptsFromServer();
+          if (state != null) {
+            const settled = [...(this.#hydratedActiveInterruptIds ?? [])].some(
+              (id) => parkedIds.has(id)
+            );
+            if (settled || !isThreadStateActive(state)) {
+              this.#pendingHydrationInterruptEvents = [];
+              return;
+            }
+          }
+          if (Date.now() >= deadline) return;
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, PARKED_INTERRUPT_SETTLE_POLL_MS);
+          });
+        }
+      } finally {
+        this.#settleParkedInterruptsPromise = undefined;
+      }
+    };
+    this.#settleParkedInterruptsPromise ??= makePromise();
+    return this.#settleParkedInterruptsPromise;
   }
 
   /**
@@ -2515,14 +2658,26 @@ export class StreamController<
    * but before `respondInput` calls `#prepareForNextRun`; accepting that
    * terminal would unsubscribe the watcher before the resumed run's `failed`
    * terminal arrives.
+   *
+   * On `interrupted` / `completed`, reconciles pending interrupts from
+   * server state so optimistic clears from {@link respond} cannot leave
+   * `stream.interrupts` empty while the checkpoint still has siblings.
    */
-  #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
+  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
-    return this.#awaitRootTerminal(signal, {
+    const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
+    if (
+      !signal.aborted &&
+      !this.#disposed &&
+      (terminal.event === "interrupted" || terminal.event === "completed")
+    ) {
+      await this.#reconcilePendingInterruptsFromServer();
+    }
+    return terminal;
   }
 
   #awaitRootTerminal(
@@ -2543,6 +2698,7 @@ export class StreamController<
         settled = true;
         unsubscribeRoot?.();
         unsubscribeThread?.();
+        unsubscribeError?.();
         signal.removeEventListener("abort", finishAborted);
         resolve(result);
       }
@@ -2575,6 +2731,9 @@ export class StreamController<
       };
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
+      const unsubscribeError = this.#thread?.onError((error) =>
+        finish({ event: "failed", error: error.message })
+      );
       if (signal.aborted) {
         finishAborted();
       } else {
@@ -2663,6 +2822,54 @@ function extractAndCoerceMessagesWithFallback(
   return ensureMessageInstances(
     raw as (Message | BaseMessage)[]
   ) as BaseMessage[];
+}
+
+/**
+ * Collect pending interrupts from a `threads.getState()` `tasks` array.
+ *
+ * Shared by {@link StreamController.hydrate} and the post-resume
+ * reconcile path so both stay aligned on namespace derivation and
+ * id dedupe.
+ */
+function collectActiveInterruptsFromTasks<InterruptType>(tasks: unknown[]): {
+  activeInterrupts: Interrupt<InterruptType>[];
+  activeIds: Set<string>;
+} {
+  const activeInterrupts: Interrupt<InterruptType>[] = [];
+  const activeIds = new Set<string>();
+  for (const task of tasks) {
+    if (!Array.isArray((task as { interrupts?: unknown } | null)?.interrupts)) {
+      continue;
+    }
+    const typedTask = task as {
+      interrupts: unknown[];
+      checkpoint?: { checkpoint_ns?: unknown } | null;
+    };
+    const checkpointNs = typedTask.checkpoint?.checkpoint_ns;
+    const namespace =
+      typeof checkpointNs === "string" && checkpointNs.length > 0
+        ? checkpointNs.split("|").filter((segment) => segment.length > 0)
+        : [...ROOT_NAMESPACE];
+    for (const interrupt of typedTask.interrupts) {
+      const typed = interrupt as
+        | { id?: string; value?: unknown; namespace?: string[] }
+        | null
+        | undefined;
+      const id = typed?.id;
+      if (typeof id !== "string" || activeIds.has(id)) continue;
+      activeIds.add(id);
+      activeInterrupts.push(
+        normalizeInterruptForClient({
+          id,
+          value: typed?.value as InterruptType,
+          namespace: Array.isArray(typed?.namespace)
+            ? [...typed.namespace]
+            : namespace,
+        })
+      );
+    }
+  }
+  return { activeInterrupts, activeIds };
 }
 
 // Unused import guard — `AIMessage` is only referenced by type tests.

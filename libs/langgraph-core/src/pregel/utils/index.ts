@@ -111,6 +111,48 @@ export type CachePolicy = {
   ttl?: number;
 };
 
+/**
+ * Controls the input and output payloads recorded on a node's own trace run.
+ * The graph's root run and child runs created by traced runnables are unaffected.
+ * Plain function nodes do not create an additional child run.
+ *
+ * Processors are synchronous and receive raw values, before callback payload
+ * normalization. They run even without tracing callbacks. If a processor throws,
+ * the original payload is recorded instead. Avoid mutating the supplied values:
+ * they are also used for execution and are not copied.
+ *
+ * These transforms also affect chain callbacks, including `streamEvents` and
+ * message streaming. Omitting outputs can suppress messages returned directly
+ * by nodes; omitting inputs can affect message deduplication.
+ *
+ * This policy is intended to reduce trace payload sizes, not redact secrets.
+ * For redaction across all runs, configure the LangSmith client instead.
+ *
+ * @example
+ * ```ts
+ * graph.addNode("before_model", beforeModel, {
+ *   tracePolicy: {
+ *     processInputs: omitPayload,
+ *     processOutputs: omitPayload,
+ *   },
+ * });
+ * ```
+ */
+export type TracePolicy = {
+  /** Transform the raw node input recorded on its trace run. */
+  processInputs?: (value: unknown) => unknown;
+  /** Transform the raw node output recorded on its trace run. */
+  processOutputs?: (value: unknown) => unknown;
+};
+
+/**
+ * Record an empty trace payload while retaining the node's span and timing.
+ * Use as `processInputs` and/or `processOutputs` in a {@link TracePolicy}.
+ */
+export function omitPayload(_value: unknown): Record<string, never> {
+  return {};
+}
+
 export function patchConfigurable(
   config: RunnableConfig | undefined,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
