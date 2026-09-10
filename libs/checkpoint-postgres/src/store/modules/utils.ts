@@ -63,7 +63,8 @@ export function namespaceMatchCondition(
   column: "namespace_path" | "s.namespace_path" = "namespace_path"
 ): string {
   const path = namespace.join(":");
-  // Escape independently of validation so LIKE never interprets label contents.
+  // Bound values still interpret %, _ and backslash as LIKE syntax.
+  // Escape them for literal matching; SQL parameterization alone does not do this.
   const escapedPath = path.replace(/[%_\\]/g, "\\$&");
   const paramIndex = params.length + 1;
   params.push(
