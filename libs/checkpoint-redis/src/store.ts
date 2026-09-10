@@ -18,7 +18,10 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
-import { escapeRediSearchTagValue } from "./utils.js";
+import {
+  buildNamespacePrefixQuery,
+  escapeRediSearchTagValue,
+} from "./utils.js";
 
 // Type guard functions for operations
 export function isPutOperation(op: Operation): op is PutOperation {
@@ -651,7 +654,6 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
-    const prefix = namespacePrefix.join(".");
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
@@ -660,8 +662,7 @@ export class RedisStore {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
       // Build KNN query
-      // For prefix search, use wildcard since we want to match any document starting with this prefix
-      const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
+      const queryStr = buildNamespacePrefixQuery(namespacePrefix);
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
 
       try {
@@ -742,15 +743,7 @@ export class RedisStore {
     }
 
     // Regular search without vectors
-    let queryStr = "*";
-    if (prefix) {
-      // For prefix search, we need to match all tokens from the namespace prefix
-      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-      if (tokens.length > 0) {
-        // Match all tokens to ensure we get the right prefix
-        queryStr = `@prefix:(${tokens.join(" ")})`;
-      }
-    }
+    const queryStr = buildNamespacePrefixQuery(namespacePrefix);
 
     try {
       const results = await this.client.ft.search("store", queryStr, {

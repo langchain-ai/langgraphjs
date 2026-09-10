@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assertSafeKeyComponent,
+  buildNamespacePrefixQuery,
   escapeRediSearchTagValue,
 } from "../utils.js";
 
@@ -193,5 +194,41 @@ describe("assertSafeKeyComponent", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertSafeKeyComponent("task_id", { $gt: "" } as any)
     ).toThrow(/"task_id"/);
+  });
+});
+
+describe("buildNamespacePrefixQuery", () => {
+  it("should match every document for an empty prefix", () => {
+    expect(buildNamespacePrefixQuery([])).toBe("*");
+  });
+
+  it("should scope a single label namespace", () => {
+    expect(buildNamespacePrefixQuery(["docs"])).toBe("@prefix:(docs)");
+  });
+
+  it("should keep every label of a nested namespace", () => {
+    expect(buildNamespacePrefixQuery(["docs", "public"])).toBe(
+      "@prefix:(docs public)"
+    );
+    expect(buildNamespacePrefixQuery(["tenant", "acme", "notes"])).toBe(
+      "@prefix:(tenant acme notes)"
+    );
+  });
+
+  it("should not widen the match to namespaces sharing only the first label", () => {
+    const query = buildNamespacePrefixQuery(["tenant", "acme"]);
+
+    expect(query).not.toContain("*");
+    expect(query).toContain("acme");
+  });
+
+  it("should tokenize labels the same way RediSearch indexes them", () => {
+    expect(buildNamespacePrefixQuery(["acme-corp"])).toBe(
+      "@prefix:(acme corp)"
+    );
+  });
+
+  it("should ignore empty tokens", () => {
+    expect(buildNamespacePrefixQuery(["docs", ""])).toBe("@prefix:(docs)");
   });
 });

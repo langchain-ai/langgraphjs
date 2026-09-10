@@ -22,6 +22,29 @@ export function escapeRediSearchTagValue(value: string): string {
 }
 
 /**
+ * Builds the RediSearch clause that scopes a query to a namespace prefix.
+ *
+ * Namespaces are indexed as a single TEXT field, so the clause has to carry the
+ * tokens of every label: dropping one widens the match to unrelated
+ * namespaces. RediSearch tokenizes on punctuation, which is why labels are also
+ * split on `.` and `-`.
+ *
+ * @param namespacePrefix - Namespace labels to scope the query to
+ * @returns The RediSearch clause, or `*` when the prefix is empty
+ */
+export function buildNamespacePrefixQuery(namespacePrefix: string[]): string {
+  const tokens = namespacePrefix
+    .flatMap((label) => label.split(/[.-]/))
+    .filter((token) => token.length > 0);
+
+  if (tokens.length === 0) {
+    return "*";
+  }
+
+  return `@prefix:(${tokens.join(" ")})`;
+}
+
+/**
  * Characters that are interpreted as wildcards or escapes by Redis pattern
  * commands (KEYS, SCAN MATCH, PSUBSCRIBE, etc.). Embedding any of these in a
  * caller-controlled key component allows pattern injection: a `thread_id` of
