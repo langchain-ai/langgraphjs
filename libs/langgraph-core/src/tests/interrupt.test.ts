@@ -72,19 +72,23 @@ describe("interrupt responseSchema", () => {
       const config = { configurable: { thread_id: "1" } };
       await graph.invoke({ answer: null }, config);
       const [pending] = (await graph.getState(config)).tasks[0].interrupts;
-      const resume = (value: unknown) =>
-        new Command({
-          resume: resumeStyle === "null" ? value : { [pending.id ?? ""]: value },
-        });
+      const resumeWith = (value: unknown) =>
+        resumeStyle === "null" ? value : { [pending.id ?? ""]: value };
 
       await expect(
-        graph.invoke(resume({ approved: "nope" }), config)
+        graph.invoke(
+          new Command({ resume: resumeWith({ approved: "nope" }) }),
+          config
+        )
       ).rejects.toMatchObject({
         issues: [expect.objectContaining({ path: ["approved"] })],
       });
 
       await expect(
-        graph.invoke(resume({ approved: false }), config)
+        graph.invoke(
+          new Command({ resume: resumeWith({ approved: false }) }),
+          config
+        )
       ).resolves.toEqual({ answer: { approved: false, note: "" } });
     }
   );
