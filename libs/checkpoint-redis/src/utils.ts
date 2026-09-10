@@ -22,26 +22,47 @@ export function escapeRediSearchTagValue(value: string): string {
 }
 
 /**
+ * Punctuation that RediSearch strips when it tokenizes a TEXT field.
+ *
+ * Query terms have to be split on the same set the indexer uses. A term that
+ * still carries one of these characters does not address an indexed term: it
+ * either fails to parse or, worse, closes the surrounding `@prefix:(...)`
+ * clause and lets a caller-controlled namespace label inject query syntax
+ * (`"acme) | @prefix:(victim"` would otherwise OR in another tenant).
+ */
+const REDISEARCH_TEXT_PUNCTUATION = /[-\s,.:<>{}[\]"';!@#$%^&*()+=~|?/\\]/;
+
+/**
  * Builds the RediSearch clause that scopes a query to a namespace prefix.
  *
  * Namespaces are indexed as a single TEXT field, so the clause has to carry the
- * tokens of every label: dropping one widens the match to unrelated
- * namespaces. RediSearch tokenizes on punctuation, which is why labels are also
- * split on `.` and `-`.
+ * tokens of every label: dropping one widens the match to unrelated namespaces.
+ * Only terms the indexer could have produced are emitted, never raw label text.
  *
  * @param namespacePrefix - Namespace labels to scope the query to
- * @returns The RediSearch clause, or `*` when the prefix is empty
+ * @returns The RediSearch clause, or `*` when the prefix carries no labels
  */
 export function buildNamespacePrefixQuery(namespacePrefix: string[]): string {
   const tokens = namespacePrefix
-    .flatMap((label) => label.split(/[.-]/))
+    .flatMap((label) => label.split(REDISEARCH_TEXT_PUNCTUATION))
     .filter((token) => token.length > 0);
 
-  if (tokens.length === 0) {
+  if (tokens.length > 0) {
+    return `@prefix:(${tokens.join(" ")})`;
+  }
+
+  if (namespacePrefix.every((label) => label.length === 0)) {
     return "*";
   }
 
-  return `@prefix:(${tokens.join(" ")})`;
+  // A label made only of punctuation indexes no term, so no document can match
+  // it. Escaping keeps the clause parseable instead of falling back to `*`,
+  // which would widen the search to every namespace.
+  const escaped = namespacePrefix.map((label) =>
+    escapeRediSearchTagValue(label)
+  );
+
+  return `@prefix:(${escaped.join(" ")})`;
 }
 
 /**

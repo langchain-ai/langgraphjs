@@ -226,9 +226,48 @@ describe("buildNamespacePrefixQuery", () => {
     expect(buildNamespacePrefixQuery(["acme-corp"])).toBe(
       "@prefix:(acme corp)"
     );
+    expect(buildNamespacePrefixQuery(["user:123"])).toBe("@prefix:(user 123)");
+    expect(buildNamespacePrefixQuery(["team a", "docs"])).toBe(
+      "@prefix:(team a docs)"
+    );
   });
 
   it("should ignore empty tokens", () => {
     expect(buildNamespacePrefixQuery(["docs", ""])).toBe("@prefix:(docs)");
+  });
+
+  it("should match every document when every label is empty", () => {
+    expect(buildNamespacePrefixQuery(["", ""])).toBe("*");
+  });
+
+  it("should not let a label break out of the prefix clause", () => {
+    const query = buildNamespacePrefixQuery([
+      "tenant",
+      "acme) | @prefix:(victim",
+    ]);
+
+    expect(query).toBe("@prefix:(tenant acme prefix victim)");
+  });
+
+  it("should only emit terms the indexer could have produced", () => {
+    const query = buildNamespacePrefixQuery([
+      "a)b",
+      "c|d",
+      "e*f",
+      "g{h",
+      "i?j",
+      "k\\l",
+    ]);
+    const terms = query.slice("@prefix:(".length, -1).split(" ");
+
+    expect(terms).toEqual(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"]);
+    expect(terms.every((term) => /^[^\s]+$/.test(term))).toBe(true);
+  });
+
+  it("should not widen to every namespace when a label has no index terms", () => {
+    const query = buildNamespacePrefixQuery(["::"]);
+
+    expect(query).not.toBe("*");
+    expect(query.slice("@prefix:(".length, -1)).toBe("\\:\\:");
   });
 });
