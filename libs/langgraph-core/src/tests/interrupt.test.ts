@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod/v4";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
-import { toJsonSchema } from "@langchain/core/utils/json_schema";
+import {
+  type JSONSchema,
+  toJsonSchema,
+} from "@langchain/core/utils/json_schema";
 import {
   Annotation,
   Command,
@@ -15,7 +18,7 @@ const State = Annotation.Root({
   answer: Annotation<unknown>(),
 });
 
-const RAW_SCHEMA = {
+const RAW_SCHEMA: JSONSchema = {
   type: "object",
   properties: { approved: { type: "boolean" } },
 };
@@ -62,19 +65,27 @@ describe("interrupt responseSchema", () => {
     }
   );
 
-  it("rejects a resume value that does not match a zod responseSchema", async () => {
-    const graph = buildGraph(ZOD_SCHEMA);
-    const config = { configurable: { thread_id: "1" } };
-    await graph.invoke({ answer: null }, config);
+  it.each(["null", "map"] as const)(
+    "rejects a %s resume that does not match a zod responseSchema, then accepts a corrected one",
+    async (resumeStyle) => {
+      const graph = buildGraph(ZOD_SCHEMA);
+      const config = { configurable: { thread_id: "1" } };
+      await graph.invoke({ answer: null }, config);
+      const [pending] = (await graph.getState(config)).tasks[0].interrupts;
+      const resume = (value: unknown) =>
+        new Command({
+          resume: resumeStyle === "null" ? value : { [pending.id ?? ""]: value },
+        });
 
-    await expect(
-      graph.invoke(new Command({ resume: { approved: "nope" } }), config)
-    ).rejects.toMatchObject({
-      issues: [expect.objectContaining({ path: ["approved"] })],
-    });
+      await expect(
+        graph.invoke(resume({ approved: "nope" }), config)
+      ).rejects.toMatchObject({
+        issues: [expect.objectContaining({ path: ["approved"] })],
+      });
 
-    await expect(
-      graph.invoke(new Command({ resume: { approved: false } }), config)
-    ).resolves.toEqual({ answer: { approved: false, note: "" } });
-  });
+      await expect(
+        graph.invoke(resume({ approved: false }), config)
+      ).resolves.toEqual({ answer: { approved: false, note: "" } });
+    }
+  );
 });
