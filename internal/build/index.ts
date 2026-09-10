@@ -1,5 +1,6 @@
-import { resolve, extname } from "node:path";
+import { resolve, extname, basename, dirname, join } from "node:path";
 import { existsSync } from "node:fs";
+import { readdir, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, type Format, type UserConfig } from "tsdown";
@@ -142,6 +143,55 @@ async function buildProject(
     ...buildChecks,
     ...packageConfig,
   });
+
+  await declareBundledChunkScopes(path, pkg);
+}
+
+/**
+ * `noExternal` dependencies are emitted as chunks under a virtual
+ * `dist/node_modules` tree with no package.json of their own. Node stops its
+ * package scope lookup at a `node_modules` segment, so those `.js` chunks fall
+ * outside the package's `"type": "module"` scope and are parsed as CommonJS on
+ * Node versions without module syntax detection (< 22.7).
+ */
+async function declareBundledChunkScopes(path: string, pkg: PackageJson) {
+  if (pkg.type !== "module") return;
+  const bundledRoot = resolve(path, "dist", "node_modules");
+  if (!existsSync(bundledRoot)) return;
+
+  const scopeRoots = new Set<string>();
+  for (const chunkDir of await collectChunkDirs(bundledRoot)) {
+    let dir = chunkDir;
+    while (dir !== bundledRoot && basename(dirname(dir)) !== "node_modules") {
+      dir = dirname(dir);
+    }
+    // Node never reads a package.json sitting in a node_modules directory
+    // itself, so a chunk at the tree root cannot be given a scope.
+    if (dir !== bundledRoot) scopeRoots.add(dir);
+  }
+
+  await Promise.all(
+    [...scopeRoots]
+      .map((dir) => join(dir, "package.json"))
+      .filter((file) => !existsSync(file))
+      .map((file) => writeFile(file, '{"type":"module"}\n'))
+  );
+}
+
+/**
+ * Directories under `dir` that directly contain a `.js` chunk.
+ */
+async function collectChunkDirs(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const found = entries.some((e) => e.isFile() && e.name.endsWith(".js"))
+    ? [dir]
+    : [];
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      found.push(...(await collectChunkDirs(join(dir, entry.name))));
+    }
+  }
+  return found;
 }
 
 const PACKAGE_CONFIG_FILES = [
