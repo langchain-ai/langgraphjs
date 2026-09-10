@@ -16,6 +16,12 @@ describe("validateNamespace", () => {
     );
   });
 
+  it("rejects labels containing the namespace separator", () => {
+    expect(() => validateNamespace(["tenant:a"])).toThrow(
+      /cannot contain colons/
+    );
+  });
+
   it("rejects labels containing periods", () => {
     expect(() => validateNamespace(["a.b"])).toThrow(/cannot contain periods/);
   });
@@ -26,11 +32,6 @@ describe("validateNamespace", () => {
     );
   });
 
-  // The block below covers the LIKE-wildcard cross-namespace leak. Search
-  // operations match via `namespace_path LIKE ${prefix}%` (bound parameter),
-  // and `%` / `_` / `\` in caller-supplied labels are still interpreted as
-  // LIKE wildcards / escapes by Postgres regardless of binding. A namespace
-  // prefix of `["%"]` would otherwise match every namespace in the store.
   describe("LIKE wildcard / escape character rejection", () => {
     it.each([
       ["%"],
@@ -47,9 +48,9 @@ describe("validateNamespace", () => {
     });
 
     it("does not reject benign characters that look similar", () => {
-      // colon is the namespace path separator, hyphen / digit / unicode are fine
+      // Hyphens, digits and Unicode are valid label characters.
       expect(() =>
-        validateNamespace(["tenant-1", "user:42", "プロジェクト"])
+        validateNamespace(["tenant-1", "user-42", "プロジェクト"])
       ).not.toThrow();
     });
   });

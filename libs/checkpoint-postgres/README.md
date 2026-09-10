@@ -134,3 +134,15 @@ const testCheckpointer = PostgresSaver.fromConnString(
   "postgresql://user:password@localhost:5434/testdb"
 );
 ```
+
+## Store namespaces
+
+`PostgresStore` matches namespace prefixes and suffixes by complete segments.
+For example, searching `["tenant", "a"]` includes that namespace and
+`["tenant", "a", "notes"]`, but excludes `["tenant", "ab"]`. The same boundary
+rules apply to `listNamespaces` prefix and suffix filters.
+
+Namespace labels cannot be empty or contain `.`, `:`, `%`, `_`, or `\`.
+The first segment cannot be `langgraph`. Nonempty listing filters are validated
+with these same rules; omitted or empty listing filters remain unrestricted.
+Colons separate stored segments and cannot be used inside an individual label.

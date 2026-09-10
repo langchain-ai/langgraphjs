@@ -22,6 +22,7 @@ import { DatabaseCore } from "./modules/database-core.js";
 import { VectorOperations } from "./modules/vector-operations.js";
 import { CrudOperations } from "./modules/crud-operations.js";
 import { SearchOperations } from "./modules/search-operations.js";
+import { namespaceMatchCondition, validateNamespace } from "./modules/utils.js";
 import { TTLManager } from "./modules/ttl-manager.js";
 import {
   getStoreMigrations,
@@ -329,17 +330,13 @@ export class PostgresStore extends BaseStore {
     // Add match conditions
     if (matchConditions && matchConditions.length > 0) {
       for (const condition of matchConditions) {
-        if (condition.matchType === "prefix") {
-          const prefix = condition.path.join(":");
-          conditions.push(`namespace_path LIKE $${paramIndex}`);
-          params.push(`${prefix}%`);
-          paramIndex += 1;
-        } else if (condition.matchType === "suffix") {
-          const suffix = condition.path.join(":");
-          conditions.push(`namespace_path LIKE $${paramIndex}`);
-          params.push(`%${suffix}`);
-          paramIndex += 1;
-        }
+        // An empty prefix/suffix is an unrestricted match, as before.
+        if (condition.path.length === 0) continue;
+        validateNamespace(condition.path);
+        conditions.push(
+          namespaceMatchCondition(condition.path, condition.matchType, params)
+        );
+        paramIndex = params.length + 1;
       }
     }
 

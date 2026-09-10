@@ -1,14 +1,6 @@
 /**
- * Characters interpreted as wildcards (or escape) by Postgres `LIKE` patterns.
- * Search operations match namespaces via `namespace_path LIKE ${prefix}%`, so
- * any of these in a caller-supplied label silently changes the prefix match
- * into a glob. A namespace prefix of `["%"]` would match every namespace in
- * the store, exposing data across tenants. CWE-1336 / CWE-943.
- *
- * Equality-path operations (get / put / delete) use `namespace_path = $1` and
- * are safe on their own, but we reject these characters everywhere to keep the
- * Store API consistent (data written under such a namespace would never be
- * reachable via search anyway).
+ * Reject LIKE metacharacters consistently across reads, writes and list filters.
+ * Pattern construction also escapes them as a defense in depth.
  */
 const LIKE_RESERVED_PATTERN = /[%_\\]/;
 
@@ -33,6 +25,11 @@ export function validateNamespace(namespace: string[]): void {
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
       );
     }
+    if (label.includes(":")) {
+      throw new Error(
+        `Invalid namespace label '${label}'. Namespace labels cannot contain colons (':').`
+      );
+    }
     if (label === "") {
       throw new Error(
         `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
@@ -52,4 +49,22 @@ export function validateNamespace(namespace: string[]): void {
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );
   }
+}
+
+/** Match an exact path or a prefix/suffix ending at a segment boundary. */
+export function namespaceMatchCondition(
+  namespace: string[],
+  matchType: "prefix" | "suffix",
+  params: unknown[],
+  column: "namespace_path" | "s.namespace_path" = "namespace_path"
+): string {
+  const path = namespace.join(":");
+  // Escape independently of validation so LIKE never interprets label contents.
+  const escapedPath = path.replace(/[%_\\]/g, "\\$&");
+  const paramIndex = params.length + 1;
+  params.push(
+    path,
+    matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
+  );
+  return `(${column} = $${paramIndex} OR ${column} LIKE $${paramIndex + 1} ESCAPE E'\\\\')`;
 }
