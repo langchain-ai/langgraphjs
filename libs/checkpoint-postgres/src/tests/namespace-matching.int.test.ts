@@ -21,6 +21,8 @@ const namespaces = [
   ["users", "alice"],
   ["users", "malice"],
   ["users", "alice2"],
+  ["tenant", "langgraph"],
+  ["tenant", "mylanggraph"],
   ["tenant", "a", "alice"],
   ["tenant", "ab", "alice"],
 ];
@@ -91,6 +93,14 @@ describe("namespace isolation", () => {
     expect(await store.listNamespaces({ prefix: [], suffix: [] })).toHaveLength(
       namespaces.length
     );
+  });
+  it("allows a reserved root label in a suffix, but not a prefix", async () => {
+    expect(await store.listNamespaces({ suffix: ["langgraph"] })).toEqual([
+      ["tenant", "langgraph"],
+    ]);
+    await expect(
+      store.listNamespaces({ prefix: ["langgraph"] })
+    ).rejects.toThrow(/Root label/);
   });
   it("rejects wildcard and separator labels on public read and write paths", async () => {
     for (const label of ["%", "_", "\\", "tenant:a"]) {

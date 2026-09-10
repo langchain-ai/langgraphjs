@@ -143,6 +143,7 @@ For example, searching `["tenant", "a"]` includes that namespace and
 rules apply to `listNamespaces` prefix and suffix filters.
 
 Namespace labels cannot be empty or contain `.`, `:`, `%`, `_`, or `\`.
-The first segment cannot be `langgraph`. Nonempty listing filters are validated
+The root segment cannot be `langgraph`; suffix filters may contain this label
+because they need not start at the root. Nonempty listing filters are validated
 with these same rules; omitted or empty listing filters remain unrestricted.
 Colons separate stored segments and cannot be used inside an individual label.

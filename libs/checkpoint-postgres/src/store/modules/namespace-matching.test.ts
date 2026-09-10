@@ -107,6 +107,27 @@ describe("namespace query boundaries", () => {
     await store.stop();
   });
 
+  it("allows a reserved root label only in suffix filters", async () => {
+    vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(
+      async () => client
+    );
+    const store = new PostgresStore({
+      connectionOptions: {},
+      ensureTables: false,
+    });
+    await store.listNamespaces({ suffix: ["langgraph"] });
+    expect(query.mock.calls[0][1]).toEqual([
+      "langgraph",
+      "%:langgraph",
+      100,
+      0,
+    ]);
+    await expect(
+      store.listNamespaces({ prefix: ["langgraph"] })
+    ).rejects.toThrow(/Root label/);
+    await store.stop();
+  });
+
   it.each(["prefix", "suffix"] as const)(
     "validates list %s labels",
     async (arm) => {

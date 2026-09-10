@@ -7,9 +7,13 @@ const LIKE_RESERVED_PATTERN = /[%_\\]/;
 /**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
+ * @param options Whether the path starts at the namespace root (false for suffixes).
  * @throws {Error} If the namespace is invalid.
  */
-export function validateNamespace(namespace: string[]): void {
+export function validateNamespace(
+  namespace: string[],
+  { isRoot = true }: { isRoot?: boolean } = {}
+): void {
   if (namespace.length === 0) {
     throw new Error("Namespace cannot be empty.");
   }
@@ -44,7 +48,7 @@ export function validateNamespace(namespace: string[]): void {
       );
     }
   }
-  if (namespace[0] === "langgraph") {
+  if (isRoot && namespace[0] === "langgraph") {
     throw new Error(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );

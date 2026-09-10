@@ -332,7 +332,9 @@ export class PostgresStore extends BaseStore {
       for (const condition of matchConditions) {
         // An empty prefix/suffix is an unrestricted match, as before.
         if (condition.path.length === 0) continue;
-        validateNamespace(condition.path);
+        validateNamespace(condition.path, {
+          isRoot: condition.matchType === "prefix",
+        });
         conditions.push(
           namespaceMatchCondition(condition.path, condition.matchType, params)
         );
