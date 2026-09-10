@@ -1,5 +1,11 @@
 # @langchain/langgraph-ui
 
+## 1.4.6-rc.0
+
+No changes in this release.
+
+## 1.4.5
+
 ## 1.4.4
 
 ### Patch Changes

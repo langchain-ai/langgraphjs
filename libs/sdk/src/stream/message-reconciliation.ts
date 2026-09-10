@@ -29,7 +29,8 @@ export interface ReconcileMessagesFromValuesOptions {
   /**
    * Allows callers to keep a values message even when a streamed message with
    * the same id exists. Used by the root controller when the values message
-   * carries finalized tool-call data missing from the streamed message.
+   * carries data the current copy lacks (finalized tool calls, or
+   * same-content metadata such as committed `additional_kwargs`).
    */
   readonly preferValuesMessage?: (
     valuesMessage: BaseMessage,
@@ -55,9 +56,11 @@ export interface ReconciledMessages {
  * message projection.
  *
  * Values remain authoritative for ordering and removals. Streamed messages
- * remain authoritative for in-flight content until the server echoes them in a
- * values snapshot, and stream-only messages are preserved until they either
- * appear in values or are known to have been removed.
+ * remain authoritative for in-flight content that has moved past this
+ * snapshot. When the server echoes a same-id message with equal content
+ * plus enrichment (tool calls, `additional_kwargs`, …), values win.
+ * Stream-only messages are preserved until they either appear in values
+ * or are known to have been removed.
  */
 export function reconcileMessagesFromValues({
   valueMessages,
@@ -130,6 +133,209 @@ export function buildMessageIndex(
     if (id != null) index.set(id, idx);
   });
   return index;
+}
+
+/**
+ * Decide whether a values message should replace a same-id streamed or
+ * optimistic message.
+ *
+ * Values win when they carry data the current copy lacks:
+ *   - finalized tool-call args (see
+ *     {@link shouldPreferValuesMessageForToolCalls})
+ *   - metadata enrichment or in-place nested metadata mutations with
+ *     unchanged content (e.g. server-committed `additional_kwargs`, or
+ *     `response_metadata.card.status` updating from `accepted` → `done`)
+ *
+ * Preferring is asymmetric: a lagging/poorer values snapshot must not
+ * replace a richer current copy (seeded `getState()` metadata, messages-
+ * channel `usage_metadata`, etc.) merely because the two messages differ.
+ * Values that would drop nested metadata keys keep the current copy.
+ *
+ * In-place leaf mutations are only applied when
+ * {@link ShouldPreferValuesMessageOptions.allowInPlaceMutations} is true
+ * (the default). Callers pass `false` for stale/`addOnly` reconnect
+ * snapshots so an older `accepted` card cannot overwrite a newer `done`.
+ *
+ * Streamed content still wins when it has moved past this snapshot, so
+ * in-flight token streaming is not overwritten by a lagging values event.
+ */
+export interface ShouldPreferValuesMessageOptions {
+  /**
+   * When false, only prefer values for key-adding enrichment (or filling
+   * empty metadata), not for same-key nested leaf mutations. Used for
+   * lagging reconnect/`addOnly` snapshots.
+   *
+   * @default true
+   */
+  readonly allowInPlaceMutations?: boolean;
+}
+
+export function shouldPreferValuesMessage(
+  valuesMessage: BaseMessage,
+  streamedMessage: BaseMessage,
+  options?: ShouldPreferValuesMessageOptions
+): boolean {
+  if (shouldPreferValuesMessageForToolCalls(valuesMessage, streamedMessage)) {
+    return true;
+  }
+  if (!jsonishEqual(valuesMessage.content, streamedMessage.content)) {
+    return false;
+  }
+  return valuesAddsMetadataEnrichment(valuesMessage, streamedMessage, options);
+}
+
+/** Metadata fields that a values echo may enrich on a same-id message. */
+const METADATA_ENRICHMENT_KEYS = [
+  "additional_kwargs",
+  "response_metadata",
+  "usage_metadata",
+] as const;
+
+/**
+ * True when values adds or mutates metadata without stripping richer
+ * fields already present on the current copy.
+ *
+ * Covers both key additions (optimistic human gaining
+ * `additional_kwargs.attachments`) and — when
+ * `allowInPlaceMutations` is true — in-place nested mutations of
+ * existing keys (HITL card `status: accepted → done`) as long as every
+ * nested key on the current field is retained.
+ */
+function valuesAddsMetadataEnrichment(
+  valuesMessage: BaseMessage,
+  streamedMessage: BaseMessage,
+  options?: ShouldPreferValuesMessageOptions
+): boolean {
+  const allowInPlaceMutations = options?.allowInPlaceMutations !== false;
+  const valuesRecord = valuesMessage as unknown as Record<string, unknown>;
+  const streamedRecord = streamedMessage as unknown as Record<string, unknown>;
+
+  let enriches = false;
+  for (const key of METADATA_ENRICHMENT_KEYS) {
+    const valuesField = valuesRecord[key];
+    const streamedField = streamedRecord[key];
+    if (jsonishEqual(valuesField, streamedField)) continue;
+
+    const valuesEmpty = isEmptyMeta(valuesField);
+    const streamedEmpty = isEmptyMeta(streamedField);
+
+    if (valuesEmpty && !streamedEmpty) {
+      // Preferring values would erase richer current metadata.
+      return false;
+    }
+    if (!valuesEmpty && streamedEmpty) {
+      enriches = true;
+      continue;
+    }
+    // Both non-empty and differ.
+    if (allowInPlaceMutations) {
+      // Prefer values when it retains every nested key (leaf mutations
+      // and added keys allowed). Dropping keys would erase richer
+      // current metadata — keep the current copy.
+      if (retainsAllNestedKeys(valuesField, streamedField)) {
+        enriches = true;
+        continue;
+      }
+      return false;
+    }
+    // Stale/addOnly snapshots: only treat as enrichment when values is
+    // a shallow key-superset with equal existing values. Same-key leaf
+    // mutations must not roll current metadata backward.
+    if (isObjectShallowSuperset(valuesField, streamedField)) {
+      enriches = true;
+      continue;
+    }
+    return false;
+  }
+  return enriches;
+}
+
+function isEmptyMeta(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string") return value.length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length === 0;
+  }
+  return false;
+}
+
+/**
+ * True when `candidate` is a shallow object superset of `baseline`:
+ * every baseline key is present with an equal value, and candidate has
+ * at least one extra key.
+ */
+function isObjectShallowSuperset(
+  candidate: unknown,
+  baseline: unknown
+): boolean {
+  if (
+    candidate == null ||
+    baseline == null ||
+    typeof candidate !== "object" ||
+    typeof baseline !== "object" ||
+    Array.isArray(candidate) ||
+    Array.isArray(baseline)
+  ) {
+    return false;
+  }
+  const candidateRecord = candidate as Record<string, unknown>;
+  const baselineRecord = baseline as Record<string, unknown>;
+  const baselineKeys = Object.keys(baselineRecord);
+  const candidateKeys = Object.keys(candidateRecord);
+  if (candidateKeys.length <= baselineKeys.length) return false;
+  for (const key of baselineKeys) {
+    if (!Object.prototype.hasOwnProperty.call(candidateRecord, key)) {
+      return false;
+    }
+    if (!jsonishEqual(candidateRecord[key], baselineRecord[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * True when `candidate` retains every nested key present on `baseline`.
+ * Nested leaf values may differ (in-place mutations); missing keys mean
+ * preferring candidate would erase richer current metadata.
+ */
+function retainsAllNestedKeys(candidate: unknown, baseline: unknown): boolean {
+  if (baseline == null || typeof baseline !== "object") {
+    // Leaf baseline — candidate may replace the value in place.
+    return true;
+  }
+  if (
+    candidate == null ||
+    typeof candidate !== "object" ||
+    Array.isArray(baseline) !== Array.isArray(candidate)
+  ) {
+    return false;
+  }
+
+  if (Array.isArray(baseline)) {
+    const candidateArr = candidate as unknown[];
+    const baselineArr = baseline as unknown[];
+    if (candidateArr.length < baselineArr.length) return false;
+    for (let i = 0; i < baselineArr.length; i += 1) {
+      if (!retainsAllNestedKeys(candidateArr[i], baselineArr[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const candidateRecord = candidate as Record<string, unknown>;
+  const baselineRecord = baseline as Record<string, unknown>;
+  for (const key of Object.keys(baselineRecord)) {
+    if (!Object.prototype.hasOwnProperty.call(candidateRecord, key)) {
+      return false;
+    }
+    if (!retainsAllNestedKeys(candidateRecord[key], baselineRecord[key])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

@@ -90,6 +90,7 @@ export class RunsClient<
       interrupt_before: payload?.interruptBefore,
       interrupt_after: payload?.interruptAfter,
       checkpoint: payload?.checkpoint,
+      checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,

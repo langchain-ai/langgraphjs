@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import {
   buildMessageIndex,
   reconcileMessagesFromValues,
+  shouldPreferValuesMessage,
   shouldPreferValuesMessageForToolCalls,
 } from "./message-reconciliation.js";
 
@@ -87,6 +88,90 @@ describe("reconcileMessagesFromValues", () => {
     expect(result.valueMessageIds).toEqual(new Set());
   });
 
+  it("prefers the values human when it carries additional_kwargs the optimistic copy lacks", () => {
+    const optimistic = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+    });
+    const echoed = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+      additional_kwargs: {
+        attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+      },
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [echoed],
+      currentMessages: [optimistic],
+      currentIndexById: buildMessageIndex([optimistic]),
+      previousValueMessageIds: new Set(),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([echoed]);
+    expect(
+      (result.messages[0] as HumanMessage).additional_kwargs.attachments
+    ).toEqual([{ filename: "notes.pdf", path: "uploads/notes.pdf" }]);
+  });
+
+  it("keeps richer current metadata when a lagging values snapshot omits it", () => {
+    const seeded = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+      additional_kwargs: {
+        attachments: [{ filename: "notes.pdf", path: "uploads/notes.pdf" }],
+      },
+    });
+    const lagging = new HumanMessage({
+      id: "human-1",
+      content: "see attached",
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [lagging],
+      currentMessages: [seeded],
+      currentIndexById: buildMessageIndex([seeded]),
+      previousValueMessageIds: new Set(["human-1"]),
+      preferValuesMessage: shouldPreferValuesMessage,
+      addOnly: true,
+    });
+
+    expect(result.messages).toEqual([seeded]);
+    expect(
+      (result.messages[0] as HumanMessage).additional_kwargs.attachments
+    ).toEqual([{ filename: "notes.pdf", path: "uploads/notes.pdf" }]);
+  });
+
+  it("keeps streamed usage_metadata when the values snapshot omits it", () => {
+    const streamed = new AIMessage({
+      id: "assistant-1",
+      content: "done",
+      usage_metadata: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+      },
+    });
+    const values = new AIMessage({
+      id: "assistant-1",
+      content: "done",
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [values],
+      currentMessages: [streamed],
+      currentIndexById: buildMessageIndex([streamed]),
+      previousValueMessageIds: new Set(),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([streamed]);
+    expect(
+      (result.messages[0] as AIMessage).usage_metadata?.total_tokens
+    ).toBe(15);
+  });
+
   it("can prefer values messages when they contain finalized tool calls", () => {
     const streamed = new AIMessage({
       id: "assistant-1",
@@ -109,6 +194,28 @@ describe("reconcileMessagesFromValues", () => {
     expect(result.messages).toEqual([values]);
   });
 
+  it("keeps streamed content when it has moved past a lagging values snapshot", () => {
+    const streamed = new AIMessage({
+      id: "assistant-1",
+      content: "streamed partial extra",
+    });
+    const values = new AIMessage({
+      id: "assistant-1",
+      content: "streamed partial",
+      additional_kwargs: { usage: { tokens: 1 } },
+    });
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [values],
+      currentMessages: [streamed],
+      currentIndexById: buildMessageIndex([streamed]),
+      previousValueMessageIds: new Set(),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([streamed]);
+  });
+
   it("keeps the current array identity when reconciliation is unchanged", () => {
     const current = [new HumanMessage({ id: "human-1", content: "hello" })];
 
@@ -120,5 +227,129 @@ describe("reconcileMessagesFromValues", () => {
     });
 
     expect(result.messages).toBe(current);
+  });
+
+  it("prefers values when response_metadata mutates nested fields in place", () => {
+    // Customer flow: HITL card status accepted → done on the same message id.
+    // Content is unchanged; only nested response_metadata.card.status updates.
+    const accepted = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "accepted" },
+      },
+    });
+    const done = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+
+    expect(shouldPreferValuesMessage(done, accepted)).toBe(true);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [done],
+      currentMessages: [accepted],
+      currentIndexById: buildMessageIndex([accepted]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([done]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status
+    ).toBe("done");
+  });
+
+  it("does not prefer stale leaf mutations when allowInPlaceMutations is false", () => {
+    // Reconnect/addOnly: seeded current has done; lagging values still
+    // says accepted. Must keep current — not roll status backward.
+    const done = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+    const accepted = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "accepted" },
+      },
+    });
+
+    expect(
+      shouldPreferValuesMessage(accepted, done, {
+        allowInPlaceMutations: false,
+      })
+    ).toBe(false);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [accepted],
+      currentMessages: [done],
+      currentIndexById: buildMessageIndex([done]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: (valuesMessage, streamedMessage) =>
+        shouldPreferValuesMessage(valuesMessage, streamedMessage, {
+          allowInPlaceMutations: false,
+        }),
+      addOnly: true,
+    });
+
+    expect(result.messages).toEqual([done]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { status: string };
+        }
+      ).card.status
+    ).toBe("done");
+  });
+
+  it("still keeps richer current metadata when values would drop nested keys", () => {
+    const richer = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: {
+          action: "confirm",
+          status: "accepted",
+          detail: "keep me",
+        },
+      },
+    });
+    const poorer = new AIMessage({
+      id: "assistant-1",
+      content: "Please confirm",
+      response_metadata: {
+        card: { action: "confirm", status: "done" },
+      },
+    });
+
+    expect(shouldPreferValuesMessage(poorer, richer)).toBe(false);
+
+    const result = reconcileMessagesFromValues({
+      valueMessages: [poorer],
+      currentMessages: [richer],
+      currentIndexById: buildMessageIndex([richer]),
+      previousValueMessageIds: new Set(["assistant-1"]),
+      preferValuesMessage: shouldPreferValuesMessage,
+    });
+
+    expect(result.messages).toEqual([richer]);
+    expect(
+      (
+        (result.messages[0] as AIMessage).response_metadata as {
+          card: { detail: string };
+        }
+      ).card.detail
+    ).toBe("keep me");
   });
 });

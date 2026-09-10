@@ -2813,14 +2813,29 @@ function _excludeAsMetadata(key: string, value: unknown): boolean {
 }
 
 function _getTracingMetadataDefaults(
-  config: RunnableConfig
+  config: LangGraphRunnableConfig
 ): Record<string, unknown> | undefined {
   const configurable = config.configurable;
   if (!configurable) {
     return undefined;
   }
+  const context = config.context;
   const metadata: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(configurable)) {
+    const isContextAlias =
+      context != null &&
+      Object.prototype.hasOwnProperty.call(context, key) &&
+      Object.is(context[key], value);
+    if (isContextAlias) {
+      // `LangChainTracer` inherits tracing metadata first-wins, so an
+      // `undefined` marker here also stops `@langchain/core` from
+      // re-promoting this configurable entry on child (task/node) runs.
+      // `undefined` is dropped when the run is serialized.
+      if (!key.startsWith("__")) {
+        metadata[key] = undefined;
+      }
+      continue;
+    }
     if (_excludeAsMetadata(key, value)) {
       continue;
     }

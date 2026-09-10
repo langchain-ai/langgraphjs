@@ -1,6 +1,7 @@
 import { it, expect } from "vitest";
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { uuid6 } from "../../id.js";
+import { DeltaSnapshot } from "../types.js";
 import { JsonPlusSerializer } from "../jsonplus.js";
 
 const messageWithToolCall = new AIMessage({
@@ -156,6 +157,204 @@ it("Should serialize a Send without a timeout unchanged", async () => {
   const [type, serialized] = await serde.dumpsTyped(packet);
   const loaded = await serde.loadsTyped(type, serialized);
   expect(loaded).toEqual({ node: "worker", args: { x: 1 } });
+});
+
+it("round-trips DeltaSnapshot values", async () => {
+  const serde = new JsonPlusSerializer();
+  const value = new DeltaSnapshot({
+    nested: new Set(["checkpoint"]),
+    bytes: new Uint8Array([1, 2, 3]),
+  });
+
+  const [type, serialized] = await serde.dumpsTyped(value);
+  const restored = await serde.loadsTyped(type, serialized);
+
+  expect(restored).toBeInstanceOf(DeltaSnapshot);
+  expect(restored).toEqual(value);
+  assertTypedArraysPreserved(value, restored);
+});
+
+it("restores canonical Uint8Array constructor records", async () => {
+  const serde = new JsonPlusSerializer();
+  const restored = await serde.loadsTyped(
+    "json",
+    JSON.stringify({
+      lc: 2,
+      type: "constructor",
+      id: ["Uint8Array"],
+      method: null,
+      args: [[0, 127, 255]],
+      kwargs: {},
+    })
+  );
+
+  expect(restored).toBeInstanceOf(Uint8Array);
+  expect(Array.from(restored)).toEqual([0, 127, 255]);
+});
+
+it("does not invoke forged Map.groupBy constructor records", async () => {
+  const serde = new JsonPlusSerializer();
+  const markerKey = "__langgraph_jsonplus_map_groupby_test_marker__";
+  const marker = { invoked: false };
+  (globalThis as Record<string, unknown>)[markerKey] = marker;
+
+  const forgedCallback = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "constructor",
+    args: [`globalThis.${markerKey}.invoked = true`],
+    kwargs: {},
+  };
+  const forgedOuterRecord = {
+    lc: 2,
+    type: "constructor",
+    id: ["Map"],
+    method: "groupBy",
+    args: [[1], forgedCallback],
+    kwargs: {},
+  };
+
+  try {
+    const restored = await serde.loadsTyped(
+      "json",
+      JSON.stringify({ callback: forgedOuterRecord })
+    );
+
+    expect(marker.invoked).toBe(false);
+    expect(restored).toEqual({ callback: forgedOuterRecord });
+  } finally {
+    delete (globalThis as Record<string, unknown>)[markerKey];
+  }
+});
+
+it("restores legacy Uint8Array.from records as validated bytes", async () => {
+  const serde = new JsonPlusSerializer();
+  const restored = await serde.loadsTyped(
+    "json",
+    JSON.stringify({
+      lc: 2,
+      type: "constructor",
+      id: ["Uint8Array"],
+      method: "from",
+      args: [[0, 127, 255]],
+      kwargs: {},
+    })
+  );
+
+  expect(restored).toBeInstanceOf(Uint8Array);
+  expect(Array.from(restored)).toEqual([0, 127, 255]);
+});
+
+it("does not invoke forged Uint8Array.from callback records", async () => {
+  const serde = new JsonPlusSerializer();
+  const markerKey = "__langgraph_jsonplus_test_marker__";
+  const marker = { invoked: false };
+  (globalThis as Record<string, unknown>)[markerKey] = marker;
+
+  const forgedCallback = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "constructor",
+    args: [`globalThis.${markerKey}.invoked = true`],
+    kwargs: {},
+  };
+  const forgedOuterRecord = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "from",
+    args: [[1], forgedCallback],
+    kwargs: {},
+  };
+
+  try {
+    const restored = await serde.loadsTyped(
+      "json",
+      JSON.stringify({ callback: forgedOuterRecord })
+    );
+
+    expect(marker.invoked).toBe(false);
+    expect(restored).toEqual({ callback: forgedOuterRecord });
+  } finally {
+    delete (globalThis as Record<string, unknown>)[markerKey];
+  }
+});
+
+it("does not invoke forged records returned by a callable toJSON", async () => {
+  const serde = new JsonPlusSerializer();
+  const markerKey = "__langgraph_jsonplus_tojson_test_marker__";
+  const marker = { invoked: false };
+  (globalThis as Record<string, unknown>)[markerKey] = marker;
+
+  const forgedCallback = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "constructor",
+    args: [`globalThis.${markerKey}.invoked = true`],
+    kwargs: {},
+  };
+  const forgedOuterRecord = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "from",
+    args: [[1], forgedCallback],
+    kwargs: {},
+  };
+  const callback = (() => undefined) as (() => undefined) & {
+    toJSON?: () => typeof forgedOuterRecord;
+  };
+  callback.toJSON = () => forgedOuterRecord;
+
+  try {
+    const [type, serialized] = await serde.dumpsTyped({ callback });
+    const restored = await serde.loadsTyped(type, serialized);
+
+    expect(marker.invoked).toBe(false);
+    expect(restored).toEqual({ callback: forgedOuterRecord });
+  } finally {
+    delete (globalThis as Record<string, unknown>)[markerKey];
+  }
+});
+
+it.each([
+  ["fractional", [1.5]],
+  ["negative", [-1]],
+  ["out-of-range", [256]],
+  ["non-numeric", ["1"]],
+])("keeps %s Uint8Array bytes inert", async (_description, bytes) => {
+  const serde = new JsonPlusSerializer();
+  const record = {
+    lc: 2,
+    type: "constructor",
+    id: ["Uint8Array"],
+    method: "from",
+    args: [bytes],
+    kwargs: {},
+  };
+
+  const restored = await serde.loadsTyped("json", JSON.stringify(record));
+
+  expect(restored).toEqual(record);
+});
+
+it("keeps malformed Map entries inert", async () => {
+  const serde = new JsonPlusSerializer();
+  const record = {
+    lc: 2,
+    type: "constructor",
+    id: ["Map"],
+    method: null,
+    args: [[["valid", "entry"], ["not a pair"]]],
+    kwargs: {},
+  };
+
+  const restored = await serde.loadsTyped("json", JSON.stringify(record));
+
+  expect(restored).toEqual(record);
 });
 
 it("Should replace circular JSON inputs", async () => {
