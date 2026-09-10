@@ -126,7 +126,7 @@ describe("namespace isolation", () => {
     ).rejects.toThrow(/Root label/);
   });
   it("rejects wildcard and separator labels on public read and write paths", async () => {
-    for (const label of ["%", "_", "\\", "tenant:a"]) {
+    for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
       await expect(store.listNamespaces({ prefix: [label] })).rejects.toThrow();
       await expect(store.listNamespaces({ suffix: [label] })).rejects.toThrow();
       await expect(store.search([label])).rejects.toThrow();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateNamespace } from "./utils.js";
+import { namespaceMatchCondition, validateNamespace } from "./utils.js";
 
 describe("validateNamespace", () => {
   it("accepts a simple, well-formed namespace", () => {
@@ -32,6 +32,15 @@ describe("validateNamespace", () => {
     );
   });
 
+  it("validates suffix labels without applying the reserved-root rule", () => {
+    expect(() =>
+      validateNamespace(["langgraph"], { isRoot: false })
+    ).not.toThrow();
+    for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
+      expect(() => validateNamespace([label], { isRoot: false })).toThrow();
+    }
+  });
+
   describe("LIKE wildcard / escape character rejection", () => {
     it.each([
       ["%"],
@@ -54,4 +63,15 @@ describe("validateNamespace", () => {
       ).not.toThrow();
     });
   });
+});
+
+it("escapes LIKE patterns independently of namespace validation", () => {
+  for (const matchType of ["prefix", "suffix"] as const) {
+    const params: unknown[] = [];
+    namespaceMatchCondition(["a%_\\b"], matchType, params);
+    expect(params).toEqual([
+      "a%_\\b",
+      matchType === "prefix" ? "a\\%\\_\\\\b:%" : "%:a\\%\\_\\\\b",
+    ]);
+  }
 });
