@@ -339,6 +339,9 @@ export interface Run {
   /** Run metadata */
   metadata: Metadata;
 
+  /** Optional stored run arguments, available when the server returns/selects kwargs. */
+  kwargs?: { input?: unknown; config?: Config };
+
   /** Strategy to handle concurrent runs on the same thread */
   multitask_strategy: Optional<MultitaskStrategy>;
 }

@@ -1067,6 +1067,120 @@ describe("StreamController", () => {
     await submitPromise;
   });
 
+  it("accepts queued runs via protocol without replacing the active stream", async () => {
+    const listeners = new Set<(event: Event) => void>();
+    let queuedStatus = "pending";
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn((listener: (event: Event) => void) => { listeners.add(listener); return () => listeners.delete(listener); }),
+      onError: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [], ordering: {},
+      submitRun: vi.fn(async (params: { multitaskStrategy?: string }) => ({ run_id: params.multitaskStrategy === "enqueue" ? "queued" : "active" })),
+      startLifecycleWatcher: vi.fn(),
+    } as unknown as ThreadStream;
+    const run = (id: string, status: string) => ({ run_id: id, thread_id: "thread", created_at: new Date().toISOString(), status });
+    const runs = {
+      create: vi.fn(async () => run("queued", "pending")),
+      list: vi.fn(async () => []),
+      get: vi.fn(async (_threadId: string, id: string) => run(id, queuedStatus)),
+      join: vi.fn(async () => undefined),
+      cancel: vi.fn(async () => undefined),
+    };
+    const client = { runs, threads: { getState: vi.fn(async () => ({ values: {}, tasks: [] })), stream: vi.fn(() => thread) } };
+    const onCreated = vi.fn();
+    const onCompleted = vi.fn();
+    const controller = new StreamController({ assistantId: "agent", client: client as never, serverQueue: runs as never, threadId: "thread", onCreated, onCompleted });
+    await controller.hydrationPromise;
+    const active = controller.submit({});
+    await waitForExpectation(() => expect(onCreated).toHaveBeenCalledWith({ runId: "active" }));
+    await controller.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+    expect(runs.create).not.toHaveBeenCalled();
+    expect(thread.submitRun).toHaveBeenCalledTimes(2);
+    expect(thread.close).not.toHaveBeenCalled();
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    for (const listener of listeners) listener(lifecycleEvent("completed", 20));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onCompleted).toHaveBeenCalledWith({ runId: "active", reason: "success" });
+    expect(controller.queueStore.getSnapshot()[0].runId).toBe("queued");
+    await active;
+    await waitForExpectation(() => expect(onCompleted).toHaveBeenCalledWith({ runId: "active", reason: "success" }));
+    queuedStatus = "success";
+    await waitForExpectation(() => expect(onCompleted).toHaveBeenCalledWith({ runId: "queued", reason: "success" }), 2000);
+    expect(thread.submitRun).toHaveBeenCalledTimes(2);
+    await controller.dispose();
+  });
+
+  it("tracks hydrated running A while B remains pending and stops only A", async () => {
+    const subscription = makePushableSubscription();
+    const listeners = new Set<(event: Event) => void>();
+    let status = "running";
+    const run = (id: string, value: string) => ({ run_id: id, status: value, created_at: new Date().toISOString() });
+    const runs = {
+      list: vi.fn(async (_id: string, options?: { status?: string }) => options?.status === "running" ? [run("A", status)] : [run("B", "pending")]),
+      get: vi.fn(async (_id: string, id: string) => run(id, id === "A" ? status : "pending")),
+      join: vi.fn(async () => undefined),
+      cancel: vi.fn(async () => undefined),
+      cancelMany: vi.fn(),
+    };
+    const thread = {
+      subscribe: vi.fn(async () => subscription),
+      onEvent: vi.fn((listener: (event: Event) => void) => { listeners.add(listener); return () => listeners.delete(listener); }),
+      onError: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => subscription.close()),
+      interrupts: [], ordering: {}, startLifecycleWatcher: vi.fn(),
+    };
+    const client = { threads: { getState: vi.fn(async () => ({ values: {}, next: [], tasks: [] })), stream: vi.fn(() => thread) } };
+    const onCompleted = vi.fn();
+    const controller = new StreamController({ assistantId: "agent", client: client as never, serverQueue: runs as never, threadId: "thread", onCompleted });
+    await controller.hydrationPromise;
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    expect(controller.queueStore.getSnapshot().map((entry) => entry.runId)).toEqual(["B"]);
+    await controller.stop();
+    expect(runs.cancel).toHaveBeenCalledExactlyOnceWith("thread", "A");
+    for (const listener of listeners) listener(lifecycleEvent("running", 10));
+    status = "success";
+    await waitForExpectation(() => expect(onCompleted).toHaveBeenCalledExactlyOnceWith({ runId: "A", reason: "success" }), 2000);
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+    subscription.push(lifecycleEvent("completed", 11));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(controller.queueStore.getSnapshot().map((entry) => entry.runId)).toEqual(["B"]);
+    await controller.dispose();
+  });
+
+  it("restores pending runs on reload, refreshes on reconnect, and detaches on thread switch", async () => {
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onEvent: vi.fn(() => vi.fn()), onError: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined), interrupts: [], ordering: {},
+      startLifecycleWatcher: vi.fn(),
+    } as unknown as ThreadStream;
+    const runs = {
+      list: vi.fn(async (threadId: string, options?: { status?: string }) => threadId === "original" && options?.status === "pending" ? [{ run_id: "restored", created_at: new Date().toISOString(), status: "pending" }] : []),
+      get: vi.fn(() => new Promise(() => undefined)),
+      cancel: vi.fn(), cancelMany: vi.fn(),
+    };
+    let reconnect!: (info: { attempt: number; cause: unknown }) => void;
+    const client = { runs, threads: {
+      getState: vi.fn(async () => ({ values: {}, next: [], tasks: [] })),
+      stream: vi.fn((_threadId: string, options: { onReconnect: typeof reconnect }) => { reconnect = options.onReconnect; return thread; }),
+    } };
+    const onReconnect = vi.fn();
+    const controller = new StreamController({ client: client as never, serverQueue: runs as never, assistantId: "agent", threadId: "original", onReconnect });
+    await controller.hydrationPromise;
+    expect(controller.queueStore.getSnapshot()[0]).toMatchObject({ id: "restored", runId: "restored", values: undefined });
+    expect(thread.startLifecycleWatcher).toHaveBeenCalled();
+    reconnect({ attempt: 1, cause: "offline" });
+    await waitForExpectation(() => expect(runs.list).toHaveBeenCalledTimes(4));
+    expect(onReconnect).toHaveBeenCalledWith({ attempt: 1, cause: "offline" });
+    await controller.hydrate("other");
+    expect(controller.queueStore.getSnapshot()).toEqual([]);
+    expect(runs.cancel).not.toHaveBeenCalled();
+    expect(runs.cancelMany).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
   it("does not hide the active run's interrupt when a follow-up submit is enqueued", async () => {
     const eventListeners = new Set<(event: Event) => void>();
     let resolveSubmit: (() => void) | undefined;
@@ -1083,7 +1197,8 @@ describe("StreamController", () => {
       close: vi.fn(async () => undefined),
       interrupts: [],
       ordering,
-      submitRun: vi.fn(async () => {
+      submitRun: vi.fn(async (params: { multitaskStrategy?: string }) => {
+        if (params.multitaskStrategy === "enqueue") return { run_id: "queued" };
         await new Promise<void>((resolve) => {
           resolveSubmit = resolve;
         });
@@ -1093,6 +1208,11 @@ describe("StreamController", () => {
       startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const client = {
+      runs: {
+        create: vi.fn(async () => ({ run_id: "queued", created_at: new Date().toISOString() })),
+        list: vi.fn(async () => []),
+        get: vi.fn(() => new Promise(() => undefined)),
+      },
       threads: {
         getState: vi.fn(async () => ({ values: {}, tasks: [] })),
         stream: vi.fn(() => thread),
@@ -1103,6 +1223,7 @@ describe("StreamController", () => {
     const controller = new StreamController<State, unknown>({
       assistantId: "human-in-the-loop",
       client: client as never,
+      serverQueue: client.runs as never,
       threadId: "thread-enqueue-interrupt",
       onCreated,
     });

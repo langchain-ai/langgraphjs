@@ -14,18 +14,7 @@ interface Props {
   assistantId?: string;
 }
 
-/**
- * Test harness for the client-side submission queue exposed via
- * {@link useSubmissionQueue}. Mirrors the legacy `QueueStream`
- * fixture 1:1 so the cut-over suite covers the same behaviours:
- * - entries accumulate when submitting with `multitaskStrategy:
- *   "enqueue"` while a run is in flight
- * - `entries` carry the original input payload so the UI can render
- *   pending submissions before they are dispatched
- * - `cancel(id)` / `clear()` remove pending entries
- * - `switchThread()` drops every queued entry (handled by
- *   controller re-bind).
- */
+/** Tests ordinary submits and explicit rejection on a protocol-only server. */
 export function QueueStream({
   apiUrl,
   assistantId = "slow_graph",
@@ -44,7 +33,7 @@ export function QueueStream({
     void stream.submit(
       { messages: [new HumanMessage(content)] },
       { multitaskStrategy: "enqueue" },
-    );
+    ).catch(() => undefined);
 
   return (
     <div>
@@ -60,6 +49,7 @@ export function QueueStream({
         ))}
       </div>
 
+      <div data-testid="queue-error">{String(stream.error ?? "")}</div>
       <div data-testid="queue-size">{queue.size}</div>
       <div data-testid="queue-entries">
         {queue.entries
@@ -71,7 +61,7 @@ export function QueueStream({
           .join(",")}
       </div>
 
-      <button data-testid="submit-first" onClick={() => submitEnqueue("Msg1")}>
+      <button data-testid="submit-first" onClick={() => void stream.submit({ messages: [new HumanMessage("Msg1")] })}>
         Submit First
       </button>
       <button

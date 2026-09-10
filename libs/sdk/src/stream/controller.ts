@@ -68,6 +68,7 @@ import {
   type MessageMetadata,
   type MessageMetadataMap,
 } from "./message-metadata-tracker.js";
+import { queueRuns } from "./server-queue.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import {
@@ -462,6 +463,7 @@ export class StreamController<
         this.#notifyCreated(runId);
       },
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
+      canClearLoading: () => !this.#lifecycleLoading.hasRunningAfterTerminal,
       onRunEnd: () => {
         // Stop buffering new events, but keep any already-queued
         // `input.requested` frames. A fast run can emit its interrupt
@@ -589,19 +591,12 @@ export class StreamController<
        * left `threadId` null while `messages` still showed the previous
        * conversation (`useStream` fire-and-forgets `hydrate()`).
        */
+      this.#submitter.detach();
       const teardown = this.#teardownThread();
       this.rootStore.setState(() => ({
         ...this.#createInitialSnapshot(),
         threadId: this.#currentThreadId,
       }));
-      /**
-       * Drop queued submissions — they were targeted at the previous
-       * thread so dispatching them against the new thread would be
-       * surprising. Mirrors the legacy `StreamOrchestrator` behaviour.
-       */
-      this.queueStore.setState(
-        () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
-      );
       await teardown;
     }
 
@@ -641,6 +636,8 @@ export class StreamController<
     let threadActive = true;
     try {
       const state = await this.#fetchHydrationState();
+      if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
+      await this.#submitter.hydrateQueue(hydratedThreadId);
       // The await above yields. If the thread id changed or was cleared while
       // we were suspended (host cleared it, hydrate(null), or the component
       // unmounted during navigation), this hydrate is stale: applying its
@@ -649,7 +646,10 @@ export class StreamController<
       // null. Bail before touching any state. Hydration is settled in finally.
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
-      threadActive = isThreadStateActive(state);
+      threadActive =
+        isThreadStateActive(state) ||
+        this.#submitter.queuedActiveRunId != null ||
+        this.queueStore.getSnapshot().length > 0;
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
@@ -1197,18 +1197,26 @@ export class StreamController<
    */
   async stop(options?: StreamStopOptions): Promise<void> {
     const shouldCancel = options?.cancel ?? true;
+    const stop = this.#submitter.stop();
     if (shouldCancel) {
       const threadId = this.#currentThreadId;
       const runId = this.#activeRunId;
-      if (threadId != null && runId != null) {
-        try {
+      try {
+        if (queueRuns(this.#options)) {
+          await this.#submitter.cancelRunning();
+        } else if (
+          threadId != null &&
+          runId != null &&
+          typeof this.#options.transport !== "object"
+        ) {
           await this.#options.client.runs.cancel(threadId, runId);
-        } catch {
-          /* server cancel failures must not block client disconnect */
         }
+      } catch {
+        await stop;
+        return;
       }
     }
-    await this.#submitter.stop();
+    await stop;
   }
 
   /**
@@ -1243,8 +1251,9 @@ export class StreamController<
     if (runId != null && runId === this.#activeRunId) {
       this.#activeRunId = undefined;
     }
+    const generation = this.#rootPumpGeneration;
     setTimeout(() => {
-      if (this.#disposed) return;
+      if (this.#disposed || generation !== this.#rootPumpGeneration) return;
       try {
         this.#options.onCompleted?.(
           runId == null ? { reason } : { runId, reason }
@@ -1259,6 +1268,7 @@ export class StreamController<
     if (this.#localRunDepth > 0) return;
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
+    if (queueRuns(this.#options)) return;
     if (!this.rootStore.getSnapshot().isLoading) return;
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
@@ -1268,24 +1278,12 @@ export class StreamController<
     this.#notifyCompleted(reason);
   };
 
-  /**
-   * Cancel a queued submission by id. Returns `true` when the entry
-   * was found and removed, `false` otherwise.
-   *
-   * Today this only removes the entry from the client-side mirror —
-   * once the server exposes queue cancel (roadmap A0.3) the
-   * controller will additionally issue a cancel call against the
-   * active transport.
-   *
-   * @param id - Client-side queue entry id to remove.
-   */
+  /** Cancel the server run for a queue entry; failures leave the entry available to retry. */
   async cancelQueued(id: string): Promise<boolean> {
     return this.#submitter.cancelQueued(id);
   }
 
-  /**
-   * Drop every queued submission. Server-side cancel arrives with A0.3.
-   */
+  /** Cancel the current queue snapshot without cancelling unrelated runs. */
   async clearQueue(): Promise<void> {
     await this.#submitter.clearQueue();
   }
@@ -1530,7 +1528,7 @@ export class StreamController<
     if (this.#disposed) return;
     this.#cancelPendingDispose();
     this.#disposed = true;
-    this.#submitter.abortActiveRun();
+    this.#submitter.detach();
     await this.#teardownThread();
     await this.registry.dispose();
     this.#threadListeners.clear();
@@ -1667,7 +1665,11 @@ export class StreamController<
       maxReconnectAttempts: this.#options.maxReconnectAttempts,
       streamIdleReconnect: this.#options.streamIdleReconnect,
       reconnectDelayMs: this.#options.reconnectDelayMs,
-      onReconnect: this.#options.onReconnect,
+      onReconnect: (info) => {
+        if (this.#currentThreadId === threadId)
+          void this.#submitter.hydrateQueue(threadId);
+        this.#options.onReconnect?.(info);
+      },
     });
     this.registry.bind(this.#thread);
     if (deferRootPump) {
@@ -1993,6 +1995,16 @@ export class StreamController<
     }
     this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
+    if (
+      queueRuns(this.#options) &&
+      this.#localRunDepth === 0 &&
+      event.method === "lifecycle" &&
+      isRootNamespace(event.params.namespace) &&
+      event.params.data.event === "running" &&
+      this.#currentThreadId != null
+    ) {
+      void this.#submitter.hydrateQueue(this.#currentThreadId);
+    }
 
     /**
      * `input.requested` events (including HITL inside a subagent /

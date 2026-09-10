@@ -1,60 +1,7 @@
-/**
- * Owns the run-submission lifecycle for a single
- * {@link StreamController}.
- *
- * # What this module is
- *
- * The {@link SubmitCoordinator} is the piece of the controller that
- * dispatches runs (`submit()`), enforces multitask strategies, queues
- * deferred submissions, races dispatch against terminal lifecycle
- * events, and surfaces errors back through the per-submit `onError`
- * callback and the root snapshot.
- *
- * Conceptually a submit looks like:
- *
- *   1. Optionally rebind to a different thread (`options.threadId`).
- *   2. Mint a thread id if one isn't bound yet.
- *   3. Wait for the controller's root pump to be ready (so the
- *      transport is subscribed before the run is dispatched —
- *      otherwise we could miss replayed events).
- *   4. Apply the {@link StreamSubmitOptions.multitaskStrategy} to
- *      decide whether to abort, enqueue, reject, or proceed.
- *   5. Race the dispatch promise (`thread.submitRun()`) against the next root
- *      terminal lifecycle event.
- *   6. Settle the resulting state (loading flag, error slot) and
- *      drain the next queued submission, if any.
- *
- * # Why it lives in its own class
- *
- * The submit lifecycle is the most state-heavy part of the
- * controller — six promises, an abort controller, a queue, a
- * terminal-vs-command race, and bidirectional callback wiring with
- * the controller. Splitting it out keeps `controller.ts` focused on
- * subscription / projection wiring while letting the submit logic
- * evolve independently.
- *
- * # Why we race "command" against "terminal"
- *
- * For fast runs, the server's terminal lifecycle event can arrive
- * *before* the dispatch HTTP response has resolved. Racing the two
- * lets us detect terminal early and not block waiting for a now-stale
- * dispatch response. The dispatch response is still consumed (via
- * `.then(notifyCreated).catch(reportError)`) so `onCreated` still
- * fires and dispatch errors still surface through `onError`.
- *
- * # Queue semantics (`multitaskStrategy: "enqueue"`)
- *
- * When a run is already in flight, an `"enqueue"` submit is recorded
- * into {@link queueStore} and the call returns immediately. After the
- * active run terminates, `#drainQueue` schedules the head of the
- * queue as a fresh submit on the next macrotask. Each drained
- * submission has its own `multitaskStrategy` cleared so it doesn't
- * recursively re-enqueue.
- *
- * @see StreamController - The owner; injects every collaborator dep.
- */
+/** Coordinates local dispatch and the server-backed submission queue. */
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import type { ThreadStream } from "../client/stream/index.js";
+import { ServerQueue } from "./server-queue.js";
 import { StreamStore } from "./store.js";
 import type { OptimisticHandle } from "./optimistic-input.js";
 import type {
@@ -90,11 +37,13 @@ function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
 export interface SubmissionQueueEntry<
   StateType extends object = Record<string, unknown>,
 > {
-  /** Stable id minted on enqueue (uuidv7 — sortable by creation time). */
+  /** Stable UI id; retained when the server accepts a local submission. */
   readonly id: string;
+  /** Server run id; absent while acceptance is pending. */
+  readonly runId?: string;
   /** Original submit input, narrowed to the partial state shape. */
   readonly values: Partial<StateType> | null | undefined;
-  /** Original submit options, minus the strategy slot which is reset on drain. */
+  /** Local submit options, or the available stored options after hydration. */
   readonly options?: StreamSubmitOptions<StateType>;
   /** Wall-clock timestamp at enqueue. */
   readonly createdAt: Date;
@@ -144,8 +93,6 @@ export class SubmitCoordinator<
   readonly #options: StreamControllerOptions<StateType>;
   /** Root snapshot store; written for `isLoading`, `error`, `interrupts`. */
   readonly #rootStore: StreamStore<RootSnapshot<StateType, InterruptType>>;
-  /** Pending submissions awaiting the active run to terminate. */
-  readonly #queueStore: StreamStore<SubmissionQueueSnapshot<StateType>>;
   /** Probes the controller's `disposed` flag from deferred work. */
   readonly #getDisposed: () => boolean;
   /** Reads the controller's currently-bound thread id. */
@@ -216,6 +163,9 @@ export class SubmitCoordinator<
    * starting a new one).
    */
   #runAbort: AbortController | undefined;
+  readonly #serverQueue: ServerQueue<StateType>;
+  #generation = 0;
+  readonly #canClearLoading: () => boolean;
 
   constructor(params: {
     options: StreamControllerOptions<StateType>;
@@ -239,6 +189,7 @@ export class SubmitCoordinator<
     onRunCreated?: (runId: string) => void;
     onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
     onRunEnd?: () => void;
+    canClearLoading?: () => boolean;
     beginOptimistic?: (
       input: unknown
     ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
@@ -248,8 +199,23 @@ export class SubmitCoordinator<
     ) => void;
   }) {
     this.#options = params.options;
+    this.#canClearLoading = params.canClearLoading ?? (() => true);
+    this.#serverQueue = new ServerQueue(
+      params.options,
+      params.queueStore,
+      (error) => {
+        this.#rootStore.setState((state) => ({ ...state, error }));
+      },
+      () => {
+        if (!this.#runAbort) {
+          this.#rootStore.setState((state) => ({
+            ...state,
+            isLoading: this.#serverQueue.activeRunId != null,
+          }));
+        }
+      }
+    );
     this.#rootStore = params.rootStore;
-    this.#queueStore = params.queueStore;
     this.#getDisposed = params.getDisposed;
     this.#getCurrentThreadId = params.getCurrentThreadId;
     this.#setCurrentThreadId = params.setCurrentThreadId;
@@ -281,8 +247,7 @@ export class SubmitCoordinator<
    *     dispatches immediately.
    *   - `"reject"`              — throws synchronously when a run is
    *     already in flight.
-   *   - `"enqueue"`             — defers via {@link #enqueueSubmission};
-   *     the call returns without dispatching.
+   *   - `"enqueue"`             — sends immediately and resolves on acceptance.
    *   - `"interrupt"`           — falls through to the default path
    *
    * Errors are routed through both the per-submit `onError` callback
@@ -362,8 +327,25 @@ export class SubmitCoordinator<
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
       );
     }
-    if (hasActiveRun && strategy === "enqueue") {
-      this.#enqueueSubmission(input, options);
+    if (strategy === "enqueue") {
+      const generation = this.#generation;
+      try {
+        await this.#serverQueue.enqueue(
+          currentThreadId,
+          input,
+          options as StreamSubmitOptions<StateType>,
+          (params) => thread.submitRun(params)
+        );
+      } catch (error) {
+        if (pendingServerCreate && generation === this.#generation) {
+          this.#abandonDeferredRootPump();
+        }
+        throw error;
+      }
+      if (generation === this.#generation && !this.#getDisposed()) {
+        this.#startDeferredRootPump();
+        this.#forgetSelfCreatedThreadId(activeThreadId);
+      }
       return;
     }
 
@@ -375,6 +357,7 @@ export class SubmitCoordinator<
     // Rollback: abort the previous run before starting a new one.
     this.#runAbort?.abort();
     const abort = new AbortController();
+    const generation = this.#generation;
     this.#runAbort = abort;
 
     // Claim the in-flight slot before awaiting the root pump so
@@ -397,8 +380,14 @@ export class SubmitCoordinator<
     let pendingCompletionReason: RunExecutionReason | undefined;
     let completionNotified = false;
     let settleEvent: TerminalResult["event"] | undefined;
+    let observedTerminal = false;
     const notifyCompletion = (reason: RunExecutionReason): void => {
-      if (completionNotified) return;
+      if (
+        completionNotified ||
+        generation !== this.#generation ||
+        this.#getDisposed()
+      )
+        return;
       if (createdRunId == null) {
         pendingCompletionReason = reason;
         return;
@@ -424,10 +413,7 @@ export class SubmitCoordinator<
       // synchronous coercion failure (e.g. a malformed message entry)
       // settles the submit lifecycle through the catch/finally below —
       // exactly like a dispatch failure — instead of wedging `isLoading`
-      // / `#runAbort` and stranding later enqueue/reject submits behind a
-      // phantom in-flight run. Runs only on the dispatched path — an
-      // `"enqueue"`d submission returns above and echoes when it drains,
-      // keeping one optimistic batch bound to exactly one run lifecycle.
+      // / `#runAbort`.
       // `dispatchInput` carries the minted ids the server must echo for
       // reconciliation, so the run is dispatched with it (not raw input).
       const prepared = this.#beginOptimistic(input);
@@ -455,10 +441,7 @@ export class SubmitCoordinator<
         config: boundConfig,
         metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
         forkFrom: options?.forkFrom,
-        multitaskStrategy:
-          options?.multitaskStrategy === "enqueue"
-            ? "enqueue"
-            : options?.multitaskStrategy,
+        multitaskStrategy: options?.multitaskStrategy,
       });
       // Start the deferred root pump *after* the dispatch HTTP
       // response lands — that's when the thread row exists server-
@@ -473,6 +456,7 @@ export class SubmitCoordinator<
       // dispatch failure means there's no thread to pump anyway.
       void commandPromise.then(
         () => {
+          if (generation !== this.#generation || this.#getDisposed()) return;
           this.#startDeferredRootPump();
           this.#forgetSelfCreatedThreadId(activeThreadId);
         },
@@ -485,14 +469,20 @@ export class SubmitCoordinator<
           // Tear down so the next submit re-runs `#ensureThread`
           // from scratch. Keep the self-created mark so the retry
           // still defers the pump (the server row was never created).
-          if (pendingServerCreate) {
+          if (pendingServerCreate && generation === this.#generation) {
             this.#abandonDeferredRootPump();
           }
         }
       );
       const notifyCreated = (result: { run_id?: unknown }) => {
-        if (typeof result.run_id !== "string") return;
+        if (
+          generation !== this.#generation ||
+          this.#getDisposed() ||
+          typeof result.run_id !== "string"
+        )
+          return;
         createdRunId = result.run_id;
+        this.#serverQueue.claimLocalRun(activeThreadId, createdRunId);
         this.#onRunCreated(createdRunId);
         if (pendingCompletionReason != null) {
           notifyCompletion(pendingCompletionReason);
@@ -525,6 +515,7 @@ export class SubmitCoordinator<
       terminal ??= await terminalPromise;
       terminalSettled = true;
       settleEvent = terminal.event;
+      observedTerminal = true;
       if (terminal.event === "failed" && !abort.signal.aborted) {
         const runError = new Error(
           terminal.error ?? "Run failed with no error message"
@@ -541,22 +532,27 @@ export class SubmitCoordinator<
       if (!abort.signal.aborted) settleEvent = "failed";
       reportError(error);
     } finally {
-      // Always settle loading and clear our slot of the abort
-      // controller. Schedule queue drain on the next macrotask so any
-      // late state updates from this run finish flushing first.
-      this.#rootStore.setState((s) => ({ ...s, isLoading: false }));
-      if (this.#runAbort === abort) this.#runAbort = undefined;
-      // Reconcile optimistic state: flip pending messages to sent/failed
-      // and roll back un-echoed non-message keys. `aborted` covers a
-      // rollback-resubmit or `stop()` cancelling this run.
-      if (optimisticHandle != null) {
-        this.#settleOptimistic(
-          optimisticHandle,
-          abort.signal.aborted ? "aborted" : (settleEvent ?? "failed")
-        );
+      if (generation === this.#generation) {
+        if (this.#runAbort === abort) {
+          if (this.#canClearLoading() || !observedTerminal) {
+            this.#rootStore.setState((s) => ({
+              ...s,
+              isLoading: this.#serverQueue.activeRunId != null,
+            }));
+          }
+          this.#runAbort = undefined;
+        }
+        // Reconcile optimistic state: flip pending messages to sent/failed
+        // and roll back un-echoed non-message keys. `aborted` covers a
+        // rollback-resubmit or `stop()` cancelling this run.
+        if (optimisticHandle != null) {
+          this.#settleOptimistic(
+            optimisticHandle,
+            abort.signal.aborted ? "aborted" : (settleEvent ?? "failed")
+          );
+        }
+        this.#onRunEnd();
       }
-      this.#onRunEnd();
-      setTimeout(() => this.#drainQueue(), 0);
     }
   }
 
@@ -646,8 +642,10 @@ export class SubmitCoordinator<
     // ignores stale `interrupted` events until root `running` is seen.
     // Watched in the background — we never gate the returned promise on the
     // resumed run's terminal.
+    const generation = this.#generation;
     const terminalPromise = this.#awaitResumedRunTerminal(abort.signal);
     void terminalPromise.then((terminal) => {
+      if (generation !== this.#generation) return;
       if (this.#runAbort === abort) this.#runAbort = undefined;
       if (terminal.event === "failed" && !abort.signal.aborted) {
         reportError(
@@ -655,8 +653,6 @@ export class SubmitCoordinator<
         );
       }
       settleOptimisticOnce(abort.signal.aborted ? "aborted" : terminal.event);
-      // Drain any submission enqueued while the resumed run was active.
-      setTimeout(() => this.#drainQueue(), 0);
     });
 
     try {
@@ -693,75 +689,31 @@ export class SubmitCoordinator<
     this.#runAbort = undefined;
   }
 
-  /**
-   * Cancel a queued submission by id.
-   *
-   * @param id - Client-side queue entry id to remove.
-   * @returns `true` when the entry was found and dropped, `false` otherwise.
-   */
+  get queuedActiveRunId(): string | undefined {
+    return this.#serverQueue.activeRunId;
+  }
+
+  async cancelRunning(): Promise<void> {
+    const threadId = this.#getCurrentThreadId();
+    if (threadId) await this.#serverQueue.cancelRunning(threadId);
+  }
+
+  async hydrateQueue(threadId: string): Promise<void> {
+    await this.#serverQueue.refresh(threadId);
+  }
+
+  detach(): void {
+    this.#generation += 1;
+    this.abortActiveRun();
+    this.#serverQueue.detach();
+  }
+
   async cancelQueued(id: string): Promise<boolean> {
-    const current = this.#queueStore.getSnapshot();
-    const next = current.filter((entry) => entry.id !== id);
-    if (next.length === current.length) return false;
-    this.#queueStore.setState(() => next);
-    return true;
+    return this.#serverQueue.cancel(id);
   }
 
-  /**
-   * Drop every queued submission. Server-side cancel arrives with A0.3.
-   */
   async clearQueue(): Promise<void> {
-    this.#queueStore.setState(
-      () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
-    );
-  }
-
-  /**
-   * Append a submission to the queue without dispatching.
-   *
-   * The drained submission is later run via {@link #drainQueue} after
-   * the active run terminates.
-   */
-  #enqueueSubmission(
-    input: unknown,
-    options?: StreamSubmitOptions<StateType, ConfigurableType>
-  ): void {
-    const entry: SubmissionQueueEntry<StateType> = {
-      id: uuidv7(),
-      values: (input ?? undefined) as Partial<StateType> | null | undefined,
-      options: options as StreamSubmitOptions<StateType> | undefined,
-      createdAt: new Date(),
-    };
-    this.#queueStore.setState((current) => [...current, entry]);
-  }
-
-  /**
-   * Drain the head of the queue if no run is active.
-   *
-   * Called from the `finally` block of `submit()` on the next
-   * macrotask (so the just-finished run's state flushes first).
-   * Strips the strategy off the dequeued options to prevent infinite
-   * re-enqueueing.
-   */
-  #drainQueue(): void {
-    if (this.#getDisposed()) return;
-    if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
-    const current = this.#queueStore.getSnapshot();
-    if (current.length === 0) return;
-    const [next, ...rest] = current;
-    this.#queueStore.setState(() => rest);
-    const nextOptions: StreamSubmitOptions<StateType, ConfigurableType> = {
-      ...((next.options ?? {}) as StreamSubmitOptions<
-        StateType,
-        ConfigurableType
-      >),
-      multitaskStrategy: undefined,
-    };
-    void this.submit(next.values, nextOptions).catch(() => {
-      /* submit() already routes errors through the per-submit onError
-       * hook and the root store; swallow here so a failing drain does
-       * not surface as an unhandled rejection. */
-    });
+    await this.#serverQueue.clear();
   }
 }
 

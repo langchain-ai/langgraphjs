@@ -78,6 +78,16 @@ const run = await client.runs.create(threadId, assistantId, {
 
 `threadId` can be `null` for stateless "one-off" runs.
 
+### Server-backed stream submission queue
+
+`StreamController.submit(input, { multitaskStrategy: "enqueue" })` uses the protocol `run.start` command immediately (not `runs.create`) when explicitly configured with `serverQueue: client.runs` without replacing its protocol-v2 content subscription. The promise resolves on acceptance, not completion, and rejects on acceptance failure. `queueStore` exposes pending entries with stable UI `id`, optional accepted `runId`, `values`, `options`, and `createdAt`. Input message IDs are assigned before dispatch; queued values do not overwrite the active optimistic batch.
+
+The controller tracks running runs separately and hydrates all pending pages using `runs.list`, refreshes on built-in reconnects, and observes each accepted run using `get`/`join` rather than an unrelated root terminal. Stored `Run.kwargs` is optional: selecting `kwargs` can recover input/config, but `values` remains undefined if the server omits input.
+
+`cancelQueued(id)` uses the accepted server run ID; `clearQueue()` uses `cancelMany` with explicit IDs from the current snapshot. Failures reject without silently removing entries. Cancellation can race execution and interrupt a run that has just started. Thread switching/disposal only detach the mirror; accepted runs remain on the server.
+
+Pass `serverQueue` explicitly in controller/framework options, or provide `transport.serverQueue` on a custom `AgentServerAdapter`. The capability must use the same server, auth and fetch policy as the transport; no implicit HTTP fallback is used. Ordinary submits retain stream-only completion and add no REST calls. See the [framework queue guide](../../sdk-react/docs/submission-queue.md#server-queue-semantics) for lifecycle and compatibility details.
+
 ### `createBatch(payloads, options?)`
 
 Create many runs in one request:

@@ -109,7 +109,9 @@ function makeHarness(
   );
 
   const submitDeferreds: Array<ReturnType<typeof deferred<{ run_id?: string }>>> = [];
-  const submitRun = vi.fn(() => {
+  let queuedRunId = 0;
+  const submitRun = vi.fn((params?: { multitaskStrategy?: string; input?: unknown }) => {
+    if (params?.multitaskStrategy === "enqueue") return Promise.resolve({ run_id: `queued-${++queuedRunId}` });
     const d = deferred<{ run_id?: string }>();
     submitDeferreds.push(d);
     return d.promise;
@@ -182,12 +184,19 @@ function makeHarness(
 
   const options: StreamControllerOptions<State> = {
     assistantId: "assistant-1",
-    client: {} as never,
+    client: { runs: {
+      create: vi.fn(async () => ({ run_id: `queued-${++queuedRunId}`, created_at: new Date().toISOString() })),
+      list: vi.fn(async () => []),
+      cancel: vi.fn(async () => undefined),
+      cancelMany: vi.fn(async () => undefined),
+      get: vi.fn(() => new Promise(() => undefined)),
+    } } as never,
     threadId: initial.threadId ?? null,
     onCreated,
     onThreadId,
   };
 
+  options.serverQueue = options.client.runs;
   const coordinator = new SubmitCoordinator<State>({
     options,
     rootStore,
@@ -378,7 +387,7 @@ describe("SubmitCoordinator", () => {
       await expect(second).resolves.toBeUndefined();
     });
 
-    it("does not echo an enqueued submission until it drains", async () => {
+    it("keeps queued input separate from the active optimistic batch", async () => {
       const beginOptimistic = vi.fn(() => ({
         dispatchInput: { messages: [] },
         handle: { echoedIds: [], restoreKeys: [] },
@@ -400,7 +409,8 @@ describe("SubmitCoordinator", () => {
       await vi.runAllTimersAsync();
       await first;
 
-      expect(beginOptimistic).toHaveBeenCalledTimes(2);
+      expect(beginOptimistic).toHaveBeenCalledTimes(1);
+      h.coordinator.detach();
     });
   });
 
@@ -625,8 +635,7 @@ describe("SubmitCoordinator", () => {
 
       expect(h.queueStore.getSnapshot()).toHaveLength(1);
       expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
-      // Only the first submit dispatched; the queued one waits.
-      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.submitRun).toHaveBeenCalledTimes(2);
 
       // Cleanly resolve the first run.
       h.resolveSubmit();
@@ -643,8 +652,8 @@ describe("SubmitCoordinator", () => {
 
       expect(h.queueStore.getSnapshot()).toHaveLength(1);
       expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
-      expect(h.submitRun).toHaveBeenCalledTimes(1);
-      expect(h.submitRun.mock.calls[0]?.[0]?.input).toEqual({ count: 1 });
+      expect(h.submitRun).toHaveBeenCalledTimes(2);
+      expect(h.submitRun).toHaveBeenCalledWith(expect.objectContaining({ input: { count: 1 } }));
 
       await h.terminalRegistered();
       h.resolveSubmit({ run_id: "run-1" });
@@ -653,34 +662,49 @@ describe("SubmitCoordinator", () => {
       await first;
     });
 
-    it("drains the queue after the active run terminates", async () => {
+    it("does not dispatch an accepted run again after the active run terminates", async () => {
       const h = makeHarness();
       const first = h.coordinator.submit({ count: 1 });
       await h.terminalRegistered();
-
-      await h.coordinator.submit(
-        { count: 2 },
-        { multitaskStrategy: "enqueue" }
-      );
-      expect(h.queueStore.getSnapshot()).toHaveLength(1);
-
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      expect(h.submitRun).toHaveBeenCalledWith( expect.objectContaining({ input: { count: 2 }, multitaskStrategy: "enqueue" }));
       h.resolveSubmit({ run_id: "run-1" });
-      h.resolveTerminal({ event: "completed" });
+      h.resolveTerminal();
       await vi.runAllTimersAsync();
       await first;
-
-      // Drain runs on next macrotask; advance fake timers.
-      await vi.runAllTimersAsync();
-      // The queued submit now in-flight; ack it so we don't leak.
-      const second = await h.currentTerminal();
-      expect(second).toBeDefined();
       expect(h.submitRun).toHaveBeenCalledTimes(2);
-      expect(h.queueStore.getSnapshot()).toHaveLength(0);
-
-      h.resolveSubmit({ run_id: "run-2" });
-      h.resolveTerminal({ event: "completed" });
-      await vi.runAllTimersAsync();
+      expect(h.queueStore.getSnapshot()[0].runId).toMatch(/^queued-/);
+      h.coordinator.detach();
     });
+
+  });
+
+  it("ordinary submissions do not require REST observation even when client.runs exists", async () => {
+    const h = makeHarness();
+    h.options.serverQueue = undefined;
+    h.options.fetch = vi.fn() as never;
+    const submit = h.coordinator.submit({ count: 1 });
+    await h.terminalRegistered();
+    h.resolveSubmit({ run_id: "ordinary" });
+    h.resolveTerminal();
+    await submit;
+    expect(h.rootStore.getSnapshot().isLoading).toBe(false);
+    expect(h.options.client.runs.get).not.toHaveBeenCalled();
+    expect(h.options.client.runs.list).not.toHaveBeenCalled();
+    expect(h.options.client.runs.create).not.toHaveBeenCalled();
+  });
+
+  it("an old submit settling cannot clear a newer submit's loading state", async () => {
+    const h = makeHarness();
+    const first = h.coordinator.submit({ count: 1 });
+    await h.terminalRegistered();
+    const second = h.coordinator.submit({ count: 2 });
+    await first;
+    expect(h.rootStore.getSnapshot().isLoading).toBe(true);
+    h.resolveSubmit({ run_id: "second" });
+    h.resolveTerminal();
+    await second;
+    expect(h.rootStore.getSnapshot().isLoading).toBe(false);
   });
 
   describe("queue management", () => {
