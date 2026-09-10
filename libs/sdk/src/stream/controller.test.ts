@@ -206,10 +206,13 @@ function namespacedLifecycleEvent(
   } as Event;
 }
 
-async function waitForExpectation(assertion: () => void): Promise<void> {
+async function waitForExpectation(
+  assertion: () => void,
+  timeoutMs = 500
+): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
-  while (Date.now() - started < 500) {
+  while (Date.now() - started < timeoutMs) {
     try {
       assertion();
       return;
@@ -232,6 +235,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -278,6 +282,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -342,6 +347,7 @@ describe("StreamController", () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -447,6 +453,7 @@ describe("StreamController", () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -520,6 +527,7 @@ describe("StreamController", () => {
     const onCompleted = vi.fn();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -560,6 +568,7 @@ describe("StreamController", () => {
   it("prefers transport.getState over client.threads.getState", async () => {
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -598,6 +607,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -647,6 +657,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -693,6 +704,7 @@ describe("StreamController", () => {
   it("hydrate seeds nested task interrupt namespaces from checkpoint_ns", async () => {
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -743,6 +755,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -796,6 +809,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -844,12 +858,145 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  function passiveRejoinFixture(
+    states: Array<Record<string, unknown> | Error>
+  ): {
+    controller: StreamController<State, unknown>;
+    emit: (event: Event) => void;
+    getState: ReturnType<typeof vi.fn>;
+  } {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEvent = listener;
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    let calls = 0;
+    const getState = vi.fn(async () => {
+      const state = states[Math.min(calls, states.length - 1)];
+      calls += 1;
+      if (state instanceof Error) throw state;
+      return state;
+    });
+    const client = {
+      threads: { getState, stream: vi.fn(() => thread) },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-passive-rejoin",
+    });
+    return { controller, emit: (event) => onEvent?.(event), getState };
+  }
+
+  const runningAtRefresh = {
+    values: {},
+    next: ["ask"],
+    tasks: [],
+    checkpoint: { checkpoint_id: "checkpoint-at-refresh" },
+  };
+  const interruptedOn = (id: string) => ({
+    values: {},
+    next: ["ask"],
+    tasks: [{ interrupts: [{ id, value: { question: "approve?" } }] }],
+    checkpoint: { checkpoint_id: "checkpoint-after-refresh" },
+  });
+  const finishedIdle = { values: {}, next: [], tasks: [] };
+
+  it("shows an interrupt raised after a passive rejoin without a checkpoints event", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    });
+    expect(getState).toHaveBeenCalledTimes(2);
+
+    await controller.dispose();
+  });
+
+  it("waits for the server to commit the interrupt before showing it", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      runningAtRefresh,
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    }, 3_000);
+    expect(getState).toHaveBeenCalledTimes(3);
+
+    await controller.dispose();
+  });
+
+  it("retries a failed state fetch while settling parked interrupts", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      new Error("502 from the load balancer"),
+      interruptedOn("raised-after-refresh"),
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    }, 3_000);
+    expect(getState).toHaveBeenCalledTimes(3);
+
+    await controller.dispose();
+  });
+
+  it("drops replayed interrupts the server no longer lists", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+      finishedIdle,
+    ]);
+    await controller.hydrationPromise;
+
+    emit(inputRequestedEvent("resolved-long-ago", {}, [], 3));
+    emit(lifecycleEvent("interrupted", 4));
+    await waitForExpectation(() => expect(getState).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+
+    emit(lifecycleEvent("interrupted", 5));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getState).toHaveBeenCalledTimes(2);
+
+    await controller.dispose();
+  });
+
   it("filters replayed interrupts while accepting newer interrupts after submit", async () => {
     const eventListeners = new Set<(event: Event) => void>();
     let resolveSubmit: (() => void) | undefined;
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -926,6 +1073,7 @@ describe("StreamController", () => {
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -986,6 +1134,7 @@ describe("StreamController", () => {
     const ordering: ThreadStream["ordering"] = {};
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1057,6 +1206,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         eventListeners.add(listener);
         return vi.fn(() => {
@@ -1132,6 +1282,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -1173,6 +1324,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1279,6 +1431,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1328,6 +1481,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1374,6 +1528,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1417,6 +1572,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1486,6 +1642,7 @@ describe("StreamController", () => {
     const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1558,6 +1715,7 @@ describe("StreamController", () => {
     const subscribe = vi.fn(async () => makeNeverEndingSubscription());
     const thread = {
       subscribe,
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1591,6 +1749,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1648,6 +1807,7 @@ describe("StreamController", () => {
     };
     const thread = {
       subscribe: vi.fn(async () => hungSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1758,6 +1918,7 @@ describe("StreamController", () => {
     };
     const thread = {
       subscribe: vi.fn(async () => hungSubscription),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1825,6 +1986,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -1867,6 +2029,7 @@ describe("StreamController", () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1902,6 +2065,7 @@ describe("StreamController", () => {
 
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1952,6 +2116,7 @@ describe("StreamController", () => {
 
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],
@@ -1998,6 +2163,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2051,6 +2217,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2117,6 +2284,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2167,11 +2335,523 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("re-surfaces still-pending interrupts after sequential respond if the server re-emits them", async () => {
+    // User report: sequential respond of parallel interrupts clears
+    // stream.interrupts client-side, but the server still has them
+    // pending. A follow-up submit() is then auto-converted to
+    // Command(resume=input) and fails with "must specify the interrupt
+    // id when resuming". If the server re-emits the still-pending
+    // input.requested events (or they arrive via the lifecycle
+    // watcher), the client must not permanently suppress them via
+    // #resolvedInterrupts.
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: { prompt: "First?" } },
+                { id: "int-2", value: { prompt: "Second?" } },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-multi-stale",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1", "int-2"]);
+
+    // Sequential resume — client marks each resolved. Server (in the
+    // user report) still has both pending.
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    // Server re-emits the still-pending interrupts as live events on
+    // the resumed run (seq above the respond barrier).
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 11));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 12));
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-1", "int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("does not restore consumed interrupts from stale state after resume settles", async () => {
+    // A checkpoint can retain the original interrupt batch after the
+    // corresponding responses were accepted. Reconcile must preserve
+    // the local consumed-interrupt tombstones.
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    let respondCount = 0;
+    const respondInput = vi.fn(async () => {
+      respondCount += 1;
+      ordering.lastAppliedThroughSeq = 10 + respondCount;
+    });
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValue({
+        values: {},
+        next: ["review"],
+        // Server returns the original checkpoint batch despite both responses.
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-multi-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    emit(lifecycleEvent("running", 20));
+    emit(lifecycleEvent("interrupted", 21));
+
+    await waitForExpectation(() => {
+      expect(getState.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    await controller.dispose();
+  });
+
+  it("keeps a consumed interrupt hidden when reconcile returns the original batch", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const threadInterrupts = [
+      {
+        interruptId: "int-1",
+        payload: { prompt: "First?" },
+        namespace: [],
+      },
+      {
+        interruptId: "int-2",
+        payload: { prompt: "Second?" },
+        namespace: [],
+      },
+    ];
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+      threadInterrupts.splice(
+        threadInterrupts.findIndex(
+          (interrupt) => interrupt.interruptId === "int-1"
+        ),
+        1
+      );
+    });
+    const interruptTasks = [
+      {
+        interrupts: [
+          { id: "int-1", value: { prompt: "First?" } },
+          { id: "int-2", value: { prompt: "Second?" } },
+        ],
+      },
+    ];
+    const getState = vi.fn(async () => ({
+      values: {},
+      next: ["review"],
+      tasks: interruptTasks,
+    }));
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: threadInterrupts,
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-consumed-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    emit(lifecycleEvent("running", 11));
+    emit(lifecycleEvent("interrupted", 12));
+
+    await waitForExpectation(() => {
+      expect(getState.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("reconciles pending interrupts via transport.getState when present", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    const transportGetState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValue({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [{ id: "int-2", value: { prompt: "Second?" } }],
+          },
+        ],
+      });
+    const clientGetState = vi.fn(async () => {
+      throw new Error("client getState should not run during reconcile");
+    });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: clientGetState,
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "custom-backend",
+      client: client as never,
+      threadId: "thread-transport-reconcile",
+      transport: { getState: transportGetState } as never,
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    emit(lifecycleEvent("running", 11));
+    emit(lifecycleEvent("interrupted", 12));
+
+    await waitForExpectation(() => {
+      expect(transportGetState.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(clientGetState).not.toHaveBeenCalled();
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("drops a stale post-resume interrupt reconcile after thread swap", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const respondInput = vi.fn(async () => {
+      ordering.lastAppliedThroughSeq = 10;
+    });
+    let resolveReconcileGetState!: (value: unknown) => void;
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce({
+        values: {},
+        next: ["review"],
+        tasks: [
+          {
+            interrupts: [
+              { id: "int-1", value: { prompt: "First?" } },
+              { id: "int-2", value: { prompt: "Second?" } },
+            ],
+          },
+        ],
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveReconcileGetState = resolve;
+          })
+      )
+      .mockResolvedValue({
+        values: { messages: [{ type: "human", content: "other thread" }] },
+        next: [],
+        tasks: [],
+      });
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => {
+          eventListeners.delete(listener);
+        });
+      }),
+      close: vi.fn(async () => undefined),
+      ordering,
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "First?" },
+          namespace: [],
+        },
+        {
+          interruptId: "int-2",
+          payload: { prompt: "Second?" },
+          namespace: [],
+        },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const otherThread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState,
+        stream: vi.fn((id: string) =>
+          id === "thread-other" ? otherThread : thread
+        ),
+      },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-stale-reconcile",
+    });
+    await controller.hydrationPromise;
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(inputRequestedEvent("int-1", { prompt: "First?" }, [], 1));
+    emit(inputRequestedEvent("int-2", { prompt: "Second?" }, [], 2));
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.respond({ approved: false }, { interruptId: "int-2" });
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+
+    emit(lifecycleEvent("running", 20));
+    emit(lifecycleEvent("interrupted", 21));
+
+    await waitForExpectation(() => {
+      expect(resolveReconcileGetState).toBeDefined();
+    });
+
+    await controller.hydrate("thread-other");
+    resolveReconcileGetState({
+      values: {},
+      next: ["review"],
+      tasks: [
+        {
+          interrupts: [
+            { id: "int-1", value: { prompt: "First?" } },
+            { id: "int-2", value: { prompt: "Second?" } },
+          ],
+        },
+      ],
+    });
+
+    // Give the abandoned reconcile a tick; it must not overwrite the
+    // new thread's empty interrupt list with the old thread's tasks.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual([]);
+    expect(controller.rootStore.getSnapshot().threadId).toBe("thread-other");
+
+    await controller.dispose();
+  });
+
   it("respond() resolves namespace from thread.interrupts when only interruptId is provided", async () => {
     const respondInput = vi.fn(async () => undefined);
     const nestedNamespace = ["subgraph:child", "tools:tc-1"];
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2217,6 +2897,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2262,6 +2943,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [
@@ -2308,6 +2990,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2363,6 +3046,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2413,6 +3097,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2477,6 +3162,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2519,6 +3205,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2571,6 +3258,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2636,6 +3324,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2696,6 +3385,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2765,11 +3455,62 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("surfaces a thread stream failure on rootStore.error and settles submit()", async () => {
+    const errorListeners = new Set<(error: Error) => void>();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        errorListeners.add(listener);
+        return vi.fn(() => {
+          errorListeners.delete(listener);
+        });
+      }),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering: {},
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, tasks: [] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    const submitPromise = controller.submit(null);
+    await waitForExpectation(() => expect(submitRun).toHaveBeenCalled());
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    for (const listener of errorListeners) {
+      listener(new Error("Thread event stream failed: redis gone"));
+    }
+
+    await submitPromise;
+    const snapshot = controller.rootStore.getSnapshot();
+    expect(snapshot.isLoading).toBe(false);
+    expect((snapshot.error as Error | undefined)?.message).toBe(
+      "Thread event stream failed: redis gone"
+    );
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces a failed resumed run on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2832,6 +3573,7 @@ describe("StreamController", () => {
     });
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2871,6 +3613,7 @@ describe("StreamController", () => {
     const respondInput = vi.fn(async () => undefined);
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -2929,6 +3672,7 @@ describe("StreamController", () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn((listener: (event: Event) => void) => {
         onEvent = listener;
         return vi.fn();
@@ -3338,6 +4082,7 @@ describe("StreamController", () => {
     );
     const thread = {
       subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
       onEvent: vi.fn(() => vi.fn()),
       close: vi.fn(async () => undefined),
       interrupts: [],

@@ -12,9 +12,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.4",
+    "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.5.5",
+    "@langchain/openai": "^1.5.10",
     "@langchain/react": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "langchain": "^1.5.4",
+    "langchain": "^1.5.10",
     "lucide-react": "^0.577.0",
     "motion": "^12.36.0",
     "nanoid": "^5.1.16",
@@ -52,8 +52,8 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.0.5",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^8.2.0"
