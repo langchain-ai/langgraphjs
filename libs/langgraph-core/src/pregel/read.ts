@@ -11,7 +11,13 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import type { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
+import type {
+  CachePolicy,
+  RetryPolicy,
+  TimeoutPolicy,
+  TracePolicy,
+} from "./utils/index.js";
+import { RunnableSeq } from "./runnable.js";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,6 +93,7 @@ interface PregelNodeArgs<RunInput, RunOutput> extends Partial<
   retryPolicy?: RetryPolicy;
   cachePolicy?: CachePolicy;
   timeout?: TimeoutPolicy;
+  tracePolicy?: TracePolicy;
   subgraphs?: Runnable[];
   ends?: string[];
   /** Whether this node is an auto-generated node-level error handler. */
@@ -131,6 +138,8 @@ export class PregelNode<
 
   timeout?: TimeoutPolicy;
 
+  tracePolicy?: TracePolicy;
+
   subgraphs?: Runnable[];
 
   ends?: string[];
@@ -151,6 +160,7 @@ export class PregelNode<
       retryPolicy,
       cachePolicy,
       timeout,
+      tracePolicy,
       tags,
       subgraphs,
       ends,
@@ -184,6 +194,7 @@ export class PregelNode<
     this.retryPolicy = retryPolicy;
     this.cachePolicy = cachePolicy;
     this.timeout = timeout;
+    this.tracePolicy = tracePolicy;
     this.subgraphs = subgraphs;
     this.ends = ends;
     this.isErrorHandler = isErrorHandler;
@@ -214,19 +225,27 @@ export class PregelNode<
 
   getNode(): Runnable<RunInput, RunOutput> | undefined {
     const writers = this.getWriters();
+    const sequence = (
+      fields: ConstructorParameters<
+        typeof RunnableSequence<RunInput, RunOutput>
+      >[0]
+    ) =>
+      this.tracePolicy
+        ? new RunnableSeq({ ...fields, tracePolicy: this.tracePolicy })
+        : new RunnableSequence(fields);
     if (this.bound === defaultRunnableBound && writers.length === 0) {
       return undefined;
     } else if (this.bound === defaultRunnableBound && writers.length === 1) {
       return writers[0];
     } else if (this.bound === defaultRunnableBound) {
-      return new RunnableSequence({
+      return sequence({
         first: writers[0],
         middle: writers.slice(1, writers.length - 1),
         last: writers[writers.length - 1],
         omitSequenceTags: true,
       });
     } else if (writers.length > 0) {
-      return new RunnableSequence({
+      return sequence({
         first: this.bound,
         middle: writers.slice(0, writers.length - 1),
         last: writers[writers.length - 1],
@@ -259,6 +278,7 @@ export class PregelNode<
       retryPolicy: this.retryPolicy,
       cachePolicy: this.cachePolicy,
       timeout: this.timeout,
+      tracePolicy: this.tracePolicy,
     });
   }
 
@@ -280,6 +300,7 @@ export class PregelNode<
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
         timeout: this.timeout,
+        tracePolicy: this.tracePolicy,
       });
     } else if (this.bound === defaultRunnableBound) {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -293,6 +314,7 @@ export class PregelNode<
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
         timeout: this.timeout,
+        tracePolicy: this.tracePolicy,
       });
     } else {
       return new PregelNode<RunInput, Exclude<NewRunOutput, Error>>({
@@ -306,6 +328,7 @@ export class PregelNode<
         retryPolicy: this.retryPolicy,
         cachePolicy: this.cachePolicy,
         timeout: this.timeout,
+        tracePolicy: this.tracePolicy,
       });
     }
   }
