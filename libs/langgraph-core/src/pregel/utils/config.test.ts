@@ -20,6 +20,14 @@ class SentinelHandler extends BaseCallbackHandler {
   name = "sentinel";
 }
 
+class SameNameHandler extends BaseCallbackHandler {
+  name = "StreamMessagesHandler";
+}
+
+class SameToolsNameHandler extends BaseCallbackHandler {
+  name = "StreamToolsHandler";
+}
+
 describe("ensureLangGraphConfig", () => {
   // Save original to restore after tests
   const originalGetRunnableConfig =
@@ -250,6 +258,32 @@ describe("ensureLangGraphConfig", () => {
     expect(merged.inheritableHandlers[1]).toBe(inner);
   });
 
+  it("should keep inheritableHandlers a subset of handlers when a same-named pair collapses with mismatched inheritability, both callbacks managers", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const nonInheritable = new SameNameHandler();
+    const inheritable = new SameNameHandler();
+
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(nonInheritable, false);
+
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(inheritable, true);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toHaveLength(1);
+    expect(merged.handlers[0]).toBe(nonInheritable);
+    expect(merged.inheritableHandlers).toHaveLength(1);
+    expect(merged.inheritableHandlers[0]).toBe(nonInheritable);
+  });
+
   it("should not duplicate a handler when the same callbacks array is merged twice", () => {
     AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
       .fn()
@@ -263,6 +297,101 @@ describe("ensureLangGraphConfig", () => {
     );
 
     expect(result.callbacks).toEqual([shared]);
+  });
+
+  it("should collapse two distinct same-named handlers when both callbacks are arrays", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const a = new SameNameHandler();
+    const b = new SameNameHandler();
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [a] },
+      { callbacks: [b] }
+    );
+
+    expect(result.callbacks).toHaveLength(1);
+    expect((result.callbacks as unknown[])[0]).toBe(a);
+  });
+
+  it("should collapse two distinct StreamToolsHandler instances the same way as StreamMessagesHandler", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const a = new SameToolsNameHandler();
+    const b = new SameToolsNameHandler();
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [a] },
+      { callbacks: [b] }
+    );
+
+    expect(result.callbacks).toHaveLength(1);
+    expect((result.callbacks as unknown[])[0]).toBe(a);
+  });
+
+  it("should not throw when a callbacks array holds a falsy entry", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const real = new SentinelHandler();
+
+    expect(() =>
+      ensureLangGraphConfig(
+        { callbacks: [false, real] as unknown as BaseCallbackHandler[] },
+        { callbacks: [real] }
+      )
+    ).not.toThrow();
+  });
+
+  it("should not throw when an array merged into a manager holds a falsy entry", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    expect(() =>
+      ensureLangGraphConfig(
+        { callbacks: new CallbackManager() },
+        { callbacks: [false] as unknown as BaseCallbackHandler[] }
+      )
+    ).not.toThrow();
+  });
+
+  it("should not throw when a manager merged into an array holds a falsy entry", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    expect(() =>
+      ensureLangGraphConfig(
+        { callbacks: [false] as unknown as BaseCallbackHandler[] },
+        { callbacks: new CallbackManager() }
+      )
+    ).not.toThrow();
+  });
+
+  it("should dedupe the same raw plain-object callback across two separate merges into a manager", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const rawCallback = { handleLLMNewToken: () => {} };
+
+    const level0 = ensureLangGraphConfig(
+      { callbacks: new CallbackManager() },
+      { callbacks: [rawCallback] }
+    );
+    const level1 = ensureLangGraphConfig(
+      { callbacks: level0.callbacks as CallbackManager },
+      { callbacks: [rawCallback] }
+    );
+
+    const merged = level1.callbacks as CallbackManager;
+    expect(merged.handlers).toHaveLength(1);
   });
 
   it("should not re-add an array handler the base manager already holds", () => {
@@ -301,6 +430,84 @@ describe("ensureLangGraphConfig", () => {
     const merged = result.callbacks as CallbackManager;
     expect(merged.handlers).toEqual([shared]);
     expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should make a base manager's non-inheritable handler inheritable when the provided array also carries it", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const shared = new SentinelHandler();
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(shared, false);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: [shared] }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should make a provided manager's non-inheritable handler inheritable when the base array also carries it", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const shared = new SentinelHandler();
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(shared, false);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [shared] },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([shared]);
+    expect(merged.inheritableHandlers).toEqual([shared]);
+  });
+
+  it("should collapse a same-named array handler into the base manager's existing one, keeping the invariant", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const existing = new SameNameHandler();
+    const fromArray = new SameNameHandler();
+    const baseManager = new CallbackManager();
+    baseManager.addHandler(existing, false);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: baseManager },
+      { callbacks: [fromArray] }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([existing]);
+    expect(merged.inheritableHandlers).toEqual([existing]);
+  });
+
+  it("should collapse a same-named base-array handler into the provided manager's existing one, keeping the invariant", () => {
+    AsyncLocalStorageProviderSingleton.getRunnableConfig = vi
+      .fn()
+      .mockReturnValue(undefined);
+
+    const fromArray = new SameNameHandler();
+    const existing = new SameNameHandler();
+    const providedManager = new CallbackManager();
+    providedManager.addHandler(existing, false);
+
+    const result = ensureLangGraphConfig(
+      { callbacks: [fromArray] },
+      { callbacks: providedManager }
+    );
+
+    const merged = result.callbacks as CallbackManager;
+    expect(merged.handlers).toEqual([existing]);
+    expect(merged.inheritableHandlers).toEqual([existing]);
   });
 
   it("should not re-add ambient handlers arriving again through an explicit config", () => {

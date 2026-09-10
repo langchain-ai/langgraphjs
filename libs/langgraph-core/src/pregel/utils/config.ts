@@ -5,7 +5,10 @@ import {
   ensureHandler,
   type Callbacks,
 } from "@langchain/core/callbacks/manager";
-import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import type {
+  BaseCallbackHandler,
+  CallbackHandlerMethods,
+} from "@langchain/core/callbacks/base";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
@@ -90,6 +93,75 @@ export function filterToUserTags(
   return filtered.length > 0 ? filtered : undefined;
 }
 
+const INTERNAL_PER_INVOCATION_HANDLER_NAMES = new Set([
+  "StreamMessagesHandler",
+  "StreamToolsHandler",
+  "StreamProtocolMessagesHandler",
+]);
+
+function isSameHandler(
+  a: BaseCallbackHandler | CallbackHandlerMethods,
+  b: BaseCallbackHandler | CallbackHandlerMethods
+): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || a === null) return false;
+  if (typeof b !== "object" || b === null) return false;
+  return (
+    "name" in a &&
+    "name" in b &&
+    a.name === b.name &&
+    INTERNAL_PER_INVOCATION_HANDLER_NAMES.has(a.name as string)
+  );
+}
+
+const stableHandlerWrappers = new WeakMap<
+  CallbackHandlerMethods,
+  BaseCallbackHandler
+>();
+
+function ensureStableHandler(
+  callback: BaseCallbackHandler | CallbackHandlerMethods
+): BaseCallbackHandler {
+  if (typeof callback !== "object" || callback === null) {
+    return callback as BaseCallbackHandler;
+  }
+  if ("name" in callback) return callback;
+  const cached = stableHandlerWrappers.get(callback);
+  if (cached !== undefined) return cached;
+  const wrapped = ensureHandler(callback);
+  stableHandlerWrappers.set(callback, wrapped);
+  return wrapped;
+}
+
+function mergeArrayIntoManager(
+  manager: CallbackManager,
+  callbacks: readonly (BaseCallbackHandler | CallbackHandlerMethods)[]
+): void {
+  for (const callback of callbacks) {
+    const handler = ensureStableHandler(callback);
+    const existing = manager.handlers.find((candidate) =>
+      isSameHandler(candidate, handler)
+    );
+    if (existing === undefined) {
+      manager.addHandler(handler, true);
+    } else if (!manager.inheritableHandlers.includes(existing)) {
+      manager.inheritableHandlers.push(existing);
+    }
+  }
+}
+
+function dedupeBySameHandler<
+  T extends BaseCallbackHandler | CallbackHandlerMethods,
+>(handlers: readonly T[]): T[] {
+  const survivors: T[] = [];
+  for (const handler of handlers) {
+    if (!survivors.some((candidate) => isSameHandler(candidate, handler))) {
+      survivors.push(handler);
+    }
+  }
+  return survivors;
+}
+
 /**
  * Merge two `callbacks` values across configs.
  *
@@ -118,35 +190,36 @@ function mergeCallbacks(
   }
   if (Array.isArray(provided)) {
     if (Array.isArray(base)) {
-      return base.concat(provided.filter((handler) => !base.includes(handler)));
+      return base.concat(
+        provided.filter(
+          (handler) =>
+            !base.some((candidate) => isSameHandler(candidate, handler))
+        )
+      );
     }
     // base is a manager
     const manager = base.copy();
-    for (const callback of provided) {
-      if (!manager.handlers.includes(callback as BaseCallbackHandler)) {
-        manager.addHandler(ensureHandler(callback), true);
-      }
-    }
+    mergeArrayIntoManager(manager, provided);
     return manager;
   }
   // provided is a manager
   if (Array.isArray(base)) {
     const manager = provided.copy();
-    for (const callback of base) {
-      if (!manager.handlers.includes(callback as BaseCallbackHandler)) {
-        manager.addHandler(ensureHandler(callback), true);
-      }
-    }
+    mergeArrayIntoManager(manager, base);
     return manager;
   }
   // both are managers
+  const mergedHandlers = dedupeBySameHandler(
+    base.handlers.concat(provided.handlers)
+  );
+  const mergedInheritableSource = base.inheritableHandlers.concat(
+    provided.inheritableHandlers
+  );
   return new CallbackManager(provided._parentRunId, {
-    handlers: base.handlers.concat(
-      provided.handlers.filter((handler) => !base.handlers.includes(handler))
-    ),
-    inheritableHandlers: base.inheritableHandlers.concat(
-      provided.inheritableHandlers.filter(
-        (handler) => !base.inheritableHandlers.includes(handler)
+    handlers: mergedHandlers,
+    inheritableHandlers: mergedHandlers.filter((handler) =>
+      mergedInheritableSource.some((candidate) =>
+        isSameHandler(candidate, handler)
       )
     ),
     tags: Array.from(new Set(base.tags.concat(provided.tags))),
