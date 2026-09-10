@@ -182,6 +182,7 @@ export { interrupt } from "./interrupt.js";
 export type {
   InferInterruptInputType,
   InferInterruptResumeType,
+  InterruptOptions,
 } from "./interrupt.js";
 export { writer } from "./writer.js";
 export type { InferWriterType } from "./writer.js";
