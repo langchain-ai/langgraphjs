@@ -219,6 +219,23 @@ export interface ThreadState {
   created_at: Date | null;
   parent_checkpoint: Checkpoint | null;
   tasks: ThreadTask[];
+  waiting_edges?: WaitingEdge[];
+}
+
+/**
+ * A waiting edge — created by `addEdge([...], target)` — holding writes from some
+ * of its listed nodes but not all, so it has not released. Present only when at
+ * least one such edge exists, so a healthy snapshot keeps its existing shape.
+ */
+export interface WaitingEdge {
+  target: string;
+  completed: string[];
+  /** Absent when the edge's channel name cannot be parsed for its listed nodes. */
+  missing?: string[];
+  /** Subgraph node names from this graph down to the edge; absent for this graph's own edges. */
+  path?: string[];
+  /** The checkpoint namespace the edge lives in; absent for this graph's own edges. */
+  namespace?: string;
 }
 
 export interface RunsRepo {

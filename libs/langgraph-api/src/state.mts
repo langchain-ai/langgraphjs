@@ -2,7 +2,7 @@ import type {
   LangGraphRunnableConfig,
   StateSnapshot,
 } from "@langchain/langgraph";
-import type { ThreadState, Checkpoint } from "./storage/types.mjs";
+import type { ThreadState, Checkpoint, WaitingEdge } from "./storage/types.mjs";
 import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
@@ -15,6 +15,13 @@ const isStateSnapshot = (
 export const stateSnapshotToThreadState = (
   state: StateSnapshot
 ): ThreadState => {
+  // Annotated rather than inlined below: a conditional spread into the returned
+  // literal does not check its type, so a snapshot field this drifts away from
+  // would fail at a consumer instead of here.
+  const waitingEdges: WaitingEdge[] | undefined = state.waitingEdges?.map(
+    (edge) => ({ ...edge })
+  );
+
   return {
     values: state.values,
     next: state.next,
@@ -39,5 +46,7 @@ export const stateSnapshotToThreadState = (
     created_at: state.createdAt ? new Date(state.createdAt) : null,
     checkpoint: runnableConfigToCheckpoint(state.config),
     parent_checkpoint: runnableConfigToCheckpoint(state.parentConfig),
+    // Omitted when every waiting edge released, mirroring the snapshot.
+    ...(waitingEdges?.length ? { waiting_edges: waitingEdges } : {}),
   };
 };

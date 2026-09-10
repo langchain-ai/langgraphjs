@@ -7,7 +7,7 @@ import { StateGraph } from "./state.js";
 import { MessagesAnnotation, MessagesZodState } from "./messages_annotation.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
-import { Command, END, Overwrite, START } from "../constants.js";
+import { Command, END, Overwrite, Send, START } from "../constants.js";
 import { messagesStateReducer } from "./messages_reducer.js";
 
 describe("StateGraph", () => {
@@ -1332,6 +1332,270 @@ describe("StateGraph", () => {
 
         await expect(graph.invoke({})).rejects.toThrow(/items/);
       });
+    });
+  });
+
+  describe("addEdge waiting-edge semantics", () => {
+    const WaitState = Annotation.Root({
+      ran: Annotation<string[]>({
+        reducer: (a, b) => [...(a ?? []), ...(b ?? [])],
+        default: () => [],
+      }),
+      targets: Annotation<string[]>({
+        reducer: (_, b) => b,
+        default: () => ["a", "b"],
+      }),
+    });
+
+    const mark = (name: string) => () => ({ ran: [name] });
+    const times = (ran: string[], name: string) =>
+      ran.filter((entry) => entry === name).length;
+
+    // Three nodes feed `merge`: `a` and `c` in the first superstep, `deeper` a
+    // step behind `b` in the second. Two supersteps, three feeding nodes.
+    const feeders = ["a", "c", "deeper"] as const;
+    const unevenBranches = (
+      spelling: "waiting" | "separate" | "separate-deferred"
+    ) => {
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("c", mark("c"))
+        .addNode("deeper", mark("deeper"))
+        .addNode("merge", mark("merge"), {
+          defer: spelling === "separate-deferred",
+        })
+        .addEdge(START, "a")
+        .addEdge(START, "b")
+        .addEdge(START, "c")
+        .addEdge("b", "deeper");
+
+      if (spelling !== "waiting") {
+        for (const feeder of feeders) graph.addEdge(feeder, "merge");
+      } else {
+        graph.addEdge([...feeders], "merge");
+      }
+
+      return graph.addEdge("merge", END).compile();
+    };
+
+    it("triggers a waiting edge once for the set, separate edges once per superstep", async () => {
+      const waiting = await unevenBranches("waiting").invoke({});
+      const separate = await unevenBranches("separate").invoke({});
+
+      // With separate edges `merge` runs twice, not three times, so the count
+      // tracks supersteps rather than the number of feeding nodes.
+      expect({
+        waiting: times(waiting.ran, "merge"),
+        separate: times(separate.ran, "merge"),
+        fed: feeders.filter((feeder) => separate.ran.includes(feeder)).length,
+      }).toEqual({ waiting: 1, separate: 2, fed: 3 });
+    });
+
+    it("collapses uneven arrivals into one run when the target is deferred", async () => {
+      // The third semantics: separate edges make every arrival a trigger, and
+      // deferring the target absorbs them into a single run.
+      const deferred = await unevenBranches("separate-deferred").invoke({});
+
+      expect(times(deferred.ran, "merge")).toBe(1);
+      expect(feeders.every((feeder) => deferred.ran.includes(feeder))).toBe(true);
+    });
+
+    it("runs a deferred target once when only some of its feeders were selected", async () => {
+      // And the half the waiting edge cannot do: one run on whoever arrived, with
+      // no dependence on the ones that did not.
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("deeper", mark("deeper"))
+        .addNode("merge", mark("merge"), { defer: true })
+        .addConditionalEdges(START, (state) => state.targets, ["a", "b"])
+        .addEdge("b", "deeper")
+        .addEdge("a", "merge")
+        .addEdge("deeper", "merge")
+        .addEdge("merge", END)
+        .compile();
+
+      const both = await graph.invoke({ targets: ["a", "b"] });
+      const one = await graph.invoke({ targets: ["a"] });
+
+      expect(times(both.ran, "merge")).toBe(1);
+      expect(times(one.ran, "merge")).toBe(1);
+      expect(one.ran).toEqual(["a", "merge"]);
+    });
+
+    it("skips a waiting edge and its downstream when a listed node is not selected", async () => {
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("merge", mark("merge"))
+        .addNode("after", mark("after"))
+        .addConditionalEdges(START, (state) => state.targets, ["a", "b"])
+        .addEdge(["a", "b"], "merge")
+        .addEdge("merge", "after")
+        .addEdge("after", END)
+        .compile();
+
+      const result = await graph.invoke({ targets: ["a"] });
+      expect(result.ran).toEqual(["a"]);
+    });
+
+    it("still runs a downstream node that has another live path into it", async () => {
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("merge", mark("merge"))
+        .addNode("after", mark("after"))
+        .addConditionalEdges(START, (state) => state.targets, ["a", "b"])
+        .addEdge(["a", "b"], "merge")
+        .addEdge("merge", "after")
+        .addEdge("a", "after")
+        .addEdge("after", END)
+        .compile();
+
+      const result = await graph.invoke({ targets: ["a"] });
+      expect(result.ran).toEqual(["a", "after"]);
+    });
+
+    it("keeps waiting when a loop re-enters only some of the listed nodes", async () => {
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("merge", mark("merge"))
+        .addEdge(START, "a")
+        .addEdge(START, "b")
+        .addEdge(["a", "b"], "merge")
+        // Back into `a` only: `b` never writes again, so the second pass has
+        // nothing to release the edge.
+        .addConditionalEdges(
+          "merge",
+          (state) => (times(state.ran, "merge") < 3 ? "a" : END),
+          ["a", END]
+        )
+        .compile();
+
+      const result = await graph.invoke({});
+      expect({
+        merge: times(result.ran, "merge"),
+        ran: result.ran,
+      }).toEqual({ merge: 1, ran: ["a", "b", "merge", "a"] });
+    });
+
+    it("releases from writes made in different passes when a router alternates", async () => {
+      // Pass one selects `a`, pass two selects `b`; the edge accumulates rather
+      // than resetting, so it triggers with one write from each pass.
+      const passes = (state: { ran: string[] }) =>
+        times(state.ran, "fan");
+      const graph = new StateGraph(WaitState)
+        .addNode("fan", mark("fan"))
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("merge", mark("merge"))
+        .addEdge(START, "fan")
+        .addConditionalEdges(
+          "fan",
+          (state) => (passes(state) % 2 === 1 ? ["a"] : ["b"]),
+          ["a", "b"]
+        )
+        .addEdge(["a", "b"], "merge")
+        .addConditionalEdges("a", (state) => (passes(state) < 3 ? "fan" : END), [
+          "fan",
+          END,
+        ])
+        .addConditionalEdges("b", (state) => (passes(state) < 3 ? "fan" : END), [
+          "fan",
+          END,
+        ])
+        .addEdge("merge", END)
+        .compile();
+
+      const result = await graph.invoke({}, { recursionLimit: 20 });
+
+      expect(times(result.ran, "merge")).toBe(1);
+      expect(result.ran.indexOf("merge")).toBeGreaterThan(
+        result.ran.indexOf("b")
+      );
+    });
+
+    it("makes a deferred target wait for unrelated work too", async () => {
+    // `defer` means "last", not "after my predecessors", so the target is held
+    // behind a branch it does not depend on. The cost of the recipe above.
+    const graph = new StateGraph(WaitState)
+      .addNode("a", mark("a"))
+      .addNode("b", mark("b"))
+      .addNode("merge", mark("merge"), { defer: true })
+      .addNode("side1", mark("side1"))
+      .addNode("side2", mark("side2"))
+      .addConditionalEdges(START, () => ["a", "side1"], ["a", "b", "side1"])
+      .addEdge("a", "merge")
+      .addEdge("b", "merge")
+      .addEdge("side1", "side2")
+      .addEdge("side2", END)
+      .addEdge("merge", END)
+      .compile();
+
+    const result = await graph.invoke({});
+
+    expect(result.ran).toEqual(["a", "side1", "side2", "merge"]);
+  });
+
+  it("still runs a deferred target twice when a Send addresses it", async () => {
+    // The single-run property is about edges. A `Send` is a separate arrival and
+    // the deferral does not absorb it.
+    const graph = new StateGraph(WaitState)
+      .addNode("route", () => new Command({ goto: ["a", new Send("merge", {})] }), {
+        ends: ["a", "b", "merge"],
+      })
+      .addNode("a", mark("a"))
+      .addNode("b", mark("b"))
+      .addNode("merge", mark("merge"), { defer: true })
+      .addEdge(START, "route")
+      .addEdge("a", "merge")
+      .addEdge("b", "merge")
+      .addEdge("merge", END)
+      .compile();
+
+    const result = await graph.invoke({});
+
+    expect(times(result.ran, "merge")).toBe(2);
+  });
+
+  it("skips a waiting edge when a Command routes past a listed node", async () => {
+      const graph = new StateGraph(WaitState)
+        .addNode("router", () => new Command({ goto: "b" }), {
+          ends: ["a", "b"],
+        })
+        .addNode("a", mark("a"))
+        .addNode("b", mark("b"))
+        .addNode("merge", mark("merge"))
+        .addEdge(START, "router")
+        .addEdge(["a", "b"], "merge")
+        .addEdge("merge", END)
+        .compile();
+
+      const result = await graph.invoke({});
+      expect(result.ran).toEqual(["b"]);
+    });
+
+    it("skips a waiting edge when an error handler ends a listed node's branch", async () => {
+      const graph = new StateGraph(WaitState)
+        .addNode("a", mark("a"))
+        .addNode(
+          "b",
+          () => {
+            throw new Error("b failed");
+          },
+          { errorHandler: () => ({ ran: ["handled"] }) }
+        )
+        .addNode("merge", mark("merge"))
+        .addEdge(START, "a")
+        .addEdge(START, "b")
+        .addEdge(["a", "b"], "merge")
+        .addEdge("merge", END)
+        .compile();
+
+      const result = await graph.invoke({});
+      expect(times(result.ran, "merge")).toBe(0);
     });
   });
 });
