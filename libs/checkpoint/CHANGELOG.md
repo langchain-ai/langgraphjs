@@ -1,5 +1,17 @@
 # @langchain/langgraph-checkpoint
 
+## 1.1.5
+
+### Patch Changes
+
+- [#2714](https://github.com/langchain-ai/langgraphjs/pull/2714) [`a2a59ec`](https://github.com/langchain-ai/langgraphjs/commit/a2a59ec6f8fdd93d4520d86fceab8a234dacf978) Thanks [@hntrl](https://github.com/hntrl)! - Update checkpoint integrations to require the patched checkpoint serializer release.
+
+## 1.1.4
+
+### Patch Changes
+
+- [#2709](https://github.com/langchain-ai/langgraphjs/pull/2709) [`c3b27a9`](https://github.com/langchain-ai/langgraphjs/commit/c3b27a997c682a64f65904b2a97a5ee4d6e741b0) Thanks [@hntrl](https://github.com/hntrl)! - fix(checkpoint): narrow re-constructable types in JsonPlusSerializer
+
 ## 1.1.3
 
 ### Patch Changes

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { HumanMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   type Checkpoint,
@@ -265,7 +266,102 @@ describe("MemorySaver", () => {
     ).toBeDefined();
   });
 
-  it("should delete thread", async () => {
+  it("keeps metadata constructor records inert on a later read", async () => {
+    const memorySaver = new MemorySaver();
+    const markerKey = "__langgraph_checkpoint_metadata_marker__";
+    const marker = { invoked: false };
+    (globalThis as Record<string, unknown>)[markerKey] = marker;
+    const forgedCallback = {
+      lc: 2,
+      type: "constructor",
+      id: ["Uint8Array"],
+      method: "constructor",
+      args: [`globalThis.${markerKey}.invoked = true`],
+      kwargs: {},
+    };
+    const forgedRecord = {
+      lc: 2,
+      type: "constructor",
+      id: ["Uint8Array"],
+      method: "from",
+      args: [[1], forgedCallback],
+      kwargs: {},
+    };
+    const config = { configurable: { thread_id: "metadata-security" } };
+
+    try {
+      await memorySaver.put(config, checkpoint1, {
+        source: "update",
+        step: -1,
+        parents: {},
+        forged: forgedRecord,
+      } as CheckpointMetadata);
+
+      const restored = await memorySaver.getTuple(config);
+
+      expect(marker.invoked).toBe(false);
+      expect(restored?.metadata).toMatchObject({ forged: forgedRecord });
+    } finally {
+      delete (globalThis as Record<string, unknown>)[markerKey];
+    }
+  });
+
+    it("keeps forged additional_kwargs constructor records inert on restore", async () => {
+      const memorySaver = new MemorySaver();
+      const markerKey = "__langgraph_checkpoint_message_marker__";
+      const marker = { invoked: false };
+      (globalThis as Record<string, unknown>)[markerKey] = marker;
+      const forgedCallback = {
+        lc: 2,
+        type: "constructor",
+        id: ["Uint8Array"],
+        method: "constructor",
+        args: [`globalThis.${markerKey}.invoked = true`],
+        kwargs: {},
+      };
+      const forgedRecord = {
+        lc: 2,
+        type: "constructor",
+        id: ["Uint8Array"],
+        method: "from",
+        args: [[1], forgedCallback],
+        kwargs: {},
+      };
+      const config = { configurable: { thread_id: "message-security" } };
+
+      try {
+        const savedConfig = await memorySaver.put(config, checkpoint1, {
+          source: "update",
+          step: -1,
+          parents: {},
+        });
+        await memorySaver.putWrites(
+          savedConfig,
+          [
+            [
+              "messages",
+              new HumanMessage({
+                content: "ordinary message",
+                additional_kwargs: { forged: forgedRecord },
+              }),
+            ],
+          ],
+          "message-security-task"
+        );
+
+        const restored = await memorySaver.getTuple(savedConfig);
+        const message = restored?.pendingWrites?.[0]?.[2] as HumanMessage;
+
+        expect(marker.invoked).toBe(false);
+        expect(message.additional_kwargs).toMatchObject({
+      forged: forgedRecord,
+    });
+      } finally {
+        delete (globalThis as Record<string, unknown>)[markerKey];
+      }
+    });
+
+    it("should delete thread", async () => {
     const memorySaver = new MemorySaver();
     const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
     const thread2 = { configurable: { thread_id: "2", checkpoint_ns: "" } };

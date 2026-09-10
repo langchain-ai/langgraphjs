@@ -166,6 +166,28 @@ describe("Client streaming with retry", () => {
       expect(body.assistant_id).toBe("assistant-1");
     });
 
+    test("sends checkpointId as checkpoint_id in the request body", async () => {
+      const chunks = [{ id: "1", event: "values", data: {} }];
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test input" },
+        checkpointId: "1f0aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      });
+
+      await gatherStream(stream);
+
+      const [, init] = mockFetch.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.checkpoint_id).toBe("1f0aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    });
+
     test("passes streamMode including tools in request body", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];
 

@@ -29,7 +29,7 @@ import { isRootNamespace, namespaceKey } from "../namespace.js";
 import {
   buildMessageIndex,
   reconcileMessagesFromValues,
-  shouldPreferValuesMessageForToolCalls,
+  shouldPreferValuesMessage,
 } from "../message-reconciliation.js";
 import { openProjectionSubscription } from "./runtime.js";
 
@@ -169,15 +169,16 @@ export function messagesProjection(
       //  1. Walk `values.messages` in order. For each id, prefer
       //     the stream-assembled entry if we have one for that id
       //     (keeps in-progress token streaming visible); otherwise
-      //     take the values-coerced instance. This self-heals the
-      //     two classes of glitch the old merge-by-id handler
-      //     targeted:
+      //     take the values-coerced instance. Same-id values still
+      //     win when they carry data the stream lacks:
       //       - tool messages arriving without `tool_call_id` on
       //         the messages channel — the values snapshot always
       //         carries it;
       //       - AI messages whose finalized `tool_calls` didn't
       //         fully land via the messages channel — the values
-      //         snapshot's AI message has them populated.
+      //         snapshot's AI message has them populated;
+      //       - metadata enrichment with unchanged content (e.g.
+      //         committed `additional_kwargs` on an echoed human).
       //
       //  2. Append any stream-only ids (seen on the messages
       //     channel but never echoed in ANY values snapshot yet)
@@ -209,7 +210,7 @@ export function messagesProjection(
           currentIndexById: indexById,
           previousValueMessageIds: valuesMessageIds,
           streamedMessageIds: streamMessageIds,
-          preferValuesMessage: shouldPreferValuesMessageForToolCalls,
+          preferValuesMessage: shouldPreferValuesMessage,
         });
         valuesMessageIds = reconciliation.valueMessageIds;
         const reconciledMessages = [...reconciliation.messages];

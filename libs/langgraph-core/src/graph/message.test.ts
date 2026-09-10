@@ -65,4 +65,31 @@ describe("pushMessage", () => {
 
     expect(values).toEqual(messages);
   });
+
+  it("should push messages onto the streamEvents v3 messages channel", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("chat", (state, config) => {
+        pushMessage(new AIMessage({ id: "1", content: "First" }), config);
+        return state;
+      })
+      .addEdge(START, "chat")
+      .compile();
+
+    const stream = await graph.streamEvents(
+      { messages: [] },
+      { version: "v3" }
+    );
+
+    const messageEvents: { event?: string; id?: string }[] = [];
+    for await (const event of stream) {
+      if (event.method === "messages") {
+        messageEvents.push(event.params.data as { event?: string; id?: string });
+      }
+    }
+
+    expect(
+      messageEvents.some((e) => e.event === "message-start" && e.id === "1")
+    ).toBe(true);
+    expect(messageEvents.some((e) => e.event === "message-finish")).toBe(true);
+  });
 });

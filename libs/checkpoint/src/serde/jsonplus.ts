@@ -3,7 +3,7 @@
 import { load } from "@langchain/core/load";
 import { SerializerProtocol } from "./base.js";
 import { stringify } from "./utils/fast-safe-stringify/index.js";
-import { DeltaSnapshot } from "./types.js";
+import { type ConstructorRecord, DeltaSnapshot } from "./types.js";
 
 function isLangChainSerializedObject(value: Record<string, unknown>) {
   return (
@@ -12,6 +12,124 @@ function isLangChainSerializedObject(value: Record<string, unknown>) {
     value.type === "constructor" &&
     Array.isArray(value.id)
   );
+}
+
+function isUndefinedRecord(value: Record<string, unknown>): boolean {
+  return value.lc === 2 && value.type === "undefined";
+}
+
+function isDeltaSnapshotRecord(value: Record<string, unknown>): boolean {
+  return (
+    value.lc === 2 &&
+    value.type === "delta_snapshot" &&
+    Object.prototype.hasOwnProperty.call(value, "value")
+  );
+}
+
+function isConstructorRecord(
+  value: Record<string, unknown>
+): value is ConstructorRecord {
+  return value.lc === 2 && value.type === "constructor";
+}
+
+function hasConstructorId(record: ConstructorRecord, name: string): boolean {
+  return (
+    Array.isArray(record.id) && record.id.length === 1 && record.id[0] === name
+  );
+}
+
+function hasNoMethod(record: ConstructorRecord): boolean {
+  return record.method === undefined || record.method === null;
+}
+
+function hasSingleArrayArg(
+  record: ConstructorRecord
+): record is ConstructorRecord & { args: unknown[][] } {
+  return (
+    Array.isArray(record.args) &&
+    record.args.length === 1 &&
+    Array.isArray(record.args[0])
+  );
+}
+
+function isByteArray(value: unknown[]): value is number[] {
+  return value.every(
+    (item) =>
+      typeof item === "number" &&
+      Number.isInteger(item) &&
+      item >= 0 &&
+      item <= 255
+  );
+}
+
+/**
+ * Reconstruct only the closed set of lc:2 values written by `_default`.
+ *
+ * A constructor record is serialized data, not an instruction to resolve a
+ * property or invoke a method. Invalid and unsupported records are kept inert
+ * by the caller so old or attacker-controlled checkpoint data cannot execute.
+ */
+function reviveConstructorRecord(
+  record: ConstructorRecord
+): unknown | undefined {
+  if (hasConstructorId(record, "Set") && hasNoMethod(record)) {
+    if (!hasSingleArrayArg(record)) return undefined;
+    return new Set(record.args[0]);
+  }
+
+  if (hasConstructorId(record, "Map") && hasNoMethod(record)) {
+    if (
+      !hasSingleArrayArg(record) ||
+      !record.args[0].every(
+        (entry) => Array.isArray(entry) && entry.length === 2
+      )
+    ) {
+      return undefined;
+    }
+    return new Map(record.args[0] as [unknown, unknown][]);
+  }
+
+  if (hasConstructorId(record, "RegExp") && hasNoMethod(record)) {
+    if (
+      !Array.isArray(record.args) ||
+      record.args.length !== 2 ||
+      typeof record.args[0] !== "string" ||
+      typeof record.args[1] !== "string"
+    ) {
+      return undefined;
+    }
+    try {
+      return new RegExp(record.args[0], record.args[1]);
+    } catch {
+      // Invalid patterns are malformed persisted data and stay inert.
+      return undefined;
+    }
+  }
+
+  if (hasConstructorId(record, "Error") && hasNoMethod(record)) {
+    if (
+      !Array.isArray(record.args) ||
+      record.args.length !== 1 ||
+      typeof record.args[0] !== "string"
+    ) {
+      return undefined;
+    }
+    return new Error(record.args[0]);
+  }
+
+  if (
+    hasConstructorId(record, "Uint8Array") &&
+    (hasNoMethod(record) || record.method === "from")
+  ) {
+    if (!hasSingleArrayArg(record) || !isByteArray(record.args[0])) {
+      return undefined;
+    }
+    // `from` is a legacy format tag. Do not forward its serialized method or
+    // any extra arguments: the validated bytes are the entire persisted form.
+    return new Uint8Array(record.args[0]);
+  }
+
+  return undefined;
 }
 
 /**
@@ -30,54 +148,18 @@ async function _reviver(value: any): Promise<any> {
       );
       return revivedArray;
     } else {
-      const revivedObj: any = {};
+      const revivedObj: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value)) {
         revivedObj[k] = await _reviver(v);
       }
 
-      if (revivedObj.lc === 2 && revivedObj.type === "undefined") {
+      if (isUndefinedRecord(revivedObj)) {
         return undefined;
-      } else if (revivedObj.lc === 2 && revivedObj.type === "delta_snapshot") {
+      } else if (isDeltaSnapshotRecord(revivedObj)) {
         // Wrapped value is already revived (bottom-up traversal).
         return new DeltaSnapshot(revivedObj.value);
-      } else if (
-        revivedObj.lc === 2 &&
-        revivedObj.type === "constructor" &&
-        Array.isArray(revivedObj.id)
-      ) {
-        try {
-          const constructorName = revivedObj.id[revivedObj.id.length - 1];
-          let constructor: any;
-
-          switch (constructorName) {
-            case "Set":
-              constructor = Set;
-              break;
-            case "Map":
-              constructor = Map;
-              break;
-            case "RegExp":
-              constructor = RegExp;
-              break;
-            case "Error":
-              constructor = Error;
-              break;
-            case "Uint8Array":
-              constructor = Uint8Array;
-              break;
-            default:
-              return revivedObj;
-          }
-          if (revivedObj.method) {
-            return (constructor as any)[revivedObj.method](
-              ...(revivedObj.args || [])
-            );
-          } else {
-            return new (constructor as any)(...(revivedObj.args || []));
-          }
-        } catch {
-          return revivedObj;
-        }
+      } else if (isConstructorRecord(revivedObj)) {
+        return reviveConstructorRecord(revivedObj) ?? revivedObj;
       } else if (isLangChainSerializedObject(revivedObj)) {
         return load(JSON.stringify(revivedObj));
       }
@@ -126,7 +208,7 @@ function _default(obj: any): any {
   } else if (obj instanceof RegExp) {
     return _encodeConstructorArgs(RegExp, undefined, [obj.source, obj.flags]);
   } else if (obj instanceof Error) {
-    return _encodeConstructorArgs(obj.constructor, undefined, [obj.message]);
+    return _encodeConstructorArgs(Error, undefined, [obj.message]);
     // TODO: Remove special case
   } else if (obj?.lg_name === "Send") {
     return {

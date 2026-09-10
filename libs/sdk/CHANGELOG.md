@@ -1,5 +1,133 @@
 # @langchain/langgraph-sdk
 
+## 1.10.3-rc.2
+
+### Patch Changes
+
+- [#2813](https://github.com/langchain-ai/langgraphjs/pull/2813) [`4fc118f`](https://github.com/langchain-ai/langgraphjs/commit/4fc118fcde8fd6d977c03c8a0a7071912df1873a) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): show interrupts raised after a passive thread rejoin
+  
+  After a page refresh mid-run, `useStream` filtered every interrupt it did not
+  already know from the hydrated thread state as replayed history, and waited
+  for a `checkpoints` event to lift that filter. Current runtimes never emit
+  that event and the replay buffer trims it on long runs, so interrupts raised
+  after the refresh never appeared until the next reload. Unknown interrupts are
+  now settled against the server's thread state when the run reaches a terminal
+  lifecycle: the ones the server lists as pending are shown, the rest are
+  dropped as history.
+
+- [#2812](https://github.com/langchain-ai/langgraphjs/pull/2812) [`db4bdad`](https://github.com/langchain-ai/langgraphjs/commit/db4bdad61ddfc6c1113269b131ac2efde3eecf69) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): recover from a server-side thread stream drop instead of freezing
+  
+  The protocol SSE transport now reconnects when the server closes the event
+  stream cleanly. The thread stream is open-ended, so a clean close only happens
+  when the server's own upstream consumer died or it is restarting; before, the
+  client treated it as the end of the thread and the UI froze mid-run with no
+  error. A connection that delivered events also resets the reconnect budget, so
+  long-lived pages survive repeated deploys. `maxReconnectAttempts: 0` keeps the
+  old end-on-close behavior.
+  
+  Unsolicited server error frames (no command id) and a shared stream that gives
+  up reconnecting now reach `stream.error`: `ThreadStream.onError` exposes them,
+  `useStream` sets `error`, clears `isLoading`, and settles the in-flight
+  `submit()` as failed.
+
+## 1.10.3-rc.1
+
+### Patch Changes
+
+- [#2809](https://github.com/langchain-ai/langgraphjs/pull/2809) [`11a4535`](https://github.com/langchain-ai/langgraphjs/commit/11a4535762b04f8f28cc98eb7b1e4b682b69e91a) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): appropriately track persisted seq for stream replay
+  
+  Sequences weren't being appropriately attributed when rehydrating the page (e.g. on refresh). This meant we'd lose stream information on `useStream` on reloads. This has been fixed by adding a lookup step to determine what the most appropriate sequence index is to track in the event stream.:x
+
+- [#2808](https://github.com/langchain-ai/langgraphjs/pull/2808) [`55fa26b`](https://github.com/langchain-ai/langgraphjs/commit/55fa26be9290fbd89a6e0acb232f04cbc6dedb22) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): coalesce locally resolved interrupts
+  
+  when resolving interrupts using `useStream`, there was a case where we prioritized the remote state values (which we lookup in React Strict mode on every page transition) over the local interrupt responses we know we've responded with.
+  
+  This has since been fixed to first prioritize the local cache of interrupts, resolved against the remote state values when a run hits a terminal event
+
+## 1.10.3-rc.0
+
+### Patch Changes
+
+- [#2762](https://github.com/langchain-ai/langgraphjs/pull/2762) [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105) Thanks [@JessYanCoding](https://github.com/JessYanCoding)! - Send `checkpoint_id` in the `runs.stream()` request body, so a `checkpointId` passed to `client.runs.stream()` forks from the requested checkpoint instead of being silently dropped. Matches `runs.create()` and `runs.wait()`, which already send it.
+
+## 1.10.2
+
+### Patch Changes
+
+- [#2788](https://github.com/langchain-ai/langgraphjs/pull/2788) [`3d0bc90`](https://github.com/langchain-ai/langgraphjs/commit/3d0bc90635fa4748d14a4bedb1289448f18a9e92) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): apply in-place message metadata updates from values
+
+  Same-id `values` snapshots that mutate nested metadata (e.g. HITL card
+  `status: accepted → done`) without changing content were treated as no-ops
+  because enrichment only accepted shallow key-supersets. Prefer values when
+  they retain every nested key and only mutate leaves or add keys, so
+  `useStream().values` reflects the update.
+
+- [#2780](https://github.com/langchain-ai/langgraphjs/pull/2780) [`ac72c3d`](https://github.com/langchain-ai/langgraphjs/commit/ac72c3d270bc491f4a73abab4e3058ff090987c2) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep stream.interrupts truthful after sequential multi-interrupt resume
+
+  Locally-resolved interrupt ids are no longer permanently suppressed: live
+  `input.requested` events after the resume barrier can reappear, and a
+  post-resume reconcile against `threads.getState().tasks[].interrupts`
+  restores siblings the server still has pending. Prevents a stale-empty
+  `stream.interrupts` from driving a free-text `submit()` into an ambiguous
+  `Command(resume=…)` when multiple interrupts remain.
+
+## 1.10.1
+
+### Patch Changes
+
+- [#2718](https://github.com/langchain-ai/langgraphjs/pull/2718) [`dd287b4`](https://github.com/langchain-ai/langgraphjs/commit/dd287b4c872db094e2fbc87e685da005a6ccdb90) Thanks [@jstar0](https://github.com/jstar0)! - Reject protocol SSE stream responses with non-SSE content types before marking subscriptions ready.
+
+## 1.10.0
+
+### Minor Changes
+
+- [#2745](https://github.com/langchain-ai/langgraphjs/pull/2745) [`cef10ab`](https://github.com/langchain-ai/langgraphjs/commit/cef10ab35cefea12c36a8864cdf12f51c7553975) Thanks [@mdrxy](https://github.com/mdrxy)! - Add LangSmith replica routing to thread-stream run starts.
+
+### Patch Changes
+
+- [#2727](https://github.com/langchain-ai/langgraphjs/pull/2727) [`f8bdf16`](https://github.com/langchain-ai/langgraphjs/commit/f8bdf16d4fe23a79e945ea5dc6f86bbf09abb77d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): drop unused svelte and vue peer dependencies
+
+  The Svelte and Vue adapters live in `@langchain/svelte` and
+  `@langchain/vue`, but the core SDK still declared both as optional peers.
+  Scanners like Socket count optional peers as part of the package graph, so
+  the SDK was being flagged for obfuscated-code alerts in `clsx` and
+  `entities` — packages it never loads. React stays a peer because `./react`
+  and `./react-ui` still ship here.
+
+## 1.9.31
+
+### Patch Changes
+
+- [#2722](https://github.com/langchain-ai/langgraphjs/pull/2722) [`7b0fd47`](https://github.com/langchain-ai/langgraphjs/commit/7b0fd47287eb841d8f1068de93b46f49cab3c04d) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): don't re-show resolved interrupts after reload
+
+  After a reload, the next submit used to replay the old `input.requested`
+  event, so the HITL form came back even though the interrupt was already
+  answered. Keep filtering historical interrupts after the command is
+  accepted, using the response's `applied_through_seq` as the cutoff.
+
+## 1.9.30
+
+### Patch Changes
+
+- [#2691](https://github.com/langchain-ai/langgraphjs/pull/2691) [`3ce9f8d`](https://github.com/langchain-ai/langgraphjs/commit/3ce9f8d11dd64b1d091a25162603c49e6f4a426f) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): clear messages on hydrate(null) with a pending interrupt
+
+  Teardown awaited the paused root pump, so threadId went null while
+  the old conversation stayed on screen. Reset the snapshot first.
+
+- [#2703](https://github.com/langchain-ai/langgraphjs/pull/2703) [`51b4202`](https://github.com/langchain-ai/langgraphjs/commit/51b42020f7c730a15193aa907056881e3d961924) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): keep isLoading true across interrupt→running hydration
+
+  Deferred terminal resets no longer clear isLoading when a newer running lifecycle has already arrived (HITL resume / SSE replay).
+
+- [#2692](https://github.com/langchain-ai/langgraphjs/pull/2692) [`a86f813`](https://github.com/langchain-ai/langgraphjs/commit/a86f813954e010fbf30711c37baa5c53444613d5) Thanks [@christian-bromann](https://github.com/christian-bromann)! - fix(sdk): adopt server metadata on same-id optimistic message echo
+
+  When a `values` snapshot echoes an optimistic human with the same
+  content plus committed `additional_kwargs` (e.g. attachment paths),
+  `stream.messages` now takes the server copy instead of keeping the
+  plain optimistic message until hydration. Preferring is asymmetric:
+  lagging or poorer values snapshots do not strip richer current
+  metadata. In-flight AI token streaming is unchanged: streamed content
+  still wins when it has moved past the snapshot.
+
 ## 1.9.29
 
 ### Patch Changes
