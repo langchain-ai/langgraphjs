@@ -5,6 +5,7 @@ import { InterruptStream } from "./components/InterruptStream.js";
 import { InterruptReconnectStream } from "./components/InterruptReconnectStream.js";
 import { InterruptReloadStream } from "./components/InterruptReloadStream.js";
 import { MultiInterruptStream } from "./components/MultiInterruptStream.js";
+import { MultiInterruptSequentialStream } from "./components/MultiInterruptSequentialStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
 it("surfaces the first interrupt on submit()", async () => {
@@ -243,3 +244,70 @@ it("resumes several parallel interrupts via respondAll()", { timeout: 15_000 }, 
     await cleanupRender(screen);
   }
 });
+
+it(
+  "keeps stream.interrupts non-empty after a partial sequential multi-interrupt resume",
+  { timeout: 30_000 },
+  async () => {
+    // Regression: sequential respond() of parallel interrupts must not
+    // leave stream.interrupts empty while the run is still interrupted.
+    // An empty list makes clients free-text submit(), which the API turns
+    // into an ambiguous Command(resume) when siblings remain pending.
+    // Finishing still requires respondAll (protocol batch resume).
+    const screen = await render(
+      <MultiInterruptSequentialStream apiUrl={apiUrl} />
+    );
+
+    try {
+      await screen.getByTestId("submit").click();
+
+      await expect
+        .element(screen.getByTestId("interrupt-count"), { timeout: 10_000 })
+        .toHaveTextContent("2");
+
+      await screen.getByTestId("resume-next").click();
+
+      // Wait until the first respond settles (loading clears). The UI
+      // must still show at least one pending interrupt — either the
+      // remaining sibling, or both if the server kept them pending and
+      // reconcile restored the list.
+      await expect
+        .element(screen.getByTestId("loading"), { timeout: 10_000 })
+        .toHaveTextContent("Not loading");
+      await expect
+        .poll(
+          () =>
+            Number(
+              screen.getByTestId("interrupt-count").element().textContent ?? "0"
+            ),
+          { timeout: 10_000 }
+        )
+        .toBeGreaterThan(0);
+      await expect
+        .element(screen.getByTestId("completed"))
+        .toHaveTextContent("false");
+      await expect
+        .element(screen.getByTestId("resume-error"))
+        .toHaveTextContent("");
+
+      await screen.getByTestId("resume-all").click();
+
+      await expect
+        .element(screen.getByTestId("completed"), { timeout: 10_000 })
+        .toHaveTextContent("true");
+      await expect
+        .element(screen.getByTestId("interrupt-count"))
+        .toHaveTextContent("0");
+
+      await screen.getByTestId("follow-up-submit").click();
+      await expect
+        .element(screen.getByTestId("interrupts-at-submit"))
+        .toHaveTextContent("0");
+      await expect
+        .element(screen.getByTestId("submit-error"), { timeout: 10_000 })
+        .toHaveTextContent("");
+    } finally {
+      await cleanupRender(screen);
+    }
+  }
+);

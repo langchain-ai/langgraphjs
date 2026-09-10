@@ -185,7 +185,7 @@ it("does not double stream tokens from a nested graph under tracing", async () =
 
   const buildInnerGraph = () => {
     const model = new FakeChatModel({
-      responses: [new AIMessage(ANSWER)],
+      responses: [new AIMessage(`${ANSWER} `)],
     }).withConfig({ runName: "model_call" });
     return new StateGraph(MessagesAnnotation)
       .addNode("agent", async () => {
@@ -247,7 +247,7 @@ it("does not double stream tokens from a nested graph under tracing", async () =
         { streamMode: ["messages", "updates"], subgraphs: true }
       )
     );
-    expect(innerText).toBe(ANSWER);
+    expect(innerText).toMatch(new RegExp(`^${ANSWER} ?$`));
   } finally {
     delete process.env.LANGSMITH_TRACING;
     delete (globalThis as Record<symbol, unknown>)[fetchKey];
