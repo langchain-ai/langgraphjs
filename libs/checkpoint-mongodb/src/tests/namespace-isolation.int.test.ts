@@ -169,3 +169,28 @@ it("requires migration for an empty collection with the legacy unique index", as
   await legacy.put(["tenant", "a/b"], "same", {});
   await legacy.put(["tenant", "a", "b"], "same", {});
 });
+
+it.each([null, "tenant/a", ["tenant", 42]])(
+  "rejects malformed stored namespace %j without rewriting the document",
+  async (namespace) => {
+    const collectionName = "invalid_legacy";
+    const collection = client.db(dbName).collection(collectionName);
+    await collection.deleteMany({});
+    const { insertedId } = await collection.insertOne({
+      namespace,
+      key: "key",
+      value: { preserved: true },
+    });
+    const legacy = new MongoDBStore({ client, dbName, collectionName });
+
+    await expect(legacy.migrateNamespaceEncoding()).rejects.toThrow(
+      /array of strings/
+    );
+    expect(await collection.findOne({ _id: insertedId })).toEqual({
+      _id: insertedId,
+      namespace,
+      key: "key",
+      value: { preserved: true },
+    });
+  }
+);

@@ -798,7 +798,15 @@ export class MongoDBStore extends BaseStore {
       {},
       { projection: { namespace: 1 } }
     )) {
-      const namespace = doc.namespace as string[];
+      const namespace: unknown = doc.namespace;
+      if (
+        !Array.isArray(namespace) ||
+        !namespace.every((label) => typeof label === "string")
+      ) {
+        throw new Error(
+          "Cannot migrate a document whose namespace is not an array of strings."
+        );
+      }
       validateNamespace(namespace);
       await collection.updateOne(
         { _id: doc._id },
