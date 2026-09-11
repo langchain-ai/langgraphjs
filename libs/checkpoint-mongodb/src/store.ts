@@ -13,21 +13,11 @@ import {
   InvalidNamespaceError,
 } from "@langchain/langgraph-checkpoint";
 
-/**
- * Computes the namespace path prefixes for denormalization.
- * E.g., ["a", "b", "c"] → ["a", "a/b", "a/b/c"]
- *
- * Stored on each document as `namespacePath` to enable prefix filtering
- * in $vectorSearch, which does not support $expr or $slice.
- * MongoDB array equality matches if any element equals the filter value,
- * so filtering by "a/b" matches any document whose namespace starts with ["a", "b"].
- */
+/** Encode each complete namespace prefix without losing segment boundaries. */
 function computeNamespacePath(namespace: string[]): string[] {
-  const paths: string[] = [];
-  for (let i = 1; i <= namespace.length; i++) {
-    paths.push(namespace.slice(0, i).join("/"));
-  }
-  return paths;
+  return namespace.map((_, index) =>
+    JSON.stringify(namespace.slice(0, index + 1))
+  );
 }
 
 /**
@@ -338,15 +328,15 @@ export class MongoDBStore extends BaseStore {
         const now = new Date();
         const doc: Record<string, any> = {
           namespace,
-          namespaceStr: namespace.join("/"),
+          namespaceKey: JSON.stringify(namespace),
           key,
           value, // Store JSON directly
           updatedAt: now,
         };
 
-        // Add namespacePath for $vectorSearch prefix filtering
+        // Add namespacePrefixes for $vectorSearch prefix filtering
         if (this.indexConfig) {
-          doc.namespacePath = computeNamespacePath(namespace);
+          doc.namespacePrefixes = computeNamespacePath(namespace);
         }
 
         // Set expiration time if TTL is configured
@@ -470,7 +460,10 @@ export class MongoDBStore extends BaseStore {
           for (let i = 0; i < path.length; i++) {
             if (path[i] !== "*") {
               elemConditions.push({
-                $eq: [{ $arrayElemAt: ["$namespace", i] }, path[i]],
+                $eq: [
+                  { $arrayElemAt: ["$namespace", i] },
+                  { $literal: path[i] },
+                ],
               });
             }
           }
@@ -489,7 +482,7 @@ export class MongoDBStore extends BaseStore {
               elemConditions.push({
                 $eq: [
                   { $arrayElemAt: ["$namespace", -(path.length - i)] },
-                  path[i],
+                  { $literal: path[i] },
                 ],
               });
             }
@@ -662,7 +655,7 @@ export class MongoDBStore extends BaseStore {
     const path = this.indexConfig!.path ?? "embedding";
     const vectorSearchStage: Record<string, any> = {
       $vectorSearch: {
-        index: this.indexConfig!.name,
+        index: `${this.indexConfig!.name}_namespace_v2`,
         path,
         // numCandidates should be 10-20x limit for good recall, capped at 10000.
         // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
@@ -683,7 +676,7 @@ export class MongoDBStore extends BaseStore {
     // Namespace prefix filter for $vectorSearch
     if (namespacePrefix.length > 0) {
       vectorSearchStage.$vectorSearch.filter = {
-        namespacePath: namespacePrefix.join("/"),
+        namespacePrefixes: JSON.stringify(namespacePrefix),
       };
     }
 
@@ -724,12 +717,21 @@ export class MongoDBStore extends BaseStore {
   async start(): Promise<void> {
     const collection = this.db.collection(this.collectionName);
 
-    // Use a unique index on the joined namespace string + key, not on the
-    // namespace array directly. MongoDB multikey indexes on arrays index each
-    // element separately, so two documents with different namespaces that share
-    // a common element and the same key would collide (e.g. ["users", "alice",
-    // "preferences"] and ["users", "bob", "preferences"] both with key "food").
-    await collection.createIndex({ namespaceStr: 1, key: 1 }, { unique: true });
+    const legacy = await collection.findOne(
+      { namespaceKey: { $exists: false } },
+      { projection: { _id: 1 } }
+    );
+    if (legacy) {
+      throw new Error(
+        "Legacy namespace encoding detected. Stop all store clients, run migrateNamespaceEncoding(), then start the upgraded store."
+      );
+    }
+    await collection.createIndex({ namespaceKey: 1, key: 1 }, { unique: true });
+    if (await collection.indexExists("namespaceStr_1_key_1")) {
+      throw new Error(
+        "Legacy namespace index detected. Run migrateNamespaceEncoding() with all store clients stopped."
+      );
+    }
 
     if (this.ttl) {
       await collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -757,8 +759,8 @@ export class MongoDBStore extends BaseStore {
         });
       }
 
-      // Always include namespacePath for $vectorSearch pre-filtering
-      fields.push({ type: "filter", path: "namespacePath" });
+      // Always include namespacePrefixes for $vectorSearch pre-filtering
+      fields.push({ type: "filter", path: "namespacePrefixes" });
 
       for (const filterField of this.indexConfig.filters ?? []) {
         fields.push({ type: "filter", path: filterField });
@@ -773,7 +775,7 @@ export class MongoDBStore extends BaseStore {
       // for `status === "READY"` before issuing vector searches.
       try {
         await collection.createSearchIndex({
-          name: this.indexConfig.name,
+          name: `${this.indexConfig.name}_namespace_v2`,
           type: "vectorSearch",
           definition: { fields },
         } as any);
@@ -782,6 +784,37 @@ export class MongoDBStore extends BaseStore {
           throw err;
         }
       }
+    }
+  }
+
+  /**
+   * Upgrade legacy namespace keys during a maintenance window with all store
+   * clients stopped. Rerunnable after interruption. Call start() afterwards
+   * and wait for the new vector index to become READY before serving traffic.
+   */
+  async migrateNamespaceEncoding(): Promise<void> {
+    const collection = this.db.collection(this.collectionName);
+    for await (const doc of collection.find(
+      {},
+      { projection: { namespace: 1 } }
+    )) {
+      const namespace = doc.namespace as string[];
+      validateNamespace(namespace);
+      await collection.updateOne(
+        { _id: doc._id },
+        {
+          $set: {
+            namespaceKey: JSON.stringify(namespace),
+            namespacePrefixes: computeNamespacePath(namespace),
+          },
+        }
+      );
+    }
+    await collection.createIndex({ namespaceKey: 1, key: 1 }, { unique: true });
+    try {
+      await collection.dropIndex("namespaceStr_1_key_1");
+    } catch (error: any) {
+      if (error.code !== 27) throw error;
     }
   }
 

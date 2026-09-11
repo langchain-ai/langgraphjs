@@ -23,6 +23,7 @@ describe("MongoDBStore", () => {
       findOne: vi.fn().mockResolvedValue(null),
       find: vi.fn(() => createFindCursor()),
       deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+      indexExists: vi.fn().mockResolvedValue(false),
       createIndex: vi.fn().mockResolvedValue("namespace_1_key_1"),
       aggregate: vi.fn(() => ({
         toArray: vi.fn().mockResolvedValue([]),
@@ -182,7 +183,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -207,7 +208,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, "v1"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "v1" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -232,8 +233,8 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
-              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, "settings"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, { $literal: "settings" }] },
               { $gte: [{ $size: "$namespace" }, 3] },
             ],
           },
@@ -283,7 +284,7 @@ describe("MongoDBStore", () => {
       const calls = mockCollection.bulkWrite.mock.calls[0][0];
       const doc = calls[0].updateOne.update.$set;
       expect(doc.embedding).toEqual([0.1, 0.2]);
-      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
+      expect(doc.namespacePrefixes).toEqual(['["memories"]', '["memories","alice"]']);
     });
 
     it("should not write embedding field on put in auto mode", async () => {
@@ -305,7 +306,7 @@ describe("MongoDBStore", () => {
       // Auto mode: no embedding field written, MongoDB reads value.content directly
       expect(doc.embedding).toBeUndefined();
       expect(doc.value).toEqual({ content: "hello world" });
-      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
+      expect(doc.namespacePrefixes).toEqual(['["memories"]', '["memories","alice"]']);
     });
 
     it("should skip embedding when op.index is false", async () => {
@@ -386,7 +387,7 @@ describe("MongoDBStore", () => {
       expect(vectorSearchStage.queryVector).toBeUndefined();
     });
 
-    it("should include namespacePath filter in $vectorSearch", async () => {
+    it("should include namespacePrefixes filter in $vectorSearch", async () => {
       const storeAuto = new MongoDBStore({
         client: mockClient as any,
         dbName: "test",
@@ -408,7 +409,7 @@ describe("MongoDBStore", () => {
       }]);
 
       const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
-      expect(vectorSearchStage.filter).toEqual({ namespacePath: "memories/alice" });
+      expect(vectorSearchStage.filter).toEqual({ namespacePrefixes: '["memories","alice"]' });
     });
 
     it("should throw when query is provided without indexConfig", async () => {
