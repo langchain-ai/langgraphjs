@@ -10,6 +10,7 @@ import {
   GetOperation,
   type IndexConfig,
   type SearchItem,
+  validateNamespace,
 } from "./base.js";
 import { tokenizePath, compareValues, getTextAtPath } from "./utils.js";
 
@@ -79,6 +80,11 @@ export class InMemoryStore extends BaseStore {
     // First pass - handle gets and prepare search/put operations
     for (let i = 0; i < operations.length; i += 1) {
       const op = operations[i];
+      if ("namespace" in op) {
+        validateNamespace(op.namespace, {
+          allowReservedRoot: true,
+        });
+      }
       if ("key" in op && "namespace" in op && !("value" in op)) {
         // GetOperation
         results.push(this.getOperation(op));
@@ -249,9 +255,22 @@ export class InMemoryStore extends BaseStore {
   }
 
   private filterItems(op: SearchOperation): Item[] {
+    if (op.namespacePrefix.length > 0) {
+      validateNamespace(op.namespacePrefix, { allowReservedRoot: true });
+    }
+    const prefix = op.namespacePrefix.join(":");
     const candidates: Item[] = [];
     for (const [namespace, items] of this.data.entries()) {
-      if (namespace.startsWith(op.namespacePrefix.join(":"))) {
+      // Exact match, or the separator immediately after the prefix, so
+      // "tenant:acme" does not also match sibling "tenant:acme-corp".
+      // Empty prefix is unconstrained (search everything). See #2721 /
+      // CVE-2026-71433. Do not use startsWith(prefix) or startsWith(prefix+":")
+      // without the empty-prefix arm — the latter turns search([]) into [].
+      if (
+        prefix === "" ||
+        namespace === prefix ||
+        namespace.startsWith(`${prefix}:`)
+      ) {
         candidates.push(...items.values());
       }
     }
