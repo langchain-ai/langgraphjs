@@ -1,15 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { RedisStore, type RedisConnection } from "../store.js";
+import { createClient } from "redis";
+import { RedisStore } from "../store.js";
 
 function createStubClient() {
-  return {
-    ft: {
-      search: vi.fn().mockResolvedValue({ total: 0, documents: [] }),
-    },
-    json: {
-      get: vi.fn().mockResolvedValue(null),
-    },
-  };
+  const client = createClient();
+  vi.spyOn(client.ft, "search").mockResolvedValue({ total: 0, documents: [] });
+  return client;
 }
 
 const mockEmbeddings = {
@@ -18,7 +14,7 @@ const mockEmbeddings = {
 };
 
 function createVectorStore(client: ReturnType<typeof createStubClient>) {
-  return new RedisStore(client as unknown as RedisConnection, {
+  return new RedisStore(client, {
     index: { dims: 3, embed: mockEmbeddings },
   });
 }
@@ -31,7 +27,7 @@ describe("RedisStore search namespace scoping", () => {
     await store.search(["tenant", "acme"], { query: "notes" });
 
     expect(client.ft.search).toHaveBeenCalledTimes(1);
-    const [index, query] = client.ft.search.mock.calls[0];
+    const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(index).toBe("store_vectors");
     expect(query).toContain("@namespace:{tenant\\.acme|tenant\\.acme\\.*}");
   });
@@ -42,29 +38,29 @@ describe("RedisStore search namespace scoping", () => {
 
     await store.search(["docs", "public"], { query: "guide" });
 
-    const [, query] = client.ft.search.mock.calls[0];
+    const [, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(query).not.toContain("@prefix:docs*");
     expect(query).toContain("public");
   });
 
   it("should scope a plain search with the same clause", async () => {
     const client = createStubClient();
-    const store = new RedisStore(client as unknown as RedisConnection);
+    const store = new RedisStore(client);
 
     await store.search(["tenant", "acme"]);
 
-    const [index, query] = client.ft.search.mock.calls[0];
+    const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(index).toBe("store");
     expect(query).toBe("@namespace:{tenant\\.acme|tenant\\.acme\\.*}");
   });
 
   it("should search every namespace for an empty prefix", async () => {
     const client = createStubClient();
-    const store = new RedisStore(client as unknown as RedisConnection);
+    const store = new RedisStore(client);
 
     await store.search([]);
 
-    const [, query] = client.ft.search.mock.calls[0];
+    const [, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(query).toBe("*");
   });
 });
