@@ -15,6 +15,7 @@ const namespaces = [
   ["a", "tenant", "b"],
   ["tenant", "a/b\n"],
   ["tenant", "日本語"],
+  ["tenant", "a:b"],
 ];
 const dbName = `namespace_regression_${Date.now()}`;
 const store = new MongoDBStore({
