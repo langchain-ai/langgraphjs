@@ -1,9 +1,11 @@
+import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { MongoDBStore } from "../store.js";
 // Use a dedicated local Atlas deployment; each suite owns a unique database.
 const client = new MongoClient(
-  process.env.MONGODB_URL ?? "mongodb://127.0.0.1:57017/?directConnection=true"
+  getEnvironmentVariable("MONGODB_URL") ??
+    "mongodb://127.0.0.1:57017/?directConnection=true"
 );
 const namespaces = [
   ["tenant", "a/b"],
@@ -49,7 +51,7 @@ it("keeps vector namespaces distinct when labels contain slashes", async () => {
             .collection("store")
             .listSearchIndexes()
             .toArray()
-        ).every((index) => index.status === "READY"),
+        ).every((index) => "status" in index && index.status === "READY"),
       { timeout: 120000, interval: 1000 }
     )
     .toBe(true);
@@ -132,7 +134,7 @@ it("migrates legacy documents and indexes before starting, and can be rerun", as
     .poll(
       async () =>
         (await collection.listSearchIndexes().toArray()).every(
-          (index) => index.status === "READY"
+          (index) => "status" in index && index.status === "READY"
         ),
       { timeout: 120000, interval: 1000 }
     )
