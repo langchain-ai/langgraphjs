@@ -6,15 +6,20 @@ import { PostgresStore } from "../store/index.js";
 import { namespaceListingCondition } from "../store/modules/utils.js";
 
 const connectionString = process.env.TEST_POSTGRES_URL;
+
 if (!connectionString)
   throw new Error("TEST_POSTGRES_URL environment variable is required");
+
 const schema = `namespace_boundary_${Date.now()}`;
+
 const store = new PostgresStore({
   connectionOptions: connectionString,
   schema,
   index: { dims: 2, embed: async (texts) => texts.map(() => [1, 0]) },
 });
+
 const memory = new InMemoryStore();
+
 const namespaces = [
   ["literal", "*"],
   ["literal", "*", "leaf"],
@@ -47,8 +52,10 @@ const namespaces = [
   ["tenant", "a'", "notes"],
   ["tenant", "a'b"],
 ];
+
 beforeAll(async () => {
   await store.setup();
+
   for (const namespace of namespaces) {
     await memory.put(namespace, namespace.join("-"), {});
     await store.put(namespace, namespace.join("-"), {
@@ -57,22 +64,27 @@ beforeAll(async () => {
     });
   }
 });
+
 afterAll(async () => {
   await store.stop();
   const pool = new pg.Pool({ connectionString });
+
   try {
     await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
   } finally {
     await pool.end();
   }
 });
+
 describe("namespace isolation", () => {
   it.each(["basic", "batchVector", "text", "vector", "hybrid"] as const)(
     "excludes overlapping siblings in %s search",
     async (method) => {
       const options = { filter: { enabled: true }, limit: 100, offset: 0 };
+
       for (const label of ["a", "a!", "a'"]) {
         const prefix = ["tenant", label];
+
         const runSearch = async (searchOptions = options) => {
           if (method === "basic") {
             const [result] = await store.batch([
@@ -98,9 +110,11 @@ describe("namespace isolation", () => {
         };
 
         const result = await runSearch();
+
         const expected = namespaces.filter(
           (namespace) => namespace[0] === "tenant" && namespace[1] === label
         );
+
         expect(result.map((item) => item.namespace.join(":")).sort()).toEqual(
           expected.map((namespace) => namespace.join(":")).sort()
         );
@@ -186,22 +200,29 @@ it.each([
   "matches $label literally in LIKE patterns",
   async ({ label, excludedLabels }) => {
     const pool = new pg.Pool({ connectionString });
+
     try {
       for (const matchType of ["prefix", "suffix"] as const) {
         const params: unknown[] = [];
         const condition = namespaceListingCondition([label], matchType, params);
+
         const relative =
           matchType === "prefix" ? `${label}:child` : `parent:${label}`;
+
         const sibling =
           matchType === "prefix" ? `${label}2:child` : `parent:x${label}`;
+
         const excludedPaths = excludedLabels.map((candidate) =>
           matchType === "prefix" ? `${candidate}:child` : `parent:${candidate}`
         );
+
         params.push([label, relative, sibling, ...excludedPaths, "unrelated"]);
+
         const { rows } = await pool.query(
           `SELECT namespace_path FROM unnest($3::text[]) AS namespace_path WHERE ${condition}`,
           params
         );
+
         expect(rows.map((row) => row.namespace_path).sort()).toEqual(
           [label, relative].sort()
         );
@@ -281,6 +302,7 @@ describe("search parameter bindings", () => {
         limit: 1,
         offset: 1,
       });
+
       expect(result).toHaveLength(1);
       expect(result[0].namespace.slice(0, 2)).toEqual(["tenant", "a"]);
       expect(result[0].score).toBeCloseTo(
@@ -300,6 +322,7 @@ describe("search parameter bindings", () => {
         limit: 1,
         offset: 1,
       });
+
       expect(result).toHaveLength(1);
       expect(result[0].namespace.slice(0, 2)).toEqual(["tenant", "a"]);
       expect(result[0].score).toBeCloseTo(vectorWeight);
