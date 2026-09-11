@@ -170,6 +170,9 @@ it.each([
   { label: "a!", excludedLabels: ["a", "a!!"] },
   { label: "a\\b", excludedLabels: ["ab", "a\\\\b"] },
   { label: "a%_\\b", excludedLabels: ["aanything_\\b", "a%x\\b"] },
+  { label: "a%%b", excludedLabels: ["a%anythingb"] },
+  { label: "a__b", excludedLabels: ["a_xb"] },
+  { label: "a\\", excludedLabels: ["a", "a\\\\"] },
   { label: "o'brien", excludedLabels: ["obrien"] },
 ])(
   "matches $label literally in LIKE patterns",
