@@ -432,6 +432,7 @@ export class RedisStore {
         }
       }
     }
+
     // Index the existing JSON string as one case-sensitive tag. JSON TAG
     // fields have no separator by default, preserving punctuation in labels.
     for (const index of this.indexConfig

@@ -17,6 +17,7 @@ import { tokenizePath, compareValues, getTextAtPath } from "./utils.js";
 
 function validateMemoryNamespace(namespace: string[]): void {
   validateNamespace(namespace, { allowReservedRoot: true });
+
   if (namespace.some((label) => label.includes(":"))) {
     throw new InvalidNamespaceError(
       "Namespace labels cannot contain colons (':'), the InMemoryStore path separator."
@@ -90,6 +91,7 @@ export class InMemoryStore extends BaseStore {
     // First pass - handle gets and prepare search/put operations
     for (let i = 0; i < operations.length; i += 1) {
       const op = operations[i];
+
       if ("namespace" in op) {
         validateMemoryNamespace(op.namespace);
       }
@@ -266,6 +268,7 @@ export class InMemoryStore extends BaseStore {
     if (op.namespacePrefix.length > 0) {
       validateMemoryNamespace(op.namespacePrefix);
     }
+
     const prefix = op.namespacePrefix.join(":");
     const candidates: Item[] = [];
     for (const [namespace, items] of this.data.entries()) {
