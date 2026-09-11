@@ -232,13 +232,16 @@ describe("InMemoryStore Namespace Operations", () => {
       ["foobar", "baz"],
       ["foo2"],
     ];
+
     for (const ns of fixtures) {
       await store.put(ns, "k", { v: 1 });
     }
 
     const isSegmentPrefix = (query: string[], ns: string[]): boolean => {
       if (query.length === 0) return true;
+
       if (query.length > ns.length) return false;
+
       return query.every((part, i) => part === ns[i]);
     };
 
@@ -258,11 +261,13 @@ describe("InMemoryStore Namespace Operations", () => {
           item.namespace.join("\0")
         )
       );
+
       const expected = new Set(
         fixtures.flatMap((ns) =>
           isSegmentPrefix(query, ns) ? [ns.join("\0")] : []
         )
       );
+
       expect(got, `query ${JSON.stringify(query)}`).toEqual(expected);
     }
   });

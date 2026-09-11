@@ -49,6 +49,7 @@ export function validateNamespace(
       );
     }
   }
+
   if (namespace[0] === "langgraph" && !options.allowReservedRoot) {
     throw new InvalidNamespaceError(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
