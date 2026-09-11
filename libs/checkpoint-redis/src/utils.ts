@@ -21,6 +21,14 @@ export function escapeRediSearchTagValue(value: string): string {
     .replace(/[-\s,.:<>{}[\]"';!@#$%^&*()+=~|?/]/g, "\\$&");
 }
 
+/** Match an exact namespace or descendants using a case-sensitive TAG field. */
+export function buildNamespacePrefixQuery(namespacePrefix: string[]): string {
+  if (namespacePrefix.length === 0) return "*";
+  const prefix = escapeRediSearchTagValue(namespacePrefix.join("."));
+  const descendant = escapeRediSearchTagValue(`${namespacePrefix.join(".")}.`);
+  return `@namespace:{${prefix}|${descendant}*}`;
+}
+
 /**
  * Characters that are interpreted as wildcards or escapes by Redis pattern
  * commands (KEYS, SCAN MATCH, PSUBSCRIBE, etc.). Embedding any of these in a
