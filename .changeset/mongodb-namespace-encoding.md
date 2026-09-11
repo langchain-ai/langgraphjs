@@ -2,4 +2,4 @@
 "@langchain/langgraph-checkpoint-mongodb": major
 ---
 
-Use unambiguous namespace keys and vector-filter prefixes to prevent slash-containing labels from aliasing other namespaces. Treat namespace listing labels as literal aggregation values. Existing stores require the explicit migrateNamespaceEncoding maintenance operation before startup; vector search uses a new namespace_v2 index.
+Reject slash-containing namespace labels on writes, verify vector results against namespace arrays to exclude legacy encoding collisions, and treat listing labels as literal values. Existing data and indexes need no migration. Legacy slash-containing records remain readable and deletable, but must be renamed before updating; vector collisions may produce short result pages.

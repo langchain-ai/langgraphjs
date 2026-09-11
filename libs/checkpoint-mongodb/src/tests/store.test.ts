@@ -23,7 +23,6 @@ describe("MongoDBStore", () => {
       findOne: vi.fn().mockResolvedValue(null),
       find: vi.fn(() => createFindCursor()),
       deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
-      indexExists: vi.fn().mockResolvedValue(false),
       createIndex: vi.fn().mockResolvedValue("namespace_1_key_1"),
       aggregate: vi.fn(() => ({
         toArray: vi.fn().mockResolvedValue([]),
@@ -50,6 +49,17 @@ describe("MongoDBStore", () => {
   });
 
   describe("put", () => {
+    it.each(["/", "a/b", "a/", "/b", "a/b\n"])(
+      "rejects slash label %j in public and batch writes",
+      async (label) => {
+        await expect(store.put(["tenant", label], "key", {})).rejects.toThrow(/slashes/);
+        await expect(store.batch([
+          { namespace: ["tenant", label], key: "key", value: {} },
+        ])).rejects.toThrow(/slashes/);
+        expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+      }
+    );
+
     it("should upsert a document", async () => {
       await store.batch([{
         namespace: ["documents", "user123"],
@@ -284,7 +294,7 @@ describe("MongoDBStore", () => {
       const calls = mockCollection.bulkWrite.mock.calls[0][0];
       const doc = calls[0].updateOne.update.$set;
       expect(doc.embedding).toEqual([0.1, 0.2]);
-      expect(doc.namespacePrefixes).toEqual(['["memories"]', '["memories","alice"]']);
+      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
     });
 
     it("should not write embedding field on put in auto mode", async () => {
@@ -306,7 +316,7 @@ describe("MongoDBStore", () => {
       // Auto mode: no embedding field written, MongoDB reads value.content directly
       expect(doc.embedding).toBeUndefined();
       expect(doc.value).toEqual({ content: "hello world" });
-      expect(doc.namespacePrefixes).toEqual(['["memories"]', '["memories","alice"]']);
+      expect(doc.namespacePath).toEqual(["memories", "memories/alice"]);
     });
 
     it("should skip embedding when op.index is false", async () => {
@@ -387,7 +397,7 @@ describe("MongoDBStore", () => {
       expect(vectorSearchStage.queryVector).toBeUndefined();
     });
 
-    it("should include namespacePrefixes filter in $vectorSearch", async () => {
+    it("should include namespacePath filter in $vectorSearch", async () => {
       const storeAuto = new MongoDBStore({
         client: mockClient as any,
         dbName: "test",
@@ -409,7 +419,17 @@ describe("MongoDBStore", () => {
       }]);
 
       const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
-      expect(vectorSearchStage.filter).toEqual({ namespacePrefixes: '["memories","alice"]' });
+      expect(vectorSearchStage.filter).toEqual({ namespacePath: "memories/alice" });
+      expect(capturedPipelines[0][2]).toEqual({
+        $match: {
+          $expr: {
+            $eq: [
+              { $slice: ["$namespace", 2] },
+              { $literal: ["memories", "alice"] },
+            ],
+          },
+        },
+      });
     });
 
     it("should throw when query is provided without indexConfig", async () => {

@@ -10,12 +10,10 @@ const client = new MongoClient(
 );
 
 const namespaces = [
-  ["tenant", "a/b"],
   ["tenant", "a", "b"],
   ["tenant", "a", "b", "notes"],
   ["tenant", "a", "bc"],
   ["a", "tenant", "b"],
-  ["tenant", "a/b\n"],
   ["tenant", "日本語"],
   ["tenant", "a:b"],
 ];
@@ -50,7 +48,7 @@ afterAll(async () => {
   await client.close();
 });
 
-it("keeps vector namespaces distinct when labels contain slashes", async () => {
+it("keeps vector and ordinary search within namespace segment boundaries", async () => {
   await expect
     .poll(
       async () =>
@@ -86,13 +84,16 @@ it("keeps vector namespaces distinct when labels contain slashes", async () => {
   }
 });
 
-it("permits the same key in distinct namespace arrays", async () => {
-  await store.put(["tenant", "a/b"], "shared", {});
+it("rejects slash-containing writes before embedding or storing them", async () => {
+  await expect(store.put(["tenant", "a/b"], "shared", {})).rejects.toThrow(/slashes/);
+  await expect(store.batch([
+    { namespace: ["tenant", "a/b"], key: "shared", value: {} },
+  ])).rejects.toThrow(/slashes/);
+  expect(await store.get(["tenant", "a/b"], "shared")).toBeNull();
   await store.put(["tenant", "a", "b"], "shared", {});
-  expect((await store.get(["tenant", "a/b"], "shared"))?.namespace).toEqual([
-    "tenant",
-    "a/b",
-  ]);
+  await store.put(["tenant", "ab"], "shared", {});
+  expect((await store.get(["tenant", "a", "b"], "shared"))?.namespace)
+    .toEqual(["tenant", "a", "b"]);
 });
 
 it("treats aggregation expression-looking labels literally", async () => {
@@ -105,108 +106,45 @@ it("treats aggregation expression-looking labels literally", async () => {
   ]);
 });
 
-it("migrates legacy documents and indexes before starting, and can be rerun", async () => {
-  const collectionName = "legacy";
-  const collection = client.db(dbName).collection(collectionName);
-  await collection.createIndex({ namespaceStr: 1, key: 1 }, { unique: true });
+it("excludes legacy vector aliases without migrating documents or indexes", async () => {
+  const collection = client.db(dbName).collection("store");
+  const namespace = ["legacy", "a/b"];
   await collection.insertMany([
     {
-      namespace: ["tenant", "a/b"],
-      namespaceStr: "tenant/a/b",
-      namespacePath: ["tenant", "tenant/a/b"],
+      namespace,
+      namespaceStr: "legacy/a/b",
+      namespacePath: ["legacy", "legacy/a/b"],
       key: "flat",
-      value: {},
+      value: { preserved: true },
       embedding: [1, 0],
     },
     {
-      namespace: ["tenant", "a", "b"],
-      namespaceStr: "tenant/a/b",
-      namespacePath: ["tenant", "tenant/a", "tenant/a/b"],
+      namespace: ["legacy", "a", "b"],
+      namespaceStr: "legacy/a/b",
+      namespacePath: ["legacy", "legacy/a", "legacy/a/b"],
       key: "segments",
       value: {},
       embedding: [1, 0],
     },
   ]);
+  const before = await collection.findOne({ namespace, key: "flat" });
+  await store.start();
+  expect(await collection.indexExists("namespaceStr_1_key_1")).toBe(true);
+  expect(await collection.findOne({ namespace, key: "flat" })).toEqual(before);
+  await expect.poll(
+    async () => (await store.search(["legacy"], { query: "hello", limit: 100 })).length,
+    { timeout: 120000, interval: 1000 }
+  ).toBe(2);
 
-  const legacy = new MongoDBStore({
-    client,
-    dbName,
-    collectionName,
-    embeddings: {
-      embedDocuments: async (texts) => texts.map(() => [1, 0]),
-      embedQuery: async () => [1, 0],
-    },
-    indexConfig: { name: "legacy_test", dims: 2 },
-  });
-
-  await expect(legacy.start()).rejects.toThrow(/migrateNamespaceEncoding/);
-  await legacy.migrateNamespaceEncoding();
-  await legacy.migrateNamespaceEncoding();
-  await legacy.start();
-  expect(await collection.indexExists("namespaceStr_1_key_1")).toBe(false);
-  expect(await collection.indexExists("namespaceKey_1_key_1")).toBe(true);
-  await expect
-    .poll(
-      async () =>
-        (await collection.listSearchIndexes().toArray()).every(
-          (index) => "status" in index && index.status === "READY"
-        ),
-      { timeout: 120000, interval: 1000 }
-    )
-    .toBe(true);
-  await expect
-    .poll(
-      async () =>
-        (await legacy.search([], { query: "hello", limit: 100 })).length,
-      { timeout: 120000, interval: 1000 }
-    )
-    .toBe(2);
-  expect(
-    (await legacy.search(["tenant", "a/b"], { query: "hello" })).map(
-      (item) => item.namespace
-    )
-  ).toEqual([["tenant", "a/b"]]);
-  await legacy.put(["tenant", "a/b"], "shared", {});
-  await legacy.put(["tenant", "a", "b"], "shared", {});
-});
-
-it("requires migration for an empty collection with the legacy unique index", async () => {
-  const collectionName = "empty_legacy";
-  await client
-    .db(dbName)
-    .collection(collectionName)
-    .createIndex({ namespaceStr: 1, key: 1 }, { unique: true });
-  const legacy = new MongoDBStore({ client, dbName, collectionName });
-  await expect(legacy.start()).rejects.toThrow(/migrateNamespaceEncoding/);
-  await legacy.migrateNamespaceEncoding();
-  await legacy.start();
-  await legacy.put(["tenant", "a/b"], "same", {});
-  await legacy.put(["tenant", "a", "b"], "same", {});
-});
-
-it.each([null, "tenant/a", ["tenant", 42]])(
-  "rejects malformed stored namespace %j without rewriting the document",
-  async (namespace) => {
-    const collectionName = "invalid_legacy";
-    const collection = client.db(dbName).collection(collectionName);
-    await collection.deleteMany({});
-
-    const { insertedId } = await collection.insertOne({
-      namespace,
-      key: "key",
-      value: { preserved: true },
-    });
-
-    const legacy = new MongoDBStore({ client, dbName, collectionName });
-
-    await expect(legacy.migrateNamespaceEncoding()).rejects.toThrow(
-      /array of strings/
-    );
-    expect(await collection.findOne({ _id: insertedId })).toEqual({
-      _id: insertedId,
-      namespace,
-      key: "key",
-      value: { preserved: true },
-    });
+  for (const prefix of [namespace, ["legacy", "a", "b"]]) {
+    for (const query of [undefined, "hello"]) {
+      expect((await store.search(prefix, { query, limit: 100 })).map(item => item.namespace))
+        .toEqual([prefix]);
+    }
   }
-);
+
+  expect((await store.get(namespace, "flat"))?.value).toEqual({ preserved: true });
+  await expect(store.put(namespace, "flat", {})).rejects.toThrow(/slashes/);
+  await store.delete(namespace, "flat");
+  expect(await store.get(namespace, "flat")).toBeNull();
+});
