@@ -1,4 +1,4 @@
-import { createClient, createCluster } from "redis";
+import { createClient, createCluster, SchemaFieldTypes } from "redis";
 
 /** A conventional Redis connection. */
 export type RedisClientConnection = ReturnType<typeof createClient>;
@@ -18,7 +18,10 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
-import { escapeRediSearchTagValue } from "./utils.js";
+import {
+  buildNamespacePrefixQuery,
+  escapeRediSearchTagValue,
+} from "./utils.js";
 
 // Type guard functions for operations
 export function isPutOperation(op: Operation): op is PutOperation {
@@ -92,10 +95,7 @@ class FilterBuilder {
 
     // Add prefix filter if provided
     if (prefix) {
-      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-      if (tokens.length > 0) {
-        queryParts.push(`@prefix:(${tokens.join(" ")})`);
-      }
+      queryParts.push(buildNamespacePrefixQuery(prefix.split(".")));
     }
 
     // Check if we have complex operators that require client-side filtering
@@ -432,6 +432,26 @@ export class RedisStore {
         }
       }
     }
+
+    // Index the existing JSON string as one case-sensitive tag. JSON TAG
+    // fields have no separator by default, preserving punctuation in labels.
+    for (const index of this.indexConfig
+      ? ["store", "store_vectors"]
+      : ["store"]) {
+      try {
+        await this.client.ft.alter(index, {
+          "$.prefix": {
+            type: SchemaFieldTypes.TAG,
+            AS: "namespace",
+            CASESENSITIVE: true,
+          },
+        });
+      } catch (error: any) {
+        if (!error.message?.includes("Duplicate field")) {
+          throw error;
+        }
+      }
+    }
   }
 
   async get(
@@ -439,11 +459,9 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
+    this.validateNamespace(namespace);
     const prefix = namespace.join(".");
-    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
-    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-    const prefixQuery =
-      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
+    const prefixQuery = `@namespace:{${escapeRediSearchTagValue(prefix)}}`;
 
     // For TAG fields in curly braces, escape special characters
     // Handle empty string as a special case
@@ -528,10 +546,7 @@ export class RedisStore {
     let createdAt = now; // Will be overridden if document exists
 
     // Delete existing document if it exists
-    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
-    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-    const prefixQuery =
-      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
+    const prefixQuery = `@namespace:{${escapeRediSearchTagValue(prefix)}}`;
 
     // For TAG fields in curly braces, escape special characters
     const escapedKey = this.escapeTagValue(key);
@@ -651,7 +666,10 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
-    const prefix = namespacePrefix.join(".");
+    if (namespacePrefix.length > 0) {
+      this.validateNamespace(namespacePrefix);
+    }
+
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
@@ -660,8 +678,7 @@ export class RedisStore {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
       // Build KNN query
-      // For prefix search, use wildcard since we want to match any document starting with this prefix
-      const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
+      const queryStr = buildNamespacePrefixQuery(namespacePrefix);
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
 
       try {
@@ -742,15 +759,7 @@ export class RedisStore {
     }
 
     // Regular search without vectors
-    let queryStr = "*";
-    if (prefix) {
-      // For prefix search, we need to match all tokens from the namespace prefix
-      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-      if (tokens.length > 0) {
-        // Match all tokens to ensure we get the right prefix
-        queryStr = `@prefix:(${tokens.join(" ")})`;
-      }
-    }
+    const queryStr = buildNamespacePrefixQuery(namespacePrefix);
 
     try {
       const results = await this.client.ft.search("store", queryStr, {
@@ -822,7 +831,7 @@ export class RedisStore {
 
           let matches = true;
           for (let i = 0; i < options.prefix.length; i++) {
-            if (parts[i] !== options.prefix[i]) {
+            if (options.prefix[i] !== "*" && parts[i] !== options.prefix[i]) {
               matches = false;
               break;
             }
@@ -838,7 +847,10 @@ export class RedisStore {
           let matches = true;
           const startIdx = parts.length - options.suffix.length;
           for (let i = 0; i < options.suffix.length; i++) {
-            if (parts[startIdx + i] !== options.suffix[i]) {
+            if (
+              options.suffix[i] !== "*" &&
+              parts[startIdx + i] !== options.suffix[i]
+            ) {
               matches = false;
               break;
             }
