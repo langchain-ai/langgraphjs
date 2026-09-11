@@ -1658,7 +1658,12 @@ export class StreamController<
    *   still required.
    */
   #ensureThread(threadId: string, deferRootPump = false): ThreadStream {
-    if (this.#thread != null) return this.#thread;
+    if (this.#thread != null) {
+      if (!deferRootPump && !this.#rootPumpDeferred && this.#rootPump == null) {
+        this.#startRootPump(this.#thread);
+      }
+      return this.#thread;
+    }
     this.#thread = this.#options.client.threads.stream(threadId, {
       assistantId: this.#options.assistantId,
       transport: this.#options.transport,
@@ -1668,6 +1673,7 @@ export class StreamController<
       streamIdleReconnect: this.#options.streamIdleReconnect,
       reconnectDelayMs: this.#options.reconnectDelayMs,
       onReconnect: this.#options.onReconnect,
+      onConnected: this.#options.onConnected,
     });
     this.registry.bind(this.#thread);
     if (deferRootPump) {
@@ -1838,6 +1844,7 @@ export class StreamController<
     );
     this.#threadErrorUnsubscribe = thread.onError((error) => {
       this.rootStore.setState((s) => ({ ...s, error, isLoading: false }));
+      this.#rootSubscription?.close();
     });
 
     /**
@@ -1851,7 +1858,7 @@ export class StreamController<
     this.#rootEventListeners.add(this.#lifecycleLoading.listener);
     this.#rootEventListeners.add(this.#runLifecycleListener);
 
-    this.#rootPump = (async () => {
+    const pump = (async () => {
       try {
         /**
          * Root content pump: depth 1 is required because the controller
@@ -1957,6 +1964,16 @@ export class StreamController<
             break;
           }
           if (!subscription.isPaused) {
+            const snapshot = this.rootStore.getSnapshot();
+            if (snapshot.isLoading && snapshot.error == null) {
+              this.rootStore.setState((s) => ({
+                ...s,
+                error: new Error(
+                  "Thread event stream closed before the active run completed."
+                ),
+                isLoading: false,
+              }));
+            }
             break;
           }
           await subscription.waitForResume();
@@ -1967,6 +1984,21 @@ export class StreamController<
         /* thread closed or errored */
       }
     })();
+    this.#rootPump = pump;
+    void pump.finally(() => {
+      if (pumpGeneration !== this.#rootPumpGeneration) return;
+      if (this.#rootPump !== pump) return;
+      this.#rootPumpGeneration += 1;
+      this.#rootSubscription = undefined;
+      this.#rootPump = undefined;
+      this.#rootPumpReady = undefined;
+      this.#threadEventUnsubscribe?.();
+      this.#threadEventUnsubscribe = undefined;
+      this.#threadErrorUnsubscribe?.();
+      this.#threadErrorUnsubscribe = undefined;
+      this.#rootEventListeners.delete(this.#lifecycleLoading.listener);
+      this.#rootEventListeners.delete(this.#runLifecycleListener);
+    });
   }
 
   /**

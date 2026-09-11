@@ -1,6 +1,7 @@
 import type { CommandResponse, ErrorResponse } from "@langchain/protocol";
 import type { AsyncCaller } from "../../../utils/async_caller.js";
 import type { IdleReconnectMode } from "../../../utils/stream.js";
+import type { ConnectedInfo, ReconnectInfo } from "../../../utils/reconnect.js";
 
 export type ProtocolRequestHook = (
   url: URL,
@@ -74,8 +75,10 @@ export interface ProtocolSseTransportOptions {
    * @see {@link IdleReconnectMode}
    */
   idleReconnect?: IdleReconnectMode;
-  /** Called before each SSE reconnect attempt (after backoff delay). */
-  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /** Called before each SSE reconnect attempt with its scheduled delay. */
+  onReconnect?: (options: ReconnectInfo) => void;
+  /** Called after the initial SSE connection and every successful reconnect. */
+  onConnected?: (options: ConnectedInfo) => void | Promise<void>;
   /**
    * Backoff before each SSE reconnect attempt. Defaults to
    * `reconnectDelayMs` from `utils/reconnect`.
@@ -100,10 +103,10 @@ export interface ProtocolWebSocketTransportOptions {
    * Set to 0 to disable automatic reconnection.
    */
   maxReconnectAttempts?: number;
-  /**
-   * Called before each reconnect attempt (after backoff delay).
-   */
-  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /** Called before each reconnect attempt with its scheduled delay. */
+  onReconnect?: (options: ReconnectInfo) => void;
+  /** Called after the initial connection and every successful reconnect. */
+  onConnected?: (options: ConnectedInfo) => void | Promise<void>;
   /**
    * Invoked after the socket has been re-established. Use to restore
    * server-side subscription state (see `ThreadStream`).

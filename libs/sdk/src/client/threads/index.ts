@@ -528,6 +528,7 @@ export class ThreadsClient<
         maxReconnectAttempts,
         reconnectDelayMs: options.reconnectDelayMs,
         onReconnect: options.onReconnect,
+        onConnected: options.onConnected,
       };
 
       transport =
