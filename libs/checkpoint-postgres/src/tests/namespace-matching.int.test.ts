@@ -166,9 +166,13 @@ it("validates namespaces in direct batch operations", async () => {
   await expect(store.search([])).rejects.toThrow(/empty/);
 });
 
-it.each(["a!", "a%_\\b", "o'brien"])(
-  "matches literal LIKE characters in %s independently of validation",
-  async (label) => {
+it.each([
+  { label: "a!", excludedLabels: ["a", "a!!"] },
+  { label: "a%_\\b", excludedLabels: ["aanything_\\b", "a%x\\b"] },
+  { label: "o'brien", excludedLabels: ["obrien"] },
+])(
+  "matches $label literally in LIKE patterns",
+  async ({ label, excludedLabels }) => {
     const pool = new pg.Pool({ connectionString });
     try {
       for (const matchType of ["prefix", "suffix"] as const) {
@@ -178,23 +182,10 @@ it.each(["a!", "a%_\\b", "o'brien"])(
           matchType === "prefix" ? `${label}:child` : `parent:${label}`;
         const sibling =
           matchType === "prefix" ? `${label}2:child` : `parent:x${label}`;
-        const wildcardMatches = [
-          label.replace("%", "anything"),
-          label.replace("_", "x"),
-        ]
-          .filter((candidate) => candidate !== label)
-          .map((candidate) =>
-            matchType === "prefix"
-              ? `${candidate}:child`
-              : `parent:${candidate}`
-          );
-        params.push([
-          label,
-          relative,
-          sibling,
-          ...wildcardMatches,
-          "unrelated",
-        ]);
+        const excludedPaths = excludedLabels.map((candidate) =>
+          matchType === "prefix" ? `${candidate}:child` : `parent:${candidate}`
+        );
+        params.push([label, relative, sibling, ...excludedPaths, "unrelated"]);
         const { rows } = await pool.query(
           `SELECT namespace_path FROM unnest($3::text[]) AS namespace_path WHERE ${condition}`,
           params
