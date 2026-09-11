@@ -259,9 +259,9 @@ describe("InMemoryStore Namespace Operations", () => {
         )
       );
       const expected = new Set(
-        fixtures
-          .filter((ns) => isSegmentPrefix(query, ns))
-          .map((ns) => ns.join("\0"))
+        fixtures.flatMap((ns) =>
+          isSegmentPrefix(query, ns) ? [ns.join("\0")] : []
+        )
       );
       expect(got, `query ${JSON.stringify(query)}`).toEqual(expected);
     }
