@@ -449,7 +449,15 @@ export function useStream<
     maxReconnectAttempts?: number;
     streamIdleReconnect?: number | "auto";
     reconnectDelayMs?: (attempt: number) => number;
-    onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+    onReconnect?: (options: {
+      attempt: number;
+      cause: unknown;
+      delayMs: number;
+    }) => void;
+    onConnected?: (options: {
+      kind: "initial" | "reconnected";
+      attempt: number;
+    }) => void | Promise<void>;
     onThreadId?: (threadId: string) => void;
     onCreated?: (info: RunExecutionInfo) => void;
     onCompleted?: (info: RunCompletedInfo) => void;
