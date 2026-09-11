@@ -192,6 +192,86 @@ describe("InMemoryStore Namespace Operations", () => {
     expect(result).toEqual([]);
   });
 
+  it("should block colons in namespace labels", async () => {
+    const doc = { foo: "bar" };
+    await expect(store.put(["tenant", "acme:corp"], "k", doc)).rejects.toThrow(
+      InvalidNamespaceError
+    );
+    await expect(store.search(["tenant:acme"])).rejects.toThrow(
+      InvalidNamespaceError
+    );
+  });
+
+  it("should not leak sibling namespaces that share a string prefix (issue 2721 / CVE-2026-71433)", async () => {
+    await store.put(["tenant", "acme"], "note", { text: "acme's own note" });
+    await store.put(["tenant", "acme-corp"], "secret", {
+      text: "acme-corp CONFIDENTIAL",
+    });
+    await store.put(["tenant", "acmex"], "other", { text: "acmex" });
+    await store.put(["tenant", "acme", "child"], "nested", { text: "child" });
+
+    const scoped = await store.search(["tenant", "acme"], { limit: 100 });
+    const namespaces = scoped.map((item) => item.namespace.join(":")).sort();
+    expect(namespaces).toEqual(["tenant:acme", "tenant:acme:child"]);
+    expect(scoped.find((item) => item.key === "secret")).toBeUndefined();
+    expect(await store.get(["tenant", "acme"], "secret")).toBeNull();
+
+    const empty = await store.search([], { limit: 100 });
+    expect(empty).toHaveLength(4);
+
+    const fo = await store.search(["fo"], { limit: 100 });
+    expect(fo).toHaveLength(0);
+  });
+
+  it("search prefix match is segment-wise, including empty prefix", async () => {
+    const fixtures: string[][] = [
+      ["foo"],
+      ["foo", "child"],
+      ["foo", "child", "deep"],
+      ["foobar"],
+      ["foobar", "baz"],
+      ["foo2"],
+    ];
+
+    for (const ns of fixtures) {
+      await store.put(ns, "k", { v: 1 });
+    }
+
+    const isSegmentPrefix = (query: string[], ns: string[]): boolean => {
+      if (query.length === 0) return true;
+
+      if (query.length > ns.length) return false;
+
+      return query.every((part, i) => part === ns[i]);
+    };
+
+    const queries: string[][] = [
+      [],
+      ["foo"],
+      ["foo", "child"],
+      ["foobar"],
+      ["foo2"],
+      ["fo"],
+      ["foo", "nope"],
+    ];
+
+    for (const query of queries) {
+      const got = new Set(
+        (await store.search(query, { limit: 100 })).map((item) =>
+          item.namespace.join("\0")
+        )
+      );
+
+      const expected = new Set(
+        fixtures.flatMap((ns) =>
+          isSegmentPrefix(query, ns) ? [ns.join("\0")] : []
+        )
+      );
+
+      expect(got, `query ${JSON.stringify(query)}`).toEqual(expected);
+    }
+  });
+
   it("should block invalid namespaces", async () => {
     const doc = { foo: "bar" };
 
@@ -232,4 +312,21 @@ describe("InMemoryStore Namespace Operations", () => {
     const batchDeletedResult = await store.get(["valid", "namespace"], "key");
     expect(batchDeletedResult).toBeNull();
   });
+});
+
+
+it("rejects namespace aliases through direct batch reads, writes and deletes", async () => {
+  const store = new InMemoryStore();
+  await store.put(["tenant", "a", "notes"], "key", { own: true });
+
+  for (const operation of [
+    { namespace: ["tenant", "a:notes"], key: "key" },
+    { namespace: ["tenant", "a:notes"], key: "key", value: { own: false } },
+    { namespace: ["tenant", "a:notes"], key: "key", value: null },
+    { namespacePrefix: ["tenant", "a:notes"] },
+  ]) {
+    await expect(store.batch([operation])).rejects.toThrow(/colons/);
+  }
+
+  expect((await store.get(["tenant", "a", "notes"], "key"))?.value).toEqual({ own: true });
 });
