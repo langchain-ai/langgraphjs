@@ -42,9 +42,7 @@ export function validateNamespace(
     if (LIKE_RESERVED_PATTERN.test(label)) {
       throw new Error(
         `Invalid namespace label '${label}' found in ${namespace}. Namespace ` +
-          `labels cannot contain SQL LIKE wildcards ('%', '_') or the ` +
-          `backslash escape character ('\\\\'); these would cause search() to ` +
-          `match namespaces outside the requested prefix.`
+          `labels cannot contain SQL LIKE wildcards ('%', '_') or backslashes.`
       );
     }
   }
@@ -55,9 +53,9 @@ export function validateNamespace(
   }
 }
 
-/** Bound values still interpret LIKE syntax; escape it for literal matching. */
+/** Escape LIKE wildcards and the explicit escape character used by ESCAPE '!'. */
 export function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, "\\$&");
+  return value.replace(/[!%_]/g, "!$&");
 }
 
 /** Listing wildcards span one segment; stars inside a label remain literal. */
@@ -74,7 +72,7 @@ export function namespaceListingCondition(
       path,
       matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
     );
-    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1} ESCAPE E'\\\\')`;
+    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1} ESCAPE '!')`;
   }
   const body = namespace
     .map((label) =>

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { InMemoryStore } from "@langchain/langgraph-checkpoint";
 import { PostgresStore } from "../store/index.js";
+import { namespaceListingCondition } from "../store/modules/utils.js";
 
 const connectionString = process.env.TEST_POSTGRES_URL;
 if (!connectionString)
@@ -39,6 +40,12 @@ const namespaces = [
   ["tenant", "mylanggraph"],
   ["tenant", "a", "alice"],
   ["tenant", "ab", "alice"],
+  ["tenant", "a!"],
+  ["tenant", "a!", "notes"],
+  ["tenant", "a!b"],
+  ["tenant", "a'"],
+  ["tenant", "a'", "notes"],
+  ["tenant", "a'b"],
 ];
 beforeAll(async () => {
   await store.setup();
@@ -63,38 +70,43 @@ describe("namespace isolation", () => {
   it.each(["basic", "batchVector", "text", "vector", "hybrid"] as const)(
     "excludes overlapping siblings in %s search",
     async (method) => {
-      const prefix = ["tenant", "a"];
       const options = { filter: { enabled: true }, limit: 100, offset: 0 };
-      const runSearch = async (searchOptions = options) =>
-        method === "basic" || method === "batchVector"
-          ? (
-              await store.batch([
-                {
-                  namespacePrefix: prefix,
-                  ...searchOptions,
-                  ...(method === "batchVector" ? { query: "hello" } : {}),
-                },
-              ])
-            )[0]
-          : await store.search(prefix, {
-              ...searchOptions,
-              query: "hello",
-              mode: method,
-            });
-      const result = await runSearch();
-      expect(result.map((item) => item.namespace.join(":")).sort()).toEqual([
-        "tenant:a",
-        "tenant:a:alice",
-        "tenant:a:notes",
-      ]);
-      expect(await store.get(prefix, "tenant-ab")).toBeNull();
-      expect(
-        await runSearch({ ...options, filter: { enabled: false } })
-      ).toEqual([]);
-      expect(await runSearch({ ...options, limit: 1, offset: 1 })).toHaveLength(
-        1
-      );
-      expect(await runSearch({ ...options, limit: 1, offset: 3 })).toEqual([]);
+      for (const label of ["a", "a!", "a'"]) {
+        const prefix = ["tenant", label];
+        const runSearch = async (searchOptions = options) =>
+          method === "basic" || method === "batchVector"
+            ? (
+                await store.batch([
+                  {
+                    namespacePrefix: prefix,
+                    ...searchOptions,
+                    ...(method === "batchVector" ? { query: "hello" } : {}),
+                  },
+                ])
+              )[0]
+            : await store.search(prefix, {
+                ...searchOptions,
+                query: "hello",
+                mode: method,
+              });
+        const result = await runSearch();
+        const expected = namespaces.filter(
+          (namespace) => namespace[0] === "tenant" && namespace[1] === label
+        );
+        expect(result.map((item) => item.namespace.join(":")).sort()).toEqual(
+          expected.map((namespace) => namespace.join(":")).sort()
+        );
+        expect(await store.get(prefix, "tenant-ab")).toBeNull();
+        expect(
+          await runSearch({ ...options, filter: { enabled: false } })
+        ).toEqual([]);
+        expect(
+          await runSearch({ ...options, limit: 1, offset: 1 })
+        ).toHaveLength(1);
+        expect(
+          await runSearch({ ...options, limit: 1, offset: expected.length })
+        ).toEqual([]);
+      }
     }
   );
   it("anchors prefix, suffix and combined namespace listings", async () => {
@@ -135,6 +147,76 @@ describe("namespace isolation", () => {
       await expect(store.delete([label], "key")).rejects.toThrow();
     }
   });
+});
+
+it("validates namespaces in direct batch operations", async () => {
+  const namespace = ["tenant", "a:notes"];
+  await expect(store.batch([{ namespace, key: "k" }])).rejects.toThrow(
+    /colons/
+  );
+  await expect(
+    store.batch([{ namespace, key: "k", value: {} }])
+  ).rejects.toThrow(/colons/);
+  await expect(
+    store.batch([{ namespace, key: "k", value: null }])
+  ).rejects.toThrow(/colons/);
+  await expect(store.batch([{ namespacePrefix: namespace }])).rejects.toThrow(
+    /colons/
+  );
+  await expect(store.search([])).rejects.toThrow(/empty/);
+});
+
+it.each(["a!", "a%_\\b", "o'brien"])(
+  "matches literal LIKE characters in %s independently of validation",
+  async (label) => {
+    const pool = new pg.Pool({ connectionString });
+    try {
+      for (const matchType of ["prefix", "suffix"] as const) {
+        const params: unknown[] = [];
+        const condition = namespaceListingCondition([label], matchType, params);
+        const relative =
+          matchType === "prefix" ? `${label}:child` : `parent:${label}`;
+        const sibling =
+          matchType === "prefix" ? `${label}2:child` : `parent:x${label}`;
+        const wildcardMatches = [
+          label.replace("%", "anything"),
+          label.replace("_", "x"),
+        ]
+          .filter((candidate) => candidate !== label)
+          .map((candidate) =>
+            matchType === "prefix"
+              ? `${candidate}:child`
+              : `parent:${candidate}`
+          );
+        params.push([
+          label,
+          relative,
+          sibling,
+          ...wildcardMatches,
+          "unrelated",
+        ]);
+        const { rows } = await pool.query(
+          `SELECT namespace_path FROM unnest($3::text[]) AS namespace_path WHERE ${condition}`,
+          params
+        );
+        expect(rows.map((row) => row.namespace_path).sort()).toEqual(
+          [label, relative].sort()
+        );
+      }
+    } finally {
+      await pool.end();
+    }
+  }
+);
+
+it("lists literal escape characters through the public API", async () => {
+  expect(await store.listNamespaces({ prefix: ["tenant", "a!"] })).toEqual([
+    ["tenant", "a!"],
+    ["tenant", "a!", "notes"],
+  ]);
+  expect(await store.listNamespaces({ suffix: ["a!"] })).toEqual([
+    ["tenant", "a!"],
+  ]);
 });
 
 describe("listing wildcards agree with InMemoryStore", () => {

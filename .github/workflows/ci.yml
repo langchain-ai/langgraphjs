@@ -149,6 +149,24 @@ jobs:
         # a dedicated job to avoid Chrome connection timeouts.
         run: pnpm -r --if-present --filter='!@langchain/react' --filter='!@langchain/angular' --filter='!@langchain/vue' --filter='!@langchain/svelte' run test
 
+      - name: Test Postgres namespace isolation
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
+        env:
+          TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: |
+          docker run --rm -d --name postgres-namespace-tests \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -p 127.0.0.1:5432:5432 pgvector/pgvector:pg16
+          trap 'docker stop postgres-namespace-tests' EXIT
+          for attempt in {1..30}; do
+            if docker exec postgres-namespace-tests pg_isready -U postgres -h 127.0.0.1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec postgres-namespace-tests pg_isready -U postgres -h 127.0.0.1
+          pnpm --filter @langchain/langgraph-checkpoint-postgres test:int src/tests/namespace-matching.int.test.ts
+
   browser-tests:
     name: Browser Tests
     needs: [lint, format, build]
