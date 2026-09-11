@@ -150,8 +150,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.onReconnected = handler;
   }
 
-  async open(): Promise<void> {
-    const reconnecting = this.reconnectInFlight != null;
+  async open(reconnecting = false): Promise<void> {
     if (this.closed) {
       throw new Error("Protocol WebSocket transport is closed.");
     }
@@ -416,7 +415,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       }
 
       try {
-        await this.open();
+        await this.open(true);
         if (this.onReconnected) {
           await this.onReconnected();
         }

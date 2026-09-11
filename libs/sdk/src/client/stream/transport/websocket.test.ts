@@ -227,6 +227,7 @@ describe("ProtocolWebSocketTransportAdapter reconnection", () => {
       apiUrl: "http://localhost:8123",
       threadId: "thread-1",
       maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
       onReconnected: reconnected,
       onConnected,
       webSocketFactory: (url) => {
