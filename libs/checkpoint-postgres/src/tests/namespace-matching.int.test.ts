@@ -73,22 +73,30 @@ describe("namespace isolation", () => {
       const options = { filter: { enabled: true }, limit: 100, offset: 0 };
       for (const label of ["a", "a!", "a'"]) {
         const prefix = ["tenant", label];
-        const runSearch = async (searchOptions = options) =>
-          method === "basic" || method === "batchVector"
-            ? (
-                await store.batch([
-                  {
-                    namespacePrefix: prefix,
-                    ...searchOptions,
-                    ...(method === "batchVector" ? { query: "hello" } : {}),
-                  },
-                ])
-              )[0]
-            : await store.search(prefix, {
-                ...searchOptions,
-                query: "hello",
-                mode: method,
-              });
+        const runSearch = async (searchOptions = options) => {
+          if (method === "basic") {
+            const [result] = await store.batch([
+              { namespacePrefix: prefix, ...searchOptions },
+            ]);
+
+            return result;
+          }
+
+          if (method === "batchVector") {
+            const [result] = await store.batch([
+              { namespacePrefix: prefix, ...searchOptions, query: "hello" },
+            ]);
+
+            return result;
+          }
+
+          return store.search(prefix, {
+            ...searchOptions,
+            query: "hello",
+            mode: method,
+          });
+        };
+
         const result = await runSearch();
         const expected = namespaces.filter(
           (namespace) => namespace[0] === "tenant" && namespace[1] === label
