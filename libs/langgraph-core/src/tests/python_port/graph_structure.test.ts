@@ -1047,6 +1047,53 @@ describe("Graph Structure Tests (Python port)", () => {
   });
 
   /**
+   * Regression test for #2656: Send fan-out tasks were silently dropped when
+   * maxConcurrency was 1, because the runner's scheduling loop exited as soon
+   * as the single in-flight task settled.
+   */
+  it("should run all Send tasks sequentially when maxConcurrency is 1", async () => {
+    const StateAnnotation = Annotation.Root({
+      items: Annotation<unknown[]>({
+        reducer: (a, b) => a.concat(b),
+        default: () => [],
+      }),
+    });
+
+    let currently = 0;
+    let maxCurrently = 0;
+
+    const worker = async (state: unknown): Promise<{ items: unknown[] }> => {
+      currently += 1;
+      if (currently > maxCurrently) {
+        maxCurrently = currently;
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 1);
+      });
+      currently -= 1;
+      return { items: [state] };
+    };
+
+    const sendToMany = (): Send[] => {
+      return Array.from({ length: 6 }, (_, idx) => new Send("worker", idx));
+    };
+
+    const graph = new StateGraph(StateAnnotation)
+      .addNode("fanout", () => ({ items: ["fanout"] }))
+      .addNode("worker", worker)
+      .addEdge(START, "fanout")
+      .addConditionalEdges("fanout", sendToMany)
+      .compile();
+
+    const result = await graph.invoke({ items: [] }, { maxConcurrency: 1 });
+
+    const expectedNumbers = Array.from({ length: 6 }, (_, i) => i);
+    expect(result.items).toEqual(["fanout", ...expectedNumbers]);
+    expect(maxCurrently).toBe(1);
+    expect(currently).toBe(0);
+  });
+
+  /**
    * Port of test_max_concurrency_control from test_pregel_async_graph_structure.py
    */
   it("should handle maximum concurrency limits with commands", async () => {
