@@ -141,3 +141,19 @@ it("lists whole segments with prefix, suffix and standalone wildcards", async ()
     ["tenant", "a"],
   ]);
 });
+
+it.each([undefined, "hello"])(
+  "rejects delimiter aliases with query=%s while preserving empty-prefix search",
+  async (query) => {
+    await expect(store.search(["tenant.a"], { query })).rejects.toThrow(/periods/);
+    await expect(
+      store.batch([{ namespacePrefix: ["tenant.a"], query }])
+    ).rejects.toThrow(/periods/);
+    expect((await store.search([], { query, limit: 100 })).length).toBeGreaterThan(0);
+    expect(
+      (await store.search(["tenant", "a"], { query, limit: 100 })).map(
+        (item) => item.namespace
+      ).sort()
+    ).toEqual([["tenant", "a"], ["tenant", "a", "notes"]]);
+  }
+);

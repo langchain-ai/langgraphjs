@@ -666,6 +666,10 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
+    if (namespacePrefix.length > 0) {
+      this.validateNamespace(namespacePrefix);
+    }
+
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 

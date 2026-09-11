@@ -65,3 +65,20 @@ describe("RedisStore search namespace scoping", () => {
     expect(query).toBe("*");
   });
 });
+
+it.each(["tenant.a", ".", "a.", ".a", ""])(
+  "rejects invalid search label %j before querying Redis",
+  async (label) => {
+    const client = createStubClient();
+    const store = createVectorStore(client);
+
+    for (const query of [undefined, "notes"]) {
+      await expect(store.search([label], { query })).rejects.toThrow();
+      await expect(
+        store.batch([{ namespacePrefix: [label], query }])
+      ).rejects.toThrow();
+    }
+
+    expect(client.ft.search).not.toHaveBeenCalled();
+  }
+);
