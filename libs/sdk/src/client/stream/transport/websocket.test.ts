@@ -221,12 +221,14 @@ describe("ProtocolWebSocketTransportAdapter reconnection", () => {
   it("reconnects after an unexpected close and keeps the events iterator alive", async () => {
     let connections = 0;
     const reconnected = vi.fn();
+    const onConnected = vi.fn();
 
     const transport = new ProtocolWebSocketTransportAdapter({
       apiUrl: "http://localhost:8123",
       threadId: "thread-1",
       maxReconnectAttempts: 3,
       onReconnected: reconnected,
+      onConnected,
       webSocketFactory: (url) => {
         connections += 1;
         const socket = new FakeWebSocket(url);
@@ -262,6 +264,10 @@ describe("ProtocolWebSocketTransportAdapter reconnection", () => {
     await vi.runAllTimersAsync();
     expect(connections).toBe(2);
     expect(reconnected).toHaveBeenCalledTimes(1);
+    expect(onConnected.mock.calls.map(([info]) => info)).toEqual([
+      { kind: "initial", attempt: 0 },
+      { kind: "reconnected", attempt: 1 },
+    ]);
 
     const first = await firstPromise;
     expect(first.done).toBe(false);

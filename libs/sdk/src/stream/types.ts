@@ -239,6 +239,8 @@ export interface AgentServerOptions<
   reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
   /** Built-in transports only: invoked before each reconnect attempt. */
   onReconnect?: ThreadStreamOptions["onReconnect"];
+  /** Built-in transports only: invoked after every usable connection. */
+  onConnected?: ThreadStreamOptions["onConnected"];
 }
 
 /**
@@ -273,6 +275,7 @@ export interface CustomAdapterOptions<
   streamIdleReconnect?: never;
   reconnectDelayMs?: never;
   onReconnect?: never;
+  onConnected?: never;
 }
 
 /**
@@ -388,6 +391,8 @@ export interface StreamControllerOptions<
   reconnectDelayMs?: ThreadStreamOptions["reconnectDelayMs"];
   /** Built-in transports only: invoked before each reconnect attempt. */
   onReconnect?: ThreadStreamOptions["onReconnect"];
+  /** Built-in transports only: invoked after every usable connection. */
+  onConnected?: ThreadStreamOptions["onConnected"];
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
   /**

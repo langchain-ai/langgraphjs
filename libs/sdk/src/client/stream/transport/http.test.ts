@@ -366,6 +366,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
   it("reconnects after a mid-stream failure when a custom auth fetch is supplied", async () => {
     let streamOpens = 0;
     const onReconnect = vi.fn();
+    const onConnected = vi.fn();
     const encoder = new TextEncoder();
     const fetchImpl = vi.fn((input: URL | RequestInfo) => {
       if (!String(input).includes("/stream/events")) {
@@ -427,6 +428,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       maxReconnectAttempts: 3,
       reconnectDelayMs: () => 0,
       onReconnect,
+      onConnected,
       idleReconnect: 0,
     });
 
@@ -440,7 +442,15 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     }
 
     expect(received.map((m) => m.event_id)).toContain("e2");
-    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(onReconnect).toHaveBeenCalledWith({
+      attempt: 1,
+      cause: expect.any(TypeError),
+      delayMs: 0,
+    });
+    expect(onConnected.mock.calls.map(([info]) => info)).toEqual([
+      { kind: "initial", attempt: 0 },
+      { kind: "reconnected", attempt: 1 },
+    ]);
     expect(streamOpens).toBe(2);
 
     const streamBodies = streamEventBodies(fetchImpl);
