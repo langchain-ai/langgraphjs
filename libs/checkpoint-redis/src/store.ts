@@ -1,4 +1,4 @@
-import { createClient, createCluster } from "redis";
+import { createClient, createCluster, SchemaFieldTypes } from "redis";
 
 /** A conventional Redis connection. */
 export type RedisClientConnection = ReturnType<typeof createClient>;
@@ -439,8 +439,12 @@ export class RedisStore {
       : ["store"]) {
       try {
         await this.client.ft.alter(index, {
-          "$.prefix": { type: "TAG", AS: "namespace", CASESENSITIVE: true },
-        } as any);
+          "$.prefix": {
+            type: SchemaFieldTypes.TAG,
+            AS: "namespace",
+            CASESENSITIVE: true,
+          },
+        });
       } catch (error: any) {
         if (!error.message?.includes("Duplicate field")) {
           throw error;
