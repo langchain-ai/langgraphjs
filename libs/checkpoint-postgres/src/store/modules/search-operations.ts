@@ -130,6 +130,7 @@ export class SearchOperations {
       `${escapeLike(namespacePath)}:%`,
       `[${queryEmbedding.join(",")}]`,
     ];
+
     let paramIndex = 4;
 
     // Add filter conditions
@@ -201,6 +202,7 @@ export class SearchOperations {
         query || null,
         this.core.textSearchLanguage,
       ];
+
       let paramIndex = 5;
 
       // Add filter conditions using advanced filtering
@@ -337,6 +339,7 @@ export class SearchOperations {
         `${escapeLike(namespacePath)}:%`,
         `[${queryEmbedding.join(",")}]`,
       ];
+
       let paramIndex = 4;
 
       // Add similarity threshold
@@ -458,6 +461,7 @@ export class SearchOperations {
         1 - similarityThreshold,
         this.core.textSearchLanguage,
       ];
+
       let paramIndex = 8;
 
       // Add filter conditions

@@ -29,6 +29,7 @@ export function validateNamespace(
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
       );
     }
+
     if (label.includes(":")) {
       throw new Error(
         `Invalid namespace label '${label}'. Namespace labels cannot contain colons (':').`
@@ -46,6 +47,7 @@ export function validateNamespace(
       );
     }
   }
+
   if (isRoot && namespace[0] === "langgraph") {
     throw new Error(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
@@ -72,14 +74,18 @@ export function namespaceListingCondition(
       path,
       matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
     );
+
     return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1})`;
   }
+
   const body = namespace
     .map((label) =>
       label === "*" ? "[^:]+" : label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     )
     .join(":");
+
   // PostgreSQL's \Z anchors at the actual end, including for newline labels.
   params.push(matchType === "prefix" ? `^${body}(:|\\Z)` : `(^|:)${body}\\Z`);
+
   return `namespace_path ~ $${params.length}`;
 }

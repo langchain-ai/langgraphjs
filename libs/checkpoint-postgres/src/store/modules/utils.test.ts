@@ -36,6 +36,7 @@ describe("validateNamespace", () => {
     expect(() =>
       validateNamespace(["langgraph"], { isRoot: false })
     ).not.toThrow();
+
     for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
       expect(() => validateNamespace([label], { isRoot: false })).toThrow();
     }
