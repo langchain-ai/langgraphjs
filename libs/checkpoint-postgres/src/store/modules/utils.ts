@@ -53,9 +53,9 @@ export function validateNamespace(
   }
 }
 
-/** Escape LIKE wildcards and the explicit escape character used by ESCAPE '!'. */
+/** Escape LIKE wildcards and PostgreSQL's default backslash escape character. */
 export function escapeLike(value: string): string {
-  return value.replace(/[!%_]/g, "!$&");
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
 
 /** Listing wildcards span one segment; stars inside a label remain literal. */
@@ -72,7 +72,7 @@ export function namespaceListingCondition(
       path,
       matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
     );
-    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1} ESCAPE '!')`;
+    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1})`;
   }
   const body = namespace
     .map((label) =>

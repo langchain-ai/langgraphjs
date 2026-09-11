@@ -71,7 +71,7 @@ it("escapes LIKE patterns independently of namespace validation", () => {
     namespaceListingCondition(["a!%_\\b"], matchType, params);
     expect(params).toEqual([
       "a!%_\\b",
-      matchType === "prefix" ? "a!!!%!_\\b:%" : "%:a!!!%!_\\b",
+      matchType === "prefix" ? "a!\\%\\_\\\\b:%" : "%:a!\\%\\_\\\\b",
     ]);
   }
 });

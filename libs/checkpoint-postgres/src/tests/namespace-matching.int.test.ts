@@ -168,6 +168,7 @@ it("validates namespaces in direct batch operations", async () => {
 
 it.each([
   { label: "a!", excludedLabels: ["a", "a!!"] },
+  { label: "a\\b", excludedLabels: ["ab", "a\\\\b"] },
   { label: "a%_\\b", excludedLabels: ["aanything_\\b", "a%x\\b"] },
   { label: "o'brien", excludedLabels: ["obrien"] },
 ])(
@@ -200,7 +201,7 @@ it.each([
   }
 );
 
-it("lists literal escape characters through the public API", async () => {
+it("lists literal exclamation marks through the public API", async () => {
   expect(await store.listNamespaces({ prefix: ["tenant", "a!"] })).toEqual([
     ["tenant", "a!"],
     ["tenant", "a!", "notes"],

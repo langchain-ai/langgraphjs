@@ -55,7 +55,7 @@ export class SearchOperations {
     let sqlQuery = `
       SELECT namespace_path, key, value, created_at, updated_at
       FROM "${this.core.schema}".store
-      WHERE (namespace_path = $1 OR namespace_path LIKE $2 ESCAPE '!')
+      WHERE (namespace_path = $1 OR namespace_path LIKE $2)
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `;
 
@@ -121,7 +121,7 @@ export class SearchOperations {
         MIN(v.embedding <=> $3) as similarity_score
       FROM "${this.core.schema}".store s
       JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-      WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE '!')
+      WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2)
         AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
     `;
 
@@ -191,7 +191,7 @@ export class SearchOperations {
             ELSE 0
           END as score
         FROM "${this.core.schema}".store
-        WHERE (namespace_path = $1 OR namespace_path LIKE $2 ESCAPE '!')
+        WHERE (namespace_path = $1 OR namespace_path LIKE $2)
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
 
@@ -328,7 +328,7 @@ export class SearchOperations {
           ${scoreTransform} as similarity_score
         FROM "${this.core.schema}".store s
         JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE '!')
+        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2)
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
       `;
 
@@ -441,7 +441,7 @@ export class SearchOperations {
           ) as hybrid_score
         FROM "${this.core.schema}".store s
         JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE '!')
+        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2)
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
           AND (
             to_tsvector($7::regconfig, s.value::text) @@ plainto_tsquery($7::regconfig, $5)
