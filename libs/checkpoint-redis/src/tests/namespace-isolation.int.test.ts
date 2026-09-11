@@ -4,6 +4,7 @@ import { SchemaFieldTypes } from "redis";
 import { RedisStore } from "../store.js";
 
 let container: Awaited<ReturnType<typeof createRedisContainer>>;
+
 let store: RedisStore;
 
 const namespaces = [
@@ -17,6 +18,7 @@ const namespaces = [
   ["tenant", "a) | @prefix:(victim"],
   ["tenant", "*"],
 ];
+
 beforeAll(async () => {
   container = await createRedisContainer();
   store = new RedisStore(container.client, {
@@ -48,18 +50,22 @@ beforeAll(async () => {
   });
   await store.setup();
   await store.setup();
+
   for (let i = 0; i < namespaces.length; i++)
     await store.put(namespaces[i], `key${i}`, { text: "hello" });
 });
+
 afterAll(async () => {
   await container?.cleanup();
 });
+
 it.each([false, true])("isolates segments with vector=%s", async (vector) => {
   for (const namespace of namespaces) {
     const items = await store.search(namespace, {
       limit: 100,
       query: vector ? "hello" : undefined,
     });
+
     expect(items.length).toBeGreaterThan(0);
     expect(
       items.every((item) =>
@@ -67,6 +73,7 @@ it.each([false, true])("isolates segments with vector=%s", async (vector) => {
       )
     ).toBe(true);
   }
+
   expect(
     (
       await store.search(["tenant", "a"], {
@@ -76,6 +83,7 @@ it.each([false, true])("isolates segments with vector=%s", async (vector) => {
     ).length
   ).toBe(2);
 });
+
 it("isolates exact reads, updates and deletes with identical keys", async () => {
   for (const namespace of [
     ["scope", "one"],

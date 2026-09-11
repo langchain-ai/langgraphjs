@@ -5,6 +5,7 @@ import { RedisStore } from "../store.js";
 function createStubClient() {
   const client = createClient();
   vi.spyOn(client.ft, "search").mockResolvedValue({ total: 0, documents: [] });
+
   return client;
 }
 

@@ -26,6 +26,7 @@ export function buildNamespacePrefixQuery(namespacePrefix: string[]): string {
   if (namespacePrefix.length === 0) return "*";
   const prefix = escapeRediSearchTagValue(namespacePrefix.join("."));
   const descendant = escapeRediSearchTagValue(`${namespacePrefix.join(".")}.`);
+
   return `@namespace:{${prefix}|${descendant}*}`;
 }
 
