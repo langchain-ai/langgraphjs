@@ -265,6 +265,18 @@ export class MongoDBStore extends BaseStore {
     // Deduplicate put operations by (namespace, key) — last write wins
     const deduped = new Map<string, { index: number; op: PutOperation }>();
     for (const { index, op } of putOpsWithIndex) {
+      validateNamespace(op.namespace);
+
+      // Preserve exact reads/deletes of legacy records, but prevent new aliases.
+      if (
+        op.value !== null &&
+        op.namespace.some((label) => label.includes("/"))
+      ) {
+        throw new InvalidNamespaceError(
+          "Namespace labels cannot contain slashes ('/')."
+        );
+      }
+
       const key = JSON.stringify({ namespace: op.namespace, key: op.key });
       deduped.set(key, { index, op });
     }
@@ -320,9 +332,6 @@ export class MongoDBStore extends BaseStore {
       for (let i = 0; i < opsList.length; i++) {
         const { op } = opsList[i];
         const { namespace, key, value } = op;
-
-        // Validate namespace
-        validateNamespace(namespace);
 
         // Handle delete
         if (value === null) {
@@ -470,7 +479,10 @@ export class MongoDBStore extends BaseStore {
           for (let i = 0; i < path.length; i++) {
             if (path[i] !== "*") {
               elemConditions.push({
-                $eq: [{ $arrayElemAt: ["$namespace", i] }, path[i]],
+                $eq: [
+                  { $arrayElemAt: ["$namespace", i] },
+                  { $literal: path[i] },
+                ],
               });
             }
           }
@@ -489,7 +501,7 @@ export class MongoDBStore extends BaseStore {
               elemConditions.push({
                 $eq: [
                   { $arrayElemAt: ["$namespace", -(path.length - i)] },
-                  path[i],
+                  { $literal: path[i] },
                 ],
               });
             }
@@ -691,6 +703,21 @@ export class MongoDBStore extends BaseStore {
       vectorSearchStage,
       { $addFields: { score: { $meta: "vectorSearchScore" } } },
     ];
+
+    // Legacy slash-containing labels can collide in namespacePath. Check the
+    // original array before returning results, including on existing indexes.
+    if (namespacePrefix.length > 0) {
+      pipeline.push({
+        $match: {
+          $expr: {
+            $eq: [
+              { $slice: ["$namespace", namespacePrefix.length] },
+              { $literal: namespacePrefix },
+            ],
+          },
+        },
+      });
+    }
 
     // Strip the embedding field from manual mode results (vectors can be large)
     if (this.embeddings) {
