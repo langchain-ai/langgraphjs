@@ -822,7 +822,7 @@ export class RedisStore {
 
           let matches = true;
           for (let i = 0; i < options.prefix.length; i++) {
-            if (parts[i] !== options.prefix[i]) {
+            if (options.prefix[i] !== "*" && parts[i] !== options.prefix[i]) {
               matches = false;
               break;
             }
@@ -838,7 +838,10 @@ export class RedisStore {
           let matches = true;
           const startIdx = parts.length - options.suffix.length;
           for (let i = 0; i < options.suffix.length; i++) {
-            if (parts[startIdx + i] !== options.suffix[i]) {
+            if (
+              options.suffix[i] !== "*" &&
+              parts[startIdx + i] !== options.suffix[i]
+            ) {
               matches = false;
               break;
             }

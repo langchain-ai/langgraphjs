@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   assertSafeKeyComponent,
-  buildNamespacePrefixQuery,
   escapeRediSearchTagValue,
+  buildNamespacePrefixQuery,
 } from "../utils.js";
 
 describe("escapeRediSearchTagValue", () => {
@@ -109,27 +109,27 @@ describe("assertSafeKeyComponent", () => {
     );
     // Even a single `*` anywhere in the value is rejected. This covers
     // patterns like `tenant-*` that would still expand to a glob.
-    expect(() => assertSafeKeyComponent("thread_id", "tenant-*")).toThrow(
-      /Redis pattern meta-character/
-    );
+    expect(() =>
+      assertSafeKeyComponent("thread_id", "tenant-*")
+    ).toThrow(/Redis pattern meta-character/);
   });
 
   it("rejects the Redis glob single-character `?`", () => {
-    expect(() => assertSafeKeyComponent("thread_id", "tenant-?")).toThrow(
-      /Redis pattern meta-character/
-    );
+    expect(() =>
+      assertSafeKeyComponent("thread_id", "tenant-?")
+    ).toThrow(/Redis pattern meta-character/);
   });
 
   it("rejects the Redis glob character class `[ ]`", () => {
-    expect(() => assertSafeKeyComponent("thread_id", "tenant-[ab]")).toThrow(
-      /Redis pattern meta-character/
-    );
+    expect(() =>
+      assertSafeKeyComponent("thread_id", "tenant-[ab]")
+    ).toThrow(/Redis pattern meta-character/);
   });
 
   it("rejects backslash (Redis pattern escape character)", () => {
-    expect(() => assertSafeKeyComponent("thread_id", "tenant\\a")).toThrow(
-      /Redis pattern meta-character/
-    );
+    expect(() =>
+      assertSafeKeyComponent("thread_id", "tenant\\a")
+    ).toThrow(/Redis pattern meta-character/);
   });
 
   it("accepts a colon in checkpoint_ns (LangGraph subgraph namespace)", () => {
@@ -140,13 +140,9 @@ describe("assertSafeKeyComponent", () => {
     // in the Redis key, so it must be accepted; rejecting it would throw on
     // every subgraph checkpoint.
     expect(() =>
-      assertSafeKeyComponent(
-        "checkpoint_ns",
-        "agent:01HZX9V7EKJ1B0PNMY7MX3X3KB",
-        {
-          allowEmpty: true,
-        }
-      )
+      assertSafeKeyComponent("checkpoint_ns", "agent:01HZX9V7EKJ1B0PNMY7MX3X3KB", {
+        allowEmpty: true,
+      })
     ).not.toThrow();
     expect(() =>
       assertSafeKeyComponent(
@@ -191,9 +187,9 @@ describe("assertSafeKeyComponent", () => {
   });
 
   it("includes the field name in every error so callers can surface it", () => {
-    expect(() => assertSafeKeyComponent("checkpoint_id", "*")).toThrow(
-      /"checkpoint_id"/
-    );
+    expect(() =>
+      assertSafeKeyComponent("checkpoint_id", "*")
+    ).toThrow(/"checkpoint_id"/);
     expect(() =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertSafeKeyComponent("task_id", { $gt: "" } as any)
