@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createRedisContainer } from "./redis-container.js";
+import { SchemaFieldTypes } from "redis";
 import { RedisStore } from "../store.js";
 
 let container: Awaited<ReturnType<typeof createRedisContainer>>;
@@ -31,10 +32,10 @@ beforeAll(async () => {
   await container.client.ft.create(
     "store",
     {
-      "$.prefix": { type: "TEXT", AS: "prefix" },
-      "$.key": { type: "TAG", AS: "key" },
-      "$.created_at": { type: "NUMERIC", AS: "created_at" },
-      "$.updated_at": { type: "NUMERIC", AS: "updated_at" },
+      "$.prefix": { type: SchemaFieldTypes.TEXT, AS: "prefix" },
+      "$.key": { type: SchemaFieldTypes.TAG, AS: "key" },
+      "$.created_at": { type: SchemaFieldTypes.NUMERIC, AS: "created_at" },
+      "$.updated_at": { type: SchemaFieldTypes.NUMERIC, AS: "updated_at" },
     },
     { ON: "JSON", PREFIX: "store:" }
   );

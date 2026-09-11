@@ -11,8 +11,18 @@ import {
   type IndexConfig,
   type SearchItem,
   validateNamespace,
+  InvalidNamespaceError,
 } from "./base.js";
 import { tokenizePath, compareValues, getTextAtPath } from "./utils.js";
+
+function validateMemoryNamespace(namespace: string[]): void {
+  validateNamespace(namespace, { allowReservedRoot: true });
+  if (namespace.some((label) => label.includes(":"))) {
+    throw new InvalidNamespaceError(
+      "Namespace labels cannot contain colons (':'), the InMemoryStore path separator."
+    );
+  }
+}
 
 /**
  * In-memory key-value store with optional vector search.
@@ -81,9 +91,7 @@ export class InMemoryStore extends BaseStore {
     for (let i = 0; i < operations.length; i += 1) {
       const op = operations[i];
       if ("namespace" in op) {
-        validateNamespace(op.namespace, {
-          allowReservedRoot: true,
-        });
+        validateMemoryNamespace(op.namespace);
       }
       if ("key" in op && "namespace" in op && !("value" in op)) {
         // GetOperation
@@ -256,7 +264,7 @@ export class InMemoryStore extends BaseStore {
 
   private filterItems(op: SearchOperation): Item[] {
     if (op.namespacePrefix.length > 0) {
-      validateNamespace(op.namespacePrefix, { allowReservedRoot: true });
+      validateMemoryNamespace(op.namespacePrefix);
     }
     const prefix = op.namespacePrefix.join(":");
     const candidates: Item[] = [];
