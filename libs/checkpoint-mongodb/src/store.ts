@@ -721,12 +721,15 @@ export class MongoDBStore extends BaseStore {
       { namespaceKey: { $exists: false } },
       { projection: { _id: 1 } }
     );
+
     if (legacy) {
       throw new Error(
         "Legacy namespace encoding detected. Stop all store clients, run migrateNamespaceEncoding(), then start the upgraded store."
       );
     }
+
     await collection.createIndex({ namespaceKey: 1, key: 1 }, { unique: true });
+
     if (await collection.indexExists("namespaceStr_1_key_1")) {
       throw new Error(
         "Legacy namespace index detected. Run migrateNamespaceEncoding() with all store clients stopped."
@@ -794,11 +797,13 @@ export class MongoDBStore extends BaseStore {
    */
   async migrateNamespaceEncoding(): Promise<void> {
     const collection = this.db.collection(this.collectionName);
+
     for await (const doc of collection.find(
       {},
       { projection: { namespace: 1 } }
     )) {
       const namespace: unknown = doc.namespace;
+
       if (
         !Array.isArray(namespace) ||
         !namespace.every((label) => typeof label === "string")
@@ -807,6 +812,7 @@ export class MongoDBStore extends BaseStore {
           "Cannot migrate a document whose namespace is not an array of strings."
         );
       }
+
       validateNamespace(namespace);
       await collection.updateOne(
         { _id: doc._id },
@@ -818,7 +824,9 @@ export class MongoDBStore extends BaseStore {
         }
       );
     }
+
     await collection.createIndex({ namespaceKey: 1, key: 1 }, { unique: true });
+
     try {
       await collection.dropIndex("namespaceStr_1_key_1");
     } catch (error: any) {

@@ -2,11 +2,13 @@ import { getEnvironmentVariable } from "@langchain/core/utils/env";
 import { MongoClient } from "mongodb";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { MongoDBStore } from "../store.js";
+
 // Use a dedicated local Atlas deployment; each suite owns a unique database.
 const client = new MongoClient(
   getEnvironmentVariable("MONGODB_URL") ??
     "mongodb://127.0.0.1:57017/?directConnection=true"
 );
+
 const namespaces = [
   ["tenant", "a/b"],
   ["tenant", "a", "b"],
@@ -17,7 +19,9 @@ const namespaces = [
   ["tenant", "日本語"],
   ["tenant", "a:b"],
 ];
+
 const dbName = `namespace_regression_${Date.now()}`;
+
 const store = new MongoDBStore({
   client,
   dbName,
@@ -31,17 +35,21 @@ const store = new MongoDBStore({
     similarityFunction: "cosine",
   },
 });
+
 beforeAll(async () => {
   await client.connect();
   await store.start();
+
   for (let i = 0; i < namespaces.length; i++) {
     await store.put(namespaces[i], `key${i}`, { text: "hello" });
   }
 }, 150000);
+
 afterAll(async () => {
   await client.db(dbName).dropDatabase();
   await client.close();
 });
+
 it("keeps vector namespaces distinct when labels contain slashes", async () => {
   await expect
     .poll(
@@ -63,10 +71,12 @@ it("keeps vector namespaces distinct when labels contain slashes", async () => {
       { timeout: 120000, interval: 1000 }
     )
     .toBe(namespaces.length);
+
   for (const namespace of namespaces) {
     const expected = namespaces.filter((candidate) =>
       namespace.every((part, i) => candidate[i] === part)
     );
+
     for (const query of [undefined, "hello"]) {
       const results = await store.search(namespace, { query, limit: 100 });
       expect(
@@ -75,6 +85,7 @@ it("keeps vector namespaces distinct when labels contain slashes", async () => {
     }
   }
 });
+
 it("permits the same key in distinct namespace arrays", async () => {
   await store.put(["tenant", "a/b"], "shared", {});
   await store.put(["tenant", "a", "b"], "shared", {});
@@ -83,6 +94,7 @@ it("permits the same key in distinct namespace arrays", async () => {
     "a/b",
   ]);
 });
+
 it("treats aggregation expression-looking labels literally", async () => {
   await store.put(["$namespace"], "dollar", {});
   expect(await store.listNamespaces({ prefix: ["$namespace"] })).toEqual([
@@ -115,6 +127,7 @@ it("migrates legacy documents and indexes before starting, and can be rerun", as
       embedding: [1, 0],
     },
   ]);
+
   const legacy = new MongoDBStore({
     client,
     dbName,
@@ -125,6 +138,7 @@ it("migrates legacy documents and indexes before starting, and can be rerun", as
     },
     indexConfig: { name: "legacy_test", dims: 2 },
   });
+
   await expect(legacy.start()).rejects.toThrow(/migrateNamespaceEncoding/);
   await legacy.migrateNamespaceEncoding();
   await legacy.migrateNamespaceEncoding();
@@ -176,11 +190,13 @@ it.each([null, "tenant/a", ["tenant", 42]])(
     const collectionName = "invalid_legacy";
     const collection = client.db(dbName).collection(collectionName);
     await collection.deleteMany({});
+
     const { insertedId } = await collection.insertOne({
       namespace,
       key: "key",
       value: { preserved: true },
     });
+
     const legacy = new MongoDBStore({ client, dbName, collectionName });
 
     await expect(legacy.migrateNamespaceEncoding()).rejects.toThrow(
