@@ -5,6 +5,10 @@ import {
   ensureHandler,
   type Callbacks,
 } from "@langchain/core/callbacks/manager";
+import type {
+  BaseCallbackHandler,
+  CallbackHandlerMethods,
+} from "@langchain/core/callbacks/base";
 import { BaseStore } from "@langchain/langgraph-checkpoint";
 import { LangGraphRunnableConfig } from "../runnable_types.js";
 import {
@@ -89,6 +93,78 @@ export function filterToUserTags(
   return filtered.length > 0 ? filtered : undefined;
 }
 
+const INTERNAL_PER_INVOCATION_HANDLER_NAMES = new Set([
+  "StreamMessagesHandler",
+  "StreamToolsHandler",
+  "StreamProtocolMessagesHandler",
+]);
+
+function isSameHandler(
+  a: BaseCallbackHandler | CallbackHandlerMethods,
+  b: BaseCallbackHandler | CallbackHandlerMethods
+): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || a === null) return false;
+  if (typeof b !== "object" || b === null) return false;
+  return (
+    "name" in a &&
+    "name" in b &&
+    a.name === b.name &&
+    INTERNAL_PER_INVOCATION_HANDLER_NAMES.has(a.name as string)
+  );
+}
+
+const stableHandlerWrappers = new WeakMap<
+  CallbackHandlerMethods,
+  BaseCallbackHandler
+>();
+
+function ensureStableHandler(
+  callback: BaseCallbackHandler | CallbackHandlerMethods
+): BaseCallbackHandler {
+  if (typeof callback !== "object" || callback === null) {
+    return callback as BaseCallbackHandler;
+  }
+  if ("name" in callback) return callback;
+  const cached = stableHandlerWrappers.get(callback);
+  if (cached !== undefined) {
+    Object.assign(cached, callback);
+    return cached;
+  }
+  const wrapped = ensureHandler(callback);
+  stableHandlerWrappers.set(callback, wrapped);
+  return wrapped;
+}
+
+function mergeArrayIntoManager(
+  manager: CallbackManager,
+  callbacks: readonly (BaseCallbackHandler | CallbackHandlerMethods)[]
+): void {
+  for (const callback of callbacks) {
+    const handler = ensureStableHandler(callback);
+    const existing = manager.handlers.find((candidate) =>
+      isSameHandler(candidate, handler)
+    );
+    if (existing === undefined) {
+      manager.addHandler(handler, true);
+    } else if (!manager.inheritableHandlers.includes(existing)) {
+      manager.inheritableHandlers.push(existing);
+    }
+  }
+}
+
+function dedupeBySameHandler<
+  T extends BaseCallbackHandler | CallbackHandlerMethods,
+>(handlers: readonly T[]): T[] {
+  const survivors: T[] = [];
+  for (const handler of handlers) {
+    if (!survivors.some((candidate) => isSameHandler(candidate, handler))) {
+      survivors.push(handler);
+    }
+  }
+  return survivors;
+}
+
 /**
  * Merge two `callbacks` values across configs.
  *
@@ -99,6 +175,13 @@ export function filterToUserTags(
  * `.withConfig({ callbacks: [...] })` is preserved when a later config
  * (e.g. `streamEvents` injecting its own internal handler) is merged on
  * top instead of overwriting it.
+ *
+ * Handler instances present on both sides are added once. At a
+ * nested-runnable boundary the same handlers arrive twice — via the ambient
+ * AsyncLocalStorage config and via the child config — and re-registering
+ * them compounds per boundary: with a `LangChainTracer` attached, every
+ * `on_chat_model_stream` event fired three times two subgraph levels deep
+ * (#2570). The Python runtime does not duplicate in this situation.
  */
 function mergeCallbacks(
   base: Callbacks | undefined,
@@ -109,39 +192,38 @@ function mergeCallbacks(
     return Array.isArray(provided) ? [...provided] : provided.copy();
   }
   if (Array.isArray(provided)) {
-    if (Array.isArray(base)) return base.concat(provided);
+    if (Array.isArray(base)) {
+      return base.concat(
+        provided.filter(
+          (handler) =>
+            !base.some((candidate) => isSameHandler(candidate, handler))
+        )
+      );
+    }
     // base is a manager
     const manager = base.copy();
-    for (const callback of provided) {
-      manager.addHandler(ensureHandler(callback), true);
-    }
+    mergeArrayIntoManager(manager, provided);
     return manager;
   }
   // provided is a manager
   if (Array.isArray(base)) {
     const manager = provided.copy();
-    for (const callback of base) {
-      manager.addHandler(ensureHandler(callback), true);
-    }
+    mergeArrayIntoManager(manager, base);
     return manager;
   }
   // both are managers
-  const dedupeHandlers = (
-    handlers: CallbackManager["handlers"]
-  ): CallbackManager["handlers"] =>
-    handlers.filter(
-      (handler, index) =>
-        handlers.findIndex(
-          (candidate) =>
-            candidate === handler ||
-            (candidate.name === "StreamMessagesHandler" &&
-              handler.name === "StreamMessagesHandler")
-        ) === index
-    );
+  const mergedHandlers = dedupeBySameHandler(
+    base.handlers.concat(provided.handlers)
+  );
+  const mergedInheritableSource = base.inheritableHandlers.concat(
+    provided.inheritableHandlers
+  );
   return new CallbackManager(provided._parentRunId, {
-    handlers: dedupeHandlers(base.handlers.concat(provided.handlers)),
-    inheritableHandlers: dedupeHandlers(
-      base.inheritableHandlers.concat(provided.inheritableHandlers)
+    handlers: mergedHandlers,
+    inheritableHandlers: mergedHandlers.filter((handler) =>
+      mergedInheritableSource.some((candidate) =>
+        isSameHandler(candidate, handler)
+      )
     ),
     tags: Array.from(new Set(base.tags.concat(provided.tags))),
     inheritableTags: Array.from(
