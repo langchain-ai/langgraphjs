@@ -7,7 +7,7 @@ import { DatabaseCore } from "./database-core.js";
 import { VectorOperations } from "./vector-operations.js";
 import { QueryBuilder } from "./query-builder.js";
 import { SearchOptions, SearchItem } from "./types.js";
-import { namespaceMatchCondition, validateNamespace } from "./utils.js";
+import { escapeLike, validateNamespace } from "./utils.js";
 
 /**
  * Handles all search operations: basic search, vector search, hybrid search.
@@ -24,12 +24,7 @@ export class SearchOperations {
   ): Promise<Item[]> {
     validateNamespace(operation.namespacePrefix);
 
-    const params: unknown[] = [];
-    const namespaceCondition = namespaceMatchCondition(
-      operation.namespacePrefix,
-      "prefix",
-      params
-    );
+    const namespacePath = operation.namespacePrefix.join(":");
     const { filter, limit = 10, offset = 0, query } = operation;
 
     // If vector search is configured and query is provided, use vector similarity search
@@ -60,10 +55,11 @@ export class SearchOperations {
     let sqlQuery = `
       SELECT namespace_path, key, value, created_at, updated_at
       FROM "${this.core.schema}".store
-      WHERE ${namespaceCondition}
+      WHERE (namespace_path = $1 OR namespace_path LIKE $2 ESCAPE E'\\\\')
         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
     `;
 
+    const params: unknown[] = [namespacePath, `${escapeLike(namespacePath)}:%`];
     let paramIndex = 3;
 
     // Add filter conditions using advanced filtering
@@ -103,13 +99,7 @@ export class SearchOperations {
 
     validateNamespace(operation.namespacePrefix);
 
-    const params: unknown[] = [];
-    const namespaceCondition = namespaceMatchCondition(
-      operation.namespacePrefix,
-      "prefix",
-      params,
-      "s.namespace_path"
-    );
+    const namespacePath = operation.namespacePrefix.join(":");
     const { filter, limit = 10, offset = 0, query } = operation;
 
     // Generate query embedding
@@ -121,8 +111,6 @@ export class SearchOperations {
       );
     }
 
-    params.push(`[${queryEmbedding.join(",")}]`);
-
     let sqlQuery = `
       SELECT DISTINCT 
         s.namespace_path, 
@@ -133,10 +121,15 @@ export class SearchOperations {
         MIN(v.embedding <=> $3) as similarity_score
       FROM "${this.core.schema}".store s
       JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-      WHERE ${namespaceCondition}
+      WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE E'\\\\')
         AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
     `;
 
+    const params: unknown[] = [
+      namespacePath,
+      `${escapeLike(namespacePath)}:%`,
+      `[${queryEmbedding.join(",")}]`,
+    ];
     let paramIndex = 4;
 
     // Add filter conditions
@@ -182,15 +175,8 @@ export class SearchOperations {
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
 
-      const params: unknown[] = [];
-      const namespaceCondition = namespaceMatchCondition(
-        namespacePrefix,
-        "prefix",
-        params
-      );
+      const namespacePath = namespacePrefix.join(":");
       const { filter, limit = 10, offset = 0, query, refreshTtl } = options;
-
-      params.push(query || null, this.core.textSearchLanguage);
 
       let sqlQuery = `
         SELECT 
@@ -205,10 +191,16 @@ export class SearchOperations {
             ELSE 0
           END as score
         FROM "${this.core.schema}".store
-        WHERE ${namespaceCondition}
+        WHERE (namespace_path = $1 OR namespace_path LIKE $2 ESCAPE E'\\\\')
           AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
       `;
 
+      const params: unknown[] = [
+        namespacePath,
+        `${escapeLike(namespacePath)}:%`,
+        query || null,
+        this.core.textSearchLanguage,
+      ];
       let paramIndex = 5;
 
       // Add filter conditions using advanced filtering
@@ -287,13 +279,7 @@ export class SearchOperations {
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
 
-      const params: unknown[] = [];
-      const namespaceCondition = namespaceMatchCondition(
-        namespacePrefix,
-        "prefix",
-        params,
-        "s.namespace_path"
-      );
+      const namespacePath = namespacePrefix.join(":");
       const {
         filter,
         limit = 10,
@@ -313,24 +299,22 @@ export class SearchOperations {
         );
       }
 
-      params.push(`[${queryEmbedding.join(",")}]`);
-
       // Choose distance operator based on metric
       let distanceOp: string;
       let scoreTransform: string;
       switch (distanceMetric) {
         case "l2":
           distanceOp = "<->";
-          scoreTransform = `1 / (1 + MIN(v.embedding <-> $3))`; // Convert L2 distance to similarity
+          scoreTransform = "1 / (1 + MIN(v.embedding <-> $3))"; // Convert L2 distance to similarity
           break;
         case "inner_product":
           distanceOp = "<#>";
-          scoreTransform = `MIN(v.embedding <#> $3)`; // Inner product (higher is better)
+          scoreTransform = "MIN(v.embedding <#> $3)"; // Inner product (higher is better)
           break;
         case "cosine":
         default:
           distanceOp = "<=>";
-          scoreTransform = `1 - MIN(v.embedding <=> $3)`; // Convert cosine distance to similarity
+          scoreTransform = "1 - MIN(v.embedding <=> $3)"; // Convert cosine distance to similarity
           break;
       }
 
@@ -344,10 +328,15 @@ export class SearchOperations {
           ${scoreTransform} as similarity_score
         FROM "${this.core.schema}".store s
         JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-        WHERE ${namespaceCondition}
+        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE E'\\\\')
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
       `;
 
+      const params: unknown[] = [
+        namespacePath,
+        `${escapeLike(namespacePath)}:%`,
+        `[${queryEmbedding.join(",")}]`,
+      ];
       let paramIndex = 4;
 
       // Add similarity threshold
@@ -419,13 +408,7 @@ export class SearchOperations {
     return this.core.withClient(async (client) => {
       validateNamespace(namespacePrefix);
 
-      const params: unknown[] = [];
-      const namespaceCondition = namespaceMatchCondition(
-        namespacePrefix,
-        "prefix",
-        params,
-        "s.namespace_path"
-      );
+      const namespacePath = namespacePrefix.join(":");
       const {
         filter,
         limit = 10,
@@ -445,14 +428,6 @@ export class SearchOperations {
         );
       }
 
-      params.push(
-        `[${queryEmbedding.join(",")}]`,
-        vectorWeight,
-        query,
-        1 - similarityThreshold,
-        this.core.textSearchLanguage
-      );
-
       let sqlQuery = `
         SELECT DISTINCT 
           s.namespace_path, 
@@ -466,7 +441,7 @@ export class SearchOperations {
           ) as hybrid_score
         FROM "${this.core.schema}".store s
         JOIN "${this.core.schema}".store_vectors v ON s.namespace_path = v.namespace_path AND s.key = v.key
-        WHERE ${namespaceCondition}
+        WHERE (s.namespace_path = $1 OR s.namespace_path LIKE $2 ESCAPE E'\\\\')
           AND (s.expires_at IS NULL OR s.expires_at > CURRENT_TIMESTAMP)
           AND (
             to_tsvector($7::regconfig, s.value::text) @@ plainto_tsquery($7::regconfig, $5)
@@ -474,6 +449,15 @@ export class SearchOperations {
           )
       `;
 
+      const params: unknown[] = [
+        namespacePath,
+        `${escapeLike(namespacePath)}:%`,
+        `[${queryEmbedding.join(",")}]`,
+        vectorWeight,
+        query,
+        1 - similarityThreshold,
+        this.core.textSearchLanguage,
+      ];
       let paramIndex = 8;
 
       // Add filter conditions

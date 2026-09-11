@@ -55,23 +55,9 @@ export function validateNamespace(
   }
 }
 
-/** Match an exact path or a prefix/suffix ending at a segment boundary. */
-export function namespaceMatchCondition(
-  namespace: string[],
-  matchType: "prefix" | "suffix",
-  params: unknown[],
-  column: "namespace_path" | "s.namespace_path" = "namespace_path"
-): string {
-  const path = namespace.join(":");
-  // Bound values still interpret %, _ and backslash as LIKE syntax.
-  // Escape them for literal matching; SQL parameterization alone does not do this.
-  const escapedPath = path.replace(/[%_\\]/g, "\\$&");
-  const paramIndex = params.length + 1;
-  params.push(
-    path,
-    matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
-  );
-  return `(${column} = $${paramIndex} OR ${column} LIKE $${paramIndex + 1} ESCAPE E'\\\\')`;
+/** Bound values still interpret LIKE syntax; escape it for literal matching. */
+export function escapeLike(value: string): string {
+  return value.replace(/[%_\\]/g, "\\$&");
 }
 
 /** Listing wildcards span one segment; stars inside a label remain literal. */
@@ -81,7 +67,14 @@ export function namespaceListingCondition(
   params: unknown[]
 ): string {
   if (!namespace.includes("*")) {
-    return namespaceMatchCondition(namespace, matchType, params);
+    const path = namespace.join(":");
+    const escapedPath = escapeLike(path);
+    const paramIndex = params.length + 1;
+    params.push(
+      path,
+      matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
+    );
+    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1} ESCAPE E'\\\\')`;
   }
   const body = namespace
     .map((label) =>
