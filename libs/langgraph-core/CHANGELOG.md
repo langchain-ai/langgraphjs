@@ -1,5 +1,17 @@
 # @langchain/langgraph
 
+## 1.4.15
+
+### Patch Changes
+
+- [#2794](https://github.com/langchain-ai/langgraphjs/pull/2794) [`83a4b62`](https://github.com/langchain-ai/langgraphjs/commit/83a4b62be99488f17f3d7370a064f635e7c05a2e) Thanks [@hntrl](https://github.com/hntrl)! - feat(langgraph): add per-node `tracePolicy` input/output processors and `omitPayload`
+  
+  Transform the payloads recorded on a node's own trace run while retaining its span and timing. Processors receive raw values and fall back to the original payload if they throw. Graph state, root runs, and child runs remain unchanged when processors do not mutate their arguments.
+  
+  Matches Python's callback-level behavior: transforms also affect chain events and message streaming, so omitting outputs can suppress messages returned directly by nodes and omitting inputs can affect message deduplication.
+- Updated dependencies [[`3234c69`](https://github.com/langchain-ai/langgraphjs/commit/3234c69530416e2709bf54c53472e640864e7de4), [`3234c69`](https://github.com/langchain-ai/langgraphjs/commit/3234c69530416e2709bf54c53472e640864e7de4), [`11a4535`](https://github.com/langchain-ai/langgraphjs/commit/11a4535762b04f8f28cc98eb7b1e4b682b69e91a), [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105), [`4fc118f`](https://github.com/langchain-ai/langgraphjs/commit/4fc118fcde8fd6d977c03c8a0a7071912df1873a), [`db4bdad`](https://github.com/langchain-ai/langgraphjs/commit/db4bdad61ddfc6c1113269b131ac2efde3eecf69), [`55fa26b`](https://github.com/langchain-ai/langgraphjs/commit/55fa26be9290fbd89a6e0acb232f04cbc6dedb22)]:
+  - @langchain/langgraph-sdk@1.11.0
+
 ## 1.4.15-rc.0
 
 ### Patch Changes
