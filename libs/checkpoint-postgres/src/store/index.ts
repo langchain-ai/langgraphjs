@@ -28,6 +28,11 @@ import {
   StoreMigrationConfig,
 } from "./store-migrations.js";
 import { getStoreTablesWithSchema } from "./sql.js";
+import {
+  namespaceMatchRegex,
+  namespaceScopeClause,
+  namespaceScopeParams,
+} from "./modules/utils.js";
 
 export type * from "./modules/types.js";
 
@@ -326,19 +331,36 @@ export class PostgresStore extends BaseStore {
     const conditions: string[] = [];
     let paramIndex = 1;
 
-    // Add match conditions
+    // Add match conditions. Empty path constrains nothing. Paths without `*`
+    // stay index-friendly (`=` / `LIKE path:%`). `*` spans one segment and
+    // needs a POSIX regex because LIKE cannot exclude the `:` separator.
     if (matchConditions && matchConditions.length > 0) {
       for (const condition of matchConditions) {
-        if (condition.matchType === "prefix") {
-          const prefix = condition.path.join(":");
-          conditions.push(`namespace_path LIKE $${paramIndex}`);
-          params.push(`${prefix}%`);
+        if (
+          condition.matchType !== "prefix" &&
+          condition.matchType !== "suffix"
+        ) {
+          continue;
+        }
+        if (!condition.path.length) {
+          continue;
+        }
+        if (condition.path.includes("*")) {
+          conditions.push(`namespace_path ~ $${paramIndex}`);
+          params.push(namespaceMatchRegex(condition.path, condition.matchType));
           paramIndex += 1;
-        } else if (condition.matchType === "suffix") {
-          const suffix = condition.path.join(":");
-          conditions.push(`namespace_path LIKE $${paramIndex}`);
-          params.push(`%${suffix}`);
-          paramIndex += 1;
+        } else {
+          const { clause, nextIndex } = namespaceScopeClause(
+            "namespace_path",
+            paramIndex
+          );
+          conditions.push(clause);
+          const { exact, like } = namespaceScopeParams(
+            condition.path,
+            condition.matchType
+          );
+          params.push(exact, like);
+          paramIndex = nextIndex;
         }
       }
     }
