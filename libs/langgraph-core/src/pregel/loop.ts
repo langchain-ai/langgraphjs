@@ -107,6 +107,11 @@ import {
   StreamChunkMeta,
 } from "./stream.js";
 import { isXXH3 } from "../hash.js";
+import {
+  migrateCheckpoint,
+  type GraphVersion,
+  type StateMigration,
+} from "./migrations.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -151,6 +156,9 @@ export type PregelLoopInitializeParams = {
   manager?: CallbackManagerForChainRun;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
+  graphVersion?: GraphVersion;
+  legacyGraphVersion?: GraphVersion;
+  stateMigrations?: readonly StateMigration[];
 };
 
 type PregelLoopParams = {
@@ -183,6 +191,9 @@ type PregelLoopParams = {
   durability: Durability;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
+  graphVersion?: GraphVersion;
+  legacyGraphVersion?: GraphVersion;
+  stateMigrations?: readonly StateMigration[];
   hasPersistedParent?: boolean;
 };
 
@@ -429,6 +440,12 @@ export class PregelLoop {
 
   triggerToNodes: Record<string, string[]>;
 
+  protected graphVersion?: GraphVersion;
+
+  protected legacyGraphVersion?: GraphVersion;
+
+  protected stateMigrations?: readonly StateMigration[];
+
   get isResuming() {
     let hasChannelVersions = false;
     if (START in this.checkpoint.channel_versions) {
@@ -518,6 +535,9 @@ export class PregelLoop {
     this.durability = params.durability;
     this.debug = params.debug;
     this.triggerToNodes = params.triggerToNodes;
+    this.graphVersion = params.graphVersion;
+    this.legacyGraphVersion = params.legacyGraphVersion;
+    this.stateMigrations = params.stateMigrations;
     this.control = this.config.control;
     // Exit-mode delta-channel accumulator: in "exit" durability, per-step
     // writes are not persisted incrementally, so DeltaChannel writes would be
@@ -635,9 +655,21 @@ export class PregelLoop {
       },
     };
     const prevCheckpointConfig = saved.parentConfig;
-    const checkpoint = copyCheckpoint(saved.checkpoint);
-    const checkpointMetadata = { ...saved.metadata } as CheckpointMetadata;
-    let checkpointPendingWrites = saved.pendingWrites ?? [];
+    const migrated = await migrateCheckpoint({
+      checkpoint: saved.checkpoint,
+      pendingWrites: saved.pendingWrites,
+      metadata: saved.metadata,
+      graphVersion: params.graphVersion,
+      legacyGraphVersion: params.legacyGraphVersion,
+      migrations: params.stateMigrations,
+      isNewCheckpoint: !hasPersistedParent,
+      hasDeltaChannels: Object.values(params.channelSpecs).some(isDeltaChannel),
+    });
+    const checkpoint = migrated.checkpoint;
+    const checkpointMetadata = {
+      ...migrated.metadata,
+    } as CheckpointMetadata;
+    let checkpointPendingWrites = migrated.pendingWrites;
     const currentCheckpointNamespace = config.configurable?.checkpoint_ns;
     const checkpointMap = config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP];
     const isDirectSubgraphTimeTravel =
@@ -722,6 +754,9 @@ export class PregelLoop {
       durability: params.durability,
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
+      graphVersion: params.graphVersion,
+      legacyGraphVersion: params.legacyGraphVersion,
+      stateMigrations: params.stateMigrations,
       hasPersistedParent,
     });
   }
@@ -1725,6 +1760,10 @@ export class PregelLoop {
     inputMetadata: Omit<CheckpointMetadata, "step" | "parents">
   ) {
     const exiting = this.checkpointMetadata === inputMetadata;
+    const checkpointInputMetadata =
+      !exiting && this.graphVersion !== undefined
+        ? { ...inputMetadata, graph_version: this.graphVersion }
+        : inputMetadata;
 
     const doCheckpoint =
       this.checkpointer != null && (this.durability !== "exit" || exiting);
@@ -1788,7 +1827,7 @@ export class PregelLoop {
         newCounters[chName] = [updated.has(chName) ? u + 1 : u, s + 1];
       }
       this.checkpointMetadata = {
-        ...inputMetadata,
+        ...checkpointInputMetadata,
         step: this.step,
         parents: this.config.configurable?.[CONFIG_KEY_CHECKPOINT_MAP] ?? {},
       };
@@ -1909,7 +1948,14 @@ export class PregelLoop {
         this.checkpointer.put(
           stubPutConfig,
           stubCp,
-          { source: "loop", step: -2, parents: {} },
+          {
+            source: "loop",
+            step: -2,
+            parents: {},
+            ...(this.graphVersion === undefined
+              ? {}
+              : { graph_version: this.graphVersion }),
+          },
           {}
         )
       );
