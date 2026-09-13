@@ -32,6 +32,7 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  isDeltaChannel,
   getOnlyChannels,
 } from "../channels/base.js";
 import {
@@ -1722,9 +1723,31 @@ export class Pregel<
         );
       }
 
+      // Delta channels written by this update are force-snapshotted into the
+      // new checkpoint. Pending writes live under the parent checkpoint, which
+      // may be shared by parallel branches (e.g. two `updateState` forks off
+      // the same root); the ancestor walk used to reconstruct a DeltaChannel
+      // would replay such shared writes and merge the timelines. Materializing
+      // the value here terminates the walk at this checkpoint, isolating the
+      // branch — mirroring how the run loop force-snapshots Overwrite writes.
+      const snapshotChannels = new Set<string>();
       for (const task of tasks) {
-        // channel writes are saved to current checkpoint
-        const channelWrites = task.writes.filter((w) => w[0] !== PUSH);
+        for (const write of task.writes) {
+          const channel = this.channels[write[0] as keyof Channels];
+          if (channel != null && isDeltaChannel(channel)) {
+            snapshotChannels.add(write[0] as string);
+          }
+        }
+      }
+
+      for (const task of tasks) {
+        // channel writes are saved to current checkpoint. Writes to channels
+        // snapshotted above are skipped: their value is materialized in the
+        // new checkpoint, and persisting them under the (possibly shared)
+        // parent would make them visible to sibling branches.
+        const channelWrites = task.writes.filter(
+          (w) => w[0] !== PUSH && !snapshotChannels.has(w[0] as string)
+        );
         // save task writes
         if (saved !== undefined && channelWrites.length > 0) {
           await checkpointer.putWrites(
@@ -1737,7 +1760,7 @@ export class Pregel<
 
       // apply to checkpoint
       // TODO: Why does keyof StrRecord allow number and symbol?
-      _applyWrites(
+      const updatedChannels = _applyWrites(
         checkpoint,
         channels,
         tasks as PregelExecutableTask<string, string>[],
@@ -1745,13 +1768,53 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      // Savers that store channel values as version-keyed blobs (e.g.
+      // PostgresSaver) key them by (thread, ns, channel, version) with no
+      // checkpoint id. Sibling branches forking from the same parent derive
+      // the same next version, so the snapshot must not reuse the parent's
+      // version numbering: bump it past the thread head's version for that
+      // channel, or the snapshot blob would collide with a sibling's (and be
+      // dropped by the insert's ON CONFLICT DO NOTHING).
+      if (snapshotChannels.size > 0) {
+        const headTuple = await checkpointer.getTuple({
+          configurable: {
+            thread_id: checkpointConfig.configurable?.thread_id,
+            checkpoint_ns: checkpointConfig.configurable?.checkpoint_ns,
+          },
+        });
+        if (headTuple !== undefined) {
+          for (const ch of snapshotChannels) {
+            const headVersion = headTuple.checkpoint.channel_versions[ch];
+            if (headVersion === undefined) continue;
+            if (
+              compareChannelVersions(
+                headVersion,
+                checkpoint.channel_versions[ch]
+              ) >= 0
+            ) {
+              // Cast mirrors the loose `getNextVersion.bind(...)` typing used
+              // for `_applyWrites` above; savers with string channel versions
+              // override `getNextVersion` and accept both.
+              checkpoint.channel_versions[ch] = checkpointer.getNextVersion(
+                headVersion as number
+              );
+            }
+          }
+        }
+      }
+
       const newVersions = getNewChannelVersions(
         checkpointPreviousVersions,
         checkpoint.channel_versions
       );
       const nextConfig = await checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, channels, step + 1),
+        createCheckpoint(checkpoint, channels, step + 1, {
+          channelsToSnapshot: snapshotChannels,
+          updatedChannels,
+          getNextVersion: (current) =>
+            checkpointer.getNextVersion(current as number),
+        }),
         {
           source: "update",
           step: step + 1,
