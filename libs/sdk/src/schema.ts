@@ -302,6 +302,41 @@ export interface ThreadState<ValuesType = DefaultValues> {
 
   /** Tasks to execute in this step. If already attempted, may contain an error */
   tasks: Array<ThreadTask>;
+
+  /**
+   * Waiting edges — created by `addEdge([...], target)` — holding writes from some
+   * of their listed nodes but not all, so the edge has not released. Absent when
+   * every edge released.
+   *
+   * A non-empty entry alongside an empty `next` means the run ended without
+   * releasing the edge, so the writes in `completed` were discarded. It does not
+   * mean `target` never ran: a loop or a `Send` can reach it without the edge.
+   */
+  waiting_edges?: Array<WaitingEdge>;
+}
+
+export interface WaitingEdge {
+  /** The node the edge feeds. */
+  target: string;
+  /** Listed nodes that have completed and written to the edge. */
+  completed: string[];
+  /**
+   * Listed nodes that have not written to the edge.
+   *
+   * Absent when the edge's channel name cannot be parsed for its listed nodes,
+   * which happens for a node named with the join character.
+   */
+  missing?: string[];
+  /**
+   * Subgraph node names from the served graph down to the edge, stable across runs.
+   * Absent for the served graph's own edges.
+   */
+  path?: string[];
+  /**
+   * The checkpoint namespace the edge lives in. Carries per-run task ids, so it is
+   * addressable but not comparable between runs. Absent for the served graph's own edges.
+   */
+  namespace?: string;
 }
 
 export interface ThreadTask<
