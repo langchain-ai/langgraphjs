@@ -1,4 +1,5 @@
 import { PendingWrite } from "@langchain/langgraph-checkpoint";
+import type { JSONSchema } from "@langchain/core/utils/json_schema";
 import {
   coerceTimeoutPolicy,
   type TimeoutPolicy,
@@ -406,6 +407,11 @@ export function _isOverwriteValue<ValueType>(
 export type Interrupt<Value = any> = {
   id?: string;
   value?: Value;
+  /**
+   * JSON Schema for the value expected when resuming this interrupt,
+   * if the graph provided one via `interrupt(value, { responseSchema })`.
+   */
+  response_schema?: JSONSchema;
 };
 
 /**

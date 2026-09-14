@@ -1,6 +1,15 @@
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { RunnableConfig } from "@langchain/core/runnables";
 import {
+  type JSONSchema,
+  toJsonSchema,
+} from "@langchain/core/utils/json_schema";
+import {
+  type InteropZodType,
+  interopParse,
+  isInteropZodSchema,
+} from "@langchain/core/utils/types";
+import {
   BaseCheckpointSaver,
   type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
@@ -12,9 +21,21 @@ import {
   CONFIG_KEY_CHECKPOINTER,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   RESUME,
+  type Interrupt,
 } from "./constants.js";
 import { PregelScratchpad } from "./pregel/types.js";
 import { XXH3 } from "./hash.js";
+
+export interface InterruptOptions {
+  /**
+   * Schema for the value expected when the graph is resumed, surfaced to
+   * clients on `Interrupt.response_schema` (as JSON Schema) so they can render
+   * a typed input form. A Zod schema also parses the resume value, and the
+   * parsed value is what `interrupt` returns; a JSON Schema object is passed
+   * through to clients without validating the resume value.
+   */
+  responseSchema?: InteropZodType | JSONSchema;
+}
 
 /**
  * Interrupts the execution of a graph node.
@@ -32,7 +53,10 @@ import { XXH3 } from "./hash.js";
  * or if you do, ensure that the `GraphInterrupt` error is thrown again within your `catch` block.
  *
  * @param value - The value to include in the interrupt. This will be available in task.interrupts[].value
- * @returns The `resume` value provided when the graph is re-invoked with a Command
+ * @param options - Optional settings. `responseSchema` describes the expected resume value and is
+ *   available in task.interrupts[].response_schema as JSON Schema; a Zod schema also validates the resume value.
+ * @returns The `resume` value provided when the graph is re-invoked with a Command, parsed by
+ *   `responseSchema` when it is a Zod schema
  *
  * @example
  * ```typescript
@@ -58,9 +82,13 @@ import { XXH3 } from "./hash.js";
  *
  * @throws {Error} If called outside the context of a graph
  * @throws {GraphInterrupt} When no resume value is available
+ * @throws {ZodError} When the resume value does not match a Zod `responseSchema`
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function interrupt<I = unknown, R = any>(value: I): R {
+export function interrupt<I = unknown, R = any>(
+  value: I,
+  options?: InterruptOptions
+): R {
   const config: RunnableConfig | undefined =
     AsyncLocalStorageProviderSingleton.getRunnableConfig();
   if (!config) {
@@ -79,6 +107,12 @@ export function interrupt<I = unknown, R = any>(value: I): R {
     });
   }
 
+  const schema = options?.responseSchema;
+  const parseResume = (resume: unknown): R =>
+    (schema !== undefined && isInteropZodSchema(schema)
+      ? interopParse(schema, resume)
+      : resume) as R;
+
   // Track interrupt index
   const scratchpad: PregelScratchpad = conf[CONFIG_KEY_SCRATCHPAD];
   scratchpad.interruptCounter += 1;
@@ -86,8 +120,9 @@ export function interrupt<I = unknown, R = any>(value: I): R {
 
   // Find previous resume values
   if (scratchpad.resume.length > 0 && idx < scratchpad.resume.length) {
+    const parsed = parseResume(scratchpad.resume[idx]);
     conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
-    return scratchpad.resume[idx] as R;
+    return parsed;
   }
 
   // Find current resume value
@@ -98,9 +133,10 @@ export function interrupt<I = unknown, R = any>(value: I): R {
       );
     }
     const v = scratchpad.consumeNullResume();
+    const parsed = parseResume(v);
     scratchpad.resume.push(v);
     conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
-    return v as R;
+    return parsed;
   }
 
   // No resume value found
@@ -109,7 +145,11 @@ export function interrupt<I = unknown, R = any>(value: I): R {
   );
 
   const id = ns ? XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR)) : undefined;
-  throw new GraphInterrupt([{ id, value }]);
+  const pending: Interrupt<I> = { id, value };
+  if (schema !== undefined) {
+    pending.response_schema = toJsonSchema(schema);
+  }
+  throw new GraphInterrupt([pending]);
 }
 
 type FilterAny<X> =
