@@ -6,11 +6,16 @@ import { StreamStore } from "./store.js";
 
 interface TestSnapshot {
   readonly isLoading: boolean;
+  readonly isRunning: boolean;
   readonly other: number;
 }
 
 function makeStore(): StreamStore<TestSnapshot> {
-  return new StreamStore<TestSnapshot>({ isLoading: false, other: 0 });
+  return new StreamStore<TestSnapshot>({
+    isLoading: false,
+    isRunning: false,
+    other: 0,
+  });
 }
 
 function lifecycleEvent(
@@ -59,6 +64,7 @@ describe("LifecycleLoadingTracker", () => {
     tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
 
     expect(store.getSnapshot().isLoading).toBe(true);
+    expect(store.getSnapshot().isRunning).toBe(true);
     expect(store.getSnapshot().other).toBe(0);
   });
 
@@ -77,6 +83,7 @@ describe("LifecycleLoadingTracker", () => {
 
     vi.runAllTimers();
     expect(store.getSnapshot().isLoading).toBe(false);
+    expect(store.getSnapshot().isRunning).toBe(false);
   });
 
   it.each([["completed"], ["failed"], ["interrupted"]])(
