@@ -30,7 +30,7 @@ describe("RedisStore search namespace scoping", () => {
     expect(client.ft.search).toHaveBeenCalledTimes(1);
     const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(index).toBe("store_vectors");
-    expect(query).toContain("@namespace:{tenant\\.acme|tenant\\.acme\\.*}");
+    expect(query).toContain("@namespace_prefix:{tenant\\.acme}");
   });
 
   it("should not widen a nested vector search to its first label", async () => {
@@ -52,7 +52,7 @@ describe("RedisStore search namespace scoping", () => {
 
     const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
     expect(index).toBe("store");
-    expect(query).toBe("@namespace:{tenant\\.acme|tenant\\.acme\\.*}");
+    expect(query).toBe("@namespace_prefix:{tenant\\.acme}");
   });
 
   it("should search every namespace for an empty prefix", async () => {

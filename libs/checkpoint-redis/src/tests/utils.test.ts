@@ -200,15 +200,15 @@ describe("assertSafeKeyComponent", () => {
 describe("buildNamespacePrefixQuery", () => {
   it("matches the whole prefix or a descendant", () => {
     expect(buildNamespacePrefixQuery(["tenant", "acme"])).toBe(
-      "@namespace:{tenant\\.acme|tenant\\.acme\\.*}"
+      "@namespace_prefix:{tenant\\.acme}"
     );
   });
 
   it("preserves punctuation instead of tokenizing labels", () => {
     expect(buildNamespacePrefixQuery(["a-b"])).toBe(
-      "@namespace:{a\\-b|a\\-b\\.*}"
+      "@namespace_prefix:{a\\-b}"
     );
-    expect(buildNamespacePrefixQuery(["*"])).toBe("@namespace:{\\*|\\*\\.*}");
+    expect(buildNamespacePrefixQuery(["*"])).toBe("@namespace_prefix:{\\*}");
   });
 
   it("leaves an empty prefix unrestricted", () => {

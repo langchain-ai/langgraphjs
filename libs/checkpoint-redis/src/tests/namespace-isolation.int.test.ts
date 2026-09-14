@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createRedisContainer } from "./redis-container.js";
-import { SchemaFieldTypes } from "redis";
+import { SchemaFieldTypes, VectorAlgorithms } from "redis";
 import { RedisStore } from "../store.js";
 
 let container: Awaited<ReturnType<typeof createRedisContainer>>;
@@ -25,7 +25,8 @@ beforeAll(async () => {
     index: {
       dims: 2,
       embed: {
-        embedDocuments: async (texts: string[]) => texts.map(() => [1, 0]),
+        embedDocuments: async (texts: string[]) =>
+          texts.map((text) => [1, Number(text) / 1000 || 0]),
         embedQuery: async () => [1, 0],
       },
     },
@@ -41,6 +42,30 @@ beforeAll(async () => {
     },
     { ON: "JSON", PREFIX: "store:" }
   );
+  await container.client.ft.create(
+    "store_vectors",
+    {
+      "$.prefix": { type: SchemaFieldTypes.TEXT, AS: "prefix" },
+      "$.key": { type: SchemaFieldTypes.TAG, AS: "key" },
+      "$.embedding": {
+        type: SchemaFieldTypes.VECTOR,
+        AS: "embedding",
+        ALGORITHM: VectorAlgorithms.FLAT,
+        TYPE: "FLOAT32",
+        DIM: 2,
+        DISTANCE_METRIC: "COSINE",
+      },
+    },
+    { ON: "JSON", PREFIX: "store_vectors:" }
+  );
+  // Resume after only the exact namespace field was added.
+  await container.client.ft.alter("store", {
+    "$.prefix": {
+      type: SchemaFieldTypes.TAG,
+      AS: "namespace",
+      CASESENSITIVE: true,
+    },
+  });
   await container.client.json.set("store:legacy", "$", {
     prefix: "upgrade.legacy",
     key: "legacy",
@@ -48,8 +73,43 @@ beforeAll(async () => {
     created_at: 1,
     updated_at: 1,
   });
+
+  for (let i = 0; i < 300; i++) {
+    const doc = {
+      prefix: `wide.legacy.child${i}`,
+      key: `child${i}`,
+      created_at: i + 1,
+      updated_at: i + 1,
+    };
+
+    await container.client.json.set(`store:legacy${i}`, "$", {
+      ...doc,
+      value: { text: "hello" },
+    });
+    await container.client.json.set(`store_vectors:legacy${i}`, "$", {
+      ...doc,
+      field_name: "text",
+      embedding: [1, i / 1000],
+    });
+  }
+
+  await container.client.json.set("store:punctuation", "$", {
+    prefix: "upgrade.a/b\né",
+    key: "literal",
+    value: {},
+    created_at: 1,
+    updated_at: 1,
+  });
+  await container.client.expire("store:legacy", 600);
+  await container.client.expire("store_vectors:legacy0", 600);
   await store.setup();
   await store.setup();
+
+  for (let i = 0; i < 300; i++) {
+    await store.put(["wide", "fresh", `child${i}`], `child${i}`, {
+      text: String(i),
+    });
+  }
 
   for (let i = 0; i < namespaces.length; i++)
     await store.put(namespaces[i], `key${i}`, { text: "hello" });
@@ -105,12 +165,26 @@ it("isolates exact reads, updates and deletes with identical keys", async () => 
   expect(await store.get(["scope", "one", "child"], "same")).not.toBeNull();
 });
 
-it("indexes existing documents without rewriting them", async () => {
+it("backfills existing documents while preserving values and expiration", async () => {
   await expect
     .poll(
       async () => (await store.get(["upgrade", "legacy"], "legacy"))?.namespace
     )
     .toEqual(["upgrade", "legacy"]);
+  expect(await container.client.json.get("store:legacy")).toEqual({
+    prefix: "upgrade.legacy",
+    key: "legacy",
+    value: {},
+    created_at: 1,
+    updated_at: 1,
+    namespacePrefixes: ["upgrade", "upgrade.legacy"],
+  });
+  expect(await store.search(["upgrade", "a/b\né"])).toHaveLength(1);
+
+  for (const key of ["store:legacy", "store_vectors:legacy0"]) {
+    expect(await container.client.ttl(key)).toBeGreaterThan(0);
+    expect(await container.client.ttl(key)).toBeLessThanOrEqual(600);
+  }
 });
 
 it("keeps search pagination within the namespace and supports an empty prefix", async () => {
@@ -145,15 +219,78 @@ it("lists whole segments with prefix, suffix and standalone wildcards", async ()
 it.each([undefined, "hello"])(
   "rejects delimiter aliases with query=%s while preserving empty-prefix search",
   async (query) => {
-    await expect(store.search(["tenant.a"], { query })).rejects.toThrow(/periods/);
+    await expect(store.search(["tenant.a"], { query })).rejects.toThrow(
+      /periods/
+    );
     await expect(
       store.batch([{ namespacePrefix: ["tenant.a"], query }])
     ).rejects.toThrow(/periods/);
-    expect((await store.search([], { query, limit: 100 })).length).toBeGreaterThan(0);
     expect(
-      (await store.search(["tenant", "a"], { query, limit: 100 })).map(
-        (item) => item.namespace
-      ).sort()
-    ).toEqual([["tenant", "a"], ["tenant", "a", "notes"]]);
+      (await store.search([], { query, limit: 100 })).length
+    ).toBeGreaterThan(0);
+    expect(
+      (await store.search(["tenant", "a"], { query, limit: 100 }))
+        .map((item) => item.namespace)
+        .sort()
+    ).toEqual([
+      ["tenant", "a"],
+      ["tenant", "a", "notes"],
+    ]);
   }
 );
+
+it.each([undefined, "hello"])(
+  "returns every descendant beyond the expansion limit with query=%s",
+  async (query) => {
+    const all = await store.search(["wide", "legacy"], { query, limit: 400 });
+    expect(all).toHaveLength(300);
+    expect(
+      await store.search(["wide", "fresh"], { query, limit: 400 })
+    ).toHaveLength(300);
+    const keys = new Set<string>();
+
+    for (const offset of [0, 100, 200]) {
+      const page = await store.search(["wide", "legacy"], {
+        query,
+        limit: 100,
+        offset,
+      });
+
+      expect(page).toHaveLength(100);
+
+      for (const item of page) keys.add(item.key);
+    }
+
+    expect(keys.size).toBe(300);
+  }
+);
+
+it("does not recreate a document removed during setup", async () => {
+  await container.client.json.set("store:removed", "$", {
+    prefix: "upgrade.removed",
+    key: "removed",
+    value: {},
+    created_at: 1,
+    updated_at: 1,
+  });
+
+  const aggregate = container.client.ft.aggregateWithCursor.bind(
+    container.client.ft
+  );
+
+  const spy = vi
+    .spyOn(container.client.ft, "aggregateWithCursor")
+    .mockImplementationOnce(async (...args) => {
+      const page = await aggregate(...args);
+      await container.client.del("store:removed");
+
+      return page;
+    });
+
+  try {
+    await store.setup();
+    expect(await container.client.exists("store:removed")).toBe(0);
+  } finally {
+    spy.mockRestore();
+  }
+});

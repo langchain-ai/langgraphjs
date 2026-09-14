@@ -163,16 +163,23 @@ named `namespace`, rather than tokenized TEXT. Search accepts the exact namespac
 or descendants separated by `.`. Exact reads and mutations match only the full
 namespace. Existing restrictions on periods inside labels remain in place.
 
-Call `setup()` after upgrading, before serving traffic. It adds the TAG alias to
-both configured indexes using FT.ALTER and indexes existing documents without
-rewriting their JSON. Wait for background indexing to finish before relying on
-complete search results. Run upgraded clients only; older clients still issue
-unsafe TEXT queries even after the index is upgraded.
+Stop existing clients before upgrading and call `setup()` before serving traffic.
+It adds case-sensitive TAG fields to both configured indexes and backfills a
+`namespacePrefixes` array on existing documents. Each entry is a complete ancestor
+path, so descendant searches use one exact tag without Redis wildcard-expansion
+limits. Document values and TTLs are preserved. Setup scans existing documents
+in batches and is safe to retry after interruption; it waits for indexing and
+throws if an index is still building after 60 seconds. Wait and retry setup in
+that case. Larger stores need a maintenance window for the scan and added index
+storage. Setup requires permission for FT.ALTER, FT.INFO, FT.AGGREGATE/cursors,
+EVAL, JSON.GET and JSON.SET. Run upgraded clients only: older clients issue
+unsafe TEXT queries and
+write documents without the new prefix field.
 
 Search labels remain literal, including stars and punctuation. Namespace listing
-supports standalone `*` as one complete segment. Redis prefix-expansion limits
-still apply to descendant TAG searches; this patch does not change server search
-limits or existing vector/filter pagination semantics.
+supports standalone `*` as one complete segment. Vector pagination requests enough
+nearest neighbors for the offset and orders them by distance. Existing client-side
+value filters may still produce short pages.
 
 ## TTL Support
 
