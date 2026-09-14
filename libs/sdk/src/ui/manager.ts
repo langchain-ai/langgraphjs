@@ -783,9 +783,10 @@ export class StreamManager<
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
-      this.abortRef = new AbortController();
+      const abort = new AbortController();
+      this.abortRef = abort;
 
-      const run = await action(this.abortRef.signal);
+      const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
 
       let streamError: StreamError | undefined;
@@ -1115,7 +1116,7 @@ export class StreamManager<
       // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
       // This avoids unnecessary HTTP calls (like history fetching) that would
       // delay the next queued stream from starting.
-      if (!this.abortRef.signal.aborted) {
+      if (!abort.signal.aborted) {
         const values = await options.onSuccess?.();
         if (typeof values !== "undefined" && this.queueSize === 0) {
           this.setStreamValues(values);
