@@ -199,18 +199,21 @@ it("keeps search pagination within the namespace and supports an empty prefix", 
   );
 });
 
-it("lists whole segments with prefix, suffix and standalone wildcards", async () => {
+it("lists whole segments with literal prefix and suffix labels", async () => {
   expect(await store.listNamespaces({ prefix: ["tenant", "a"] })).toEqual([
     ["tenant", "a"],
     ["tenant", "a", "notes"],
   ]);
   expect(
     await store.listNamespaces({ prefix: ["tenant", "*", "notes"] })
-  ).toEqual([["tenant", "a", "notes"]]);
-  expect(await store.listNamespaces({ suffix: ["a", "*"] })).toEqual([
-    ["a", "tenant"],
-    ["tenant", "a", "notes"],
+  ).toEqual([]);
+  expect(await store.listNamespaces({ prefix: ["tenant", "*"] })).toEqual([
+    ["tenant", "*"],
   ]);
+  expect(await store.listNamespaces({ suffix: ["*"] })).toEqual([
+    ["tenant", "*"],
+  ]);
+  expect(await store.listNamespaces({ suffix: ["a", "*"] })).toEqual([]);
   expect(await store.listNamespaces({ suffix: ["a"] })).toEqual([
     ["tenant", "a"],
   ]);

@@ -176,8 +176,8 @@ EVAL, JSON.GET and JSON.SET. Run upgraded clients only: older clients issue
 unsafe TEXT queries and
 write documents without the new prefix field.
 
-Search labels remain literal, including stars and punctuation. Namespace listing
-supports standalone `*` as one complete segment. Vector pagination requests enough
+Search and namespace-listing labels remain literal, including stars and punctuation.
+Vector pagination requests enough
 nearest neighbors for the offset and orders them by distance. Existing client-side
 value filters may still produce short pages.
 
