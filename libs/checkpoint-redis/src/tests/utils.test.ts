@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   assertSafeKeyComponent,
   escapeRediSearchTagValue,
-  buildNamespacePrefixQuery,
 } from "../utils.js";
 
 describe("escapeRediSearchTagValue", () => {
@@ -194,24 +193,5 @@ describe("assertSafeKeyComponent", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertSafeKeyComponent("task_id", { $gt: "" } as any)
     ).toThrow(/"task_id"/);
-  });
-});
-
-describe("buildNamespacePrefixQuery", () => {
-  it("matches the whole prefix or a descendant", () => {
-    expect(buildNamespacePrefixQuery(["tenant", "acme"])).toBe(
-      "@namespace_prefix:{tenant\\.acme}"
-    );
-  });
-
-  it("preserves punctuation instead of tokenizing labels", () => {
-    expect(buildNamespacePrefixQuery(["a-b"])).toBe(
-      "@namespace_prefix:{a\\-b}"
-    );
-    expect(buildNamespacePrefixQuery(["*"])).toBe("@namespace_prefix:{\\*}");
-  });
-
-  it("leaves an empty prefix unrestricted", () => {
-    expect(buildNamespacePrefixQuery([])).toBe("*");
   });
 });

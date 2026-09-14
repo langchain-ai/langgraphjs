@@ -156,30 +156,20 @@ const ops = [
 const results = await store.batch(ops);
 ```
 
-#### Namespace matching upgrade
+#### Namespace matching
 
-RedisStore now matches namespace strings through a case-sensitive JSON TAG field
-named `namespace`, rather than tokenized TEXT. Search accepts the exact namespace
-or descendants separated by `.`. Exact reads and mutations match only the full
-namespace. Existing restrictions on periods inside labels remain in place.
+RedisStore checks namespace identity on retrieved documents. Search accepts an
+exact namespace or its descendants; get, update, and delete require the exact
+namespace and key. Namespace labels cannot contain the `.` path separator.
+Existing data and indexes require no migration or backfill. Upgrade all clients:
+older clients retain the unsafe namespace matching behavior.
 
-Stop existing clients before upgrading and call `setup()` before serving traffic.
-It adds case-sensitive TAG fields to both configured indexes and backfills a
-`namespacePrefixes` array on existing documents. Each entry is a complete ancestor
-path, so descendant searches use one exact tag without Redis wildcard-expansion
-limits. Document values and TTLs are preserved. Setup scans existing documents
-in batches and is safe to retry after interruption; it waits for indexing and
-throws if an index is still building after 60 seconds. Wait and retry setup in
-that case. Larger stores need a maintenance window for the scan and added index
-storage. Setup requires permission for FT.ALTER, FT.INFO, FT.AGGREGATE/cursors,
-EVAL, JSON.GET and JSON.SET. Run upgraded clients only: older clients issue
-unsafe TEXT queries and
-write documents without the new prefix field.
-
-Search and namespace-listing labels remain literal, including stars and punctuation.
-Vector pagination requests enough
-nearest neighbors for the offset and orders them by distance. Existing client-side
-value filters may still produce short pages.
+Scoped searches inspect candidates before applying namespace pagination. They
+can scan the entire index, and vector searches may repeat KNN queries with larger
+candidate counts. Sparse namespaces and large offsets can therefore be expensive
+and remain subject to Redis query limits. Exact-key operations page through key
+matches until the namespace and key match. Existing client-side value filters
+may still produce short pages.
 
 ## TTL Support
 
