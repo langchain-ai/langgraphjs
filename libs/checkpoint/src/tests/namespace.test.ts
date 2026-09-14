@@ -202,7 +202,7 @@ describe("InMemoryStore Namespace Operations", () => {
     );
   });
 
-  it("should not leak sibling namespaces that share a string prefix (issue 2721 / CVE-2026-71433)", async () => {
+  it("should not leak sibling namespaces that share a string prefix", async () => {
     await store.put(["tenant", "acme"], "note", { text: "acme's own note" });
     await store.put(["tenant", "acme-corp"], "secret", {
       text: "acme-corp CONFIDENTIAL",
