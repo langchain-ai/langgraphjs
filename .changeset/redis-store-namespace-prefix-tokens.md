@@ -2,4 +2,4 @@
 "@langchain/langgraph-checkpoint-redis": patch
 ---
 
-Scope RedisStore searches to exact namespace segments and descendants using case-sensitive TAG matching. Scope get, update, and delete to the exact namespace. Setup adds namespace TAG fields and backfills complete ancestor prefixes on existing documents, preserving values and TTLs. Stop old clients and rerun setup before serving traffic. Exact prefix tags avoid Redis wildcard-expansion limits; vector pagination now orders enough neighbors for the requested offset.
+Scope RedisStore reads and mutations to exact namespaces and search to exact namespaces and descendants. Setup adds a case-sensitive TAG index over the existing namespace field without rewriting documents. Search enumerates namespace tags to avoid wildcard expansion limits and scopes results before pagination and vector selection. Existing index definitions and readiness are checked before setup completes.

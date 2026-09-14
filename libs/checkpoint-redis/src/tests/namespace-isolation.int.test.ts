@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { createRedisContainer } from "./redis-container.js";
 import { SchemaFieldTypes, VectorAlgorithms } from "redis";
 import { RedisStore } from "../store.js";
@@ -58,14 +58,6 @@ beforeAll(async () => {
     },
     { ON: "JSON", PREFIX: "store_vectors:" }
   );
-  // Resume after only the exact namespace field was added.
-  await container.client.ft.alter("store", {
-    "$.prefix": {
-      type: SchemaFieldTypes.TAG,
-      AS: "namespace",
-      CASESENSITIVE: true,
-    },
-  });
   await container.client.json.set("store:legacy", "$", {
     prefix: "upgrade.legacy",
     key: "legacy",
@@ -165,7 +157,7 @@ it("isolates exact reads, updates and deletes with identical keys", async () => 
   expect(await store.get(["scope", "one", "child"], "same")).not.toBeNull();
 });
 
-it("backfills existing documents while preserving values and expiration", async () => {
+it("reads existing documents without modifying their payload or expiration", async () => {
   await expect
     .poll(
       async () => (await store.get(["upgrade", "legacy"], "legacy"))?.namespace
@@ -177,7 +169,6 @@ it("backfills existing documents while preserving values and expiration", async 
     value: {},
     created_at: 1,
     updated_at: 1,
-    namespacePrefixes: ["upgrade", "upgrade.legacy"],
   });
   expect(await store.search(["upgrade", "a/b\né"])).toHaveLength(1);
 
@@ -268,32 +259,124 @@ it.each([undefined, "hello"])(
   }
 );
 
-it("does not recreate a document removed during setup", async () => {
-  await container.client.json.set("store:removed", "$", {
-    prefix: "upgrade.removed",
-    key: "removed",
-    value: {},
+it("finds exact keys beyond a page of siblings without overwriting them", async () => {
+  for (let i = 0; i < 105; i++) {
+    await container.client.json.set(`store:same-key-${i}`, "$", {
+      prefix: `keyscope.sibling${i}`,
+      key: "shared",
+      value: { sibling: i },
+      created_at: i + 1,
+      updated_at: i + 1,
+    });
+  }
+  await store.put(["keyscope", "own"], "shared", { own: 1 });
+  expect((await store.get(["keyscope", "own"], "shared"))?.value).toEqual({
+    own: 1,
+  });
+  await store.put(["keyscope", "own"], "shared", { own: 2 });
+  expect(await store.search(["keyscope", "own"])).toHaveLength(1);
+  await store.delete(["keyscope", "own"], "shared");
+  expect(await store.get(["keyscope", "own"], "shared")).toBeNull();
+  expect(
+    (await store.get(["keyscope", "sibling104"], "shared"))?.value
+  ).toEqual({ sibling: 104 });
+});
+
+it("isolates empty and case-sensitive keys", async () => {
+  for (const namespace of [
+    ["keys", "own"],
+    ["keys", "other"],
+  ]) {
+    for (const key of ["", "Key", "key"])
+      await store.put(namespace, key, { key });
+  }
+  for (const key of ["", "Key", "key"]) {
+    expect((await store.get(["keys", "own"], key))?.value).toEqual({ key });
+    await store.delete(["keys", "own"], key);
+    expect(await store.get(["keys", "own"], key)).toBeNull();
+    expect((await store.get(["keys", "other"], key))?.value).toEqual({ key });
+  }
+});
+
+it.each([undefined, "hello"])(
+  "refreshes expiration only inside the requested namespace with query=%s",
+  async (query) => {
+    const ttlStore = new RedisStore(container.client, {
+      ttl: { defaultTTL: 1 },
+      index: {
+        dims: 2,
+        embed: {
+          embedDocuments: async (texts: string[]) => texts.map(() => [1, 0]),
+          embedQuery: async () => [1, 0],
+        },
+      },
+    });
+    for (const [id, prefix] of [
+      ["ttl-own", "expiry.a"],
+      ["ttl-sibling", "expiry.ab"],
+    ]) {
+      const doc = { prefix, key: id, created_at: 1, updated_at: 1 };
+      await container.client.json.set(`store:${id}`, "$", {
+        ...doc,
+        value: { text: "hello" },
+      });
+      await container.client.json.set(`store_vectors:${id}`, "$", {
+        ...doc,
+        field_name: "text",
+        embedding: [1, 0],
+      });
+      await container.client.expire(`store:${id}`, 600);
+      await container.client.expire(`store_vectors:${id}`, 600);
+    }
+    expect(
+      await ttlStore.get(["expiry", "a"], "ttl-sibling", { refreshTTL: true })
+    ).toBeNull();
+    const results = await ttlStore.search(["expiry", "a"], {
+      query,
+      refreshTTL: true,
+    });
+    expect(results.map((item) => item.key)).toEqual(["ttl-own"]);
+    for (const prefix of ["store", "store_vectors"]) {
+      expect(await container.client.ttl(`${prefix}:ttl-own`)).toBeGreaterThan(
+        0
+      );
+      expect(
+        await container.client.ttl(`${prefix}:ttl-own`)
+      ).toBeLessThanOrEqual(60);
+      expect(
+        await container.client.ttl(`${prefix}:ttl-sibling`)
+      ).toBeGreaterThan(590);
+    }
+  }
+);
+
+it("indexes records written in the old format after setup", async () => {
+  const document = {
+    prefix: "compat.old_writer",
+    key: "old-writer",
+    value: { text: "hello" },
     created_at: 1,
     updated_at: 1,
+  };
+  await container.client.json.set("store:old-writer", "$", document);
+  await container.client.json.set("store_vectors:old-writer", "$", {
+    prefix: document.prefix,
+    key: document.key,
+    embedding: [1, 0],
+    field_name: "text",
   });
-
-  const aggregate = container.client.ft.aggregateWithCursor.bind(
-    container.client.ft
-  );
-
-  const spy = vi
-    .spyOn(container.client.ft, "aggregateWithCursor")
-    .mockImplementationOnce(async (...args) => {
-      const page = await aggregate(...args);
-      await container.client.del("store:removed");
-
-      return page;
-    });
-
-  try {
-    await store.setup();
-    expect(await container.client.exists("store:removed")).toBe(0);
-  } finally {
-    spy.mockRestore();
+  for (const query of [undefined, "hello"]) {
+    const items = await store.search(["compat", "old_writer"], { query });
+    expect(items.map((item) => item.key)).toEqual(["old-writer"]);
   }
+  await store.setup();
+  expect(await container.client.json.get("store:old-writer")).toEqual(document);
+});
+
+it("creates a missing vector index while retaining an existing store index", async () => {
+  await container.client.ft.dropIndex("store_vectors");
+  await store.setup();
+  expect(
+    await store.search(["wide", "legacy"], { query: "hello", limit: 400 })
+  ).toHaveLength(300);
 });

@@ -6,6 +6,7 @@ function createStubClient() {
   const client = createClient();
   vi.spyOn(client.ft, "search").mockResolvedValue({ total: 0, documents: [] });
 
+  vi.spyOn(client.ft, "tagVals").mockResolvedValue([]);
   return client;
 }
 
@@ -21,48 +22,43 @@ function createVectorStore(client: ReturnType<typeof createStubClient>) {
 }
 
 describe("RedisStore search namespace scoping", () => {
-  it("should scope vector search to every label of the prefix", async () => {
+  it.each([false, true])(
+    "uses exact namespace alternatives before pagination with vector=%s",
+    async (vector) => {
+      const client = createStubClient();
+      vi.mocked(client.ft.tagVals).mockResolvedValue([
+        "tenant.acme",
+        "tenant.acme.notes",
+        "tenant.acme2",
+        "tenant.ACME",
+      ]);
+      const store = vector ? createVectorStore(client) : new RedisStore(client);
+      await store.search(["tenant", "acme"], {
+        limit: 1,
+        offset: 1,
+        query: vector ? "notes" : undefined,
+      });
+      expect(client.ft.search).toHaveBeenCalledTimes(1);
+      const [, query, options] = vi.mocked(client.ft.search).mock.calls[0];
+      expect(query).toContain(
+        "@namespace:{tenant\\.acme|tenant\\.acme\\.notes}"
+      );
+      expect(query).not.toContain("acme2");
+      expect(query).not.toContain("ACME");
+      expect(options).toMatchObject({ LIMIT: { from: 1, size: 1 } });
+      if (vector) expect(query).toContain("KNN 2");
+    }
+  );
+  it("returns no matches without issuing an unscoped query", async () => {
     const client = createStubClient();
-    const store = createVectorStore(client);
-
-    await store.search(["tenant", "acme"], { query: "notes" });
-
-    expect(client.ft.search).toHaveBeenCalledTimes(1);
-    const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
-    expect(index).toBe("store_vectors");
-    expect(query).toContain("@namespace_prefix:{tenant\\.acme}");
+    expect(await new RedisStore(client).search(["missing"])).toEqual([]);
+    expect(client.ft.search).not.toHaveBeenCalled();
   });
-
-  it("should not widen a nested vector search to its first label", async () => {
+  it("searches every namespace for an empty prefix", async () => {
     const client = createStubClient();
-    const store = createVectorStore(client);
-
-    await store.search(["docs", "public"], { query: "guide" });
-
-    const [, query] = vi.mocked(client.ft.search).mock.calls[0];
-    expect(query).not.toContain("@prefix:docs*");
-    expect(query).toContain("public");
-  });
-
-  it("should scope a plain search with the same clause", async () => {
-    const client = createStubClient();
-    const store = new RedisStore(client);
-
-    await store.search(["tenant", "acme"]);
-
-    const [index, query] = vi.mocked(client.ft.search).mock.calls[0];
-    expect(index).toBe("store");
-    expect(query).toBe("@namespace_prefix:{tenant\\.acme}");
-  });
-
-  it("should search every namespace for an empty prefix", async () => {
-    const client = createStubClient();
-    const store = new RedisStore(client);
-
-    await store.search([]);
-
-    const [, query] = vi.mocked(client.ft.search).mock.calls[0];
-    expect(query).toBe("*");
+    await new RedisStore(client).search([]);
+    expect(vi.mocked(client.ft.search).mock.calls[0][1]).toBe("*");
+    expect(client.ft.tagVals).not.toHaveBeenCalled();
   });
 });
 
@@ -82,3 +78,104 @@ it.each(["tenant.a", ".", "a.", ".a", ""])(
     expect(client.ft.search).not.toHaveBeenCalled();
   }
 );
+
+const namespaceField = [
+  "identifier",
+  "$.prefix",
+  "attribute",
+  "namespace",
+  "type",
+  "TAG",
+  "SEPARATOR",
+  "",
+  "CASESENSITIVE",
+];
+
+function createSetupClient() {
+  const client = createStubClient();
+  vi.spyOn(client.ft, "create").mockRejectedValue(
+    new Error("Index already exists")
+  );
+  vi.spyOn(client.ft, "alter").mockRejectedValue(new Error("Duplicate field"));
+  vi.spyOn(client, "sendCommand").mockResolvedValue([
+    "attributes",
+    [namespaceField],
+    "indexing",
+    0,
+  ]);
+  return client;
+}
+
+it("waits for existing records to be indexed without rewriting documents", async () => {
+  const client = createSetupClient();
+  vi.mocked(client.sendCommand)
+    .mockResolvedValueOnce(["indexing", 1, "attributes", [namespaceField]])
+    .mockResolvedValueOnce(["attributes", [namespaceField], "indexing", 0]);
+  const write = vi.spyOn(client.json, "set");
+  const evalCommand = vi.spyOn(client, "eval");
+  await new RedisStore(client).setup();
+  expect(client.sendCommand).toHaveBeenCalledTimes(2);
+  expect(write).not.toHaveBeenCalled();
+  expect(evalCommand).not.toHaveBeenCalled();
+});
+
+it.each([
+  namespaceField.filter((value) => value !== "CASESENSITIVE"),
+  namespaceField.map((value) => (value === "TAG" ? "TEXT" : value)),
+  namespaceField.map((value) => (value === "$.prefix" ? "$.other" : value)),
+  namespaceField.map((value) => (value === "" ? "," : value)),
+])("rejects an incompatible existing namespace field: %j", async (field) => {
+  const client = createSetupClient();
+  vi.mocked(client.sendCommand).mockResolvedValue([
+    "attributes",
+    [field],
+    "indexing",
+    0,
+  ]);
+  await expect(new RedisStore(client).setup()).rejects.toThrow(
+    "requires a case-sensitive namespace TAG"
+  );
+});
+
+it("propagates index creation failures instead of trying to alter a missing index", async () => {
+  const client = createSetupClient();
+  vi.mocked(client.ft.create).mockRejectedValue(new Error("NOPERM"));
+  await expect(new RedisStore(client).setup()).rejects.toThrow("NOPERM");
+  expect(client.ft.alter).not.toHaveBeenCalled();
+});
+
+it("propagates schema update failures", async () => {
+  const client = createSetupClient();
+  vi.mocked(client.ft.alter).mockRejectedValue(new Error("NOPERM"));
+  await expect(new RedisStore(client).setup()).rejects.toThrow("NOPERM");
+});
+
+it("fails when index readiness cannot be determined", async () => {
+  const client = createSetupClient();
+  vi.mocked(client.sendCommand).mockResolvedValue([
+    "attributes",
+    [namespaceField],
+  ]);
+  await expect(new RedisStore(client).setup()).rejects.toThrow(
+    "Missing indexing status"
+  );
+});
+
+it("times out rather than serving an incompletely indexed store", async () => {
+  const client = createSetupClient();
+  vi.mocked(client.sendCommand).mockResolvedValue([
+    "attributes",
+    [namespaceField],
+    "indexing",
+    1,
+  ]);
+  const now = vi
+    .spyOn(Date, "now")
+    .mockReturnValueOnce(0)
+    .mockReturnValue(60_000);
+  try {
+    await expect(new RedisStore(client).setup()).rejects.toThrow("retry setup");
+  } finally {
+    now.mockRestore();
+  }
+});

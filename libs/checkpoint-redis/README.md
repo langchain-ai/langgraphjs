@@ -158,28 +158,28 @@ const results = await store.batch(ops);
 
 #### Namespace matching upgrade
 
-RedisStore now matches namespace strings through a case-sensitive JSON TAG field
-named `namespace`, rather than tokenized TEXT. Search accepts the exact namespace
-or descendants separated by `.`. Exact reads and mutations match only the full
-namespace. Existing restrictions on periods inside labels remain in place.
+RedisStore matches namespaces through a case-sensitive TAG index over the existing
+`prefix` field. Search accepts the exact namespace and descendants; reads and
+mutations require the exact namespace and key. Namespace labels cannot contain `.`.
 
-Stop existing clients before upgrading and call `setup()` before serving traffic.
-It adds case-sensitive TAG fields to both configured indexes and backfills a
-`namespacePrefixes` array on existing documents. Each entry is a complete ancestor
-path, so descendant searches use one exact tag without Redis wildcard-expansion
-limits. Document values and TTLs are preserved. Setup scans existing documents
-in batches and is safe to retry after interruption; it waits for indexing and
-throws if an index is still building after 60 seconds. Wait and retry setup in
-that case. Larger stores need a maintenance window for the scan and added index
-storage. Setup requires permission for FT.ALTER, FT.INFO, FT.AGGREGATE/cursors,
-EVAL, JSON.GET and JSON.SET. Run upgraded clients only: older clients issue
-unsafe TEXT queries and
-write documents without the new prefix field.
+Call `setup()` before serving requests; the connection factories already call it.
+Setup creates missing indexes, adds the namespace TAG field, and waits for indexing.
+It verifies existing field definitions instead of treating every duplicate field
+as compatible. No documents are rewritten, no ancestor fields are added, and TTLs
+are preserved. Existing writers remain compatible with the data format, but all
+clients must be upgraded to use the corrected namespace queries.
 
-Search and namespace-listing labels remain literal, including stars and punctuation.
-Vector pagination requests enough
-nearest neighbors for the offset and orders them by distance. Existing client-side
-value filters may still produce short pages.
+Setup requires FT.ALTER and FT.INFO permissions; scoped searches also require
+FT.TAGVALS. Indexing can take time on large stores; if it exceeds 60 seconds, wait
+and retry setup. Repeated setup reuses an existing compatible field without adding
+it again. Unexpected creation, schema,
+and readiness errors propagate instead of serving incomplete results.
+
+Search enumerates distinct namespace tags and queries matching tags explicitly,
+so namespace scope is applied before pagination and vector selection without
+wildcard expansion limits. Query cost grows with distinct and matching namespace
+counts. Existing client-side value filters may still produce short pages. Listing
+retains its literal prefix/suffix semantics, including `*`.
 
 ## TTL Support
 
