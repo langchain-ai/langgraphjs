@@ -2,4 +2,4 @@
 "@langchain/langgraph-checkpoint-redis": patch
 ---
 
-Check exact namespace boundaries before returning search results or selecting records for get, update, and delete. Apply namespace pagination after filtering candidates. No setup, index, or document migration is required. Scoped searches may inspect the entire index and repeat vector queries to fill a page.
+Scope RedisStore searches to exact namespace segments and descendants using case-sensitive TAG matching. Scope get, update, and delete to the exact namespace. Setup adds namespace TAG fields and backfills complete ancestor prefixes on existing documents, preserving values and TTLs. Stop old clients and rerun setup before serving traffic. Exact prefix tags avoid Redis wildcard-expansion limits; vector pagination now orders enough neighbors for the requested offset.
