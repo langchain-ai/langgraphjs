@@ -312,21 +312,19 @@ describe("InMemoryStore Namespace Operations", () => {
     const batchDeletedResult = await store.get(["valid", "namespace"], "key");
     expect(batchDeletedResult).toBeNull();
   });
-});
 
+  it("rejects namespace aliases through direct batch reads, writes and deletes", async () => {
+    await store.put(["tenant", "a", "notes"], "key", { own: true });
 
-it("rejects namespace aliases through direct batch reads, writes and deletes", async () => {
-  const store = new InMemoryStore();
-  await store.put(["tenant", "a", "notes"], "key", { own: true });
+    for (const operation of [
+      { namespace: ["tenant", "a:notes"], key: "key" },
+      { namespace: ["tenant", "a:notes"], key: "key", value: { own: false } },
+      { namespace: ["tenant", "a:notes"], key: "key", value: null },
+      { namespacePrefix: ["tenant", "a:notes"] },
+    ]) {
+      await expect(store.batch([operation])).rejects.toThrow(/colons/);
+    }
 
-  for (const operation of [
-    { namespace: ["tenant", "a:notes"], key: "key" },
-    { namespace: ["tenant", "a:notes"], key: "key", value: { own: false } },
-    { namespace: ["tenant", "a:notes"], key: "key", value: null },
-    { namespacePrefix: ["tenant", "a:notes"] },
-  ]) {
-    await expect(store.batch([operation])).rejects.toThrow(/colons/);
-  }
-
-  expect((await store.get(["tenant", "a", "notes"], "key"))?.value).toEqual({ own: true });
+    expect((await store.get(["tenant", "a", "notes"], "key"))?.value).toEqual({ own: true });
+  });
 });
