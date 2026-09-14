@@ -284,6 +284,7 @@ interface StoreDocument {
 
 interface VectorDocument {
   prefix: string;
+  namespacePrefixes: string[];
   key: string;
   field_name: string;
   embedding: number[];
@@ -386,7 +387,7 @@ export class RedisStore {
       });
     } catch (error: any) {
       if (!error.message?.includes("Index already exists")) {
-        console.error("Failed to create store index:", error.message);
+        throw error;
       }
     }
 
@@ -428,29 +429,101 @@ export class RedisStore {
         });
       } catch (error: any) {
         if (!error.message?.includes("Index already exists")) {
-          console.error("Failed to create vector index:", error.message);
+          throw error;
         }
       }
     }
 
-    // Index the existing JSON string as one case-sensitive tag. JSON TAG
-    // fields have no separator by default, preserving punctuation in labels.
     for (const index of this.indexConfig
       ? ["store", "store_vectors"]
       : ["store"]) {
-      try {
-        await this.client.ft.alter(index, {
-          "$.prefix": {
-            type: SchemaFieldTypes.TAG,
-            AS: "namespace",
-            CASESENSITIVE: true,
-          },
-        });
-      } catch (error: any) {
-        if (!error.message?.includes("Duplicate field")) {
-          throw error;
+      // Add fields separately so setup can resume a partially completed upgrade.
+      for (const [path, alias] of [
+        ["$.prefix", "namespace"],
+        ["$.namespacePrefixes[*]", "namespace_prefix"],
+      ]) {
+        try {
+          await this.client.ft.alter(index, {
+            [path]: {
+              type: SchemaFieldTypes.TAG,
+              AS: alias,
+              CASESENSITIVE: true,
+            },
+          });
+        } catch (error: any) {
+          if (!error.message?.includes("Duplicate field")) {
+            throw error;
+          }
         }
       }
+
+      await this.waitForIndex(index);
+
+      let page = await this.client.ft.aggregateWithCursor(index, "*", {
+        LOAD: ["@__key", "@prefix"],
+        COUNT: 100,
+      });
+
+      try {
+        while (true) {
+          for (const row of page.results) {
+            if (row.prefix == null) continue;
+            const prefix = row.prefix.toString();
+            const namespace = prefix.split(".");
+
+            const prefixes = namespace.map((_, i) =>
+              namespace.slice(0, i + 1).join(".")
+            );
+
+            // Update only the derived field, preserving payload and TTL. An
+            // expired or replaced document must not be recreated by setup.
+            await this.client.eval(
+              `if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+               local current = redis.call('JSON.GET', KEYS[1], '.prefix')
+               if not current or cjson.decode(current) ~= ARGV[1] then return 0 end
+               return redis.call('JSON.SET', KEYS[1], '.namespacePrefixes', ARGV[2])`,
+              {
+                keys: [row.__key.toString()],
+                arguments: [prefix, JSON.stringify(prefixes)],
+              }
+            );
+          }
+
+          if (page.cursor === 0) break;
+          page = await this.client.ft.cursorRead(index, page.cursor, {
+            COUNT: 100,
+          });
+        }
+      } finally {
+        if (page.cursor !== 0)
+          await this.client.ft.cursorDel(index, page.cursor);
+      }
+
+      await this.waitForIndex(index);
+    }
+  }
+
+  private async waitForIndex(index: string): Promise<void> {
+    // Read the named field: the client's FT.INFO parser assumes server-specific positions.
+    const deadline = Date.now() + 60_000;
+
+    while (
+      await this.client.eval(
+        `local info = redis.call('FT.INFO', ARGV[1])
+       for i = 1, #info, 2 do
+         if (type(info[i]) == 'table' and info[i].ok or info[i]) == 'indexing' then return tonumber(info[i + 1]) end
+       end
+       return redis.error_reply('Missing index status')`,
+        { arguments: [index] }
+      )
+    ) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Index ${index} is still building. Wait and retry setup().`
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 
@@ -591,8 +664,13 @@ export class RedisStore {
 
     // Store the document
     const storeKey = `${STORE_PREFIX}${REDIS_KEY_SEPARATOR}${docId}`;
+
+    const namespacePrefixes = namespace.map((_, i) =>
+      namespace.slice(0, i + 1).join(".")
+    );
     const doc = {
       prefix,
+      namespacePrefixes,
       key,
       value,
       created_at: createdAt,
@@ -624,6 +702,7 @@ export class RedisStore {
           const vectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${docId}`;
           const vectorDoc: VectorDocument = {
             prefix,
+            namespacePrefixes,
             key,
             field_name: fieldNames[i],
             embedding: embeddings[i],
@@ -685,12 +764,13 @@ export class RedisStore {
         // Use KNN query with proper syntax
         const results = await this.client.ft.search(
           "store_vectors",
-          `(${queryStr})=>[KNN ${limit} @embedding $BLOB]`,
+          `(${queryStr})=>[KNN ${offset + limit} @embedding $BLOB]`,
           {
             PARAMS: {
               BLOB: vectorBytes,
             },
             DIALECT: 2,
+            SORTBY: { BY: "__embedding_score", DIRECTION: "ASC" },
             LIMIT: { from: offset, size: limit },
             RETURN: ["prefix", "key", "__embedding_score"],
           }
