@@ -272,11 +272,8 @@ export class InMemoryStore extends BaseStore {
     const prefix = op.namespacePrefix.join(":");
     const candidates: Item[] = [];
     for (const [namespace, items] of this.data.entries()) {
-      // Exact match, or the separator immediately after the prefix, so
-      // "tenant:acme" does not also match sibling "tenant:acme-corp".
-      // Empty prefix is unconstrained (search everything). See #2721 /
-      // CVE-2026-71433. Do not use startsWith(prefix) or startsWith(prefix+":")
-      // without the empty-prefix arm — the latter turns search([]) into [].
+      // Match exact namespaces and descendants at a segment boundary.
+      // An empty prefix searches all namespaces.
       if (
         prefix === "" ||
         namespace === prefix ||
