@@ -24,6 +24,8 @@ import type { AgentServerAdapter } from "./transport.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   reconnectDelayMs,
+  type ConnectedInfo,
+  type ReconnectInfo,
 } from "../../utils/reconnect.js";
 
 export {
@@ -166,10 +168,10 @@ export interface ThreadStreamOptions {
    * Defaults to {@link reconnectDelayMs}.
    */
   reconnectDelayMs?: (attempt: number) => number;
-  /**
-   * Built-in transports only: invoked before each reconnect attempt.
-   */
-  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /** Built-in transports only: invoked before each reconnect attempt. */
+  onReconnect?: (options: ReconnectInfo) => void;
+  /** Built-in transports only: invoked after every usable connection. */
+  onConnected?: (options: ConnectedInfo) => void | Promise<void>;
 }
 
 export interface SessionOrderingState {

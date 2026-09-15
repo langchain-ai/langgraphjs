@@ -66,6 +66,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly onReconnect?: ProtocolSseTransportOptions["onReconnect"];
 
+  private readonly onConnected?: ProtocolSseTransportOptions["onConnected"];
+
   private readonly reconnectDelayMs: (attempt: number) => number;
 
   private readonly paths?: ProtocolTransportPaths;
@@ -94,6 +96,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     // disable.
     this.idleReconnect = options.idleReconnect ?? DEFAULT_IDLE_RECONNECT;
     this.onReconnect = options.onReconnect;
+    this.onConnected = options.onConnected;
     this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
     this.threadId = options.threadId ?? "";
     this.paths = options.paths;
@@ -268,6 +271,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     const startStream = async () => {
       let attempt = 0;
+      let receivedEvent = false;
 
       while (!ac.signal.aborted && !this.closed) {
         try {
@@ -300,6 +304,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               `Expected response header Content-Type to contain 'text/event-stream', got '${contentType}'`
             );
           }
+
+          await this.onConnected?.({
+            kind: attempt === 0 ? "initial" : "reconnected",
+            attempt,
+          });
 
           if (!readySettled) {
             readySettled = true;
@@ -336,12 +345,27 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
+              receivedEvent = true;
               streamQueue.push(event.data as Message);
             }
           }
-          streamQueue.close();
-          return;
+          if (
+            ac.signal.aborted ||
+            this.closed ||
+            this.maxReconnectAttempts <= 0
+          ) {
+            streamQueue.close();
+            return;
+          }
+          // The thread stream is open-ended: the server only ends it when
+          // its own upstream consumer died or it is shutting down, so a
+          // clean close is a disconnect, not the end of the thread.
+          throw new Error("Event stream closed by the server");
         } catch (error) {
+          if (receivedEvent) {
+            attempt = 0;
+            receivedEvent = false;
+          }
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
               rejectReady(error);
@@ -364,8 +388,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             streamQueue.close(toError(error));
             return;
           }
-          this.onReconnect?.({ attempt, cause: error });
           const delay = this.reconnectDelayMs(attempt);
+          this.onReconnect?.({ attempt, cause: error, delayMs: delay });
           if (delay > 0) {
             await new Promise<void>((resolve) => {
               setTimeout(resolve, delay);

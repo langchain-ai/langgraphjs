@@ -77,7 +77,6 @@ import type {
   CachePolicy,
   RetryPolicy,
   TimeoutPolicy,
-  TracePolicy,
 } from "../pregel/utils/index.js";
 import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
@@ -202,7 +201,6 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 > &
   NodePolicies & {
     input?: StateDefinition;
-    tracePolicy?: TracePolicy;
   };
 
 /**
@@ -224,8 +222,6 @@ export type StateGraphAddNodeOptions<
   Update = unknown,
 > = {
   input?: InputSchema;
-  /** Transform this node's trace payloads. See {@link TracePolicy} for scope and streaming behavior. */
-  tracePolicy?: TracePolicy;
   /**
    * Optional node-level error handler. Runs only after this node's
    * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
@@ -1225,7 +1221,6 @@ export class StateGraph<
         retryPolicy: options?.retryPolicy,
         cachePolicy,
         timeout: coerceTimeoutPolicy(options?.timeout),
-        tracePolicy: options?.tracePolicy,
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -1962,7 +1957,6 @@ export class CompiledStateGraph<
         retryPolicy: node?.retryPolicy,
         cachePolicy,
         timeout: node?.timeout,
-        tracePolicy: node?.tracePolicy,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
         isErrorHandler: node?.isErrorHandler,
