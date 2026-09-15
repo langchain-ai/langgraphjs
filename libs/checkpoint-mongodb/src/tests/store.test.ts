@@ -49,6 +49,17 @@ describe("MongoDBStore", () => {
   });
 
   describe("put", () => {
+    it.each(["/", "a/b", "a/", "/b", "a/b\n"])(
+      "rejects slash label %j in public and batch writes",
+      async (label) => {
+        await expect(store.put(["tenant", label], "key", {})).rejects.toThrow(/slashes/);
+        await expect(store.batch([
+          { namespace: ["tenant", label], key: "key", value: {} },
+        ])).rejects.toThrow(/slashes/);
+        expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+      }
+    );
+
     it("should upsert a document", async () => {
       await store.batch([{
         namespace: ["documents", "user123"],
@@ -182,7 +193,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -207,7 +218,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, "v1"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "v1" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -232,8 +243,8 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
-              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, "settings"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, { $literal: "settings" }] },
               { $gte: [{ $size: "$namespace" }, 3] },
             ],
           },
@@ -409,6 +420,16 @@ describe("MongoDBStore", () => {
 
       const vectorSearchStage = capturedPipelines[0][0].$vectorSearch;
       expect(vectorSearchStage.filter).toEqual({ namespacePath: "memories/alice" });
+      expect(capturedPipelines[0][2]).toEqual({
+        $match: {
+          $expr: {
+            $eq: [
+              { $slice: ["$namespace", 2] },
+              { $literal: ["memories", "alice"] },
+            ],
+          },
+        },
+      });
     });
 
     it("should throw when query is provided without indexConfig", async () => {
