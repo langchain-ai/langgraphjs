@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ProtocolError } from "./error.js";
 import { ThreadStream } from "./index.js";
 import { MockSseTransport, eventOf, nextValue } from "./test/utils.js";
 
@@ -459,6 +460,44 @@ describe("ThreadStream (SSE shared stream)", () => {
 
     const narrowed = await nextValue(narrow);
     expect(narrowed).toMatchObject({ event_id: "evt_inside" });
+
+    await thread.close();
+  });
+  it("reports an unsolicited server error frame to onError listeners", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+    const errors: Error[] = [];
+    thread.onError((err) => errors.push(err));
+    await thread.subscribe({ channels: ["values"] });
+
+    transport.pushMessage({
+      type: "error",
+      id: null,
+      error: "unknown_error",
+      message: "Thread event stream failed: redis gone",
+    });
+    await flush();
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(ProtocolError);
+    expect((errors[0] as ProtocolError).code).toBe("unknown_error");
+    expect(errors[0].message).toBe("Thread event stream failed: redis gone");
+    expect(transport.activeStreamCount).toBe(1);
+
+    await thread.close();
+  });
+
+  it("reports a failed shared stream to onError listeners", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+    const errors: Error[] = [];
+    thread.onError((err) => errors.push(err));
+    await thread.subscribe({ channels: ["values"] });
+
+    transport.failStream(0, new Error("gave up reconnecting"));
+    await flush();
+
+    expect(errors.map((e) => e.message)).toEqual(["gave up reconnecting"]);
 
     await thread.close();
   });

@@ -366,6 +366,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
   it("reconnects after a mid-stream failure when a custom auth fetch is supplied", async () => {
     let streamOpens = 0;
     const onReconnect = vi.fn();
+    const onConnected = vi.fn();
     const encoder = new TextEncoder();
     const fetchImpl = vi.fn((input: URL | RequestInfo) => {
       if (!String(input).includes("/stream/events")) {
@@ -427,6 +428,7 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       maxReconnectAttempts: 3,
       reconnectDelayMs: () => 0,
       onReconnect,
+      onConnected,
       idleReconnect: 0,
     });
 
@@ -440,7 +442,15 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     }
 
     expect(received.map((m) => m.event_id)).toContain("e2");
-    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(onReconnect).toHaveBeenCalledWith({
+      attempt: 1,
+      cause: expect.any(TypeError),
+      delayMs: 0,
+    });
+    expect(onConnected.mock.calls.map(([info]) => info)).toEqual([
+      { kind: "initial", attempt: 0 },
+      { kind: "reconnected", attempt: 1 },
+    ]);
     expect(streamOpens).toBe(2);
 
     const streamBodies = streamEventBodies(fetchImpl);
@@ -593,6 +603,118 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
       expect(body).toMatchObject({ since: 5 });
     }
     expect(received.map((m) => m.event_id)).toContain("e6");
+
+    await transport.close();
+  });
+
+  function cleanCloseFetch(options: { keepOpenFrom: number }) {
+    let streamOpens = 0;
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn((input: URL | RequestInfo) => {
+      if (!String(input).includes("/stream/events")) {
+        return Promise.resolve(protocolSuccessResponse());
+      }
+      streamOpens += 1;
+      const seq = streamOpens;
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: values\ndata: {"type":"event","method":"values","seq":${seq},"event_id":"e${seq}"}\n\n`
+                )
+              );
+              if (seq < options.keepOpenFrom) controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
+    }) as MockFetch;
+    return { fetchImpl, streamOpens: () => streamOpens };
+  }
+
+  async function collectEventIds(
+    handle: ReturnType<ProtocolSseTransportAdapter["openEventStream"]>,
+    until: string
+  ): Promise<string[]> {
+    const received: string[] = [];
+    for await (const message of handle.events) {
+      received.push((message as { event_id: string }).event_id);
+      if (received.includes(until)) break;
+    }
+    return received;
+  }
+
+  it("reconnects when the server closes the stream cleanly", async () => {
+    const onReconnect = vi.fn();
+    const { fetchImpl, streamOpens } = cleanCloseFetch({ keepOpenFrom: 2 });
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    expect(await collectEventIds(handle, "e2")).toEqual(["e1", "e2"]);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(streamOpens()).toBe(2);
+
+    await transport.close();
+  });
+
+  it("resets the reconnect budget once a connection has delivered events", async () => {
+    const onReconnect = vi.fn();
+    const { fetchImpl, streamOpens } = cleanCloseFetch({ keepOpenFrom: 3 });
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 1,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    expect(await collectEventIds(handle, "e3")).toEqual(["e1", "e2", "e3"]);
+    expect(onReconnect.mock.calls.map((c) => c[0].attempt)).toEqual([1, 1]);
+    expect(streamOpens()).toBe(3);
+
+    await transport.close();
+  });
+
+  it("ends the stream on a clean close when maxReconnectAttempts is 0", async () => {
+    const { fetchImpl, streamOpens } = cleanCloseFetch({ keepOpenFrom: 2 });
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 0,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const received: string[] = [];
+    for await (const message of handle.events) {
+      received.push((message as { event_id: string }).event_id);
+    }
+    expect(received).toEqual(["e1"]);
+    expect(streamOpens()).toBe(1);
 
     await transport.close();
   });

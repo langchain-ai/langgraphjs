@@ -139,7 +139,7 @@ export class MockSseTransport implements TransportAdapter {
   private readonly buffer: Event[] = [];
   private readonly streams = new Set<{
     record: MockSseStreamRecord;
-    push: (event: Event) => void;
+    push: (message: Message) => void;
     pushError: (err: unknown) => void;
   }>();
 
@@ -261,7 +261,7 @@ export class MockSseTransport implements TransportAdapter {
 
     const stream = {
       record,
-      push: (event: Event) => {
+      push: (event: Message) => {
         if (record.closed) return;
         const waiter = waiters.shift();
         if (waiter) {
@@ -309,9 +309,17 @@ export class MockSseTransport implements TransportAdapter {
             if (record.closed) {
               return { done: true, value: undefined };
             }
-            return await new Promise<IteratorResult<Message>>((resolve) => {
-              waiters.push(resolve);
-            });
+            const result = await new Promise<IteratorResult<Message>>(
+              (resolve) => {
+                waiters.push(resolve);
+              }
+            );
+            if (rejectedWith !== undefined) {
+              const err = rejectedWith;
+              rejectedWith = undefined;
+              throw err;
+            }
+            return result;
           },
           return: async () => {
             close();
@@ -334,6 +342,17 @@ export class MockSseTransport implements TransportAdapter {
       if (matchesSubscription(event, stream.record.params)) {
         stream.push(event);
       }
+    }
+  }
+
+  /**
+   * Deliver a non-event protocol message (e.g. an unsolicited error frame)
+   * to every open stream, bypassing the subscription filter.
+   */
+  pushMessage(message: Message): void {
+    for (const stream of this.streams) {
+      if (stream.record.closed) continue;
+      stream.push(message);
     }
   }
 
