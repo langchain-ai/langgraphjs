@@ -163,11 +163,23 @@ RedisStore matches namespaces through a case-sensitive TAG index over the existi
 mutations require the exact namespace and key. Namespace labels cannot contain `.`.
 
 Call `setup()` before serving requests; the connection factories already call it.
+The existing TEXT field is preserved, so older clients can keep reading and
+writing the original format during rollout (their namespace matching remains
+unpatched). New clients verify the namespace field before reads and mutations against each index, including when constructed directly. A missing or
+incompatible field raises an actionable setup error rather than using TEXT
+matching. Each operation checks index readiness with FT.INFO, so a long-lived client also
+detects an incompatible replacement index. Lookup errors propagate before
+updates or deletes proceed.
 Setup creates missing indexes, adds the namespace TAG field, and waits for indexing.
 It verifies existing field definitions instead of treating every duplicate field
 as compatible. No documents are rewritten, no ancestor fields are added, and TTLs
 are preserved. Existing writers remain compatible with the data format, but all
 clients must be upgraded to use the corrected namespace queries.
+
+An automatic package upgrade still requires these setup permissions and time
+for indexing. To avoid delaying application startup, prepare the indexes before
+rolling out the upgraded clients. Adding a field does not make an unprepared
+index compatible with the new queries.
 
 Setup requires FT.ALTER and FT.INFO permissions; scoped searches also require
 FT.TAGVALS. Indexing can take time on large stores; if it exceeds 60 seconds, wait

@@ -7,6 +7,12 @@ function createStubClient() {
   vi.spyOn(client.ft, "search").mockResolvedValue({ total: 0, documents: [] });
 
   vi.spyOn(client.ft, "tagVals").mockResolvedValue([]);
+  vi.spyOn(client, "sendCommand").mockResolvedValue([
+    "attributes",
+    [namespaceField],
+    "indexing",
+    0,
+  ]);
   return client;
 }
 
@@ -132,9 +138,13 @@ it.each([
     "indexing",
     0,
   ]);
-  await expect(new RedisStore(client).setup()).rejects.toThrow(
-    "requires a case-sensitive namespace TAG"
-  );
+  await expect(new RedisStore(client).setup()).rejects.toMatchObject({
+    cause: expect.objectContaining({
+      message: expect.stringContaining(
+        "requires a case-sensitive namespace TAG"
+      ),
+    }),
+  });
 });
 
 it("propagates index creation failures instead of trying to alter a missing index", async () => {
@@ -156,9 +166,11 @@ it("fails when index readiness cannot be determined", async () => {
     "attributes",
     [namespaceField],
   ]);
-  await expect(new RedisStore(client).setup()).rejects.toThrow(
-    "Missing indexing status"
-  );
+  await expect(new RedisStore(client).setup()).rejects.toMatchObject({
+    cause: expect.objectContaining({
+      message: expect.stringContaining("Missing indexing status"),
+    }),
+  });
 });
 
 it("times out rather than serving an incompletely indexed store", async () => {
@@ -174,8 +186,53 @@ it("times out rather than serving an incompletely indexed store", async () => {
     .mockReturnValueOnce(0)
     .mockReturnValue(60_000);
   try {
-    await expect(new RedisStore(client).setup()).rejects.toThrow("retry setup");
+    await expect(new RedisStore(client).setup()).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: expect.stringContaining("retry setup"),
+      }),
+    });
   } finally {
     now.mockRestore();
   }
 });
+
+it("checks readiness on each operation and retries after failed validation", async () => {
+  const client = createStubClient();
+  vi.mocked(client.sendCommand).mockResolvedValueOnce([
+    "attributes",
+    [],
+    "indexing",
+    0,
+  ]);
+  const store = new RedisStore(client);
+  await expect(store.search(["tenant"])).rejects.toThrow(
+    "Run await store.setup()"
+  );
+  expect(client.ft.search).not.toHaveBeenCalled();
+  expect(client.ft.tagVals).not.toHaveBeenCalled();
+  await store.search(["tenant"]);
+  await store.search(["tenant"]);
+  expect(client.sendCommand).toHaveBeenCalledTimes(3);
+});
+
+it.each(["get", "put", "delete"])(
+  "rejects %s before querying an unprepared index",
+  async (operation) => {
+    const client = createStubClient();
+    vi.mocked(client.sendCommand).mockResolvedValue([
+      "attributes",
+      [],
+      "indexing",
+      0,
+    ]);
+    const store = new RedisStore(client);
+    const result =
+      operation === "get"
+        ? store.get(["tenant"], "k")
+        : operation === "put"
+          ? store.put(["tenant"], "k", {})
+          : store.delete(["tenant"], "k");
+    await expect(result).rejects.toThrow("Run await store.setup()");
+    expect(client.ft.search).not.toHaveBeenCalled();
+  }
+);

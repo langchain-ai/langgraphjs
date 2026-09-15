@@ -374,8 +374,23 @@ it("indexes records written in the old format after setup", async () => {
 });
 
 it("creates a missing vector index while retaining an existing store index", async () => {
+  const count = (
+    await container.client.ft.search("store_vectors", "*", {
+      LIMIT: { from: 0, size: 0 },
+    })
+  ).total;
   await container.client.ft.dropIndex("store_vectors");
   await store.setup();
+  await expect
+    .poll(
+      async () =>
+        (
+          await container.client.ft.search("store_vectors", "*", {
+            LIMIT: { from: 0, size: 0 },
+          })
+        ).total
+    )
+    .toBe(count);
   expect(
     await store.search(["wide", "legacy"], { query: "hello", limit: 400 })
   ).toHaveLength(300);

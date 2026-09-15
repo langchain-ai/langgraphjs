@@ -447,7 +447,18 @@ export class RedisStore {
       } catch (error: any) {
         if (!error.message?.includes("Duplicate field")) throw error;
       }
+      await this.ensureNamespaceIndex(index);
+    }
+  }
+
+  private async ensureNamespaceIndex(index: string): Promise<void> {
+    try {
       await this.waitForNamespaceIndex(index);
+    } catch (cause) {
+      throw new Error(
+        `RedisStore index ${index} is not ready for namespace queries. Run await store.setup() with index creation and alteration permissions before serving requests; check the cause for schema or indexing errors.`,
+        { cause }
+      );
     }
   }
 
@@ -503,6 +514,7 @@ export class RedisStore {
       }
     | undefined
   > {
+    await this.ensureNamespaceIndex("store");
     const namespace = `@namespace:{${escapeRediSearchTagValue(prefix)}}`;
     const query =
       key === ""
@@ -532,6 +544,7 @@ export class RedisStore {
     vectorBytes?: Buffer
   ) {
     const index = vectorBytes ? "store_vectors" : "store";
+    await this.ensureNamespaceIndex(index);
     let query = "*";
     if (prefix !== "") {
       // Exact alternatives avoid Redis's limit on wildcard term expansion.
@@ -588,7 +601,10 @@ export class RedisStore {
       };
     } catch (error: any) {
       if (error.message?.includes("no such index")) {
-        return null;
+        throw new Error(
+          "RedisStore index disappeared. Run await store.setup() before retrying.",
+          { cause: error }
+        );
       }
       throw error;
     }
@@ -608,34 +624,30 @@ export class RedisStore {
     const now = Date.now() * 1000000 + Math.floor(performance.now() * 1000); // Microseconds + nanoseconds component
     let createdAt = now; // Will be overridden if document exists
 
-    try {
-      const existing = await this.findExactDocument(prefix, key);
-      if (existing) {
-        const oldDocId = existing.id;
-        // Preserve the original created_at timestamp
-        const existingDoc = await this.client.json.get(oldDocId);
-        if (
-          existingDoc &&
-          typeof existingDoc === "object" &&
-          "created_at" in existingDoc
-        ) {
-          createdAt = (existingDoc as any).created_at;
-        }
-        await this.client.del(oldDocId);
+    const existing = await this.findExactDocument(prefix, key);
+    if (existing) {
+      const oldDocId = existing.id;
+      // Preserve the original created_at timestamp
+      const existingDoc = await this.client.json.get(oldDocId);
+      if (
+        existingDoc &&
+        typeof existingDoc === "object" &&
+        "created_at" in existingDoc
+      ) {
+        createdAt = (existingDoc as any).created_at;
+      }
+      await this.client.del(oldDocId);
 
-        // Also delete associated vector if it exists
-        if (this.indexConfig) {
-          const oldUuid = oldDocId.split(":").pop();
-          const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
-          try {
-            await this.client.del(oldVectorKey);
-          } catch {
-            // Vector might not exist
-          }
+      // Also delete associated vector if it exists
+      if (this.indexConfig) {
+        const oldUuid = oldDocId.split(":").pop();
+        const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
+        try {
+          await this.client.del(oldVectorKey);
+        } catch {
+          // Vector might not exist
         }
       }
-    } catch {
-      // Index might not exist yet
     }
 
     // Handle delete operation
@@ -799,7 +811,10 @@ export class RedisStore {
         return items;
       } catch (error: any) {
         if (error.message?.includes("no such index")) {
-          return [];
+          throw new Error(
+            "RedisStore index disappeared. Run await store.setup() before retrying.",
+            { cause: error }
+          );
         }
         throw error;
       }
@@ -815,6 +830,12 @@ export class RedisStore {
       const items: SearchItem[] = [];
       for (const doc of documents) {
         const jsonDoc = doc.value as unknown as StoreDocument;
+        if (
+          prefix !== "" &&
+          jsonDoc.prefix !== prefix &&
+          !jsonDoc.prefix.startsWith(`${prefix}.`)
+        )
+          continue;
 
         // Apply advanced filter
         if (options?.filter) {
@@ -842,7 +863,10 @@ export class RedisStore {
       return items;
     } catch (error: any) {
       if (error.message?.includes("no such index")) {
-        return [];
+        throw new Error(
+          "RedisStore index disappeared. Run await store.setup() before retrying.",
+          { cause: error }
+        );
       }
       throw error;
     }
