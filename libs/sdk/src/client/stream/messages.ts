@@ -146,6 +146,14 @@ function normalizeUsage(
   };
 }
 
+/** Python servers send `metadata`, JS servers send `responseMetadata`. */
+function readFinishMetadata(
+  data: Record<string, any>
+): Record<string, any> | undefined {
+  const merged = { ...(data.responseMetadata ?? {}), ...(data.metadata ?? {}) };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 /**
  * Mutable view of a streamed message as message and content-block events are
  * assembled into a single structure.
@@ -435,16 +443,13 @@ export class StreamingMessage
         case "content-block-finish":
           contentBlocks[event.index] = event.content;
           break;
-        case "message-finish":
+        case "message-finish": {
           finishReason = event.reason;
           if (event.usage) usage = normalizeUsage(event.usage);
-          if (event.responseMetadata) {
-            metadata = {
-              ...metadata,
-              ...event.responseMetadata,
-            };
-          }
+          const finishMetadata = readFinishMetadata(event);
+          if (finishMetadata) metadata = { ...metadata, ...finishMetadata };
           break;
+        }
         default:
           break;
       }
@@ -457,8 +462,8 @@ export class StreamingMessage
       ),
       usage_metadata: usage,
       response_metadata: {
-        ...metadata,
         ...(finishReason ? { finish_reason: finishReason } : {}),
+        ...metadata,
         output_version: "v1" as const,
       },
     });
@@ -802,7 +807,7 @@ export class MessageAssembler {
       }
       case "message-finish": {
         message.usage = data.usage;
-        message.finishMetadata = data.responseMetadata;
+        message.finishMetadata = readFinishMetadata(data);
         this.activeMessages.delete(activeKey);
         this.activeByNamespaceNode.delete(namespaceNodeKey);
         this.clearBlockIndexAliases(activeKey);
