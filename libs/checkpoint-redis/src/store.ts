@@ -379,6 +379,19 @@ const REDISEARCH_STOPWORDS = new Set([
   "with",
 ]);
 
+/**
+ * Characters RediSearch removes while joining the text on either side into a
+ * single term: control characters and the backslash. A term read off a label
+ * holding one was never indexed under that spelling.
+ */
+const FUSES_TERMS = /[\u0000-\u001f\u007f\\]/;
+
+/**
+ * Term boundaries: ASCII punctuation and space. Letters, digits, "_" and every
+ * non-ASCII character are term content, so "café" is a term of its own.
+ */
+const NOT_TERM_CHARACTER = /[^a-zA-Z0-9_\u0080-\uffff]+/;
+
 export class RedisStore {
   private readonly client: RedisConnection;
   private readonly indexConfig?: IndexConfig;
@@ -417,22 +430,42 @@ export class RedisStore {
     return store;
   }
 
-  async setup(): Promise<void> {
-    // Create store index
+  /**
+   * Create `index` if it is missing. FT.CREATE fails for reasons that are not
+   * fatal -- another client created it first, or our ACL grants reads but not
+   * creates -- so what matters is whether the index is usable once we are
+   * done, not what the server called the failure.
+   */
+  private async ensureIndex(
+    index: string,
+    schema: Record<string, unknown>,
+    prefix: string
+  ): Promise<void> {
     try {
-      await this.client.ft.create(SCHEMAS[0].index, SCHEMAS[0].schema as any, {
+      await this.client.ft.create(index, schema as any, {
         ON: "JSON",
-        PREFIX: SCHEMAS[0].prefix,
+        PREFIX: prefix,
       });
-    } catch (error: any) {
-      if (error.message?.startsWith("NOPERM")) {
-        await this.client.ft.search("store", "*", {
+    } catch (error) {
+      try {
+        await this.client.ft.search(index, "*", {
           LIMIT: { from: 0, size: 0 },
         });
-      } else if (!error.message?.includes("Index already exists")) {
-        throw error;
+      } catch {
+        throw new Error(`Failed to create RedisStore index "${index}".`, {
+          cause: error,
+        });
       }
     }
+  }
+
+  async setup(): Promise<void> {
+    // Create store index
+    await this.ensureIndex(
+      SCHEMAS[0].index,
+      SCHEMAS[0].schema as Record<string, unknown>,
+      SCHEMAS[0].prefix
+    );
 
     // Create vector index if configured
     if (this.indexConfig) {
@@ -465,46 +498,37 @@ export class RedisStore {
         AS: "embedding",
       };
 
-      try {
-        await this.client.ft.create(SCHEMAS[1].index, vectorSchema as any, {
-          ON: "JSON",
-          PREFIX: SCHEMAS[1].prefix,
-        });
-      } catch (error: any) {
-        if (error.message?.startsWith("NOPERM")) {
-          await this.client.ft.search("store_vectors", "*", {
-            LIMIT: { from: 0, size: 0 },
-          });
-        } else if (!error.message?.includes("Index already exists")) {
-          throw error;
-        }
-      }
+      await this.ensureIndex(SCHEMAS[1].index, vectorSchema, SCHEMAS[1].prefix);
     }
   }
 
   /**
    * An indexed query matching a superset of `prefix` and its descendants.
    *
-   * RediSearch indexes a label by cutting it at punctuation, so the word runs
-   * of "acme-notes" are terms we can search for. Two things break that reading,
-   * and both were measured rather than assumed: a backslash escapes the next
-   * character and fuses the runs around it, and anything outside printable
-   * ASCII binds to the run beside it instead of separating it. A label
-   * containing either is skipped whole, because a term guessed from one names
-   * something the index never stored -- and a query built from a term that was
-   * never indexed silently matches nothing. Stopwords are dropped for the same
-   * reason. Labels are joined by ".", always a separator, so each label is read
+   * RediSearch cuts a label into terms at ASCII punctuation, so the word runs
+   * of "acme-notes" are terms we can search for. Everything else -- letters,
+   * digits, "_", and every non-ASCII character -- is content of the run it
+   * sits in, so "café" is a term in its own right. The exception, measured
+   * rather than assumed, is a backslash or a control character: those fuse the
+   * runs on either side into one term, so no term read off such a label was
+   * ever indexed. Terms intersect, so a single term the index never stored
+   * makes the whole query match nothing -- such labels are skipped whole
+   * rather than guessed at. Stopwords are dropped because a query of nothing
+   * but stopwords matches nothing; beside a real term they are merely ignored.
+   * Labels are joined by ".", always a separator, so each is read
    * independently of whatever its neighbours hold.
    *
    * Every omission only widens the candidate set. Narrowing is an optimisation
    * here; callers confirm the exact namespace on the documents they read, and
    * that check is what actually keeps namespaces apart.
+   *
+   * See benchmarks/tokenizer-probe.ts for the measurements behind this.
    */
   private namespaceCandidateQuery(prefix: string): string {
     const terms = [];
     for (const label of prefix.split(".")) {
-      if (!/^[\x20-\x5b\x5d-\x7e]*$/.test(label)) continue;
-      for (const run of label.split(/[^a-zA-Z0-9_]+/))
+      if (FUSES_TERMS.test(label)) continue;
+      for (const run of label.split(NOT_TERM_CHARACTER))
         if (run !== "" && !REDISEARCH_STOPWORDS.has(run.toLowerCase()))
           terms.push(run);
     }

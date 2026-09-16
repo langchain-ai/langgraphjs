@@ -82,8 +82,12 @@ describe("namespace candidate queries", () => {
     expect(await queryFor("a,b")).toBe("@prefix:(tenant b)");
     // "a" alone is a stopword, which RediSearch never indexes.
     expect(await queryFor("a")).toBe("@prefix:(tenant)");
-    // A backslash escapes what follows and a non-ASCII byte binds to the run
-    // beside it, so neither label can be cut into terms -- skip them whole.
+    // Non-ASCII is term content, not a separator, so such labels narrow too.
+    expect(await queryFor("café")).toBe("@prefix:(tenant café)");
+    expect(await queryFor("日本語")).toBe("@prefix:(tenant 日本語)");
+    expect(await queryFor("naïve-notes")).toBe("@prefix:(tenant naïve notes)");
+    // A backslash or control character fuses the runs on either side into one
+    // term, so nothing read off those labels was indexed -- skip them whole.
     expect(await queryFor("a\\b")).toBe("@prefix:(tenant)");
     expect(await queryFor("a/b\né")).toBe("@prefix:(tenant)");
     // Punctuation is query syntax, so a label cannot rewrite the query.
@@ -231,9 +235,11 @@ describe("setup and error handling", () => {
     vi.mocked(client.ft.create).mockRejectedValue(new Error("NOPERM"));
     await new RedisStore(client).setup();
     vi.mocked(client.ft.search).mockRejectedValue(new Error("No such index"));
-    await expect(new RedisStore(client).setup()).rejects.toThrow(
-      "No such index"
-    );
+    // The creation failure is what a reader needs, so it survives as `cause`.
+    await expect(new RedisStore(client).setup()).rejects.toMatchObject({
+      message: expect.stringContaining('Failed to create RedisStore index'),
+      cause: expect.objectContaining({ message: "NOPERM" }),
+    });
   });
 
   it.each(["get", "put", "delete"])(
