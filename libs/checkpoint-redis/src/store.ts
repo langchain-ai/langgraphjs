@@ -339,6 +339,46 @@ const SCHEMAS = [
   },
 ];
 
+/**
+ * RediSearch's default stopword list. These are never indexed, so using one as
+ * a query term would exclude every document instead of narrowing the search.
+ */
+const REDISEARCH_STOPWORDS = new Set([
+  "a",
+  "is",
+  "the",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "but",
+  "by",
+  "for",
+  "if",
+  "in",
+  "into",
+  "it",
+  "no",
+  "not",
+  "of",
+  "on",
+  "or",
+  "such",
+  "that",
+  "their",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "to",
+  "was",
+  "will",
+  "with",
+]);
+
 export class RedisStore {
   private readonly client: RedisConnection;
   private readonly indexConfig?: IndexConfig;
@@ -385,8 +425,12 @@ export class RedisStore {
         PREFIX: SCHEMAS[0].prefix,
       });
     } catch (error: any) {
-      if (!error.message?.includes("Index already exists")) {
-        console.error("Failed to create store index:", error.message);
+      if (error.message?.startsWith("NOPERM")) {
+        await this.client.ft.search("store", "*", {
+          LIMIT: { from: 0, size: 0 },
+        });
+      } else if (!error.message?.includes("Index already exists")) {
+        throw error;
       }
     }
 
@@ -427,10 +471,127 @@ export class RedisStore {
           PREFIX: SCHEMAS[1].prefix,
         });
       } catch (error: any) {
-        if (!error.message?.includes("Index already exists")) {
-          console.error("Failed to create vector index:", error.message);
+        if (error.message?.startsWith("NOPERM")) {
+          await this.client.ft.search("store_vectors", "*", {
+            LIMIT: { from: 0, size: 0 },
+          });
+        } else if (!error.message?.includes("Index already exists")) {
+          throw error;
         }
       }
+    }
+  }
+
+  /**
+   * An indexed query matching a superset of `prefix` and its descendants.
+   *
+   * RediSearch indexes a label by cutting it at punctuation, so the word runs
+   * of "acme-notes" are terms we can search for. Two things break that reading,
+   * and both were measured rather than assumed: a backslash escapes the next
+   * character and fuses the runs around it, and anything outside printable
+   * ASCII binds to the run beside it instead of separating it. A label
+   * containing either is skipped whole, because a term guessed from one names
+   * something the index never stored -- and a query built from a term that was
+   * never indexed silently matches nothing. Stopwords are dropped for the same
+   * reason. Labels are joined by ".", always a separator, so each label is read
+   * independently of whatever its neighbours hold.
+   *
+   * Every omission only widens the candidate set. Narrowing is an optimisation
+   * here; callers confirm the exact namespace on the documents they read, and
+   * that check is what actually keeps namespaces apart.
+   */
+  private namespaceCandidateQuery(prefix: string): string {
+    const terms = [];
+    for (const label of prefix.split(".")) {
+      if (!/^[\x20-\x5b\x5d-\x7e]*$/.test(label)) continue;
+      for (const run of label.split(/[^a-zA-Z0-9_]+/))
+        if (run !== "" && !REDISEARCH_STOPWORDS.has(run.toLowerCase()))
+          terms.push(run);
+    }
+    return terms.length > 0 ? `@prefix:(${terms.join(" ")})` : "*";
+  }
+
+  /** Resolve the document at exactly `prefix`/`key`, ignoring near matches. */
+  private async findDocument(
+    prefix: string,
+    key: string
+  ): Promise<{ id: string; value: StoreDocument } | undefined> {
+    const candidates = this.namespaceCandidateQuery(prefix);
+    const query =
+      key === ""
+        ? candidates
+        : `(${candidates}) (@key:{${this.escapeTagValue(key)}})`;
+
+    for (let offset = 0; ; offset += 100) {
+      const results = await this.client.ft.search("store", query, {
+        LIMIT: { from: offset, size: 100 },
+      });
+      for (const doc of results.documents) {
+        const value = doc.value as unknown as StoreDocument;
+        if (value.prefix === prefix && value.key === key)
+          return { id: doc.id, value };
+      }
+      if (
+        results.documents.length === 0 ||
+        offset + results.documents.length >= results.total
+      )
+        return undefined;
+    }
+  }
+
+  /** Documents under exactly `prefix` or its descendants, already paginated. */
+  private async searchNamespaceDocuments(
+    prefix: string,
+    limit: number,
+    offset: number,
+    vectorBytes?: Buffer
+  ) {
+    const index = vectorBytes ? "store_vectors" : "store";
+    const query = this.namespaceCandidateQuery(prefix);
+    const wanted = offset + limit;
+    const matches = (doc: { value: unknown }) => {
+      const found = (doc.value as StoreDocument).prefix;
+      return (
+        prefix === "" || found === prefix || found.startsWith(`${prefix}.`)
+      );
+    };
+
+    if (vectorBytes) {
+      // KNN returns only the `k` nearest candidates, so a namespace rejected
+      // here cannot be recovered by paging -- widen `k` and search again. The
+      // candidate query already excludes everything but `prefix` and the
+      // namespaces sharing its tokens, so this normally runs once.
+      for (let k = Math.max(100, wanted); ; k *= 2) {
+        const results = await this.client.ft.search(
+          index,
+          `(${query})=>[KNN ${k} @embedding $BLOB]`,
+          {
+            PARAMS: { BLOB: vectorBytes },
+            DIALECT: 2,
+            SORTBY: { BY: "__embedding_score", DIRECTION: "ASC" as const },
+            LIMIT: { from: 0, size: k },
+            RETURN: ["prefix", "key", "__embedding_score"],
+          }
+        );
+        const confirmed = results.documents.filter(matches);
+        if (confirmed.length >= wanted || results.documents.length < k)
+          return confirmed.slice(offset, offset + limit);
+      }
+    }
+
+    const documents = [];
+    for (let candidateOffset = 0; ; candidateOffset += 100) {
+      const results = await this.client.ft.search(index, query, {
+        SORTBY: { BY: "created_at", DIRECTION: "DESC" },
+        LIMIT: { from: candidateOffset, size: 100 },
+      });
+      documents.push(...results.documents.filter(matches));
+      if (
+        documents.length >= wanted ||
+        results.documents.length === 0 ||
+        candidateOffset + results.documents.length >= results.total
+      )
+        return documents.slice(offset, offset + limit);
     }
   }
 
@@ -439,58 +600,12 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
+    this.validateNamespace(namespace);
     const prefix = namespace.join(".");
-    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
-    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-    const prefixQuery =
-      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
-
-    // For TAG fields in curly braces, escape special characters
-    // Handle empty string as a special case
-    let query: string;
-    if (key === "") {
-      // For empty keys, search by prefix and filter results
-      query = prefixQuery;
-    } else {
-      const escapedKey = this.escapeTagValue(key);
-      query = `(${prefixQuery}) (@key:{${escapedKey}})`;
-    }
-
     try {
-      const results = await this.client.ft.search("store", query, {
-        LIMIT: { from: 0, size: key === "" ? 100 : 1 },
-      });
-
-      if (!results || !results.documents || results.documents.length === 0) {
-        return null;
-      }
-
-      // For empty key, filter to find the exact match
-      if (key === "") {
-        for (const doc of results.documents) {
-          const jsonDoc = doc.value as unknown as StoreDocument;
-          if (jsonDoc.key === "" && jsonDoc.prefix === prefix) {
-            const docId = doc.id;
-
-            // Refresh TTL if requested
-            if (options?.refreshTTL) {
-              await this.refreshItemTTL(docId);
-            }
-
-            return {
-              value: jsonDoc.value,
-              key: jsonDoc.key,
-              namespace: jsonDoc.prefix.split("."),
-              created_at: new Date(jsonDoc.created_at / 1000000),
-              updated_at: new Date(jsonDoc.updated_at / 1000000),
-            };
-          }
-        }
-        return null;
-      }
-
-      const doc = results.documents[0];
-      const jsonDoc = doc.value as unknown as StoreDocument;
+      const doc = await this.findDocument(prefix, key);
+      if (!doc) return null;
+      const jsonDoc = doc.value;
       const docId = doc.id;
 
       // Refresh TTL if requested
@@ -507,7 +622,10 @@ export class RedisStore {
       };
     } catch (error: any) {
       if (error.message?.includes("no such index")) {
-        return null;
+        throw new Error(
+          "RedisStore index disappeared. Run await store.setup() before retrying.",
+          { cause: error }
+        );
       }
       throw error;
     }
@@ -527,46 +645,30 @@ export class RedisStore {
     const now = Date.now() * 1000000 + Math.floor(performance.now() * 1000); // Microseconds + nanoseconds component
     let createdAt = now; // Will be overridden if document exists
 
-    // Delete existing document if it exists
-    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
-    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-    const prefixQuery =
-      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
+    const existing = await this.findDocument(prefix, key);
+    if (existing) {
+      const oldDocId = existing.id;
+      // Preserve the original created_at timestamp
+      const existingDoc = await this.client.json.get(oldDocId);
+      if (
+        existingDoc &&
+        typeof existingDoc === "object" &&
+        "created_at" in existingDoc
+      ) {
+        createdAt = (existingDoc as any).created_at;
+      }
+      await this.client.del(oldDocId);
 
-    // For TAG fields in curly braces, escape special characters
-    const escapedKey = this.escapeTagValue(key);
-    const existingQuery = `(${prefixQuery}) (@key:{${escapedKey}})`;
-    try {
-      const existing = await this.client.ft.search("store", existingQuery, {
-        LIMIT: { from: 0, size: 1 },
-      });
-
-      if (existing && existing.documents && existing.documents.length > 0) {
-        const oldDocId = existing.documents[0].id;
-        // Preserve the original created_at timestamp
-        const existingDoc = await this.client.json.get(oldDocId);
-        if (
-          existingDoc &&
-          typeof existingDoc === "object" &&
-          "created_at" in existingDoc
-        ) {
-          createdAt = (existingDoc as any).created_at;
-        }
-        await this.client.del(oldDocId);
-
-        // Also delete associated vector if it exists
-        if (this.indexConfig) {
-          const oldUuid = oldDocId.split(":").pop();
-          const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
-          try {
-            await this.client.del(oldVectorKey);
-          } catch {
-            // Vector might not exist
-          }
+      // Also delete associated vector if it exists
+      if (this.indexConfig) {
+        const oldUuid = oldDocId.split(":").pop();
+        const oldVectorKey = `${STORE_VECTOR_PREFIX}${REDIS_KEY_SEPARATOR}${oldUuid}`;
+        try {
+          await this.client.del(oldVectorKey);
+        } catch {
+          // Vector might not exist
         }
       }
-    } catch {
-      // Index might not exist yet
     }
 
     // Handle delete operation
@@ -651,6 +753,7 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
+    if (namespacePrefix.length > 0) this.validateNamespace(namespacePrefix);
     const prefix = namespacePrefix.join(".");
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
@@ -659,29 +762,18 @@ export class RedisStore {
     if (options?.query && this.indexConfig && this.embeddings) {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
-      // Build KNN query
-      // For prefix search, use wildcard since we want to match any document starting with this prefix
-      const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
-
       try {
-        // Use KNN query with proper syntax
-        const results = await this.client.ft.search(
-          "store_vectors",
-          `(${queryStr})=>[KNN ${limit} @embedding $BLOB]`,
-          {
-            PARAMS: {
-              BLOB: vectorBytes,
-            },
-            DIALECT: 2,
-            LIMIT: { from: offset, size: limit },
-            RETURN: ["prefix", "key", "__embedding_score"],
-          }
+        const documents = await this.searchNamespaceDocuments(
+          prefix,
+          limit,
+          offset,
+          vectorBytes
         );
 
         // Get matching store documents
         const items: SearchItem[] = [];
-        for (const doc of results.documents) {
+        for (const doc of documents) {
           const docUuid = doc.id.split(":").pop();
           const storeKey = `${STORE_PREFIX}${REDIS_KEY_SEPARATOR}${docUuid}`;
 
@@ -735,33 +827,25 @@ export class RedisStore {
         return items;
       } catch (error: any) {
         if (error.message?.includes("no such index")) {
-          return [];
+          throw new Error(
+            "RedisStore index disappeared. Run await store.setup() before retrying.",
+            { cause: error }
+          );
         }
         throw error;
       }
     }
 
-    // Regular search without vectors
-    let queryStr = "*";
-    if (prefix) {
-      // For prefix search, we need to match all tokens from the namespace prefix
-      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-      if (tokens.length > 0) {
-        // Match all tokens to ensure we get the right prefix
-        queryStr = `@prefix:(${tokens.join(" ")})`;
-      }
-    }
-
     try {
-      const results = await this.client.ft.search("store", queryStr, {
-        LIMIT: { from: offset, size: limit },
-        SORTBY: { BY: "created_at", DIRECTION: "DESC" },
-      });
+      const documents = await this.searchNamespaceDocuments(
+        prefix,
+        limit,
+        offset
+      );
 
       const items: SearchItem[] = [];
-      for (const doc of results.documents) {
+      for (const doc of documents) {
         const jsonDoc = doc.value as unknown as StoreDocument;
-
         // Apply advanced filter
         if (options?.filter) {
           if (
@@ -788,7 +872,10 @@ export class RedisStore {
       return items;
     } catch (error: any) {
       if (error.message?.includes("no such index")) {
-        return [];
+        throw new Error(
+          "RedisStore index disappeared. Run await store.setup() before retrying.",
+          { cause: error }
+        );
       }
       throw error;
     }

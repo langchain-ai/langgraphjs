@@ -156,6 +156,31 @@ const ops = [
 const results = await store.batch(ops);
 ```
 
+#### Namespace matching
+
+Namespaces match at segment boundaries. A scoped operation resolves only
+documents whose namespace is exactly the one given, and `search` additionally
+includes its descendants -- `["tenant", "a"]` never reaches `["tenant", "A"]` or
+`["tenant", "ab"]`. The check is applied before pagination and vector selection,
+so a namespace cannot leak in through a page boundary or a nearest-neighbour
+result.
+
+RediSearch is used to narrow the candidate set, never to decide the match: every
+document is confirmed against the requested namespace before it is returned,
+overwritten or deleted. Labels that RediSearch cannot index predictably -- those
+containing a backslash or characters outside printable ASCII -- simply widen the
+candidate set rather than narrowing it, which costs a little search time and
+changes no result.
+
+Upgrading the package is the complete fix. There is no index migration, no schema
+change, no document rewrite, and no additional Redis permissions to grant.
+
+`setup()` creates the indexes it needs and tolerates a denied `FT.CREATE` when the
+existing index is already searchable, so a client restricted to query permissions
+keeps working. Connection failures, query errors, and a missing index propagate;
+a failed lookup stops the mutation it was guarding rather than falling back to a
+broader match.
+
 ## TTL Support
 
 Both checkpoint savers and stores support Time-To-Live (TTL) functionality:
