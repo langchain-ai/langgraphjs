@@ -2601,8 +2601,15 @@ export class StreamController<
     }
     const hasParkedInterrupts =
       this.#pendingHydrationInterruptEvents.length > 0;
+    const hydratedInterruptIds = this.#hydratedActiveInterruptIds;
     const hasHydratedInterrupts =
-      this.rootStore.getSnapshot().interrupts.length > 0;
+      hydratedInterruptIds != null &&
+      this.rootStore
+        .getSnapshot()
+        .interrupts.some(
+          (interrupt) =>
+            interrupt.id != null && hydratedInterruptIds.has(interrupt.id)
+        );
     if (!hasParkedInterrupts && !hasHydratedInterrupts) return;
     void this.#settleParkedInterrupts(
       status,
