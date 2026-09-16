@@ -1757,7 +1757,9 @@ export class StreamController<
      * idempotent; `unsubscribe()` is then a no-op once closed.
      */
     const subscription = this.#rootSubscription;
+    const rootPump = this.#rootPump;
     this.#rootSubscription = undefined;
+    this.#rootPump = undefined;
     subscription?.close();
     this.#rootPumpReady = undefined;
     // Reset so a swap to a new thread doesn't carry over a stale
@@ -1792,11 +1794,10 @@ export class StreamController<
       /* already closed */
     }
     try {
-      await this.#rootPump;
+      await rootPump;
     } catch {
       /* ignore */
     }
-    this.#rootPump = undefined;
 
     if (thread != null) {
       try {
