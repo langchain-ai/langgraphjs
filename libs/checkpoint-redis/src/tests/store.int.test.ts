@@ -309,6 +309,38 @@ describe("RedisStore", () => {
       // Item should still exist due to TTL refresh
       expect(item?.value).toEqual(value);
     });
+
+    it("re-applies the configured TTL when a document is updated", async () => {
+      // An update has to carry the full TTL rather than inherit whatever was
+      // left of the previous document's. Nothing in the write path reads a
+      // TTL, so this holds only because the replacement document is written
+      // with an expiry of its own -- a property a change to how documents are
+      // keyed could quietly break, which is why it is pinned here.
+      const ttlStore = new RedisStore(client, { ttl: { defaultTTL: 10 } });
+      await ttlStore.setup();
+      const namespace = ["ttl", "update"];
+      const key = "updated-item";
+
+      await ttlStore.put(namespace, key, { data: "first" });
+      const [firstKey] = await client.keys("store:*");
+      expect(firstKey).toBeDefined();
+
+      // Halve the remaining lifetime, which is enough to tell an inherited
+      // expiry from a freshly applied one. Deliberately not a short fuse: a
+      // few seconds would race the container startup this suite pays per
+      // test, and expire the document the assertions below are about.
+      const halved = (10 * 60) / 2;
+      await client.expire(firstKey, halved);
+      expect(await client.ttl(firstKey)).toBeLessThanOrEqual(halved);
+
+      await ttlStore.put(namespace, key, { data: "second" });
+
+      expect(await ttlStore.get(namespace, key)).toMatchObject({
+        value: { data: "second" },
+      });
+      const [currentKey] = await client.keys("store:*");
+      expect(await client.ttl(currentKey)).toBeGreaterThan(halved + 60);
+    });
   });
 
   describe("RedisStore with Vector Search", () => {
@@ -1144,20 +1176,6 @@ describe("RedisStore Advanced Features", () => {
       ).toBe(true);
     });
 
-    it("should build Redis search queries", () => {
-      const { query, useClientFilter } = FilterBuilder.buildRedisSearchQuery(
-        { name: "Test" },
-        "prefix"
-      );
-
-      expect(query).toContain("@prefix:(prefix)");
-      expect(useClientFilter).toBe(false);
-
-      const { useClientFilter: hasComplexOps } =
-        FilterBuilder.buildRedisSearchQuery({ age: { $gt: 25 } }, "prefix");
-
-      expect(hasComplexOps).toBe(true);
-    });
   });
 
   describe("Store Statistics", () => {
