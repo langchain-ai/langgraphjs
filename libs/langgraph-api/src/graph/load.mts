@@ -9,7 +9,11 @@ import type {
   LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import { type CompiledGraphFactory, resolveGraph } from "./load.utils.mjs";
+import {
+  type CompiledGraphFactory,
+  type GraphFactoryRuntime,
+  resolveGraph,
+} from "./load.utils.mjs";
 import type { GraphSchema, GraphSpec } from "./parser/index.mjs";
 import { getStaticGraphSchema } from "./parser/index.mjs";
 import { checkpointer } from "../storage/checkpoint.mjs";
@@ -82,13 +86,21 @@ export async function getGraph(
   options?: {
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
+    /** Defaults to assistant inspection when no operation is specified. */
+    runtime?: GraphFactoryRuntime;
   }
 ) {
   assertGraphExists(graphId);
 
   const compiled =
     typeof GRAPHS[graphId] === "function"
-      ? await GRAPHS[graphId](config ?? { configurable: {} })
+      ? await GRAPHS[graphId](
+          config ?? { configurable: {} },
+          options?.runtime ?? {
+            accessContext: "assistants.read",
+            executionRuntime: null,
+          }
+        )
       : GRAPHS[graphId];
 
   if (typeof options?.checkpointer !== "undefined") {

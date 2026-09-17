@@ -3040,3 +3040,116 @@ describe("runtime API", () => {
     expect(onRunCreated).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("graph factory runtime", () => {
+  it("merges assistant defaults and current run context before the factory", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "factory_context",
+      context: { tenant: "default", region: "west" },
+      config: { configurable: { legacy: "kept" } },
+    });
+    const thread = await client.threads.create();
+    for (const tenant of ["first", "second"]) {
+      const context = { tenant, region: "west" };
+      expect(
+        await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+          input: {},
+          context: { tenant },
+        })
+      ).toMatchObject({
+        factoryContext: context,
+        nodeContext: context,
+        accessContext: "threads.create_run",
+        legacy: "kept",
+      });
+    }
+  });
+
+  it("rebuilds the factory with the resume run context", async () => {
+    const thread = await client.threads.create();
+    const first = await client.runs.wait(thread.thread_id, "factory_context", {
+      input: {},
+      context: { tenant: "before", interrupt: true },
+    });
+    expect(first.__interrupt__).toHaveLength(1);
+    const context = { tenant: "after", interrupt: true };
+    expect(
+      await client.runs.wait(thread.thread_id, "factory_context", {
+        command: { resume: "continue" },
+        context,
+      })
+    ).toMatchObject({
+      factoryContext: context,
+      nodeContext: context,
+      answer: "continue",
+    });
+  });
+
+  it("keeps concurrent run contexts separate", async () => {
+    const results = await Promise.all(
+      ["alpha", "beta"].map((tenant) =>
+        client.runs.wait(null, "factory_context", {
+          input: {},
+          context: { tenant },
+        })
+      )
+    );
+    expect(results.map((result) => result.factoryContext)).toEqual([
+      { tenant: "alpha" },
+      { tenant: "beta" },
+    ]);
+  });
+
+  it("distinguishes empty execution context from inspection and state operations", async () => {
+    const assistant = await client.assistants.create({
+      graphId: "factory_context",
+      context: { reject: true },
+    });
+    // Inspection must not evaluate the execution-only context rejection.
+    await client.assistants.getSchemas(assistant.assistant_id);
+    await client.assistants.getGraph(assistant.assistant_id);
+    await client.assistants.getSubgraphs(assistant.assistant_id);
+
+    const thread = await client.threads.create();
+    expect(
+      await client.runs.wait(thread.thread_id, "factory_context", { input: {} })
+    ).toMatchObject({
+      factoryContext: {},
+      accessContext: "threads.create_run",
+    });
+    await client.threads.getState(thread.thread_id);
+    await client.threads.getHistory(thread.thread_id);
+    await client.threads.updateState(thread.thread_id, {
+      values: { answer: "edited" },
+    });
+    expect(
+      (await client.threads.getState(thread.thread_id)).values
+    ).toMatchObject({ answer: "edited" });
+  });
+
+  it("marks bulk state updates as threads.update", async () => {
+    const thread = await client.threads.create({
+      graphId: "factory_context",
+      supersteps: [
+        { updates: [{ values: { answer: "bulk" }, asNode: "capture" }] },
+      ],
+    });
+    expect(
+      (await client.threads.getState(thread.thread_id)).values
+    ).toMatchObject({ answer: "bulk" });
+  });
+
+  it("reports a factory context error before executing nodes", async () => {
+    expect(
+      await client.runs.wait(null, "factory_context", {
+        input: {},
+        context: { reject: true },
+        raiseError: false,
+      })
+    ).toMatchObject({
+      __error__: {
+        message: expect.stringContaining("Factory rejected context"),
+      },
+    });
+  });
+});

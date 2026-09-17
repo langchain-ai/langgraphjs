@@ -9,9 +9,28 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-export type CompiledGraphFactory<T extends string> = (config: {
-  configurable?: Record<string, unknown>;
-}) => Promise<CompiledGraph<T>>;
+/** Runtime supplied by the native Node server when it calls a graph factory.
+ *
+ * Use executionRuntime to distinguish runs from inspection and state operations.
+ * Keep graph topology and state schemas consistent across all access contexts.
+ */
+export type GraphFactoryRuntime<Context = unknown> =
+  | {
+      accessContext: "threads.create_run";
+      executionRuntime: {
+        /** Saved run context, before validation against the graph's schema. */
+        context: Context | undefined;
+      };
+    }
+  | {
+      accessContext: "assistants.read" | "threads.read" | "threads.update";
+      executionRuntime: null;
+    };
+
+export type CompiledGraphFactory<T extends string> = (
+  config: { configurable?: Record<string, unknown> },
+  runtime: GraphFactoryRuntime
+) => Promise<CompiledGraph<T>>;
 
 export async function resolveGraph(
   spec: string,
@@ -45,9 +64,10 @@ export async function resolveGraph(
   type GraphUnknown =
     | GraphLike
     | Promise<GraphLike>
-    | ((config: {
-        configurable?: Record<string, unknown>;
-      }) => GraphLike | Promise<GraphLike>)
+    | ((
+        config: Parameters<CompiledGraphFactory<string>>[0],
+        runtime: GraphFactoryRuntime
+      ) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
@@ -98,8 +118,11 @@ export async function resolveGraph(
       };
 
       if (typeof graph === "function") {
-        return async (config: { configurable?: Record<string, unknown> }) => {
-          const graphLike = await graph(config);
+        return async (
+          config: Parameters<CompiledGraphFactory<string>>[0],
+          runtime: GraphFactoryRuntime
+        ) => {
+          const graphLike = await graph(config, runtime);
           return afterResolve(graphLike);
         };
       }

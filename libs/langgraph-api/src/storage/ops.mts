@@ -1066,6 +1066,7 @@ export class FileSystemThreads implements ThreadsRepo {
       const graph = await getGraph(graphId, thread.config, {
         checkpointer,
         store,
+        runtime: { accessContext: "threads.read", executionRuntime: null },
       });
       const result = await graph.getState(config, { subgraphs });
 
@@ -1133,6 +1134,7 @@ export class FileSystemThreads implements ThreadsRepo {
       const graph = await getGraph(graphId, thread.config, {
         checkpointer,
         store,
+        runtime: { accessContext: "threads.update", executionRuntime: null },
       });
 
       const updateConfig = structuredClone(config);
@@ -1199,6 +1201,7 @@ export class FileSystemThreads implements ThreadsRepo {
       const graph = await getGraph(graphId, thread.config, {
         checkpointer,
         store,
+        runtime: { accessContext: "threads.update", executionRuntime: null },
       });
 
       const updateConfig = structuredClone(config);
@@ -1255,6 +1258,7 @@ export class FileSystemThreads implements ThreadsRepo {
       const graph = await getGraph(graphId, thread.config, {
         checkpointer,
         store,
+        runtime: { accessContext: "threads.read", executionRuntime: null },
       });
       const before: RunnableConfig | undefined =
         typeof options?.before === "string"

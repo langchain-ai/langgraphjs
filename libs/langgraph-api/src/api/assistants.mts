@@ -168,7 +168,9 @@ api.get(
     const { xray } = c.req.valid("query");
 
     const config = getRunnableConfig(assistant.config);
-    const graph = await getGraph(assistant.graph_id, config);
+    const graph = await getGraph(assistant.graph_id, config, {
+      runtime: { accessContext: "assistants.read", executionRuntime: null },
+    });
     const drawable = await graph.getGraphAsync({
       ...config,
       xray: xray ?? undefined,
@@ -187,7 +189,9 @@ api.get(
     const assistant = await assistants().get(assistantId, c.var.auth);
 
     const config = getRunnableConfig(json.config);
-    const graph = await getGraph(assistant.graph_id, config);
+    const graph = await getGraph(assistant.graph_id, config, {
+      runtime: { accessContext: "assistants.read", executionRuntime: null },
+    });
 
     const schema = await (async () => {
       const runtimeSchema = await getRuntimeGraphSchema(graph);
@@ -232,7 +236,9 @@ api.get(
     const assistant = await assistants().get(assistantId, c.var.auth);
 
     const config = getRunnableConfig(assistant.config);
-    const graph = await getGraph(assistant.graph_id, config);
+    const graph = await getGraph(assistant.graph_id, config, {
+      runtime: { accessContext: "assistants.read", executionRuntime: null },
+    });
 
     const result: Array<[name: string, schema: Record<string, any>]> = [];
     const subgraphsGenerator =
