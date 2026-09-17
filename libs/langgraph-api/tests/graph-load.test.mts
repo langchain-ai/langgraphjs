@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { MemorySaver } from "@langchain/langgraph";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { GraphFactoryRuntime } from "../src/graph/api.mjs";
+import { gatherIterator } from "./utils.mjs";
 import { getGraph, GRAPHS } from "../src/graph/load.mjs";
 import { resolveGraph } from "../src/graph/load.utils.mjs";
 import { streamState } from "../src/stream.mjs";
@@ -89,7 +91,7 @@ describe("graph factory runtime", () => {
   it.each([false, true])(
     "passes current context before streaming (protocol v2: %s)",
     async (protocolV2) => {
-      const contexts: unknown[] = [];
+      const contexts: Array<GraphFactoryRuntime | undefined> = [];
       const checkpointer = new MemorySaver();
       const run = {
         run_id: "00000000-0000-7000-8000-000000000001",
@@ -111,15 +113,15 @@ describe("graph factory runtime", () => {
         },
       } satisfies Run;
       for (const attempt of [1, 2]) {
-        for await (const _ of streamState(run, {
-          attempt,
-          getGraph: async (id, config, options) => {
-            contexts.push(options?.runtime);
-            return getGraph(id, config, { ...options, checkpointer });
-          },
-        })) {
-          /* Drain execution. */
-        }
+        await gatherIterator(
+          streamState(run, {
+            attempt,
+            getGraph: async (id, config, options) => {
+              contexts.push(options?.runtime);
+              return getGraph(id, config, { ...options, checkpointer });
+            },
+          })
+        );
       }
       expect(contexts).toEqual(
         [1, 2].map(() => ({

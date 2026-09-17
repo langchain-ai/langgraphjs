@@ -2,18 +2,25 @@ import assert from "node:assert/strict";
 import { Annotation, interrupt, START, StateGraph } from "@langchain/langgraph";
 import type { GraphFactoryRuntime } from "../../src/graph/api.mjs";
 
+interface TestContext {
+  tenant?: string;
+  region?: string;
+  interrupt?: boolean;
+  reject?: boolean;
+}
+
 export const graph = (
   config: { configurable?: Record<string, unknown> },
-  runtime: GraphFactoryRuntime<Record<string, unknown>>
+  runtime: GraphFactoryRuntime<TestContext>
 ) => {
   const context = runtime.executionRuntime?.context;
   if (context?.reject) throw new Error("Factory rejected context");
 
   const compiled = new StateGraph(
     Annotation.Root({
-      factoryContext: Annotation<unknown>(),
+      factoryContext: Annotation<TestContext | null>(),
       nodeContext: Annotation<unknown>(),
-      accessContext: Annotation<string>(),
+      accessContext: Annotation<GraphFactoryRuntime["accessContext"]>(),
       legacy: Annotation<unknown>(),
       answer: Annotation<unknown>(),
     })
@@ -28,7 +35,6 @@ export const graph = (
     .addEdge(START, "capture")
     .compile();
 
-  // Verify the operation that loaded the factory, at the real API call site.
   const getState = compiled.getState.bind(compiled);
   compiled.getState = (...args) => {
     assert.equal(runtime.accessContext, "threads.read");
