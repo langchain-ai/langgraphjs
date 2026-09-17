@@ -66,6 +66,42 @@ describe("interrupt responseSchema", () => {
   );
 
   it.each(["null", "map"] as const)(
+    "corrects an invalid %s resume for a later interrupt in the same node",
+    async (resumeStyle) => {
+      const graph = new StateGraph(State)
+        .addNode("node", () => {
+          const first = interrupt("first");
+          const second = interrupt("approve?", { responseSchema: ZOD_SCHEMA });
+          return { answer: [first, second] };
+        })
+        .addEdge(START, "node")
+        .compile({ checkpointer: new MemorySaver() });
+      const config = { configurable: { thread_id: "1" } };
+      await graph.invoke({ answer: null }, config);
+      await graph.invoke(new Command({ resume: "ok" }), config);
+      const [pending] = (await graph.getState(config)).tasks[0].interrupts;
+      const resumeWith = (value: unknown) =>
+        resumeStyle === "null" ? value : { [pending.id ?? ""]: value };
+
+      await expect(
+        graph.invoke(
+          new Command({ resume: resumeWith({ approved: "nope" }) }),
+          config
+        )
+      ).rejects.toMatchObject({
+        issues: [expect.objectContaining({ path: ["approved"] })],
+      });
+
+      await expect(
+        graph.invoke(
+          new Command({ resume: resumeWith({ approved: true }) }),
+          config
+        )
+      ).resolves.toEqual({ answer: ["ok", { approved: true, note: "" }] });
+    }
+  );
+
+  it.each(["null", "map"] as const)(
     "rejects a %s resume that does not match a zod responseSchema, then accepts a corrected one",
     async (resumeStyle) => {
       const graph = buildGraph(ZOD_SCHEMA);

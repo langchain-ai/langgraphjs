@@ -121,7 +121,12 @@ export function interrupt<I = unknown, R = any>(
   // Find previous resume values
   if (scratchpad.resume.length > 0 && idx < scratchpad.resume.length) {
     const parsed = parseResume(scratchpad.resume[idx]);
-    conf[CONFIG_KEY_SEND]?.([[RESUME, scratchpad.resume] as PendingWrite]);
+    // Persist only through the interrupt being consumed. Values past `idx` belong
+    // to later interrupts and may be unvalidated mapped resumes; a failing one must
+    // not become durable, or its retry can never replace it.
+    conf[CONFIG_KEY_SEND]?.([
+      [RESUME, scratchpad.resume.slice(0, idx + 1)] as PendingWrite,
+    ]);
     return parsed;
   }
 
