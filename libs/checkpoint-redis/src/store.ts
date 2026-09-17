@@ -79,50 +79,6 @@ class FilterBuilder {
     return true;
   }
 
-  /**
-   * Builds a Redis Search query string from filter criteria.
-   * Note: This is limited by RediSearch capabilities and may not support all operators.
-   */
-  static buildRedisSearchQuery(
-    filter: Filter,
-    prefix?: string
-  ): { query: string; useClientFilter: boolean } {
-    const queryParts: string[] = [];
-    let useClientFilter = false;
-
-    // Add prefix filter if provided
-    if (prefix) {
-      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
-      if (tokens.length > 0) {
-        queryParts.push(`@prefix:(${tokens.join(" ")})`);
-      }
-    }
-
-    // Check if we have complex operators that require client-side filtering
-    for (const [_key, value] of Object.entries(filter)) {
-      if (
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        Object.keys(value).some((k) => k.startsWith("$"))
-      ) {
-        // Complex operators require client-side filtering
-        useClientFilter = true;
-        break;
-      }
-    }
-
-    // If no prefix, at least search all documents
-    if (queryParts.length === 0) {
-      queryParts.push("*");
-    }
-
-    return {
-      query: queryParts.join(" "),
-      useClientFilter,
-    };
-  }
-
   private static matchesFieldFilter(
     doc: Record<string, any>,
     key: string,
@@ -392,6 +348,38 @@ const FUSES_TERMS = /[\u0000-\u001f\u007f\\]/;
  */
 const NOT_TERM_CHARACTER = /[^a-zA-Z0-9_\u0080-\uffff]+/;
 
+/**
+ * Documents per candidate page. Candidates are an over-approximation, so a
+ * whole page can be near misses and the document being sought may sit on any
+ * later page. This is a scan width, not a result limit.
+ */
+const CANDIDATE_PAGE_SIZE = 100;
+
+/**
+ * Whether `found` names `prefix` itself or a namespace nested inside it.
+ *
+ * Anchored at segment boundaries, which is the whole point: "tenant.a"
+ * contains "tenant.a.notes" but not "tenant.ab", and never "a.tenant". The
+ * empty prefix matches every namespace.
+ *
+ * This is the check that keeps namespaces apart. The indexed query only
+ * chooses which documents it runs over.
+ */
+export function isWithinNamespace(found: string, prefix: string): boolean {
+  return prefix === "" || found === prefix || found.startsWith(`${prefix}.`);
+}
+
+type FtSearch = RedisClientConnection["ft"]["search"];
+
+/** One row of a RediSearch reply. */
+type CandidateDocument = Awaited<ReturnType<FtSearch>>["documents"][number];
+
+/** Per-call search options. `LIMIT` is the pager's to set, so it is excluded. */
+type CandidateSearchOptions = Omit<
+  NonNullable<Parameters<FtSearch>[2]>,
+  "LIMIT"
+>;
+
 export class RedisStore {
   private readonly client: RedisConnection;
   private readonly indexConfig?: IndexConfig;
@@ -535,32 +523,63 @@ export class RedisStore {
     return terms.length > 0 ? `@prefix:(${terms.join(" ")})` : "*";
   }
 
+  /**
+   * Candidate rows for `query`, a page at a time.
+   *
+   * Callers confirm the exact namespace themselves, so a page may hold nothing
+   * they want and the row they are after can sit on any later page. Paging
+   * runs until RediSearch reports the candidate set exhausted; stopping
+   * earlier is the caller's business.
+   */
+  private async *candidatePages(
+    index: string,
+    query: string,
+    options: CandidateSearchOptions = {}
+  ): AsyncGenerator<CandidateDocument[]> {
+    for (let from = 0; ; from += CANDIDATE_PAGE_SIZE) {
+      const results = await this.client.ft.search(index, query, {
+        ...options,
+        LIMIT: { from, size: CANDIDATE_PAGE_SIZE },
+      });
+      yield results.documents;
+      if (
+        results.documents.length === 0 ||
+        from + results.documents.length >= results.total
+      )
+        return;
+    }
+  }
+
+  /** Rows of `documents` whose namespace really is `prefix` or below it. */
+  private withinNamespace(
+    documents: CandidateDocument[],
+    prefix: string
+  ): CandidateDocument[] {
+    return documents.filter((doc) =>
+      isWithinNamespace((doc.value as unknown as StoreDocument).prefix, prefix)
+    );
+  }
+
   /** Resolve the document at exactly `prefix`/`key`, ignoring near matches. */
   private async findDocument(
     prefix: string,
     key: string
   ): Promise<{ id: string; value: StoreDocument } | undefined> {
     const candidates = this.namespaceCandidateQuery(prefix);
+    // The empty string is a usable key, but `@key:{}` is not a legal TAG
+    // filter, so there the candidate query has to carry the lookup alone.
     const query =
       key === ""
         ? candidates
         : `(${candidates}) (@key:{${this.escapeTagValue(key)}})`;
 
-    for (let offset = 0; ; offset += 100) {
-      const results = await this.client.ft.search("store", query, {
-        LIMIT: { from: offset, size: 100 },
-      });
-      for (const doc of results.documents) {
+    for await (const page of this.candidatePages("store", query))
+      for (const doc of page) {
         const value = doc.value as unknown as StoreDocument;
         if (value.prefix === prefix && value.key === key)
           return { id: doc.id, value };
       }
-      if (
-        results.documents.length === 0 ||
-        offset + results.documents.length >= results.total
-      )
-        return undefined;
-    }
+    return undefined;
   }
 
   /** Documents under exactly `prefix` or its descendants, already paginated. */
@@ -569,25 +588,18 @@ export class RedisStore {
     limit: number,
     offset: number,
     vectorBytes?: Buffer
-  ) {
-    const index = vectorBytes ? "store_vectors" : "store";
+  ): Promise<CandidateDocument[]> {
     const query = this.namespaceCandidateQuery(prefix);
     const wanted = offset + limit;
-    const matches = (doc: { value: unknown }) => {
-      const found = (doc.value as StoreDocument).prefix;
-      return (
-        prefix === "" || found === prefix || found.startsWith(`${prefix}.`)
-      );
-    };
 
     if (vectorBytes) {
-      // KNN returns only the `k` nearest candidates, so a namespace rejected
+      // KNN returns only the `k` nearest candidates, so a document rejected
       // here cannot be recovered by paging -- widen `k` and search again. The
       // candidate query already excludes everything but `prefix` and the
       // namespaces sharing its tokens, so this normally runs once.
-      for (let k = Math.max(100, wanted); ; k *= 2) {
+      for (let k = Math.max(CANDIDATE_PAGE_SIZE, wanted); ; k *= 2) {
         const results = await this.client.ft.search(
-          index,
+          "store_vectors",
           `(${query})=>[KNN ${k} @embedding $BLOB]`,
           {
             PARAMS: { BLOB: vectorBytes },
@@ -597,26 +609,20 @@ export class RedisStore {
             RETURN: ["prefix", "key", "__embedding_score"],
           }
         );
-        const confirmed = results.documents.filter(matches);
-        if (confirmed.length >= wanted || results.documents.length < k)
-          return confirmed.slice(offset, offset + limit);
+        const nearest = this.withinNamespace(results.documents, prefix);
+        if (nearest.length >= wanted || results.documents.length < k)
+          return nearest.slice(offset, offset + limit);
       }
     }
 
-    const documents = [];
-    for (let candidateOffset = 0; ; candidateOffset += 100) {
-      const results = await this.client.ft.search(index, query, {
-        SORTBY: { BY: "created_at", DIRECTION: "DESC" },
-        LIMIT: { from: candidateOffset, size: 100 },
-      });
-      documents.push(...results.documents.filter(matches));
-      if (
-        documents.length >= wanted ||
-        results.documents.length === 0 ||
-        candidateOffset + results.documents.length >= results.total
-      )
-        return documents.slice(offset, offset + limit);
+    const collected: CandidateDocument[] = [];
+    for await (const page of this.candidatePages("store", query, {
+      SORTBY: { BY: "created_at", DIRECTION: "DESC" },
+    })) {
+      collected.push(...this.withinNamespace(page, prefix));
+      if (collected.length >= wanted) break;
     }
+    return collected.slice(offset, offset + limit);
   }
 
   async get(

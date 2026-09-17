@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createClient } from "redis";
-import { RedisStore } from "../store.js";
+import { isWithinNamespace, RedisStore } from "../store.js";
 
 function createStubClient() {
   const client = createClient();
@@ -30,6 +30,36 @@ function doc(prefix: string, key: string, id = `store:${prefix}:${key}`) {
     value: { prefix, key, value: {}, created_at: 1, updated_at: 1 },
   };
 }
+
+describe("namespace boundaries", () => {
+  // Every isolation guarantee in this package reduces to this predicate: the
+  // indexed query only decides which documents it runs over, and an
+  // over-broad candidate set is harmless as long as these cases hold.
+  it.each<[found: string, prefix: string, within: boolean]>([
+    ["tenant.a", "tenant.a", true],
+    ["tenant.a.notes", "tenant.a", true],
+    ["tenant.a.notes.2026", "tenant.a", true],
+    // A shared string prefix is not a shared namespace. This is the bug.
+    ["tenant.ab", "tenant.a", false],
+    ["tenant.a2", "tenant.a", false],
+    // The same labels in a different order, which a TEXT index cannot tell
+    // apart because it stores an unordered bag of terms.
+    ["a.tenant", "tenant.a", false],
+    ["notes-tenant.alice", "tenant-alice.notes", false],
+    // A separator that is not "." must never act as a segment boundary.
+    ["tenant-a", "tenant.a", false],
+    ["tenant.a-b", "tenant.a", false],
+    // Matching stays case-sensitive even though the index case-folds.
+    ["Tenant.A", "tenant.a", false],
+    // A parent is not contained by its own child.
+    ["tenant", "tenant.a", false],
+    // The empty prefix is the whole store.
+    ["tenant.a", "", true],
+    ["", "", true],
+  ])("%s within %s is %s", (found, prefix, within) => {
+    expect(isWithinNamespace(found, prefix)).toBe(within);
+  });
+});
 
 describe("namespace candidate queries", () => {
   it.each([false, true])(
