@@ -325,10 +325,13 @@ describe("RedisStore", () => {
       const [firstKey] = await client.keys("store:*");
       expect(firstKey).toBeDefined();
 
-      // Drive the remaining lifetime far below the configured default, so an
-      // inherited expiry is distinguishable from a freshly applied one.
-      await client.expire(firstKey, 5);
-      expect(await client.ttl(firstKey)).toBeLessThanOrEqual(5);
+      // Halve the remaining lifetime, which is enough to tell an inherited
+      // expiry from a freshly applied one. Deliberately not a short fuse: a
+      // few seconds would race the container startup this suite pays per
+      // test, and expire the document the assertions below are about.
+      const halved = (10 * 60) / 2;
+      await client.expire(firstKey, halved);
+      expect(await client.ttl(firstKey)).toBeLessThanOrEqual(halved);
 
       await ttlStore.put(namespace, key, { data: "second" });
 
@@ -336,7 +339,7 @@ describe("RedisStore", () => {
         value: { data: "second" },
       });
       const [currentKey] = await client.keys("store:*");
-      expect(await client.ttl(currentKey)).toBeGreaterThan(5 * 60);
+      expect(await client.ttl(currentKey)).toBeGreaterThan(halved + 60);
     });
   });
 
