@@ -19,11 +19,7 @@ export default defineConfig((env) => {
         maxConcurrency: 5,
         fileParallelism: false, // Sequential to avoid Docker resource limits
         pool: "forks", // Use forks instead of threads to avoid cleanup issues
-        poolOptions: {
-          forks: {
-            singleFork: true, // Run all tests in a single fork to control cleanup
-          },
-        },
+        singleFork: true, // Run all tests in a single fork to control cleanup
         onConsoleLog(log) {
           // Filter out TestContainers logs to reduce noise
           if (log.includes("testcontainers") || log.includes("docker")) {
