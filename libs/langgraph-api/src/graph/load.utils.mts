@@ -1,4 +1,8 @@
-import type { CompiledGraph, Graph } from "@langchain/langgraph";
+import type {
+  CompiledGraph,
+  Graph,
+  LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 import * as uuid from "@langchain/core/utils/uuid";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -9,27 +13,22 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-/** Runtime supplied by the native Node server when it calls a graph factory.
- *
- * Use executionRuntime to distinguish runs from inspection and state operations.
- * Keep graph topology and state schemas consistent across all access contexts.
- */
-export type GraphFactoryRuntime<Context = unknown> =
-  | {
-      accessContext: "threads.create_run";
-      executionRuntime: {
-        /** Saved run context, before validation against the graph's schema. */
-        context: Context | undefined;
-      };
-    }
-  | {
-      accessContext: "assistants.read" | "threads.read" | "threads.update";
-      executionRuntime: null;
-    };
+/** Config supplied to graph factories by the native Node server. */
+export interface GraphFactoryConfig<Context = unknown> extends Omit<
+  LangGraphRunnableConfig,
+  "context"
+> {
+  accessContext:
+    | "threads.create_run"
+    | "assistants.read"
+    | "threads.read"
+    | "threads.update";
+  /** Saved run context. Absent for inspection and state operations. */
+  context?: Context;
+}
 
 export type CompiledGraphFactory<T extends string> = (
-  config: { configurable?: Record<string, unknown> },
-  runtime: GraphFactoryRuntime
+  config: GraphFactoryConfig
 ) => Promise<CompiledGraph<T>>;
 
 export async function resolveGraph(
@@ -64,10 +63,7 @@ export async function resolveGraph(
   type GraphUnknown =
     | GraphLike
     | Promise<GraphLike>
-    | ((
-        config: Parameters<CompiledGraphFactory<string>>[0],
-        runtime: GraphFactoryRuntime
-      ) => GraphLike | Promise<GraphLike>)
+    | ((config: GraphFactoryConfig) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
@@ -118,11 +114,8 @@ export async function resolveGraph(
       };
 
       if (typeof graph === "function") {
-        return async (
-          config: Parameters<CompiledGraphFactory<string>>[0],
-          runtime: GraphFactoryRuntime
-        ) => {
-          const graphLike = await graph(config, runtime);
+        return async (config: GraphFactoryConfig) => {
+          const graphLike = await graph(config);
           return afterResolve(graphLike);
         };
       }

@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { MemorySaver } from "@langchain/langgraph";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { GraphFactoryRuntime } from "../src/graph/api.mjs";
+import type { GraphFactoryConfig } from "../src/graph/api.mjs";
 import { gatherIterator } from "./utils.mjs";
 import { getGraph, GRAPHS } from "../src/graph/load.mjs";
 import { resolveGraph } from "../src/graph/load.utils.mjs";
@@ -9,28 +9,26 @@ import { streamState } from "../src/stream.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../src/protocol/constants.mjs";
 import type { Run } from "../src/storage/types.mjs";
 
-const graphId = "factory-runtime-test";
+const graphId = "factory-config-test";
 const cwd = fileURLToPath(new URL("./graphs", import.meta.url));
 
 beforeEach(async () => {
   GRAPHS[graphId] = (
-    await resolveGraph("./factory_runtime.mts:graph", { cwd })
+    await resolveGraph("./factory_config.mts:graph", { cwd })
   ).resolved;
 });
 afterEach(() => {
   delete GRAPHS[graphId];
 });
 
-describe("graph factory runtime", () => {
+describe("graph factory config", () => {
   it("passes context through the resolved factory without changing config", async () => {
     const config = { configurable: { legacy: "kept" } };
     const context = { tenant: "current" };
     const graph = await getGraph(graphId, config, {
       checkpointer: null,
-      runtime: {
-        accessContext: "threads.create_run",
-        executionRuntime: { context },
-      },
+      accessContext: "threads.create_run",
+      context,
     });
     expect(await graph.invoke({}, { context })).toMatchObject({
       factoryContext: context,
@@ -41,12 +39,20 @@ describe("graph factory runtime", () => {
   });
 
   it.each(["assistants.read", "threads.read", "threads.update"] as const)(
-    "does not provide an execution runtime for %s",
+    "does not provide run context for %s",
     async (accessContext) => {
-      const graph = await getGraph(graphId, undefined, {
-        checkpointer: null,
-        runtime: { accessContext, executionRuntime: null },
-      });
+      const graph = await getGraph(
+        graphId,
+        {
+          context: { reject: true },
+          ...{ accessContext: "threads.create_run" },
+        },
+        {
+          checkpointer: null,
+          accessContext,
+          context: { reject: true },
+        }
+      );
       expect(await graph.invoke({})).toMatchObject({
         factoryContext: null,
         accessContext,
@@ -57,10 +63,7 @@ describe("graph factory runtime", () => {
   it("treats an absent context as execution", async () => {
     const graph = await getGraph(graphId, undefined, {
       checkpointer: null,
-      runtime: {
-        accessContext: "threads.create_run",
-        executionRuntime: { context: undefined },
-      },
+      accessContext: "threads.create_run",
     });
     expect(await graph.invoke({})).toMatchObject({
       accessContext: "threads.create_run",
@@ -91,7 +94,10 @@ describe("graph factory runtime", () => {
   it.each([false, true])(
     "passes current context before streaming (protocol v2: %s)",
     async (protocolV2) => {
-      const contexts: Array<GraphFactoryRuntime | undefined> = [];
+      const contexts: Array<{
+        accessContext: GraphFactoryConfig["accessContext"] | undefined;
+        context: unknown;
+      }> = [];
       const checkpointer = new MemorySaver();
       const run = {
         run_id: "00000000-0000-7000-8000-000000000001",
@@ -117,7 +123,10 @@ describe("graph factory runtime", () => {
           streamState(run, {
             attempt,
             getGraph: async (id, config, options) => {
-              contexts.push(options?.runtime);
+              contexts.push({
+                accessContext: options?.accessContext,
+                context: options?.context,
+              });
               return getGraph(id, config, { ...options, checkpointer });
             },
           })
@@ -126,12 +135,12 @@ describe("graph factory runtime", () => {
       expect(contexts).toEqual(
         [1, 2].map(() => ({
           accessContext: "threads.create_run",
-          executionRuntime: { context: run.kwargs.context },
+          context: run.kwargs.context,
         }))
       );
       const graph = await getGraph(graphId, undefined, {
         checkpointer,
-        runtime: { accessContext: "threads.read", executionRuntime: null },
+        accessContext: "threads.read",
       });
       expect(
         (

@@ -14,7 +14,7 @@ import {
 } from "@langchain/langgraph/web";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
-import type { GraphFactoryRuntime } from "./graph/load.utils.mjs";
+import type { GraphFactoryConfig } from "./graph/load.utils.mjs";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
 import type { SourceStreamEvent } from "./protocol/types.mjs";
@@ -160,7 +160,8 @@ export async function* streamState(
       config: LangGraphRunnableConfig | undefined,
       options?: {
         checkpointer?: BaseCheckpointSaver | null;
-        runtime?: GraphFactoryRuntime;
+        accessContext?: GraphFactoryConfig["accessContext"];
+        context?: unknown;
       }
     ) => Promise<Pregel<any, any, any, any, any>>;
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;
@@ -177,10 +178,8 @@ export async function* streamState(
 
   const graph = await options.getGraph(graphId, kwargs.config, {
     checkpointer: kwargs.temporary ? null : undefined,
-    runtime: {
-      accessContext: "threads.create_run",
-      executionRuntime: { context: kwargs.context },
-    },
+    accessContext: "threads.create_run",
+    context: kwargs.context,
   });
 
   // Only v2 protocol entrypoints opt into `streamStateV2`.
@@ -487,7 +486,8 @@ export async function* streamStateV2(
       config: LangGraphRunnableConfig | undefined,
       options?: {
         checkpointer?: BaseCheckpointSaver | null;
-        runtime?: GraphFactoryRuntime;
+        accessContext?: GraphFactoryConfig["accessContext"];
+        context?: unknown;
       }
     ) => Promise<Pregel<any, any, any, any, any>>;
     onCheckpoint?: (checkpoint: StreamCheckpoint) => void;

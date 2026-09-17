@@ -169,7 +169,7 @@ api.get(
 
     const config = getRunnableConfig(assistant.config);
     const graph = await getGraph(assistant.graph_id, config, {
-      runtime: { accessContext: "assistants.read", executionRuntime: null },
+      accessContext: "assistants.read",
     });
     const drawable = await graph.getGraphAsync({
       ...config,
@@ -190,7 +190,7 @@ api.get(
 
     const config = getRunnableConfig(json.config);
     const graph = await getGraph(assistant.graph_id, config, {
-      runtime: { accessContext: "assistants.read", executionRuntime: null },
+      accessContext: "assistants.read",
     });
 
     const schema = await (async () => {
@@ -237,7 +237,7 @@ api.get(
 
     const config = getRunnableConfig(assistant.config);
     const graph = await getGraph(assistant.graph_id, config, {
-      runtime: { accessContext: "assistants.read", executionRuntime: null },
+      accessContext: "assistants.read",
     });
 
     const result: Array<[name: string, schema: Record<string, any>]> = [];

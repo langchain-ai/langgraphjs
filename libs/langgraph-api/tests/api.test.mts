@@ -3041,7 +3041,7 @@ describe("runtime API", () => {
   });
 });
 
-describe("graph factory runtime", () => {
+describe("graph factory config", () => {
   it("merges assistant defaults and current run context before the factory", async () => {
     const assistant = await client.assistants.create({
       graphId: "factory_context",

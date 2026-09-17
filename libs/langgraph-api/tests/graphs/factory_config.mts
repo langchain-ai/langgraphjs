@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Annotation, interrupt, START, StateGraph } from "@langchain/langgraph";
-import type { GraphFactoryRuntime } from "../../src/graph/api.mjs";
+import type { GraphFactoryConfig } from "../../src/graph/api.mjs";
 
 interface TestContext {
   tenant?: string;
@@ -9,18 +9,15 @@ interface TestContext {
   reject?: boolean;
 }
 
-export const graph = (
-  config: { configurable?: Record<string, unknown> },
-  runtime: GraphFactoryRuntime<TestContext>
-) => {
-  const context = runtime.executionRuntime?.context;
+export const graph = (config: GraphFactoryConfig<TestContext>) => {
+  const context = config.context;
   if (context?.reject) throw new Error("Factory rejected context");
 
   const compiled = new StateGraph(
     Annotation.Root({
       factoryContext: Annotation<TestContext | null>(),
       nodeContext: Annotation<unknown>(),
-      accessContext: Annotation<GraphFactoryRuntime["accessContext"]>(),
+      accessContext: Annotation<GraphFactoryConfig["accessContext"]>(),
       legacy: Annotation<unknown>(),
       answer: Annotation<unknown>(),
     })
@@ -28,7 +25,7 @@ export const graph = (
     .addNode("capture", (_, nodeRuntime) => ({
       factoryContext: context ?? null,
       nodeContext: nodeRuntime.context ?? null,
-      accessContext: runtime.accessContext,
+      accessContext: config.accessContext,
       legacy: config.configurable?.legacy ?? null,
       answer: context?.interrupt ? interrupt("Continue?") : null,
     }))
@@ -37,22 +34,22 @@ export const graph = (
 
   const getState = compiled.getState.bind(compiled);
   compiled.getState = (...args) => {
-    assert.equal(runtime.accessContext, "threads.read");
+    assert.equal(config.accessContext, "threads.read");
     return getState(...args);
   };
   const getStateHistory = compiled.getStateHistory.bind(compiled);
   compiled.getStateHistory = (...args) => {
-    assert.equal(runtime.accessContext, "threads.read");
+    assert.equal(config.accessContext, "threads.read");
     return getStateHistory(...args);
   };
   const updateState = compiled.updateState.bind(compiled);
   compiled.updateState = (...args) => {
-    assert.equal(runtime.accessContext, "threads.update");
+    assert.equal(config.accessContext, "threads.update");
     return updateState(...args);
   };
   const bulkUpdateState = compiled.bulkUpdateState.bind(compiled);
   compiled.bulkUpdateState = (...args) => {
-    assert.equal(runtime.accessContext, "threads.update");
+    assert.equal(config.accessContext, "threads.update");
     return bulkUpdateState(...args);
   };
   return compiled;
