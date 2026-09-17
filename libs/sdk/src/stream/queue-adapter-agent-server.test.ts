@@ -532,4 +532,94 @@ describe("AgentServerQueueAdapter", () => {
     expect(reportedError).toBeInstanceOf(AggregateError);
     expect(reportedError.errors).toEqual([boom1, boom2]);
   });
+
+  it("enqueue() re-checks pending status after learning its runId if a 'started' event fired while create() was in flight", async () => {
+    const { runs, getThread, emitStarted } = makeFakeBackend();
+    const createDeferred = deferred<{ run_id: string }>();
+    (runs.create as ReturnType<typeof vi.fn>).mockReturnValue(
+      createDeferred.promise
+    );
+    (runs.list as ReturnType<typeof vi.fn>).mockResolvedValue([]); // no longer pending by the time we check
+    const store = makeStore();
+    const adapter = new AgentServerQueueAdapter<State>(
+      runs,
+      "assistant-1",
+      store,
+      vi.fn(),
+      getThread
+    );
+
+    const enqueuePromise = adapter.enqueue("thread-1", { count: 1 }, undefined);
+    expect(store.getSnapshot()).toHaveLength(1); // optimistic entry, no runId yet
+
+    emitStarted(); // some run started while we were still waiting on create()
+    await vi.waitFor(() => expect(store.getSnapshot()).toHaveLength(1)); // unaffected: no runId yet
+
+    createDeferred.resolve({ run_id: "run-1" });
+    await enqueuePromise;
+
+    // The post-assignment re-check catches that it's already promoted.
+    await vi.waitFor(() => expect(store.getSnapshot()).toHaveLength(0));
+  });
+
+  it("detach() does not drop a cancel marker for an entry whose create() is still in flight", async () => {
+    const { runs, getThread } = makeFakeBackend();
+    const createDeferred = deferred<{ run_id: string }>();
+    (runs.create as ReturnType<typeof vi.fn>).mockReturnValue(
+      createDeferred.promise
+    );
+    const store = makeStore();
+    const adapter = new AgentServerQueueAdapter<State>(
+      runs,
+      "assistant-1",
+      store,
+      vi.fn(),
+      getThread
+    );
+
+    const enqueuePromise = adapter.enqueue("thread-1", { count: 1 }, undefined);
+    const id = store.getSnapshot()[0].id;
+    await adapter.cancel(id); // marks pending-cancel; create() still in flight
+
+    adapter.detach(); // must not drop the cancel marker
+
+    createDeferred.resolve({ run_id: "run-1" });
+    await enqueuePromise;
+
+    expect(runs.cancel).toHaveBeenCalledWith("thread-1", "run-1");
+  });
+
+  // Exercises the #isStillQueued() helper shared with hydrate(), which
+  // has the identical race and doesn't need its own copy of this test.
+  it("a stale #refreshPending response does not evict an entry created after the list() request was sent, but still evicts one that legitimately started", async () => {
+    const { runs, getThread, emitStarted } = makeFakeBackend();
+    const listMock = runs.list as ReturnType<typeof vi.fn>;
+    const listDeferred = deferred<Array<{ run_id: string; created_at: string }>>();
+    listMock.mockReturnValueOnce(listDeferred.promise);
+    const createMock = runs.create as ReturnType<typeof vi.fn>;
+    createMock
+      .mockResolvedValueOnce({ run_id: "run-old" })
+      .mockResolvedValueOnce({ run_id: "run-new" });
+    const store = makeStore();
+    const adapter = new AgentServerQueueAdapter<State>(
+      runs,
+      "assistant-1",
+      store,
+      vi.fn(),
+      getThread
+    );
+
+    await adapter.enqueue("thread-1", { count: 1 }, undefined); // run-old
+    emitStarted(); // triggers #refreshPending; its list() call is now in flight
+
+    await adapter.enqueue("thread-1", { count: 2 }, undefined); // run-new, created mid-flight
+
+    listDeferred.resolve([]); // stale snapshot: taken before run-new existed; run-old genuinely started
+    await vi.waitFor(() => {
+      const snapshot = store.getSnapshot();
+      expect(snapshot.find((e) => e.runId === "run-old")).toBeUndefined();
+      expect(snapshot.find((e) => e.runId === "run-new")).toBeDefined();
+    });
+  });
+
 });

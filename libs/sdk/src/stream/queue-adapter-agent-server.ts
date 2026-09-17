@@ -41,6 +41,8 @@ export class AgentServerQueueAdapter<
   #abortController = new AbortController();
   /** Handle for #refreshPending's pending retry, if any; cleared on detach(). */
   #refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Lets enqueue() detect a "started" event during its own create(). */
+  #startedEventCount = 0;
 
   constructor(
     runs: QueueRunsClient,
@@ -60,6 +62,8 @@ export class AgentServerQueueAdapter<
     this.#threadId = threadId;
     this.#ensureWatching(threadId);
     const generation = ++this.#hydrateGeneration;
+    // Baseline before asking: an entry assigned after this can't be in the response below.
+    const knownAtRequestTime = this.#knownRunIds();
     let pending: RunWithKwargs[];
     try {
       pending = (await this.#runs.list(threadId, {
@@ -72,8 +76,7 @@ export class AgentServerQueueAdapter<
         signal: this.#abortController.signal,
       })) as RunWithKwargs[];
     } catch (error) {
-      // A generation mismatch here almost always means detach() aborted
-      // this call on purpose; only a still-current failure is a real error.
+      // A generation mismatch means detach() aborted this on purpose.
       if (generation === this.#hydrateGeneration) this.#onError(error);
       return;
     }
@@ -88,8 +91,8 @@ export class AgentServerQueueAdapter<
       // reconstruction, since a consumer may already be keying UI on
       // its id. Only reconstruct pending runs with no local counterpart
       // (enqueued elsewhere, or seen here for the first time).
-      const stillValid = current.filter(
-        (e) => !e.runId || remoteIds.has(e.runId)
+      const stillValid = current.filter((e) =>
+        this.#isStillQueued(e, remoteIds, knownAtRequestTime)
       );
       const newFromRemote = pending
         .filter((run) => !knownRunIds.has(run.run_id))
@@ -115,6 +118,7 @@ export class AgentServerQueueAdapter<
     // A brand-new self-created thread may never be hydrated first.
     this.#threadId = threadId;
     this.#ensureWatching(threadId);
+    const startedEventsBefore = this.#startedEventCount;
     const id = uuidv7();
     this.#store.setState((current) => [
       ...current,
@@ -137,6 +141,10 @@ export class AgentServerQueueAdapter<
           entry.id === id ? { ...entry, runId: run.run_id } : entry
         )
       );
+      // A run may have started before we learned its id; re-check now.
+      if (this.#startedEventCount !== startedEventsBefore) {
+        void this.#refreshPending(threadId);
+      }
     } catch (error) {
       this.#pendingCancel.delete(id); // avoid leaking a pending-cancel marker nothing will ever consult
       this.#store.setState((current) =>
@@ -184,7 +192,7 @@ export class AgentServerQueueAdapter<
     this.#hydrateGeneration++; // invalidate any in-flight hydrate() for this thread
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
-    this.#pendingCancel.clear();
+    // #pendingCancel is not cleared: dropping it would silently un-cancel an in-flight create().
     this.#threadId = undefined;
     this.#abortController.abort(); // stop any in-flight hydrate()/#refreshPending() list() call
     this.#abortController = new AbortController(); // an aborted controller can't be reused
@@ -210,6 +218,7 @@ export class AgentServerQueueAdapter<
     this.#unsubscribe = this.#getThread(threadId).onEvent((event) => {
       if (event.method !== "lifecycle") return;
       if (event.params.data.event !== "started") return;
+      this.#startedEventCount++;
       void this.#refreshPending(threadId);
     });
   }
@@ -224,25 +233,22 @@ export class AgentServerQueueAdapter<
   async #refreshPending(threadId: string, attempt = 0): Promise<void> {
     if (this.#store.getSnapshot().length === 0) return; // nothing left to refresh
     const generation = this.#hydrateGeneration;
+    const knownAtRequestTime = this.#knownRunIds(); // same reasoning as hydrate()
     try {
       const pending = await this.#runs.list(threadId, {
         status: "pending",
         limit: 1000, // list() defaults to 10; see the matching note in hydrate()
         signal: this.#abortController.signal,
       });
-      // A generation change means detach()/a newer hydrate() superseded
-      // this call — its thread id is stale, don't filter the new state.
-      if (generation !== this.#hydrateGeneration) return;
+      if (generation !== this.#hydrateGeneration) return; // superseded; thread id is stale
       const stillPendingIds = new Set(pending.map((run) => run.run_id));
       this.#store.setState((current) =>
-        current.filter(
-          (entry) => !entry.runId || stillPendingIds.has(entry.runId)
+        current.filter((entry) =>
+          this.#isStillQueued(entry, stillPendingIds, knownAtRequestTime)
         )
       );
     } catch (error) {
-      // Same reasoning as above: a generation change means detach()
-      // aborted this call on purpose, not a real failure.
-      if (generation !== this.#hydrateGeneration) return;
+      if (generation !== this.#hydrateGeneration) return; // detach() aborted this on purpose
       if (attempt < 1) {
         this.#refreshRetryTimer = setTimeout(() => {
           this.#refreshRetryTimer = undefined;
@@ -261,5 +267,24 @@ export class AgentServerQueueAdapter<
       values: run.kwargs?.input as Partial<StateType> | null | undefined,
       createdAt: new Date(run.created_at),
     };
+  }
+
+  #knownRunIds(): Set<string> {
+    return new Set(
+      this.#store.getSnapshot().flatMap((e) => (e.runId ? [e.runId] : []))
+    );
+  }
+
+  /** Shared by hydrate() and #refreshPending(): is a list() response grounds to evict this entry? */
+  #isStillQueued(
+    entry: SubmissionQueueEntry<StateType>,
+    stillPendingIds: Set<string>,
+    knownAtRequestTime: Set<string>
+  ): boolean {
+    return (
+      !entry.runId ||
+      stillPendingIds.has(entry.runId) ||
+      !knownAtRequestTime.has(entry.runId)
+    );
   }
 }
