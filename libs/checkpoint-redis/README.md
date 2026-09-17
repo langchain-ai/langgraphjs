@@ -168,9 +168,9 @@ result.
 RediSearch is used to narrow the candidate set, never to decide the match: every
 document is confirmed against the requested namespace before it is returned,
 overwritten or deleted. Labels that RediSearch cannot index predictably -- those
-containing a backslash or characters outside printable ASCII -- simply widen the
-candidate set rather than narrowing it, which costs a little search time and
-changes no result.
+containing a backslash or a control character -- simply widen the candidate set
+rather than narrowing it, which costs a little search time and changes no
+result.
 
 Upgrading the package is the complete fix. There is no index migration, no schema
 change, no document rewrite, and no additional Redis permissions to grant.
