@@ -86,7 +86,6 @@ export async function getGraph(
   options?: {
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
-    /** Defaults to assistant inspection when no operation is specified. */
     accessContext?: GraphFactoryConfig["accessContext"];
     context?: unknown;
   }

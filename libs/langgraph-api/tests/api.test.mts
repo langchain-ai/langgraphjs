@@ -3105,7 +3105,6 @@ describe("graph factory config", () => {
       graphId: "factory_context",
       context: { reject: true },
     });
-    // Inspection must not evaluate the execution-only context rejection.
     await client.assistants.getSchemas(assistant.assistant_id);
     await client.assistants.getGraph(assistant.assistant_id);
     await client.assistants.getSubgraphs(assistant.assistant_id);

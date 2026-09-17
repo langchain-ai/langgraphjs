@@ -13,7 +13,6 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-/** Config supplied to graph factories by the native Node server. */
 export interface GraphFactoryConfig<Context = unknown> extends Omit<
   LangGraphRunnableConfig,
   "context"
@@ -23,7 +22,6 @@ export interface GraphFactoryConfig<Context = unknown> extends Omit<
     | "assistants.read"
     | "threads.read"
     | "threads.update";
-  /** Saved run context. Absent for inspection and state operations. */
   context?: Context;
 }
 
