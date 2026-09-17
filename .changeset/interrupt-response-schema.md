@@ -1,6 +1,6 @@
 ---
-"@langchain/langgraph": minor
-"@langchain/langgraph-sdk": minor
+"@langchain/langgraph": patch
+"@langchain/langgraph-sdk": patch
 ---
 
 feat(langgraph): add `responseSchema` option to `interrupt()`
