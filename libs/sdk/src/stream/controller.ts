@@ -623,6 +623,10 @@ export class StreamController<
       return;
     }
 
+    // Picks up runs pending from before this page load, or another tab.
+    // Fire-and-forget; independent of the root-state fetch below.
+    void this.#submitter.hydrateQueue(this.#currentThreadId);
+
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
     // Thread id this hydrate cycle is fetching for; used to detect a thread
     // clear/swap across the getState() await below.
@@ -1272,10 +1276,10 @@ export class StreamController<
    * Cancel a queued submission by id. Returns `true` when the entry
    * was found and removed, `false` otherwise.
    *
-   * Today this only removes the entry from the client-side mirror —
-   * once the server exposes queue cancel (roadmap A0.3) the
-   * controller will additionally issue a cancel call against the
-   * active transport.
+   * Removes the client-side entry either way; also issues a server-side
+   * cancel when the configured queue adapter is server-backed (see
+   * `AgentServerAdapter.serverQueue`). A no-op for the default,
+   * client-only adapter.
    *
    * @param id - Client-side queue entry id to remove.
    */
@@ -1284,7 +1288,8 @@ export class StreamController<
   }
 
   /**
-   * Drop every queued submission. Server-side cancel arrives with A0.3.
+   * Drop every queued submission. Cancels the underlying server-side
+   * runs too when the configured queue adapter is server-backed.
    */
   async clearQueue(): Promise<void> {
     await this.#submitter.clearQueue();
@@ -1785,6 +1790,7 @@ export class StreamController<
     this.queueStore.setState(
       () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
     );
+    this.#submitter.detachQueue();
 
     try {
       await subscription?.unsubscribe();

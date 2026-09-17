@@ -101,7 +101,8 @@ interface OptimisticOverrides {
 
 function makeHarness(
   initial: { threadId?: string | null } = {},
-  optimistic: OptimisticOverrides = {}
+  optimistic: OptimisticOverrides = {},
+  optionsOverride: Partial<StreamControllerOptions<State>> = {}
 ): Harness {
   const rootStore = makeRootStore();
   const queueStore = new StreamStore<SubmissionQueueSnapshot<State>>(
@@ -119,6 +120,9 @@ function makeHarness(
   const thread = {
     submitRun,
     respondInput,
+    // Stub so AgentServerQueueAdapter's subscription doesn't throw. Each
+    // call returns its own spy so tests can assert it was unsubscribed.
+    onEvent: vi.fn(() => vi.fn()),
   } as unknown as ThreadStream;
 
   let disposed = false;
@@ -186,6 +190,7 @@ function makeHarness(
     threadId: initial.threadId ?? null,
     onCreated,
     onThreadId,
+    ...optionsOverride,
   };
 
   const coordinator = new SubmitCoordinator<State>({
@@ -897,6 +902,155 @@ describe("SubmitCoordinator", () => {
       h.resolveTerminal({ event: "completed" });
       await vi.runAllTimersAsync();
       await submitPromise;
+    });
+  });
+
+  describe("server-backed queue adapter", () => {
+    it("detachQueue() reaches the adapter: releases its thread subscription", async () => {
+      const fakeRuns = {
+        create: vi.fn().mockResolvedValue({ run_id: "run-1" }),
+        list: vi.fn().mockResolvedValue([]),
+        cancel: vi.fn(),
+      };
+      const h = makeHarness({}, {}, {
+        transport: { serverQueue: fakeRuns } as never,
+      });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+
+      const onEventMock = h.thread.onEvent as ReturnType<typeof vi.fn>;
+      const unsubscribe = onEventMock.mock.results[0]?.value as
+        | ReturnType<typeof vi.fn>
+        | undefined;
+      expect(unsubscribe).toBeDefined();
+
+      h.coordinator.detachQueue();
+
+      expect(unsubscribe).toHaveBeenCalled();
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
+    it("hydrateQueue() reaches the adapter: populates queueStore from runs.list", async () => {
+      const fakeRuns = {
+        create: vi.fn(),
+        list: vi.fn().mockResolvedValue([
+          {
+            run_id: "run-x",
+            created_at: new Date().toISOString(),
+            kwargs: { input: { count: 5 } },
+          },
+        ]),
+        cancel: vi.fn(),
+      };
+      const h = makeHarness({}, {}, {
+        transport: { serverQueue: fakeRuns } as never,
+      });
+
+      await h.coordinator.hydrateQueue("thread-1");
+
+      expect(fakeRuns.list).toHaveBeenCalledWith(
+        "thread-1",
+        expect.objectContaining({ status: "pending" })
+      );
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].runId).toBe("run-x");
+      expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 5 });
+    });
+
+    it("never rejects submit() when the adapter's enqueue() throws: the caller-visible contract must stay non-throwing", async () => {
+      const boom = new Error("create() failed");
+      const fakeRuns = {
+        create: vi.fn().mockRejectedValue(boom),
+        list: vi.fn().mockResolvedValue([]),
+        cancel: vi.fn(),
+      };
+      const onError = vi.fn();
+      const h = makeHarness({}, {}, {
+        transport: { serverQueue: fakeRuns } as never,
+      });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      // Must resolve, not reject, even though the underlying create() call fails.
+      await expect(
+        h.coordinator.submit(
+          { count: 2 },
+          { multitaskStrategy: "enqueue", onError }
+        )
+      ).resolves.toBeUndefined();
+
+      expect(fakeRuns.create).toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(boom);
+      expect(h.rootStore.getSnapshot().error).toBe(boom);
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
+    it("removes a queued entry from queueStore once the server promotes it (lifecycle 'started' + runs.list no longer pending)", async () => {
+      const fakeRuns = {
+        create: vi.fn().mockResolvedValue({ run_id: "run-queued-1" }),
+        list: vi.fn().mockResolvedValue([]), // promoted; no longer pending
+        cancel: vi.fn(),
+      };
+      const h = makeHarness({}, {}, {
+        transport: { serverQueue: fakeRuns } as never,
+      });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].runId).toBe("run-queued-1");
+
+      // Simulate the server promoting the queued run: a lifecycle
+      // "started" event on the thread triggers the adapter's re-check.
+      const onEventCalls = (h.thread.onEvent as ReturnType<typeof vi.fn>).mock
+        .calls;
+      const listener = onEventCalls[onEventCalls.length - 1][0];
+      listener({ method: "lifecycle", params: { data: { event: "started" } } });
+      await vi.runAllTimersAsync();
+
+      expect(h.queueStore.getSnapshot()).toHaveLength(0);
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
+    it("falls back to the local queue when transport.serverQueue is missing a required method", async () => {
+      const fakeRuns = {
+        create: vi.fn(),
+        list: vi.fn().mockResolvedValue([]),
+        // no `cancel`, fails the runs-like check
+      };
+      const h = makeHarness({}, {}, {
+        transport: { serverQueue: fakeRuns } as never,
+      });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+
+      expect(fakeRuns.create).not.toHaveBeenCalled();
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].runId).toBeUndefined();
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
     });
   });
 });

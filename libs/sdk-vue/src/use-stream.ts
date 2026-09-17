@@ -480,6 +480,7 @@ export function useStream<
       kind: "initial" | "reconnected";
       attempt: number;
     }) => void | Promise<void>;
+    serverQueue?: boolean;
     onThreadId?: (threadId: string) => void;
     onCreated?: (info: RunExecutionInfo) => void;
     onCompleted?: (info: RunCompletedInfo) => void;
@@ -564,6 +565,7 @@ export function useStream<
     reconnectDelayMs: hasCustomAdapter ? undefined : asBag.reconnectDelayMs,
     onReconnect: hasCustomAdapter ? undefined : asBag.onReconnect,
     onConnected: hasCustomAdapter ? undefined : asBag.onConnected,
+    serverQueue: hasCustomAdapter ? undefined : asBag.serverQueue,
     onThreadId: options.onThreadId,
     onCreated: options.onCreated,
     onCompleted: options.onCompleted,
