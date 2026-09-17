@@ -3505,6 +3505,65 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("restarts the root pump after a thread stream failure", async () => {
+    const errorListeners = new Set<(error: Error) => void>();
+    const subscriptions: ReturnType<typeof makePushableSubscription>[] = [];
+    let run = 0;
+    const submitRun = vi.fn(async () => ({ run_id: `run-${++run}` }));
+    const thread = {
+      subscribe: vi.fn(async () => {
+        const subscription = makePushableSubscription();
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        errorListeners.add(listener);
+        return vi.fn(() => errorListeners.delete(listener));
+      }),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering: {},
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    await subscriptions[0]?.started;
+
+    const failedSubmit = controller.submit(null);
+    await waitForExpectation(() => expect(submitRun).toHaveBeenCalledTimes(1));
+    for (const listener of errorListeners) {
+      listener(new Error("Thread event stream failed: redis gone"));
+    }
+    await failedSubmit;
+    await waitForExpectation(() => expect(errorListeners.size).toBe(0));
+
+    const nextSubmit = controller.submit(null);
+    await waitForExpectation(() => expect(thread.subscribe).toHaveBeenCalledTimes(2));
+    await subscriptions[1]?.started;
+    subscriptions[1]?.push(lifecycleEvent("completed", 2));
+    await nextSubmit;
+
+    expect(client.threads.stream).toHaveBeenCalledTimes(1);
+    expect(submitRun).toHaveBeenCalledTimes(2);
+    expect(controller.rootStore.getSnapshot().error).toBeUndefined();
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces a failed resumed run on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(async () => undefined);
