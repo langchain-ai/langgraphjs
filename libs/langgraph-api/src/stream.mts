@@ -14,7 +14,7 @@ import {
 } from "@langchain/langgraph/web";
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
-import type { GraphFactoryConfig } from "./graph/load.utils.mjs";
+import type { ServerRuntime } from "./graph/load.utils.mjs";
 import { getLangGraphCommand } from "./command.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
 import type { SourceStreamEvent } from "./protocol/types.mjs";
@@ -160,7 +160,7 @@ export async function* streamState(
       config: LangGraphRunnableConfig | undefined,
       options?: {
         checkpointer?: BaseCheckpointSaver | null;
-        accessContext?: GraphFactoryConfig["accessContext"];
+        accessContext?: ServerRuntime["accessContext"];
         context?: unknown;
       }
     ) => Promise<Pregel<any, any, any, any, any>>;
@@ -486,7 +486,7 @@ export async function* streamStateV2(
       config: LangGraphRunnableConfig | undefined,
       options?: {
         checkpointer?: BaseCheckpointSaver | null;
-        accessContext?: GraphFactoryConfig["accessContext"];
+        accessContext?: ServerRuntime["accessContext"];
         context?: unknown;
       }
     ) => Promise<Pregel<any, any, any, any, any>>;

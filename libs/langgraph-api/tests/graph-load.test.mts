@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { MemorySaver } from "@langchain/langgraph";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { GraphFactoryConfig } from "../src/graph/api.mjs";
+import type { ServerRuntime } from "../src/graph/api.mjs";
 import { gatherIterator } from "./utils.mjs";
 import { getGraph, GRAPHS } from "../src/graph/load.mjs";
 import { resolveGraph } from "../src/graph/load.utils.mjs";
@@ -21,7 +21,7 @@ afterEach(() => {
   delete GRAPHS[graphId];
 });
 
-describe("graph factory config", () => {
+describe("graph factory runtime", () => {
   it("passes context through the resolved factory without changing config", async () => {
     const config = { configurable: { legacy: "kept" } };
     const context = { tenant: "current" };
@@ -95,7 +95,7 @@ describe("graph factory config", () => {
     "passes current context before streaming (protocol v2: %s)",
     async (protocolV2) => {
       const contexts: Array<{
-        accessContext: GraphFactoryConfig["accessContext"] | undefined;
+        accessContext: ServerRuntime["accessContext"] | undefined;
         context: unknown;
       }> = [];
       const checkpointer = new MemorySaver();

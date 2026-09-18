@@ -11,7 +11,7 @@ import type {
 import { HTTPException } from "hono/http-exception";
 import {
   type CompiledGraphFactory,
-  type GraphFactoryConfig,
+  type ServerRuntime,
   resolveGraph,
 } from "./load.utils.mjs";
 import type { GraphSchema, GraphSpec } from "./parser/index.mjs";
@@ -86,7 +86,7 @@ export async function getGraph(
   options?: {
     checkpointer?: BaseCheckpointSaver | null;
     store?: BaseStore;
-    accessContext?: GraphFactoryConfig["accessContext"];
+    accessContext?: ServerRuntime["accessContext"];
     context?: unknown;
   }
 ) {
@@ -95,14 +95,12 @@ export async function getGraph(
   const accessContext = options?.accessContext ?? "assistants.read";
   const compiled =
     typeof GRAPHS[graphId] === "function"
-      ? await GRAPHS[graphId]({
-          ...(config ?? { configurable: {} }),
-          accessContext,
-          context:
-            accessContext === "threads.create_run"
-              ? options?.context
-              : undefined,
-        })
+      ? await GRAPHS[graphId](
+          config ?? { configurable: {} },
+          accessContext === "threads.create_run"
+            ? { accessContext, executionRuntime: { context: options?.context } }
+            : { accessContext, executionRuntime: null }
+        )
       : GRAPHS[graphId];
 
   if (typeof options?.checkpointer !== "undefined") {

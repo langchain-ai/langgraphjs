@@ -13,20 +13,19 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-export interface GraphFactoryConfig<Context = unknown> extends Omit<
-  LangGraphRunnableConfig,
-  "context"
-> {
-  accessContext:
-    | "threads.create_run"
-    | "assistants.read"
-    | "threads.read"
-    | "threads.update";
-  context?: Context;
-}
+export type ServerRuntime<Context = unknown> =
+  | {
+      accessContext: "threads.create_run";
+      executionRuntime: { context: Context | undefined };
+    }
+  | {
+      accessContext: "assistants.read" | "threads.read" | "threads.update";
+      executionRuntime: null;
+    };
 
 export type CompiledGraphFactory<T extends string> = (
-  config: GraphFactoryConfig
+  config: LangGraphRunnableConfig,
+  runtime: ServerRuntime
 ) => Promise<CompiledGraph<T>>;
 
 export async function resolveGraph(
@@ -61,7 +60,10 @@ export async function resolveGraph(
   type GraphUnknown =
     | GraphLike
     | Promise<GraphLike>
-    | ((config: GraphFactoryConfig) => GraphLike | Promise<GraphLike>)
+    | ((
+        config: LangGraphRunnableConfig,
+        runtime: ServerRuntime
+      ) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
@@ -112,8 +114,11 @@ export async function resolveGraph(
       };
 
       if (typeof graph === "function") {
-        return async (config: GraphFactoryConfig) => {
-          const graphLike = await graph(config);
+        return async (
+          config: LangGraphRunnableConfig,
+          runtime: ServerRuntime
+        ) => {
+          const graphLike = await graph(config, runtime);
           return afterResolve(graphLike);
         };
       }

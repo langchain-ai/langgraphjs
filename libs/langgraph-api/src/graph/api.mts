@@ -6,4 +6,4 @@ export {
   getGraphKeys,
 } from "./load.mjs";
 
-export type { GraphFactoryConfig } from "./load.utils.mjs";
+export type { ServerRuntime } from "./load.utils.mjs";

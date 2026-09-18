@@ -2,4 +2,4 @@
 "@langchain/langgraph-api": minor
 ---
 
-Pass run context to native Node graph factories through `GraphFactoryConfig.context`. Add `accessContext` to distinguish execution from assistant inspection and thread state operations while preserving the existing single config argument.
+Pass a typed `ServerRuntime` as the second graph factory argument. Runs and resumes receive `executionRuntime.context`; assistant inspection and thread state operations receive `executionRuntime: null`. Existing config-only factories remain supported.
