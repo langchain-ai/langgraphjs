@@ -119,6 +119,7 @@ export class AgentServerQueueAdapter<
     this.#threadId = threadId;
     this.#ensureWatching(threadId);
     const startedEventsBefore = this.#startedEventCount;
+    const generationAtEnqueue = this.#hydrateGeneration;
     const id = uuidv7();
     this.#store.setState((current) => [
       ...current,
@@ -142,7 +143,13 @@ export class AgentServerQueueAdapter<
         )
       );
       // A run may have started before we learned its id; re-check now.
-      if (this.#startedEventCount !== startedEventsBefore) {
+      // Skip if detach()/hydrate() rebound the adapter to another thread
+      // in the meantime — `threadId` here is this call's own thread, not
+      // necessarily the one the adapter is currently watching.
+      if (
+        this.#startedEventCount !== startedEventsBefore &&
+        this.#hydrateGeneration === generationAtEnqueue
+      ) {
         void this.#refreshPending(threadId);
       }
     } catch (error) {

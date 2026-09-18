@@ -622,4 +622,49 @@ describe("AgentServerQueueAdapter", () => {
     });
   });
 
+  it("a late create() doesn't refresh a thread the adapter has since left, once detach()/hydrate() rebound it elsewhere", async () => {
+    const { runs, getThread, emitStarted } = makeFakeBackend();
+    const createDeferred = deferred<{ run_id: string }>();
+    (runs.create as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      createDeferred.promise
+    );
+    const listMock = runs.list as ReturnType<typeof vi.fn>;
+    // thread-a has nothing else pending; thread-b has run-b1.
+    listMock.mockImplementation(async (threadId: string) =>
+      threadId === "thread-b"
+        ? [{ run_id: "run-b1", created_at: new Date().toISOString() }]
+        : []
+    );
+    const store = makeStore();
+    const adapter = new AgentServerQueueAdapter<State>(
+      runs,
+      "assistant-1",
+      store,
+      vi.fn(),
+      getThread
+    );
+
+    const enqueuePromise = adapter.enqueue("thread-a", { count: 1 }, undefined); // create() deferred
+
+    adapter.detach();
+    await adapter.hydrate("thread-b");
+    emitStarted(); // bumps the shared started-event counter; also re-checks thread-b
+    await vi.waitFor(() =>
+      expect(store.getSnapshot().find((e) => e.runId === "run-b1")).toBeDefined()
+    );
+
+    createDeferred.resolve({ run_id: "run-a1" }); // thread-a's create() finally lands
+    await enqueuePromise;
+    await vi.waitFor(() =>
+      expect(store.getSnapshot().find((e) => e.runId === "run-a1")).toBeDefined()
+    );
+
+    // Must never have queried thread-a's (empty) pending list and used it
+    // to wipe thread-b's queue.
+    expect(listMock).not.toHaveBeenCalledWith(
+      "thread-a",
+      expect.anything()
+    );
+    expect(store.getSnapshot().find((e) => e.runId === "run-b1")).toBeDefined();
+  });
 });
