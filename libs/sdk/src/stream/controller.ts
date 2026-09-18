@@ -2589,7 +2589,6 @@ export class StreamController<
   }
 
   #settleParkedInterruptsOnTerminal(event: Event): void {
-    if (this.#pendingHydrationInterruptEvents.length === 0) return;
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
     const status = (event as LifecycleEvent).params.data?.event;
@@ -2600,7 +2599,22 @@ export class StreamController<
     ) {
       return;
     }
-    void this.#settleParkedInterrupts();
+    const hasParkedInterrupts =
+      this.#pendingHydrationInterruptEvents.length > 0;
+    const hydratedInterruptIds = this.#hydratedActiveInterruptIds;
+    const hasHydratedInterrupts =
+      hydratedInterruptIds != null &&
+      this.rootStore
+        .getSnapshot()
+        .interrupts.some(
+          (interrupt) =>
+            interrupt.id != null && hydratedInterruptIds.has(interrupt.id)
+        );
+    if (!hasParkedInterrupts && !hasHydratedInterrupts) return;
+    void this.#settleParkedInterrupts(
+      status,
+      hasHydratedInterrupts && !hasParkedInterrupts
+    );
   }
 
   /**
@@ -2611,8 +2625,15 @@ export class StreamController<
    * SSE replays the thread buffer on connect with no marker for where the
    * replay ends. `state.tasks[].interrupts` is authoritative: parked ids it
    * lists are live, the rest are history.
+   *
+   * The same reconciliation clears an interrupt seeded by `hydrate()` when a
+   * different client resumes the thread and this controller only observes the
+   * resulting terminal lifecycle event.
    */
-  async #settleParkedInterrupts(): Promise<void> {
+  async #settleParkedInterrupts(
+    terminalStatus: "interrupted" | "completed" | "failed",
+    settleHydratedInterrupts: boolean
+  ): Promise<void> {
     const makePromise = async () => {
       try {
         const threadId = this.#currentThreadId;
@@ -2623,7 +2644,8 @@ export class StreamController<
             this.#disposed ||
             this.#currentThreadId !== threadId ||
             this.#submitGeneration !== generation ||
-            this.#pendingHydrationInterruptEvents.length === 0
+            (!settleHydratedInterrupts &&
+              this.#pendingHydrationInterruptEvents.length === 0)
           ) {
             return;
           }
@@ -2638,12 +2660,21 @@ export class StreamController<
           // deadline rather than stranding the parked interrupts.
           const state = await this.#reconcilePendingInterruptsFromServer();
           if (state != null) {
-            const settled = [...(this.#hydratedActiveInterruptIds ?? [])].some(
-              (id) => parkedIds.has(id)
-            );
-            if (settled || !isThreadStateActive(state)) {
-              this.#pendingHydrationInterruptEvents = [];
-              return;
+            if (settleHydratedInterrupts) {
+              if (
+                terminalStatus === "interrupted" ||
+                !isThreadStateActive(state)
+              ) {
+                return;
+              }
+            } else {
+              const settled = [
+                ...(this.#hydratedActiveInterruptIds ?? []),
+              ].some((id) => parkedIds.has(id));
+              if (settled || !isThreadStateActive(state)) {
+                this.#pendingHydrationInterruptEvents = [];
+                return;
+              }
             }
           }
           if (Date.now() >= deadline) return;
