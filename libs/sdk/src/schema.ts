@@ -172,6 +172,12 @@ export interface Interrupt<TValue = unknown> {
   value?: TValue;
 
   /**
+   * JSON Schema for the value expected when resuming this interrupt,
+   * if the graph provided one.
+   */
+  response_schema?: Record<string, unknown>;
+
+  /**
    * Protocol namespace tuple for resume targeting (`[]` at root).
    * Populated for nested subgraph / subagent interrupts so
    * `respond({ interruptId })` can resume without a separate
