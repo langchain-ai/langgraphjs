@@ -26,6 +26,7 @@ import { MaxWebSocketReconnectAttemptsError } from "../error.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   reconnectDelayMs,
+  type ReconnectInfo,
 } from "../../../utils/reconnect.js";
 
 const WEB_SOCKET_CONNECTING = 0;
@@ -43,10 +44,8 @@ export interface WebSocketReconnectOptions {
    */
   maxReconnectAttempts?: number;
 
-  /**
-   * Invoked before each reconnect attempt (after backoff).
-   */
-  onReconnect?: (options: { attempt: number; cause: unknown }) => void;
+  /** Invoked before each reconnect attempt with its scheduled delay. */
+  onReconnect?: (options: ReconnectInfo) => void;
 }
 
 /**
@@ -81,6 +80,8 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
 
   private readonly onReconnect?: ProtocolWebSocketTransportOptions["onReconnect"];
 
+  private readonly onConnected?: ProtocolWebSocketTransportOptions["onConnected"];
+
   private readonly reconnectDelayMs: (attempt: number) => number;
 
   private onReconnected?: () => void | Promise<void>;
@@ -106,6 +107,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     this.maxReconnectAttempts =
       options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
     this.onReconnect = options.onReconnect;
+    this.onConnected = options.onConnected;
     this.onReconnected = options.onReconnected;
     this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
   }
@@ -149,6 +151,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   }
 
   async open(): Promise<void> {
+    const reconnecting = this.reconnectInFlight != null;
     if (this.closed) {
       throw new Error("Protocol WebSocket transport is closed.");
     }
@@ -187,6 +190,10 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       socket.addEventListener("open", onOpen, { once: true });
       socket.addEventListener("error", onError, { once: true });
     });
+
+    if (!reconnecting) {
+      await this.onConnected?.({ kind: "initial", attempt: 0 });
+    }
   }
 
   async send(
@@ -383,9 +390,11 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       return;
     }
 
-    this.reconnectInFlight = this.#runReconnectLoop(cause).finally(() => {
-      this.reconnectInFlight = null;
-    });
+    this.reconnectInFlight = Promise.resolve()
+      .then(() => this.#runReconnectLoop(cause))
+      .finally(() => {
+        this.reconnectInFlight = null;
+      });
   }
 
   async #runReconnectLoop(initialCause: unknown): Promise<void> {
@@ -396,9 +405,8 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
         return;
       }
 
-      this.onReconnect?.({ attempt, cause: lastError });
-
       const delay = this.reconnectDelayMs(attempt);
+      this.onReconnect?.({ attempt, cause: lastError, delayMs: delay });
       if (delay > 0) {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, delay);
@@ -414,6 +422,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
         if (this.onReconnected) {
           await this.onReconnected();
         }
+        await this.onConnected?.({ kind: "reconnected", attempt });
         return;
       } catch (error) {
         lastError = error;
