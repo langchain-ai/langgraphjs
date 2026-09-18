@@ -1,5 +1,20 @@
 # @langchain/vue
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2831](https://github.com/langchain-ai/langgraphjs/pull/2831) [`3234c69`](https://github.com/langchain-ai/langgraphjs/commit/3234c69530416e2709bf54c53472e640864e7de4) Thanks [@ramon-langchain](https://github.com/ramon-langchain)! - Expose connection lifecycle callbacks for built-in streaming transports.
+  
+  `onConnected` runs after the initial SSE or WebSocket connection becomes usable and after every successful reconnect. Its payload distinguishes an `initial` connection from a `reconnected` connection and includes the reconnect attempt number.
+  
+  `onReconnect` now also receives the scheduled `delayMs`, allowing applications to display accurate retry state before the next connection attempt. React, Vue, Svelte, and Angular stream hooks forward both callbacks.
+
+### Patch Changes
+
+- Updated dependencies [[`3234c69`](https://github.com/langchain-ai/langgraphjs/commit/3234c69530416e2709bf54c53472e640864e7de4), [`3234c69`](https://github.com/langchain-ai/langgraphjs/commit/3234c69530416e2709bf54c53472e640864e7de4), [`11a4535`](https://github.com/langchain-ai/langgraphjs/commit/11a4535762b04f8f28cc98eb7b1e4b682b69e91a), [`2fab6fd`](https://github.com/langchain-ai/langgraphjs/commit/2fab6fda74714cd792fed24e5416cec66fdbc105), [`4fc118f`](https://github.com/langchain-ai/langgraphjs/commit/4fc118fcde8fd6d977c03c8a0a7071912df1873a), [`db4bdad`](https://github.com/langchain-ai/langgraphjs/commit/db4bdad61ddfc6c1113269b131ac2efde3eecf69), [`55fa26b`](https://github.com/langchain-ai/langgraphjs/commit/55fa26be9290fbd89a6e0acb232f04cbc6dedb22)]:
+  - @langchain/langgraph-sdk@1.11.0
+
 ## 1.0.36-rc.2
 
 ### Patch Changes
