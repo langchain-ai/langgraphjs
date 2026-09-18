@@ -365,10 +365,13 @@ export class SubmitCoordinator<
     // Without this, `enqueue` would trap the new submission and
     // `submitRun` never fires for the new thread — leaving a freshly-
     // minted thread id committed to the URL but never to the server.
+    // True for a run this client dispatched (#runAbort) or one it only
+    // observed via the persistent lifecycle listener (started elsewhere —
+    // another tab, a webhook, Slack).
     const hasActiveRun =
       !wasSelfCreated &&
-      this.#runAbort != null &&
-      !this.#runAbort.signal.aborted;
+      ((this.#runAbort != null && !this.#runAbort.signal.aborted) ||
+        this.#rootStore.getSnapshot().isLoading);
     if (hasActiveRun && strategy === "reject") {
       throw new Error(
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
@@ -753,6 +756,15 @@ export class SubmitCoordinator<
    */
   async hydrateQueue(threadId: string): Promise<void> {
     await this.#queueAdapter.hydrate(threadId);
+  }
+
+  /**
+   * Public entry point for {@link #scheduleQueueDrain}. Called by the
+   * controller when `isLoading` settles to `false` for a run this
+   * coordinator never dispatched itself.
+   */
+  scheduleQueueDrainOnObservedIdle(): void {
+    this.#scheduleQueueDrain();
   }
 
   /**

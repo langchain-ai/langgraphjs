@@ -412,6 +412,9 @@ export class StreamController<
     this.#lifecycleLoading = new LifecycleLoadingTracker({
       store: this.rootStore,
       isDisposed: () => this.#disposed,
+      // `#submitter` is assigned just below; this callback only ever
+      // fires later (async), by which point construction has finished.
+      onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -623,10 +626,6 @@ export class StreamController<
       return;
     }
 
-    // Picks up runs pending from before this page load, or another tab.
-    // Fire-and-forget; independent of the root-state fetch below.
-    void this.#submitter.hydrateQueue(this.#currentThreadId);
-
     this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
     // Thread id this hydrate cycle is fetching for; used to detect a thread
     // clear/swap across the getState() await below.
@@ -643,6 +642,10 @@ export class StreamController<
     // silently disables streaming — the pumps open eagerly as before.
     // Flipped to the real signal once we have the state in hand.
     let threadActive = true;
+    // Distinguishes "genuinely mid-flight" from "paused at an interrupt,
+    // waiting on a human" — both make `threadActive` true, but only the
+    // former should seed `isLoading`.
+    let threadActiveWithoutInterrupt = false;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -654,6 +657,9 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      // Refined to `false` below once `state.tasks` is parsed, if it turns
+      // out this "active" state is actually just a parked interrupt.
+      threadActiveWithoutInterrupt = threadActive;
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
@@ -754,6 +760,10 @@ export class StreamController<
         const generationAtFetch = this.#submitGeneration;
         const { activeInterrupts, activeIds } =
           collectActiveInterruptsFromTasks<InterruptType>(state.tasks);
+        // A thread parked at an unresolved interrupt is "active" (the pump
+        // must stay open to observe a resume) but not "loading" — it's
+        // waiting on a human, not mid-computation.
+        if (activeInterrupts.length > 0) threadActiveWithoutInterrupt = false;
         // Server still lists these as pending — drop any local
         // "resolved" tombstone so live replay / later reconcile can
         // keep them visible.
@@ -833,6 +843,16 @@ export class StreamController<
     const thread = this.#ensureThread(hydratedThreadId, !threadActive);
 
     /**
+     * Picks up runs pending from before this page load, or another tab.
+     * Fire-and-forget. Must run after `#ensureThread` above, not before:
+     * `AgentServerQueueAdapter`'s own `getThread` callback also calls
+     * `#ensureThread(threadId, true)`, which would otherwise create
+     * `#thread` with the pump deferred before the line above decides it
+     * should be eager.
+     */
+    void this.#submitter.hydrateQueue(hydratedThreadId);
+
+    /**
      * Start the wildcard lifecycle watcher up-front for existing,
      * active threads. The root content pump runs at `depth: 1`, which
      * covers root-namespace and one-deep events but not arbitrarily-
@@ -849,6 +869,19 @@ export class StreamController<
      */
     if (threadExists && threadActive) {
       thread.startLifecycleWatcher();
+      /**
+       * Seed `isLoading` from the checkpoint itself, not just a live
+       * lifecycle event: a subscriber that joins after a foreign run's
+       * own `running` event already fired would otherwise never observe
+       * it. Excludes a thread merely parked at an interrupt — that's
+       * waiting on a human, not "loading", matching
+       * `LifecycleLoadingTracker`'s own `interrupted → isLoading = false`.
+       */
+      if (threadActiveWithoutInterrupt) {
+        this.rootStore.setState((s) =>
+          s.isLoading ? s : { ...s, isLoading: true }
+        );
+      }
     }
     if (threadExists) {
       /**

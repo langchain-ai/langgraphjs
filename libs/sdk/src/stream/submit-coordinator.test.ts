@@ -640,6 +640,57 @@ describe("SubmitCoordinator", () => {
       await first;
     });
 
+    it("enqueues when the active run was only observed via isLoading (never locally submitted)", async () => {
+      const h = makeHarness();
+      h.rootStore.setState((s) => ({ ...s, isLoading: true }));
+
+      await h.coordinator.submit(
+        { count: 2 },
+        { multitaskStrategy: "enqueue" }
+      );
+
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+      expect(h.queueStore.getSnapshot()[0].values).toEqual({ count: 2 });
+      expect(h.submitRun).not.toHaveBeenCalled();
+    });
+
+    it("rejects when the active run was only observed via isLoading (never locally submitted)", async () => {
+      const h = makeHarness();
+      h.rootStore.setState((s) => ({ ...s, isLoading: true }));
+
+      await expect(
+        h.coordinator.submit({ count: 2 }, { multitaskStrategy: "reject" })
+      ).rejects.toThrow(/already in flight.*reject/);
+      expect(h.submitRun).not.toHaveBeenCalled();
+    });
+
+    it("drains a locally-queued entry once an observed (never self-dispatched) run settles", async () => {
+      // Mirrors what the controller wires up via LifecycleLoadingTracker's
+      // onSettled callback.
+      const h = makeHarness();
+      h.queueStore.setState(() => [
+        {
+          id: "queued-1",
+          values: { count: 2 },
+          options: undefined,
+          createdAt: new Date(),
+        },
+      ]);
+
+      h.coordinator.scheduleQueueDrainOnObservedIdle();
+      await vi.runAllTimersAsync();
+
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.submitRun.mock.calls[0]?.[0]?.input).toEqual({ count: 2 });
+      expect(h.queueStore.getSnapshot()).toHaveLength(0);
+
+      // Clean up the drained submit's own terminal race.
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-drained" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+    });
+
     it("enqueues a follow-up fired in the same tick as dispatch", async () => {
       const h = makeHarness();
       const first = h.coordinator.submit({ count: 1 });

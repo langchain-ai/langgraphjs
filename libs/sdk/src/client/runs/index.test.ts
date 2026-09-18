@@ -94,3 +94,47 @@ describe("runs.cancelMany", () => {
     expect(body).toEqual({ status: "running" });
   });
 });
+
+describe("runs.list", () => {
+  let fetchMock: MockFetch;
+
+  beforeEach(() => {
+    fetchMock = createMockFetch();
+    overrideFetchImplementation(fetchMock);
+    (globalThis as any).fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function parseFetchCall() {
+    const [url] = fetchMock.mock.calls[0];
+    return { url: new URL(url) };
+  }
+
+  it("sends an array-valued param (select) as repeated query entries, not one JSON string", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([]),
+      text: () => Promise.resolve("[]"),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({ apiKey: "test-api-key" });
+    await client.runs.list("thread_abc", {
+      status: "pending",
+      select: ["run_id", "kwargs", "created_at", "multitask_strategy"],
+    });
+
+    const { url } = parseFetchCall();
+    expect(url.searchParams.getAll("select")).toEqual([
+      "run_id",
+      "kwargs",
+      "created_at",
+      "multitask_strategy",
+    ]);
+    expect(url.searchParams.get("status")).toBe("pending");
+  });
+});
