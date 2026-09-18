@@ -5,6 +5,7 @@ import type {
   Message,
   SubscribeParams,
 } from "@langchain/protocol";
+import type { RunsClient } from "../runs/index.js";
 
 /**
  * Handle returned by {@link TransportAdapter.openEventStream} representing
@@ -136,4 +137,15 @@ export interface AgentServerAdapter extends TransportAdapter {
       checkpoint?: { checkpoint_id?: string } | null;
     }>
   >;
+
+  /**
+   * Backs `useStream`'s `"enqueue"` multitask strategy with real, durable
+   * runs instead of an in-memory client-only queue. Omit it and
+   * `"enqueue"` keeps today's client-only defer behavior, unchanged.
+   *
+   * Only opted into explicitly here or via `serverQueue: true` on
+   * `useStream`; never inferred from a transport's ability to reach a
+   * real Agent Server.
+   */
+  serverQueue?: Pick<RunsClient, "create" | "list" | "cancel">;
 }
