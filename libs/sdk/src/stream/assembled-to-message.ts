@@ -40,6 +40,8 @@ export interface AssembledToMessageInput {
   toolCallId?: string;
   /** Final-token usage (populated on `message-finish`). */
   usage?: UsageInfo;
+  /** Response metadata (populated on `message-finish`). */
+  finishMetadata?: Record<string, unknown>;
 }
 
 /**
@@ -51,7 +53,7 @@ export interface AssembledToMessageInput {
 export function assembledToBaseMessage(
   input: AssembledToMessageInput
 ): BaseMessage {
-  const { id, role, blocks, toolCallId, usage } = input;
+  const { id, role, blocks, toolCallId, usage, finishMetadata } = input;
   const textContent = extractContentString(blocks);
   const toolCalls = extractToolCalls(blocks);
   const toolCallChunks = extractToolCallChunks(blocks);
@@ -101,7 +103,10 @@ export function assembledToBaseMessage(
         ...(additionalKwargs != null
           ? { additional_kwargs: additionalKwargs }
           : {}),
-        response_metadata: { output_version: "v1" as const },
+        response_metadata: {
+          ...finishMetadata,
+          output_version: "v1" as const,
+        },
       };
       return toolCallChunks.length > 0
         ? new AIMessageChunk(
@@ -127,6 +132,7 @@ export function assembledMessageToBaseMessage(
     blocks: assembled.blocks,
     toolCallId: extras.toolCallId,
     usage: assembled.usage,
+    finishMetadata: assembled.finishMetadata,
   });
 }
 

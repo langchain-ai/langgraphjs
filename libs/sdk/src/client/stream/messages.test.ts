@@ -365,6 +365,53 @@ describe("MessageAssembler", () => {
     expect(errUpdate?.message.error?.message).toBe("Something went wrong");
     expect(errUpdate?.message.error?.code).toBe("ERR");
   });
+
+  it.each([
+    ["metadata", "langchain-core (Python)"],
+    ["responseMetadata", "langgraph-core (JS)"],
+  ])("surfaces message-finish %s as response_metadata (%s)", (key) => {
+    const assembler = new MessageAssembler();
+
+    assembler.consume(
+      eventOf("messages", { event: "message-start", id: "msg_f", role: "ai" }, {
+        namespace: [],
+        node: "model",
+      }) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-finish",
+          index: 0,
+          content: { type: "text", text: "Which program?" },
+        },
+        { namespace: [], node: "model" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const finished = assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "message-finish",
+          [key]: { model_name: "claude-sonnet-4-6", stop_reason: "end_turn" },
+        },
+        { namespace: [], node: "model" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(finished?.message.finishMetadata).toEqual({
+      model_name: "claude-sonnet-4-6",
+      stop_reason: "end_turn",
+    });
+
+    const message = assembledMessageToBaseMessage(finished!.message, "ai");
+    expect(message.response_metadata).toEqual({
+      model_name: "claude-sonnet-4-6",
+      stop_reason: "end_turn",
+      output_version: "v1",
+    });
+  });
 });
 
 describe("StreamingMessageAssembler", () => {
