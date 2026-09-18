@@ -101,6 +101,13 @@ export const TASKS = "__pregel_tasks";
 export const PUSH = "__pregel_push";
 export const PULL = "__pregel_pull";
 
+/**
+ * Prefix of the channel backing a waiting edge, i.e. `addEdge([...], target)`.
+ * Full form is `join:<start>+<start>:<target>`; built in `StateGraph.compile`
+ * and persisted in checkpoints, so the value must not change.
+ */
+export const WAITING_EDGE_CHANNEL_PREFIX = "join:";
+
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
 
