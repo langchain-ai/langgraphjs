@@ -9,7 +9,9 @@ import {
   type PendingWrite,
   type CheckpointMetadata,
   CheckpointPendingWrite,
+  TASKS,
   WRITES_IDX_MAP,
+  maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 
 export type MongoDBSaverParams = {
@@ -214,6 +216,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       doc.type,
       doc.checkpoint.value("utf8")
     )) as Checkpoint;
+
+    if (checkpoint.v < 4 && doc.parent_checkpoint_id != null) {
+      await this.migratePendingSends(
+        checkpoint,
+        thread_id,
+        checkpoint_ns,
+        doc.parent_checkpoint_id
+      );
+    }
+
     const serializedWrites = await this.db
       .collection(this.checkpointWritesCollectionName)
       .find(configurableValues)
@@ -249,6 +261,47 @@ export class MongoDBSaver extends BaseCheckpointSaver {
             }
           : undefined,
     };
+  }
+
+  /**
+   * Rebuilds `channel_values[TASKS]` for checkpoints written before
+   * `Checkpoint.pending_sends` was removed (`v < 4`). Those checkpoints kept
+   * their queued sends on the parent's `__pregel_tasks` writes, so without
+   * this the sends are dropped and the tasks are never scheduled on resume.
+   */
+  protected async migratePendingSends(
+    checkpoint: Checkpoint,
+    threadId: string,
+    checkpointNs: string,
+    parentCheckpointId: string
+  ) {
+    const sendWrites = await this.db
+      .collection(this.checkpointWritesCollectionName)
+      .find({
+        thread_id: threadId,
+        checkpoint_ns: checkpointNs,
+        checkpoint_id: parentCheckpointId,
+        channel: TASKS,
+      })
+      .sort({ task_id: 1, idx: 1 })
+      .toArray();
+
+    const mutableCheckpoint = checkpoint;
+
+    mutableCheckpoint.channel_values ??= {};
+    mutableCheckpoint.channel_values[TASKS] = await Promise.all(
+      sendWrites.map((write) =>
+        this.serde.loadsTyped(write.type, write.value.value("utf8"))
+      )
+    );
+
+    mutableCheckpoint.channel_versions ??= {};
+    mutableCheckpoint.channel_versions[TASKS] =
+      Object.keys(mutableCheckpoint.channel_versions).length > 0
+        ? maxChannelVersion(
+            ...Object.values(mutableCheckpoint.channel_versions)
+          )
+        : this.getNextVersion(undefined);
   }
 
   /**
@@ -312,6 +365,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         doc.type,
         doc.checkpoint.value("utf8")
       )) as Checkpoint;
+
+      if (checkpoint.v < 4 && doc.parent_checkpoint_id != null) {
+        await this.migratePendingSends(
+          checkpoint,
+          doc.thread_id,
+          doc.checkpoint_ns,
+          doc.parent_checkpoint_id
+        );
+      }
+
       const metadata = (await this.serde.loadsTyped(
         doc.type,
         doc.metadata.value("utf8")
