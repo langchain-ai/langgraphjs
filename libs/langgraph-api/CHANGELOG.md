@@ -1,5 +1,16 @@
 # @langchain/langgraph-api
 
+## 1.5.0
+
+### Minor Changes
+
+- [#2850](https://github.com/langchain-ai/langgraphjs/pull/2850) [`48245a8`](https://github.com/langchain-ai/langgraphjs/commit/48245a84c5348ea09780d85c41b6e5a09bb318df) Thanks [@casparb](https://github.com/casparb)! - Pass a typed `ServerRuntime` as the second graph factory argument. Runs and resumes receive `executionRuntime.context`; assistant inspection and thread state operations receive `executionRuntime: null`. Existing config-only factories remain supported.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.0
+
 ## 1.4.6
 
 ### Patch Changes
