@@ -4,6 +4,17 @@
  * legacy and v2 clients do not diverge.
  */
 
+export interface ReconnectInfo {
+  attempt: number;
+  cause: unknown;
+  delayMs: number;
+}
+
+export interface ConnectedInfo {
+  kind: "initial" | "reconnected";
+  attempt: number;
+}
+
 /** Default max reconnect / retry attempts after an unexpected disconnect. */
 export const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
 

@@ -66,6 +66,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
   private readonly onReconnect?: ProtocolSseTransportOptions["onReconnect"];
 
+  private readonly onConnected?: ProtocolSseTransportOptions["onConnected"];
+
   private readonly reconnectDelayMs: (attempt: number) => number;
 
   private readonly paths?: ProtocolTransportPaths;
@@ -94,6 +96,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     // disable.
     this.idleReconnect = options.idleReconnect ?? DEFAULT_IDLE_RECONNECT;
     this.onReconnect = options.onReconnect;
+    this.onConnected = options.onConnected;
     this.reconnectDelayMs = options.reconnectDelayMs ?? reconnectDelayMs;
     this.threadId = options.threadId ?? "";
     this.paths = options.paths;
@@ -302,6 +305,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             );
           }
 
+          await this.onConnected?.({
+            kind: attempt === 0 ? "initial" : "reconnected",
+            attempt,
+          });
+
           if (!readySettled) {
             readySettled = true;
             resolveReady();
@@ -380,8 +388,8 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             streamQueue.close(toError(error));
             return;
           }
-          this.onReconnect?.({ attempt, cause: error });
           const delay = this.reconnectDelayMs(attempt);
+          this.onReconnect?.({ attempt, cause: error, delayMs: delay });
           if (delay > 0) {
             await new Promise<void>((resolve) => {
               setTimeout(resolve, delay);
