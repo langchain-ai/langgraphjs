@@ -599,6 +599,8 @@ export class SubmitCoordinator<
     setTimeout(() => {
       if (this.#getDisposed()) return;
       if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
+      if (this.#rootStore.getSnapshot().isLoading) return;
+
       this.#queueAdapter.onIdle?.((values, drainOptions) =>
         this.submit(
           values,

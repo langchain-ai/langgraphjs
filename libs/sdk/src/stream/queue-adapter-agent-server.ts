@@ -217,14 +217,14 @@ export class AgentServerQueueAdapter<
 
   /**
    * Lazily opens ONE subscription for this adapter's lifetime, not one
-   * per run. `LifecycleEvent` carries no `run_id`, so a `"started"`
+   * per run. `LifecycleEvent` carries no `run_id`, so a `"running"`
    * event triggers a `runs.list` re-check instead of a direct match.
    */
   #ensureWatching(threadId: string): void {
     if (this.#unsubscribe) return;
     this.#unsubscribe = this.#getThread(threadId).onEvent((event) => {
       if (event.method !== "lifecycle") return;
-      if (event.params.data.event !== "started") return;
+      if (event.params.data.event !== "running") return;
       this.#startedEventCount++;
       void this.#refreshPending(threadId);
     });

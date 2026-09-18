@@ -691,6 +691,26 @@ describe("SubmitCoordinator", () => {
       await vi.runAllTimersAsync();
     });
 
+    it("does not drain if a second observed run is already active when the drain macrotask fires", async () => {
+      const h = makeHarness();
+      h.queueStore.setState(() => [
+        {
+          id: "queued-1",
+          values: { count: 2 },
+          options: undefined,
+          createdAt: new Date(),
+        },
+      ]);
+
+      h.coordinator.scheduleQueueDrainOnObservedIdle();
+      // A second observed run starts before the drain's setTimeout(0) fires.
+      h.rootStore.setState((s) => ({ ...s, isLoading: true }));
+      await vi.runAllTimersAsync();
+
+      expect(h.submitRun).not.toHaveBeenCalled();
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+    });
+
     it("enqueues a follow-up fired in the same tick as dispatch", async () => {
       const h = makeHarness();
       const first = h.coordinator.submit({ count: 1 });
@@ -1047,7 +1067,7 @@ describe("SubmitCoordinator", () => {
       await first;
     });
 
-    it("removes a queued entry from queueStore once the server promotes it (lifecycle 'started' + runs.list no longer pending)", async () => {
+    it("removes a queued entry from queueStore once the server promotes it (lifecycle 'running' + runs.list no longer pending)", async () => {
       const fakeRuns = {
         create: vi.fn().mockResolvedValue({ run_id: "run-queued-1" }),
         list: vi.fn().mockResolvedValue([]), // promoted; no longer pending
@@ -1065,11 +1085,11 @@ describe("SubmitCoordinator", () => {
       expect(h.queueStore.getSnapshot()[0].runId).toBe("run-queued-1");
 
       // Simulate the server promoting the queued run: a lifecycle
-      // "started" event on the thread triggers the adapter's re-check.
+      // "running" event on the thread triggers the adapter's re-check.
       const onEventCalls = (h.thread.onEvent as ReturnType<typeof vi.fn>).mock
         .calls;
       const listener = onEventCalls[onEventCalls.length - 1][0];
-      listener({ method: "lifecycle", params: { data: { event: "started" } } });
+      listener({ method: "lifecycle", params: { data: { event: "running" } } });
       await vi.runAllTimersAsync();
 
       expect(h.queueStore.getSnapshot()).toHaveLength(0);

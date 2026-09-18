@@ -39,9 +39,12 @@ function makeFakeBackend() {
       return () => listeners.delete(listener);
     },
   })) as unknown as (threadId: string) => Pick<ThreadStream, "onEvent">;
+  // The root run's own initial transition is reported as "running", not
+  // "started" ("started" is reserved for subgraph-hierarchy discovery and
+  // never fires for the root namespace).
   const emitStarted = () => {
     for (const l of listeners)
-      l({ method: "lifecycle", params: { data: { event: "started" } } });
+      l({ method: "lifecycle", params: { data: { event: "running" } } });
   };
   return { runs: runs as unknown as QueueRunsClient, getThread, emitStarted, listeners };
 }
@@ -241,7 +244,7 @@ describe("AgentServerQueueAdapter", () => {
     expect(store.getSnapshot().map((e) => e.runId)).toEqual(["run-b"]);
   });
 
-  it("pops an entry once a lifecycle 'started' event arrives and runs.list no longer reports it pending", async () => {
+  it("pops an entry once a lifecycle 'running' event arrives and runs.list no longer reports it pending", async () => {
     const { runs, getThread, emitStarted } = makeFakeBackend();
     (runs.create as ReturnType<typeof vi.fn>).mockResolvedValue({ run_id: "run-1" });
     const listMock = runs.list as ReturnType<typeof vi.fn>;
@@ -533,7 +536,7 @@ describe("AgentServerQueueAdapter", () => {
     expect(reportedError.errors).toEqual([boom1, boom2]);
   });
 
-  it("enqueue() re-checks pending status after learning its runId if a 'started' event fired while create() was in flight", async () => {
+  it("enqueue() re-checks pending status after learning its runId if a 'running' event fired while create() was in flight", async () => {
     const { runs, getThread, emitStarted } = makeFakeBackend();
     const createDeferred = deferred<{ run_id: string }>();
     (runs.create as ReturnType<typeof vi.fn>).mockReturnValue(
