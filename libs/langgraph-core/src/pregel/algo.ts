@@ -109,7 +109,7 @@ function triggersNextStep(
 }
 
 // Avoids unnecessary double iteration
-function maxChannelMapVersion(
+export function maxChannelMapVersion(
   channelVersions: Record<string, number | string>
 ): number | string | undefined {
   let maxVersion: number | string | undefined;

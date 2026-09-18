@@ -4,7 +4,13 @@ import type {
   ChannelVersions,
   CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
-import { CONFIG_KEY_CHECKPOINT_MAP, START } from "../../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  CONFIG_KEY_CHECKPOINT_MAP,
+  START,
+  WAITING_EDGE_CHANNEL_PREFIX,
+} from "../../constants.js";
 
 export function getNullChannelVersion(currentVersions: ChannelVersions) {
   // Short circuit for commonly used channels such as __start__
@@ -220,3 +226,157 @@ export const combineCallbacks = (
   }
   return [callback1, callback2] as Callbacks;
 };
+
+function isNodeNameSet(value: unknown): value is Set<string> {
+  const candidate = value as Set<string> | undefined;
+  return (
+    typeof candidate?.has === "function" && typeof candidate?.size === "number"
+  );
+}
+
+/** Is this channel the one backing a waiting edge? */
+function isWaitingEdgeChannel(name: string): boolean {
+  return name.startsWith(WAITING_EDGE_CHANNEL_PREFIX);
+}
+
+/**
+ * The node a waiting edge feeds, read from its channel name.
+ *
+ * Splitting on the last colon is safe because `StateGraph.addNode` rejects node
+ * names containing {@link CHECKPOINT_NAMESPACE_END}.
+ */
+function waitingEdgeTarget(channelName: string): string {
+  return channelName.slice(
+    channelName.lastIndexOf(CHECKPOINT_NAMESPACE_END) + 1
+  );
+}
+
+/**
+ * The nodes a waiting edge lists, read from its channel name.
+ *
+ * `addEdge` builds the name as `join:<starts joined by +>:<end>`, so the set is
+ * recoverable without the channel definitions. The join character is **not**
+ * reserved in node names, so the split is ambiguous for a node named `a+b`;
+ * callers check the result against what the barrier has seen and drop it when the
+ * two disagree.
+ */
+function waitingEdgeStarts(channelName: string): string[] | undefined {
+  const body = channelName.slice(
+    WAITING_EDGE_CHANNEL_PREFIX.length,
+    channelName.lastIndexOf(CHECKPOINT_NAMESPACE_END)
+  );
+  return body === "" ? undefined : body.split("+");
+}
+
+// Both collectors return `WaitingEdgeDescription`'s shape without naming it:
+// `../types.js` already imports this module, so importing it back is a cycle.
+
+/**
+ * Collect the waiting edges — `addEdge([...], target)` — that have received
+ * some of their listed nodes but not all, so `target` has not run.
+ *
+ * The barrier channel clears `seen` when it releases, so a partially filled
+ * `seen` means the edge received writes and has not released.
+ *
+ * @param channels - Live channels, e.g. from `channelsFromCheckpoint`.
+ */
+export function collectWaitingEdges(
+  channels: Record<string, unknown>
+): { target: string; completed: string[]; missing: string[] }[] {
+  const waiting: { target: string; completed: string[]; missing: string[] }[] =
+    [];
+  for (const [name, channel] of Object.entries(channels)) {
+    if (!isWaitingEdgeChannel(name)) continue;
+    const { names, seen, released } = (channel ?? {}) as {
+      names?: unknown;
+      seen?: unknown;
+      released?: unknown;
+    };
+    // Narrows both from `unknown`; no channel carrying this prefix is anything
+    // other than a barrier, so this is a type guard rather than a runtime one.
+    if (!isNodeNameSet(names) || !isNodeNameSet(seen)) continue;
+    // An inclusive barrier that released when the run settled is not stalled: its
+    // target is a scheduled task, and consume() will clear it.
+    if (released === true) continue;
+    // An empty `seen` means the edge released; a full one means it is waiting for
+    // its target rather than for a write, which is not a dropped write.
+    if (seen.size === 0 || seen.size >= names.size) continue;
+    waiting.push({
+      target: waitingEdgeTarget(name),
+      completed: [...seen],
+      missing: [...names].filter((node) => !seen.has(node)),
+    });
+  }
+  return waiting;
+}
+
+/**
+ * Collect unreleased waiting edges from a checkpoint's stored channel values,
+ * without the channel definitions.
+ *
+ * A barrier stores only the names it has seen, and `consume()` clears them when
+ * the edge releases — so a stored non-empty list means the edge received writes
+ * and never released, and no expected-name set is needed to detect it. The listed nodes
+ * come from the channel name, which encodes them — so `missing` is available
+ * here too, except for a name this cannot parse unambiguously.
+ *
+ * @param values - `checkpoint.channel_values`.
+ * @param namespace - Recorded on each entry so the caller can tell whose it is.
+ */
+export function collectWaitingEdgesFromValues(
+  values: Record<string, unknown>,
+  namespace: string
+): {
+  target: string;
+  completed: string[];
+  missing?: string[];
+  namespace: string;
+  path: string[];
+}[] {
+  const waiting: {
+    target: string;
+    completed: string[];
+    missing?: string[];
+    namespace: string;
+    path: string[];
+  }[] = [];
+  // A namespace is `node:taskId` per level, joined by the separator; the task
+  // ids are per-invocation, so the node names are the stable part.
+  const path = namespace
+    .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+    .map((segment) => segment.split(CHECKPOINT_NAMESPACE_END)[0])
+    .filter((segment) => segment !== "");
+  for (const [name, value] of Object.entries(values)) {
+    if (!isWaitingEdgeChannel(name)) continue;
+    // `NamedBarrierValue` stores `seen`; the `defer` variant stores
+    // `[seen, finished]`.
+    const seen =
+      Array.isArray(value) && Array.isArray(value[0]) ? value[0] : value;
+    if (!Array.isArray(seen) || seen.length === 0) continue;
+    if (!seen.every((entry): entry is string => typeof entry === "string")) {
+      continue;
+    }
+    // The listed nodes come from the channel name, which encodes them. A parse
+    // the barrier's own contents contradict is one this cannot read — a node
+    // named with the join character, or a state key that merely looks like a
+    // barrier — and it yields no set rather than a wrong one.
+    const parsed = waitingEdgeStarts(name);
+    const starts =
+      parsed !== undefined && seen.every((node) => parsed.includes(node))
+        ? parsed
+        : undefined;
+    // Every listed node has written, so the edge is waiting for its target to
+    // run rather than for a write: nothing was dropped. The same guard as the
+    // definitions-based collector, which reads the count off `names`.
+    if (starts !== undefined && seen.length >= starts.length) continue;
+    const missing = starts?.filter((start) => !seen.includes(start));
+    waiting.push({
+      target: waitingEdgeTarget(name),
+      completed: [...seen],
+      ...(missing ? { missing } : {}),
+      namespace,
+      path,
+    });
+  }
+  return waiting;
+}
