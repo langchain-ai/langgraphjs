@@ -1,4 +1,8 @@
-import type { CompiledGraph, Graph } from "@langchain/langgraph";
+import type {
+  CompiledGraph,
+  Graph,
+  LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 import * as uuid from "@langchain/core/utils/uuid";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -9,9 +13,20 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-export type CompiledGraphFactory<T extends string> = (config: {
-  configurable?: Record<string, unknown>;
-}) => Promise<CompiledGraph<T>>;
+export type ServerRuntime<Context = unknown> =
+  | {
+      accessContext: "threads.create_run";
+      executionRuntime: { context: Context | undefined };
+    }
+  | {
+      accessContext: "assistants.read" | "threads.read" | "threads.update";
+      executionRuntime: null;
+    };
+
+export type CompiledGraphFactory<T extends string> = (
+  config: LangGraphRunnableConfig,
+  runtime: ServerRuntime
+) => Promise<CompiledGraph<T>>;
 
 export async function resolveGraph(
   spec: string,
@@ -45,9 +60,10 @@ export async function resolveGraph(
   type GraphUnknown =
     | GraphLike
     | Promise<GraphLike>
-    | ((config: {
-        configurable?: Record<string, unknown>;
-      }) => GraphLike | Promise<GraphLike>)
+    | ((
+        config: LangGraphRunnableConfig,
+        runtime: ServerRuntime
+      ) => GraphLike | Promise<GraphLike>)
     | undefined;
 
   const isGraph = (graph: GraphLike): graph is Graph<string> => {
@@ -98,8 +114,11 @@ export async function resolveGraph(
       };
 
       if (typeof graph === "function") {
-        return async (config: { configurable?: Record<string, unknown> }) => {
-          const graphLike = await graph(config);
+        return async (
+          config: LangGraphRunnableConfig,
+          runtime: ServerRuntime
+        ) => {
+          const graphLike = await graph(config, runtime);
           return afterResolve(graphLike);
         };
       }
