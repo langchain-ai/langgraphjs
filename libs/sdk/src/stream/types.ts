@@ -472,10 +472,10 @@ export interface StreamSubmitOptions<
    * - `"reject"` — error out client-side when a run is already in
    *   flight.
    *
-   * Only `"rollback"` is honoured client-side today; the other three
-   * are accepted on the type surface so callers can start migrating
-   * ahead of the matching server work (plan-roadmap.md §5.3 R2.3 and
-   * A0.3).
+   * `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side.
+   * `"interrupt"` is accepted on the type surface but currently falls
+   * through to `"rollback"` behaviour pending the matching server-side
+   * cancel work.
    */
   multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
   signal?: AbortSignal;
