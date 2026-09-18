@@ -347,6 +347,9 @@ export class PregelLoop {
 
   protected skipDoneTasks: boolean;
 
+  /** Set in _first(); the narrow "replaying a specific checkpoint" predicate. */
+  protected isTimeTraveling = false;
+
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
   protected updatedChannels: Set<string> | undefined;
@@ -1102,7 +1105,7 @@ export class PregelLoop {
       return false;
     }
     // if there are pending writes from a previous loop, apply them
-    if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
+    if (!this.isTimeTraveling && this.checkpointPendingWrites.length > 0) {
       for (const [tid, k, v] of this.checkpointPendingWrites) {
         if (
           k === ERROR ||
@@ -1263,7 +1266,7 @@ export class PregelLoop {
 
     if (this.debug) printStepTasks(this.step, [pushed]);
     this.tasks[pushed.id] = pushed;
-    if (this.skipDoneTasks) this._matchWrites({ [pushed.id]: pushed });
+    if (!this.isTimeTraveling) this._matchWrites({ [pushed.id]: pushed });
 
     const tasks = await this._matchCachedWrites();
     for (const { task } of tasks) {
@@ -1468,6 +1471,7 @@ export class PregelLoop {
           this.resumeAtHead
         ));
 
+    this.isTimeTraveling = isTimeTraveling;
     if (isTimeTraveling) {
       this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
         (w) => w[1] !== RESUME
