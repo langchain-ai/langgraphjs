@@ -387,6 +387,23 @@ for await (const update of stream) {
 
 When we use the LangGraph API, either locally (e.g., in LangGraph Studio) or with LangGraph Cloud, the memory store is available to use by default and does not need to be specified during graph compilation.
 
+### Postgres store namespaces
+
+`PostgresStore` matches namespace prefixes and suffixes by complete segments.
+For example, searching `["tenant", "a"]` includes that namespace and
+`["tenant", "a", "notes"]`, but excludes `["tenant", "ab"]`. The same boundary
+rules apply to `listNamespaces` prefix and suffix filters. In listing filters,
+`*` matches exactly one segment: `["cache", "*", "v1"]` matches
+`["cache", "docs", "v1"]`, but not `["cache", "docs", "extra", "v1"]`.
+A star inside a label, such as `"docs*"`, remains literal. Search prefixes also
+remain literal, including a segment named `"*"`.
+
+Namespace labels cannot be empty or contain `.`, `:`, `%`, `_`, or `\`.
+The root segment cannot be `langgraph`; suffix filters may contain this label
+because they need not start at the root. Nonempty listing filters are validated
+with these same rules; omitted or empty listing filters remain unrestricted.
+Colons separate stored segments and cannot be used inside an individual label.
+
 ## Checkpointer libraries
 
 Under the hood, checkpointing is powered by checkpointer objects that conform to [BaseCheckpointSaver](/langgraphjs/reference/classes/checkpoint.BaseCheckpointSaver.html) interface. LangGraph provides several checkpointer implementations, all implemented via standalone, installable libraries:
