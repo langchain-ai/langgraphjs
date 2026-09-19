@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Client } from "../../client.js";
 
 type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
@@ -186,6 +187,38 @@ describe("Client streaming with retry", () => {
       const [, init] = mockFetch.mock.calls[0];
       const body = JSON.parse(init.body as string);
       expect(body.checkpoint_id).toBe("1f0aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    });
+
+    test("sends _langsmithTracer as langsmith_tracer in the request body", async () => {
+      const chunks = [{ id: "1", event: "values", data: {} }];
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test input" },
+        // Only `projectName` / `exampleId` are read off the tracer, so a
+        // minimal stand-in is enough. A real `new LangChainTracer()` would
+        // resolve the shared LangSmith client singleton, which this suite's
+        // fake timers and mocked fetch have no business touching.
+        _langsmithTracer: {
+          projectName: "my-project",
+          exampleId: "1f0bbbbb-cccc-dddd-eeee-ffffffffffff",
+        } as unknown as LangChainTracer,
+      });
+
+      await gatherStream(stream);
+
+      const [, init] = mockFetch.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.langsmith_tracer).toEqual({
+        project_name: "my-project",
+        example_id: "1f0bbbbb-cccc-dddd-eeee-ffffffffffff",
+      });
     });
 
     test("passes streamMode including tools in request body", async () => {
