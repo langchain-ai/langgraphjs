@@ -18,6 +18,7 @@ import type { StreamTransformer } from "../stream/types.js";
 import { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
 import { LangGraphRunnableConfig } from "./runnable_types.js";
 import type { RunControl } from "./runtime.js";
+import type { GraphVersion, StateMigration } from "./migrations.js";
 
 /**
  * Selects the type of output you'll receive when streaming from the graph. See [Streaming](/langgraphjs/how-tos/#streaming) for more details.
@@ -464,6 +465,15 @@ export type PregelParams<
    * The name of the graph. @see {@link Runnable.name}
    */
   name?: string;
+
+  /** Version of the graph deployment used to write checkpoints. */
+  graphVersion?: GraphVersion;
+
+  /** Version assigned to checkpoints created before graph versioning. */
+  legacyGraphVersion?: GraphVersion;
+
+  /** Migrations used to bring older checkpoints to `graphVersion`. */
+  stateMigrations?: readonly StateMigration[];
 
   /**
    * The nodes in the graph.
