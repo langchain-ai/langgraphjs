@@ -416,6 +416,250 @@ describe("MessageAssembler", () => {
     expect(message.response_metadata).toEqual({ output_version: "v1" });
   });
 
+  it("synthesizes an unknown run continuation without corrupting the active run", () => {
+    const assembler = new MessageAssembler();
+    const options = { namespace: ["agent_1"], node: "writer" };
+
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-start", id: "msg_a", run_id: "run_a" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "legacy" },
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "B" },
+          run_id: "run_b",
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "A" },
+          run_id: "run_a",
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const finishedB = assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish", run_id: "run_b" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const finishedA = assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish", run_id: "run_a" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(finishedB?.message).toMatchObject({
+      runId: "run_b",
+      blocks: [{ type: "text", text: "B" }],
+    });
+    expect(finishedA?.message).toMatchObject({
+      id: "msg_a",
+      runId: "run_a",
+      blocks: [{ type: "text", text: "legacyA" }],
+    });
+  });
+
+  it("preserves start usage when finish omits usage", () => {
+    const assembler = new MessageAssembler();
+    const options = { namespace: [], node: "bot" };
+
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "message-start",
+          id: "msg_usage_start",
+          usage: { input_tokens: 3 },
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const finished = assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(finished?.message.usage).toEqual({ input_tokens: 3 });
+    const message = assembledMessageToBaseMessage(finished!.message, "ai") as {
+      usage_metadata?: unknown;
+      additional_kwargs: Record<string, unknown>;
+    };
+    expect(message.usage_metadata).toEqual({
+      input_tokens: 3,
+      output_tokens: 0,
+      total_tokens: 0,
+    });
+    expect(message.additional_kwargs.usage).toEqual({ input_tokens: 3 });
+  });
+
+  it("routes interleaved streaming messages by run id", async () => {
+    const assembler = new StreamingMessageAssembler();
+    const options = { namespace: ["agent_1"], node: "writer" };
+    const streamA = assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-start", id: "msg_stream_a", run_id: "run_a" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const streamB = assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-start", id: "msg_stream_b", run_id: "run_b" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "B" },
+          run_id: "run_b",
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "A" },
+          run_id: "run_a",
+        },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish", run_id: "run_b" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish", run_id: "run_a" },
+        options
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    await expect(streamA!.text).resolves.toBe("A");
+    await expect(streamB!.text).resolves.toBe("B");
+  });
+
+  it("preserves message metadata and normalized start usage when awaited", async () => {
+    const assembler = new StreamingMessageAssembler();
+    const stream = assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "message-start",
+          id: "msg_await",
+          run_id: "run_await",
+          metadata: { provider: "openai", model: "gpt-5" },
+          usage: { input_tokens: 3 },
+        },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    assembler.consume(
+      eventOf(
+        "messages",
+        { event: "message-finish", reason: "stop" },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    const message = await stream!;
+    expect(message.usage_metadata).toEqual({
+      input_tokens: 3,
+      output_tokens: 0,
+      total_tokens: 0,
+    });
+    expect(message.additional_kwargs).toEqual({
+      namespace: ["agent_1"],
+      node: "writer",
+      run_id: "run_await",
+      metadata: { provider: "openai", model: "gpt-5" },
+      usage: { input_tokens: 3 },
+    });
+    expect(message.response_metadata).toEqual({
+      finish_reason: "stop",
+      output_version: "v1",
+    });
+  });
+
+  it("preserves finish response metadata without tagging non-AI messages", () => {
+    for (const role of ["human", "system", "tool"] as const) {
+      const message = assembledMessageToBaseMessage(
+        {
+          id: `msg_${role}`,
+          namespace: [],
+          blocks: [{ type: "text", text: "Hello" }],
+          finishMetadata: { provider_status: "complete" },
+          finishReason: "stop",
+        },
+        role,
+        { toolCallId: "call_1" }
+      );
+
+      expect(message.response_metadata).toEqual({
+        finish_reason: "stop",
+        provider_status: "complete",
+      });
+
+      const plainMessage = assembledMessageToBaseMessage(
+        {
+          id: `msg_plain_${role}`,
+          namespace: [],
+          blocks: [{ type: "text", text: "Hello" }],
+        },
+        role,
+        { toolCallId: "call_1" }
+      );
+      expect(plainMessage.response_metadata).toEqual({});
+    }
+  });
+
   it("handles message-error events", () => {
     const assembler = new MessageAssembler();
 

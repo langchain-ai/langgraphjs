@@ -23,6 +23,7 @@ import {
   SystemMessage,
   ToolMessage,
   type BaseMessage,
+  type UsageMetadata,
 } from "@langchain/core/messages";
 import type { ContentBlock, MessageRole, UsageInfo } from "@langchain/protocol";
 import type { AssembledMessage } from "../client/stream/messages.js";
@@ -40,6 +41,7 @@ export interface AssembledToMessageInput {
   namespace?: readonly string[];
   /** Graph node associated with the streamed message. */
   node?: string;
+  runId?: string;
   /** Tool-call id a `role: "tool"` message is responding to, if any. */
   toolCallId?: string;
   /** Provider metadata (populated on `message-start`). */
@@ -67,6 +69,7 @@ export function assembledToBaseMessage(
     blocks,
     namespace,
     node,
+    runId,
     toolCallId,
     metadata,
     usage,
@@ -79,10 +82,15 @@ export function assembledToBaseMessage(
   const additionalKwargs = {
     ...(namespace != null ? { namespace } : {}),
     ...(node != null ? { node } : {}),
+    ...(runId != null ? { run_id: runId } : {}),
     ...(metadata != null ? { metadata } : {}),
     ...(usage != null ? { usage } : {}),
   };
   const hasAdditionalKwargs = Object.keys(additionalKwargs).length > 0;
+  const responseMetadata = {
+    ...(finishReason != null ? { finish_reason: finishReason } : {}),
+    ...finishMetadata,
+  };
 
   switch (role) {
     case "human":
@@ -90,12 +98,18 @@ export function assembledToBaseMessage(
         ...(id != null ? { id } : {}),
         content: textContent,
         ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
+        ...(Object.keys(responseMetadata).length > 0
+          ? { response_metadata: responseMetadata }
+          : {}),
       });
     case "system":
       return new SystemMessage({
         ...(id != null ? { id } : {}),
         content: textContent,
         ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
+        ...(Object.keys(responseMetadata).length > 0
+          ? { response_metadata: responseMetadata }
+          : {}),
       });
     case "tool":
       return new ToolMessage({
@@ -103,6 +117,9 @@ export function assembledToBaseMessage(
         content: textContent,
         tool_call_id: toolCallId ?? "",
         ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
+        ...(Object.keys(responseMetadata).length > 0
+          ? { response_metadata: responseMetadata }
+          : {}),
       });
     case "ai":
     default: {
@@ -122,9 +139,9 @@ export function assembledToBaseMessage(
           ? { tool_call_chunks: toolCallChunks }
           : {}),
         ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
+        usage_metadata: normalizeUsage(usage),
         response_metadata: {
-          ...(finishReason != null ? { finish_reason: finishReason } : {}),
-          ...finishMetadata,
+          ...responseMetadata,
           output_version: "v1" as const,
         },
       };
@@ -152,6 +169,7 @@ export function assembledMessageToBaseMessage(
     blocks: assembled.blocks,
     namespace: assembled.namespace,
     node: assembled.node,
+    runId: assembled.runId,
     toolCallId: extras.toolCallId,
     metadata: assembled.metadata,
     usage: assembled.usage,
@@ -161,6 +179,18 @@ export function assembledMessageToBaseMessage(
 }
 
 // ---------- helpers ----------
+
+function normalizeUsage(
+  usage: UsageInfo | undefined
+): UsageMetadata | undefined {
+  if (usage == null) return undefined;
+  return {
+    ...usage,
+    input_tokens: usage.input_tokens ?? 0,
+    output_tokens: usage.output_tokens ?? 0,
+    total_tokens: usage.total_tokens ?? 0,
+  };
+}
 
 function extractContentString(blocks: ContentBlock[]): string {
   let out = "";
