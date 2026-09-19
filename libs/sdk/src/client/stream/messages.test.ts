@@ -344,6 +344,78 @@ describe("MessageAssembler", () => {
     });
   });
 
+  it.each([
+    ["metadata", "Python", { stop_reason: "end_turn" }],
+    ["responseMetadata", "JavaScript", { stop_reason: "tool_use" }],
+  ] as const)(
+    "preserves %s finish metadata from %s servers in converted messages",
+    (key, _server, finishMetadata) => {
+      const assembler = new MessageAssembler();
+
+      assembler.consume(
+        eventOf(
+          "messages",
+          {
+            event: "message-start",
+            id: "msg_metadata",
+            role: "ai",
+            metadata: { provider: "anthropic", model: "claude-sonnet" },
+          },
+          { namespace: ["agent:1"], node: "model" }
+        ) as Extract<Event, { method: "messages" }>
+      );
+      assembler.consume(
+        eventOf(
+          "messages",
+          {
+            event: "content-block-finish",
+            index: 0,
+            content: { type: "text", text: "Hello" },
+          },
+          { namespace: ["agent:1"], node: "model" }
+        ) as Extract<Event, { method: "messages" }>
+      );
+      const finished = assembler.consume(
+        eventOf(
+          "messages",
+          {
+            event: "message-finish",
+            reason: "stop",
+            [key]: finishMetadata,
+          },
+          { namespace: ["agent:1"], node: "model" }
+        ) as Extract<Event, { method: "messages" }>
+      );
+
+      const message = assembledMessageToBaseMessage(finished!.message, "ai");
+      expect(message.additional_kwargs).toEqual({
+        namespace: ["agent:1"],
+        node: "model",
+        metadata: { provider: "anthropic", model: "claude-sonnet" },
+      });
+      expect(message.response_metadata).toEqual({
+        finish_reason: "stop",
+        ...finishMetadata,
+        output_version: "v1",
+      });
+      expect(finished!.message.finishMetadata).toEqual(finishMetadata);
+    }
+  );
+
+  it("preserves the root namespace without adding absent metadata", () => {
+    const message = assembledMessageToBaseMessage(
+      {
+        id: "msg_plain",
+        namespace: [],
+        blocks: [{ type: "text", text: "Hello" }],
+      },
+      "ai"
+    );
+
+    expect(message.additional_kwargs).toEqual({ namespace: [] });
+    expect(message.response_metadata).toEqual({ output_version: "v1" });
+  });
+
   it("handles message-error events", () => {
     const assembler = new MessageAssembler();
 
@@ -414,6 +486,7 @@ describe("StreamingMessageAssembler", () => {
           event: "message-finish",
           reason: "stop",
           usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          metadata: { stop_reason: "end_turn" },
         },
         { namespace: [], node: "bot" }
       ) as Extract<Event, { method: "messages" }>
@@ -421,6 +494,11 @@ describe("StreamingMessageAssembler", () => {
 
     expect(await stream!.text).toBe("Hello");
     expect((await stream!.usage)?.total_tokens).toBe(2);
+    expect((await stream!).response_metadata).toEqual({
+      finish_reason: "stop",
+      stop_reason: "end_turn",
+      output_version: "v1",
+    });
     expect((await stream!).content).toEqual([{ type: "text", text: "Hello" }]);
   });
 });

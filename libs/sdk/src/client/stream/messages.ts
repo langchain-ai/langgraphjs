@@ -146,6 +146,18 @@ function normalizeUsage(
   };
 }
 
+function readFinishMetadata(
+  data: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    value != null && typeof value === "object" && !Array.isArray(value);
+  const merged = {
+    ...(isRecord(data.responseMetadata) ? data.responseMetadata : {}),
+    ...(isRecord(data.metadata) ? data.metadata : {}),
+  };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 /**
  * Mutable view of a streamed message as message and content-block events are
  * assembled into a single structure.
@@ -158,6 +170,7 @@ export interface AssembledMessage {
   usage?: UsageInfo;
   metadata?: MessageMetadata;
   finishMetadata?: Record<string, any>;
+  finishReason?: string;
   error?: {
     message: string;
     code?: string;
@@ -435,16 +448,15 @@ export class StreamingMessage
         case "content-block-finish":
           contentBlocks[event.index] = event.content;
           break;
-        case "message-finish":
+        case "message-finish": {
           finishReason = event.reason;
           if (event.usage) usage = normalizeUsage(event.usage);
-          if (event.responseMetadata) {
-            metadata = {
-              ...metadata,
-              ...event.responseMetadata,
-            };
+          const finishMetadata = readFinishMetadata(event);
+          if (finishMetadata != null) {
+            metadata = { ...metadata, ...finishMetadata };
           }
           break;
+        }
         default:
           break;
       }
@@ -457,8 +469,8 @@ export class StreamingMessage
       ),
       usage_metadata: usage,
       response_metadata: {
-        ...metadata,
         ...(finishReason ? { finish_reason: finishReason } : {}),
+        ...metadata,
         output_version: "v1" as const,
       },
     });
@@ -802,7 +814,8 @@ export class MessageAssembler {
       }
       case "message-finish": {
         message.usage = data.usage;
-        message.finishMetadata = data.responseMetadata;
+        message.finishMetadata = readFinishMetadata(data);
+        message.finishReason = data.reason;
         this.activeMessages.delete(activeKey);
         this.activeByNamespaceNode.delete(namespaceNodeKey);
         this.clearBlockIndexAliases(activeKey);

@@ -36,10 +36,20 @@ export interface AssembledToMessageInput {
   role: ExtendedMessageRole;
   /** Content blocks assembled so far. */
   blocks: ContentBlock[];
+  /** Namespace associated with the streamed message. */
+  namespace?: readonly string[];
+  /** Graph node associated with the streamed message. */
+  node?: string;
   /** Tool-call id a `role: "tool"` message is responding to, if any. */
   toolCallId?: string;
+  /** Provider metadata (populated on `message-start`). */
+  metadata?: Readonly<Record<string, unknown>>;
   /** Final-token usage (populated on `message-finish`). */
   usage?: UsageInfo;
+  /** Response metadata (populated on `message-finish`). */
+  finishMetadata?: Readonly<Record<string, unknown>>;
+  /** Finish reason (populated on `message-finish`). */
+  finishReason?: string;
 }
 
 /**
@@ -51,35 +61,48 @@ export interface AssembledToMessageInput {
 export function assembledToBaseMessage(
   input: AssembledToMessageInput
 ): BaseMessage {
-  const { id, role, blocks, toolCallId, usage } = input;
+  const {
+    id,
+    role,
+    blocks,
+    namespace,
+    node,
+    toolCallId,
+    metadata,
+    usage,
+    finishMetadata,
+    finishReason,
+  } = input;
   const textContent = extractContentString(blocks);
   const toolCalls = extractToolCalls(blocks);
   const toolCallChunks = extractToolCallChunks(blocks);
-  const additionalKwargs =
-    usage != null ? ({ usage } as Record<string, unknown>) : undefined;
+  const additionalKwargs = {
+    ...(namespace != null ? { namespace } : {}),
+    ...(node != null ? { node } : {}),
+    ...(metadata != null ? { metadata } : {}),
+    ...(usage != null ? { usage } : {}),
+  };
+  const hasAdditionalKwargs = Object.keys(additionalKwargs).length > 0;
 
   switch (role) {
     case "human":
       return new HumanMessage({
         ...(id != null ? { id } : {}),
         content: textContent,
-        ...(additionalKwargs != null
-          ? { additional_kwargs: additionalKwargs }
-          : {}),
+        ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
       });
     case "system":
       return new SystemMessage({
         ...(id != null ? { id } : {}),
         content: textContent,
-        ...(additionalKwargs != null
-          ? { additional_kwargs: additionalKwargs }
-          : {}),
+        ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
       });
     case "tool":
       return new ToolMessage({
         ...(id != null ? { id } : {}),
         content: textContent,
         tool_call_id: toolCallId ?? "",
+        ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
       });
     case "ai":
     default: {
@@ -98,10 +121,12 @@ export function assembledToBaseMessage(
         ...(toolCallChunks.length > 0
           ? { tool_call_chunks: toolCallChunks }
           : {}),
-        ...(additionalKwargs != null
-          ? { additional_kwargs: additionalKwargs }
-          : {}),
-        response_metadata: { output_version: "v1" as const },
+        ...(hasAdditionalKwargs ? { additional_kwargs: additionalKwargs } : {}),
+        response_metadata: {
+          ...(finishReason != null ? { finish_reason: finishReason } : {}),
+          ...finishMetadata,
+          output_version: "v1" as const,
+        },
       };
       return toolCallChunks.length > 0
         ? new AIMessageChunk(
@@ -125,8 +150,13 @@ export function assembledMessageToBaseMessage(
     id: assembled.id,
     role,
     blocks: assembled.blocks,
+    namespace: assembled.namespace,
+    node: assembled.node,
     toolCallId: extras.toolCallId,
+    metadata: assembled.metadata,
     usage: assembled.usage,
+    finishMetadata: assembled.finishMetadata,
+    finishReason: assembled.finishReason,
   });
 }
 
