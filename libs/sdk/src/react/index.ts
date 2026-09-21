@@ -105,6 +105,7 @@ export type {
 export { useMCPApps as experimental_useMCPApps } from "./mcp-apps/useMCPApps.js";
 export type { MCPApps } from "./mcp-apps/useMCPApps.js";
 export type {
+  McpAppCall,
   McpAppPart,
   McpAppResource,
   McpAppUri,

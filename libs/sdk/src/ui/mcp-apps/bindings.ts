@@ -23,18 +23,17 @@ export interface McpAppResource {
   meta?: { csp?: unknown; permissions?: unknown } | null;
 }
 
-/** One tool call that ships a UI, with everything needed to render it. */
-export interface McpAppPart {
-  toolCallId: string;
+/**
+ * One call's app: everything a renderer draws, and nothing about where it sits.
+ *
+ * This is what `MCPApp` takes. A host that finds its apps with `useMCPApps`
+ * gets an `McpAppPart`, which is this plus its place in the thread, and passes
+ * it straight in. A host that already has its own list of what to render, from
+ * its own MCP client or its own message projection, builds one of these and
+ * owes nothing it would have to invent.
+ */
+export interface McpAppCall {
   toolName: string;
-  /**
-   * The AI message whose tool call this is.
-   *
-   * The anchor for placing the app in a conversation: it belongs after the
-   * turn that opened it, and that turn exists before the result does, which
-   * is what lets the app mount early enough to be streamed into.
-   */
-  messageId: string;
   /** The resource this call opens, already read. */
   resource: McpAppResource;
   /** Arguments as they stand. Changes while the model is still writing them. */
@@ -43,6 +42,19 @@ export interface McpAppPart {
   output?: { content: unknown[]; structuredContent?: unknown };
   /** True while the arguments are still arriving. */
   streaming: boolean;
+}
+
+/** An `McpAppCall` found in a thread, with what identifies and places it. */
+export interface McpAppPart extends McpAppCall {
+  toolCallId: string;
+  /**
+   * The AI message whose tool call this is.
+   *
+   * The anchor for placing the app in a conversation: it belongs after the
+   * turn that opened it, and that turn exists before the result does, which
+   * is what lets the app mount early enough to be streamed into.
+   */
+  messageId: string;
 }
 
 /**

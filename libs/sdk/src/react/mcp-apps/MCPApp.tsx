@@ -18,7 +18,7 @@ import {
   PostMessageTransport,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type {
-  McpAppPart,
+  McpAppCall,
   McpAppResource,
   McpAppThread,
 } from "../../ui/mcp-apps/bindings.js";
@@ -34,13 +34,26 @@ export interface McpAppHandlers {
    * and the route behind this is where that happens. Never wire it straight
    * to an MCP client: the check has to sit somewhere the view cannot reach,
    * which a browser is not.
+   *
+   * `app` is the call whose view is asking. One set of handlers serves every
+   * app a thread renders, and the spec scopes a view's calls to the server
+   * that opened it, so without this a host with two servers cannot tell which
+   * one to ask or which cross-server call to refuse.
    */
   callTool?: (params: {
     name: string;
     arguments: Record<string, unknown>;
+    app: McpAppCall;
   }) => Promise<{ content?: unknown[]; structuredContent?: unknown }>;
-  /** Read a resource for the view, which has no origin and cannot fetch. */
-  readResource?: (params: { uri: string }) => Promise<unknown[]>;
+  /**
+   * Read a resource for the view, which has no origin and cannot fetch.
+   *
+   * `app` is the view asking, for the same reason as `callTool`.
+   */
+  readResource?: (params: {
+    uri: string;
+    app: McpAppCall;
+  }) => Promise<unknown[]>;
   /** Open a link. Defaults to `window.open` for http and https only. */
   openLink?: (params: { url: string }) => Promise<void>;
   /** Put the view's text into the conversation. */
@@ -110,8 +123,14 @@ export interface McpAppConfig {
 
 /** One app, placed wherever the conversation puts it. */
 export interface MCPAppProps extends McpAppConfig, McpAppHandlers {
-  /** The call to draw, from `useMCPApps(...).forCall(id)`. */
-  app: McpAppPart;
+  /**
+   * The call to draw.
+   *
+   * `useMCPApps(...).forCall(id)` returns one, and an `McpAppPart` is an
+   * `McpAppCall`, so it passes straight in. A host with its own list builds
+   * the smaller shape instead.
+   */
+  app: McpAppCall;
 }
 
 /**
@@ -194,6 +213,12 @@ export function MCPApp({
   const config = useRef({ hostInfo, hostContext, toolInputSchema });
   config.current = { hostInfo, hostContext, toolInputSchema };
 
+  // Read at call time too. The bridge is built once and the call changes under
+  // it as the arguments stream, so a handler capturing the object would hand
+  // the host a stale one.
+  const current = useRef(app);
+  current.current = app;
+
   /*
    * Effects here key on STRINGS, never on the objects around them.
    *
@@ -252,6 +277,7 @@ export function MCPApp({
       const out = await call({
         name: String(params.name),
         arguments: (params.arguments ?? {}) as Record<string, unknown>,
+        app: current.current,
       });
       return {
         content: (out.content ?? []) as never,
@@ -263,7 +289,12 @@ export function MCPApp({
     appBridge.onreadresource = async (params) => {
       const read = live.current?.readResource;
       if (!read) throw new Error("This host does not proxy resources/read.");
-      return { contents: (await read({ uri: String(params.uri) })) as never };
+      return {
+        contents: (await read({
+          uri: String(params.uri),
+          app: current.current,
+        })) as never,
+      };
     };
 
     appBridge.onopenlink = async (params) => {
@@ -410,7 +441,7 @@ export function MCPApp({
 function useToolInput(
   bridge: AppBridge | null,
   ready: boolean,
-  app: McpAppPart
+  app: McpAppCall
 ) {
   const sentFinal = useRef(false);
   const sentResult = useRef(false);
