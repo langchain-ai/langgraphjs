@@ -1,5 +1,12 @@
 # @langchain/svelte
 
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`0284323`](https://github.com/langchain-ai/langgraphjs/commit/0284323b2d8457bd830ea987e93f03ebee8370ce)]:
+  - @langchain/langgraph-sdk@1.11.2
+
 ## 1.1.1
 
 ### Patch Changes
