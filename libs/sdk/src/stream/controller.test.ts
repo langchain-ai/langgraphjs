@@ -373,6 +373,7 @@ describe("StreamController", () => {
       assistantId: "human-in-the-loop",
       client: client as never,
       threadId: "thread-1",
+      queue: "server",
     });
     await controller.hydrationPromise;
 

@@ -2,21 +2,14 @@ import type { RunsClient } from "../client/index.js";
 import type { StreamSubmitOptions } from "./types.js";
 
 /**
- * A transport's capability to back `"enqueue"` with real, durable
- * server-side runs. Present unconditionally on the built-in transport
- * (it always carries a `client.runs`); a custom `AgentServerAdapter`
- * opts in by implementing it. See {@link AgentServerQueueAdapter}.
+ * What {@link AgentServerQueueAdapter} needs to back `"enqueue"` with
+ * real, durable server-side runs. Supplied from `client.runs` when
+ * `queue: "server"` is set; see {@link SubmitCoordinator}.
  */
 export type ServerQueueCapability = Pick<
   RunsClient,
   "create" | "list" | "cancel"
 >;
-
-/**
- * No {@link ServerQueueCapability}: `"enqueue"` stays a client-only,
- * in-memory defer. See {@link LocalQueueAdapter}.
- */
-export type LocalQueueCapability = undefined;
 
 /** A single queued submission. */
 export interface SubmissionQueueEntry<
@@ -55,10 +48,8 @@ export const EMPTY_QUEUE: SubmissionQueueSnapshot<never> = Object.freeze([]);
  * (`queue-adapter-agent-server.ts`) for the two implementations.
  *
  * Not exported from the package. Which implementation backs a given
- * call is decided by whether the transport exposes a
- * {@link ServerQueueCapability} (see `AgentServerAdapter.serverQueue`
- * in `client/stream/transport.ts`) — derived from the transport itself,
- * never a class a consumer picks between directly.
+ * call is decided by `useStream`'s `queue` option (`"local"` by
+ * default), never a class a consumer picks between directly.
  */
 export interface QueueAdapter<
   StateType extends object = Record<string, unknown>,

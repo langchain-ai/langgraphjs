@@ -92,17 +92,21 @@ function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
   return "stopped";
 }
 
-/** A custom transport's `serverQueue` is user-authored and untyped at the boundary; guard against a partial implementation instead of crashing the first time a missing method is called. */
-function isServerQueueCapability(
+/** Validates `client.runs`'s shape; throws rather than falling back to local. */
+function assertServerQueueCapability(
   value: unknown
-): value is ServerQueueCapability {
-  return (
+): asserts value is ServerQueueCapability {
+  const ok =
     typeof value === "object" &&
     value != null &&
     typeof (value as ServerQueueCapability).create === "function" &&
     typeof (value as ServerQueueCapability).list === "function" &&
-    typeof (value as ServerQueueCapability).cancel === "function"
-  );
+    typeof (value as ServerQueueCapability).cancel === "function";
+  if (!ok) {
+    throw new Error(
+      'queue: "server" requires client.runs to implement create/list/cancel'
+    );
+  }
 }
 
 /**
@@ -133,7 +137,7 @@ export class SubmitCoordinator<
   /** Root snapshot store; written for `isLoading`, `error`, `interrupts`. */
   readonly #rootStore: StreamStore<RootSnapshot<StateType, InterruptType>>;
   /** Pending submissions awaiting the active run to terminate. */
-  /** Backs `"enqueue"`: local-only defer, or real durable runs if the transport carries a {@link ServerQueueCapability}. */
+  /** Backs `"enqueue"`: local-only defer, or real durable runs when `queue: "server"`. */
   readonly #queueAdapter: QueueAdapter<StateType>;
   /** Probes the controller's `disposed` flag from deferred work. */
   readonly #getDisposed: () => boolean;
@@ -241,18 +245,19 @@ export class SubmitCoordinator<
     const onQueueError = (error: unknown) => {
       this.#rootStore.setState((state) => ({ ...state, error }));
     };
-    // The built-in transport always carries `client.runs`, so it's
-    // always server-backed. Chosen once, here, for this coordinator's
-    // lifetime and never re-evaluated.
-    const serverQueueCapability: unknown =
-      typeof params.options.transport === "object"
-        ? params.options.transport.serverQueue
-        : params.options.client.runs;
+    // Custom transports don't get server-backed queueing at all: there's
+    // nowhere on `AgentServerAdapter` to declare the capability. Chosen
+    // once, here, for this coordinator's lifetime and never re-evaluated.
+    const serverQueueEnabled =
+      typeof params.options.transport !== "object" &&
+      params.options.queue === "server";
+    if (serverQueueEnabled) {
+      assertServerQueueCapability(params.options.client.runs);
+    }
     this.#queueAdapter =
-      serverQueueCapability != null &&
-      isServerQueueCapability(serverQueueCapability)
+      serverQueueEnabled
         ? new AgentServerQueueAdapter(
-            serverQueueCapability,
+            params.options.client.runs,
             params.options.assistantId,
             params.queueStore,
             onQueueError,

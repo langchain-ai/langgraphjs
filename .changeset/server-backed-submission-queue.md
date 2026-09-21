@@ -8,6 +8,6 @@
 
 `useStream`'s `"enqueue"` multitask strategy can now be backed by real, durable server-side runs instead of an in-memory client-only queue.
 
-This is derived from the transport, not opted into: the built-in transport is always server-backed (it already carries a `client` with `.runs`). A custom `AgentServerAdapter` opts in by implementing `serverQueue`; omitting it keeps `"enqueue"` as a client-only, in-memory defer. Queued submissions become server-accepted runs immediately (`multitaskStrategy: "enqueue"`), are hydrated from the Runs API on load, and are cancelled server-side through `cancelQueued`/`clearQueue`.
+Pass `queue: "server"` to opt in; it defaults to `"local"`, so existing usage is unaffected. `"server"` requires the backend behind `apiUrl` to implement the Runs REST endpoints (`POST`/`GET /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/{run_id}/cancel`), not just streaming/commands. Queued submissions then persist across reloads and are visible to other sessions, and `cancelQueued`/`clearQueue` cancel them server-side too.
 
-This changes default behavior for the built-in transport: any existing `"enqueue"` usage there now gets durable server-side queueing instead of the previous in-memory-only defer, with no flag to opt back out.
+Not supported with a custom `AgentServerAdapter` transport — `queue` only applies to the built-in transport.

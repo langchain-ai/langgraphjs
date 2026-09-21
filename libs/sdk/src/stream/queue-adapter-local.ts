@@ -9,8 +9,8 @@ import { StreamStore } from "./store.js";
 import type { StreamSubmitOptions } from "./types.js";
 
 /**
- * Client-only defer. Fallback when the transport exposes no
- * {@link ServerQueueCapability} (see `LocalQueueCapability`).
+ * Client-only defer. The default backing for `"enqueue"` — used
+ * unless `queue: "server"` is set.
  */
 export class LocalQueueAdapter<
   StateType extends object = Record<string, unknown>,

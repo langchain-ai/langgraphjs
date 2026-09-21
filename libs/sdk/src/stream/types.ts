@@ -241,6 +241,18 @@ export interface AgentServerOptions<
   onReconnect?: ThreadStreamOptions["onReconnect"];
   /** Built-in transports only: invoked after every usable connection. */
   onConnected?: ThreadStreamOptions["onConnected"];
+  /**
+   * Back `"enqueue"` with real, durable server-side runs instead of an
+   * in-memory client-only queue. Defaults to `"local"`.
+   *
+   * `"server"` requires the backend behind `apiUrl` to implement the
+   * Runs REST endpoints — `POST` / `GET /threads/{thread_id}/runs` and
+   * `POST /threads/{thread_id}/runs/{run_id}/cancel` — not just the
+   * streaming/commands protocol. A server pointed at directly (LangGraph
+   * Platform, or `langgraph dev`) already has these; a custom backend
+   * proxying LangGraph does not unless it adds them itself.
+   */
+  queue?: "local" | "server";
 }
 
 /**
@@ -276,6 +288,8 @@ export interface CustomAdapterOptions<
   reconnectDelayMs?: never;
   onReconnect?: never;
   onConnected?: never;
+  /** Not supported with a custom transport. */
+  queue?: never;
 }
 
 /**
@@ -393,6 +407,13 @@ export interface StreamControllerOptions<
   onReconnect?: ThreadStreamOptions["onReconnect"];
   /** Built-in transports only: invoked after every usable connection. */
   onConnected?: ThreadStreamOptions["onConnected"];
+  /**
+   * Back `"enqueue"` with real, durable server-side runs instead of an
+   * in-memory client-only queue. Defaults to `"local"`. Only meaningful
+   * when `transport` isn't a custom `AgentServerAdapter` — see
+   * {@link AgentServerOptions.queue}.
+   */
+  queue?: "local" | "server";
   /** Called when a thread id is first produced (new-thread submits). */
   onThreadId?: (threadId: string) => void;
   /**

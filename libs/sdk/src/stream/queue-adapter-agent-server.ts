@@ -19,8 +19,8 @@ type RunWithKwargs = Run & { kwargs?: { input?: unknown } };
  * Backs "enqueue" with real, durable runs. An entry is a genuine
  * server-side pending run the instant `enqueue()` resolves.
  *
- * Selected automatically (see {@link SubmitCoordinator}'s constructor)
- * when the configured transport exposes a {@link ServerQueueCapability}.
+ * Selected when `queue: "server"` is set (see {@link SubmitCoordinator}'s
+ * constructor).
  */
 export class AgentServerQueueAdapter<
   StateType extends object = Record<string, unknown>,

@@ -5,7 +5,6 @@ import type {
   Message,
   SubscribeParams,
 } from "@langchain/protocol";
-import type { ServerQueueCapability } from "../../stream/queue-adapter.js";
 
 /**
  * Handle returned by {@link TransportAdapter.openEventStream} representing
@@ -137,13 +136,4 @@ export interface AgentServerAdapter extends TransportAdapter {
       checkpoint?: { checkpoint_id?: string } | null;
     }>
   >;
-
-  /**
-   * Backs `useStream`'s `"enqueue"` multitask strategy with real, durable
-   * runs instead of an in-memory client-only queue. Implementing it is
-   * how a custom adapter opts in; omit it and `"enqueue"` keeps today's
-   * client-only defer behavior, unchanged. The built-in transport always
-   * provides this (it requires a `client` with `.runs`).
-   */
-  serverQueue?: ServerQueueCapability;
 }
