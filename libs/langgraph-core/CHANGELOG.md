@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.4.17
+
+### Patch Changes
+
+- [#2861](https://github.com/langchain-ai/langgraphjs/pull/2861) [`7639085`](https://github.com/langchain-ai/langgraphjs/commit/7639085f4d8d998ea4f9cfc0de8440c77bc2f78d) Thanks [@casparb](https://github.com/casparb)! - Add `GraphCallbackHandler` with typed `handleInterrupt` and `handleResume` events through normal callback configuration, matching Python graph lifecycle behavior. Lifecycle callbacks are awaited before terminal chain callbacks and work independently of stream mode.
+
 ## 1.4.16
 
 ### Patch Changes
