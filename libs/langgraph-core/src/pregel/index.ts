@@ -28,6 +28,7 @@ import {
   SendProtocol,
   uuid5,
 } from "@langchain/langgraph-checkpoint";
+import { getGraphCallbackDispatcher } from "./callbacks.js";
 import {
   BaseChannel,
   createCheckpoint,
@@ -2406,6 +2407,7 @@ export class Pregel<
       config?.runName ?? this.getName() // run_name
     );
 
+    const dispatchGraphCallbacks = getGraphCallbackDispatcher(runManager);
     const channelSpecs = getOnlyChannels(this.channels);
     let loop: PregelLoop | undefined;
     let loopError: unknown;
@@ -2434,6 +2436,7 @@ export class Pregel<
           interruptAfter,
           interruptBefore,
           manager: runManager,
+          hasGraphCallbacks: dispatchGraphCallbacks !== undefined,
           debug: this.debug,
           triggerToNodes: this.triggerToNodes,
           durability,
@@ -2450,7 +2453,13 @@ export class Pregel<
             [CONFIG_KEY_STREAM]: loop.stream,
           };
         }
-        await this._runLoop({ loop, runner, debug, config });
+        await this._runLoop({
+          loop,
+          runner,
+          debug,
+          config,
+          emitLifecycleEvents: dispatchGraphCallbacks,
+        });
 
         // wait for checkpoints to be persisted
         if (durability === "sync") {
@@ -2596,13 +2605,16 @@ export class Pregel<
     runner: PregelRunner;
     config: RunnableConfig;
     debug: boolean;
+    emitLifecycleEvents?: ReturnType<typeof getGraphCallbackDispatcher>;
   }): Promise<void> {
-    const { loop, runner, debug, config } = params;
+    const { loop, runner, debug, config, emitLifecycleEvents } = params;
     let tickError;
     try {
       while (
         await loop.tick({ inputKeys: this.inputChannels as string | string[] })
       ) {
+        if (emitLifecycleEvents)
+          await emitLifecycleEvents(loop.lifecycleEvents);
         for (const { task } of await loop._matchCachedWrites()) {
           loop._outputWrites(task.id, task.writes, true);
         }
@@ -2661,6 +2673,7 @@ export class Pregel<
       if (tickError === undefined) {
         await loop.finishAndHandleError();
       }
+      if (emitLifecycleEvents) await emitLifecycleEvents(loop.lifecycleEvents);
     }
   }
 
