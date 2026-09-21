@@ -88,3 +88,24 @@ export {
   headlessToolResumeCommand,
   flushPendingHeadlessToolInterrupts,
 } from "../headless-tools.js";
+
+// MCP Apps (SEP-1865). `experimental_` because the extension is young and
+// this surface will move with it. Needs `@modelcontextprotocol/ext-apps`,
+// an optional peer: a host that renders no apps installs nothing extra.
+export {
+  MCPApp as experimental_MCPApp,
+  MCPAppRenderer as experimental_MCPAppRenderer,
+} from "./mcp-apps/MCPApp.js";
+export type {
+  MCPAppProps,
+  MCPAppRendererProps,
+  McpAppConfig,
+  McpAppHandlers,
+} from "./mcp-apps/MCPApp.js";
+export { useMCPApps as experimental_useMCPApps } from "./mcp-apps/useMCPApps.js";
+export type { MCPApps } from "./mcp-apps/useMCPApps.js";
+export type {
+  McpAppPart,
+  McpAppResource,
+  McpAppUri,
+} from "../ui/mcp-apps/bindings.js";

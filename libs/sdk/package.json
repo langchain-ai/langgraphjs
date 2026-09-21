@@ -28,6 +28,7 @@
     "@langchain/build": "workspace:*",
     "@langchain/core": "^1.2.9",
     "@langchain/scripts": "^0.1.4",
+    "@modelcontextprotocol/ext-apps": "^2.0.0",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
     "@types/react": "^19.2.18",
@@ -45,13 +46,17 @@
   "peerDependencies": {
     "@langchain/core": "^1.1.48",
     "react": "^18 || ^19",
-    "react-dom": "^18 || ^19"
+    "react-dom": "^18 || ^19",
+    "@modelcontextprotocol/ext-apps": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
       "optional": true
     },
     "react-dom": {
+      "optional": true
+    },
+    "@modelcontextprotocol/ext-apps": {
       "optional": true
     }
   },
