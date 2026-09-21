@@ -2,9 +2,8 @@
  * Merge `thread_id` into a user-supplied `config.configurable` blob.
  *
  * The platform expects `config.configurable.thread_id` on every run
- * dispatch; we set it last so user-supplied values can't accidentally
- * override the active thread id (which would route the run to a
- * different thread).
+ * dispatch. Applied last so a user-supplied value can't override the
+ * active thread id.
  */
 export function bindThreadConfig(
   config: unknown,

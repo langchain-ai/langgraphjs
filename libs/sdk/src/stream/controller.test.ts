@@ -345,7 +345,7 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("starts the root pump for an active thread when serverQueue is configured", async () => {
+  it("starts the root pump for an active thread with a server-backed queue adapter", async () => {
     // AgentServerQueueAdapter's own getThread callback also calls
     // #ensureThread(threadId, true) — it must not win the race and
     // permanently defer the pump for a thread that's actually active.
@@ -373,7 +373,6 @@ describe("StreamController", () => {
       assistantId: "human-in-the-loop",
       client: client as never,
       threadId: "thread-1",
-      serverQueue: true,
     });
     await controller.hydrationPromise;
 
@@ -1884,6 +1883,9 @@ describe("StreamController", () => {
     await controller.hydrationPromise;
 
     expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    // Active only because of the parked interrupt — waiting on a human,
+    // not mid-computation, so isLoading must not be seeded true.
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
     await controller.dispose();
   });
 

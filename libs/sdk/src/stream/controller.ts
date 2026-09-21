@@ -642,10 +642,10 @@ export class StreamController<
     // silently disables streaming — the pumps open eagerly as before.
     // Flipped to the real signal once we have the state in hand.
     let threadActive = true;
-    // Distinguishes "genuinely mid-flight" from "paused at an interrupt,
-    // waiting on a human" — both make `threadActive` true, but only the
-    // former should seed `isLoading`.
-    let threadActiveWithoutInterrupt = false;
+    // Set below from `state.tasks[].interrupts`, if present. Combined
+    // with `threadActive` where it's used, to decide whether to seed
+    // `isLoading`.
+    let hasActiveInterrupts = false;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -657,9 +657,6 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
-      // Refined to `false` below once `state.tasks` is parsed, if it turns
-      // out this "active" state is actually just a parked interrupt.
-      threadActiveWithoutInterrupt = threadActive;
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
@@ -763,7 +760,7 @@ export class StreamController<
         // A thread parked at an unresolved interrupt is "active" (the pump
         // must stay open to observe a resume) but not "loading" — it's
         // waiting on a human, not mid-computation.
-        if (activeInterrupts.length > 0) threadActiveWithoutInterrupt = false;
+        hasActiveInterrupts = activeInterrupts.length > 0;
         // Server still lists these as pending — drop any local
         // "resolved" tombstone so live replay / later reconcile can
         // keep them visible.
@@ -877,7 +874,7 @@ export class StreamController<
        * waiting on a human, not "loading", matching
        * `LifecycleLoadingTracker`'s own `interrupted → isLoading = false`.
        */
-      if (threadActiveWithoutInterrupt) {
+      if (threadActive && !hasActiveInterrupts) {
         this.rootStore.setState((s) =>
           s.isLoading ? s : { ...s, isLoading: true }
         );

@@ -57,7 +57,7 @@ import { bindThreadConfig } from "./dispatch-config.js";
 import {
   EMPTY_QUEUE,
   type QueueAdapter,
-  type QueueRunsClient,
+  type ServerQueueCapability,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./queue-adapter.js";
@@ -92,13 +92,16 @@ function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
   return "stopped";
 }
 
-function isRunsLike(value: unknown): value is QueueRunsClient {
+/** A custom transport's `serverQueue` is user-authored and untyped at the boundary; guard against a partial implementation instead of crashing the first time a missing method is called. */
+function isServerQueueCapability(
+  value: unknown
+): value is ServerQueueCapability {
   return (
     typeof value === "object" &&
     value != null &&
-    typeof (value as QueueRunsClient).create === "function" &&
-    typeof (value as QueueRunsClient).list === "function" &&
-    typeof (value as QueueRunsClient).cancel === "function"
+    typeof (value as ServerQueueCapability).create === "function" &&
+    typeof (value as ServerQueueCapability).list === "function" &&
+    typeof (value as ServerQueueCapability).cancel === "function"
   );
 }
 
@@ -130,7 +133,7 @@ export class SubmitCoordinator<
   /** Root snapshot store; written for `isLoading`, `error`, `interrupts`. */
   readonly #rootStore: StreamStore<RootSnapshot<StateType, InterruptType>>;
   /** Pending submissions awaiting the active run to terminate. */
-  /** Backs `"enqueue"`: local-only defer, or real durable runs if the transport carries a `serverQueue` capability. */
+  /** Backs `"enqueue"`: local-only defer, or real durable runs if the transport carries a {@link ServerQueueCapability}. */
   readonly #queueAdapter: QueueAdapter<StateType>;
   /** Probes the controller's `disposed` flag from deferred work. */
   readonly #getDisposed: () => boolean;
@@ -238,24 +241,18 @@ export class SubmitCoordinator<
     const onQueueError = (error: unknown) => {
       this.#rootStore.setState((state) => ({ ...state, error }));
     };
-    // A custom transport's own `serverQueue` always takes precedence;
-    // the `serverQueue: true` shorthand only applies to the built-in transport.
-    //
-    // Chosen once, here, for this coordinator's lifetime — never
-    // re-evaluated later. If a consumer keeps the same `queueStore` (and
-    // thus the same underlying `StreamController`/`SubmitCoordinator`)
-    // across a `serverQueue` flip, any entries already local-queued stay
-    // on the adapter they were queued with.
-    const runsClient: unknown =
+    // The built-in transport always carries `client.runs`, so it's
+    // always server-backed. Chosen once, here, for this coordinator's
+    // lifetime and never re-evaluated.
+    const serverQueueCapability: unknown =
       typeof params.options.transport === "object"
         ? params.options.transport.serverQueue
-        : params.options.serverQueue === true
-          ? params.options.client.runs
-          : undefined;
+        : params.options.client.runs;
     this.#queueAdapter =
-      runsClient != null && isRunsLike(runsClient)
+      serverQueueCapability != null &&
+      isServerQueueCapability(serverQueueCapability)
         ? new AgentServerQueueAdapter(
-            runsClient,
+            serverQueueCapability,
             params.options.assistantId,
             params.queueStore,
             onQueueError,

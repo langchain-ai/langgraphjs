@@ -266,8 +266,7 @@ export class BaseClient {
       for (const [key, value] of Object.entries(mutatedOptions.params)) {
         if (value == null) continue;
 
-        // Repeated key=value pairs, not one JSON-stringified value —
-        // the standard way to send a multi-valued query param.
+        // Send each array element as its own repeated key=value pair.
         if (Array.isArray(value)) {
           for (const item of value) {
             if (item == null) continue;

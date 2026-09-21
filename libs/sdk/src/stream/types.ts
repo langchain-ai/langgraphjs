@@ -241,14 +241,6 @@ export interface AgentServerOptions<
   onReconnect?: ThreadStreamOptions["onReconnect"];
   /** Built-in transports only: invoked after every usable connection. */
   onConnected?: ThreadStreamOptions["onConnected"];
-  /**
-   * Back `"enqueue"` with real, durable runs instead of an in-memory
-   * client-only queue. Wires the capability onto this built-in transport
-   * automatically, reusing this hook's own `apiUrl`/credentials: no
-   * separate client to construct. Never inferred; omit it and `"enqueue"`
-   * keeps today's client-only defer behavior, unchanged.
-   */
-  serverQueue?: boolean;
 }
 
 /**
@@ -284,8 +276,6 @@ export interface CustomAdapterOptions<
   reconnectDelayMs?: never;
   onReconnect?: never;
   onConnected?: never;
-  /** Set `serverQueue` directly on your `transport` instead: this shorthand only applies to the built-in transport. */
-  serverQueue?: never;
 }
 
 /**
@@ -380,18 +370,6 @@ export interface StreamControllerOptions<
    * entirely. Forwarded to `client.threads.stream({ transport })`.
    */
   transport?: ThreadStreamOptions["transport"];
-  /**
-   * Back `"enqueue"` with real, durable runs instead of an in-memory
-   * client-only queue. `true` wires the capability onto the built-in
-   * transport automatically, reusing this hook's own `apiUrl`/credentials:
-   * no separate client to construct. For a custom `transport`, set
-   * `serverQueue` directly on that object instead; this flag has no
-   * effect when `transport` is a custom `AgentServerAdapter`.
-   *
-   * Never inferred. Omit it and `"enqueue"` keeps today's client-only
-   * defer behaviour, unchanged.
-   */
-  serverQueue?: boolean;
   /** Optional `fetch` override forwarded to the built-in SSE transport. */
   fetch?: typeof fetch;
   /** Optional `WebSocket` factory forwarded to the built-in WS transport. */

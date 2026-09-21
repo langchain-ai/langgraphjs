@@ -5,7 +5,7 @@ import { bindThreadConfig } from "./dispatch-config.js";
 import {
   EMPTY_QUEUE,
   type QueueAdapter,
-  type QueueRunsClient,
+  type ServerQueueCapability,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./queue-adapter.js";
@@ -20,12 +20,12 @@ type RunWithKwargs = Run & { kwargs?: { input?: unknown } };
  * server-side pending run the instant `enqueue()` resolves.
  *
  * Selected automatically (see {@link SubmitCoordinator}'s constructor)
- * when the configured transport exposes a `serverQueue` capability.
+ * when the configured transport exposes a {@link ServerQueueCapability}.
  */
 export class AgentServerQueueAdapter<
   StateType extends object = Record<string, unknown>,
 > implements QueueAdapter<StateType> {
-  readonly #runs: QueueRunsClient;
+  readonly #runs: ServerQueueCapability;
   readonly #assistantId: string;
   readonly #store: StreamStore<SubmissionQueueSnapshot<StateType>>;
   readonly #onError: (error: unknown) => void;
@@ -45,7 +45,7 @@ export class AgentServerQueueAdapter<
   #startedEventCount = 0;
 
   constructor(
-    runs: QueueRunsClient,
+    runs: ServerQueueCapability,
     assistantId: string,
     store: StreamStore<SubmissionQueueSnapshot<StateType>>,
     onError: (error: unknown) => void,
@@ -87,10 +87,8 @@ export class AgentServerQueueAdapter<
       const knownRunIds = new Set(
         current.flatMap((e) => (e.runId ? [e.runId] : []))
       );
-      // Keep local entries as-is; never overwrite one with a Run
-      // reconstruction, since a consumer may already be keying UI on
-      // its id. Only reconstruct pending runs with no local counterpart
-      // (enqueued elsewhere, or seen here for the first time).
+      // Local entries are never overwritten by a server reconstruction
+      // — a consumer may already be keying UI on their id.
       const stillValid = current.filter((e) =>
         this.#isStillQueued(e, remoteIds, knownAtRequestTime)
       );

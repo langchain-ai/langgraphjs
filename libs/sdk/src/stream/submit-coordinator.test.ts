@@ -1124,4 +1124,47 @@ describe("SubmitCoordinator", () => {
       await first;
     });
   });
+
+  describe("queue adapter selection: built-in transport", () => {
+    it("selects the server-backed adapter when the client has a runs capability", async () => {
+      const runs = {
+        create: vi.fn().mockResolvedValue({ run_id: "run-1" }),
+        list: vi.fn().mockResolvedValue([]),
+        cancel: vi.fn(),
+      };
+      const h = makeHarness({}, {}, { client: { runs } as never });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+
+      expect(runs.create).toHaveBeenCalled();
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+    });
+
+    it("selects the local adapter when the client has no runs capability", async () => {
+      const h = makeHarness({}, {}, { client: {} as never });
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      await h.coordinator.submit({ count: 2 }, { multitaskStrategy: "enqueue" });
+
+      // Never assigned a runId: nothing was dispatched to a server queue.
+      expect(h.queueStore.getSnapshot()[0].runId).toBeUndefined();
+
+      h.resolveSubmit();
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await first;
+
+      // Local adapter drains client-side once the active run terminates;
+      // a server-backed adapter would never do this on its own.
+      await vi.runAllTimersAsync();
+      expect(h.submitRun).toHaveBeenCalledTimes(2);
+    });
+  });
 });

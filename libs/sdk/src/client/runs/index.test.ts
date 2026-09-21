@@ -96,24 +96,13 @@ describe("runs.cancelMany", () => {
 });
 
 describe("runs.list", () => {
-  let fetchMock: MockFetch;
-
-  beforeEach(() => {
-    fetchMock = createMockFetch();
-    overrideFetchImplementation(fetchMock);
-    (globalThis as any).fetch = fetchMock;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  function parseFetchCall() {
+  function parseFetchCall(fetchMock: MockFetch) {
     const [url] = fetchMock.mock.calls[0];
     return { url: new URL(url) };
   }
 
   it("sends an array-valued param (select) as repeated query entries, not one JSON string", async () => {
+    const fetchMock = createMockFetch();
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -122,13 +111,16 @@ describe("runs.list", () => {
       headers: new Headers({}),
     });
 
-    const client = new Client({ apiKey: "test-api-key" });
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
     await client.runs.list("thread_abc", {
       status: "pending",
       select: ["run_id", "kwargs", "created_at", "multitask_strategy"],
     });
 
-    const { url } = parseFetchCall();
+    const { url } = parseFetchCall(fetchMock);
     expect(url.searchParams.getAll("select")).toEqual([
       "run_id",
       "kwargs",

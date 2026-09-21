@@ -9,8 +9,8 @@ import { StreamStore } from "./store.js";
 import type { StreamSubmitOptions } from "./types.js";
 
 /**
- * Client-only defer. Fallback when no `serverQueue` capability is
- * configured: zero behavior change for every existing consumer.
+ * Client-only defer. Fallback when the transport exposes no
+ * {@link ServerQueueCapability} (see `LocalQueueCapability`).
  */
 export class LocalQueueAdapter<
   StateType extends object = Record<string, unknown>,
@@ -58,7 +58,7 @@ export class LocalQueueAdapter<
     dispatch(head.values, {
       ...head.options,
       multitaskStrategy: undefined,
-    }).catch(this.#onError); // belt-and-suspenders: today's `dispatch` already swallows and routes failures to `rootStore.error` itself
+    }).catch(this.#onError); // dispatch already routes failures to rootStore.error
   }
 
   async cancel(id: string): Promise<boolean> {

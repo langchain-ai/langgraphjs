@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { EMPTY_QUEUE, type QueueRunsClient, type SubmissionQueueSnapshot } from "./queue-adapter.js";
+import { EMPTY_QUEUE, type ServerQueueCapability, type SubmissionQueueSnapshot } from "./queue-adapter.js";
 import { AgentServerQueueAdapter } from "./queue-adapter-agent-server.js";
 import { StreamStore } from "./store.js";
 import type { ThreadStream } from "../client/index.js";
@@ -46,7 +46,7 @@ function makeFakeBackend() {
     for (const l of listeners)
       l({ method: "lifecycle", params: { data: { event: "running" } } });
   };
-  return { runs: runs as unknown as QueueRunsClient, getThread, emitStarted, listeners };
+  return { runs: runs as unknown as ServerQueueCapability, getThread, emitStarted, listeners };
 }
 
 describe("AgentServerQueueAdapter", () => {
