@@ -188,3 +188,10 @@ export { pushMessage } from "./graph/message.js";
 export { getStore, getWriter, getConfig } from "./pregel/utils/config.js";
 export { getPreviousState } from "./func/index.js";
 export { getCurrentTaskInput } from "./pregel/utils/config.js";
+export {
+  GraphCallbackHandler,
+  type GraphInterruptEvent,
+  type GraphResumeEvent,
+  type GraphLifecycleEvent,
+  type GraphLifecycleStatus,
+} from "./callbacks.js";

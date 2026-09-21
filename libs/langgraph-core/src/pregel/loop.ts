@@ -107,6 +107,10 @@ import {
   StreamChunkMeta,
 } from "./stream.js";
 import { isXXH3 } from "../hash.js";
+import type {
+  GraphLifecycleEvent,
+  GraphLifecycleStatus,
+} from "../callbacks.js";
 
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
@@ -149,6 +153,7 @@ export type PregelLoopInitializeParams = {
   interruptBefore: string[] | All;
   durability: Durability;
   manager?: CallbackManagerForChainRun;
+  hasGraphCallbacks?: boolean;
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
 };
@@ -174,6 +179,7 @@ type PregelLoopParams = {
   isNested: boolean;
   resumeAtHead: boolean;
   manager?: CallbackManagerForChainRun;
+  hasGraphCallbacks?: boolean;
   stream: IterableReadableWritableStream;
   store?: AsyncBatchedStore;
   cache?: BaseCache<PendingWrite<string>[]>;
@@ -351,13 +357,9 @@ export class PregelLoop {
 
   protected updatedChannels: Set<string> | undefined;
 
-  status:
-    | "pending"
-    | "done"
-    | "interrupt_before"
-    | "interrupt_after"
-    | "out_of_steps"
-    | "draining" = "pending";
+  status: GraphLifecycleStatus = "pending";
+
+  lifecycleEvents?: GraphLifecycleEvent[];
 
   /**
    * Run-scoped control surface for cooperative draining. Populated from the
@@ -504,6 +506,7 @@ export class PregelLoop {
     this.isNested = params.isNested;
     this.resumeAtHead = params.resumeAtHead;
     this.manager = params.manager;
+    this.lifecycleEvents = params.hasGraphCallbacks ? [] : undefined;
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
@@ -706,6 +709,7 @@ export class PregelLoop {
       isNested,
       resumeAtHead,
       manager: params.manager,
+      hasGraphCallbacks: params.hasGraphCallbacks,
       skipDoneTasks,
       step,
       stop,
@@ -1371,7 +1375,15 @@ export class PregelLoop {
   }
 
   protected _suppressInterrupt(e?: Error): boolean {
-    return isGraphInterrupt(e) && !this.isNested;
+    if (!isGraphInterrupt(e) || this.isNested) return false;
+    this.lifecycleEvents?.push({
+      runId: this.manager?.runId,
+      status: this.status,
+      checkpointId: this.checkpoint.id,
+      checkpointNs: [...this.checkpointNamespace],
+      interrupts: [...e.interrupts],
+    });
+    return true;
   }
 
   protected async _first(inputKeys: string | string[]) {
@@ -1612,6 +1624,14 @@ export class PregelLoop {
       this.config = patchConfigurable(this.config, {
         [CONFIG_KEY_RESUMING]: this.isResuming,
         [CONFIG_KEY_REPLAY_STATE]: replayState,
+      });
+    }
+    if (cachedIsResuming) {
+      this.lifecycleEvents?.push({
+        runId: this.manager?.runId,
+        status: this.status,
+        checkpointId: this.checkpoint.id,
+        checkpointNs: [...this.checkpointNamespace],
       });
     }
   }
