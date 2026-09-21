@@ -48,3 +48,8 @@ export type {
   ConditionalEdgeRouter,
   ConditionalEdgeRouterTypes,
 } from "./types.js";
+export type {
+  GraphVersion,
+  StateMigration,
+  StateMigrationState,
+} from "../pregel/migrations.js";
