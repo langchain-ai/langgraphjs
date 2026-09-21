@@ -254,16 +254,15 @@ export class SubmitCoordinator<
     if (serverQueueEnabled) {
       assertServerQueueCapability(params.options.client.runs);
     }
-    this.#queueAdapter =
-      serverQueueEnabled
-        ? new AgentServerQueueAdapter(
-            params.options.client.runs,
-            params.options.assistantId,
-            params.queueStore,
-            onQueueError,
-            (threadId) => params.ensureThread(threadId, true) // deferRootPump: true, watching shouldn't force-start a root pump
-          )
-        : new LocalQueueAdapter(params.queueStore, onQueueError);
+    this.#queueAdapter = serverQueueEnabled
+      ? new AgentServerQueueAdapter(
+          params.options.client.runs,
+          params.options.assistantId,
+          params.queueStore,
+          onQueueError,
+          (threadId) => params.ensureThread(threadId, true) // deferRootPump: true, watching shouldn't force-start a root pump
+        )
+      : new LocalQueueAdapter(params.queueStore, onQueueError);
     this.#getDisposed = params.getDisposed;
     this.#getCurrentThreadId = params.getCurrentThreadId;
     this.#setCurrentThreadId = params.setCurrentThreadId;
