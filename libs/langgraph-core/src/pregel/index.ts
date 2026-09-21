@@ -117,14 +117,18 @@ import type {
   StateSnapshot,
   StreamMode,
   StreamOutputMap,
+  WaitingEdgeDescription,
 } from "./types.js";
 import {
   ensureLangGraphConfig,
   getConfig,
   recastCheckpointNamespace,
 } from "./utils/config.js";
+import { isInclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
 import {
   _coerceToDict,
+  collectWaitingEdges,
+  collectWaitingEdgesFromValues,
   combineAbortSignals,
   getNewChannelVersions,
   patchCheckpointMap,
@@ -864,6 +868,81 @@ export class Pregel<
    * @returns A snapshot of the graph state
    * @internal
    */
+  /**
+   * Collect unreleased waiting edges from every namespace nested under this one.
+   *
+   * Only reachable with `subgraphs: true`, because it costs a `list()` over the
+   * thread: the namespace graph is navigable upward only — a checkpoint's
+   * `parents` names its parent and nothing names its children — and `list()`
+   * scopes to a single namespace when `checkpoint_ns` is present, so discovering
+   * children means listing the thread with that key omitted.
+   *
+   * Entries are built without the subgraph's channel definitions, which this
+   * graph does not hold: a barrier clears its seen set on release, so a stored
+   * non-empty one is enough to detect the drop, and the listed nodes come from
+   * the channel name.
+   */
+  /**
+   * Whether any node of this graph is, or wraps, another graph.
+   *
+   * A graph with none has no child checkpoint namespaces, so the nested walk
+   * would list the thread and find nothing. O(nodes) and no I/O, against a
+   * `list()` that is O(checkpoints in the thread).
+   */
+  protected _hasSubgraphNode(): boolean {
+    return Object.values(this.nodes).some((node) => {
+      const candidates = node.subgraphs?.length ? node.subgraphs : [node.bound];
+      return candidates.some(
+        (candidate) => findSubgraphPregel(candidate) !== undefined
+      );
+    });
+  }
+
+  protected async _collectNestedWaitingEdges(
+    checkpointer: BaseCheckpointSaver,
+    config: RunnableConfig
+  ): Promise<WaitingEdgeDescription[]> {
+    const threadId = config.configurable?.thread_id;
+    // Not merely defensive: `list()` falls back to every thread in the store
+    // when `thread_id` is absent, which would report another thread's edges.
+    if (threadId === undefined) return [];
+    const here: string = config.configurable?.checkpoint_ns ?? "";
+    const prefix =
+      here === "" ? "" : `${here}${CHECKPOINT_NAMESPACE_SEPARATOR}`;
+
+    // A looped subgraph gets a fresh task-scoped namespace per invocation, so
+    // keep one entry per (subgraph path, target) — the count tracks graph size,
+    // not run length. Savers yield newest-first within a namespace; across
+    // namespaces the order is unspecified, and every candidate is a real drop.
+    const nested: WaitingEdgeDescription[] = [];
+    const seenNamespaces = new Set<string>();
+    const seenKeys = new Set<string>();
+    for await (const tuple of checkpointer.list(
+      { configurable: { thread_id: threadId } },
+      {}
+    )) {
+      const ns: string = tuple.config.configurable?.checkpoint_ns ?? "";
+      if (ns === here || !ns.startsWith(prefix)) continue;
+      // Only the latest checkpoint of a namespace describes where it stopped.
+      if (seenNamespaces.has(ns)) continue;
+      seenNamespaces.add(ns);
+      // Read the edges out here rather than retaining every namespace's channel
+      // values: only the waiting-edge channels are of interest.
+      for (const edge of collectWaitingEdgesFromValues(
+        tuple.checkpoint.channel_values as Record<string, unknown>,
+        ns
+      )) {
+        const key = `${edge.path.join(CHECKPOINT_NAMESPACE_SEPARATOR)}\u0000${
+          edge.target
+        }`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        nested.push(edge);
+      }
+    }
+    return nested;
+  }
+
   protected async _prepareStateSnapshot({
     config,
     saved,
@@ -1024,6 +1103,29 @@ export class Pregel<
       .filter((task) => task.writes.length === 0)
       .map((task) => task.name as string);
 
+    // An inclusive edge holding writes always fires — through completeness while
+    // anything is scheduled, or once the run settles, with the nodes that arrived — so
+    // when no task is scheduled its target is what runs next. Left out, a run
+    // interrupted at the release point would read as a finished one: empty
+    // `next` is the documented "the run is over" signal.
+    if (nextList.length === 0) {
+      for (const [name, channel] of Object.entries(channels)) {
+        if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+        const { seen, names, released } = channel;
+        // A barrier that already released has a real task; only one still holding writes
+        // needs its target surfaced here.
+        if (released || seen.size === 0 || seen.size >= names.size) continue;
+        nextList.push(name.slice(name.lastIndexOf(":") + 1));
+      }
+    }
+
+    const waitingEdges: WaitingEdgeDescription[] = [
+      ...collectWaitingEdges(channels),
+      ...(subgraphCheckpointer && this._hasSubgraphNode()
+        ? await this._collectNestedWaitingEdges(subgraphCheckpointer, config)
+        : []),
+    ];
+
     // assemble the state snapshot
     return {
       values: readChannels(
@@ -1037,6 +1139,8 @@ export class Pregel<
         taskStates,
         this.streamChannelsAsIs
       ),
+      // Omitted when empty so a healthy snapshot keeps its existing shape.
+      ...(waitingEdges.length > 0 ? { waitingEdges } : {}),
       metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
       createdAt: saved.checkpoint.ts,

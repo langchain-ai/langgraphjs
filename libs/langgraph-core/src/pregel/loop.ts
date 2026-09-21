@@ -70,10 +70,12 @@ import {
   _prepareNodeErrorHandlerTask,
   _prepareSingleTask,
   increment,
+  maxChannelMapVersion,
   shouldInterrupt,
   sanitizeUntrackedValuesInSend,
   WritesProtocol,
 } from "./algo.js";
+import { isInclusiveNamedBarrierValue } from "../channels/named_barrier_value.js";
 import {
   gatherIterator,
   gatherIteratorSync,
@@ -351,6 +353,12 @@ export class PregelLoop {
 
   protected updatedChannels: Set<string> | undefined;
 
+  /**
+   * Whether any channel is an inclusive waiting-edge barrier — computed once,
+   * so graphs without one pay nothing on the per-superstep paths below.
+   */
+  protected hasInclusiveWaitingEdges: boolean;
+
   status:
     | "pending"
     | "done"
@@ -496,6 +504,9 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
+    this.hasInclusiveWaitingEdges = Object.values(params.channels).some(
+      isInclusiveNamedBarrierValue
+    );
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     this.step = params.step;
     this.stop = params.stop;
@@ -1062,6 +1073,9 @@ export class PregelLoop {
       }
     );
     this.tasks = nextTasks;
+    // Covers a resume from a checkpoint written between a release and the
+    // released target's superstep (interruptBefore on the target, or a crash).
+    if (this.hasInclusiveWaitingEdges) this._attachWaitingEdgeReleases();
     let taskList = Object.values(this.tasks);
 
     // Full-state checkpoint snapshots are expensive; skip unless a consumer
@@ -1090,8 +1104,51 @@ export class PregelLoop {
     }
 
     if (taskList.length === 0) {
-      this.status = "done";
-      return false;
+      // The run has quiesced: the last superstep's writes are applied and task
+      // derivation produced nothing, so nothing is running and nothing is
+      // scheduled — a `Send` in flight would be a pending task. Inclusive
+      // waiting edges release here, with the nodes that did arrive; a drain
+      // stops the run mid-flight, so it does not count as the run settling.
+      if (this.control != null && this.control.drainRequested) {
+        // An inclusive edge holding writes is remaining work — it releases once the
+        // run truly settles — so a drain here must report a resumable stop,
+        // not a completed run that silently dropped its join.
+        if (
+          this.hasInclusiveWaitingEdges &&
+          this._hasArmedInclusiveWaitingEdge()
+        ) {
+          this.status = "draining";
+          return false;
+        }
+      } else if (
+        this.hasInclusiveWaitingEdges &&
+        this._releaseInclusiveWaitingEdges()
+      ) {
+        this.tasks = _prepareNextTasks(
+          this.checkpoint,
+          this.checkpointPendingWrites,
+          this.nodes,
+          this.channels,
+          this.config,
+          true,
+          {
+            step: this.step,
+            checkpointer: this.checkpointer,
+            isResuming: this.isResuming,
+            manager: this.manager,
+            store: this.store,
+            stream: this.stream,
+            triggerToNodes: this.triggerToNodes,
+            updatedChannels: this.updatedChannels,
+          }
+        );
+        this._attachWaitingEdgeReleases();
+        taskList = Object.values(this.tasks);
+      }
+      if (taskList.length === 0) {
+        this.status = "done";
+        return false;
+      }
     }
     // Cooperative drain: the previous superstep's writes have been applied
     // and checkpointed above, and the next tasks have been prepared. If a
@@ -1149,6 +1206,107 @@ export class PregelLoop {
     }
 
     return true;
+  }
+
+  /** Is any inclusive waiting edge holding writes without having released? */
+  protected _hasArmedInclusiveWaitingEdge(): boolean {
+    for (const channel of Object.values(this.channels)) {
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      const barrier = channel;
+      if (
+        !barrier.released &&
+        barrier.seen.size > 0 &&
+        barrier.seen.size < barrier.names.size
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Release every inclusive waiting edge — `addEdge([...], target,
+   * { inclusive: true })` — that has received some of its listed nodes but not
+   * all. The caller invokes this only once the run has settled, where no further write
+   * can arrive, so "the nodes that arrived" is final. The release is a flag on
+   * the barrier rather than fabricated writes — `seen` keeps only the nodes
+   * that actually wrote, so checkpoints stay truthful and the target can be
+   * told exactly which nodes came. `consume()` clears the flag with the
+   * writes, so the edge stays single-shot and re-arms in a loop, the same as
+   * the default barrier.
+   *
+   * An edge nobody wrote to stays silent: with no writes, there is nothing to
+   * run the target on.
+   *
+   * @returns true when at least one edge released, so the caller re-derives
+   * tasks instead of finishing the run.
+   */
+  protected _releaseInclusiveWaitingEdges(): boolean {
+    let released = false;
+    for (const [name, channel] of Object.entries(this.channels)) {
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      if (channel.releaseArrived() === undefined) continue;
+      // The same version bump `_applyWrites` gives an updated channel, so the
+      // target's trigger sees a version newer than the one it last observed.
+      this.checkpoint.channel_versions[name] = this.checkpointerGetNextVersion(
+        maxChannelMapVersion(this.checkpoint.channel_versions) as
+          | number
+          | undefined
+      );
+      this.updatedChannels ??= new Set();
+      this.updatedChannels.add(name);
+      released = true;
+    }
+    return released;
+  }
+
+  /**
+   * Give every task triggered by a released inclusive edge its release record
+   * — which listed nodes arrived and which never ran — via the task
+   * scratchpad, where {@link waitingEdgeRelease} reads it.
+   *
+   * Derived from the channel each time tasks are prepared, not captured at
+   * release time: the barrier keeps its `released` flag and partial `seen`
+   * until the target's superstep is applied, so the record survives an
+   * `interruptBefore` on the target and a resume from a checkpoint written in
+   * between.
+   */
+  protected _attachWaitingEdgeReleases(): void {
+    let releases:
+      | { target: string; arrived: string[]; missing: string[] }[]
+      | undefined;
+    for (const [name, channel] of Object.entries(this.channels)) {
+      if (!isInclusiveNamedBarrierValue<string>(channel)) continue;
+      const barrier = channel;
+      if (!barrier.released) continue;
+      releases ??= [];
+      releases.push({
+        target: name.slice(name.lastIndexOf(CHECKPOINT_NAMESPACE_END) + 1),
+        arrived: [...barrier.seen],
+        missing: [...barrier.names].filter((node) => !barrier.seen.has(node)),
+      });
+    }
+    if (releases === undefined) return;
+    for (const task of Object.values(this.tasks)) {
+      const matching = releases.filter((entry) => entry.target === task.name);
+      if (matching.length === 0) continue;
+      // Several inclusive edges into one target release together as one task;
+      // the record is their union, so neither edge's arrivals are lost.
+      const release =
+        matching.length === 1
+          ? matching[0]
+          : {
+              target: task.name as string,
+              arrived: [...new Set(matching.flatMap((entry) => entry.arrived))],
+              missing: [...new Set(matching.flatMap((entry) => entry.missing))],
+            };
+      const scratchpad = task.config?.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+        | PregelScratchpad
+        | undefined;
+      if (scratchpad !== undefined) {
+        scratchpad.waitingEdgeRelease = release;
+      }
+    }
   }
 
   async finishAndHandleError(error?: Error) {
