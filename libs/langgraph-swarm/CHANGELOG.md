@@ -1,5 +1,12 @@
 # @langchain/langgraph-swarm
 
+## 1.0.4-rc.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph@1.4.18-rc.0
+
 ## 1.0.3
 
 No changes in this release.
