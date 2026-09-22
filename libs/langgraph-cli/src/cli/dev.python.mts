@@ -144,6 +144,7 @@ export async function spawnPythonServer(
     nJobsPerWorker: string;
     browser: boolean;
     reload: boolean;
+    studioUrl?: string;
     rest: string[];
   },
   context: {
@@ -179,6 +180,7 @@ export async function spawnPythonServer(
       context.configPath,
       ...(args.browser ? [] : ["--no-browser"]),
       ...(args.reload ? [] : ["--no-reload"]),
+      ...(args.studioUrl ? ["--studio-url", args.studioUrl] : []),
       ...args.rest,
     ],
     {
