@@ -1,5 +1,12 @@
 # @langchain/langgraph-supervisor
 
+## 1.1.3-rc.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph@1.4.18-rc.0
+
 ## 1.1.2
 
 No changes in this release.
