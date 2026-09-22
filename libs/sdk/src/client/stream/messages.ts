@@ -126,11 +126,19 @@ function applyCoreEventDelta(
       if (event.delta.encoding) merged.encoding = event.delta.encoding;
       return merged as unknown as CoreContentBlock;
     }
-    case "block-delta":
-      return {
-        ...(current ?? {}),
-        ...event.delta.fields,
-      } as CoreContentBlock;
+    case "block-delta": {
+      const fields = event.delta.fields as Record<string, unknown>;
+      const cur = current as Record<string, unknown> | undefined;
+      const merged = { ...(cur ?? {}), ...fields } as Record<string, unknown>;
+      if (
+        (cur?.type === "tool_call_chunk" ||
+          cur?.type === "server_tool_call_chunk") &&
+        typeof fields.args === "string"
+      ) {
+        merged.args = `${(cur.args as string | undefined) ?? ""}${fields.args}`;
+      }
+      return merged as unknown as CoreContentBlock;
+    }
   }
 }
 
