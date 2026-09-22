@@ -7,7 +7,7 @@
  * `list`, `revisions list`, `delete`, and `logs` subcommands.
  */
 
-import { $ } from "execa";
+import { $, type Options } from "execa";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -24,7 +24,11 @@ import {
   configToDocker,
   getBaseImage,
 } from "../docker/docker.mjs";
-import { getExecaOptions } from "../docker/shell.mjs";
+import {
+  DOCKER_NOT_INSTALLED,
+  DOCKER_NOT_RUNNING,
+  isBinaryNotFound,
+} from "../docker/errors.mjs";
 import {
   HostBackendClient,
   HostBackendError,
@@ -384,23 +388,14 @@ async function callWithOptionalTenant<T>(
 // Build mode resolution
 // ---------------------------------------------------------------------------
 
-const DOCKER_NOT_INSTALLED =
-  "Docker is required but not installed.\n" +
-  "Install Docker Desktop: https://docs.docker.com/get-docker/";
-const DOCKER_NOT_RUNNING =
-  "Docker is installed but not running.\nStart Docker and try again.";
-
 async function canBuildLocally(): Promise<[boolean, string | null]> {
-  let opts: Awaited<ReturnType<typeof getExecaOptions>>;
-  try {
-    opts = await getExecaOptions({ reject: false });
-  } catch {
-    return [false, DOCKER_NOT_INSTALLED];
-  }
+  const opts: Options = { reject: false };
   try {
     const info = await $(opts)`docker info`;
+    if (isBinaryNotFound(info)) return [false, DOCKER_NOT_INSTALLED];
     if (info.exitCode !== 0) return [false, DOCKER_NOT_RUNNING];
-  } catch {
+  } catch (error) {
+    if (isBinaryNotFound(error)) return [false, DOCKER_NOT_INSTALLED];
     return [false, DOCKER_NOT_RUNNING];
   }
   if (os.arch() !== "x64") {
@@ -672,7 +667,7 @@ async function dockerConfigForToken(
 }
 
 async function resolvePushedImageDigest(
-  opts: Awaited<ReturnType<typeof getExecaOptions>>,
+  opts: Options,
   remoteImage: string
 ): Promise<string> {
   // rsplit on ":" preserves any ":port" in the registry host.
@@ -835,7 +830,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
 
   const needsBuildx = os.arch() !== "x64";
   const localTag = `langgraph-deploy-tmp:${Math.floor(Date.now() / 1000)}`;
-  const baseOpts = await getExecaOptions({ cwd: projectDir });
+  const baseOpts: Options = { cwd: projectDir };
   const stdio = args.verbose
     ? ({ stdout: "inherit", stderr: "inherit" } as const)
     : ({ stdout: "ignore", stderr: "ignore" } as const);

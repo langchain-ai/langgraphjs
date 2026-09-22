@@ -6,8 +6,7 @@ import { getProjectPath } from "./utils/project.mjs";
 import { logger } from "../utils/logging.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
 import { configToCompose, getBaseImage } from "../docker/docker.mjs";
-import { getExecaOptions } from "../docker/shell.mjs";
-import { $ } from "execa";
+import { $, type Options } from "execa";
 import { createHash } from "node:crypto";
 import dedent from "dedent";
 import { withAnalytics } from "./utils/analytics.mjs";
@@ -104,11 +103,11 @@ builder
     });
 
     const name = getProjectName(configPath);
-    const execOpts = await getExecaOptions({
+    const execOpts: Options = {
       cwd,
       stdout: "inherit",
       stderr: "inherit",
-    });
+    };
     const exec = $(execOpts);
 
     if (!config._INTERNAL_docker_tag && params.pull) {
