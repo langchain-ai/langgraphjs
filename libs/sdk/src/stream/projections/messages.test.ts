@@ -5,6 +5,7 @@ import { StreamStore } from "../store.js";
 import type { RootEventBus, ThreadStream } from "../types.js";
 import { SubscriptionHandle } from "../../client/stream/index.js";
 import { messagesProjection } from "./messages.js";
+import { valuesProjection } from "./values.js";
 
 function makeRootBus(): RootEventBus {
   return {
@@ -87,6 +88,60 @@ describe("messagesProjection", () => {
     );
     await drainFlush();
     expect(snapshotIds()).toEqual(["parent-human", "parent-ai", "parent-tool"]);
+
+    await runtime.dispose();
+  });
+
+  it("valuesProjection ignores values events from a child namespace", async () => {
+    const PARENT = ["tools:parent"];
+    const CHILD = ["tools:parent", "tools:child"];
+
+    const handle = new SubscriptionHandle<Event>(
+      "sub",
+      {
+        channels: ["values"],
+        namespaces: [PARENT],
+        depth: 1,
+      },
+      async () => {}
+    );
+
+    const thread = {
+      subscribe: vi.fn(async () => handle),
+    } as unknown as ThreadStream;
+
+    const projection = valuesProjection<{ counter?: number }>(PARENT);
+    const store = new StreamStore(projection.initial);
+    const runtime = projection.open({
+      thread,
+      store,
+      rootBus: makeRootBus(),
+    });
+
+    await drainFlush();
+    handle.push({
+      type: "event",
+      method: "values",
+      params: { namespace: PARENT, data: { counter: 1 } },
+    } as unknown as Event);
+    await drainFlush();
+    expect(store.getSnapshot()).toEqual({ counter: 1 });
+
+    handle.push({
+      type: "event",
+      method: "values",
+      params: { namespace: CHILD, data: { counter: 999 } },
+    } as unknown as Event);
+    await drainFlush();
+    expect(store.getSnapshot()).toEqual({ counter: 1 });
+
+    handle.push({
+      type: "event",
+      method: "values",
+      params: { namespace: PARENT, data: { counter: 2 } },
+    } as unknown as Event);
+    await drainFlush();
+    expect(store.getSnapshot()).toEqual({ counter: 2 });
 
     await runtime.dispose();
   });
