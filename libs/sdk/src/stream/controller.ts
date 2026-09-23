@@ -78,6 +78,8 @@ import {
 import {
   EMPTY_QUEUE,
   SubmitCoordinator,
+  type TerminalResult,
+  type TerminalWaiter,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./submit-coordinator.js";
@@ -342,6 +344,7 @@ export class StreamController<
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
+  #localRunId: string | undefined;
   #localRunDepth = 0;
   /**
    * `true` once a root `values` event has been applied for the current
@@ -412,6 +415,8 @@ export class StreamController<
     this.#lifecycleLoading = new LifecycleLoadingTracker({
       store: this.rootStore,
       isDisposed: () => this.#disposed,
+      isLocalRunActive: () => this.#localRunDepth > 0,
+      getLocalRunId: () => this.#localRunId,
       // `#submitter` is assigned just below; this callback only ever
       // fires later (async), by which point construction has finished.
       onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
@@ -1255,14 +1260,17 @@ export class StreamController<
 
   #markLocalRunStart(): void {
     this.#localRunDepth += 1;
+    this.#localRunId = undefined;
   }
 
   #markLocalRunEnd(): void {
     this.#localRunDepth = Math.max(0, this.#localRunDepth - 1);
+    if (this.#localRunDepth === 0) this.#localRunId = undefined;
   }
 
   #notifyCreated(runId: string): void {
     this.#activeRunId = runId;
+    this.#localRunId = runId;
     try {
       this.#options.onCreated?.({ runId });
     } catch {
@@ -1809,6 +1817,7 @@ export class StreamController<
     this.#subgraphs.reset();
     this.#scopedHistorySeeds.clear();
     this.#activeRunId = undefined;
+    this.#localRunId = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
@@ -2708,10 +2717,7 @@ export class StreamController<
    *
    * @param signal - Abort signal for the local submit lifecycle.
    */
-  #awaitNextTerminal(signal: AbortSignal): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
+  #awaitNextTerminal(signal: AbortSignal): TerminalWaiter {
     return this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: false,
     });
@@ -2735,9 +2741,11 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
-    const terminal = await this.#awaitRootTerminal(signal, {
+    const waiter = this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
+    waiter.setRunId(undefined);
+    const terminal = await waiter.promise;
     if (
       !signal.aborted &&
       !this.#disposed &&
@@ -2751,17 +2759,18 @@ export class StreamController<
   #awaitRootTerminal(
     signal: AbortSignal,
     options: { skipInterruptedUntilRunning: boolean }
-  ): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
-    return new Promise((resolve) => {
+  ): TerminalWaiter {
+    let finishTerminal!: (result: TerminalResult) => void;
+    let runIdBound = false;
+    let expectedRunId: string | undefined;
+    const pendingRunTerminals: Array<{
+      runId: string;
+      result: TerminalResult;
+    }> = [];
+    const promise = new Promise<TerminalResult>((resolve) => {
       let settled = false;
       let sawRunning = false;
-      function finish(result: {
-        event: "completed" | "failed" | "interrupted" | "aborted";
-        error?: string;
-      }) {
+      const settle = (result: TerminalResult) => {
         if (settled) return;
         settled = true;
         unsubscribeRoot?.();
@@ -2769,8 +2778,9 @@ export class StreamController<
         unsubscribeError?.();
         signal.removeEventListener("abort", finishAborted);
         resolve(result);
-      }
-      const finishAborted = () => finish({ event: "aborted" });
+      };
+      finishTerminal = (result) => setTimeout(() => settle(result), 0);
+      const finishAborted = () => settle({ event: "aborted" });
       const onEvent = (event: Event) => {
         if (settled) return;
         if (event.method !== "lifecycle") return;
@@ -2783,24 +2793,32 @@ export class StreamController<
           sawRunning = true;
           return;
         }
+        let terminal: TerminalResult | undefined;
         if (lifecycle?.event === "completed") {
-          setTimeout(() => finish({ event: "completed" }), 0);
+          terminal = { event: "completed" };
         } else if (lifecycle?.event === "failed") {
-          setTimeout(
-            () => finish({ event: "failed", error: lifecycle.error }),
-            0
-          );
+          terminal = { event: "failed", error: lifecycle.error };
         } else if (lifecycle?.event === "interrupted") {
           if (options.skipInterruptedUntilRunning && !sawRunning) {
             return;
           }
-          setTimeout(() => finish({ event: "interrupted" }), 0);
+          terminal = { event: "interrupted" };
         }
+        if (terminal == null) return;
+        const eventRunId = (event as Event & { run_id?: unknown }).run_id;
+        if (typeof eventRunId === "string") {
+          if (!runIdBound) {
+            pendingRunTerminals.push({ runId: eventRunId, result: terminal });
+            return;
+          }
+          if (expectedRunId != null && eventRunId !== expectedRunId) return;
+        }
+        finishTerminal(terminal);
       };
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
       const unsubscribeError = this.#thread?.onError((error) =>
-        finish({ event: "failed", error: error.message })
+        settle({ event: "failed", error: error.message })
       );
       if (signal.aborted) {
         finishAborted();
@@ -2808,6 +2826,17 @@ export class StreamController<
         signal.addEventListener("abort", finishAborted, { once: true });
       }
     });
+    const setRunId = (runId: string | undefined) => {
+      if (runIdBound) return;
+      runIdBound = true;
+      expectedRunId = runId;
+      const pending = pendingRunTerminals.find(
+        (entry) => runId == null || entry.runId === runId
+      );
+      pendingRunTerminals.length = 0;
+      if (pending != null) finishTerminal(pending.result);
+    };
+    return { promise, setRunId };
   }
 
   /**
