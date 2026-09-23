@@ -6,6 +6,7 @@ import {
   type CheckpointListOptions,
   type CheckpointTuple,
   type SerializerProtocol,
+  type ChannelVersions,
   type PendingWrite,
   type CheckpointMetadata,
   CheckpointPendingWrite,
@@ -370,7 +371,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions?: ChannelVersions
   ): Promise<RunnableConfig> {
     const thread_id = getStringConfigValue(
       "thread_id",
@@ -388,11 +390,23 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     );
     const checkpoint_id = checkpoint.id;
 
+    const checkpointToStore =
+      newVersions === undefined
+        ? checkpoint
+        : {
+            ...checkpoint,
+            channel_values: Object.fromEntries(
+              Object.entries(checkpoint.channel_values ?? {}).filter(
+                ([channel]) => Object.hasOwn(newVersions, channel)
+              )
+            ),
+          };
+
     const [
       [checkpointType, serializedCheckpoint],
       [metadataType, serializedMetadata],
     ] = await Promise.all([
-      this.serde.dumpsTyped(checkpoint),
+      this.serde.dumpsTyped(checkpointToStore),
       this.serde.dumpsTyped(metadata),
     ]);
 
