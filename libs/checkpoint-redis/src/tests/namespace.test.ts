@@ -26,8 +26,10 @@ describe("isWithinNamespace", () => {
 });
 
 describe("joinsUnambiguously", () => {
-  it("rejects a label that contains the separator", () => {
+  it("rejects a label that is empty or contains the separator", () => {
     expect(joinsUnambiguously(["a.b"])).toBe(false);
+    expect(joinsUnambiguously([""])).toBe(false);
+    expect(joinsUnambiguously(["a", ""])).toBe(false);
     expect(joinsUnambiguously(["a", "b"])).toBe(true);
     expect(joinsUnambiguously([])).toBe(true);
     expect(joinsUnambiguously([1, 2] as unknown as string[])).toBe(false);

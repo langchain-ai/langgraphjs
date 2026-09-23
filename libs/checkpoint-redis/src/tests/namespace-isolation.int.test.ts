@@ -173,10 +173,13 @@ describe("namespace isolation", () => {
       });
     });
 
-    it("reads nothing through a dotted label", async () => {
+    it("reads nothing through an empty or dotted label", async () => {
       await store().put([t, "dot", "x"], "k", { v: 1 });
       expect(await store().get([`${t}.dot`, "x"], "k")).toBeNull();
       expect(await store().search([`${t}.dot`])).toEqual([]);
+      // [""] joins to the same prefix as [], which searches everything
+      expect(await store().search([""])).toEqual([]);
+      expect(await store().search([], { limit: 1 })).toHaveLength(1);
     });
 
     it("pages past candidates that share the key", async () => {

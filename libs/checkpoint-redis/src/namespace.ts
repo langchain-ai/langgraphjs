@@ -33,11 +33,12 @@ export function hasNamespaceLabels(info: Record<string, unknown>): boolean {
 
 /**
  * Whether `namespace.join(".")` names only `namespace`. It does unless a label
- * contains the separator: `["a.b"]` and `["a", "b"]` both join to `"a.b"`.
+ * is empty or contains the separator: `["a.b"]` and `["a", "b"]` both join to
+ * `"a.b"`, and `[""]` joins to `""`, the prefix of every namespace.
  */
 export function joinsUnambiguously(namespace: string[]): boolean {
   return namespace.every(
-    (label) => typeof label === "string" && !label.includes(".")
+    (label) => typeof label === "string" && label !== "" && !label.includes(".")
   );
 }
 

@@ -469,8 +469,8 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
-    // No document is stored under a dotted label; its prefix names another
-    // namespace's documents.
+    // No document is stored under an empty or dotted label; its prefix names
+    // other namespaces' documents.
     if (!joinsUnambiguously(namespace)) {
       return null;
     }
@@ -634,8 +634,8 @@ export class RedisStore {
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
 
-    // No document is stored under a dotted label; its prefix names another
-    // namespace's documents.
+    // No document is stored under an empty or dotted label; its prefix names
+    // other namespaces' documents.
     if (!joinsUnambiguously(namespacePrefix)) {
       return [];
     }
