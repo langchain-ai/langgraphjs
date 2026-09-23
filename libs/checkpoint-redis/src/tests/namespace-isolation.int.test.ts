@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { documentQuery } from "../namespace.js";
 import { RedisStore } from "../store.js";
 import { createRedisContainer } from "./redis-container.js";
 
@@ -57,7 +58,7 @@ function random(seed: number) {
 
 describe("namespace isolation", () => {
   let container: Awaited<ReturnType<typeof createRedisContainer>>;
-  // setup() ran, so queries narrow by the labels field.
+  // setup() ran, so queries use the namespace fields.
   let labelled: RedisStore;
   // setup() never ran, so queries use the text match of earlier versions.
   let plain: RedisStore;
@@ -73,11 +74,11 @@ describe("namespace isolation", () => {
     await container?.cleanup();
   });
 
-  it("narrows by label only once setup() has added the field", async () => {
+  it("uses the namespace fields only once setup() has added them", async () => {
     const { client } = container;
     expect(
       await queriesOf(client, () => labelled.get(["q", "a"], "k"))
-    ).toEqual(["(@prefix_labels:{q} @prefix_labels:{a}) (@key:{k})"]);
+    ).toEqual(["@prefix_exact:{$ns} @key:{$key}"]);
     expect(await queriesOf(client, () => plain.get(["q", "a"], "k"))).toEqual([
       "(@prefix:(q a)) (@key:{k})",
     ]);
@@ -88,7 +89,37 @@ describe("namespace isolation", () => {
     expect(alter).not.toHaveBeenCalled();
     alter.mockRestore();
     const [query] = await queriesOf(client, () => another.search(["q"]));
-    expect(query).toBe("@prefix_labels:{q}");
+    expect(query).toBe("@prefix_labels:{$l0}");
+  });
+
+  it("has Redis return only the namespace's own document", async () => {
+    const namespaces = [
+      ["exact", "a"],
+      ["a", "exact"],
+      ["exact", "A"],
+      ["exact", "a-b"],
+      ["exact", "a", "b"],
+      ["exact", " padded "],
+      ["exact", "tab\tthere"],
+      ["exact", "x".repeat(5000)],
+      ["exact", "a) | @prefix:(victim"],
+      ["exact", "back\\!slash"],
+      ["exact", "*"],
+    ];
+    for (const namespace of namespaces) {
+      await labelled.put(namespace, "k", { namespace });
+    }
+    for (const namespace of namespaces) {
+      const { query, params } = documentQuery(namespace, "k");
+      const found = await container.client.ft.search("store", query, {
+        PARAMS: params,
+        DIALECT: 2,
+      });
+      expect(
+        found.documents.map((doc: any) => doc.value.prefix),
+        JSON.stringify(namespace)
+      ).toEqual([namespace.join(".")]);
+    }
   });
 
   const paths: [string, () => RedisStore][] = [
@@ -183,11 +214,11 @@ describe("namespace isolation", () => {
     });
 
     it("pages past candidates that share the key", async () => {
-      // Neither query narrows these namespaces: each is one label with edge
-      // spaces, whose words are all stopwords. So every document with the
-      // key is a candidate, all score alike, and ties come back in insertion
-      // order (oldest first on Redis 7.4, newest first on Redis 8). Ours goes
-      // in the middle, on the third page either way.
+      // The text query cannot narrow these namespaces: each is one label
+      // whose words are all stopwords. So every document with the key is a
+      // candidate, all score alike, and ties come back in insertion order
+      // (oldest first on Redis 7.4, newest first on Redis 8). Ours goes in
+      // the middle, on the third page either way. The exact field needs one.
       const key = `page${path}`;
       const words = ["a", "an", "and", "are", "as", "at", "be", "by", "for"];
       const others = words.flatMap((x) =>
@@ -202,7 +233,7 @@ describe("namespace isolation", () => {
       const queries = await queriesOf(container.client, async () => {
         expect((await store().get(mine, key))?.value).toEqual({ v: "mine" });
       });
-      expect(queries).toHaveLength(3);
+      expect(queries).toHaveLength(path === "text" ? 3 : 1);
 
       await store().put(mine, key, { v: "again" });
       const docs = await stored(container.client, mine[0], key);
@@ -215,6 +246,7 @@ describe("namespace isolation", () => {
         ..."abzAZ09_",
         ...["a", "is", "the", " ", "\t", "\n", "\\", "|", "{", "}", "(", ")"],
         ...['"', "'", "*", "~", "-", ":", "@", "%", "$", "`", "é", "日"],
+        ...[String.fromCharCode(0), "x".repeat(5000)],
       ];
       const label = () =>
         Array.from({ length: 1 + rnd(4) }, () => pool[rnd(pool.length)]).join(
@@ -281,6 +313,17 @@ describe("namespace isolation", () => {
   });
 });
 
+/** A document exactly as earlier versions write it, in namespace `old.<label>`. */
+function legacy(label: string, key: string, v: string | number) {
+  return {
+    prefix: `old.${label}`,
+    key,
+    value: { v },
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
 describe("upgrading a store written by an earlier version", () => {
   let container: Awaited<ReturnType<typeof createRedisContainer>>;
   const count = 50_000;
@@ -302,13 +345,7 @@ describe("upgrading a store written by an earlier version", () => {
     for (let from = 0; from < count; from += 5000) {
       const batch = client.multi();
       for (let i = from; i < from + 5000; i++) {
-        batch.json.set(`store:old${i}`, "$", {
-          prefix: `old.n${i}`,
-          key: `k${i}`,
-          value: { v: i },
-          created_at: 1,
-          updated_at: 1,
-        });
+        batch.json.set(`store:old${i}`, "$", legacy(`n${i}`, `k${i}`, i));
       }
       await batch.exec();
     }
@@ -319,28 +356,38 @@ describe("upgrading a store written by an earlier version", () => {
     await container?.cleanup();
   });
 
-  it("keeps the text query when Redis refuses FT.ALTER", async () => {
+  it.each([
+    ["any field", () => true],
+    ["one of the fields", (as: string) => as === "prefix_exact"],
+  ])("keeps the text query when Redis refuses %s", async (_, refuse) => {
     const { client } = container;
-    const alter = vi
+    const alter = client.ft.alter.bind(client.ft) as (...args: any[]) => any;
+    const refusing = vi
       .spyOn(client.ft, "alter")
-      .mockRejectedValue(new Error("NOPERM this user has no permissions"));
+      .mockImplementation(((index: string, schema: any) =>
+        refuse(schema["$.prefix"].AS)
+          ? Promise.reject(new Error("NOPERM this user has no permissions"))
+          : alter(index, schema)) as any);
     const refused = new RedisStore(client);
     await expect(refused.setup()).resolves.toBeUndefined();
-    alter.mockRestore();
+    refusing.mockRestore();
 
+    // Even once Redis has indexed what it added, the store must not use it
+    await indexed(client, "store");
+    await new Promise((resolve) => setTimeout(resolve, 1100));
     const queries = await queriesOf(client, async () => {
       expect((await refused.get(["old", "n7"], "k7"))?.value).toEqual({ v: 7 });
     });
     expect(queries).toEqual(["(@prefix:(old n7)) (@key:{k7})"]);
   });
 
-  it("switches to the labels once Redis has indexed them", async () => {
+  it("switches to the namespace fields once Redis has indexed them", async () => {
     const { client } = container;
     const before = await client.json.get("store:old42");
     const store = new RedisStore(client);
     await store.setup();
 
-    // Redis is still indexing the labels field: a query on it would miss
+    // Redis is still indexing the new fields: a query on them would miss
     // older documents, so an update must still find the one it replaces.
     const during = await queriesOf(client, async () => {
       await store.put(["old", "n7"], "k7", { v: "new" });
@@ -358,21 +405,16 @@ describe("upgrading a store written by an earlier version", () => {
         v: 42,
       });
     });
-    expect(after.every((query) => query.includes("@prefix_labels:{"))).toBe(
-      true
-    );
+    expect(after).toEqual([
+      "@prefix_exact:{$ns} @key:{$key}",
+      "@prefix_exact:{$ns} @key:{$key}",
+    ]);
     expect(await stored(client, "old.n7", "k7")).toHaveLength(1);
     // Reads leave older documents as they were.
     expect(await client.json.get("store:old42")).toEqual(before);
 
-    // A document an earlier version writes now is found through the labels.
-    await client.json.set("store:late", "$", {
-      prefix: "old.late",
-      key: "late",
-      value: { v: "late" },
-      created_at: 1,
-      updated_at: 1,
-    });
+    // A document an earlier version writes now is found through the fields.
+    await client.json.set("store:late", "$", legacy("late", "late", "late"));
     expect((await store.get(["old", "late"], "late"))?.value).toEqual({
       v: "late",
     });

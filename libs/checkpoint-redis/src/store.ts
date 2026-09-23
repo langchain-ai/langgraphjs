@@ -20,13 +20,13 @@ import {
 
 import {
   allOf,
-  hasNamespaceLabels,
+  documentQuery,
   isWithinNamespace,
   joinsUnambiguously,
-  NAMESPACE_LABELS_SCHEMA,
-  namespaceLabelsQuery,
+  missingFields,
   prefixTextQuery,
   prefixWildcardQuery,
+  subtreeQuery,
 } from "./namespace.js";
 import { escapeRediSearchTagValue } from "./utils.js";
 
@@ -329,8 +329,8 @@ const STORE_VECTOR_PREFIX = "store_vectors";
 const PAGE_SIZE = 100;
 const MAX_CANDIDATES = 10_000;
 
-// How often to ask whether Redis has finished indexing the labels field.
-const LABELS_RECHECK_MS = 1000;
+// How often to ask whether Redis has finished indexing the namespace fields.
+const FIELDS_RECHECK_MS = 1000;
 
 const SCHEMAS = [
   {
@@ -364,14 +364,14 @@ export class RedisStore {
   private readonly embeddings?: any;
 
   /**
-   * Whether queries can narrow by the namespace labels field. setup() adds
-   * it, then Redis indexes existing documents into it in the background, and
-   * a query made before that finishes would miss them. Until it is "ready",
-   * queries use the `@prefix` text match this store has always used.
+   * Whether queries can use the namespace fields. setup() adds them, then
+   * Redis indexes existing documents into them in the background, and a query
+   * made before that finishes would miss them. Until they are "ready", queries
+   * use the `@prefix` text match this store has always used.
    */
-  private labels: "absent" | "indexing" | "ready" = "absent";
+  private fields: "absent" | "indexing" | "ready" = "absent";
 
-  private labelsCheckedAt = 0;
+  private fieldsCheckedAt = 0;
 
   constructor(client: RedisConnection, config?: StoreConfig) {
     this.client = client;
@@ -461,7 +461,7 @@ export class RedisStore {
       }
     }
 
-    await this.addNamespaceLabels();
+    await this.addNamespaceFields();
   }
 
   async get(
@@ -645,19 +645,19 @@ export class RedisStore {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
       // Build KNN query
-      const queryStr = await this.namespaceQuery(
-        namespacePrefix,
-        prefixWildcardQuery
-      );
+      const { query, params } = (await this.fieldsReady())
+        ? subtreeQuery(namespacePrefix)
+        : { query: prefixWildcardQuery(namespacePrefix) };
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
 
       try {
         // Use KNN query with proper syntax
         const results = await this.client.ft.search(
           "store_vectors",
-          `(${queryStr})=>[KNN ${limit} @embedding $BLOB]`,
+          `(${query})=>[KNN ${limit} @embedding $BLOB]`,
           {
             PARAMS: {
+              ...params,
               BLOB: vectorBytes,
             },
             DIALECT: 2,
@@ -730,13 +730,13 @@ export class RedisStore {
     }
 
     // Regular search without vectors
-    const queryStr = await this.namespaceQuery(
-      namespacePrefix,
-      prefixTextQuery
-    );
+    const { query, params } = (await this.fieldsReady())
+      ? subtreeQuery(namespacePrefix)
+      : { query: prefixTextQuery(namespacePrefix) };
 
     try {
-      const results = await this.client.ft.search("store", queryStr, {
+      const results = await this.client.ft.search("store", query, {
+        ...withParams(params),
         LIMIT: { from: offset, size: limit },
         SORTBY: { BY: "created_at", DIRECTION: "DESC" },
       });
@@ -1024,15 +1024,19 @@ export class RedisStore {
    */
   private async findDocument(namespace: string[], key: string) {
     const prefix = namespace.join(".");
-    // An empty key has no tag to match; the comparison below checks it
-    const keyQuery = key === "" ? "*" : `@key:{${this.escapeTagValue(key)}}`;
-    const query = allOf(
-      await this.namespaceQuery(namespace, prefixTextQuery),
-      keyQuery
-    );
+    const { query, params } = (await this.fieldsReady())
+      ? documentQuery(namespace, key)
+      : {
+          query: allOf(
+            prefixTextQuery(namespace),
+            // An empty key has no tag to match; the comparison below checks it
+            key === "" ? "*" : `@key:{${this.escapeTagValue(key)}}`
+          ),
+        };
 
     for (let from = 0; from < MAX_CANDIDATES; from += PAGE_SIZE) {
       const page = await this.client.ft.search("store", query, {
+        ...withParams(params),
         LIMIT: { from, size: PAGE_SIZE },
       });
       const match = page.documents.find((doc) => {
@@ -1047,24 +1051,11 @@ export class RedisStore {
   }
 
   /**
-   * Query clause narrowing to documents that may be in `namespace`: the labels
-   * field once it is ready, the text query `fallback` builds until then.
+   * Add the namespace fields to each index that lacks them. If that fails,
+   * queries keep using the text match, so setup() never fails because of it.
    */
-  private async namespaceQuery(
-    namespace: string[],
-    fallback: (namespace: string[]) => string
-  ): Promise<string> {
-    return (await this.labelsReady())
-      ? namespaceLabelsQuery(namespace)
-      : fallback(namespace);
-  }
-
-  /**
-   * Add the labels field to each index that lacks it. If that fails, queries
-   * keep using the text match, so setup() never fails because of it.
-   */
-  private async addNamespaceLabels(): Promise<void> {
-    this.labels = "absent";
+  private async addNamespaceFields(): Promise<void> {
+    this.fields = "absent";
     // node-redis sends FT.ALTER and FT.INFO to any cluster node, not the one
     // that answers FT.SEARCH, so a cluster keeps the text match.
     if ("masters" in this.client) {
@@ -1072,41 +1063,41 @@ export class RedisStore {
     }
     try {
       for (const index of this.indexNames()) {
-        if (!hasNamespaceLabels(await this.indexInfo(index))) {
+        for (const field of missingFields(await this.indexInfo(index))) {
           // Fails if another client added it first; the check below decides.
           await this.client.ft
-            .alter(index, NAMESPACE_LABELS_SCHEMA as any)
+            .alter(index, field as any)
             .catch(() => undefined);
         }
       }
-      this.labels = "indexing";
-      await this.checkNamespaceLabels();
+      this.fields = "indexing";
+      await this.checkNamespaceFields();
     } catch {
-      this.labels = "absent";
+      this.fields = "absent";
     }
   }
 
-  /** Whether queries can use the labels field yet. */
-  private async labelsReady(): Promise<boolean> {
+  /** Whether queries can use the namespace fields yet. */
+  private async fieldsReady(): Promise<boolean> {
     if (
-      this.labels === "indexing" &&
-      Date.now() - this.labelsCheckedAt >= LABELS_RECHECK_MS
+      this.fields === "indexing" &&
+      Date.now() - this.fieldsCheckedAt >= FIELDS_RECHECK_MS
     ) {
-      await this.checkNamespaceLabels().catch(() => undefined);
+      await this.checkNamespaceFields().catch(() => undefined);
     }
-    return this.labels === "ready";
+    return this.fields === "ready";
   }
 
-  /** Mark the field ready once every index has it and has indexed into it. */
-  private async checkNamespaceLabels(): Promise<void> {
-    this.labelsCheckedAt = Date.now();
+  /** Mark the fields ready once every index has them and has indexed into them. */
+  private async checkNamespaceFields(): Promise<void> {
+    this.fieldsCheckedAt = Date.now();
     const infos = await Promise.all(
       this.indexNames().map((index) => this.indexInfo(index))
     );
-    if (!infos.every(hasNamespaceLabels)) {
-      this.labels = "absent";
+    if (infos.some((info) => missingFields(info).length > 0)) {
+      this.fields = "absent";
     } else if (infos.every((info) => Number(info.indexing) === 0)) {
-      this.labels = "ready";
+      this.fields = "ready";
     }
   }
 
@@ -1119,7 +1110,7 @@ export class RedisStore {
    * which newer RediSearch versions changed, so its `indexing` is wrong.
    */
   private async indexInfo(index: string): Promise<Record<string, unknown>> {
-    // Only a single-node connection gets here; see addNamespaceLabels
+    // Only a single-node connection gets here; see addNamespaceFields
     const client = this.client as RedisClientConnection;
     const reply = (await client.sendCommand(["FT.INFO", index])) as unknown[];
     const info: Record<string, unknown> = {};
@@ -1177,6 +1168,11 @@ export class RedisStore {
         return Math.max(0, 1 - distance / 2);
     }
   }
+}
+
+/** Search options for a query's parameters, which need dialect 2. */
+function withParams(params?: Record<string, string>) {
+  return params ? { PARAMS: params, DIALECT: 2 } : {};
 }
 
 // Export FilterBuilder for testing purposes

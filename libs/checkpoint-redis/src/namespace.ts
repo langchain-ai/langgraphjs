@@ -6,28 +6,40 @@
  * `prefix` itself before it returns, replaces or deletes a document.
  */
 
-/** The index field setup() adds: each namespace label as an exact tag. */
-export const NAMESPACE_LABELS = "prefix_labels";
+/** A RediSearch query and the parameters it references. */
+export interface Query {
+  query: string;
+  params?: Record<string, string>;
+}
 
-export const NAMESPACE_LABELS_SCHEMA = {
-  "$.prefix": {
-    type: "TAG",
-    AS: NAMESPACE_LABELS,
-    SEPARATOR: ".",
-    CASESENSITIVE: true,
+/** Field holding the whole namespace as one tag. */
+export const PREFIX_EXACT = "prefix_exact";
+
+/** Field holding each label of the namespace as a tag. */
+export const PREFIX_LABELS = "prefix_labels";
+
+/** The fields setup() adds over `$.prefix`. */
+export const NAMESPACE_FIELDS = [
+  // A JSON TAG field has no separator, so this stores the whole string
+  { "$.prefix": { type: "TAG", AS: PREFIX_EXACT, CASESENSITIVE: true } },
+  {
+    "$.prefix": {
+      type: "TAG",
+      AS: PREFIX_LABELS,
+      SEPARATOR: ".",
+      CASESENSITIVE: true,
+    },
   },
-};
+];
 
-/** Whether an FT.INFO reply, read as a map, lists the labels field. */
-export function hasNamespaceLabels(info: Record<string, unknown>): boolean {
-  const attributes = info.attributes;
-  return (
-    Array.isArray(attributes) &&
-    attributes.some(
-      (attribute) =>
-        Array.isArray(attribute) &&
-        attribute[attribute.indexOf("attribute") + 1] === NAMESPACE_LABELS
-    )
+/** The namespace fields an FT.INFO reply, read as a map, does not list. */
+export function missingFields(info: Record<string, unknown>) {
+  const attributes = Array.isArray(info.attributes) ? info.attributes : [];
+  const names = attributes
+    .filter(Array.isArray)
+    .map((attribute) => attribute[attribute.indexOf("attribute") + 1]);
+  return NAMESPACE_FIELDS.filter(
+    (field) => !names.includes(field["$.prefix"].AS)
   );
 }
 
@@ -51,44 +63,74 @@ export function isWithinNamespace(
   return target === "" || prefix === target || prefix.startsWith(`${target}.`);
 }
 
-/**
- * Query for documents tagged with every label of `namespace`. Tags are
- * unordered, so it also matches other namespaces that share those labels.
- */
-export function namespaceLabelsQuery(namespace: string[]): string {
-  const clauses = namespace
-    .filter(isMatchableTag)
-    .map((label) => `@${NAMESPACE_LABELS}:{${escapeTag(label)}}`);
-  return clauses.length > 0 ? clauses.join(" ") : "*";
+// RediSearch stores and compares values as C strings, up to the first NUL.
+function upToNul(value: string): string {
+  return value.split("\0")[0];
+}
+
+// RediSearch matches a parameter as a value, not as query syntax, except that
+// it still drops a backslash that comes before punctuation or whitespace.
+function asParam(value: string): string {
+  return value.replaceAll("\\", "\\\\");
 }
 
 /**
- * Whether RediSearch matches `label` exactly as a tag. Measured on Redis 7.4
- * and 8, it misses labels that are empty, start or end with a space, or are
- * longer than 4096 bytes, and most that contain an ASCII control character.
- * Leaving such a label out of the query only widens it.
+ * Query for the documents stored under exactly `namespace`, with `key` if it
+ * is not empty. Redis compares the whole namespace, so only a namespace that
+ * contains a NUL can match others; the key field ignores case, as it always
+ * has.
  */
-function isMatchableTag(label: string): boolean {
-  return (
-    label !== "" &&
-    !label.startsWith(" ") &&
-    !label.endsWith(" ") &&
-    Array.from(label).every((ch) => ch >= " " && ch !== "\x7f") &&
-    Buffer.byteLength(label) <= 4096
-  );
-}
-
-/** Backslash-escape every ASCII character that is not a letter or digit. */
-function escapeTag(label: string): string {
-  return label.replace(/[^0-9A-Za-z]/g, (ch) =>
-    ch.charCodeAt(0) < 128 ? `\\${ch}` : ch
-  );
+export function documentQuery(namespace: string[], key: string): Query {
+  const values: [string, string, string][] = [
+    [PREFIX_EXACT, "ns", upToNul(namespace.join("."))],
+    ["key", "key", upToNul(key)],
+  ];
+  const clauses: string[] = [];
+  const params: Record<string, string> = {};
+  for (const [field, param, value] of values) {
+    // RediSearch cannot match an empty tag; leaving it out only widens
+    if (value !== "") {
+      clauses.push(`@${field}:{$${param}}`);
+      params[param] = asParam(value);
+    }
+  }
+  return clauses.length > 0
+    ? { query: clauses.join(" "), params }
+    : { query: "*" };
 }
 
 /**
- * The text query RedisStore used before the labels field existed. Queries use
- * it until the field is ready, so they find what they always found.
+ * Query for the documents in `namespace` or below it: those tagged with every
+ * label. Tags are unordered, so it also matches other namespaces that share
+ * those labels.
  */
+export function subtreeQuery(namespace: string[]): Query {
+  const labels = upToNul(namespace.join("."))
+    .split(".")
+    .map(asStoredLabel)
+    .filter((label): label is string => label !== undefined);
+  if (labels.length === 0) {
+    return { query: "*" };
+  }
+  return {
+    query: labels.map((_, i) => `@${PREFIX_LABELS}:{$l${i}}`).join(" "),
+    params: Object.fromEntries(
+      labels.map((label, i) => [`l${i}`, asParam(label)])
+    ),
+  };
+}
+
+/**
+ * A label as the labels field stores it. RediSearch trims leading and trailing
+ * whitespace from each tag and keeps at most 4096 bytes of it. A label it keeps
+ * nothing of, or cuts short, is left out, which only widens the query.
+ */
+function asStoredLabel(label: string): string | undefined {
+  const tag = label.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, "");
+  return tag !== "" && Buffer.byteLength(tag) <= 4096 ? tag : undefined;
+}
+
+/** The text query RedisStore used before the namespace fields existed. */
 export function prefixTextQuery(namespace: string[]): string {
   const tokens = namespace
     .join(".")
@@ -104,12 +146,14 @@ export function prefixWildcardQuery(namespace: string[]): string {
 }
 
 /**
- * Match every clause. `*` matches everything, so it drops out; RediSearch
- * rejects `(*) (@key:{k})` as a syntax error.
+ * Match every clause, as earlier versions combined them. `*` matches
+ * everything, so it drops out; RediSearch rejects `(*) (@key:{k})` as a
+ * syntax error. A single clause is sent as it is.
  */
 export function allOf(...clauses: string[]): string {
   const narrowing = clauses.filter((clause) => clause !== "*");
-  return narrowing.length > 0
-    ? narrowing.map((clause) => `(${clause})`).join(" ")
-    : "*";
+  if (narrowing.length < 2) {
+    return narrowing[0] ?? "*";
+  }
+  return narrowing.map((clause) => `(${clause})`).join(" ");
 }
