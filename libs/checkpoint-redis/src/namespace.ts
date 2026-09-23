@@ -120,13 +120,21 @@ export function subtreeQuery(namespace: string[]): Query {
   };
 }
 
+// The characters C's isspace() matches, which RediSearch trims from tags
+const SPACE = "\t\n\v\f\r ";
+
 /**
  * A label as the labels field stores it. RediSearch trims leading and trailing
  * whitespace from each tag and keeps at most 4096 bytes of it. A label it keeps
  * nothing of, or cuts short, is left out, which only widens the query.
  */
 function asStoredLabel(label: string): string | undefined {
-  const tag = label.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, "");
+  // Scan rather than use a regex, which would be quadratic on a long run
+  let start = 0;
+  let end = label.length;
+  while (start < end && SPACE.includes(label[start])) start += 1;
+  while (end > start && SPACE.includes(label[end - 1])) end -= 1;
+  const tag = label.slice(start, end);
   return tag !== "" && Buffer.byteLength(tag) <= 4096 ? tag : undefined;
 }
 

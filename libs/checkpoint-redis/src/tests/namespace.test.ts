@@ -49,12 +49,7 @@ describe("documentQuery", () => {
   });
 
   it("leaves every value as it is, except for backslashes", () => {
-    const namespace = [
-      "a) | @prefix:(victim",
-      " padded ",
-      "t\t",
-      "x".repeat(5000),
-    ];
+    const namespace = ["a) | @prefix:(victim", " padded ", "t\t"];
     expect(documentQuery(namespace, "k*").params).toEqual({
       ns: namespace.join("."),
       key: "k*",
@@ -101,6 +96,9 @@ describe("subtreeQuery", () => {
     expect(subtreeQuery(["x".repeat(4096)]).params).toEqual({
       l0: "x".repeat(4096),
     });
+    // In linear time, even with a long run inside the label
+    const run = "\t".repeat(1_000_000);
+    expect(subtreeQuery([`${run}x${run}y`])).toEqual({ query: "*" });
     // Nothing after a NUL is stored
     expect(subtreeQuery(["t", `a${NUL}b`, "c"]).params).toEqual({
       l0: "t",
