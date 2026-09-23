@@ -495,6 +495,85 @@ describe.each([["v1" as const], ["v2" as const]])(
         expect(result.messages).toEqual(expected);
       });
 
+      it("Ends the run on a successful returnDirect tool result", async () => {
+        const llm = new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { name: "render", id: "call_1", args: { ui: "Table" } },
+              ],
+            }),
+            new AIMessage("should not be reached"),
+          ],
+        });
+        const render = tool(async ({ ui }) => `rendered ${ui}`, {
+          name: "render",
+          description: "Render the UI.",
+          schema: z.object({ ui: z.string() }),
+          returnDirect: true,
+        });
+
+        const agent = createReactAgent({ llm, tools: [render], version });
+        const result = await agent.invoke({
+          messages: [new HumanMessage("show the invoice")],
+        });
+
+        expect(llm.idx).toBe(1);
+        const last = result.messages.at(-1) as ToolMessage;
+        expect(ToolMessage.isInstance(last)).toBe(true);
+        expect(last.status).toBe("success");
+        expect(last.content).toBe("rendered Table");
+      });
+
+      it("Returns a failed returnDirect tool call to the model", async () => {
+        const llm = new FakeToolCallingChatModel({
+          responses: [
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { name: "render", id: "call_1", args: { ui: "Tabel" } },
+              ],
+            }),
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { name: "render", id: "call_2", args: { ui: "Table" } },
+              ],
+            }),
+            new AIMessage("should not be reached"),
+          ],
+        });
+        let attempts = 0;
+        const render = tool(
+          async ({ ui }) => {
+            attempts += 1;
+            if (attempts === 1) throw new Error(`invalid_ui: ${ui}`);
+            return `rendered ${ui}`;
+          },
+          {
+            name: "render",
+            description: "Render the UI.",
+            schema: z.object({ ui: z.string() }),
+            returnDirect: true,
+          }
+        );
+
+        const agent = createReactAgent({ llm, tools: [render], version });
+        const result = await agent.invoke({
+          messages: [new HumanMessage("show the invoice")],
+        });
+
+        // The error goes back to the model, which retries; the successful
+        // retry then ends the run without a third model call.
+        expect(llm.idx).toBe(2);
+        const toolMessages = result.messages.filter(ToolMessage.isInstance);
+        expect(toolMessages.map((m) => m.status)).toEqual(["error", "success"]);
+        const last = result.messages.at(-1) as ToolMessage;
+        expect(ToolMessage.isInstance(last)).toBe(true);
+        expect(last.content).toBe("rendered Table");
+      });
+
       it("Can accept RunnableToolLike", async () => {
         const llm = new FakeToolCallingChatModel({
           responses: [
