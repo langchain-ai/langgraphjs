@@ -20,8 +20,11 @@ import {
 
 import {
   allOf,
+  hasNamespaceLabels,
   isWithinNamespace,
   joinsUnambiguously,
+  NAMESPACE_LABELS_SCHEMA,
+  namespaceLabelsQuery,
   prefixTextQuery,
   prefixWildcardQuery,
 } from "./namespace.js";
@@ -326,6 +329,9 @@ const STORE_VECTOR_PREFIX = "store_vectors";
 const PAGE_SIZE = 100;
 const MAX_CANDIDATES = 10_000;
 
+// How often to ask whether Redis has finished indexing the labels field.
+const LABELS_RECHECK_MS = 1000;
+
 const SCHEMAS = [
   {
     index: "store",
@@ -356,6 +362,16 @@ export class RedisStore {
   private readonly indexConfig?: IndexConfig;
   private readonly ttlConfig?: TTLConfig;
   private readonly embeddings?: any;
+
+  /**
+   * Whether queries can narrow by the namespace labels field. setup() adds
+   * it, then Redis indexes existing documents into it in the background, and
+   * a query made before that finishes would miss them. Until it is "ready",
+   * queries use the `@prefix` text match this store has always used.
+   */
+  private labels: "absent" | "indexing" | "ready" = "absent";
+
+  private labelsCheckedAt = 0;
 
   constructor(client: RedisConnection, config?: StoreConfig) {
     this.client = client;
@@ -444,6 +460,8 @@ export class RedisStore {
         }
       }
     }
+
+    await this.addNamespaceLabels();
   }
 
   async get(
@@ -627,7 +645,10 @@ export class RedisStore {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
       // Build KNN query
-      const queryStr = prefixWildcardQuery(namespacePrefix);
+      const queryStr = await this.namespaceQuery(
+        namespacePrefix,
+        prefixWildcardQuery
+      );
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
 
       try {
@@ -709,7 +730,10 @@ export class RedisStore {
     }
 
     // Regular search without vectors
-    const queryStr = prefixTextQuery(namespacePrefix);
+    const queryStr = await this.namespaceQuery(
+      namespacePrefix,
+      prefixTextQuery
+    );
 
     try {
       const results = await this.client.ft.search("store", queryStr, {
@@ -1002,7 +1026,10 @@ export class RedisStore {
     const prefix = namespace.join(".");
     // An empty key has no tag to match; the comparison below checks it
     const keyQuery = key === "" ? "*" : `@key:{${this.escapeTagValue(key)}}`;
-    const query = allOf(prefixTextQuery(namespace), keyQuery);
+    const query = allOf(
+      await this.namespaceQuery(namespace, prefixTextQuery),
+      keyQuery
+    );
 
     for (let from = 0; from < MAX_CANDIDATES; from += PAGE_SIZE) {
       const page = await this.client.ft.search("store", query, {
@@ -1017,6 +1044,89 @@ export class RedisStore {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Query clause narrowing to documents that may be in `namespace`: the labels
+   * field once it is ready, the text query `fallback` builds until then.
+   */
+  private async namespaceQuery(
+    namespace: string[],
+    fallback: (namespace: string[]) => string
+  ): Promise<string> {
+    return (await this.labelsReady())
+      ? namespaceLabelsQuery(namespace)
+      : fallback(namespace);
+  }
+
+  /**
+   * Add the labels field to each index that lacks it. If that fails, queries
+   * keep using the text match, so setup() never fails because of it.
+   */
+  private async addNamespaceLabels(): Promise<void> {
+    this.labels = "absent";
+    // node-redis sends FT.ALTER and FT.INFO to any cluster node, not the one
+    // that answers FT.SEARCH, so a cluster keeps the text match.
+    if ("masters" in this.client) {
+      return;
+    }
+    try {
+      for (const index of this.indexNames()) {
+        if (!hasNamespaceLabels(await this.indexInfo(index))) {
+          // Fails if another client added it first; the check below decides.
+          await this.client.ft
+            .alter(index, NAMESPACE_LABELS_SCHEMA as any)
+            .catch(() => undefined);
+        }
+      }
+      this.labels = "indexing";
+      await this.checkNamespaceLabels();
+    } catch {
+      this.labels = "absent";
+    }
+  }
+
+  /** Whether queries can use the labels field yet. */
+  private async labelsReady(): Promise<boolean> {
+    if (
+      this.labels === "indexing" &&
+      Date.now() - this.labelsCheckedAt >= LABELS_RECHECK_MS
+    ) {
+      await this.checkNamespaceLabels().catch(() => undefined);
+    }
+    return this.labels === "ready";
+  }
+
+  /** Mark the field ready once every index has it and has indexed into it. */
+  private async checkNamespaceLabels(): Promise<void> {
+    this.labelsCheckedAt = Date.now();
+    const infos = await Promise.all(
+      this.indexNames().map((index) => this.indexInfo(index))
+    );
+    if (!infos.every(hasNamespaceLabels)) {
+      this.labels = "absent";
+    } else if (infos.every((info) => Number(info.indexing) === 0)) {
+      this.labels = "ready";
+    }
+  }
+
+  private indexNames(): string[] {
+    return this.indexConfig ? ["store", "store_vectors"] : ["store"];
+  }
+
+  /**
+   * FT.INFO as a map. node-redis's own parser reads the reply by position,
+   * which newer RediSearch versions changed, so its `indexing` is wrong.
+   */
+  private async indexInfo(index: string): Promise<Record<string, unknown>> {
+    // Only a single-node connection gets here; see addNamespaceLabels
+    const client = this.client as RedisClientConnection;
+    const reply = (await client.sendCommand(["FT.INFO", index])) as unknown[];
+    const info: Record<string, unknown> = {};
+    for (let i = 0; i + 1 < reply.length; i += 2) {
+      info[String(reply[i])] = reply[i + 1];
+    }
+    return info;
   }
 
   private async refreshItemTTL(docId: string): Promise<void> {
