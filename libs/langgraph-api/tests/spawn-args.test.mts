@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -188,43 +189,108 @@ describe("buildSpawnArgs", () => {
     const dir = await mkdtemp(join(tmpdir(), "langgraph-no-reload-"));
     const [pid, server] = await createIpcServer();
     const messages: unknown[] = [];
-    server.on("data", (message: unknown) => messages.push(message));
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket: Socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    const received = new Promise<void>((resolve) => {
+      server.on("data", (message: unknown) => {
+        messages.push(message);
+        if (
+          typeof message === "object" &&
+          message !== null &&
+          "queryParams" in message &&
+          message.queryParams === "graph=agent"
+        )
+          resolve();
+      });
+    });
     try {
       const preload = join(dir, "preload.mjs");
       const entrypoint = join(dir, "entrypoint.mts");
-      const client = new URL("../src/cli/utils/ipc/client.mts", import.meta.url);
+      const client = new URL(
+        "../src/cli/utils/ipc/client.mts",
+        import.meta.url
+      );
       await writeFile(preload, "process.env.SPAWN_TEST_PRELOADED = '1';");
-      await writeFile(entrypoint, `
+      await writeFile(
+        entrypoint,
+        `
         import { connectToServer } from ${JSON.stringify(client.href)};
+        const acknowledged = new Promise<void>((resolve) => {
+          process.stdin.once("end", resolve);
+          process.stdin.resume();
+        });
         const value: number = 42;
         const send = await connectToServer(Number(process.argv.at(-2)));
-        send?.({ queryParams: "graph=agent" });
+        if (!send) throw new Error("Studio IPC connection failed");
+        send({ queryParams: "graph=agent" });
         console.log(JSON.stringify({ value, preloaded: process.env.SPAWN_TEST_PRELOADED,
           payload: JSON.parse(process.argv.at(-1)) }));
-      `);
+        await acknowledged;
+      `
+      );
       const invocation = buildSpawnArgs({
         nodeLoader: "tsx",
         reload: false,
         pid,
         payload,
         resolve: (specifier) => {
-          if (specifier === "../preload.mjs") return pathToFileURL(preload).href;
-          if (specifier === "./entrypoint.mjs") return pathToFileURL(entrypoint).href;
+          if (specifier === "../preload.mjs")
+            return pathToFileURL(preload).href;
+          if (specifier === "./entrypoint.mjs")
+            return pathToFileURL(entrypoint).href;
           return import.meta.resolve(specifier);
         },
       });
-      const { stdout } = await promisify(execFile)(
+      const execution = promisify(execFile)(
         invocation.command,
         invocation.args,
         { timeout: 10_000, env: { ...process.env, NODE_OPTIONS: "" } }
       );
-      expect(JSON.parse(stdout)).toEqual({ value: 42, preloaded: "1", payload });
-      expect(messages).toEqual([{ queryParams: "graph=agent" }]);
+      try {
+        await Promise.race([
+          received,
+          execution.then(() => {
+            throw new Error("Child exited before Studio IPC was received");
+          }),
+        ]);
+        execution.child.stdin?.end();
+        const { stdout } = await execution;
+        expect(JSON.parse(stdout)).toEqual({
+          value: 42,
+          preloaded: "1",
+          payload,
+        });
+        expect(messages).toEqual([{ queryParams: "graph=agent" }]);
+      } finally {
+        execution.child.stdin?.end();
+        if (
+          execution.child.exitCode === null &&
+          execution.child.signalCode === null
+        ) {
+          execution.child.kill();
+        }
+        await execution.catch(() => undefined);
+      }
     } finally {
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
-      });
-      await rm(dir, { recursive: true, force: true });
+      for (const socket of sockets) socket.destroy();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("IPC server did not close")),
+            1_000
+          );
+          server.close((err) => {
+            clearTimeout(timeout);
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   });
 
