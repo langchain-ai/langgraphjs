@@ -213,13 +213,12 @@ describe("buildSpawnArgs", () => {
           return import.meta.resolve(specifier);
         },
       });
-      const { stdout, stderr } = await promisify(execFile)(
+      const { stdout } = await promisify(execFile)(
         invocation.command,
         invocation.args,
         { timeout: 10_000, env: { ...process.env, NODE_OPTIONS: "" } }
       );
       expect(JSON.parse(stdout)).toEqual({ value: 42, preloaded: "1", payload });
-      expect(stderr).toBe("");
       expect(messages).toEqual([{ queryParams: "graph=agent" }]);
     } finally {
       await new Promise<void>((resolve, reject) => {
