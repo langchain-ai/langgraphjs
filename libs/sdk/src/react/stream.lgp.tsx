@@ -467,8 +467,10 @@ export function useStreamLGP<
     );
   })();
 
-  const stop = () =>
-    stream.stop(historyValues, {
+  const stop = async () => {
+    const wasLoading = stream.isLoading;
+
+    await stream.stop(historyValues, {
       onStop: (args) => {
         if (runMetadataStorage && threadId) {
           const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
@@ -479,6 +481,19 @@ export function useStreamLGP<
         options.onStop?.(args);
       },
     });
+
+    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
+    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
+    // alone, the locally-buffered stream values — including any message
+    // chunk still being assembled when `stop()` was called — stay stuck in
+    // `stream.values` and keep outranking `historyValues` on every render
+    // until a thread switch or a full remount. Re-sync from the server so
+    // the buffer only reflects what was actually persisted.
+    if (wasLoading && threadId) {
+      const newHistory = await history.mutate(threadId);
+      stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+    }
+  };
 
   // --- TRANSPORT ---
   const submit = async (

@@ -799,8 +799,11 @@ export class StreamOrchestrator<
    * configured, also cancels the run on the server and cleans up stored
    * run metadata.
    */
-  stop(): void {
-    void this.stream.stop(this.historyValues, {
+  async stop(): Promise<void> {
+    const wasLoading = this.stream.isLoading;
+    const threadId = this.#threadId;
+
+    await this.stream.stop(this.historyValues, {
       onStop: (args) => {
         if (this.#runMetadataStorage && this.#threadId) {
           const runId = this.#runMetadataStorage.getItem(
@@ -814,6 +817,18 @@ export class StreamOrchestrator<
         this.#options.onStop?.(args);
       },
     });
+
+    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
+    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
+    // alone, the locally-buffered stream values — including any message
+    // chunk still being assembled when `stop()` was called — stay stuck in
+    // `stream.values` and keep outranking `historyValues` on every render
+    // until a thread switch or a full remount. Re-sync from the server so
+    // the buffer only reflects what was actually persisted.
+    if (wasLoading && threadId) {
+      const newHistory = await this.#mutate(threadId);
+      this.stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+    }
   }
 
   /**
