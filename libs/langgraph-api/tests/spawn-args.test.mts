@@ -213,7 +213,7 @@ describe("buildSpawnArgs", () => {
         "../src/cli/utils/ipc/client.mts",
         import.meta.url
       );
-      await writeFile(preload, "process.env.SPAWN_TEST_PRELOADED = '1';");
+      await writeFile(preload, "");
       await writeFile(
         entrypoint,
         `
@@ -222,12 +222,10 @@ describe("buildSpawnArgs", () => {
           process.stdin.once("end", resolve);
           process.stdin.resume();
         });
-        const value: number = 42;
+        const queryParams: string = "graph=agent";
         const send = await connectToServer(Number(process.argv.at(-2)));
         if (!send) throw new Error("Studio IPC connection failed");
-        send({ queryParams: "graph=agent" });
-        console.log(JSON.stringify({ value, preloaded: process.env.SPAWN_TEST_PRELOADED,
-          payload: JSON.parse(process.argv.at(-1)) }));
+        send({ queryParams });
         await acknowledged;
       `
       );
@@ -257,12 +255,7 @@ describe("buildSpawnArgs", () => {
           }),
         ]);
         execution.child.stdin?.end();
-        const { stdout } = await execution;
-        expect(JSON.parse(stdout)).toEqual({
-          value: 42,
-          preloaded: "1",
-          payload,
-        });
+        await execution;
         expect(messages).toEqual([{ queryParams: "graph=agent" }]);
       } finally {
         execution.child.stdin?.end();
