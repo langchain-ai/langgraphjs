@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { documentQuery } from "../namespace.js";
 import { RedisStore } from "../store.js";
 import { createRedisContainer } from "./redis-container.js";
 
@@ -26,17 +25,6 @@ async function queriesOf(client: Client, run: () => Promise<unknown>) {
   }
 }
 
-/** Wait for Redis to finish indexing existing documents. */
-async function indexed(client: Client, name: string) {
-  await vi.waitFor(
-    async () => {
-      const info = (await client.sendCommand(["FT.INFO", name])) as unknown[];
-      expect(Number(info[info.indexOf("indexing") + 1])).toBe(0);
-    },
-    { timeout: 60_000, interval: 50 }
-  );
-}
-
 /** Every stored document under exactly `prefix` and `key`. */
 async function stored(client: Client, prefix: string, key: string) {
   const ids = await client.keys("store:*");
@@ -58,281 +46,204 @@ function random(seed: number) {
 
 describe("namespace isolation", () => {
   let container: Awaited<ReturnType<typeof createRedisContainer>>;
-  // setup() ran, so queries use the namespace fields.
-  let labelled: RedisStore;
-  // setup() never ran, so queries use the text match of earlier versions.
-  let plain: RedisStore;
+  let store: RedisStore;
 
   beforeAll(async () => {
     container = await createRedisContainer();
-    labelled = new RedisStore(container.client, { index });
-    await labelled.setup();
-    plain = new RedisStore(container.client, { index });
+    store = new RedisStore(container.client, { index });
+    await store.setup();
   }, 120_000);
 
   afterAll(async () => {
     await container?.cleanup();
   });
 
-  it("uses the namespace fields only once setup() has added them", async () => {
-    const { client } = container;
-    expect(
-      await queriesOf(client, () => labelled.get(["q", "a"], "k"))
-    ).toEqual(["@prefix_exact:{$ns} @key:{$key}"]);
-    expect(await queriesOf(client, () => plain.get(["q", "a"], "k"))).toEqual([
-      "(@prefix:(q a)) (@key:{k})",
-    ]);
-
-    const alter = vi.spyOn(client.ft, "alter");
-    const another = new RedisStore(client, { index });
-    await another.setup();
-    expect(alter).not.toHaveBeenCalled();
-    alter.mockRestore();
-    const [query] = await queriesOf(client, () => another.search(["q"]));
-    expect(query).toBe("@prefix_labels:{$l0}");
-  });
-
-  it("has Redis return only the namespace's own document", async () => {
+  it("reads and searches only the namespace asked for", async () => {
     const namespaces = [
-      ["exact", "a"],
-      ["a", "exact"],
-      ["exact", "A"],
-      ["exact", "a-b"],
-      ["exact", "a", "b"],
-      ["exact", " padded "],
-      ["exact", "tab\tthere"],
-      ["exact", "x".repeat(5000)],
-      ["exact", "a) | @prefix:(victim"],
-      ["exact", "back\\!slash"],
-      ["exact", "*"],
+      ["tenant", "a"],
+      ["tenant", "a", "notes"],
+      ["tenant", "ab"],
+      ["a", "tenant"],
+      ["tenant", "A"],
+      ["tenant", "a-b"],
+      ["tenant", "a) | @prefix:(victim"],
+      ["tenant", "x".repeat(5000)],
     ];
-    for (const namespace of namespaces) {
-      await labelled.put(namespace, "k", { namespace });
+    for (const [i, namespace] of namespaces.entries()) {
+      await store.put(namespace, `key${i}`, { text: String(i) });
     }
-    for (const namespace of namespaces) {
-      const { query, params } = documentQuery(namespace, "k");
-      const found = await container.client.ft.search("store", query, {
-        PARAMS: params,
-        DIALECT: 2,
-      });
+    for (const [i, namespace] of namespaces.entries()) {
+      expect((await store.get(namespace, `key${i}`))?.namespace).toEqual(
+        namespace
+      );
       expect(
-        found.documents.map((doc: any) => doc.value.prefix),
-        JSON.stringify(namespace)
-      ).toEqual([namespace.join(".")]);
+        await store.get(namespace, `key${(i + 1) % namespaces.length}`)
+      ).toBeNull();
+      for (const query of [undefined, "near"]) {
+        const found = await store.search(namespace, { limit: 50, query });
+        const expected = namespaces.filter((other) =>
+          namespace.every((label, j) => other[j] === label)
+        );
+        expect(expected).toEqual(
+          expect.arrayContaining(found.map((item) => item.namespace))
+        );
+      }
     }
   });
 
-  const paths: [string, () => RedisStore][] = [
-    ["labels", () => labelled],
-    ["text", () => plain],
-  ];
-  describe.each(paths)("through the %s query", (path, store) => {
-    const t = `tenant${path}`;
-    // The text query can miss documents, as it always could: a stopword
-    // label is not indexed. It must never return another namespace's.
-    const complete = path !== "text";
+  it("replaces and deletes only the exact namespace", async () => {
+    const collide = [
+      ["scope", "one"],
+      ["one", "scope"],
+      ["scope", "one", "child"],
+      ["scope", "One"],
+    ];
+    for (const namespace of collide) {
+      await store.put(namespace, "same", { namespace });
+    }
+    await store.put(["scope", "one"], "same", { updated: true });
+    await store.delete(["scope", "one"], "same");
 
-    it("reads and searches only the namespace asked for", async () => {
-      const namespaces = [
-        [t, "a"],
-        [t, "a", "notes"],
-        [t, "ab"],
-        ["a", t],
-        [t, "A"],
-        [t, "a-b"],
-        [t, "a) | @prefix:(victim"],
-        // Longer than a tag can hold
-        [t, "x".repeat(5000)],
-      ];
-      for (const [i, namespace] of namespaces.entries()) {
-        await store().put(namespace, `key${i}`, { text: String(i) });
-      }
-      for (const [i, namespace] of namespaces.entries()) {
-        expect((await store().get(namespace, `key${i}`))?.namespace).toEqual(
-          namespace
-        );
-        expect(
-          await store().get(namespace, `key${(i + 1) % namespaces.length}`)
-        ).toBeNull();
-        for (const query of [undefined, "near"]) {
-          const found = await store().search(namespace, { limit: 50, query });
-          const expected = namespaces.filter((other) =>
-            namespace.every((label, j) => other[j] === label)
-          );
-          const namespacesFound = found.map((item) => item.namespace);
-          expect(expected).toEqual(expect.arrayContaining(namespacesFound));
-          if (complete) {
-            expect(namespacesFound).toHaveLength(expected.length);
-          }
-        }
-      }
-    });
-
-    it("replaces and deletes only the exact namespace", async () => {
-      const collide = [
-        [t, "one"],
-        ["one", t],
-        [t, "one", "child"],
-        [t, "One"],
-      ];
-      for (const namespace of collide) {
-        await store().put(namespace, "same", { namespace });
-      }
-      await store().put([t, "one"], "same", { updated: true });
-      await store().delete([t, "one"], "same");
-
-      expect(await store().get([t, "one"], "same")).toBeNull();
-      for (const namespace of collide.slice(1)) {
-        expect((await store().get(namespace, "same"))?.value).toEqual({
-          namespace,
-        });
-      }
-      expect(await stored(container.client, `${t}.one`, "same")).toHaveLength(
-        0
-      );
-    });
-
-    it("treats the empty key as a key", async () => {
-      await store().put([t, "empty"], "", { v: 1 });
-      await store().put([t, "empty", "child"], "", { v: 0 });
-      await store().put([t, "empty"], "", { v: 2 });
-
-      expect((await store().get([t, "empty"], ""))?.value).toEqual({ v: 2 });
-      expect(await stored(container.client, `${t}.empty`, "")).toHaveLength(1);
-      expect((await store().get([t, "empty", "child"], ""))?.value).toEqual({
-        v: 0,
+    expect(await store.get(["scope", "one"], "same")).toBeNull();
+    for (const namespace of collide.slice(1)) {
+      expect((await store.get(namespace, "same"))?.value).toEqual({
+        namespace,
       });
-    });
+    }
+    expect(await stored(container.client, "scope.one", "same")).toHaveLength(0);
+  });
 
-    it("reads nothing through an empty or dotted label", async () => {
-      await store().put([t, "dot", "x"], "k", { v: 1 });
-      expect(await store().get([`${t}.dot`, "x"], "k")).toBeNull();
-      expect(await store().search([`${t}.dot`])).toEqual([]);
-      // [""] joins to the same prefix as [], which searches everything
-      expect(await store().search([""])).toEqual([]);
-      expect(await store().search([], { limit: 1 })).toHaveLength(1);
-    });
+  it("treats the empty key as a key", async () => {
+    await store.put(["empty"], "", { v: 1 });
+    await store.put(["empty", "child"], "", { v: 0 });
+    await store.put(["empty"], "", { v: 2 });
 
-    it("pages past candidates that share the key", async () => {
-      // The text query cannot narrow these namespaces: each is one label
-      // whose words are all stopwords. So every document with the key is a
-      // candidate, all score alike, and ties come back in insertion order
-      // (oldest first on Redis 7.4, newest first on Redis 8). Ours goes in
-      // the middle, on the third page either way. The exact field needs one.
-      const key = `page${path}`;
-      const words = ["a", "an", "and", "are", "as", "at", "be", "by", "for"];
-      const others = words.flatMap((x) =>
-        words.flatMap((y) => words.map((z) => ` ${x} ${y} ${z} `))
+    expect((await store.get(["empty"], ""))?.value).toEqual({ v: 2 });
+    expect(await stored(container.client, "empty", "")).toHaveLength(1);
+    expect((await store.get(["empty", "child"], ""))?.value).toEqual({ v: 0 });
+  });
+
+  it("reads nothing through an empty or dotted label", async () => {
+    await store.put(["dot", "x"], "k", { v: 1 });
+    expect(await store.get(["dot.x"], "k")).toBeNull();
+    expect(await store.search(["dot.x"])).toEqual([]);
+    // [""] joins to the same prefix as [], which searches everything
+    expect(await store.search([""])).toEqual([]);
+    expect(await store.search([], { limit: 1 })).toHaveLength(1);
+  });
+
+  it("pages past candidates that share the key", async () => {
+    // The text query cannot narrow these namespaces: each is one label whose
+    // words are all stopwords. So every document with the key is a
+    // candidate, all score alike, and ties come back in insertion order
+    // (oldest first on Redis 7.4, newest first on Redis 8). Ours goes in the
+    // middle, on the third page either way.
+    const words = ["a", "an", "and", "are", "as", "at", "be", "by", "for"];
+    const others = words.flatMap((x) =>
+      words.flatMap((y) => words.map((z) => ` ${x} ${y} ${z} `))
+    );
+    const mine = [" the the the "];
+    for (let i = 0; i < 500; i++) {
+      if (i === 250) await store.put(mine, "page", { v: "mine" });
+      await store.put([others[i]], "page", { v: i });
+    }
+
+    const queries = await queriesOf(container.client, async () => {
+      expect((await store.get(mine, "page"))?.value).toEqual({ v: "mine" });
+    });
+    expect(queries).toHaveLength(3);
+
+    await store.put(mine, "page", { v: "again" });
+    const docs = await stored(container.client, mine[0], "page");
+    expect(docs.map((doc) => doc.value)).toEqual([{ v: "again" }]);
+  });
+
+  it("keeps random hostile namespaces apart", async () => {
+    const rnd = random(12);
+    const pool = [
+      ..."abzAZ09_",
+      ...["a", "is", "the", " ", "\t", "\n", "\\", "|", "{", "}", "(", ")"],
+      ...['"', "'", "*", "~", "-", ":", "@", "%", "$", "`", "é", "日"],
+      ...[String.fromCharCode(0), "x".repeat(5000)],
+    ];
+    const label = () =>
+      Array.from({ length: 1 + rnd(4) }, () => pool[rnd(pool.length)]).join("");
+    const flats = new Set<string>();
+    const made: string[][] = [];
+    while (made.length < 120) {
+      const namespace = ["fz", ...Array.from({ length: 1 + rnd(2) }, label)];
+      const flat = namespace.join(".");
+      if (
+        namespace.some((l) => l === "" || l.includes(".")) ||
+        flats.has(flat)
+      ) {
+        continue;
+      }
+      flats.add(flat);
+      made.push(namespace);
+      await store.put(namespace, "k", { flat, text: String(rnd(900)) });
+    }
+
+    for (const namespace of made) {
+      const flat = namespace.join(".");
+      const expected = [...flats].filter(
+        (other) => other === flat || other.startsWith(`${flat}.`)
       );
-      const mine = [" the the the "];
-      for (let i = 0; i < 500; i++) {
-        if (i === 250) await store().put(mine, key, { v: "mine" });
-        await store().put([others[i]], key, { v: i });
-      }
-
-      const queries = await queriesOf(container.client, async () => {
-        expect((await store().get(mine, key))?.value).toEqual({ v: "mine" });
-      });
-      expect(queries).toHaveLength(path === "text" ? 3 : 1);
-
-      await store().put(mine, key, { v: "again" });
-      const docs = await stored(container.client, mine[0], key);
-      expect(docs.map((doc) => doc.value)).toEqual([{ v: "again" }]);
-    });
-
-    it("keeps random hostile namespaces apart", async () => {
-      const rnd = random(path === "text" ? 12 : 11);
-      const pool = [
-        ..."abzAZ09_",
-        ...["a", "is", "the", " ", "\t", "\n", "\\", "|", "{", "}", "(", ")"],
-        ...['"', "'", "*", "~", "-", ":", "@", "%", "$", "`", "é", "日"],
-        ...[String.fromCharCode(0), "x".repeat(5000)],
-      ];
-      const label = () =>
-        Array.from({ length: 1 + rnd(4) }, () => pool[rnd(pool.length)]).join(
-          ""
-        );
-      const flats = new Set<string>();
-      const made: string[][] = [];
-      while (made.length < 120) {
-        const namespace = [
-          `fz${path}`,
-          ...Array.from({ length: 1 + rnd(2) }, label),
-        ];
-        const flat = namespace.join(".");
-        if (
-          namespace.some((l) => l === "" || l.includes(".")) ||
-          flats.has(flat)
-        ) {
-          continue;
-        }
-        flats.add(flat);
-        made.push(namespace);
-        await store().put(namespace, "k", { flat });
-      }
-
-      for (const namespace of made) {
-        const flat = namespace.join(".");
-        const expected = [...flats].filter(
-          (other) => other === flat || other.startsWith(`${flat}.`)
-        );
-        // The text query rejects some of these labels as a syntax error, as
-        // it always did.
-        const tolerate = (error: unknown) => {
-          if (complete) throw error;
-        };
+      // The text query rejects some of these labels as a syntax error, and
+      // misses documents under others, as it always did. What must hold is
+      // that nothing from another namespace comes back.
+      for (const query of [undefined, "near"]) {
         const got = (
-          (await store().search(namespace, { limit: 1000 }).catch(tolerate)) ??
-          []
+          await store.search(namespace, { limit: 1000, query }).catch(() => [])
         ).map((item) => item.namespace.join("."));
-        const item = await store().get(namespace, "k").catch(tolerate);
-        // Every result belongs to the namespace, on either path.
         expect(expected).toEqual(expect.arrayContaining(got));
-        expect([undefined, null, flat]).toContain(item?.value.flat ?? item);
-        if (complete) {
-          // And it finds everything that is there.
-          expect(got.sort(), JSON.stringify(namespace)).toEqual(
-            expected.sort()
-          );
-          expect(item?.value).toEqual({ flat });
-        }
       }
-    });
+      const item = await store.get(namespace, "k").catch(() => undefined);
+      expect([undefined, null, flat]).toContain(item?.value.flat ?? item);
+    }
   });
 
-  it("finds a vector behind nearer ones from other namespaces", async () => {
-    for (let i = 0; i < 1200; i++) {
-      await labelled.put(["knn", "A"], `f${i}`, { text: String(i / 10) });
+  it("finds a namespace's vectors behind other namespaces' nearer ones", async () => {
+    // Every user's namespace starts with the same word, so narrowing by that
+    // word alone leaves only other users' vectors among the nearest.
+    for (let user = 0; user < 30; user++) {
+      for (let i = 0; i < 3; i++) {
+        const text = String(user === 3 ? 900 + i : user * 3 + i);
+        await store.put(["memories", `user-${user}`], `m${i}`, { text });
+      }
     }
-    await labelled.put(["knn", "a"], "mine", { text: "900" });
-    const [found] = await labelled.search(["knn", "a"], {
+    const found = await store.search(["memories", "user-3"], {
       query: "near",
-      limit: 1,
+      limit: 3,
     });
-    expect(found?.key).toBe("mine");
+    expect(found.map((item) => item.key).sort()).toEqual(["m0", "m1", "m2"]);
+    expect(found.every((item) => item.namespace[1] === "user-3")).toBe(true);
+  });
+
+  it("falls back to the first-word query when Redis rejects the words", async () => {
+    await store.put(["memories", "a)"], "mine", { text: "1" });
+    let found: Awaited<ReturnType<typeof store.search>> = [];
+    const queries = await queriesOf(container.client, async () => {
+      found = await store.search(["memories", "a)"], {
+        query: "near",
+        limit: 100,
+      });
+    });
+    expect(queries).toEqual([
+      "(@prefix:(memories a)))=>[KNN 100 @embedding $BLOB]",
+      "(@prefix:memories*)=>[KNN 100 @embedding $BLOB]",
+    ]);
+    expect(found.map((item) => item.key)).toEqual(["mine"]);
   });
 });
 
-/** A document exactly as earlier versions write it, in namespace `old.<label>`. */
-function legacy(label: string, key: string, v: string | number) {
-  return {
-    prefix: `old.${label}`,
-    key,
-    value: { v },
-    created_at: 1,
-    updated_at: 1,
-  };
-}
-
-describe("upgrading a store written by an earlier version", () => {
+describe("an existing store", () => {
   let container: Awaited<ReturnType<typeof createRedisContainer>>;
-  const count = 50_000;
 
   beforeAll(async () => {
     container = await createRedisContainer();
-    const { client } = container;
     // The index and documents exactly as earlier versions write them.
-    await client.ft.create(
+    await container.client.ft.create(
       "store",
       {
         "$.prefix": { type: "TEXT", AS: "prefix" },
@@ -342,81 +253,39 @@ describe("upgrading a store written by an earlier version", () => {
       } as any,
       { ON: "JSON", PREFIX: "store:" }
     );
-    for (let from = 0; from < count; from += 5000) {
-      const batch = client.multi();
-      for (let i = from; i < from + 5000; i++) {
-        batch.json.set(`store:old${i}`, "$", legacy(`n${i}`, `k${i}`, i));
-      }
-      await batch.exec();
+    for (let i = 0; i < 20; i++) {
+      await container.client.json.set(`store:old${i}`, "$", {
+        prefix: `old.n${i}`,
+        key: `k${i}`,
+        value: { v: i },
+        created_at: 1,
+        updated_at: 1,
+      });
     }
-    await indexed(client, "store");
-  }, 180_000);
+  }, 120_000);
 
   afterAll(async () => {
     await container?.cleanup();
   });
 
-  it.each([
-    ["any field", () => true],
-    ["one of the fields", (as: string) => as === "prefix_exact"],
-  ])("keeps the text query when Redis refuses %s", async (_, refuse) => {
+  it("keeps its index and documents as they are", async () => {
     const { client } = container;
-    const alter = client.ft.alter.bind(client.ft) as (...args: any[]) => any;
-    const refusing = vi
-      .spyOn(client.ft, "alter")
-      .mockImplementation(((index: string, schema: any) =>
-        refuse(schema["$.prefix"].AS)
-          ? Promise.reject(new Error("NOPERM this user has no permissions"))
-          : alter(index, schema)) as any);
-    const refused = new RedisStore(client);
-    await expect(refused.setup()).resolves.toBeUndefined();
-    refusing.mockRestore();
-
-    // Even once Redis has indexed what it added, the store must not use it
-    await indexed(client, "store");
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    const queries = await queriesOf(client, async () => {
-      expect((await refused.get(["old", "n7"], "k7"))?.value).toEqual({ v: 7 });
-    });
-    expect(queries).toEqual(["(@prefix:(old n7)) (@key:{k7})"]);
-  });
-
-  it("switches to the namespace fields once Redis has indexed them", async () => {
-    const { client } = container;
-    const before = await client.json.get("store:old42");
+    const fields = async () => {
+      const info = (await client.sendCommand(["FT.INFO", "store"])) as any[];
+      return JSON.stringify(info[info.indexOf("attributes") + 1]);
+    };
+    const schema = await fields();
+    const before = await client.json.get("store:old7");
     const store = new RedisStore(client);
     await store.setup();
+    expect(await fields()).toBe(schema);
 
-    // Redis is still indexing the new fields: a query on them would miss
-    // older documents, so an update must still find the one it replaces.
-    const during = await queriesOf(client, async () => {
-      await store.put(["old", "n7"], "k7", { v: "new" });
-      expect((await store.get(["old", "n9"], "k9"))?.value).toEqual({ v: 9 });
-    });
-    expect(during.every((query) => query.startsWith("(@prefix:("))).toBe(true);
+    expect((await store.get(["old", "n7"], "k7"))?.value).toEqual({ v: 7 });
+    expect(await client.json.get("store:old7")).toEqual(before);
 
-    await indexed(client, "store");
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-    const after = await queriesOf(client, async () => {
-      expect((await store.get(["old", "n7"], "k7"))?.value).toEqual({
-        v: "new",
-      });
-      expect((await store.get(["old", "n42"], "k42"))?.value).toEqual({
-        v: 42,
-      });
-    });
-    expect(after).toEqual([
-      "@prefix_exact:{$ns} @key:{$key}",
-      "@prefix_exact:{$ns} @key:{$key}",
-    ]);
-    expect(await stored(client, "old.n7", "k7")).toHaveLength(1);
-    // Reads leave older documents as they were.
-    expect(await client.json.get("store:old42")).toEqual(before);
-
-    // A document an earlier version writes now is found through the fields.
-    await client.json.set("store:late", "$", legacy("late", "late", "late"));
-    expect((await store.get(["old", "late"], "late"))?.value).toEqual({
-      v: "late",
-    });
+    // Replacing a document an earlier version wrote leaves one copy.
+    await store.put(["old", "n8"], "k8", { v: "new" });
+    const copies = await stored(client, "old.n8", "k8");
+    expect(copies.map((doc) => doc.value)).toEqual([{ v: "new" }]);
   });
 });
