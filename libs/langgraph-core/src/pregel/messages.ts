@@ -77,7 +77,8 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     meta: Meta,
     message: BaseMessage,
     runId: string | undefined,
-    dedupe = false
+    dedupe = false,
+    outputIdx?: number
   ) {
     if (
       dedupe &&
@@ -93,6 +94,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       if (isToolMessage(message)) {
         // Distinguish tool messages by tool call ID.
         messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
+      } else if (outputIdx !== undefined) {
+        // Node outputs are distinct messages, not chunks of one, so they must
+        // not share an id: `messagesStateReducer` deduplicates by id and would
+        // drop all but one of them. Distinguish them by their position in the
+        // output, the same way tool messages are distinguished by tool call ID.
+        messageId ??= `run-${runId}-out-${outputIdx}`;
       } else {
         // For instance in ChatAnthropic, the first chunk has an message ID
         // but the subsequent chunks do not. To avoid clients seeing two messages
@@ -225,22 +232,26 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     const metadata = this.metadatas[runId];
     delete this.metadatas[runId];
     if (metadata !== undefined) {
+      let outputIdx = 0;
       if (isBaseMessage(outputs)) {
-        this._emit(metadata, outputs, runId, true);
+        this._emit(metadata, outputs, runId, true, outputIdx);
       } else if (Array.isArray(outputs)) {
         for (const value of outputs) {
           if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
+            this._emit(metadata, value, runId, true, outputIdx);
+            outputIdx += 1;
           }
         }
       } else if (outputs != null && typeof outputs === "object") {
         for (const value of Object.values(outputs)) {
           if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
+            this._emit(metadata, value, runId, true, outputIdx);
+            outputIdx += 1;
           } else if (Array.isArray(value)) {
             for (const item of value) {
               if (isBaseMessage(item)) {
-                this._emit(metadata, item, runId, true);
+                this._emit(metadata, item, runId, true, outputIdx);
+                outputIdx += 1;
               }
             }
           }
