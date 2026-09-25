@@ -64,6 +64,17 @@ export function valuesProjection<T = unknown>(
         namespace: ns,
         onEvent(event) {
           if (event.method !== "values") return;
+          // The subscription runs at `depth: 1`, so a nested subagent
+          // (namespace exactly one segment below `ns`) also matches the
+          // filter. Applying a child snapshot would replace this store
+          // with the CHILD's state — only fold events emitted at exactly
+          // this namespace, mirroring the root branch's guard above.
+          if (
+            event.params == null ||
+            namespaceKey(event.params.namespace) !== namespaceKey(ns)
+          ) {
+            return;
+          }
           applyValuesEvent(event as ValuesEvent);
         },
       });
