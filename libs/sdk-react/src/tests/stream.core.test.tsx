@@ -30,11 +30,18 @@ it("submits input, streams values, and projects messages", async () => {
   const screen = await render(<BasicStream apiUrl={apiUrl} />);
 
   try {
+    await expect
+      .element(screen.getByTestId("status"))
+      .toHaveTextContent("idle");
+
     await screen.getByTestId("submit").click();
 
     await expect
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Loading...");
+    await expect
+      .element(screen.getByTestId("status"))
+      .toHaveTextContent("streaming");
 
     await expect
       .element(screen.getByTestId("message-0"))
@@ -46,6 +53,9 @@ it("submits input, streams values, and projects messages", async () => {
     await expect
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("status"))
+      .toHaveTextContent("idle");
   } finally {
     await cleanupRender(screen);
   }
