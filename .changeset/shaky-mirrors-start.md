@@ -1,5 +1,5 @@
 ---
-"@langchain/langgraph-cli": major
+"@langchain/langgraph-cli": patch
 ---
 
 add --agent-id and --agent-environment flags
