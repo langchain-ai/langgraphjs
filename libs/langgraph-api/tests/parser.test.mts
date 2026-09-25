@@ -260,6 +260,47 @@ test.concurrent("graph factories", { timeout: 30_000 }, () => {
   }
 });
 
+test.concurrent(
+  "erases generic arguments for message classes only",
+  { timeout: 30_000 },
+  () => {
+    const [schema] = SubgraphExtractor.extractSchemas([
+      {
+        sourceFile: [
+          {
+            path: "graph.mts",
+            main: true,
+            contents: dedent`
+              import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+              export const graph = new StateGraph(MessagesAnnotation)
+                .addNode("echo", () => ({ messages: [] }))
+                .addEdge("__start__", "echo")
+                .addEdge("echo", "__end__")
+                .compile();
+            `,
+          },
+        ],
+        exportSymbol: "graph",
+      },
+    ]);
+
+    const definitions = schema.graph.state?.definitions ?? {};
+    const names = Object.keys(definitions);
+
+    // langchain v1 parameterized these, so they only appear bare if the
+    // generic arguments are erased. Consumers match them by name.
+    expect(names).toEqual(expect.arrayContaining(["BaseMessage", "AIMessage"]));
+
+    // Erasing arguments off everything would collide `Record<string,any>`
+    // with `Record<string,string>`, so non-message generics keep theirs.
+    expect(names.filter((name) => name.startsWith("Record<"))).not.toHaveLength(
+      0
+    );
+    expect(names).not.toContain("Record");
+  }
+);
+
 describe.concurrent("subgraphs", { timeout: 30_000 }, () => {
   test.concurrent(`basic`, () => {
     const testCases = [
