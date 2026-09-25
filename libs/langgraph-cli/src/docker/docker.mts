@@ -223,7 +223,9 @@ async function updateGraphPaths(
                 .join("/");
               break find;
             }
+          }
 
+          if (Object.keys(localDeps.fauxPkgs).length) {
             throw new Error(
               `Module '${importStr}' not found in 'dependencies' list. Add its containing package to 'dependencies' list.`
             );
