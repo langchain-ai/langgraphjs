@@ -205,10 +205,7 @@ export function putTests<T extends BaseCheckpointSaver>(
       // TODO: all of the checkpointers below store full channel_values on every put, rather than storing deltas
       // see: https://github.com/langchain-ai/langgraphjs/issues/593
       // see: https://github.com/langchain-ai/langgraphjs/issues/594
-      // see: https://github.com/langchain-ai/langgraphjs/issues/595
       MemorySaver: "TODO: MemorySaver doesn't store channel deltas",
-      "@langchain/langgraph-checkpoint-mongodb":
-        "TODO: MongoDBSaver doesn't store channel deltas",
       "@langchain/langgraph-checkpoint-sqlite":
         "TODO: SQLiteSaver doesn't store channel deltas",
     })(
