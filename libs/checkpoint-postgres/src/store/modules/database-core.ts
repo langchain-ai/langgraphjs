@@ -21,13 +21,13 @@ export class DatabaseCore {
     schema: string,
     ttlConfig?: TTLConfig,
     indexConfig?: IndexConfig,
-    textSearchLanguage?: string
+    textSearchLanguage: string = "english"
   ) {
     this.pool = pool;
     this.schema = schema;
     this.ttlConfig = ttlConfig;
     this.indexConfig = indexConfig;
-    this.textSearchLanguage = textSearchLanguage || "english";
+    this.textSearchLanguage = textSearchLanguage;
   }
 
   async withClient<T>(
