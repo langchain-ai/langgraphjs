@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Embeddings, EmbeddingsParams } from "@langchain/core/embeddings";
 import { InMemoryStore } from "../store/memory.js";
 
@@ -70,6 +70,63 @@ describe("InMemoryStore Vector Search", () => {
     const docOrder = results.map((r) => r.key);
     expect(docOrder).toContain("doc2");
     expect(docOrder).toContain("doc3");
+  });
+
+  it.each(["constructor", "toString", "hasOwnProperty", "__proto__"])(
+    "should index text matching the prototype property %s",
+    async (text) => {
+      const storeWithFields = new InMemoryStore({
+        index: { dims: embeddings.dims, embeddings, fields: ["text"] },
+      });
+
+      await storeWithFields.put(["test"], "doc1", { text });
+
+      expect((await storeWithFields.get(["test"], "doc1"))?.value).toEqual({
+        text,
+      });
+      const results = await storeWithFields.search(["test"], { query: text });
+      expect(results).toHaveLength(1);
+      expect(results[0].key).toBe("doc1");
+      expect(results[0].score).toBeCloseTo(1);
+    }
+  );
+
+  it("should deduplicate prototype-named texts across wildcard fields and documents", async () => {
+    const embedDocuments = vi.spyOn(embeddings, "embedDocuments");
+    const storeWithFields = new InMemoryStore({
+      index: { dims: embeddings.dims, embeddings, fields: ["texts[*]"] },
+    });
+    const documents = [
+      { texts: ["constructor", "__proto__", "constructor"] },
+      { texts: ["__proto__", "ordinary text", "constructor"] },
+    ];
+
+    await storeWithFields.batch(
+      documents.map((value, i) => ({
+        namespace: ["test"],
+        key: `doc${i}`,
+        value,
+      }))
+    );
+
+    expect(embedDocuments).toHaveBeenCalledTimes(1);
+    expect(embedDocuments).toHaveBeenCalledWith([
+      "constructor",
+      "__proto__",
+      "ordinary text",
+    ]);
+    for (const [i, value] of documents.entries()) {
+      expect((await storeWithFields.get(["test"], `doc${i}`))?.value).toEqual(
+        value
+      );
+    }
+    for (const query of ["constructor", "__proto__"]) {
+      const results = await storeWithFields.search(["test"], { query });
+      expect(results.map(({ key }) => key).sort()).toEqual(["doc0", "doc1"]);
+      for (const result of results) {
+        expect(result.score).toBeCloseTo(1);
+      }
+    }
   });
 
   it("should update embeddings when documents are updated", async () => {
