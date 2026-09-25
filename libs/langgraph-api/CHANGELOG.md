@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 1.5.1
+
+### Patch Changes
+
+- [#2883](https://github.com/langchain-ai/langgraphjs/pull/2883) [`545c7d1`](https://github.com/langchain-ai/langgraphjs/commit/545c7d189883a01c8723f3ed782d347732c00b60) Thanks [@casparb](https://github.com/casparb)! - Fix `langgraph dev --no-reload` with the default TypeScript loader. Pass the tsx `--clear-screen=false` option only in watch mode so Node can start the server when reload is disabled.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.1
+
 ## 1.5.1-rc.0
 
 ### Patch Changes

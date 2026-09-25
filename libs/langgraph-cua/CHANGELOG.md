@@ -1,5 +1,9 @@
 # @langchain/langgraph-cua
 
+## 1.0.4
+
+No changes in this release.
+
 ## 1.0.4-rc.0
 
 ### Patch Changes
