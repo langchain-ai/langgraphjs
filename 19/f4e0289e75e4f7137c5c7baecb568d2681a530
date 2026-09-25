@@ -1,0 +1,27 @@
+libs/langgraph-cli/tests/deploy-agent.test.mts
+  s_052c045e7735cc::t_12be249b394447 1-113
+  s_052c045e7735cc::t_57a46673543760 114-153
+libs/langgraph-cli/package.json
+  s_052c045e7735cc::t_6057c9d4cfc062 3
+libs/langgraph-cli/src/cli/utils/host-backend.mts
+  s_052c045e7735cc::t_6057c9d4cfc062 19-23,211-212,219,241-245,247-251
+libs/langgraph-cli/src/cli/deploy.mts
+  s_052c045e7735cc::t_6057c9d4cfc062 35,457-458,466-471,473,475-481,494-495,501-522,529-531,1155-1181,1187-1188,1218-1220,1231,1251
+  s_052c045e7735cc::t_e8367bea53e56d 1221-1230,1232-1233,1254,1260,1297-1298,1305-1306,1416-1417,1421,1424,1656-1660,1726-1730
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "19f4e0289e75e4f7137c5c7baecb568d2681a530",
+  "prompts": {},
+  "sessions": {
+    "s_052c045e7735cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c663-ede4-7d32-aa94-e210efdbf5b0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "syachamaneni-lc <sreekara.yachamaneni@langchain.dev>"
+    }
+  }
+}
