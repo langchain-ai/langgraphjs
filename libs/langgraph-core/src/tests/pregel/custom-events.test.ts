@@ -4,7 +4,13 @@ import { dispatchCustomEvent } from "@langchain/core/callbacks/dispatch";
 import { CallbackManager } from "@langchain/core/callbacks/manager";
 import { StreamCustomEventHandler } from "../../pregel/stream.js";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
-import { AIMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  AIMessageChunk,
+  BaseMessage,
+  HumanMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import { Annotation, StateGraph, START, END, getWriter } from "../../index.js";
 import { FakeChatModel } from "../utils.models.js";
 
@@ -104,15 +110,91 @@ describe("V3 callback custom events", () => {
     expect(manager.handlers).toEqual(handlers);
   });
 
-  it("propagates stream delivery errors synchronously", () => {
+  it("propagates stream delivery errors", async () => {
     const handler = new StreamCustomEventHandler(() => {
       throw new Error("closed stream");
     });
     expect(handler.awaitHandlers).toBe(true);
     expect(handler.raiseError).toBe(true);
-    expect(() => handler.handleCustomEvent("progress", {}, "run")).toThrow(
-      "closed stream"
+    await expect(
+      handler.handleCustomEvent("progress", {}, "run")
+    ).rejects.toThrow("closed stream");
+  });
+
+  it("snapshots message classes and their current fields at dispatch", async () => {
+    const message = new AIMessage({
+      id: "ai",
+      content: "constructor",
+      tool_calls: [{ id: "tool", name: "lookup", args: { query: "before" } }],
+    });
+    message.content = "at dispatch";
+    const payload = {
+      messages: [
+        message,
+        new HumanMessage("question"),
+        new ToolMessage({ content: "answer", tool_call_id: "tool" }),
+        new AIMessageChunk({
+          content: "chunk",
+          tool_call_chunks: [
+            { id: "chunk-tool", name: "lookup", args: '{"query":', index: 0 },
+          ],
+        }),
+      ],
+    };
+    const expected = payload.messages.map((item) => ({
+      ...item.toDict().data,
+      type: item.getType(),
+      content: item.content,
+    }));
+    const graph = new StateGraph(State)
+      .addNode("emit", async () => {
+        await dispatchCustomEvent("messages", payload);
+        getWriter()?.({ name: "writer", payload: expected });
+        message.content = "after dispatch";
+        if (!message.tool_calls?.[0])
+          throw new Error("Expected initial tool call");
+        message.tool_calls[0].args.query = "after";
+        return { value: 1 };
+      })
+      .addEdge(START, "emit")
+      .addEdge("emit", END)
+      .compile();
+    const events = await collect(
+      await graph.streamEvents({ value: 0 }, { version: "v3" })
     );
+    const callback = events[0].data as { payload: { messages: BaseMessage[] } };
+    expect(callback.payload.messages.every(BaseMessage.isInstance)).toBe(true);
+    const actual = callback.payload.messages.map((item) => ({
+      ...item.toDict().data,
+      type: item.getType(),
+    }));
+    expect(actual).toEqual((events[1].data as { payload: unknown }).payload);
+    expect(actual[0]).toMatchObject({
+      content: "at dispatch",
+      tool_calls: [{ args: { query: "before" } }],
+    });
+    expect(callback.payload.messages[3]).toBeInstanceOf(AIMessageChunk);
+  });
+
+  it("honors application serialization hooks without exposing internal fields", async () => {
+    class ApplicationValue {
+      private internal = "not public";
+      toJSON() {
+        return { public: this.internal.length };
+      }
+    }
+    const chunks: unknown[] = [];
+    const handler = new StreamCustomEventHandler((chunk) => {
+      chunks.push(chunk);
+    });
+    await handler.handleCustomEvent(
+      "app",
+      { item: new ApplicationValue() },
+      "run"
+    );
+    expect(chunks).toEqual([
+      [[], "custom", { name: "app", payload: { item: { public: 10 } } }],
+    ]);
   });
 
   it("preserves V2 callback event delivery", async () => {
