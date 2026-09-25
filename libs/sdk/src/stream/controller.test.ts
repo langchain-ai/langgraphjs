@@ -1097,6 +1097,29 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("clears a hydrated interrupt after another client completes the resumed run", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      interruptedOn("resolved-by-another-client"),
+      runningAtRefresh,
+      finishedIdle,
+    ]);
+    await controller.hydrationPromise;
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+    ).toEqual(["resolved-by-another-client"]);
+
+    emit(lifecycleEvent("running", 12));
+    emit(lifecycleEvent("completed", 13));
+
+    await waitForExpectation(() => {
+      expect(getState).toHaveBeenCalledTimes(3);
+      expect(controller.rootStore.getSnapshot().interrupts).toEqual([]);
+    }, 3_000);
+
+    await controller.dispose();
+  });
+
   it("filters replayed interrupts while accepting newer interrupts after submit", async () => {
     const eventListeners = new Set<(event: Event) => void>();
     let resolveSubmit: (() => void) | undefined;
