@@ -8,6 +8,7 @@ import {
 import { BaseChannel } from "../channels/base.js";
 import {
   ERROR,
+  CONFIG_KEY_TASK_OUTPUT_TYPE,
   Interrupt,
   INTERRUPT,
   RETURN,
@@ -174,7 +175,7 @@ export function* mapDebugTaskResults<
   tasks: readonly [PregelExecutableTask<N, C>, PendingWrite<C>[]][],
   streamChannels: PropertyKey | Array<PropertyKey>
 ) {
-  for (const [{ id, name, config }, writes] of tasks) {
+  for (const [{ id, name, config, outputType }, writes] of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
     yield {
       id,
@@ -187,6 +188,11 @@ export function* mapDebugTaskResults<
         })
       ),
       interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
+      ...(config?.configurable?.[CONFIG_KEY_TASK_OUTPUT_TYPE] &&
+      outputType !== undefined &&
+      !writes.some(([channel]) => channel === ERROR || channel === INTERRUPT)
+        ? { output_type: outputType }
+        : {}),
     };
   }
 }

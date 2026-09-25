@@ -55,6 +55,8 @@ export const CONFIG_KEY_CHECKPOINTER = "__pregel_checkpointer";
 export const CONFIG_KEY_RESUMING = "__pregel_resuming";
 export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
+/** Enables native task return-carrier provenance. */
+export const CONFIG_KEY_TASK_OUTPUT_TYPE = "__pregel_task_output_type";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_RESUME_MAP = "__pregel_resume_map";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
@@ -119,6 +121,7 @@ export const RESERVED = [
   CONFIG_KEY_CHECKPOINTER,
   CONFIG_KEY_DURABILITY,
   CONFIG_KEY_STREAM,
+  CONFIG_KEY_TASK_OUTPUT_TYPE,
   CONFIG_KEY_RESUMING,
   CONFIG_KEY_TASK_ID,
   CONFIG_KEY_CALL,

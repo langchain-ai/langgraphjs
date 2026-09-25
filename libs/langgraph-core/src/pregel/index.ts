@@ -43,6 +43,7 @@ import {
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
   CONFIG_KEY_STREAM,
+  CONFIG_KEY_TASK_OUTPUT_TYPE,
   CONFIG_KEY_TASK_ID,
   COPY,
   END,
@@ -2261,6 +2262,12 @@ export class Pregel<
     const isV3 =
       (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
+    if (isV3) {
+      inputConfig.configurable = {
+        ...inputConfig.configurable,
+        [CONFIG_KEY_TASK_OUTPUT_TYPE]: true,
+      };
+    }
     if (
       inputConfig.recursionLimit === undefined ||
       inputConfig.recursionLimit < 1
