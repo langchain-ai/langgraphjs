@@ -1,0 +1,19 @@
+.changeset/pre.json
+  s_c215f8772f4f77::t_47de402c6d86d4 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "02b0e356c812618b5f03d30abe0a5438f08b9c8d",
+  "prompts": {},
+  "sessions": {
+    "s_c215f8772f4f77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d651-1a13-7020-879b-c2329222114f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "syachamaneni-lc <sreekara.yachamaneni@langchain.dev>"
+    }
+  }
+}
