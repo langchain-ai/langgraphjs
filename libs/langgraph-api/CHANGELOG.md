@@ -1,5 +1,12 @@
 # @langchain/langgraph-api
 
+## 1.5.2-dev.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.2-dev.0
+
 ## 1.5.1
 
 ### Patch Changes
