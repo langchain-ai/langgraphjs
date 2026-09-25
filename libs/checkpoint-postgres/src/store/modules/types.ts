@@ -182,7 +182,30 @@ export interface PutOptions {
 
 export interface PostgresStoreConfig {
   /**
+   * A preconfigured pg.Pool instance.
+   *
+   * When provided, this pool will be used directly and will NOT be closed
+   * when the store is stopped -- the caller retains ownership of the pool
+   * lifecycle. This enables sharing a single pool between PostgresSaver
+   * and PostgresStore for better resource management.
+   *
+   * If both `pool` and `connectionOptions` are provided, `pool` takes
+   * precedence.
+   *
+   * @example
+   * ```typescript
+   * const pool = new Pool({ connectionString: "postgresql://..." });
+   * const saver = new PostgresSaver(pool);
+   * const store = new PostgresStore({ pool });
+   * ```
+   */
+  pool?: pg.Pool;
+
+  /**
    * PostgreSQL connection string or connection configuration object.
+   * A new pool will be created internally from these options.
+   *
+   * Ignored if `pool` is provided.
    *
    * @example
    * // Connection string
@@ -197,7 +220,7 @@ export interface PostgresStoreConfig {
    *   password: "password"
    * }
    */
-  connectionOptions: string | pg.PoolConfig;
+  connectionOptions?: string | pg.PoolConfig;
 
   /**
    * Database schema name to use for store tables.
