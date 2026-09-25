@@ -99,6 +99,12 @@ export class RunsClient<
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+      langsmith_tracer: payload?._langsmithTracer
+        ? {
+            project_name: payload?._langsmithTracer?.projectName,
+            example_id: payload?._langsmithTracer?.exampleId,
+          }
+        : undefined,
     };
 
     yield* this.streamWithRetry({
