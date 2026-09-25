@@ -44,6 +44,7 @@ import {
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
   CONFIG_KEY_STREAM,
+  CONFIG_KEY_TASK_OUTPUT_TYPE,
   CONFIG_KEY_TASK_ID,
   COPY,
   END,
@@ -91,6 +92,7 @@ import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
   StreamToolsHandler,
+  StreamCustomEventHandler,
   toEventStream,
 } from "./stream.js";
 import {
@@ -2261,6 +2263,12 @@ export class Pregel<
     const isV3 =
       (options as { version?: unknown } | undefined)?.version === "v3";
     const inputConfig = ensureLangGraphConfig(this.config, options);
+    if (isV3) {
+      inputConfig.configurable = {
+        ...inputConfig.configurable,
+        [CONFIG_KEY_TASK_OUTPUT_TYPE]: true,
+      };
+    }
     if (
       inputConfig.recursionLimit === undefined ||
       inputConfig.recursionLimit < 1
@@ -2351,6 +2359,31 @@ export class Pregel<
         const copiedCallbacks = callbacks.copy();
         copiedCallbacks.addHandler(toolStreamer, true);
         config.callbacks = copiedCallbacks;
+      }
+    }
+
+    if (isV3 && streamMode.includes("custom")) {
+      const { callbacks } = config;
+      const handlers = Array.isArray(callbacks)
+        ? callbacks
+        : callbacks?.handlers;
+      // Nested graphs inherit the parent's run-scoped handler.
+      if (
+        !handlers?.some((handler) =>
+          StreamCustomEventHandler.isInstance(handler)
+        )
+      ) {
+        const customStreamer = new StreamCustomEventHandler((chunk) =>
+          stream.push(chunk)
+        );
+        if (callbacks === undefined) config.callbacks = [customStreamer];
+        else if (Array.isArray(callbacks))
+          config.callbacks = callbacks.concat(customStreamer);
+        else {
+          const copiedCallbacks = callbacks.copy();
+          copiedCallbacks.addHandler(customStreamer, true);
+          config.callbacks = copiedCallbacks;
+        }
       }
     }
 

@@ -1,5 +1,7 @@
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import { BaseMessage } from "@langchain/core/messages";
+import { load } from "@langchain/core/load";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { Serialized } from "@langchain/core/load/serializable";
 import { isCheckpointEnvelope } from "../stream/convert.js";
@@ -29,6 +31,112 @@ export interface StreamChunkMeta {
 
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
+
+/** Snapshot public message fields without discarding their serialization methods. */
+async function snapshotCustomEventData(value: unknown): Promise<unknown> {
+  if (BaseMessage.isInstance(value)) {
+    const serialized = value.toJSON();
+    if (serialized.type !== "constructor") {
+      throw new Error("Custom event message does not support serialization");
+    }
+    const fields = { ...serialized.kwargs };
+    // Constructor kwargs can lag behind middleware changes to public fields.
+    for (const key of [
+      "id",
+      "name",
+      "content",
+      "additional_kwargs",
+      "response_metadata",
+      "tool_calls",
+      "invalid_tool_calls",
+      "usage_metadata",
+      "tool_call_chunks",
+      "tool_call_id",
+      "artifact",
+      "status",
+    ]) {
+      if (key in value) fields[key] = Reflect.get(value, key);
+    }
+    // Encode before yielding so subsequent caller mutations cannot affect the
+    // snapshot. Public load restores the class and its message brand, including
+    // message chunks, which structuredClone alone discards.
+    return load(JSON.stringify({ ...serialized, kwargs: fields }));
+  }
+  if (Array.isArray(value))
+    return Promise.all(value.map(snapshotCustomEventData));
+  if (value === null || typeof value !== "object")
+    return structuredClone(value);
+  if ("toJSON" in value && typeof value.toJSON === "function") {
+    return snapshotCustomEventData(value.toJSON());
+  }
+  const kind = Object.prototype.toString.call(value);
+  if (kind === "[object Map]") {
+    const entries = await Promise.all(
+      Array.from(value as Map<unknown, unknown>, ([key, item]) =>
+        Promise.all([
+          snapshotCustomEventData(key),
+          snapshotCustomEventData(item),
+        ] as const)
+      )
+    );
+    return new Map(entries);
+  }
+  if (kind === "[object Set]") {
+    return new Set(
+      await Promise.all(
+        Array.from(value as Set<unknown>, snapshotCustomEventData)
+      )
+    );
+  }
+  if (kind !== "[object Object]") return structuredClone(value);
+  // Ordinary application objects retain their JSON-visible fields. Classes
+  // with a public toJSON hook use that representation above, not their internals.
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(value).map(async ([key, item]) => [
+        key,
+        await snapshotCustomEventData(item),
+      ])
+    )
+  );
+}
+
+/** Forward callback custom events through the run's custom stream. */
+export class StreamCustomEventHandler extends BaseCallbackHandler {
+  name = "StreamCustomEventHandler";
+  readonly lc_stream_custom_events = true;
+
+  static isInstance(value: unknown): value is StreamCustomEventHandler {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "lc_stream_custom_events" in value &&
+      value.lc_stream_custom_events === true
+    );
+  }
+
+  awaitHandlers = true;
+  raiseError = true;
+  constructor(private readonly streamFn: (chunk: StreamChunk) => void) {
+    super();
+  }
+  async handleCustomEvent(
+    name: string,
+    data: unknown,
+    _runId: string,
+    _tags?: string[],
+    metadata?: Record<string, unknown>
+  ) {
+    const ns = metadata?.langgraph_checkpoint_ns;
+    const namespace = typeof ns === "string" ? ns.split("|").slice(0, -1) : [];
+    // Snapshot at dispatch: callers may mutate state before consumers read it.
+    this.streamFn([
+      namespace,
+      "custom",
+      { name, payload: await snapshotCustomEventData(data) },
+    ]);
+  }
+}
 
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",
