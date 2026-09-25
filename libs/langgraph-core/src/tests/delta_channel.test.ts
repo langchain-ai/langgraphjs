@@ -1006,3 +1006,158 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
     expect((state.values as { counter: number[] }).counter).toEqual([1, 1, 1, 1]);
   });
 });
+
+describe("DeltaChannel updateState fork isolation (langgraphjs issue)", () => {
+  let idCounter = 0;
+  // Graph whose `messages` key is a DeltaChannel; node "a" echoes the last
+  // message content with an "_a" suffix.
+  function echoGraph(saver: MemorySaver) {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(
+        messagesDeltaReducer
+      ),
+    });
+    return new StateGraph(State)
+      .addNode("a", (state) => ({
+        messages: [
+          new HumanMessage({ id: `h-a-${idCounter++}`, content: `${state.messages[state.messages.length - 1].content}_a` }),
+        ],
+      }))
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: saver });
+  }
+
+  // Find the id of the empty root (ffff-) checkpoint: the parent of the first
+  // checkpoint that carries any state.
+  async function rootCheckpointId(
+    graph: ReturnType<typeof echoGraph>,
+    thread_id: string
+  ): Promise<string | undefined> {
+    const snaps = [];
+    for await (const snap of graph.getStateHistory({
+      configurable: { thread_id },
+    })) {
+      snaps.push(snap);
+    }
+    const first = snaps
+      .reverse()
+      .find(
+        (s) =>
+          Array.isArray(s.values?.messages) && s.values.messages.length > 0
+      );
+    return first?.parentConfig?.configurable?.checkpoint_id;
+  }
+
+  it("updateState forking from the root checkpoint isolates the new branch", async () => {
+    const saver = new MemorySaver();
+    const graph = echoGraph(saver);
+    const thread_id = "fork-root-isolation";
+    for await (const _ of await graph.stream(
+      {
+        messages: [
+          new HumanMessage({ id: "h-orig-1", content: "human1" }),
+        ],
+      },
+      { configurable: { thread_id } }
+    )) {
+      // consume
+    }
+
+    const emptyCid = await rootCheckpointId(graph, thread_id);
+    expect(emptyCid).toBeDefined();
+
+    // Fork a parallel branch from the root with ONLY this message.
+    const forkConfig = await graph.updateState(
+      { configurable: { thread_id, checkpoint_id: emptyCid, checkpoint_ns: "" } },
+      { messages: [new HumanMessage({ id: "h-fork-1", content: "fork1" })] },
+      "__start__"
+    );
+
+    const forkState = await graph.getState(forkConfig);
+    expect(forkState.values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "fork1",
+    ]);
+  });
+
+  it("updateState fork does not contaminate the original timeline", async () => {
+    const saver = new MemorySaver();
+    const graph = echoGraph(saver);
+    const thread_id = "fork-no-back-contamination";
+    for await (const _ of await graph.stream(
+      { messages: [new HumanMessage({ id: "h-orig-1", content: "human1" })] },
+      { configurable: { thread_id } }
+    )) {
+      // consume
+    }
+
+    // The checkpoint right after the root: values [human1], task "a" pending.
+    const snaps = [];
+    for await (const snap of graph.getStateHistory({
+      configurable: { thread_id },
+    })) {
+      snaps.push(snap);
+    }
+    const ordered = snaps.slice().reverse();
+    const afterRoot = ordered[1];
+    expect(afterRoot.values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "human1",
+    ]);
+
+    const emptyCid = afterRoot.parentConfig?.configurable?.checkpoint_id;
+    await graph.updateState(
+      { configurable: { thread_id, checkpoint_id: emptyCid, checkpoint_ns: "" } },
+      { messages: [new HumanMessage({ id: "h-fork-1", content: "fork1" })] },
+      "__start__"
+    );
+
+    const after = await graph.getState(afterRoot.config);
+    expect(after.values.messages.map((m: BaseMessage) => m.content)).toEqual(["human1"]);
+  });
+
+  it("forked branch stays isolated after resuming", async () => {
+    const saver = new MemorySaver();
+    const graph = echoGraph(saver);
+    const thread_id = "fork-resume-isolation";
+    const origConfig = { configurable: { thread_id } };
+    for await (const _ of await graph.stream(
+      { messages: [new HumanMessage({ id: "h-orig-1", content: "human1" })] },
+      origConfig
+    )) {
+      // consume
+    }
+    const origState = await graph.getState(origConfig);
+    expect(origState.values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "human1",
+      "human1_a",
+    ]);
+    // Pin the original timeline's tip: after the fork, the thread head
+    // legitimately points at the fork branch (newest checkpoint id).
+    const origTipConfig = origState.config;
+
+    const emptyCid = await rootCheckpointId(graph, thread_id);
+    const forkConfig = await graph.updateState(
+      { configurable: { thread_id, checkpoint_id: emptyCid, checkpoint_ns: "" } },
+      { messages: [new HumanMessage({ id: "h-fork-1", content: "fork1" })] },
+      "__start__"
+    );
+
+    // Resume the forked branch from the new checkpoint (no new input).
+    for await (const _ of await graph.stream(null, forkConfig)) {
+      // consume
+    }
+
+    // The fork keeps only its own writes... (an `as_node: "__start__"` update
+    // does not re-trigger downstream nodes, matching non-delta behavior)
+    const forkState = await graph.getState(forkConfig);
+    expect(forkState.values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "fork1",
+    ]);
+    // ...and the original timeline is unaffected by the fork.
+    const origAfter = await graph.getState(origTipConfig);
+    expect(origAfter.values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "human1",
+      "human1_a",
+    ]);
+  });
+});
