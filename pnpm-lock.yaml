@@ -1520,7 +1520,7 @@ importers:
         specifier: ^1.2.9
         version: 1.2.9(@opentelemetry/api@1.9.0)(openai@7.8.0(undici@6.28.0)(ws@8.21.1)(zod@4.5.4))(ws@8.21.1)
       mongodb:
-        specifier: ^6.21.0
+        specifier: ^6.21.0 || ^7.0.0
         version: 6.21.0(socks@2.8.7)
     devDependencies:
       '@langchain/langgraph-checkpoint':
