@@ -164,16 +164,35 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     return message.id;
   }
 
-  private emit(meta: Meta, data: ChatModelStreamEvent, runId?: string) {
+  private emit(
+    meta: Meta,
+    data: ChatModelStreamEvent,
+    runId?: string,
+    source?: "model" | "node"
+  ) {
     const metadata = runId != null ? { ...meta[1], run_id: runId } : meta[1];
-    this.streamFn([meta[0], "messages", [data, metadata]]);
+    const event =
+      data.event === "message-start"
+        ? {
+            ...data,
+            metadata: {
+              ...metadata,
+              ...("metadata" in data && typeof data.metadata === "object"
+                ? data.metadata
+                : {}),
+              langgraph_message_source: source,
+            },
+          }
+        : data;
+    this.streamFn([meta[0], "messages", [event, metadata]]);
   }
 
   private emitFinalMessage(
     meta: Meta,
     message: BaseMessage,
     runId: string | undefined,
-    dedupe = false
+    dedupe = false,
+    source: "model" | "node" = "node"
   ) {
     const existingId =
       message.id ??
@@ -206,7 +225,8 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
           ? ({ tool_call_id: toolCallId } as Record<string, unknown>)
           : {}),
       } as ChatModelStreamEvent,
-      runId
+      runId,
+      source
     );
 
     const contentBlocks: CompatibleContentBlock[] = Array.isArray(
@@ -298,7 +318,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
       }
     }
 
-    this.emit(meta, forwarded, runId);
+    this.emit(meta, forwarded, runId, "model");
   }
 
   handleLLMEnd(output: LLMResult, runId: string) {
@@ -315,7 +335,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
         const messageId = this.normalizeMessageId(message, runId);
         if (messageId != null) this.seen[messageId] = message;
       } else {
-        this.emitFinalMessage(meta, message, runId, true);
+        this.emitFinalMessage(meta, message, runId, true, "model");
       }
     }
 
@@ -382,7 +402,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
 
     const emitMessage = (value: unknown) => {
       if (BaseMessage.isInstance(value) && !ToolMessage.isInstance(value)) {
-        this.emitFinalMessage(meta, value, runId, true);
+        this.emitFinalMessage(meta, value, runId, true, "node");
       }
     };
 

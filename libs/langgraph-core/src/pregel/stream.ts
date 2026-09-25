@@ -30,6 +30,43 @@ export interface StreamChunkMeta {
 // [namespace, streamMode, payload]
 export type StreamChunk = [string[], StreamMode, unknown];
 
+/** Forward callback custom events through the run's custom stream. */
+export class StreamCustomEventHandler extends BaseCallbackHandler {
+  name = "StreamCustomEventHandler";
+  readonly lc_stream_custom_events = true;
+
+  static isInstance(value: unknown): value is StreamCustomEventHandler {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "lc_stream_custom_events" in value &&
+      value.lc_stream_custom_events === true
+    );
+  }
+
+  awaitHandlers = true;
+  raiseError = true;
+  constructor(private readonly streamFn: (chunk: StreamChunk) => void) {
+    super();
+  }
+  handleCustomEvent(
+    name: string,
+    data: unknown,
+    _runId: string,
+    _tags?: string[],
+    metadata?: Record<string, unknown>
+  ) {
+    const ns = metadata?.langgraph_checkpoint_ns;
+    const namespace = typeof ns === "string" ? ns.split("|").slice(0, -1) : [];
+    // Snapshot at dispatch: callers may mutate state before consumers read it.
+    this.streamFn([
+      namespace,
+      "custom",
+      { name, payload: structuredClone(data) },
+    ]);
+  }
+}
+
 type StreamCheckpointsOutput<StreamValues> = StreamOutputMap<
   "checkpoints",
   false,

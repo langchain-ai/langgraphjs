@@ -90,6 +90,7 @@ import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
   StreamToolsHandler,
+  StreamCustomEventHandler,
   toEventStream,
 } from "./stream.js";
 import {
@@ -2350,6 +2351,31 @@ export class Pregel<
         const copiedCallbacks = callbacks.copy();
         copiedCallbacks.addHandler(toolStreamer, true);
         config.callbacks = copiedCallbacks;
+      }
+    }
+
+    if (isV3 && streamMode.includes("custom")) {
+      const { callbacks } = config;
+      const handlers = Array.isArray(callbacks)
+        ? callbacks
+        : callbacks?.handlers;
+      // Nested graphs inherit the parent's run-scoped handler.
+      if (
+        !handlers?.some((handler) =>
+          StreamCustomEventHandler.isInstance(handler)
+        )
+      ) {
+        const customStreamer = new StreamCustomEventHandler((chunk) =>
+          stream.push(chunk)
+        );
+        if (callbacks === undefined) config.callbacks = [customStreamer];
+        else if (Array.isArray(callbacks))
+          config.callbacks = callbacks.concat(customStreamer);
+        else {
+          const copiedCallbacks = callbacks.copy();
+          copiedCallbacks.addHandler(customStreamer, true);
+          config.callbacks = copiedCallbacks;
+        }
       }
     }
 
