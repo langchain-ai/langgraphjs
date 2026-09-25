@@ -1,0 +1,16 @@
+.changeset/pre.json
+  h_e6aca5e1220677 1-4
+.changeset/shaky-mirrors-start.md
+  h_e6aca5e1220677 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2692d5408f6ce6fd647c97fd06af142aeb8c0c04",
+  "prompts": {},
+  "humans": {
+    "h_e6aca5e1220677": {
+      "author": "syachamaneni-lc <sreekara.yachamaneni@langchain.dev>"
+    }
+  }
+}
