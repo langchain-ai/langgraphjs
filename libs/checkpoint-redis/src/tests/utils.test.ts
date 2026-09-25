@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   assertSafeKeyComponent,
   escapeRediSearchTagValue,
+  isIndexAlreadyExistsError,
 } from "../utils.js";
 
 describe("escapeRediSearchTagValue", () => {
@@ -193,5 +194,104 @@ describe("assertSafeKeyComponent", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertSafeKeyComponent("task_id", { $gt: "" } as any)
     ).toThrow(/"task_id"/);
+  });
+});
+
+describe('isIndexAlreadyExistsError', () => {
+  describe('Redis (RediSearch)', () => {
+    it('matches the canonical reply', () => {
+      expect(isIndexAlreadyExistsError(new Error('Index already exists'))).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+      expect(isIndexAlreadyExistsError(new Error('INDEX ALREADY EXISTS'))).toBe(true);
+      expect(isIndexAlreadyExistsError(new Error('index Already Exists'))).toBe(true);
+    });
+
+    it('matches when the reply is embedded in a client wrapper message', () => {
+      expect(
+          isIndexAlreadyExistsError(new Error('ReplyError: Index already exists'))
+      ).toBe(true);
+    });
+  });
+
+  describe('Valkey-search', () => {
+    it('matches the canonical reply with index name and db number', () => {
+      expect(
+          isIndexAlreadyExistsError(
+              new Error('Index myIdx in database 0 already exists.')
+          )
+      ).toBe(true);
+    });
+
+    it('matches other db numbers and index names', () => {
+      expect(
+          isIndexAlreadyExistsError(
+              new Error('Index products in database 2 already exists.')
+          )
+      ).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+      expect(
+          isIndexAlreadyExistsError(
+              new Error('INDEX MYIDX IN DATABASE 0 ALREADY EXISTS.')
+          )
+      ).toBe(true);
+    });
+  });
+
+  describe('non-Error inputs', () => {
+    it('accepts a bare string', () => {
+      expect(isIndexAlreadyExistsError('Index already exists')).toBe(true);
+      expect(
+          isIndexAlreadyExistsError('Index foo in database 0 already exists.')
+      ).toBe(true);
+    });
+
+    it('accepts objects with a message property', () => {
+      expect(isIndexAlreadyExistsError({ message: 'Index already exists' })).toBe(
+          true
+      );
+    });
+
+    it('handles null and undefined without throwing', () => {
+      expect(isIndexAlreadyExistsError(null)).toBe(false);
+      expect(isIndexAlreadyExistsError(undefined)).toBe(false);
+    });
+  });
+
+  describe('negative cases', () => {
+    it('rejects unrelated errors', () => {
+      expect(isIndexAlreadyExistsError(new Error('Unknown Index name'))).toBe(
+          false
+      );
+      expect(isIndexAlreadyExistsError(new Error('wrong number of arguments'))).toBe(
+          false
+      );
+      expect(isIndexAlreadyExistsError(new Error('OOM command not allowed'))).toBe(
+          false
+      );
+    });
+
+    it('rejects "already exists" without "index"', () => {
+      expect(isIndexAlreadyExistsError(new Error('key already exists'))).toBe(
+          false
+      );
+      expect(isIndexAlreadyExistsError(new Error('already exists'))).toBe(false);
+    });
+
+    it('rejects "index" without "already exists"', () => {
+      expect(isIndexAlreadyExistsError(new Error('No such index myIdx'))).toBe(
+          false
+      );
+      expect(isIndexAlreadyExistsError(new Error('index not found'))).toBe(false);
+    });
+
+    it('rejects empty / non-message values', () => {
+      expect(isIndexAlreadyExistsError('')).toBe(false);
+      expect(isIndexAlreadyExistsError(42)).toBe(false);
+      expect(isIndexAlreadyExistsError({})).toBe(false);
+    });
   });
 });

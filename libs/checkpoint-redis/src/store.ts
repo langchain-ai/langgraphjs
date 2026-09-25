@@ -18,7 +18,10 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
-import { escapeRediSearchTagValue } from "./utils.js";
+import {
+  escapeRediSearchTagValue,
+  isIndexAlreadyExistsError,
+} from "./utils.js";
 
 // Type guard functions for operations
 export function isPutOperation(op: Operation): op is PutOperation {
@@ -385,7 +388,7 @@ export class RedisStore {
         PREFIX: SCHEMAS[0].prefix,
       });
     } catch (error: any) {
-      if (!error.message?.includes("Index already exists")) {
+      if (!isIndexAlreadyExistsError(error)) {
         console.error("Failed to create store index:", error.message);
       }
     }
@@ -427,7 +430,7 @@ export class RedisStore {
           PREFIX: SCHEMAS[1].prefix,
         });
       } catch (error: any) {
-        if (!error.message?.includes("Index already exists")) {
+        if (!isIndexAlreadyExistsError(error)) {
           console.error("Failed to create vector index:", error.message);
         }
       }
