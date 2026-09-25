@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 1.5.2-dev.0
+
+### Patch Changes
+
+- [#2887](https://github.com/langchain-ai/langgraphjs/pull/2887) [`8f8eaa8`](https://github.com/langchain-ai/langgraphjs/commit/8f8eaa8686dab8ba9d35eac9934c590ecbbe11f6) Thanks [@syachamaneni-lc](https://github.com/syachamaneni-lc)! - add --agent-id and --agent-environment flags
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.5.2-dev.0
+
 ## 1.5.1
 
 ### Patch Changes
