@@ -69,6 +69,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
    */
   readonly #isDisposed: () => boolean;
 
+  /** Whether a run dispatched by this controller is still being tracked. */
+  readonly #isLocalRunActive: () => boolean;
+
+  /** Run id returned for the currently tracked local dispatch, if known. */
+  readonly #getLocalRunId: () => string | undefined;
+
   /**
    * Highest sequence number of a terminal lifecycle we've observed.
    * `running` events at or below this seq are stale replays and
@@ -98,10 +104,14 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   constructor(params: {
     store: StreamStore<T>;
     isDisposed: () => boolean;
+    isLocalRunActive?: () => boolean;
+    getLocalRunId?: () => string | undefined;
     onSettled?: () => void;
   }) {
     this.#store = params.store;
     this.#isDisposed = params.isDisposed;
+    this.#isLocalRunActive = params.isLocalRunActive ?? (() => false);
+    this.#getLocalRunId = params.getLocalRunId ?? (() => undefined);
     this.#onSettled = params.onSettled;
   }
 
@@ -136,6 +146,14 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   handle(event: Event): void {
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
+    const eventRunId = (event as Event & { run_id?: unknown }).run_id;
+    if (
+      this.#isLocalRunActive() &&
+      typeof eventRunId === "string" &&
+      eventRunId !== this.#getLocalRunId()
+    ) {
+      return;
+    }
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
     };

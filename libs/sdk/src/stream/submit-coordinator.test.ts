@@ -152,7 +152,7 @@ function makeHarness(
     signal.addEventListener("abort", () =>
       d.resolve({ event: "aborted" })
     );
-    return d.promise;
+    return { promise: d.promise, setRunId: vi.fn() };
   });
 
   const hydrate = vi.fn(async (id?: string | null) => {
@@ -209,7 +209,7 @@ function makeHarness(
     abandonDeferredRootPump,
     waitForRootPumpReady: () => Promise.resolve(),
     awaitNextTerminal,
-    awaitResumedRunTerminal: awaitNextTerminal,
+    awaitResumedRunTerminal: (signal) => awaitNextTerminal(signal).promise,
     onRunStart,
     onRunCreated,
     onRunCompleted,

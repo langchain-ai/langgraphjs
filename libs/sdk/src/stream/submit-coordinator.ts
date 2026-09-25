@@ -80,10 +80,15 @@ export type { SubmissionQueueEntry, SubmissionQueueSnapshot };
  * the three terminal lifecycle states the protocol surfaces, plus a
  * synthetic `"aborted"` for client-side cancellation.
  */
-type TerminalResult = {
+export type TerminalResult = {
   event: "completed" | "failed" | "interrupted" | "aborted";
   error?: string;
 };
+
+export interface TerminalWaiter {
+  promise: Promise<TerminalResult>;
+  setRunId(runId: string | undefined): void;
+}
 
 function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
   if (event === "completed") return "success";
@@ -165,7 +170,7 @@ export class SubmitCoordinator<
   /** Resolves once the controller's root subscription pump is up. */
   readonly #waitForRootPumpReady: () => Promise<void> | undefined;
   /** Resolves on the next root terminal lifecycle (or on abort). */
-  readonly #awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
+  readonly #awaitNextTerminal: (signal: AbortSignal) => TerminalWaiter;
   /**
    * Resolves on the resumed run's terminal, skipping stale `interrupted`
    * events from the run being resumed (see {@link dispatchResume}).
@@ -225,7 +230,7 @@ export class SubmitCoordinator<
     startDeferredRootPump: () => void;
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
-    awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
+    awaitNextTerminal: (signal: AbortSignal) => TerminalWaiter;
     awaitResumedRunTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
     onSubmitStart?: () => void;
     onRunStart?: () => void;
@@ -474,7 +479,8 @@ export class SubmitCoordinator<
       const boundConfig = bindThreadConfig(options?.config, currentThreadId);
       // Subscribe to the next terminal *before* dispatching so a fast
       // run's terminal can't race us.
-      const terminalPromise = this.#awaitNextTerminal(abort.signal);
+      const terminalWaiter = this.#awaitNextTerminal(abort.signal);
+      const terminalPromise = terminalWaiter.promise;
       this.#onRunStart();
 
       let terminalSettled = false;
@@ -521,9 +527,13 @@ export class SubmitCoordinator<
         }
       );
       const notifyCreated = (result: { run_id?: unknown }) => {
-        if (typeof result.run_id !== "string") return;
+        if (typeof result.run_id !== "string") {
+          terminalWaiter.setRunId(undefined);
+          return;
+        }
         createdRunId = result.run_id;
         this.#onRunCreated(createdRunId);
+        terminalWaiter.setRunId(createdRunId);
         if (pendingCompletionReason != null) {
           notifyCompletion(pendingCompletionReason);
         }

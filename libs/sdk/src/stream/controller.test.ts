@@ -142,9 +142,10 @@ function checkpointsEvent(step: number, seq: number, id = `cp-${step}`): Event {
   } as unknown as Event;
 }
 
-function lifecycleEvent(event: string, seq: number): Event {
+function lifecycleEvent(event: string, seq: number, run_id?: string): Event {
   return {
     type: "event",
+    ...(run_id != null ? { run_id } : {}),
     event_id: `lifecycle-${event}-${seq}`,
     seq,
     method: "lifecycle",
@@ -1172,6 +1173,69 @@ describe("StreamController", () => {
 
     await controller.dispose();
     await submitPromise;
+  });
+
+  it("does not settle a local submit from another run's replayed terminal", async () => {
+    const eventListeners = new Set<(event: Event) => void>();
+    let resolveSubmit!: (result: { run_id: string }) => void;
+    const submitRun = vi.fn(
+      () =>
+        new Promise<{ run_id: string }>((resolve) => {
+          resolveSubmit = resolve;
+        })
+    );
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        eventListeners.add(listener);
+        return vi.fn(() => eventListeners.delete(listener));
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, tasks: [] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "assistant",
+      client: client as never,
+      threadId: "thread-run-filter",
+    });
+    await controller.hydrationPromise;
+
+    let submitSettled = false;
+    const submitPromise = controller.submit(null).then(() => {
+      submitSettled = true;
+    });
+    await waitForExpectation(() => expect(submitRun).toHaveBeenCalled());
+
+    const emit = (event: Event) => {
+      for (const listener of eventListeners) listener(event);
+    };
+    emit(lifecycleEvent("completed", 2, "old-run"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(submitSettled).toBe(false);
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    // The current run can also finish before run.start returns. Its terminal
+    // is buffered until the response identifies which run id to accept.
+    emit(lifecycleEvent("completed", 3, "new-run"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(submitSettled).toBe(false);
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    resolveSubmit({ run_id: "new-run" });
+    await submitPromise;
+    expect(submitSettled).toBe(true);
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+
+    await controller.dispose();
   });
 
   it("does not hide the active run's interrupt when a follow-up submit is enqueued", async () => {
