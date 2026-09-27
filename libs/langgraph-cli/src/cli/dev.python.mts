@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { extract as tarExtract } from "tar";
-import zipExtract from "extract-zip";
+import { extractZip } from "create-langgraph";
 
 import { logger } from "../utils/logging.mjs";
 import type { Config } from "../utils/config.mjs";
@@ -97,7 +97,7 @@ async function downloadAndExtract(
 
     let sourceBinaryPath = tempDirPath;
     if (url.endsWith(".zip")) {
-      await zipExtract(tempFilePath, { dir: tempDirPath });
+      await extractZip(await fs.readFile(tempFilePath), tempDirPath);
     } else {
       await tarExtract({ file: tempFilePath, cwd: tempDirPath });
       sourceBinaryPath = path.resolve(
