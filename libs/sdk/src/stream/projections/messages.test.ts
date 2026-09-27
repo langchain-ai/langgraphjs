@@ -22,6 +22,14 @@ function valuesEvent(namespace: string[], messages: unknown[]): Event {
   } as unknown as Event;
 }
 
+function messagesEvent(namespace: string[], data: Record<string, unknown>): Event {
+  return {
+    type: "event",
+    method: "messages",
+    params: { namespace, timestamp: Date.now(), data },
+  } as unknown as Event;
+}
+
 function human(id: string, content: string) {
   return { id, type: "human", content };
 }
@@ -78,6 +86,15 @@ describe("messagesProjection", () => {
     await drainFlush();
     expect(snapshotIds()).toEqual(["parent-human", "parent-ai"]);
 
+    handle.push(messagesEvent(CHILD, { event: "message-start", id: "child-ai", role: "ai" }));
+    handle.push(messagesEvent(CHILD, {
+      event: "content-block-start",
+      index: 0,
+      content: { type: "text", text: "child output" },
+    }));
+    await drainFlush();
+    expect(snapshotIds()).toEqual(["parent-human", "parent-ai"]);
+
     // The parent's next snapshot still reconciles normally.
     handle.push(
       valuesEvent(PARENT, [
@@ -88,6 +105,15 @@ describe("messagesProjection", () => {
     );
     await drainFlush();
     expect(snapshotIds()).toEqual(["parent-human", "parent-ai", "parent-tool"]);
+
+    handle.push(messagesEvent(PARENT, { event: "message-start", id: "parent-next", role: "ai" }));
+    handle.push(messagesEvent(PARENT, {
+      event: "content-block-start",
+      index: 0,
+      content: { type: "text", text: "parent output" },
+    }));
+    await drainFlush();
+    expect(snapshotIds()).toEqual(["parent-human", "parent-ai", "parent-tool", "parent-next"]);
 
     await runtime.dispose();
   });
