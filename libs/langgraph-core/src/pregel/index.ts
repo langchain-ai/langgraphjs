@@ -860,7 +860,8 @@ export class Pregel<
    *
    * @param config - Configuration for preparing the snapshot
    * @param saved - Optional saved checkpoint data
-   * @param subgraphCheckpointer - Optional checkpointer for subgraphs
+   * @param saver - Checkpointer the caller resolved; a subgraph's own `checkpointer` is unset or `true`
+   * @param recurse - Whether to include each subgraph task's state
    * @param applyPendingWrites - Whether to apply pending writes to tasks and then to channels
    * @returns A snapshot of the graph state
    * @internal
@@ -868,12 +869,14 @@ export class Pregel<
   protected async _prepareStateSnapshot({
     config,
     saved,
-    subgraphCheckpointer,
+    saver,
+    recurse = false,
     applyPendingWrites = false,
   }: {
     config: RunnableConfig;
     saved?: CheckpointTuple;
-    subgraphCheckpointer?: BaseCheckpointSaver;
+    saver: BaseCheckpointSaver;
+    recurse?: boolean;
     applyPendingWrites?: boolean;
   }): Promise<StateSnapshot> {
     if (saved === undefined) {
@@ -890,11 +893,7 @@ export class Pregel<
     const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint,
-      {
-        saver:
-          typeof this.checkpointer === "object" ? this.checkpointer : undefined,
-        config: saved.config ?? config,
-      }
+      { saver, config: saved.config ?? config }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -951,7 +950,7 @@ export class Pregel<
       if (parentNamespace) {
         taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
       }
-      if (subgraphCheckpointer === undefined) {
+      if (!recurse) {
         // set config as signal that subgraph checkpoints exist
         const config: RunnableConfig = {
           configurable: {
@@ -964,7 +963,7 @@ export class Pregel<
         // get the state of the subgraph
         const subgraphConfig: RunnableConfig = {
           configurable: {
-            [CONFIG_KEY_CHECKPOINTER]: subgraphCheckpointer,
+            [CONFIG_KEY_CHECKPOINTER]: saver,
             thread_id: saved.config.configurable?.thread_id,
             checkpoint_ns: taskNs,
           },
@@ -1099,7 +1098,8 @@ export class Pregel<
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
       saved,
-      subgraphCheckpointer: options?.subgraphs ? checkpointer : undefined,
+      saver: checkpointer,
+      recurse: options?.subgraphs,
       applyPendingWrites: !config.configurable?.checkpoint_id,
     });
     return snapshot;
@@ -1170,6 +1170,7 @@ export class Pregel<
       yield this._prepareStateSnapshot({
         config: checkpointTuple.config,
         saved: checkpointTuple,
+        saver: checkpointer,
       });
     }
   }

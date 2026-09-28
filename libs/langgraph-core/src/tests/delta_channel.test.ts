@@ -1006,3 +1006,64 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
     expect((state.values as { counter: number[] }).counter).toEqual([1, 1, 1, 1]);
   });
 });
+
+describe("DeltaChannel in a subgraph", () => {
+  const State = Annotation.Root({
+    delta: new DeltaChannel<string[], string[]>((state, writes) => [
+      ...state,
+      ...writes.flat(),
+    ]),
+    plain: Annotation<string[]>({
+      reducer: (a, b) => a.concat(b),
+      default: () => [],
+    }),
+  });
+  const written = { delta: ["a1"], plain: ["a1"] };
+
+  async function pausedParent(childCheckpointer?: true) {
+    const child = new StateGraph(State)
+      .addNode("a", () => written)
+      .addNode("b", () => ({ delta: ["b1"], plain: ["b1"] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", END)
+      .compile({ interruptBefore: ["b"], checkpointer: childCheckpointer });
+    const parent = new StateGraph(State)
+      .addNode("child", child)
+      .addEdge(START, "child")
+      .addEdge("child", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "t" } };
+    await parent.invoke({ plain: [] }, config);
+    return { parent, config };
+  }
+
+  it("getState with subgraphs hydrates the subgraph's delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory on a subgraph namespace hydrates its delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    const { config: subgraphConfig } = snapshot.tasks[0].state as {
+      config: Parameters<typeof parent.getStateHistory>[0];
+    };
+    const history = [];
+    for await (const s of parent.getStateHistory(subgraphConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
+
+  it("getState on a checkpointer: true subgraph namespace hydrates its delta channel", async () => {
+    const { parent } = await pausedParent(true);
+    const snapshot = await parent.getState({
+      configurable: { thread_id: "t", checkpoint_ns: "child" },
+    });
+    expect(snapshot.values).toEqual(written);
+  });
+});
