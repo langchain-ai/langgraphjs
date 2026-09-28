@@ -344,6 +344,24 @@ describe("namespace isolation", () => {
     expect(found.map((item) => item.key)).toEqual(["mine"]);
   });
 
+  it("falls back when a newer client reports the rejection", async () => {
+    // node-redis v5 and later raise Redis's errors as subclasses of ErrorReply
+    const Reply = class ErrorReply extends Error {};
+    class SimpleError extends Reply {}
+    const search = vi
+      .spyOn(container.client.ft, "search")
+      .mockRejectedValueOnce(new SimpleError("SEARCH_SYNTAX Syntax error"));
+    try {
+      await store.search(["memories", "user-3"], { query: "near", limit: 3 });
+      expect(search.mock.calls.map(([, query]) => String(query))).toEqual([
+        "(@prefix:(memories user 3))=>[KNN 3 @embedding $BLOB]",
+        "(@prefix:memories*)=>[KNN 3 @embedding $BLOB]",
+      ]);
+    } finally {
+      search.mockRestore();
+    }
+  });
+
   it("does not retry vector search when Redis cannot be reached", async () => {
     const search = vi
       .spyOn(container.client.ft, "search")

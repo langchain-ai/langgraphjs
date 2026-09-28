@@ -341,11 +341,21 @@ class TooManyCandidatesError extends Error {
 
 /**
  * Whether Redis itself rejected a command, as opposed to node-redis failing
- * to reach it. Compared by class name, since the client may come from another
- * copy of the package.
+ * to reach it. node-redis raises such errors as ErrorReply, or from v5 on as
+ * a subclass of it. Compared by class name, since the client may come from
+ * another copy of the package.
  */
 function isErrorReply(error: unknown): boolean {
-  return (error as Error | undefined)?.constructor?.name === "ErrorReply";
+  for (
+    let proto = error ? Object.getPrototypeOf(error) : null;
+    proto;
+    proto = Object.getPrototypeOf(proto)
+  ) {
+    if (proto.constructor?.name === "ErrorReply") {
+      return true;
+    }
+  }
+  return false;
 }
 
 const SCHEMAS = [
