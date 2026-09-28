@@ -2,4 +2,4 @@
 "@langchain/langgraph": patch
 ---
 
-fix: treat falsy `Command.resume` values (false, 0, "") as valid resume input
+fix: treat falsy `Command.resume` values (false, 0, "") as valid resume input in both `mapCommand` and `consumeNullResume`
