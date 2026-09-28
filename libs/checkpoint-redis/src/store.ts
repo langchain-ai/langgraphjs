@@ -1,4 +1,4 @@
-import { createClient, createCluster, ErrorReply } from "redis";
+import { createClient, createCluster } from "redis";
 
 /** A conventional Redis connection. */
 export type RedisClientConnection = ReturnType<typeof createClient>;
@@ -339,6 +339,15 @@ class TooManyCandidatesError extends Error {
   }
 }
 
+/**
+ * Whether Redis itself rejected a command, as opposed to node-redis failing
+ * to reach it. Compared by class name, since the client may come from another
+ * copy of the package.
+ */
+function isErrorReply(error: unknown): boolean {
+  return (error as Error | undefined)?.constructor?.name === "ErrorReply";
+}
+
 const SCHEMAS = [
   {
     index: "store",
@@ -543,7 +552,7 @@ export class RedisStore {
     } catch (error) {
       // The document may be there; writing another copy, or reporting a
       // delete that did nothing, would be wrong
-      if (error instanceof TooManyCandidatesError) {
+      if ((error as Error | undefined)?.name === "TooManyCandidatesError") {
         throw error;
       }
       // Index might not exist yet
@@ -666,7 +675,7 @@ export class RedisStore {
         // that first-word query if Redis rejects the namespace's words.
         const results = await knn(prefixTextQuery(namespacePrefix)).catch(
           (error) => {
-            if (!(error instanceof ErrorReply)) {
+            if (!isErrorReply(error)) {
               throw error;
             }
             return knn(prefixWildcardQuery(namespacePrefix));
