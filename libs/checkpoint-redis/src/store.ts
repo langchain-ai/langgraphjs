@@ -1,4 +1,4 @@
-import { createClient, createCluster } from "redis";
+import { createClient, createCluster, ErrorReply } from "redis";
 
 /** A conventional Redis connection. */
 export type RedisClientConnection = ReturnType<typeof createClient>;
@@ -322,9 +322,22 @@ const STORE_PREFIX = "store";
 const STORE_VECTOR_PREFIX = "store_vectors";
 
 // A lookup pages through at most 10,000 candidates, Redis Stack's default
-// MAXSEARCHRESULTS: asking it for more is an error.
+// MAXSEARCHRESULTS; past that limit Redis returns no documents.
 const PAGE_SIZE = 100;
 const MAX_CANDIDATES = 10_000;
+
+/**
+ * Thrown when more documents may belong to a namespace than a lookup can read,
+ * so it cannot tell whether the one it looks for is among them.
+ */
+class TooManyCandidatesError extends Error {
+  constructor(namespace: string[]) {
+    super(
+      `More than ${MAX_CANDIDATES} documents may belong to namespace ${namespace}; cannot look up a key in it.`
+    );
+    this.name = "TooManyCandidatesError";
+  }
+}
 
 const SCHEMAS = [
   {
@@ -451,9 +464,9 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
-    // No document is stored under an empty or dotted label; its prefix names
-    // other namespaces' documents.
-    if (!joinsUnambiguously(namespace)) {
+    // No document is stored under an empty namespace, or under an empty or
+    // dotted label; its prefix names other namespaces' documents.
+    if (namespace.length === 0 || !joinsUnambiguously(namespace)) {
       return null;
     }
 
@@ -506,7 +519,7 @@ export class RedisStore {
       if (existing) {
         const oldDocId = existing.id;
         // Preserve the original created_at timestamp
-        const existingDoc = await this.client.json.get(oldDocId);
+        const existingDoc = existing.value;
         if (
           existingDoc &&
           typeof existingDoc === "object" &&
@@ -527,7 +540,12 @@ export class RedisStore {
           }
         }
       }
-    } catch {
+    } catch (error) {
+      // The document may be there; writing another copy, or reporting a
+      // delete that did nothing, would be wrong
+      if (error instanceof TooManyCandidatesError) {
+        throw error;
+      }
       // Index might not exist yet
     }
 
@@ -646,8 +664,13 @@ export class RedisStore {
         // Narrow by every word of the namespace, as the search below does:
         // the first word alone can leave no neighbour in the namespace. Use
         // that first-word query if Redis rejects the namespace's words.
-        const results = await knn(prefixTextQuery(namespacePrefix)).catch(() =>
-          knn(prefixWildcardQuery(namespacePrefix))
+        const results = await knn(prefixTextQuery(namespacePrefix)).catch(
+          (error) => {
+            if (!(error instanceof ErrorReply)) {
+              throw error;
+            }
+            return knn(prefixWildcardQuery(namespacePrefix));
+          }
         );
 
         // Get matching store documents
@@ -1010,18 +1033,35 @@ export class RedisStore {
     const query = allOf(prefixTextQuery(namespace), keyQuery);
 
     for (let from = 0; from < MAX_CANDIDATES; from += PAGE_SIZE) {
+      // The first page usually holds the document. Past it, the candidates
+      // are other namespaces': compare on prefix and key alone, and fetch
+      // only the document that matches.
+      const firstPage = from === 0;
       const page = await this.client.ft.search("store", query, {
         LIMIT: { from, size: PAGE_SIZE },
+        // Rank a prefix with fewer words first, so the namespace itself comes
+        // before those that only contain its words
+        SCORER: "TFIDF.DOCNORM",
+        ...(firstPage ? {} : { RETURN: ["prefix", "key"] }),
       });
       const match = page.documents.find((doc) => {
         const found = doc.value as unknown as StoreDocument;
         return found.prefix === prefix && found.key === key;
       });
-      if (match || page.documents.length < PAGE_SIZE) {
-        return match;
+      if (match) {
+        const value = firstPage
+          ? (match.value as unknown as StoreDocument)
+          : ((await this.client.json.get(match.id)) as StoreDocument | null);
+        return value ? { id: match.id, value } : undefined;
+      }
+      if (from + page.documents.length >= page.total) {
+        return undefined; // every candidate was checked
+      }
+      if (page.documents.length === 0) {
+        break; // Redis returns nothing past its MAXSEARCHRESULTS
       }
     }
-    return undefined;
+    throw new TooManyCandidatesError(namespace);
   }
 
   private async refreshItemTTL(docId: string): Promise<void> {

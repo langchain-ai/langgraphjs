@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { ErrorReply } from "redis";
 import { RedisStore } from "../store.js";
 import { createRedisContainer } from "./redis-container.js";
 
@@ -32,6 +33,16 @@ async function stored(client: Client, prefix: string, key: string) {
   return docs.filter(
     (doc: any) => doc.prefix === prefix && doc.key === key
   ) as any[];
+}
+
+/** The ids of the documents stored under exactly `prefix` and `key`. */
+async function idsOf(client: Client, prefix: string, key: string) {
+  const ids: string[] = [];
+  for (const id of await client.keys("store:*")) {
+    const doc = (await client.json.get(id)) as any;
+    if (doc?.prefix === prefix && doc.key === key) ids.push(id);
+  }
+  return ids;
 }
 
 /** Deterministic random numbers below `n` (mulberry32). */
@@ -113,6 +124,97 @@ describe("namespace isolation", () => {
     expect(await stored(container.client, "scope.one", "same")).toHaveLength(0);
   });
 
+  it("refreshes the TTL of the namespace's own documents only", async () => {
+    const { client } = container;
+    const ttl = new RedisStore(client, { index, ttl: { defaultTTL: 10 } });
+    const namespaces = [
+      ["ttl", "a"],
+      ["a", "ttl"],
+      ["ttl", "A"],
+      ["ttl", "ab"],
+    ];
+    for (const namespace of namespaces) {
+      await ttl.put(namespace, "k", { text: "1" });
+    }
+    const [mine] = await idsOf(client, "ttl.a", "k");
+    const others = (
+      await Promise.all(
+        namespaces.slice(1).map((n) => idsOf(client, n.join("."), "k"))
+      )
+    ).flat();
+    const vectors = others.map((id) => id.replace("store:", "store_vectors:"));
+    for (const id of [mine, ...others, ...vectors]) await client.expire(id, 30);
+
+    await ttl.get(["ttl", "a"], "k", { refreshTTL: true });
+    await ttl.search(["ttl", "a"], { refreshTTL: true });
+    await ttl.search(["ttl", "a"], { refreshTTL: true, query: "near" });
+
+    expect(await client.ttl(mine)).toBeGreaterThan(30);
+    for (const id of [...others, ...vectors]) {
+      expect(await client.ttl(id)).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it("deletes only the replaced document's own vector", async () => {
+    const { client } = container;
+    for (const namespace of [
+      ["vk", "a"],
+      ["a", "vk"],
+      ["vk", "A"],
+    ]) {
+      await store.put(namespace, "k", { text: "1" });
+    }
+    await store.put(["vk", "a"], "k", { text: "2" });
+    await store.put(["vk", "a"], "k", { text: "3" });
+
+    const prefixes: string[] = [];
+    for (const id of await client.keys("store_vectors:*")) {
+      const doc = (await client.json.get(id)) as any;
+      if (["vk.a", "a.vk", "vk.A"].includes(doc.prefix))
+        prefixes.push(doc.prefix);
+    }
+    expect(prefixes.sort()).toEqual(["a.vk", "vk.A", "vk.a"]);
+  });
+
+  it("matches keys case-sensitively", async () => {
+    await store.put(["case"], "k", { v: "lower" });
+    await store.put(["case"], "K", { v: "upper" });
+    expect((await store.get(["case"], "K"))?.value).toEqual({ v: "upper" });
+    await store.delete(["case"], "K");
+    expect(await store.get(["case"], "K")).toBeNull();
+    expect((await store.get(["case"], "k"))?.value).toEqual({ v: "lower" });
+  });
+
+  it("pages through the namespace's documents, skipping others'", async () => {
+    // Documents from another namespace that shares the words take up places
+    // on each page, so pages can come back short, as earlier versions' pages
+    // held those documents instead. Every own document still appears once.
+    for (let i = 0; i < 25; i++) {
+      const namespace = i % 5 === 0 ? ["pg", "a"] : ["x", "pg", "a", `y${i}`];
+      await store.put(namespace, `k${i}`, { i });
+    }
+    const keys: string[] = [];
+    for (let offset = 0; offset < 30; offset += 5) {
+      for (const item of await store.search(["pg", "a"], {
+        offset,
+        limit: 5,
+      })) {
+        expect(item.namespace).toEqual(["pg", "a"]);
+        keys.push(item.key);
+      }
+    }
+    expect(keys.sort()).toEqual(["k0", "k10", "k15", "k20", "k5"]);
+  });
+
+  it("reads nothing through the empty namespace", async () => {
+    let item: unknown;
+    const queries = await queriesOf(container.client, async () => {
+      item = await store.get([], "k");
+    });
+    expect(item).toBeNull();
+    expect(queries).toEqual([]);
+  });
+
   it("treats the empty key as a key", async () => {
     await store.put(["empty"], "", { v: 1 });
     await store.put(["empty", "child"], "", { v: 0 });
@@ -192,13 +294,19 @@ describe("namespace isolation", () => {
       // The text query rejects some of these labels as a syntax error, and
       // misses documents under others, as it always did. What must hold is
       // that nothing from another namespace comes back.
+      const rejected = (error: unknown) => {
+        expect(error).toBeInstanceOf(ErrorReply);
+        return undefined;
+      };
       for (const query of [undefined, "near"]) {
         const got = (
-          await store.search(namespace, { limit: 1000, query }).catch(() => [])
+          (await store
+            .search(namespace, { limit: 1000, query })
+            .catch(rejected)) ?? []
         ).map((item) => item.namespace.join("."));
         expect(expected).toEqual(expect.arrayContaining(got));
       }
-      const item = await store.get(namespace, "k").catch(() => undefined);
+      const item = await store.get(namespace, "k").catch(rejected);
       expect([undefined, null, flat]).toContain(item?.value.flat ?? item);
     }
   });
@@ -234,6 +342,93 @@ describe("namespace isolation", () => {
       "(@prefix:memories*)=>[KNN 100 @embedding $BLOB]",
     ]);
     expect(found.map((item) => item.key)).toEqual(["mine"]);
+  });
+
+  it("does not retry vector search when Redis cannot be reached", async () => {
+    const search = vi
+      .spyOn(container.client.ft, "search")
+      .mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
+    try {
+      await expect(
+        store.search(["memories", "user-3"], { query: "near" })
+      ).rejects.toThrow("Socket closed unexpectedly");
+      expect(search).toHaveBeenCalledTimes(1);
+    } finally {
+      search.mockRestore();
+    }
+  });
+});
+
+describe("a namespace with many look-alike documents", () => {
+  let container: Awaited<ReturnType<typeof createRedisContainer>>;
+  let store: RedisStore;
+
+  /** Write documents as any client would, in batches. */
+  async function write(docs: [string, string, string][]) {
+    for (let from = 0; from < docs.length; from += 5000) {
+      const batch = container.client.multi();
+      for (const [id, prefix, key] of docs.slice(from, from + 5000)) {
+        batch.json.set(id, "$", {
+          prefix,
+          key,
+          value: { prefix },
+          created_at: 1,
+          updated_at: 1,
+        });
+      }
+      await batch.exec();
+    }
+  }
+
+  beforeAll(async () => {
+    container = await createRedisContainer();
+    store = new RedisStore(container.client);
+    await store.setup();
+    // 10,050 child namespaces share the key of their parent, written last.
+    const children: [string, string, string][] = Array.from(
+      { length: 10_050 },
+      (_, i) => [`store:child${i}`, `users.u${i}`, "profile"]
+    );
+    await write([...children, ["store:parent", "users", "profile"]]);
+    // 20,000 namespaces whose labels hold no indexed words besides the
+    // victim's, with the victim written in the middle of them.
+    const punctuation = "!#$%&*+,/;<=>?^`~";
+    const label = (i: number) =>
+      Array.from(String(i), (d) => punctuation[Number(d)]).join("") +
+      punctuation[10 + (i % 7)];
+    const flood: [string, string, string][] = Array.from(
+      { length: 20_000 },
+      (_, i) => [`store:flood${i}`, `${label(i)}.victim`, "k"]
+    );
+    flood.splice(10_000, 0, ["store:victim", "victim", "k"]);
+    await write(flood);
+  }, 180_000);
+
+  afterAll(async () => {
+    await container?.cleanup();
+  });
+
+  it("finds a parent namespace's document behind its children's", async () => {
+    expect((await store.get(["users"], "profile"))?.value).toEqual({
+      prefix: "users",
+    });
+    await store.put(["users"], "profile", { v: "new" });
+    expect(await container.client.exists("store:parent")).toBe(0);
+    expect((await store.get(["users"], "profile"))?.value).toEqual({
+      v: "new",
+    });
+  });
+
+  it("fails loudly when it cannot tell whether a document is there", async () => {
+    const { client } = container;
+    const count = (await client.keys("store:*")).length;
+    const tooMany = /More than 10000 documents may belong to namespace victim/;
+    await expect(store.get(["victim"], "k")).rejects.toThrow(tooMany);
+    await expect(store.put(["victim"], "k", { v: 2 })).rejects.toThrow(tooMany);
+    await expect(store.delete(["victim"], "k")).rejects.toThrow(tooMany);
+    // Nothing was written or deleted
+    expect((await client.keys("store:*")).length).toBe(count);
+    expect(await client.exists("store:victim")).toBe(1);
   });
 });
 
