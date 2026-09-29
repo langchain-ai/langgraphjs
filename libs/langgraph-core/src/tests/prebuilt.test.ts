@@ -2715,6 +2715,39 @@ describe("ToolNode", () => {
     );
   });
 
+  it.each([
+    ["a string", "rate limit exceeded", "rate limit exceeded"],
+    ["undefined", undefined, "undefined"],
+    ["null", null, "null"],
+  ])(
+    "Should handle a tool that throws %s",
+    async (_label, thrown, expected) => {
+      const failingTool = tool(
+        async () => {
+          throw thrown;
+        },
+        {
+          name: "failing_tool",
+          description: "Always fails",
+          schema: z.object({}),
+        }
+      );
+      const toolNode = new ToolNode([failingTool]);
+      const res = await toolNode.invoke([
+        new AIMessage({
+          content: "",
+          tool_calls: [{ name: "failing_tool", args: {}, id: "testid" }],
+        }),
+      ]);
+      expect(res).toMatchObject([
+        {
+          status: "error",
+          content: `Error: ${expected}\n Please fix your mistakes.`,
+        },
+      ]);
+    }
+  );
+
   it("forwards graph state to tools via runtime.state (graph node)", async () => {
     const AgentState = z.object({
       ...MessagesZodState.shape,
