@@ -1268,9 +1268,9 @@ export class Pregel<
       }[]
     ) => {
       // get last checkpoint
-      const config = this.config
-        ? mergeConfigs(this.config, inputConfig)
-        : inputConfig;
+      const config = this._ownCheckpointConfig(
+        this.config ? mergeConfigs(this.config, inputConfig) : inputConfig
+      );
       const saved = await checkpointer.getTuple(config);
       const checkpoint =
         saved !== undefined

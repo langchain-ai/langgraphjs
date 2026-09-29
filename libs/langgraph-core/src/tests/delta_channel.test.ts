@@ -1108,4 +1108,23 @@ describe("DeltaChannel in a subgraph", () => {
     }
     expect(history[0]).toEqual(written);
   });
+
+  it.each([undefined, true] as const)(
+    "updateState from a subgraph task config keeps the edit (checkpointer: %s)",
+    async (childCheckpointer) => {
+      const { parent, config } = await pausedParent(childCheckpointer);
+      const { tasks } = await parent.getState(config);
+      const taskConfig = tasks[0].state as Parameters<
+        typeof parent.updateState
+      >[0];
+
+      await parent.updateState(taskConfig, { delta: ["edit"], plain: ["edit"] }, "a");
+
+      const snapshot = await parent.getState(config, { subgraphs: true });
+      expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual({
+        delta: ["a1", "edit"],
+        plain: ["a1", "edit"],
+      });
+    }
+  );
 });
