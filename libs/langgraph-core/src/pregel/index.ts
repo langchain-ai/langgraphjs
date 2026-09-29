@@ -870,6 +870,25 @@ export class Pregel<
   }
 
   /**
+   * A `checkpointer: true` subgraph keeps one history per thread, stored
+   * under its namespace with the task ids removed.
+   */
+  private _ownCheckpointConfig<C extends RunnableConfig>(config: C): C {
+    if (this.checkpointer !== true) return config;
+    const ns: string = config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] ?? "";
+    return {
+      ...config,
+      configurable: {
+        ...config.configurable,
+        [CONFIG_KEY_CHECKPOINT_NS]: ns
+          .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+          .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+          .join(CHECKPOINT_NAMESPACE_SEPARATOR),
+      },
+    };
+  }
+
+  /**
    * Prepares a state snapshot from saved checkpoint data.
    * This is an internal method used by getState and getStateHistory.
    *
@@ -1102,8 +1121,9 @@ export class Pregel<
       // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
-    const mergedConfig = mergeConfigs(this.config, config);
-    const saved = await checkpointer.getTuple(config);
+    const ownConfig = this._ownCheckpointConfig(config);
+    const mergedConfig = mergeConfigs(this.config, ownConfig);
+    const saved = await checkpointer.getTuple(ownConfig);
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
       saved,
@@ -1162,9 +1182,11 @@ export class Pregel<
       // read persisted state (e.g. messages) for these transient subgraphs.
     }
 
-    const mergedConfig = mergeConfigs(this.config, config, {
-      configurable: { checkpoint_ns: checkpointNamespace },
-    });
+    const mergedConfig = this._ownCheckpointConfig(
+      mergeConfigs(this.config, config, {
+        configurable: { checkpoint_ns: checkpointNamespace },
+      })
+    );
 
     for await (const checkpointTuple of checkpointer.list(
       mergedConfig,
@@ -2308,15 +2330,7 @@ export class Pregel<
       modes: new Set(streamMode),
     });
 
-    // set up subgraph checkpointing
-    if (this.checkpointer === true) {
-      config.configurable ??= {};
-      const ns: string = config.configurable[CONFIG_KEY_CHECKPOINT_NS] ?? "";
-      config.configurable[CONFIG_KEY_CHECKPOINT_NS] = ns
-        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
-        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
-    }
+    config.configurable = this._ownCheckpointConfig(config).configurable;
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {

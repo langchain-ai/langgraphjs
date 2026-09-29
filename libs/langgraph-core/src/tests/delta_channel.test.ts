@@ -1087,4 +1087,25 @@ describe("DeltaChannel in a subgraph", () => {
     });
     expect(snapshot.values).toEqual(written);
   });
+
+  it("getState with subgraphs hydrates a checkpointer: true subgraph", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory from a checkpointer: true subgraph task hydrates its history", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config);
+    const taskConfig = snapshot.tasks[0].state as Parameters<
+      typeof parent.getStateHistory
+    >[0];
+    const history = [];
+    for await (const s of parent.getStateHistory(taskConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
 });
