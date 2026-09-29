@@ -10,6 +10,7 @@ import open from "open";
 import { startCloudflareTunnel, type CloudflareTunnel } from "./cloudflare.mjs";
 import { createIpcServer } from "./utils/ipc/server.mjs";
 import { getProjectPath } from "./utils/project.mjs";
+import { DEFAULT_STUDIO_URL, resolveStudioUrl } from "./utils/studio-url.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
 import { logError, logger } from "../utils/logging.mjs";
@@ -34,6 +35,10 @@ builder
     "--tunnel",
     "use Cloudflare Tunnel to expose the server to the internet"
   )
+  .option(
+    "--studio-url <url>",
+    `URL of the LangGraph Studio instance to connect to (defaults to ${DEFAULT_STUDIO_URL})`
+  )
   .allowExcessArguments()
   .allowUnknownOption()
   .exitOverride((error) => gracefulExit(error.exitCode))
@@ -45,6 +50,7 @@ builder
       host: command.opts().host !== "localhost",
       n_jobs_per_worker: command.opts().nJobsPerWorker !== "10",
       tunnel: Boolean(command.opts().tunnel),
+      studio_url: Boolean(command.opts().studioUrl),
     }))
   )
   .action(async (options, { args }) => {
@@ -63,7 +69,7 @@ builder
       let child: ChildProcess | undefined = undefined;
       let tunnel: CloudflareTunnel | undefined = undefined;
 
-      let hostUrl = "https://smith.langchain.com";
+      let hostUrl = DEFAULT_STUDIO_URL;
       let envNoBrowser = process.env.BROWSER === "none";
 
       server.on("data", async (data) => {
@@ -143,17 +149,15 @@ builder
           watcher.unwatch(removedTarget).add(addedTarget);
         }
 
-        try {
+        hostUrl = await resolveStudioUrl(options.studioUrl, async () => {
           const { Client } = await import("langsmith");
           const apiUrl =
             env?.["LANGSMITH_ENDPOINT"] ||
             env?.["LANGCHAIN_ENDPOINT"] ||
             undefined;
 
-          hostUrl = new Client({ apiUrl }).getHostUrl() || hostUrl;
-        } catch {
-          // pass
-        }
+          return new Client({ apiUrl }).getHostUrl();
+        });
 
         return { config, env, hostUrl };
       };
