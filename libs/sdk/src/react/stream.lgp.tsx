@@ -470,6 +470,11 @@ export function useStreamLGP<
   const stop = async () => {
     const wasLoading = stream.isLoading;
 
+    const includeImplicitBranch =
+      historyLimit === true || typeof historyLimit === "number";
+    const shouldRefetch =
+      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+
     await stream.stop(historyValues, {
       onStop: (args) => {
         if (runMetadataStorage && threadId) {
@@ -487,11 +492,18 @@ export function useStreamLGP<
     // alone, the locally-buffered stream values — including any message
     // chunk still being assembled when `stop()` was called — stay stuck in
     // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync from the server so
-    // the buffer only reflects what was actually persisted.
+    // until a thread switch or a full remount. Re-sync so the buffer only
+    // reflects what was actually persisted: refetch when the caller needs
+    // authoritative thread state (branching / `onFinish`), otherwise fall
+    // back to the already-cached `historyValues` to avoid an extra round
+    // trip on every cancel.
     if (wasLoading && threadId) {
-      const newHistory = await history.mutate(threadId);
-      stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+      if (shouldRefetch) {
+        const newHistory = await history.mutate(threadId);
+        stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+      } else {
+        stream.setStreamValues(historyValues);
+      }
     }
   };
 

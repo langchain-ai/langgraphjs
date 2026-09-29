@@ -803,6 +803,12 @@ export class StreamOrchestrator<
     const wasLoading = this.stream.isLoading;
     const threadId = this.#threadId;
 
+    const includeImplicitBranch =
+      this.historyLimit === true || typeof this.historyLimit === "number";
+    const shouldRefetch =
+      includeImplicitBranch ||
+      onFinishRequiresThreadState(this.#options.onFinish);
+
     await this.stream.stop(this.historyValues, {
       onStop: (args) => {
         if (this.#runMetadataStorage && this.#threadId) {
@@ -823,11 +829,18 @@ export class StreamOrchestrator<
     // alone, the locally-buffered stream values — including any message
     // chunk still being assembled when `stop()` was called — stay stuck in
     // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync from the server so
-    // the buffer only reflects what was actually persisted.
+    // until a thread switch or a full remount. Re-sync so the buffer only
+    // reflects what was actually persisted: refetch when the caller needs
+    // authoritative thread state (branching / `onFinish`), otherwise fall
+    // back to the already-cached `historyValues` to avoid an extra round
+    // trip on every cancel.
     if (wasLoading && threadId) {
-      const newHistory = await this.#mutate(threadId);
-      this.stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+      if (shouldRefetch) {
+        const newHistory = await this.#mutate(threadId);
+        this.stream.setStreamValues(newHistory?.at(0)?.values ?? null);
+      } else {
+        this.stream.setStreamValues(this.historyValues);
+      }
     }
   }
 
@@ -1263,7 +1276,7 @@ export class StreamOrchestrator<
     this.#queueUnsub?.();
     this.#streamUnsub = null;
     this.#queueUnsub = null;
-    void this.stop();
+    void this.stop().catch(() => undefined);
   }
 
   #flushPendingHeadlessToolInterrupts(
