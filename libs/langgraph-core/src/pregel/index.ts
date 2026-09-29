@@ -855,6 +855,21 @@ export class Pregel<
   }
 
   /**
+   * The checkpointer state reads and writes use: the one a parent lends a
+   * subgraph through the config, else this graph's own.
+   */
+  private _stateCheckpointer(config: RunnableConfig): BaseCheckpointSaver {
+    const checkpointer =
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
+    if (!checkpointer) {
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
+    }
+    return checkpointer;
+  }
+
+  /**
    * Prepares a state snapshot from saved checkpoint data.
    * This is an internal method used by getState and getStateHistory.
    *
@@ -1057,13 +1072,7 @@ export class Pregel<
     config: RunnableConfig,
     options?: GetStateOptions
   ): Promise<StateSnapshot> {
-    const checkpointer =
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
-      });
-    }
+    const checkpointer = this._stateCheckpointer(config);
 
     const checkpointNamespace: string =
       config.configurable?.checkpoint_ns ?? "";
@@ -1122,13 +1131,7 @@ export class Pregel<
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncIterableIterator<StateSnapshot> {
-    const checkpointer: BaseCheckpointSaver =
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
-      });
-    }
+    const checkpointer = this._stateCheckpointer(config);
 
     const checkpointNamespace: string =
       config.configurable?.checkpoint_ns ?? "";
@@ -1200,13 +1203,7 @@ export class Pregel<
       }>;
     }>
   ): Promise<RunnableConfig> {
-    const checkpointer: BaseCheckpointSaver | undefined =
-      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
-      });
-    }
+    const checkpointer = this._stateCheckpointer(startConfig);
     if (supersteps.length === 0) {
       throw new Error("No supersteps provided");
     }

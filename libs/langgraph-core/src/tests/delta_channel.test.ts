@@ -960,6 +960,27 @@ describe("channelsFromCheckpoint", () => {
     });
     expect(channels.messages.get()).toEqual([1, 2]);
   });
+
+  it("throws for a written delta channel without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(channelsFromCheckpoint(specs, written)).rejects.toThrow(
+      /no checkpointer/
+    );
+  });
+
+  it("hydrates a never-written delta channel empty without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const channels = await channelsFromCheckpoint(specs, emptyCheckpoint());
+    expect(channels.messages.get()).toEqual([]);
+  });
 });
 
 describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
