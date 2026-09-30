@@ -1,5 +1,51 @@
 # @langchain/langgraph-sdk
 
+## 1.12.0
+
+### Minor Changes
+
+- [#2848](https://github.com/langchain-ai/langgraphjs/pull/2848) [`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - `useStream`'s `"enqueue"` multitask strategy can now be backed by real, durable server-side runs instead of an in-memory client-only queue.
+  
+  Pass `queue: "server"` to opt in; it defaults to `"local"`, so existing usage is unaffected. `"server"` requires the backend behind `apiUrl` to implement the Runs REST endpoints (`POST`/`GET /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/{run_id}/cancel`), not just streaming/commands. Queued submissions then persist across reloads and are visible to other sessions, and `cancelQueued`/`clearQueue` cancel them server-side too.
+  
+  Not supported with a custom `AgentServerAdapter` transport — `queue` only applies to the built-in transport.
+
+## 1.12.0-rc.0
+
+### Minor Changes
+
+- [#2848](https://github.com/langchain-ai/langgraphjs/pull/2848) [`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - `useStream`'s `"enqueue"` multitask strategy can now be backed by real, durable server-side runs instead of an in-memory client-only queue.
+  
+  Pass `queue: "server"` to opt in; it defaults to `"local"`, so existing usage is unaffected. `"server"` requires the backend behind `apiUrl` to implement the Runs REST endpoints (`POST`/`GET /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/{run_id}/cancel`), not just streaming/commands. Queued submissions then persist across reloads and are visible to other sessions, and `cancelQueued`/`clearQueue` cancel them server-side too.
+  
+  Not supported with a custom `AgentServerAdapter` transport — `queue` only applies to the built-in transport.
+
+## 1.11.2
+
+### Patch Changes
+
+- [#2855](https://github.com/langchain-ai/langgraphjs/pull/2855) [`0284323`](https://github.com/langchain-ai/langgraphjs/commit/0284323b2d8457bd830ea987e93f03ebee8370ce) Thanks [@hntrl](https://github.com/hntrl)! - Preserve metadata from v2 message SSE events when constructing frontend message objects, so applications can inspect message provenance and model completion details without parsing raw events.
+  
+  - Retain namespace, graph node, callback `run_id`, and message-start metadata in `additional_kwargs`, including messages returned by awaiting a `StreamingMessage`.
+  - Expose finish reasons and provider response metadata in `response_metadata` across message roles, accepting both Python `metadata` and JavaScript `responseMetadata` event fields.
+  - Populate the standard AI `usage_metadata` field while retaining `additional_kwargs.usage` for compatibility. Preserve earlier usage when a finish event omits it.
+  - Keep interleaved streams at the same namespace and node separate using callback `run_id`, while retaining fallback behavior for legacy events without run IDs.
+  
+  These fields describe individual messages and model calls: a finish reason does not identify the final response of a graph turn, and callback run IDs are not necessarily server run IDs. This change does not add an `is_final` marker or persist stream-only metadata into historical checkpoints.
+
+## 1.11.1
+
+### Patch Changes
+
+- [#2824](https://github.com/langchain-ai/langgraphjs/pull/2824) [`e75f6a0`](https://github.com/langchain-ai/langgraphjs/commit/e75f6a08e96f65d201a0bb501a97e00bcffe83a2) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add `responseSchema` option to `interrupt()`
+  
+  `interrupt(value, { responseSchema })` lets a graph declare the shape of the
+  value it expects on resume. A Zod schema validates the resume value and the
+  parsed result is what `interrupt()` returns; a raw JSON Schema object is passed
+  through as-is. The schema is surfaced on `Interrupt.response_schema` so clients
+  such as Studio can render a typed form instead of a free-form JSON editor.
+  Omitting the option keeps today's behavior.
+
 ## 1.11.0
 
 ### Minor Changes

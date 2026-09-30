@@ -5,3 +5,5 @@ export {
   getGraph,
   getGraphKeys,
 } from "./load.mjs";
+
+export type { ServerRuntime } from "./load.utils.mjs";
