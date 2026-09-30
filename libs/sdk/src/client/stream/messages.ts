@@ -146,6 +146,29 @@ function normalizeUsage(
   };
 }
 
+function readRunId(data: object): string | undefined {
+  const record = data as Record<string, unknown>;
+  return typeof record.run_id === "string" ? record.run_id : undefined;
+}
+
+function readUsage(data: object): UsageInfo | undefined {
+  const usage = (data as Record<string, unknown>).usage;
+  return usage != null && typeof usage === "object" && !Array.isArray(usage)
+    ? (usage as UsageInfo)
+    : undefined;
+}
+
+function readFinishMetadata(data: object): Record<string, unknown> | undefined {
+  const record = data as Record<string, unknown>;
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    value != null && typeof value === "object" && !Array.isArray(value);
+  const merged = {
+    ...(isRecord(record.responseMetadata) ? record.responseMetadata : {}),
+    ...(isRecord(record.metadata) ? record.metadata : {}),
+  };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 /**
  * Mutable view of a streamed message as message and content-block events are
  * assembled into a single structure.
@@ -155,9 +178,11 @@ export interface AssembledMessage {
   namespace: string[];
   blocks: ContentBlock[];
   node?: string;
+  runId?: string;
   usage?: UsageInfo;
   metadata?: MessageMetadata;
   finishMetadata?: Record<string, any>;
+  finishReason?: string;
   error?: {
     message: string;
     code?: string;
@@ -413,10 +438,12 @@ export class StreamingMessage
 
   async #assembleMessage(): Promise<AIMessage> {
     const contentBlocks: Array<CoreContentBlock | undefined> = [];
-    let id: string | undefined;
-    let usage: UsageMetadata | undefined;
-    let metadata: Record<string, unknown> = {};
-    let finishReason: string | undefined;
+    let id: string | undefined = this.id;
+    let usage = normalizeUsage(this.assembled.usage);
+    let metadata: Record<string, unknown> = {
+      ...(this.assembled.finishMetadata ?? {}),
+    };
+    let finishReason: string | undefined = this.assembled.finishReason;
 
     for await (const event of this.#events) {
       switch (event.event) {
@@ -435,16 +462,15 @@ export class StreamingMessage
         case "content-block-finish":
           contentBlocks[event.index] = event.content;
           break;
-        case "message-finish":
+        case "message-finish": {
           finishReason = event.reason;
           if (event.usage) usage = normalizeUsage(event.usage);
-          if (event.responseMetadata) {
-            metadata = {
-              ...metadata,
-              ...event.responseMetadata,
-            };
+          const finishMetadata = readFinishMetadata(event);
+          if (finishMetadata != null) {
+            metadata = { ...metadata, ...finishMetadata };
           }
           break;
+        }
         default:
           break;
       }
@@ -456,9 +482,20 @@ export class StreamingMessage
         (block): block is CoreContentBlock => block != null
       ),
       usage_metadata: usage,
+      additional_kwargs: {
+        namespace: this.namespace,
+        ...(this.node != null ? { node: this.node } : {}),
+        ...(this.assembled.runId != null
+          ? { run_id: this.assembled.runId }
+          : {}),
+        ...(this.metadata != null ? { metadata: this.metadata } : {}),
+        ...(this.assembled.usage != null
+          ? { usage: this.assembled.usage }
+          : {}),
+      },
       response_metadata: {
+        ...(finishReason != null ? { finish_reason: finishReason } : {}),
         ...metadata,
-        ...(finishReason ? { finish_reason: finishReason } : {}),
         output_version: "v1" as const,
       },
     });
@@ -653,8 +690,9 @@ function applyContentDelta(
 function messageKeyFor(event: MessagesEvent): string {
   const { namespace, node, data } = event.params;
   const namespaceKey = namespace.join("/");
+  const runId = readRunId(data);
   const messageId = data.event === "message-start" ? (data.id ?? "") : "";
-  return `${namespaceKey}::${node ?? ""}::${messageId}`;
+  return `${namespaceKey}::${node ?? ""}::${runId ?? messageId}`;
 }
 
 function toChatModelStreamEvent(event: MessagesEvent): ChatModelStreamEvent {
@@ -677,6 +715,7 @@ export class MessageAssembler {
   consume(event: MessagesEvent): MessageAssemblyUpdate {
     const data = event.params.data;
     const namespaceNodeKey = `${event.params.namespace.join("/")}::${event.params.node ?? ""}`;
+    const runId = readRunId(data);
 
     if (data.event === "message-start") {
       const key = messageKeyFor(event);
@@ -685,6 +724,8 @@ export class MessageAssembler {
         id: data.id,
         namespace: [...event.params.namespace],
         node: event.params.node,
+        runId,
+        usage: readUsage(data),
         metadata: data.metadata,
         blocks: [],
       };
@@ -692,7 +733,17 @@ export class MessageAssembler {
       return { kind: "message-start", key, message, event };
     }
 
-    const activeKey = this.activeByNamespaceNode.get(namespaceNodeKey);
+    const runKey = runId != null ? `${namespaceNodeKey}::${runId}` : undefined;
+    const fallbackKey = this.activeByNamespaceNode.get(namespaceNodeKey);
+    const fallbackMessage =
+      fallbackKey != null ? this.activeMessages.get(fallbackKey) : undefined;
+    const activeKey =
+      (runKey != null && this.activeMessages.has(runKey)
+        ? runKey
+        : undefined) ??
+      (runId == null || fallbackMessage?.runId == null
+        ? fallbackKey
+        : undefined);
     if (!activeKey) {
       // A continuation event (delta/finish/error) arrived without a
       // prior `message-start`. This can happen on late-attaching
@@ -700,12 +751,13 @@ export class MessageAssembler {
       // `message-start` from its replay buffer. Synthesize a minimal
       // active message so the assembler can still fold subsequent
       // events instead of hard-failing the caller.
-      const syntheticKey = `${namespaceNodeKey}::`;
+      const syntheticKey = runKey ?? `${namespaceNodeKey}::`;
       this.activeByNamespaceNode.set(namespaceNodeKey, syntheticKey);
       const synthetic: AssembledMessage = {
         id: data.id,
         namespace: [...event.params.namespace],
         node: event.params.node,
+        runId,
         blocks: [],
       };
       this.activeMessages.set(syntheticKey, synthetic);
@@ -801,10 +853,10 @@ export class MessageAssembler {
         };
       }
       case "message-finish": {
-        message.usage = data.usage;
-        message.finishMetadata = data.responseMetadata;
-        this.activeMessages.delete(activeKey);
-        this.activeByNamespaceNode.delete(namespaceNodeKey);
+        message.usage = readUsage(data) ?? message.usage;
+        message.finishMetadata = readFinishMetadata(data);
+        message.finishReason = data.reason;
+        this.clearActiveMessage(activeKey, namespaceNodeKey);
         this.clearBlockIndexAliases(activeKey);
         return {
           kind: "message-finish",
@@ -815,8 +867,7 @@ export class MessageAssembler {
       }
       case "error": {
         message.error = { message: data.message, code: data.code };
-        this.activeMessages.delete(activeKey);
-        this.activeByNamespaceNode.delete(namespaceNodeKey);
+        this.clearActiveMessage(activeKey, namespaceNodeKey);
         this.clearBlockIndexAliases(activeKey);
         return {
           kind: "message-error",
@@ -825,6 +876,16 @@ export class MessageAssembler {
           event,
         };
       }
+    }
+  }
+
+  private clearActiveMessage(
+    activeKey: string,
+    namespaceNodeKey: string
+  ): void {
+    this.activeMessages.delete(activeKey);
+    if (this.activeByNamespaceNode.get(namespaceNodeKey) === activeKey) {
+      this.activeByNamespaceNode.delete(namespaceNodeKey);
     }
   }
 

@@ -1,5 +1,40 @@
 # @langchain/langgraph
 
+## 1.4.18
+
+### Patch Changes
+
+- Updated dependencies [[`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8)]:
+  - @langchain/langgraph-sdk@1.12.0
+
+## 1.4.18-rc.0
+
+### Patch Changes
+
+- Updated dependencies [[`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8)]:
+  - @langchain/langgraph-sdk@1.12.0-rc.0
+
+## 1.4.17
+
+### Patch Changes
+
+- [#2861](https://github.com/langchain-ai/langgraphjs/pull/2861) [`7639085`](https://github.com/langchain-ai/langgraphjs/commit/7639085f4d8d998ea4f9cfc0de8440c77bc2f78d) Thanks [@casparb](https://github.com/casparb)! - Add `GraphCallbackHandler` with typed `handleInterrupt` and `handleResume` events through normal callback configuration, matching Python graph lifecycle behavior. Lifecycle callbacks are awaited before terminal chain callbacks and work independently of stream mode.
+
+## 1.4.16
+
+### Patch Changes
+
+- [#2824](https://github.com/langchain-ai/langgraphjs/pull/2824) [`e75f6a0`](https://github.com/langchain-ai/langgraphjs/commit/e75f6a08e96f65d201a0bb501a97e00bcffe83a2) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add `responseSchema` option to `interrupt()`
+  
+  `interrupt(value, { responseSchema })` lets a graph declare the shape of the
+  value it expects on resume. A Zod schema validates the resume value and the
+  parsed result is what `interrupt()` returns; a raw JSON Schema object is passed
+  through as-is. The schema is surfaced on `Interrupt.response_schema` so clients
+  such as Studio can render a typed form instead of a free-form JSON editor.
+  Omitting the option keeps today's behavior.
+- Updated dependencies [[`e75f6a0`](https://github.com/langchain-ai/langgraphjs/commit/e75f6a08e96f65d201a0bb501a97e00bcffe83a2)]:
+  - @langchain/langgraph-sdk@1.11.1
+
 ## 1.4.15
 
 ### Patch Changes

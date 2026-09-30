@@ -16,6 +16,11 @@ export interface Secret {
   value: string;
 }
 
+export interface DeploymentAgent {
+  agent_id: string;
+  environment: string;
+}
+
 /**
  * Error raised when the host backend returns a non-success response or a
  * request fails at the transport level.
@@ -203,14 +208,15 @@ export class HostBackendClient {
    * @returns The created deployment object (expected to contain an `id`).
    */
   createDeployment(args: {
-    name: string;
+    name?: string;
+    agent?: DeploymentAgent;
     deploymentType: string;
     source: string;
     configPath?: string | null;
     secrets?: Secret[] | null;
   }): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {
-      name: args.name,
+      ...(args.agent ? { agent: args.agent } : { name: args.name }),
       source: args.source,
       source_config: { deployment_type: args.deploymentType },
       source_revision_config: {} as Record<string, unknown>,
@@ -232,9 +238,17 @@ export class HostBackendClient {
    * @param nameContains - Optional substring filter on deployment names.
    * @returns A paginated response object with a `resources` array.
    */
-  listDeployments(nameContains = ""): Promise<Record<string, unknown>> {
+  listDeployments(
+    nameContains = "",
+    agentId?: string,
+    agentEnvironment?: string
+  ): Promise<Record<string, unknown>> {
     return this.request("GET", "/v2/deployments", {
-      params: { name_contains: nameContains },
+      params: {
+        name_contains: nameContains,
+        agent_id: agentId,
+        agent_environment: agentEnvironment,
+      },
     });
   }
 
