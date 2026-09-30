@@ -4,6 +4,7 @@ import {
   AIMessage,
   BaseMessage,
   HumanMessage,
+  SystemMessage,
 } from "@langchain/core/messages";
 import { isDeltaSnapshot } from "@langchain/langgraph-checkpoint";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
@@ -644,4 +645,103 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
       "reply:b",
     ]);
   });
+});
+
+// Regression test for langgraphjs#2737: `updateState` forking from the shared
+// empty (ffff-) root checkpoint merged the DeltaChannel pending writes of all
+// branches that forked from that root, because the writes are stored under the
+// parent checkpoint id and the ancestor walk replays them all.
+describe("DeltaChannel updateState fork isolation (langgraphjs#2737)", () => {
+  let checkpointer: PostgresSaver;
+
+  beforeAll(async () => {
+    checkpointer = await createPostgresSaver();
+  }, 60_000);
+
+  afterAll(async () => {
+    await checkpointer?.end();
+  }, 60_000);
+
+  for (const durability of ["async", "sync", "exit"] as const) {
+    it(`isolates a branch forked from the root checkpoint (durability=${durability})`, async () => {
+      const State = Annotation.Root({
+        messages: new DeltaChannel<BaseMessage[], Messages>(
+          messagesDeltaReducer
+        ),
+      });
+      const graph = new StateGraph(State)
+        .addNode("a", (state) => ({
+          messages: [
+            new HumanMessage({
+              id: `h-${idCounter++}`,
+              content: `${state.messages[state.messages.length - 1].content}_a`,
+            }),
+          ],
+        }))
+        .addEdge(START, "a")
+        .addEdge("a", END)
+        .compile({ checkpointer });
+
+      const thread_id = `fork-root-${durability}-${Date.now()}`;
+      // 1. First execution writes [sys, human1] as pending writes to the
+      //    empty ffff- root checkpoint.
+      await graph.invoke(
+        {
+          messages: [
+            new SystemMessage({ id: "sys-1", content: "sys" }),
+            new HumanMessage({ id: "h-1", content: "human1" }),
+          ],
+        },
+        { configurable: { thread_id }, durability }
+      );
+
+      // 2. Find the empty ffff- root checkpoint.
+      const snaps: { values: unknown; parentConfig?: { configurable?: { checkpoint_id?: string } } }[] = [];
+      for await (const snap of graph.getStateHistory({
+        configurable: { thread_id },
+      })) {
+        snaps.push(snap as never);
+      }
+      const startSnap = snaps
+        .slice()
+        .reverse()
+        .find(
+          (s) =>
+            Array.isArray((s.values as { messages?: unknown[] } | undefined)?.messages) &&
+            ((s.values as { messages: unknown[] }).messages.length ?? 0) > 0
+        );
+      const emptyCid = startSnap?.parentConfig?.configurable?.checkpoint_id;
+      expect(emptyCid).toBeDefined();
+
+      // Pin the original timeline's tip before forking: afterwards the thread
+      // head legitimately points at the fork branch (newest checkpoint id).
+      const origTip = await graph.getState({ configurable: { thread_id } });
+      const origTipConfig = origTip.config;
+
+      // 3. Fork a parallel branch from the root containing ONLY [sys2].
+      const forkConfig = await graph.updateState(
+        {
+          configurable: { thread_id, checkpoint_id: emptyCid, checkpoint_ns: "" },
+        },
+        { messages: [new SystemMessage({ id: "sys-2", content: "sys2" })] },
+        "__start__"
+      );
+
+      // 4. The fork's state must contain only its own write.
+      const forkState = await graph.getState(forkConfig);
+      expect(
+        (messagesOf(forkState.values) as BaseMessage[]).map(
+          (m) => `${m.getType()}:${m.content}`
+        )
+      ).toEqual(["system:sys2"]);
+
+      // 5. The original timeline is unaffected by the fork.
+      const origAfter = await graph.getState(origTipConfig);
+      expect(
+        (messagesOf(origAfter.values) as BaseMessage[]).map(
+          (m) => `${m.getType()}:${m.content}`
+        )
+      ).toEqual(["system:sys", "human:human1", "human:human1_a"]);
+    });
+  }
 });
