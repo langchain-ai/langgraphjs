@@ -26,7 +26,12 @@ import {
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
 import { StateGraph } from "../graph/state.js";
-import { START, END, Overwrite } from "../constants.js";
+import {
+  START,
+  END,
+  Overwrite,
+  CONFIG_KEY_CHECKPOINTER,
+} from "../constants.js";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 
@@ -974,6 +979,19 @@ describe("channelsFromCheckpoint", () => {
     );
   });
 
+  it("throws for a written delta channel with a saver but no config", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(
+      channelsFromCheckpoint(specs, written, { saver: new MemorySaver() })
+    ).rejects.toThrow(/no checkpointer or config/);
+  });
+
   it("hydrates a never-written delta channel empty without a saver", async () => {
     const specs = {
       messages: new DeltaChannel<number[], number[]>(listReducer),
@@ -1041,7 +1059,7 @@ describe("DeltaChannel in a subgraph", () => {
   });
   const written = { delta: ["a1"], plain: ["a1"] };
 
-  async function pausedParent(childCheckpointer?: true) {
+  async function pausedParent(childCheckpointer?: boolean) {
     const child = new StateGraph(State)
       .addNode("a", () => written)
       .addNode("b", () => ({ delta: ["b1"], plain: ["b1"] }))
@@ -1127,4 +1145,55 @@ describe("DeltaChannel in a subgraph", () => {
       });
     }
   );
+
+  it("a checkpointer: false subgraph has no task state to read", async () => {
+    const { parent, config } = await pausedParent(false);
+    const [flat, nested] = await Promise.all([
+      parent.getState(config),
+      parent.getState(config, { subgraphs: true }),
+    ]);
+    expect(flat.tasks.map((task) => task.state)).toEqual([undefined]);
+    expect(nested.tasks.map((task) => task.state)).toEqual([undefined]);
+  });
+
+  it("a checkpointer: true graph used as root rejects state methods like a run", async () => {
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: true });
+    const config = { configurable: { thread_id: "t" } };
+
+    await expect(graph.getState(config)).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+  });
+
+  it("a checkpointer: false graph ignores a lent checkpointer in updateState", async () => {
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: false });
+    const config = {
+      configurable: {
+        thread_id: "t",
+        checkpoint_ns: "child:1",
+        [CONFIG_KEY_CHECKPOINTER]: saver,
+      },
+    };
+
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /No checkpointer set/
+    );
+    const stored = [];
+    for await (const tuple of saver.list({ configurable: { thread_id: "t" } })) {
+      stored.push(tuple);
+    }
+    expect(stored).toEqual([]);
+  });
 });

@@ -855,13 +855,25 @@ export class Pregel<
   }
 
   /**
-   * The checkpointer state reads and writes use: the one a parent lends a
-   * subgraph through the config, else this graph's own.
+   * The checkpointer runs and state methods use: none for `checkpointer: false`,
+   * else the one a parent lends a subgraph through the config, else this
+   * graph's own.
    */
+  private _resolveCheckpointer(
+    config?: RunnableConfig
+  ): BaseCheckpointSaver | undefined {
+    if (this.checkpointer === false) return undefined;
+    const lent = config?.configurable?.[CONFIG_KEY_CHECKPOINTER];
+    if (lent !== undefined) return lent;
+    if (this.checkpointer === true) {
+      throw new Error("checkpointer: true cannot be used for root graphs.");
+    }
+    return this.checkpointer;
+  }
+
   private _stateCheckpointer(config: RunnableConfig): BaseCheckpointSaver {
-    const checkpointer =
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
+    const checkpointer = this._resolveCheckpointer(config);
+    if (typeof checkpointer !== "object" || checkpointer === null) {
       throw new GraphValueError("No checkpointer set", {
         lc_error_code: "MISSING_CHECKPOINTER",
       });
@@ -976,7 +988,9 @@ export class Pregel<
     // Prepare task states for subgraphs
     for (const task of nextTasks) {
       const matchingSubgraph = subgraphs.find(([name]) => name === task.name);
-      if (!matchingSubgraph) {
+      // A `checkpointer: false` subgraph persists nothing, so it has no state
+      // to read.
+      if (!matchingSubgraph || matchingSubgraph[1].checkpointer === false) {
         continue;
       }
       // assemble checkpoint_ns for this task
@@ -1518,7 +1532,7 @@ export class Pregel<
               triggers: [],
             },
           ],
-          checkpointer.getNextVersion.bind(this.checkpointer),
+          checkpointer.getNextVersion.bind(checkpointer),
           this.triggerToNodes
         );
 
@@ -1762,7 +1776,7 @@ export class Pregel<
         checkpoint,
         channels,
         tasks as PregelExecutableTask<string, string>[],
-        checkpointer.getNextVersion.bind(this.checkpointer),
+        checkpointer.getNextVersion.bind(checkpointer),
         this.triggerToNodes
       );
 
@@ -1912,19 +1926,7 @@ export class Pregel<
       streamModeSingle = true;
     }
 
-    let defaultCheckpointer: BaseCheckpointSaver | undefined;
-    if (this.checkpointer === false) {
-      defaultCheckpointer = undefined;
-    } else if (
-      config !== undefined &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
-    ) {
-      defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
-    } else if (this.checkpointer === true) {
-      throw new Error("checkpointer: true cannot be used for root graphs.");
-    } else {
-      defaultCheckpointer = this.checkpointer;
-    }
+    const defaultCheckpointer = this._resolveCheckpointer(config);
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
 
