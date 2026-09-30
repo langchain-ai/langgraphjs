@@ -135,6 +135,26 @@ export function registerProtocolRoutes(
         // matching history. Sinks with `pendingReplay` are skipped
         // here; their replay loop delivers this event in buffer order.
         thread.queuedEvents.push(parsed);
+        if (context.maxQueuedEvents != null) {
+          // A replay loop walks a cursor index into this same array
+          // while awaiting each write (see the SSE/WS handlers below).
+          // Evicting from the front while a cursor is in flight would
+          // shift every subsequent index and make that sink silently
+          // skip an event, so eviction is suspended for as long as any
+          // sink is mid-replay; the buffer catches up on the next send
+          // once no sink has `pendingReplay` set. `Math.max(1, ...)`
+          // guarantees the newest event is never evicted, so a
+          // reconnecting subscriber never sees an empty buffer.
+          const isReplaying = Array.from(thread.eventSinks.values()).some(
+            (sink) => sink.pendingReplay
+          );
+          if (!isReplaying) {
+            const minLength = Math.max(1, context.maxQueuedEvents);
+            while (thread.queuedEvents.length > minLength) {
+              thread.queuedEvents.shift();
+            }
+          }
+        }
         for (const sink of thread.eventSinks.values()) {
           if (sink.pendingReplay) continue;
           if (sink.unfiltered || matchesSinkFilter(sink.filter, parsed)) {
