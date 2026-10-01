@@ -44,17 +44,25 @@
  *
  * # Queue semantics (`multitaskStrategy: "enqueue"`)
  *
- * When a run is already in flight, an `"enqueue"` submit is recorded
- * into {@link queueStore} and the call returns immediately. After the
- * active run terminates, `#drainQueue` schedules the head of the
- * queue as a fresh submit on the next macrotask. Each drained
- * submission has its own `multitaskStrategy` cleared so it doesn't
- * recursively re-enqueue.
+ * When a run is already in flight, an `"enqueue"` submit is delegated to
+ * a {@link QueueAdapter} instead of being handled inline.
+ * `SubmitCoordinator` only owns *which* adapter gets built and feeding
+ * it a dispatch callback (`onIdle`) once the active run settles.
  *
  * @see StreamController - The owner; injects every collaborator dep.
  */
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import type { ThreadStream } from "../client/stream/index.js";
+import { bindThreadConfig } from "./dispatch-config.js";
+import {
+  EMPTY_QUEUE,
+  type QueueAdapter,
+  type ServerQueueCapability,
+  type SubmissionQueueEntry,
+  type SubmissionQueueSnapshot,
+} from "./queue-adapter.js";
+import { AgentServerQueueAdapter } from "./queue-adapter-agent-server.js";
+import { LocalQueueAdapter } from "./queue-adapter-local.js";
 import { StreamStore } from "./store.js";
 import type { OptimisticHandle } from "./optimistic-input.js";
 import type {
@@ -63,6 +71,9 @@ import type {
   StreamControllerOptions,
   StreamSubmitOptions,
 } from "./types.js";
+
+export { EMPTY_QUEUE };
+export type { SubmissionQueueEntry, SubmissionQueueSnapshot };
 
 /**
  * Result of awaiting the next root terminal lifecycle event. Mirrors
@@ -81,41 +92,22 @@ function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
   return "stopped";
 }
 
-/**
- * Queued submission entry mirrored from the server-side run queue.
- *
- * Surfaces the deferred submission to UI consumers via
- * {@link StreamController.queueStore}.
- */
-export interface SubmissionQueueEntry<
-  StateType extends object = Record<string, unknown>,
-> {
-  /** Stable id minted on enqueue (uuidv7 — sortable by creation time). */
-  readonly id: string;
-  /** Original submit input, narrowed to the partial state shape. */
-  readonly values: Partial<StateType> | null | undefined;
-  /** Original submit options, minus the strategy slot which is reset on drain. */
-  readonly options?: StreamSubmitOptions<StateType>;
-  /** Wall-clock timestamp at enqueue. */
-  readonly createdAt: Date;
+/** Validates `client.runs`'s shape; throws rather than falling back to local. */
+function assertServerQueueCapability(
+  value: unknown
+): asserts value is ServerQueueCapability {
+  const ok =
+    typeof value === "object" &&
+    value != null &&
+    typeof (value as ServerQueueCapability).create === "function" &&
+    typeof (value as ServerQueueCapability).list === "function" &&
+    typeof (value as ServerQueueCapability).cancel === "function";
+  if (!ok) {
+    throw new Error(
+      'queue: "server" requires client.runs to implement create/list/cancel'
+    );
+  }
 }
-
-/**
- * Read-only snapshot of the queue. The queue store hands this out
- * directly; consumers must not mutate the array.
- */
-export type SubmissionQueueSnapshot<
-  StateType extends object = Record<string, unknown>,
-> = ReadonlyArray<SubmissionQueueEntry<StateType>>;
-
-/**
- * Frozen empty queue value used as the initial / cleared snapshot.
- *
- * Reusing one frozen reference keeps store identity stable across
- * empty resets, so React's `useSyncExternalStore` doesn't think the
- * queue changed when it actually didn't.
- */
-export const EMPTY_QUEUE: SubmissionQueueSnapshot<never> = Object.freeze([]);
 
 /**
  * Coordinates one controller's run-submission lifecycle.
@@ -145,7 +137,8 @@ export class SubmitCoordinator<
   /** Root snapshot store; written for `isLoading`, `error`, `interrupts`. */
   readonly #rootStore: StreamStore<RootSnapshot<StateType, InterruptType>>;
   /** Pending submissions awaiting the active run to terminate. */
-  readonly #queueStore: StreamStore<SubmissionQueueSnapshot<StateType>>;
+  /** Backs `"enqueue"`: local-only defer, or real durable runs when `queue: "server"`. */
+  readonly #queueAdapter: QueueAdapter<StateType>;
   /** Probes the controller's `disposed` flag from deferred work. */
   readonly #getDisposed: () => boolean;
   /** Reads the controller's currently-bound thread id. */
@@ -249,7 +242,27 @@ export class SubmitCoordinator<
   }) {
     this.#options = params.options;
     this.#rootStore = params.rootStore;
-    this.#queueStore = params.queueStore;
+    const onQueueError = (error: unknown) => {
+      this.#rootStore.setState((state) => ({ ...state, error }));
+    };
+    // Custom transports don't get server-backed queueing at all: there's
+    // nowhere on `AgentServerAdapter` to declare the capability. Chosen
+    // once, here, for this coordinator's lifetime and never re-evaluated.
+    const serverQueueEnabled =
+      typeof params.options.transport !== "object" &&
+      params.options.queue === "server";
+    if (serverQueueEnabled) {
+      assertServerQueueCapability(params.options.client.runs);
+    }
+    this.#queueAdapter = serverQueueEnabled
+      ? new AgentServerQueueAdapter(
+          params.options.client.runs,
+          params.options.assistantId,
+          params.queueStore,
+          onQueueError,
+          (threadId) => params.ensureThread(threadId, true) // deferRootPump: true, watching shouldn't force-start a root pump
+        )
+      : new LocalQueueAdapter(params.queueStore, onQueueError);
     this.#getDisposed = params.getDisposed;
     this.#getCurrentThreadId = params.getCurrentThreadId;
     this.#setCurrentThreadId = params.setCurrentThreadId;
@@ -277,13 +290,13 @@ export class SubmitCoordinator<
    *
    * Honours {@link StreamSubmitOptions.multitaskStrategy}:
    *
-   *   - `"rollback"` (default) — aborts any in-flight run and
+   *   - `"rollback"` (default): aborts any in-flight run and
    *     dispatches immediately.
-   *   - `"reject"`              — throws synchronously when a run is
+   *   - `"reject"`: throws synchronously when a run is
    *     already in flight.
-   *   - `"enqueue"`             — defers via {@link #enqueueSubmission};
-   *     the call returns without dispatching.
-   *   - `"interrupt"`           — falls through to the default path
+   *   - `"enqueue"`: defers via {@link QueueAdapter.enqueue};
+   *     resolves once accepted (durably, if server-backed), not on completion.
+   *   - `"interrupt"`: falls through to the default path
    *
    * Errors are routed through both the per-submit `onError` callback
    * and `rootStore.error`. Aborts (controller dispose / rollback) are
@@ -353,17 +366,34 @@ export class SubmitCoordinator<
     // Without this, `enqueue` would trap the new submission and
     // `submitRun` never fires for the new thread — leaving a freshly-
     // minted thread id committed to the URL but never to the server.
+    // True for a run this client dispatched (#runAbort) or one it only
+    // observed via the persistent lifecycle listener (started elsewhere —
+    // another tab, a webhook, Slack).
     const hasActiveRun =
       !wasSelfCreated &&
-      this.#runAbort != null &&
-      !this.#runAbort.signal.aborted;
+      ((this.#runAbort != null && !this.#runAbort.signal.aborted) ||
+        this.#rootStore.getSnapshot().isLoading);
     if (hasActiveRun && strategy === "reject") {
       throw new Error(
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
       );
     }
     if (hasActiveRun && strategy === "enqueue") {
-      this.#enqueueSubmission(input, options);
+      try {
+        await this.#queueAdapter.enqueue(
+          currentThreadId,
+          (input ?? undefined) as Partial<StateType> | null | undefined,
+          // QueueAdapter is generic only over StateType, not ConfigurableType.
+          options as StreamSubmitOptions<StateType> | undefined
+        );
+      } catch (error) {
+        // Already routed to rootStore.error by the adapter; must not reject.
+        try {
+          options?.onError?.(error);
+        } catch {
+          /* caller-supplied callback errors must not crash the submit */
+        }
+      }
       return;
     }
 
@@ -556,8 +586,33 @@ export class SubmitCoordinator<
         );
       }
       this.#onRunEnd();
-      setTimeout(() => this.#drainQueue(), 0);
+      this.#scheduleQueueDrain();
     }
+  }
+
+  /**
+   * Schedules a queue-drain attempt on the next macrotask, once the
+   * just-finished run's state has flushed. A no-op unless the queue
+   * adapter is idle-driven (see {@link QueueAdapter.onIdle}) and no
+   * other run is active.
+   */
+  #scheduleQueueDrain(): void {
+    setTimeout(() => {
+      if (this.#getDisposed()) return;
+      if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
+      if (this.#rootStore.getSnapshot().isLoading) return;
+
+      this.#queueAdapter.onIdle?.((values, drainOptions) =>
+        this.submit(
+          values,
+          drainOptions as StreamSubmitOptions<StateType, ConfigurableType>
+        ).catch(() => {
+          /* submit() already routes errors through the per-submit onError
+           * hook and the root store; swallow here so a failing drain does
+           * not surface as an unhandled rejection. */
+        })
+      );
+    }, 0);
   }
 
   /**
@@ -656,7 +711,7 @@ export class SubmitCoordinator<
       }
       settleOptimisticOnce(abort.signal.aborted ? "aborted" : terminal.event);
       // Drain any submission enqueued while the resumed run was active.
-      setTimeout(() => this.#drainQueue(), 0);
+      this.#scheduleQueueDrain();
     });
 
     try {
@@ -694,102 +749,51 @@ export class SubmitCoordinator<
   }
 
   /**
+   * Populate the queue from whatever the configured adapter considers
+   * the source of truth. No-op for `LocalQueueAdapter`; for the
+   * server-backed adapter this is what makes pending runs created
+   * before this page load (or by another tab/session) show up.
+   * Fire-and-forget from the caller's side: the adapter manages its
+   * own staleness guard against a rapid, repeated call for a newer
+   * thread.
+   */
+  async hydrateQueue(threadId: string): Promise<void> {
+    await this.#queueAdapter.hydrate(threadId);
+  }
+
+  /**
+   * Public entry point for {@link #scheduleQueueDrain}. Called by the
+   * controller when `isLoading` settles to `false` for a run this
+   * coordinator never dispatched itself.
+   */
+  scheduleQueueDrainOnObservedIdle(): void {
+    this.#scheduleQueueDrain();
+  }
+
+  /**
    * Cancel a queued submission by id.
    *
    * @param id - Client-side queue entry id to remove.
    * @returns `true` when the entry was found and dropped, `false` otherwise.
    */
   async cancelQueued(id: string): Promise<boolean> {
-    const current = this.#queueStore.getSnapshot();
-    const next = current.filter((entry) => entry.id !== id);
-    if (next.length === current.length) return false;
-    this.#queueStore.setState(() => next);
-    return true;
+    return this.#queueAdapter.cancel(id);
   }
 
   /**
-   * Drop every queued submission. Server-side cancel arrives with A0.3.
+   * Drop every queued submission. Cancels the underlying server-side
+   * runs too when server-backed; see `AgentServerQueueAdapter.clear`.
    */
   async clearQueue(): Promise<void> {
-    this.#queueStore.setState(
-      () => EMPTY_QUEUE as SubmissionQueueSnapshot<StateType>
-    );
+    await this.#queueAdapter.clear();
   }
 
   /**
-   * Append a submission to the queue without dispatching.
-   *
-   * The drained submission is later run via {@link #drainQueue} after
-   * the active run terminates.
+   * Release whatever the queue adapter is watching. Called by
+   * {@link StreamController} on thread rebind and on dispose, alongside
+   * its own reset of the (still directly-owned, reactive) queue store.
    */
-  #enqueueSubmission(
-    input: unknown,
-    options?: StreamSubmitOptions<StateType, ConfigurableType>
-  ): void {
-    const entry: SubmissionQueueEntry<StateType> = {
-      id: uuidv7(),
-      values: (input ?? undefined) as Partial<StateType> | null | undefined,
-      options: options as StreamSubmitOptions<StateType> | undefined,
-      createdAt: new Date(),
-    };
-    this.#queueStore.setState((current) => [...current, entry]);
+  detachQueue(): void {
+    this.#queueAdapter.detach();
   }
-
-  /**
-   * Drain the head of the queue if no run is active.
-   *
-   * Called from the `finally` block of `submit()` on the next
-   * macrotask (so the just-finished run's state flushes first).
-   * Strips the strategy off the dequeued options to prevent infinite
-   * re-enqueueing.
-   */
-  #drainQueue(): void {
-    if (this.#getDisposed()) return;
-    if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
-    const current = this.#queueStore.getSnapshot();
-    if (current.length === 0) return;
-    const [next, ...rest] = current;
-    this.#queueStore.setState(() => rest);
-    const nextOptions: StreamSubmitOptions<StateType, ConfigurableType> = {
-      ...((next.options ?? {}) as StreamSubmitOptions<
-        StateType,
-        ConfigurableType
-      >),
-      multitaskStrategy: undefined,
-    };
-    void this.submit(next.values, nextOptions).catch(() => {
-      /* submit() already routes errors through the per-submit onError
-       * hook and the root store; swallow here so a failing drain does
-       * not surface as an unhandled rejection. */
-    });
-  }
-}
-
-/**
- * Merge `thread_id` into a user-supplied `config.configurable` blob.
- *
- * The platform expects `config.configurable.thread_id` on every run
- * dispatch; we set it last so user-supplied values can't accidentally
- * override the active thread id (which would route the run to a
- * different thread).
- */
-function bindThreadConfig(
-  config: unknown,
-  threadId: string
-): Record<string, unknown> {
-  const base =
-    config != null && typeof config === "object"
-      ? (config as Record<string, unknown>)
-      : {};
-  const configurable =
-    base.configurable != null && typeof base.configurable === "object"
-      ? (base.configurable as Record<string, unknown>)
-      : {};
-  return {
-    ...base,
-    configurable: {
-      ...configurable,
-      thread_id: threadId,
-    },
-  };
 }

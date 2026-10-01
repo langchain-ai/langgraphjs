@@ -183,6 +183,7 @@ export type { WaitingEdgeRelease } from "./waiting_edge_release.js";
 export type {
   InferInterruptInputType,
   InferInterruptResumeType,
+  InterruptOptions,
 } from "./interrupt.js";
 export { writer } from "./writer.js";
 export type { InferWriterType } from "./writer.js";
@@ -190,3 +191,10 @@ export { pushMessage } from "./graph/message.js";
 export { getStore, getWriter, getConfig } from "./pregel/utils/config.js";
 export { getPreviousState } from "./func/index.js";
 export { getCurrentTaskInput } from "./pregel/utils/config.js";
+export {
+  GraphCallbackHandler,
+  type GraphInterruptEvent,
+  type GraphResumeEvent,
+  type GraphLifecycleEvent,
+  type GraphLifecycleStatus,
+} from "./callbacks.js";

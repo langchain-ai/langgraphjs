@@ -4,11 +4,10 @@ import {
   configToDocker,
   getBaseImage,
 } from "../docker/docker.mjs";
-import { getExecaOptions } from "../docker/shell.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
 import { getProjectPath } from "./utils/project.mjs";
-import { $ } from "execa";
+import { $, type Options } from "execa";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { logger } from "../utils/logging.mjs";
@@ -46,11 +45,11 @@ builder
     const projectDir = path.dirname(configPath);
     const config = getConfig(await fs.readFile(configPath, "utf-8"));
 
-    const opts = await getExecaOptions({
+    const opts: Options = {
       cwd: projectDir,
       stderr: "inherit",
       stdout: "inherit",
-    });
+    };
 
     const localDeps = await assembleLocalDeps(configPath, config);
     const input = await configToDocker(configPath, config, localDeps, {

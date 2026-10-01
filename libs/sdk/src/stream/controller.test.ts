@@ -276,6 +276,113 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("seeds isLoading from the checkpoint's own active state, not just a live lifecycle event", async () => {
+    // No lifecycle event fires in this test — only the checkpoint fetch.
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    await controller.dispose();
+  });
+
+  it("does NOT seed isLoading for a thread merely parked at an unresolved interrupt", async () => {
+    // `next` is non-empty here too (LangGraph keeps the interrupted node
+    // listed until resumed) — only `tasks[].interrupts` tells this apart
+    // from the previous test's genuinely-running case.
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["ask"],
+          tasks: [
+            { interrupts: [{ id: "parked-1", value: { question: "ok?" } }] },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+    expect(controller.rootStore.getSnapshot().interrupts.map((i) => i.id)).toEqual(
+      ["parked-1"]
+    );
+
+    await controller.dispose();
+  });
+
+  it("starts the root pump for an active thread with a server-backed queue adapter", async () => {
+    // AgentServerQueueAdapter's own getThread callback also calls
+    // #ensureThread(threadId, true) — it must not win the race and
+    // permanently defer the pump for a thread that's actually active.
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+      runs: {
+        create: vi.fn(),
+        list: vi.fn(async () => []),
+        cancel: vi.fn(),
+      },
+    };
+
+    const controller = new StreamController<State, unknown>({
+      assistantId: "human-in-the-loop",
+      client: client as never,
+      threadId: "thread-1",
+      queue: "server",
+    });
+    await controller.hydrationPromise;
+
+    expect(thread.subscribe).toHaveBeenCalled();
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+
+    await controller.dispose();
+  });
+
   it("normalizes Python snake_case HITL interrupt payloads in root state", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
@@ -1777,6 +1884,9 @@ describe("StreamController", () => {
     await controller.hydrationPromise;
 
     expect(startLifecycleWatcher).toHaveBeenCalledOnce();
+    // Active only because of the parked interrupt — waiting on a human,
+    // not mid-computation, so isLoading must not be seeded true.
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
     await controller.dispose();
   });
 

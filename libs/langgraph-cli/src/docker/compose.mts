@@ -1,7 +1,7 @@
 import { $ } from "execa";
 import * as yaml from "yaml";
 import { z } from "zod/v3";
-import { getExecaOptions } from "./shell.mjs";
+import { DOCKER_NOT_INSTALLED, isBinaryNotFound } from "./errors.mjs";
 
 export const DEFAULT_POSTGRES_URI =
   "postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable";
@@ -82,9 +82,10 @@ function compareVersion(a: Version, b: Version): number {
 export async function getDockerCapabilities(): Promise<DockerCapabilities> {
   let rawInfo: unknown | null = null;
   try {
-    const { stdout } = await $(await getExecaOptions())`docker info -f json`;
+    const { stdout } = await $`docker info -f json`;
     rawInfo = JSON.parse(stdout);
   } catch (error) {
+    if (isBinaryNotFound(error)) throw new Error(DOCKER_NOT_INSTALLED);
     throw new Error("Docker not installed or not running: " + error);
   }
 
@@ -123,9 +124,7 @@ export async function getDockerCapabilities(): Promise<DockerCapabilities> {
     };
   } else {
     try {
-      const standalone = await $(
-        await getExecaOptions()
-      )`docker-compose --version --short`;
+      const standalone = await $`docker-compose --version --short`;
       composeRes = {
         composeType: "standalone",
         versionCompose: parseVersion(standalone.stdout),

@@ -26,6 +26,7 @@ import {
 } from "../constants.js";
 import {
   GraphBubbleUp,
+  GraphInterrupt,
   isGraphBubbleUp,
   isGraphDrained,
   isGraphInterrupt,
@@ -154,7 +155,12 @@ export class PregelRunner {
         continue;
       }
       if (isGraphInterrupt(error)) {
-        graphBubbleUp = error;
+        graphBubbleUp = isGraphInterrupt(graphBubbleUp)
+          ? new GraphInterrupt([
+              ...graphBubbleUp.interrupts,
+              ...error.interrupts,
+            ])
+          : error;
       } else if (isGraphBubbleUp(error) && !isGraphInterrupt(graphBubbleUp)) {
         graphBubbleUp = error;
       } else if (error && (nodeErrors.size === 0 || !signalAborted)) {

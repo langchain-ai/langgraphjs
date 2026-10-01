@@ -7,6 +7,7 @@
     "error": "./error.mts:graph",
     "delay": "./delay.mts:graph",
     "dynamic": "./dynamic.mts:graph",
+    "factory_context": "./factory_config.mts:graph",
     "agent_simple": "./agent_simple.mts:graph",
     "simple_runtime": "./simple_runtime.mts:graph",
     "state_schema_graph": "./state_schema_graph.mts:graph",
