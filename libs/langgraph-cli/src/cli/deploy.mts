@@ -7,7 +7,7 @@
  * `list`, `revisions list`, `delete`, and `logs` subcommands.
  */
 
-import { $ } from "execa";
+import { $, type Options } from "execa";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -24,10 +24,15 @@ import {
   configToDocker,
   getBaseImage,
 } from "../docker/docker.mjs";
-import { getExecaOptions } from "../docker/shell.mjs";
+import {
+  DOCKER_NOT_INSTALLED,
+  DOCKER_NOT_RUNNING,
+  isBinaryNotFound,
+} from "../docker/errors.mjs";
 import {
   HostBackendClient,
   HostBackendError,
+  type DeploymentAgent,
   type Secret,
 } from "./utils/host-backend.mjs";
 import { Emitter, Spinner } from "./utils/deploy-output.mjs";
@@ -384,23 +389,14 @@ async function callWithOptionalTenant<T>(
 // Build mode resolution
 // ---------------------------------------------------------------------------
 
-const DOCKER_NOT_INSTALLED =
-  "Docker is required but not installed.\n" +
-  "Install Docker Desktop: https://docs.docker.com/get-docker/";
-const DOCKER_NOT_RUNNING =
-  "Docker is installed but not running.\nStart Docker and try again.";
-
 async function canBuildLocally(): Promise<[boolean, string | null]> {
-  let opts: Awaited<ReturnType<typeof getExecaOptions>>;
-  try {
-    opts = await getExecaOptions({ reject: false });
-  } catch {
-    return [false, DOCKER_NOT_INSTALLED];
-  }
+  const opts: Options = { reject: false };
   try {
     const info = await $(opts)`docker info`;
+    if (isBinaryNotFound(info)) return [false, DOCKER_NOT_INSTALLED];
     if (info.exitCode !== 0) return [false, DOCKER_NOT_RUNNING];
-  } catch {
+  } catch (error) {
+    if (isBinaryNotFound(error)) return [false, DOCKER_NOT_INSTALLED];
     return [false, DOCKER_NOT_RUNNING];
   }
   if (os.arch() !== "x64") {
@@ -458,7 +454,8 @@ async function resolveDeployment(
   step: number,
   deploymentId: string | undefined,
   name: string | undefined,
-  notFoundMessage: string
+  notFoundMessage: string,
+  agent?: DeploymentAgent
 ): Promise<ResolveResult> {
   if (deploymentId) {
     emitter.step(step, `Using deployment ${deploymentId}`);
@@ -466,11 +463,22 @@ async function resolveDeployment(
     return { deploymentId, needsCreation: false, step: step + 1 };
   }
 
-  emitter.step(step, `Looking up deployment '${name}'`);
-  const response = await callWithOptionalTenant(client, (c) =>
-    c.listDeployments(name)
+  emitter.step(
+    step,
+    agent
+      ? `Looking up agent '${agent.agent_id}' in ${agent.environment}`
+      : `Looking up deployment '${name}'`
   );
-  const foundId = findDeploymentIdByName(response, name);
+  const response = await callWithOptionalTenant(client, (c) =>
+    c.listDeployments(name, agent?.agent_id, agent?.environment)
+  );
+  let foundId = findDeploymentIdByName(response, name);
+  if (agent && Array.isArray(response.resources)) {
+    const found = response.resources.find(
+      (dep) => rec(dep).id && !rec(dep).is_preview
+    );
+    foundId = found ? String(rec(found).id) : null;
+  }
   if (foundId) {
     emitter.info(`Found existing deployment (ID: ${foundId})`);
     return { deploymentId: foundId, needsCreation: false, step: step + 1 };
@@ -483,24 +491,43 @@ async function createDeployment(
   client: HostBackendClient,
   step: number,
   args: {
-    name: string;
+    name?: string;
+    agent?: DeploymentAgent;
     deploymentType: string;
     source: string;
     secrets: Secret[];
   }
 ): Promise<{ id: string; step: number }> {
-  emitter.step(step, `Creating deployment '${args.name}'`);
-  const created = await client.createDeployment({
-    name: args.name,
-    deploymentType: args.deploymentType,
-    source: args.source,
-    secrets: args.secrets,
-  });
+  emitter.step(
+    step,
+    args.agent
+      ? `Creating deployment for agent '${args.agent.agent_id}' in ${args.agent.environment}`
+      : `Creating deployment '${args.name}'`
+  );
+  let created: Record<string, unknown>;
+  try {
+    created = await client.createDeployment(args);
+  } catch (error) {
+    if (
+      args.agent &&
+      error instanceof HostBackendError &&
+      error.statusCode === 409
+    ) {
+      throw new HostBackendError(
+        "This agent already has a deployment in this environment.",
+        409
+      );
+    }
+    throw error;
+  }
   const id = typeof created.id === "string" ? created.id : undefined;
   if (!id) {
     throw new HostBackendError(
       "POST /v2/deployments succeeded but response missing a valid 'id'"
     );
+  }
+  if (args.agent && created.name) {
+    emitter.info(`Deployment name: ${created.name}`);
   }
   emitter.info(`Deployment ID: ${id}`, { deployment_id: id });
   return { id, step: step + 1 };
@@ -672,7 +699,7 @@ async function dockerConfigForToken(
 }
 
 async function resolvePushedImageDigest(
-  opts: Awaited<ReturnType<typeof getExecaOptions>>,
+  opts: Options,
   remoteImage: string
 ): Promise<string> {
   // rsplit on ":" preserves any ":port" in the registry host.
@@ -835,7 +862,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
 
   const needsBuildx = os.arch() !== "x64";
   const localTag = `langgraph-deploy-tmp:${Math.floor(Date.now() / 1000)}`;
-  const baseOpts = await getExecaOptions({ cwd: projectDir });
+  const baseOpts: Options = { cwd: projectDir };
   const stdio = args.verbose
     ? ({ stdout: "inherit", stderr: "inherit" } as const)
     : ({ stdout: "ignore", stderr: "ignore" } as const);
@@ -1125,11 +1152,40 @@ async function runRemoteBuild(args: RemoteBuildArgs): Promise<BuildResult> {
 // Main deploy orchestration
 // ---------------------------------------------------------------------------
 
+function resolveAgentOptions(opts: {
+  agentId?: string;
+  agentEnvironment?: string;
+}) {
+  const agentId = opts.agentId ?? (process.env.LANGSMITH_AGENT_ID || undefined);
+  const agentEnvironment =
+    opts.agentEnvironment ??
+    (process.env.LANGSMITH_AGENT_ENVIRONMENT || undefined);
+  if (agentId !== undefined || agentEnvironment !== undefined) {
+    emitter.note(
+      "Note: --agent-id and --agent-environment flags are in private beta"
+    );
+  }
+  if (agentId !== undefined && !agentId.trim()) {
+    throw new Error("--agent-id must not be empty.");
+  }
+  if (
+    agentEnvironment !== undefined &&
+    !["development", "staging", "production"].includes(agentEnvironment)
+  ) {
+    throw new Error(
+      "--agent-environment must be development, staging, or production."
+    );
+  }
+  return { agentId, agentEnvironment };
+}
+
 interface DeployOptions {
   config: string;
   apiKey?: string;
   name?: string;
   deploymentId?: string;
+  agentId?: string;
+  agentEnvironment?: string;
   deploymentType: string;
   wait: boolean;
   verbose: boolean;
@@ -1159,6 +1215,22 @@ async function runDeploy(
   );
   if (!opts.json) process.stdout.write("\n");
 
+  const { agentId, agentEnvironment } = resolveAgentOptions(opts);
+  let agent: DeploymentAgent | undefined;
+  if (agentId !== undefined || agentEnvironment !== undefined) {
+    if (!agentId || !agentEnvironment) {
+      throw new Error(
+        "--agent-id and --agent-environment are required together."
+      );
+    }
+    if (opts.name !== undefined || opts.deploymentId !== undefined) {
+      throw new Error(
+        "--agent-id and --agent-environment cannot be combined with --name or --deployment-id."
+      );
+    }
+    agent = { agent_id: agentId, environment: agentEnvironment };
+  }
+
   if (!["dev", "prod"].includes(opts.deploymentType)) {
     throw new Error(
       `Invalid --deployment-type '${opts.deploymentType}' (expected 'dev' or 'prod').`
@@ -1176,16 +1248,16 @@ async function runDeploy(
 
   let name = opts.name;
   let deploymentId = opts.deploymentId;
-  if (!deploymentId && !name) {
+  if (!agent && !deploymentId && !name) {
     name = envVars[DEPLOYMENT_NAME_ENV] ?? process.env[DEPLOYMENT_NAME_ENV];
   }
-  if (!deploymentId && !name) {
+  if (!agent && !deploymentId && !name) {
     const defaultName = normalizeName(path.basename(process.cwd()));
     name = noInput
       ? defaultName
       : await promptText("Deployment name", defaultName);
   }
-  if (name && !deploymentId) {
+  if (!agent && name && !deploymentId) {
     name = normalizeName(name);
     if (!noInput) {
       const envPath = await resolveEnvPath(rawConfig, configPath);
@@ -1222,14 +1294,16 @@ async function runDeploy(
     name,
     useRemoteBuild
       ? "No deployment found. Will create."
-      : "No deployment found. Will create after build."
+      : "No deployment found. Will create after build.",
+    agent
   );
   deploymentId = resolved.deploymentId;
   step = resolved.step;
 
   if (resolved.needsCreation) {
     const created = await createDeployment(client, step, {
-      name: name as string,
+      name,
+      agent,
       deploymentType: opts.deploymentType,
       source: useRemoteBuild ? "internal_source" : "internal_docker",
       secrets,
@@ -1339,12 +1413,15 @@ async function runList(opts: {
   apiKey?: string;
   hostUrl: string;
   nameContains: string;
+  agentId?: string;
+  agentEnvironment?: string;
 }): Promise<void> {
   emitter = new Emitter(false);
   noInput = false;
+  const { agentId, agentEnvironment } = resolveAgentOptions(opts);
   const client = await createHostBackendClient(opts.hostUrl, opts.apiKey);
   const response = await callWithOptionalTenant(client, (c) =>
-    c.listDeployments(opts.nameContains)
+    c.listDeployments(opts.nameContains, agentId, agentEnvironment)
   );
   const resources = Array.isArray(rec(response).resources)
     ? (rec(response).resources as unknown[])
@@ -1576,6 +1653,11 @@ const deploy = builder
     "Deployment name (or LANGSMITH_DEPLOYMENT_NAME). Defaults to the current directory name."
   )
   .option("--deployment-id <id>", "ID of an existing deployment to update.")
+  .option("--agent-id <id>", "Agent ID (or LANGSMITH_AGENT_ID).")
+  .option(
+    "--agent-environment <environment>",
+    "Agent environment: development, staging, or production (or LANGSMITH_AGENT_ENVIRONMENT)."
+  )
   .option(
     "--deployment-type <type>",
     "Deployment type when creating: 'dev' or 'prod'.",
@@ -1641,6 +1723,11 @@ const deploy = builder
 deploy
   .command("list")
   .description("[Beta] List LangSmith Deployments.")
+  .option("--agent-id <id>", "Agent ID (or LANGSMITH_AGENT_ID).")
+  .option(
+    "--agent-environment <environment>",
+    "Agent environment: development, staging, or production (or LANGSMITH_AGENT_ENVIRONMENT)."
+  )
   .option("--api-key <key>", "API key.")
   .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
   .option(
