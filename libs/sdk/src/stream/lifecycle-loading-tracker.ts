@@ -85,13 +85,24 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
    */
   #lastRunningLifecycleSeq = -1;
 
+  /** Notified once `isLoading` actually settles to `false` on a terminal event. */
+  readonly #onSettled: (() => void) | undefined;
+
   /**
    * @param params.store      - Store whose `isLoading` slot we drive.
    * @param params.isDisposed - Disposal probe consulted from deferred callbacks.
+   * @param params.onSettled  - Called once `isLoading` flips to `false`,
+   *   including for a run this client only observed and never
+   *   dispatched itself.
    */
-  constructor(params: { store: StreamStore<T>; isDisposed: () => boolean }) {
+  constructor(params: {
+    store: StreamStore<T>;
+    isDisposed: () => boolean;
+    onSettled?: () => void;
+  }) {
     this.#store = params.store;
     this.#isDisposed = params.isDisposed;
+    this.#onSettled = params.onSettled;
   }
 
   /**
@@ -167,9 +178,11 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       setTimeout(() => {
         if (this.#isDisposed()) return;
         if (seq != null && this.#lastRunningLifecycleSeq > seq) return;
+        const wasLoading = this.#store.getSnapshot().isLoading;
         this.#store.setState((s) =>
           s.isLoading ? { ...s, isLoading: false } : s
         );
+        if (wasLoading) this.#onSettled?.();
       }, 0);
     }
   }
