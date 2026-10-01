@@ -302,6 +302,10 @@ export function createCheckpoint<ValueType>(
  * finds the nearest seed and accumulates the writes between it and the
  * target. All delta channels needing replay are batched into a single saver
  * call.
+ *
+ * A delta channel with no version at the checkpoint was never written, so it
+ * is empty without a walk. A walk for it would find no snapshot to stop at
+ * and read every ancestor, every time the thread is loaded.
  */
 export async function channelsFromCheckpoint<
   Cc extends Record<string, BaseChannel>,
@@ -319,6 +323,7 @@ export async function channelsFromCheckpoint<
     if (!Object.prototype.hasOwnProperty.call(filteredSpecs, k)) continue;
     if (
       isDeltaChannel(filteredSpecs[k]) &&
+      checkpoint.channel_versions[k] !== undefined &&
       !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
     ) {
       deltaKeys.push(k);
