@@ -266,6 +266,20 @@ export class BaseClient {
       for (const [key, value] of Object.entries(mutatedOptions.params)) {
         if (value == null) continue;
 
+        // Send each array element as its own repeated key=value pair.
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item == null) continue;
+            targetUrl.searchParams.append(
+              key,
+              typeof item === "string" || typeof item === "number"
+                ? item.toString()
+                : JSON.stringify(item)
+            );
+          }
+          continue;
+        }
+
         const strValue =
           typeof value === "string" || typeof value === "number"
             ? value.toString()

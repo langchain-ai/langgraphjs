@@ -1,7 +1,12 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { createIpcServer } from "../../langgraph-cli/src/cli/utils/ipc/server.mjs";
 import {
   buildSpawnArgs,
   DEFAULT_NODE_LOADER,
@@ -162,6 +167,7 @@ describe("buildSpawnArgs", () => {
 
     expect(command).toBe(process.execPath);
     expect(args).toContain("watch");
+    expect(args).toContain("--clear-screen=false");
     expect(args.at(-2)).toBe("42");
     expect(JSON.parse(args.at(-1)!)).toEqual(payload);
   });
@@ -176,6 +182,109 @@ describe("buildSpawnArgs", () => {
     });
 
     expect(args).not.toContain("watch");
+    expect(args).not.toContain("--clear-screen=false");
+  });
+
+  it("runs typed code without reload and keeps loader traffic off Studio IPC", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "langgraph-no-reload-"));
+    const [pid, server] = await createIpcServer();
+    const messages: unknown[] = [];
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket: Socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    const received = new Promise<void>((resolve) => {
+      server.on("data", (message: unknown) => {
+        messages.push(message);
+        if (
+          typeof message === "object" &&
+          message !== null &&
+          "queryParams" in message &&
+          message.queryParams === "graph=agent"
+        )
+          resolve();
+      });
+    });
+    try {
+      const preload = join(dir, "preload.mjs");
+      const entrypoint = join(dir, "entrypoint.mts");
+      const client = new URL(
+        "../src/cli/utils/ipc/client.mts",
+        import.meta.url
+      );
+      await writeFile(preload, "");
+      await writeFile(
+        entrypoint,
+        `
+        import { connectToServer } from ${JSON.stringify(client.href)};
+        const acknowledged = new Promise<void>((resolve) => {
+          process.stdin.once("end", resolve);
+          process.stdin.resume();
+        });
+        const queryParams: string = "graph=agent";
+        const send = await connectToServer(Number(process.argv.at(-2)));
+        if (!send) throw new Error("Studio IPC connection failed");
+        send({ queryParams });
+        await acknowledged;
+      `
+      );
+      const invocation = buildSpawnArgs({
+        nodeLoader: "tsx",
+        reload: false,
+        pid,
+        payload,
+        resolve: (specifier) => {
+          if (specifier === "../preload.mjs")
+            return pathToFileURL(preload).href;
+          if (specifier === "./entrypoint.mjs")
+            return pathToFileURL(entrypoint).href;
+          return import.meta.resolve(specifier);
+        },
+      });
+      const execution = promisify(execFile)(
+        invocation.command,
+        invocation.args,
+        { timeout: 10_000, env: { ...process.env, NODE_OPTIONS: "" } }
+      );
+      try {
+        await Promise.race([
+          received,
+          execution.then(() => {
+            throw new Error("Child exited before Studio IPC was received");
+          }),
+        ]);
+        execution.child.stdin?.end();
+        await execution;
+        expect(messages).toEqual([{ queryParams: "graph=agent" }]);
+      } finally {
+        execution.child.stdin?.end();
+        if (
+          execution.child.exitCode === null &&
+          execution.child.signalCode === null
+        ) {
+          execution.child.kill();
+        }
+        await execution.catch(() => undefined);
+      }
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("IPC server did not close")),
+            1_000
+          );
+          server.close((err) => {
+            clearTimeout(timeout);
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
   });
 
   it("registers ts-node with node --loader before preload --import", () => {
