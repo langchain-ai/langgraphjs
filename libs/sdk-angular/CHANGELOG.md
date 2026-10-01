@@ -1,5 +1,49 @@
 # @langchain/angular
 
+## 1.2.0
+
+### Minor Changes
+
+- [#2848](https://github.com/langchain-ai/langgraphjs/pull/2848) [`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - `useStream`'s `"enqueue"` multitask strategy can now be backed by real, durable server-side runs instead of an in-memory client-only queue.
+  
+  Pass `queue: "server"` to opt in; it defaults to `"local"`, so existing usage is unaffected. `"server"` requires the backend behind `apiUrl` to implement the Runs REST endpoints (`POST`/`GET /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/{run_id}/cancel`), not just streaming/commands. Queued submissions then persist across reloads and are visible to other sessions, and `cancelQueued`/`clearQueue` cancel them server-side too.
+  
+  Not supported with a custom `AgentServerAdapter` transport — `queue` only applies to the built-in transport.
+
+### Patch Changes
+
+- Updated dependencies [[`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8)]:
+  - @langchain/langgraph-sdk@1.12.0
+
+## 1.2.0-rc.0
+
+### Minor Changes
+
+- [#2848](https://github.com/langchain-ai/langgraphjs/pull/2848) [`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - `useStream`'s `"enqueue"` multitask strategy can now be backed by real, durable server-side runs instead of an in-memory client-only queue.
+  
+  Pass `queue: "server"` to opt in; it defaults to `"local"`, so existing usage is unaffected. `"server"` requires the backend behind `apiUrl` to implement the Runs REST endpoints (`POST`/`GET /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/{run_id}/cancel`), not just streaming/commands. Queued submissions then persist across reloads and are visible to other sessions, and `cancelQueued`/`clearQueue` cancel them server-side too.
+  
+  Not supported with a custom `AgentServerAdapter` transport — `queue` only applies to the built-in transport.
+
+### Patch Changes
+
+- Updated dependencies [[`7a12289`](https://github.com/langchain-ai/langgraphjs/commit/7a12289df4ed6441171ec393da4ccfccd98d69e8)]:
+  - @langchain/langgraph-sdk@1.12.0-rc.0
+
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`0284323`](https://github.com/langchain-ai/langgraphjs/commit/0284323b2d8457bd830ea987e93f03ebee8370ce)]:
+  - @langchain/langgraph-sdk@1.11.2
+
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`e75f6a0`](https://github.com/langchain-ai/langgraphjs/commit/e75f6a08e96f65d201a0bb501a97e00bcffe83a2)]:
+  - @langchain/langgraph-sdk@1.11.1
+
 ## 1.1.0
 
 ### Minor Changes
