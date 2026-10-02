@@ -401,6 +401,11 @@ export class PregelLoop {
         throw error;
       }
     );
+    // Nothing awaits the tracked promise until the run-end barrier, so a
+    // write that rejects before then would be reported by the runtime as an
+    // unhandled rejection. Mark it handled here; Promise.all() still receives
+    // the rejection when the barrier awaits the set.
+    tracked.catch(() => {});
     this.checkpointerPromises.add(tracked);
   }
 
