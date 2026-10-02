@@ -66,18 +66,19 @@ export class BinaryOperatorAggregate<
     let newValues = values;
     if (!newValues.length) return false;
 
+    let seenOverwrite = false;
     if (this.value === undefined) {
       const first = newValues[0];
       const [isOverwrite, overwriteVal] = _getOverwriteValue<ValueType>(first);
       if (isOverwrite) {
         this.value = overwriteVal;
+        seenOverwrite = true;
       } else {
         this.value = first as ValueType;
       }
       newValues = newValues.slice(1);
     }
 
-    let seenOverwrite = false;
     for (const incoming of newValues) {
       if (_isOverwriteValue<ValueType>(incoming)) {
         if (seenOverwrite) {
