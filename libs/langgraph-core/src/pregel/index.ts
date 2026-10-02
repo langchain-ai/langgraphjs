@@ -901,6 +901,43 @@ export class Pregel<
   }
 
   /**
+   * The subgraph a state method's namespaced config addresses, and the config
+   * to call it with, lending it `checkpointer`. `undefined` when the config is
+   * for this graph, comes from inside a running task, or names no declared
+   * subgraph (a dynamically created one, such as a tool-call subgraph).
+   */
+  private async _subgraphForNamespace(
+    config: RunnableConfig,
+    checkpointer: BaseCheckpointSaver
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<[Pregel<any, any>, RunnableConfig] | undefined> {
+    const checkpointNamespace: string =
+      config.configurable?.checkpoint_ns ?? "";
+    if (
+      checkpointNamespace === "" ||
+      config.configurable?.[CONFIG_KEY_READ] !== undefined ||
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
+    ) {
+      return undefined;
+    }
+    const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
+    for await (const [name, subgraph] of this.getSubgraphsAsync(
+      recastNamespace,
+      true
+    )) {
+      if (name === recastNamespace) {
+        return [
+          subgraph,
+          patchConfigurable(config, {
+            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+          }),
+        ];
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Prepares a state snapshot from saved checkpoint data.
    * This is an internal method used by getState and getStateHistory.
    *
@@ -1107,33 +1144,16 @@ export class Pregel<
   ): Promise<StateSnapshot> {
     const checkpointer = this._stateCheckpointer(config);
 
-    const checkpointNamespace: string =
-      config.configurable?.checkpoint_ns ?? "";
-    if (
-      checkpointNamespace !== "" &&
-      config.configurable?.[CONFIG_KEY_READ] === undefined &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
-    ) {
-      // remove task_ids from checkpoint_ns
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-      for await (const [name, subgraph] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        if (name === recastNamespace) {
-          return await subgraph.getState(
-            patchConfigurable(config, {
-              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-            }),
-            { subgraphs: options?.subgraphs }
-          );
-        }
-      }
-      // No static subgraph found for this namespace (e.g. a dynamically-created
-      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
-      // checkpointer directly with the full checkpoint_ns so callers can still
-      // read persisted state (e.g. messages) for these transient subgraphs.
+    const subgraph = await this._subgraphForNamespace(config, checkpointer);
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      return await pregel.getState(subgraphConfig, {
+        subgraphs: options?.subgraphs,
+      });
     }
+    // A namespace with no declared subgraph (e.g. a dynamically created
+    // tool-call subgraph like "tools:call_abc123") is read from the
+    // checkpointer directly, so callers can still see its persisted state.
 
     const ownConfig = this._ownCheckpointConfig(config);
     const mergedConfig = mergeConfigs(this.config, ownConfig);
@@ -1167,38 +1187,20 @@ export class Pregel<
   ): AsyncIterableIterator<StateSnapshot> {
     const checkpointer = this._stateCheckpointer(config);
 
-    const checkpointNamespace: string =
-      config.configurable?.checkpoint_ns ?? "";
-    if (
-      checkpointNamespace !== "" &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
-    ) {
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-
-      // find the subgraph with the matching name
-      for await (const [name, pregel] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        if (name === recastNamespace) {
-          yield* pregel.getStateHistory(
-            patchConfigurable(config, {
-              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-            }),
-            options
-          );
-          return;
-        }
-      }
-      // No static subgraph found for this namespace (e.g. a dynamically-created
-      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
-      // checkpointer directly with the full checkpoint_ns so callers can still
-      // read persisted state (e.g. messages) for these transient subgraphs.
+    const subgraph = await this._subgraphForNamespace(config, checkpointer);
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      yield* pregel.getStateHistory(subgraphConfig, options);
+      return;
     }
+    // As in `getState`, a namespace with no declared subgraph is read from the
+    // checkpointer directly.
 
     const mergedConfig = this._ownCheckpointConfig(
       mergeConfigs(this.config, config, {
-        configurable: { checkpoint_ns: checkpointNamespace },
+        configurable: {
+          checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
+        },
       })
     );
 
@@ -1248,29 +1250,26 @@ export class Pregel<
       throw new Error("No updates provided");
     }
 
-    // delegate to subgraph
+    const subgraph = await this._subgraphForNamespace(
+      startConfig,
+      checkpointer
+    );
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      return await pregel.bulkUpdateState(subgraphConfig, supersteps);
+    }
+    // Unlike a read, an update can't fall back to this graph: its nodes and
+    // channels would write the wrong state into the subgraph's namespace.
     const checkpointNamespace: string =
       startConfig.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      startConfig.configurable?.[CONFIG_KEY_READ] === undefined &&
       startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
-      // remove task_ids from checkpoint_ns
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-      // find the subgraph with the matching name
-      // eslint-disable-next-line no-unreachable-loop
-      for await (const [, pregel] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        return await pregel.bulkUpdateState(
-          patchConfigurable(startConfig, {
-            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-          }),
-          supersteps
-        );
-      }
-      throw new Error(`Subgraph "${recastNamespace}" not found`);
+      throw new Error(
+        `Subgraph "${recastCheckpointNamespace(checkpointNamespace)}" not found`
+      );
     }
 
     const updateSuperStep = async (
