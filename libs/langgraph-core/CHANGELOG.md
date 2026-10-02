@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.4.19
+
+### Patch Changes
+
+- [#2906](https://github.com/langchain-ai/langgraphjs/pull/2906) [`9876bf0`](https://github.com/langchain-ai/langgraphjs/commit/9876bf0e07d31e1f3143be644d80c9e4df88f281) Thanks [@eliornl](https://github.com/eliornl)! - read a subgraph's DeltaChannel with the checkpointer the parent resolved, instead of hydrating it empty; hydrating a written DeltaChannel without a checkpointer or config now throws instead of returning an empty value; state methods resolve the checkpointer the way a run does, so a `checkpointer: false` graph no longer writes state with a checkpointer lent through the config and has no task state in `getState`, and a `checkpointer: true` graph used as a root rejects state methods with the run's error; `getState`, `getStateHistory` and `updateState` use a `checkpointer: true` subgraph's namespace as its run stores it, so reads find its state and updates are no longer lost; resuming from a subgraph checkpoint returned by `getState(config, { subgraphs: true })` now applies the resume value instead of re-firing the interrupt
+- Updated dependencies [[`cca4806`](https://github.com/langchain-ai/langgraphjs/commit/cca48067b78fa9e3dc632c02a3431e74ff3f91b1), [`7343768`](https://github.com/langchain-ai/langgraphjs/commit/7343768628570b864dc50f25d0f2b38bf825ccb8)]:
+  - @langchain/langgraph-sdk@1.12.1
+
 ## 1.4.18
 
 ### Patch Changes

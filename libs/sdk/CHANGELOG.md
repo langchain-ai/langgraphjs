@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.12.1
+
+### Patch Changes
+
+- [#2882](https://github.com/langchain-ai/langgraphjs/pull/2882) [`cca4806`](https://github.com/langchain-ai/langgraphjs/commit/cca48067b78fa9e3dc632c02a3431e74ff3f91b1) Thanks [@buenjybar](https://github.com/buenjybar)! - Fix `useStream`/`StreamOrchestrator` leaving stale, never-checkpointed messages visible after `stop()` cancels a run mid-turn. The buffer is now reconciled against the persisted thread state (refetching it when the caller needs authoritative thread state, otherwise falling back to the cached history) instead of only clearing on a thread switch or remount.
+
+- [#2918](https://github.com/langchain-ai/langgraphjs/pull/2918) [`7343768`](https://github.com/langchain-ai/langgraphjs/commit/7343768628570b864dc50f25d0f2b38bf825ccb8) Thanks [@brydar](https://github.com/brydar)! - Stop the protocol SSE transport from retrying `stream/events` on 4xx responses (except 408 and 429): the stream now ends at once with the error. Protocol request errors now keep the HTTP `status` and response body `text`. The reconnect attempt counter now resets after every successful connect, so idle reconnects no longer use up `maxReconnectAttempts`.
+
 ## 1.12.0
 
 ### Minor Changes
