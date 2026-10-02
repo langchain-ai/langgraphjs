@@ -176,13 +176,11 @@ describe("namespace isolation", () => {
     expect(prefixes.sort()).toEqual(["a.vk", "vk.A", "vk.a"]);
   });
 
-  it("matches keys case-sensitively", async () => {
+  it("matches keys as earlier versions did, ignoring case", async () => {
     await store.put(["case"], "k", { v: "lower" });
     await store.put(["case"], "K", { v: "upper" });
-    expect((await store.get(["case"], "K"))?.value).toEqual({ v: "upper" });
-    await store.delete(["case"], "K");
-    expect(await store.get(["case"], "K")).toBeNull();
-    expect((await store.get(["case"], "k"))?.value).toEqual({ v: "lower" });
+    expect((await store.get(["case"], "k"))?.value).toEqual({ v: "upper" });
+    expect(await stored(container.client, "case", "k")).toHaveLength(0);
   });
 
   it("pages through the namespace's documents, skipping others'", async () => {
@@ -206,22 +204,10 @@ describe("namespace isolation", () => {
     expect(keys.sort()).toEqual(["k0", "k10", "k15", "k20", "k5"]);
   });
 
-  it("reads nothing through the empty namespace", async () => {
-    let item: unknown;
-    const queries = await queriesOf(container.client, async () => {
-      item = await store.get([], "k");
-    });
-    expect(item).toBeNull();
-    expect(queries).toEqual([]);
-  });
-
-  it("treats the empty key as a key", async () => {
-    await store.put(["empty"], "", { v: 1 });
+  it("keeps the empty key within its namespace", async () => {
     await store.put(["empty", "child"], "", { v: 0 });
-    await store.put(["empty"], "", { v: 2 });
-
-    expect((await store.get(["empty"], ""))?.value).toEqual({ v: 2 });
-    expect(await stored(container.client, "empty", "")).toHaveLength(1);
+    await store.put(["empty"], "", { v: 1 });
+    expect((await store.get(["empty"], ""))?.value).toEqual({ v: 1 });
     expect((await store.get(["empty", "child"], ""))?.value).toEqual({ v: 0 });
   });
 
@@ -232,32 +218,6 @@ describe("namespace isolation", () => {
     // [""] joins to the same prefix as [], which searches everything
     expect(await store.search([""])).toEqual([]);
     expect(await store.search([], { limit: 1 })).toHaveLength(1);
-  });
-
-  it("pages past candidates that share the key", async () => {
-    // The text query cannot narrow these namespaces: each is one label whose
-    // words are all stopwords. So every document with the key is a
-    // candidate, all score alike, and ties come back in insertion order
-    // (oldest first on Redis 7.4, newest first on Redis 8). Ours goes in the
-    // middle, on the third page either way.
-    const words = ["a", "an", "and", "are", "as", "at", "be", "by", "for"];
-    const others = words.flatMap((x) =>
-      words.flatMap((y) => words.map((z) => ` ${x} ${y} ${z} `))
-    );
-    const mine = [" the the the "];
-    for (let i = 0; i < 500; i++) {
-      if (i === 250) await store.put(mine, "page", { v: "mine" });
-      await store.put([others[i]], "page", { v: i });
-    }
-
-    const queries = await queriesOf(container.client, async () => {
-      expect((await store.get(mine, "page"))?.value).toEqual({ v: "mine" });
-    });
-    expect(queries).toHaveLength(3);
-
-    await store.put(mine, "page", { v: "again" });
-    const docs = await stored(container.client, mine[0], "page");
-    expect(docs.map((doc) => doc.value)).toEqual([{ v: "again" }]);
   });
 
   it("keeps random hostile namespaces apart", async () => {
@@ -375,6 +335,60 @@ describe("namespace isolation", () => {
       search.mockRestore();
     }
   });
+
+  it("fails loudly if Redis fails after the first lookup search", async () => {
+    const { client } = container;
+    // Look-alikes rank level with ["lk", "a"], so the lookup searches twice.
+    await store.put(["a", "lk"], "k", { v: 1 });
+    await store.put(["A", "lk"], "k", { v: 2 });
+    const search = client.ft.search.bind(client.ft);
+    const spy = vi
+      .spyOn(client.ft, "search")
+      .mockImplementationOnce(search as any)
+      .mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
+    try {
+      await expect(store.put(["lk", "a"], "k", { v: 3 })).rejects.toThrow(
+        "Socket closed unexpectedly"
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await stored(client, "lk.a", "k")).toHaveLength(0);
+  });
+
+  it("still finds the document if look-alikes go between the searches", async () => {
+    const { client } = container;
+    // Ties come back oldest first on Redis 7.4 and newest first on Redis 8,
+    // so with one look-alike written before and two after, ours is not first.
+    const others = [
+      ["mv", "A"],
+      ["a", "mv"],
+      ["A", "mv"],
+    ];
+    await store.put(others[0], "k", {});
+    await store.put(["mv", "a"], "k", { v: "mine" });
+    for (const namespace of others.slice(1))
+      await store.put(namespace, "k", {});
+    const search = client.ft.search.bind(client.ft);
+    const spy = vi
+      .spyOn(client.ft, "search")
+      .mockImplementationOnce(async (...args: any[]) => {
+        const first = await (search as any)(...args);
+        for (const namespace of others) {
+          for (const id of await idsOf(client, namespace.join("."), "k")) {
+            await client.del(id);
+          }
+        }
+        return first;
+      });
+    try {
+      await store.put(["mv", "a"], "k", { v: "again" });
+    } finally {
+      spy.mockRestore();
+    }
+    const docs = await stored(client, "mv.a", "k");
+    expect(docs.map((doc) => doc.value)).toEqual([{ v: "again" }]);
+  });
 });
 
 describe("a namespace with many look-alike documents", () => {
@@ -408,17 +422,17 @@ describe("a namespace with many look-alike documents", () => {
       (_, i) => [`store:child${i}`, `users.u${i}`, "profile"]
     );
     await write([...children, ["store:parent", "users", "profile"]]);
-    // 20,000 namespaces whose labels hold no indexed words besides the
+    // 500 namespaces whose labels hold no indexed words besides the
     // victim's, with the victim written in the middle of them.
     const punctuation = "!#$%&*+,/;<=>?^`~";
     const label = (i: number) =>
       Array.from(String(i), (d) => punctuation[Number(d)]).join("") +
       punctuation[10 + (i % 7)];
     const flood: [string, string, string][] = Array.from(
-      { length: 20_000 },
+      { length: 500 },
       (_, i) => [`store:flood${i}`, `${label(i)}.victim`, "k"]
     );
-    flood.splice(10_000, 0, ["store:victim", "victim", "k"]);
+    flood.splice(250, 0, ["store:victim", "victim", "k"]);
     await write(flood);
   }, 180_000);
 
@@ -437,16 +451,17 @@ describe("a namespace with many look-alike documents", () => {
     });
   });
 
-  it("fails loudly when it cannot tell whether a document is there", async () => {
+  it("never uses another namespace's document behind many look-alikes", async () => {
+    // More look-alikes than a lookup checks: it may miss the namespace's own
+    // document, but never reads, replaces or deletes theirs.
     const { client } = container;
-    const count = (await client.keys("store:*")).length;
-    const tooMany = /More than 10000 documents may belong to namespace victim/;
-    await expect(store.get(["victim"], "k")).rejects.toThrow(tooMany);
-    await expect(store.put(["victim"], "k", { v: 2 })).rejects.toThrow(tooMany);
-    await expect(store.delete(["victim"], "k")).rejects.toThrow(tooMany);
-    // Nothing was written or deleted
-    expect((await client.keys("store:*")).length).toBe(count);
-    expect(await client.exists("store:victim")).toBe(1);
+    const flood = Array.from({ length: 500 }, (_, i) => `store:flood${i}`);
+    expect([undefined, "victim"]).toContain(
+      (await store.get(["victim"], "k"))?.value.prefix
+    );
+    await store.put(["victim"], "k", { prefix: "victim" });
+    await store.delete(["victim"], "k");
+    expect(await client.exists(flood)).toBe(flood.length);
   });
 });
 

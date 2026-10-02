@@ -18,13 +18,7 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
-import {
-  allOf,
-  isWithinNamespace,
-  joinsUnambiguously,
-  prefixTextQuery,
-  prefixWildcardQuery,
-} from "./namespace.js";
+import { hasDottedLabel, isWithinNamespace } from "./namespace.js";
 import { escapeRediSearchTagValue } from "./utils.js";
 
 // Type guard functions for operations
@@ -321,24 +315,6 @@ const REDIS_KEY_SEPARATOR = ":";
 const STORE_PREFIX = "store";
 const STORE_VECTOR_PREFIX = "store_vectors";
 
-// A lookup pages through at most 10,000 candidates, Redis Stack's default
-// MAXSEARCHRESULTS; past that limit Redis returns no documents.
-const PAGE_SIZE = 100;
-const MAX_CANDIDATES = 10_000;
-
-/**
- * Thrown when more documents may belong to a namespace than a lookup can read,
- * so it cannot tell whether the one it looks for is among them.
- */
-class TooManyCandidatesError extends Error {
-  constructor(namespace: string[]) {
-    super(
-      `More than ${MAX_CANDIDATES} documents may belong to namespace ${namespace}; cannot look up a key in it.`
-    );
-    this.name = "TooManyCandidatesError";
-  }
-}
-
 /**
  * Whether Redis itself rejected a command, as opposed to node-redis failing
  * to reach it. node-redis raises such errors as ErrorReply, or from v5 on as
@@ -483,18 +459,63 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
-    // No document is stored under an empty namespace, or under an empty or
-    // dotted label; its prefix names other namespaces' documents.
-    if (namespace.length === 0 || !joinsUnambiguously(namespace)) {
+    if (hasDottedLabel(namespace)) {
       return null;
+    }
+    const prefix = namespace.join(".");
+    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
+    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
+    const prefixQuery =
+      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
+
+    // For TAG fields in curly braces, escape special characters
+    // Handle empty string as a special case
+    let query: string;
+    if (key === "") {
+      // For empty keys, search by prefix and filter results
+      query = prefixQuery;
+    } else {
+      const escapedKey = this.escapeTagValue(key);
+      query = `(${prefixQuery}) (@key:{${escapedKey}})`;
     }
 
     try {
-      const doc = await this.findDocument(namespace, key);
-      if (!doc) {
+      const results = await this.client.ft.search("store", query, {
+        LIMIT: { from: 0, size: key === "" ? 100 : 1 },
+      });
+
+      if (!results || !results.documents || results.documents.length === 0) {
         return null;
       }
 
+      // For empty key, filter to find the exact match
+      if (key === "") {
+        for (const doc of results.documents) {
+          const jsonDoc = doc.value as unknown as StoreDocument;
+          if (jsonDoc.key === "" && jsonDoc.prefix === prefix) {
+            const docId = doc.id;
+
+            // Refresh TTL if requested
+            if (options?.refreshTTL) {
+              await this.refreshItemTTL(docId);
+            }
+
+            return {
+              value: jsonDoc.value,
+              key: jsonDoc.key,
+              namespace: jsonDoc.prefix.split("."),
+              created_at: new Date(jsonDoc.created_at / 1000000),
+              updated_at: new Date(jsonDoc.updated_at / 1000000),
+            };
+          }
+        }
+        return null;
+      }
+
+      const doc = await this.findExact(results, query, prefix);
+      if (!doc) {
+        return null;
+      }
       const jsonDoc = doc.value as unknown as StoreDocument;
       const docId = doc.id;
 
@@ -533,12 +554,26 @@ export class RedisStore {
     let createdAt = now; // Will be overridden if document exists
 
     // Delete existing document if it exists
+    // For TEXT fields, we need to match all tokens (split by dots and hyphens)
+    const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
+    const prefixQuery =
+      tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
+
+    // For TAG fields in curly braces, escape special characters
+    const escapedKey = this.escapeTagValue(key);
+    const existingQuery = `(${prefixQuery}) (@key:{${escapedKey}})`;
+    let searched = false;
     try {
-      const existing = await this.findDocument(namespace, key);
-      if (existing) {
-        const oldDocId = existing.id;
+      const existing = await this.client.ft.search("store", existingQuery, {
+        LIMIT: { from: 0, size: 1 },
+      });
+      searched = true;
+
+      const match = await this.findExact(existing, existingQuery, prefix);
+      if (match) {
+        const oldDocId = match.id;
         // Preserve the original created_at timestamp
-        const existingDoc = existing.value;
+        const existingDoc = await this.client.json.get(oldDocId);
         if (
           existingDoc &&
           typeof existingDoc === "object" &&
@@ -560,12 +595,11 @@ export class RedisStore {
         }
       }
     } catch (error) {
-      // The document may be there; writing another copy, or reporting a
-      // delete that did nothing, would be wrong
-      if ((error as Error | undefined)?.name === "TooManyCandidatesError") {
+      // The index might not exist yet. Once a search has worked, a failure
+      // could mean the document is there, so writing another copy is wrong
+      if (searched) {
         throw error;
       }
-      // Index might not exist yet
     }
 
     // Handle delete operation
@@ -650,47 +684,49 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
-    const limit = options?.limit || 10;
-    const offset = options?.offset || 0;
-
-    // No document is stored under an empty or dotted label; its prefix names
-    // other namespaces' documents.
-    if (!joinsUnambiguously(namespacePrefix)) {
+    if (hasDottedLabel(namespacePrefix)) {
       return [];
     }
+    const prefix = namespacePrefix.join(".");
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
 
     // Handle vector search if query is provided
     if (options?.query && this.indexConfig && this.embeddings) {
       const [embedding] = await this.embeddings.embedDocuments([options.query]);
 
+      // Build KNN query
+      // For prefix search, use wildcard since we want to match any document starting with this prefix
+      const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
+      // Narrow by every word, as plain search does: by the first word alone,
+      // the nearest neighbours can all belong to other namespaces
+      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
+      const narrowQuery =
+        tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
-
-      try {
-        // Use KNN query with proper syntax
-        const knn = (query: string) =>
-          this.client.ft.search(
-            "store_vectors",
-            `(${query})=>[KNN ${limit} @embedding $BLOB]`,
-            {
-              PARAMS: {
-                BLOB: vectorBytes,
-              },
-              DIALECT: 2,
-              LIMIT: { from: offset, size: limit },
-              RETURN: ["prefix", "key", "__embedding_score"],
-            }
-          );
-        // Narrow by every word of the namespace, as the search below does:
-        // the first word alone can leave no neighbour in the namespace. Use
-        // that first-word query if Redis rejects the namespace's words.
-        const results = await knn(prefixTextQuery(namespacePrefix)).catch(
-          (error) => {
-            if (!isErrorReply(error)) {
-              throw error;
-            }
-            return knn(prefixWildcardQuery(namespacePrefix));
+      const knn = (filter: string) =>
+        this.client.ft.search(
+          "store_vectors",
+          `(${filter})=>[KNN ${limit} @embedding $BLOB]`,
+          {
+            PARAMS: {
+              BLOB: vectorBytes,
+            },
+            DIALECT: 2,
+            LIMIT: { from: offset, size: limit },
+            RETURN: ["prefix", "key", "__embedding_score"],
           }
         );
+
+      try {
+        // If Redis rejects the narrower query, run the original one. Other
+        // failures, such as a dropped connection, are thrown as before
+        const results = await knn(narrowQuery).catch((error) => {
+          if (!isErrorReply(error)) {
+            throw error;
+          }
+          return knn(queryStr);
+        });
 
         // Get matching store documents
         const items: SearchItem[] = [];
@@ -701,7 +737,6 @@ export class RedisStore {
           const storeDoc = (await this.client.json.get(
             storeKey
           )) as StoreDocument | null;
-          // The query only narrows the candidates; skip other namespaces
           if (storeDoc && isWithinNamespace(storeDoc.prefix, namespacePrefix)) {
             // Apply advanced filter if provided
             if (options.filter) {
@@ -756,7 +791,15 @@ export class RedisStore {
     }
 
     // Regular search without vectors
-    const queryStr = prefixTextQuery(namespacePrefix);
+    let queryStr = "*";
+    if (prefix) {
+      // For prefix search, we need to match all tokens from the namespace prefix
+      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
+      if (tokens.length > 0) {
+        // Match all tokens to ensure we get the right prefix
+        queryStr = `@prefix:(${tokens.join(" ")})`;
+      }
+    }
 
     try {
       const results = await this.client.ft.search("store", queryStr, {
@@ -767,8 +810,6 @@ export class RedisStore {
       const items: SearchItem[] = [];
       for (const doc of results.documents) {
         const jsonDoc = doc.value as unknown as StoreDocument;
-
-        // The query only narrows the candidates; skip other namespaces
         if (!isWithinNamespace(jsonDoc.prefix, namespacePrefix)) {
           continue;
         }
@@ -1041,48 +1082,6 @@ export class RedisStore {
     }
   }
 
-  /**
-   * Find the document stored under exactly `namespace` and `key`. The query
-   * only narrows the candidates, so page through them to the one that matches.
-   */
-  private async findDocument(namespace: string[], key: string) {
-    const prefix = namespace.join(".");
-    // An empty key has no tag to match; the comparison below checks it
-    const keyQuery = key === "" ? "*" : `@key:{${this.escapeTagValue(key)}}`;
-    const query = allOf(prefixTextQuery(namespace), keyQuery);
-
-    for (let from = 0; from < MAX_CANDIDATES; from += PAGE_SIZE) {
-      // The first page usually holds the document. Past it, the candidates
-      // are other namespaces': compare on prefix and key alone, and fetch
-      // only the document that matches.
-      const firstPage = from === 0;
-      const page = await this.client.ft.search("store", query, {
-        LIMIT: { from, size: PAGE_SIZE },
-        // Rank a prefix with fewer words first, so the namespace itself comes
-        // before those that only contain its words
-        SCORER: "TFIDF.DOCNORM",
-        ...(firstPage ? {} : { RETURN: ["prefix", "key"] }),
-      });
-      const match = page.documents.find((doc) => {
-        const found = doc.value as unknown as StoreDocument;
-        return found.prefix === prefix && found.key === key;
-      });
-      if (match) {
-        const value = firstPage
-          ? (match.value as unknown as StoreDocument)
-          : ((await this.client.json.get(match.id)) as StoreDocument | null);
-        return value ? { id: match.id, value } : undefined;
-      }
-      if (from + page.documents.length >= page.total) {
-        return undefined; // every candidate was checked
-      }
-      if (page.documents.length === 0) {
-        break; // Redis returns nothing past its MAXSEARCHRESULTS
-      }
-    }
-    throw new TooManyCandidatesError(namespace);
-  }
-
   private async refreshItemTTL(docId: string): Promise<void> {
     if (this.ttlConfig?.defaultTTL) {
       const ttlSeconds = Math.floor(this.ttlConfig.defaultTTL * 60);
@@ -1102,6 +1101,39 @@ export class RedisStore {
   private escapeTagValue(value: string): string {
     // Delegate to shared utility for RediSearch TAG field escaping
     return escapeRediSearchTagValue(value);
+  }
+
+  /**
+   * `prefix` is a TEXT field, so a query on it also matches namespaces with
+   * the same words in another order, case or punctuation. Use a document only
+   * if its stored prefix is exactly `prefix`. That is usually the first
+   * candidate; if not, look through the first 100, ranked by `TFIDF.DOCNORM`
+   * so that a namespace comes ahead of the longer ones below it, and stop.
+   */
+  private async findExact(
+    first: { total: number; documents: { id: string; value: unknown }[] },
+    query: string,
+    prefix: string
+  ): Promise<{ id: string; value: unknown } | undefined> {
+    const top = first.documents[0];
+    if (top && (top.value as StoreDocument).prefix === prefix) {
+      return top;
+    }
+    if (first.total <= 1) {
+      return undefined;
+    }
+    // From the start again: if a document ranked ahead is deleted between the
+    // two searches, this one moves up rather than out of view
+    const candidates = await this.client.ft.search("store", query, {
+      LIMIT: { from: 0, size: 100 },
+      SCORER: "TFIDF.DOCNORM",
+      RETURN: ["prefix"],
+    });
+    const match = candidates.documents.find(
+      (doc) => (doc.value as unknown as StoreDocument).prefix === prefix
+    );
+    const value = match && (await this.client.json.get(match.id));
+    return match && value ? { id: match.id, value } : undefined;
   }
 
   /**

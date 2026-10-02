@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  allOf,
-  isWithinNamespace,
-  joinsUnambiguously,
-  prefixTextQuery,
-  prefixWildcardQuery,
-} from "../namespace.js";
+import { hasDottedLabel, isWithinNamespace } from "../namespace.js";
 
 describe("isWithinNamespace", () => {
   it.each([
@@ -16,37 +10,20 @@ describe("isWithinNamespace", () => {
     ["a.tenant", ["tenant", "a"], false],
     ["tenant.A", ["tenant", "a"], false],
     ["tenant", ["tenant", "a"], false],
+    ["tenant", [""], false],
     ["anything.at.all", [], true],
   ])("%s in %j is %s", (prefix, namespace, expected) => {
     expect(isWithinNamespace(prefix, namespace)).toBe(expected);
   });
 });
 
-describe("joinsUnambiguously", () => {
-  it("rejects a label that is empty or contains the separator", () => {
-    expect(joinsUnambiguously(["a.b"])).toBe(false);
-    expect(joinsUnambiguously([""])).toBe(false);
-    expect(joinsUnambiguously(["a", ""])).toBe(false);
-    expect(joinsUnambiguously(["a", "b"])).toBe(true);
-    expect(joinsUnambiguously([])).toBe(true);
-    expect(joinsUnambiguously([1, 2] as unknown as string[])).toBe(false);
-  });
-});
-
-describe("the earlier text queries", () => {
-  it("are unchanged", () => {
-    expect(prefixTextQuery(["tenant", "a-b"])).toBe("@prefix:(tenant a b)");
-    expect(prefixTextQuery([])).toBe("*");
-    expect(prefixWildcardQuery(["tenant-x", "a"])).toBe("@prefix:tenant*");
-    expect(prefixWildcardQuery([])).toBe("*");
-  });
-});
-
-describe("allOf", () => {
-  it("drops clauses that match everything", () => {
-    expect(allOf("@a:{x}", "@key:{k}")).toBe("(@a:{x}) (@key:{k})");
-    expect(allOf("*", "@key:{k}")).toBe("@key:{k}");
-    expect(allOf("@prefix:(a b)", "*")).toBe("@prefix:(a b)");
-    expect(allOf("*", "*")).toBe("*");
+describe("hasDottedLabel", () => {
+  it("finds a label containing the separator, including a number's", () => {
+    expect(hasDottedLabel(["a.b"])).toBe(true);
+    expect(hasDottedLabel(["a", "b.c"])).toBe(true);
+    expect(hasDottedLabel([1.5] as unknown as string[])).toBe(true);
+    expect(hasDottedLabel(["a", "b"])).toBe(false);
+    expect(hasDottedLabel([123] as unknown as string[])).toBe(false);
+    expect(hasDottedLabel([])).toBe(false);
   });
 });
