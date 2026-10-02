@@ -23,7 +23,7 @@
   "devDependencies": {
     "@hono/node-server": "^2.1.0",
     "@hono/node-ws": "^1.3.0",
-    "@langchain/core": "^1.2.9",
+    "@langchain/core": "^1.2.13",
     "@langchain/langgraph": "workspace:^",
     "@langchain/langgraph-api": "workspace:^",
     "@langchain/langgraph-checkpoint": "workspace:^",
@@ -33,7 +33,7 @@
     "@vitest/browser-webdriverio": "^4.1.11",
     "deepagents": "^1.10.5",
     "hono": "^4.13.5",
-    "langchain": "^1.5.10",
+    "langchain": "^1.5.14",
     "svelte": "^5.57.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11",
