@@ -532,7 +532,7 @@ export function useStreamLGP<
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId = threadId;
+    let usableThreadId = threadId ?? submitOptions?.threadId;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -555,14 +555,15 @@ export function useStreamLGP<
           return { ...prev };
         });
 
-        if (!usableThreadId) {
+        if (!threadId) {
           const thread = await client.threads.create({
-            threadId: submitOptions?.threadId,
+            threadId: usableThreadId,
+            ifExists: "do_nothing",
             metadata: submitOptions?.metadata,
             signal,
           });
 
-          usableThreadId = thread.thread_id;
+          usableThreadId = usableThreadId ?? thread.thread_id;
 
           // Pre-emptively update the thread ID before
           // stream cancellation is kicked off and thread
