@@ -310,6 +310,62 @@ type Prettify<T> = {
 } & {};
 
 /**
+ * Literal string keys of `T`, or `never` when `T` has a wide `string` index
+ * signature (`Record` schemas, the deprecated `{ channels }` constructor,
+ * etc.). The runtime guard stays authoritative for those cases.
+ */
+type KnownStringKeys<T> = string extends keyof T
+  ? never
+  : Extract<keyof T, string>;
+
+/**
+ * Constructor-time channel names: the union of state, input, and output
+ * schema keys. Private channels added later via `addNode(..., { input })`
+ * are intentionally excluded (runtime remains authoritative).
+ *
+ * `I` and `O` are schema definitions (`AnnotationRoot`, `StateSchema`, Zod,
+ * or a raw `StateDefinition`), so keys are taken from `ExtractStateType`
+ * rather than `keyof I` / `keyof O`.
+ */
+type GraphChannelKeys<S, I, O> =
+  | KnownStringKeys<S>
+  | KnownStringKeys<ExtractStateType<I>>
+  | KnownStringKeys<ExtractStateType<O>>;
+
+/**
+ * Branded diagnostic shown when `K` collides with a constructor-time
+ * channel. Used instead of `never` so `tsc` names the colliding channel
+ * rather than reporting "not assignable to parameter of type 'never'".
+ */
+type NodeChannelCollision<K extends string> =
+  `Node name "${K}" is already a state channel name; pick a different node name`;
+
+/**
+ * `Allowed` when `K` is a wide `string` or does not overlap constructor-time
+ * channel keys; otherwise a branded diagnostic that names the colliding
+ * channel.
+ *
+ * Applied to rest args / the nodes argument (not to `key` itself) so `K`
+ * is still inferred from the node name. A mixed union that includes a
+ * channel key is rejected rather than silently narrowed.
+ *
+ * The error tuple is fixed-length: a rest `unknown[]` slot would let
+ * `addNode("channel", fn, { ends })` type-check.
+ */
+type IfAllowedNodeKey<K extends string, S, I, O, Allowed> = string extends K
+  ? Allowed
+  : [K & GraphChannelKeys<S, I, O>] extends [never]
+    ? Allowed
+    : Allowed extends unknown[]
+      ? [
+          error: NodeChannelCollision<K & GraphChannelKeys<S, I, O>>,
+          options?: NodeChannelCollision<K & GraphChannelKeys<S, I, O>>,
+        ]
+      : {
+          [P in K & GraphChannelKeys<S, I, O>]: NodeChannelCollision<P>;
+        };
+
+/**
  * A graph whose nodes communicate by reading and writing to a shared state.
  * Each node takes a defined `State` as input and returns a `Partial<State>`.
  *
@@ -934,7 +990,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap
+    nodes: IfAllowedNodeKey<Extract<keyof NodeMap, string>, S, I, O, NodeMap>
   ): StateGraph<
     SD,
     S,
@@ -960,40 +1016,16 @@ export class StateGraph<
   >;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    nodes: [
-      key: K,
-      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
-    ][]
-  ): StateGraph<
-    SD,
-    S,
-    U,
-    N | K,
-    I,
-    O,
-    C,
-    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
-  >;
-
-  override addNode<
-    K extends string,
-    InputSchema extends StateDefinitionInit,
-    NodeOutput extends U = U,
-  >(
-    key: K,
-    action: NodeAction<
-      ExtractStateType<InputSchema>,
-      NodeOutput,
-      C,
-      InterruptType,
-      WriterType
-    >,
-    options: StateGraphAddNodeOptions<
-      N | K,
-      InputSchema,
-      ExtractStateType<InputSchema>,
-      U
+    nodes: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+        options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
+      ][]
     >
   ): StateGraph<
     SD,
@@ -1012,18 +1044,64 @@ export class StateGraph<
     NodeOutput extends U = U,
   >(
     key: K,
-    action: NodeAction<
-      ExtractStateType<InputSchema>,
-      NodeOutput,
-      C,
-      InterruptType,
-      WriterType
-    >,
-    options: StateGraphAddNodeOptions<
-      N | K,
-      InputSchema,
-      ExtractStateType<InputSchema>,
-      U
+    ...args: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        action: NodeAction<
+          ExtractStateType<InputSchema>,
+          NodeOutput,
+          C,
+          InterruptType,
+          WriterType
+        >,
+        options: StateGraphAddNodeOptions<
+          N | K,
+          InputSchema,
+          ExtractStateType<InputSchema>,
+          U
+        >,
+      ]
+    >
+  ): StateGraph<
+    SD,
+    S,
+    U,
+    N | K,
+    I,
+    O,
+    C,
+    MergeReturnType<NodeReturnType, { [key in K]: NodeOutput }>
+  >;
+
+  override addNode<
+    K extends string,
+    InputSchema extends StateDefinitionInit,
+    NodeOutput extends U = U,
+  >(
+    key: K,
+    ...args: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        action: NodeAction<
+          ExtractStateType<InputSchema>,
+          NodeOutput,
+          C,
+          InterruptType,
+          WriterType
+        >,
+        options: StateGraphAddNodeOptions<
+          N | K,
+          InputSchema,
+          ExtractStateType<InputSchema>,
+          U
+        >,
+      ]
     >
   ): StateGraph<
     SD,
@@ -1038,8 +1116,16 @@ export class StateGraph<
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
     key: K,
-    action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
+    ...args: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+        options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
+      ]
+    >
   ): StateGraph<
     SD,
     S,
@@ -1053,8 +1139,16 @@ export class StateGraph<
 
   override addNode<K extends string, NodeInput = S>(
     key: K,
-    action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
-    options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>
+    ...args: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        action: NodeAction<NodeInput, U, C, InterruptType, WriterType>,
+        options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
+      ]
+    >
   ): StateGraph<SD, S, U, N | K, I, O, C, NodeReturnType>;
 
   override addNode<K extends string, NodeInput = S, NodeOutput extends U = U>(
@@ -1274,11 +1368,17 @@ export class StateGraph<
   }
 
   addSequence<K extends string, NodeInput = S, NodeOutput extends U = U>(
-    nodes: [
-      key: K,
-      action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
-      options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
-    ][]
+    nodes: IfAllowedNodeKey<
+      K,
+      S,
+      I,
+      O,
+      [
+        key: K,
+        action: NodeAction<NodeInput, NodeOutput, C, InterruptType, WriterType>,
+        options?: StateGraphAddNodeOptionsWithNodeInput<N | K, NodeInput, U>,
+      ][]
+    >
   ): StateGraph<
     SD,
     S,
@@ -1294,7 +1394,7 @@ export class StateGraph<
     K extends string,
     NodeMap extends Record<K, NodeAction<S, U, C, InterruptType, WriterType>>,
   >(
-    nodes: NodeMap
+    nodes: IfAllowedNodeKey<Extract<keyof NodeMap, string>, S, I, O, NodeMap>
   ): StateGraph<
     SD,
     S,
@@ -1361,8 +1461,10 @@ export class StateGraph<
       }
 
       const validKey = key as unknown as N;
+      // Public overloads enforce channel-name collisions; this call is
+      // internal after the key has already been accepted.
       this.addNode(
-        key as K,
+        key as string,
         action as NodeAction<
           NodeInput,
           NodeOutput,
