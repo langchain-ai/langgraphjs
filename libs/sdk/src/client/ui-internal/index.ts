@@ -1,4 +1,4 @@
-import { BaseClient, encodePathSegment } from "../base.js";
+import { BaseClient } from "../base.js";
 
 export class UiClient extends BaseClient {
   private static promiseCache: Record<string, Promise<unknown> | undefined> =
@@ -19,17 +19,14 @@ export class UiClient extends BaseClient {
       `${this.apiUrl}-${assistantId}-${agentName}`,
       async () => {
         // oxlint-disable-next-line prefer-const -- init is reassigned by onRequest hook
-        let [url, init] = this.prepareFetchOptions(
-          `/ui/${encodePathSegment(assistantId)}`,
-          {
-            headers: {
-              Accept: "text/html",
-              "Content-Type": "application/json",
-            },
-            method: "POST",
-            json: { name: agentName },
-          }
-        );
+        let [url, init] = this.prepareFetchOptions(`/ui/${assistantId}`, {
+          headers: {
+            Accept: "text/html",
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          json: { name: agentName },
+        });
         if (this.onRequest != null) init = await this.onRequest(url, init);
 
         const response = await this.asyncCaller.fetch(url.toString(), init);
