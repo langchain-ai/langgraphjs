@@ -347,6 +347,16 @@ describe("core stream properties are unaffected", () => {
     expectTypeOf(stream.isLoading).toEqualTypeOf<boolean>();
   });
 
+  test("status is StreamStatus", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.status).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
+  });
+
   test("error is unknown", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
@@ -649,6 +659,9 @@ describe("provideStream / getStream types", () => {
 
     expectTypeOf(ctx.messages).toExtend<BaseMessage[]>();
     expectTypeOf(ctx.isLoading).toEqualTypeOf<boolean>();
+    expectTypeOf(ctx.status).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
     expectTypeOf(ctx.error).toEqualTypeOf<unknown>();
   });
 

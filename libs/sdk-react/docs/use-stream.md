@@ -68,6 +68,7 @@ Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter
 | `toolCalls`                  | `AssembledToolCall[]`                                       | Tool calls assembled from the root run; each carries `status`, `args`, `result`, `aiMessageId`. |
 | `interrupt` / `interrupts`   | `Interrupt \| Interrupt[]`                                  | Most-recent root interrupt and the full interrupt list.                                         |
 | `isLoading`                  | `boolean`                                                   | True while a run is in flight or initial hydration hasn't completed.                            |
+| `status`                     | `"idle" \| "submitting" \| "streaming" \| "error"`         | High-level run phase. `"submitting"` = dispatched but not yet running; `"streaming"` = actively running; `"error"` = last run/hydrate errored. A single readable value vs combining `isLoading`/`error`. |
 | `isThreadLoading`            | `boolean`                                                   | True during the initial thread-hydration lifecycle.                                             |
 | `hydrationPromise`           | `Promise<void>`                                             | Settles when the active thread's initial hydrate resolves. Used by `useSuspenseStream`.         |
 | `error`                      | `unknown`                                                   | Latest transport or hydrate error.                                                              |
