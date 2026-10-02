@@ -54,6 +54,8 @@ import { normalizeProtocolStatePayload } from "./state-normalizers.mjs";
  * service.
  */
 export class RunProtocolSession {
+  private readonly runId: string;
+
   private readonly initialRun: Run;
 
   private readonly getRun: () => Promise<Run | null>;
@@ -114,6 +116,7 @@ export class RunProtocolSession {
     startSeq?: number;
     passthrough?: boolean;
   }) {
+    this.runId = options.runId;
     this.initialRun = options.initialRun;
     this.getRun = options.getRun;
     this.getThreadState = options.getThreadState;
@@ -719,6 +722,9 @@ export class RunProtocolSession {
       type: "event",
       event_id: String(this.nextSeq),
       seq: this.nextSeq,
+      // Durable run identity for clients correlating replay across
+      // connection-scoped `seq` resets. Distinct from `event_id`.
+      run_id: this.runId,
       method: eventMethod,
       params: {
         namespace,
