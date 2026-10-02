@@ -10,7 +10,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient } from "redis";
-import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import {
+  assertSafeKeyComponent,
+  escapeRediSearchTagValue,
+  isIndexAlreadyExistsError,
+} from "./utils.js";
 import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 export interface TTLConfig {
@@ -725,7 +729,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
         });
       } catch (error: any) {
         // Ignore if index already exists
-        if (!error.message?.includes("Index already exists")) {
+        if (!isIndexAlreadyExistsError(error)) {
           console.error(
             `Failed to create index ${schema.index}:`,
             error.message
