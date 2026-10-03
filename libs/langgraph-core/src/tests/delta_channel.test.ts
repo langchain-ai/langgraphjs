@@ -8,6 +8,7 @@ import {
 import {
   MemorySaver,
   DeltaSnapshot,
+  type BaseCheckpointSaver,
   isDeltaSnapshot,
   type Checkpoint,
   type CheckpointMetadata,
@@ -772,6 +773,88 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
       expect(liveContents).not.toContain("start");
     }
   });
+});
+
+describe("bulkUpdateState with several updates in one super-step", () => {
+  const buildGraph = (
+    checkpointer: BaseCheckpointSaver,
+    interruptBefore?: "assistant"[]
+  ) => {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    });
+    return new StateGraph(State)
+      .addNode("model", () => ({}))
+      .addNode("assistant", () => ({}))
+      .addEdge(START, "model")
+      .addEdge("model", "assistant")
+      .addEdge("assistant", END)
+      .compile({ checkpointer, interruptBefore });
+  };
+  const update = (content: string, asNode: string) => ({
+    values: { messages: [new HumanMessage({ id: content, content })] },
+    asNode,
+  });
+  const hi = { messages: [new HumanMessage({ id: "hi", content: "hi" })] };
+  const sortedContents = (values: unknown) =>
+    (values as { messages: BaseMessage[] }).messages
+      .map((m) => m.content)
+      .sort();
+
+  const savers: Record<string, () => BaseCheckpointSaver> = {
+    MemorySaver: () => new MemorySaver(),
+    SqliteSaver: () => SqliteSaver.fromConnString(":memory:"),
+  };
+  for (const [name, makeSaver] of Object.entries(savers)) {
+    it(`keeps every update without task ids (${name})`, async () => {
+      const graph = buildGraph(makeSaver());
+      const config = { configurable: { thread_id: "bulk-no-task-ids" } };
+      await graph.invoke(hi, config);
+
+      await graph.bulkUpdateState(config, [
+        {
+          updates: [
+            update("first", "model"),
+            update("second", "model"),
+            update("third", "assistant"),
+          ],
+        },
+      ]);
+
+      const state = await graph.getState(config);
+      expect(sortedContents(state.values)).toEqual([
+        "first",
+        "hi",
+        "second",
+        "third",
+      ]);
+    });
+
+    it(`keeps every update next to a pending task (${name})`, async () => {
+      const graph = buildGraph(makeSaver(), ["assistant"]);
+      const config = { configurable: { thread_id: "bulk-pending-task" } };
+      await graph.invoke(hi, config);
+      expect((await graph.getState(config)).next).toEqual(["assistant"]);
+
+      await graph.bulkUpdateState(config, [
+        {
+          updates: [
+            update("first", "assistant"),
+            update("second", "model"),
+            update("third", "model"),
+          ],
+        },
+      ]);
+
+      const state = await graph.getState(config);
+      expect(sortedContents(state.values)).toEqual([
+        "first",
+        "hi",
+        "second",
+        "third",
+      ]);
+    });
+  }
 });
 
 // Cross-language parity with the Python PRs that align DeltaChannel Overwrite
