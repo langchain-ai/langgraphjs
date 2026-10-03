@@ -672,7 +672,11 @@ export function useStream<
   // interrupt on a subsequent render is never executed twice
   // (StrictMode safe).
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledToolsThreadRef = useRef(options.threadId);
   useEffect(() => {
+    // Effect replay must preserve claims for the same thread.
+    if (handledToolsThreadRef.current === options.threadId) return;
+    handledToolsThreadRef.current = options.threadId;
     handledToolsRef.current.clear();
   }, [options.threadId]);
   const tools = options.tools;
