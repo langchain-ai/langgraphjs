@@ -40,7 +40,6 @@
     "dotenv": "^16.4.7",
     "execa": "^9.5.2",
     "exit-hook": "^4.0.0",
-    "extract-zip": "^2.0.1",
     "ignore": "^7.0.5",
     "langsmith": "^0.10.5",
     "open": "^10.1.0",
