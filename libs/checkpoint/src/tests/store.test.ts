@@ -382,11 +382,25 @@ describe("BaseStore", () => {
   });
 });
 
-describe("InMemoryStore", () => {
-  let store: InMemoryStore;
+describe.each([
+  ["raw", () => new InMemoryStore() as BaseStore],
+  ["batched", () => new AsyncBatchedStore(new InMemoryStore()) as BaseStore],
+])("InMemoryStore (%s)", (_label, makeStore) => {
+  let store: BaseStore;
+  let supportsBatch: boolean;
 
-  beforeEach(() => {
-    store = new InMemoryStore();
+  beforeEach(async () => {
+    store = makeStore();
+    if ("start" in store && typeof (store as any).start === "function") {
+      await (store as any).start();
+    }
+    supportsBatch = _label !== "batched";
+  });
+
+  afterEach(async () => {
+    if ("stop" in store && typeof (store as any).stop === "function") {
+      await (store as any).stop();
+    }
   });
 
   it("should implement get method", async () => {
@@ -500,11 +514,22 @@ describe("InMemoryStore", () => {
     const deletedResult = await store.get(["foo", "langgraph", "foo"], "bar");
     expect(deletedResult).toBeNull();
 
-    await store.batch([
+    let batchResults = await store.batch([
       { namespace: ["langgraph", "foo"], key: "bar", value: doc },
     ]);
-    const batchResult = await store.get(["langgraph", "foo"], "bar");
-    expect(batchResult?.value).toEqual(doc);
+    expect(batchResults[0]).toBeNull();
+    batchResults = await store.batch([
+      { namespace: ["langgraph", "foo"], key: "bar" },
+      {
+        matchConditions: [{ matchType: "prefix", path: ["langgraph", "foo"] }],
+        limit: 10,
+        offset: 0,
+      },
+    ]);
+    expect((batchResults[0] as Item)?.value).toEqual(doc);
+    expect(batchResults[1]).toEqual([["langgraph", "foo"]]);
+    const batchEffectResult = await store.get(["langgraph", "foo"], "bar");
+    expect(batchEffectResult?.value).toEqual(doc);
 
     const batchSearchResult = await store.search(["langgraph", "foo"]);
     expect(batchSearchResult[0].value).toEqual(doc);
