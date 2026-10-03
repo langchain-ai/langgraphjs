@@ -538,6 +538,41 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
   });
 });
 
+describe("a DeltaChannel that was never written", () => {
+  it("is not walked when the thread is loaded", async () => {
+    class RecordingSaver extends MemorySaver {
+      requested: string[][] = [];
+
+      async getDeltaChannelHistory(
+        args: Parameters<MemorySaver["getDeltaChannelHistory"]>[0]
+      ) {
+        this.requested.push([...args.channels].sort());
+        return super.getDeltaChannelHistory(args);
+      }
+    }
+    const State = Annotation.Root({
+      written: new DeltaChannel<number[], number[]>(listReducer),
+      neverWritten: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const saver = new RecordingSaver();
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({ written: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "never-written" } };
+    await graph.invoke({ written: [0] }, config);
+    saver.requested = [];
+
+    await graph.invoke({ written: [2] }, config);
+    const state = await graph.getState(config);
+
+    expect(state.values.neverWritten).toEqual([]);
+    expect(saver.requested.length).toBeGreaterThan(0);
+    expect(saver.requested).toEqual(saver.requested.map(() => ["written"]));
+  });
+});
+
 describe("DeltaChannel end-to-end via StateGraph", () => {
   const buildGraph = (snapshotFrequency: number) => {
     const State = Annotation.Root({
