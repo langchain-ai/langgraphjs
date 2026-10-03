@@ -110,6 +110,18 @@ export function getApiKey(apiKey?: string | null): string | undefined {
   return undefined;
 }
 
+/**
+ * Encode an identifier as a single URL path segment so it can't change the
+ * request's path or query. `.` and `..` are rejected since `new URL()` would
+ * resolve them as dot segments.
+ */
+export function encodePathSegment(value: string): string {
+  if (value === "." || value === "..") {
+    throw new Error(`Invalid path segment: ${JSON.stringify(value)}`);
+  }
+  return encodeURIComponent(value);
+}
+
 export type RequestHook = (
   url: URL,
   init: RequestInit
