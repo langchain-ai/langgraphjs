@@ -94,7 +94,7 @@ export function* mapCommand(
       }
     }
   }
-  if (cmd.resume) {
+  if (cmd.resume != null) {
     if (
       typeof cmd.resume === "object" &&
       Object.keys(cmd.resume).length &&

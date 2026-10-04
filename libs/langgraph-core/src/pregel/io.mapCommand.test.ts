@@ -89,6 +89,20 @@ describe("mapCommand", () => {
     ]);
   });
 
+  it.each([false, 0, ""])(
+    "should handle Command with falsy resume value (%j)",
+    (resume) => {
+      const cmd = new Command({ resume });
+      const pendingWrites: Array<[string, string, unknown]> = [];
+
+      const result = Array.from(mapCommand(cmd, pendingWrites));
+
+      expect(result).toEqual([
+        ["00000000-0000-0000-0000-000000000000", "__resume__", resume],
+      ]);
+    }
+  );
+
   it("should handle Command with resume (object of interrupt IDs)", () => {
     const cmd = new Command({
       resume: {
