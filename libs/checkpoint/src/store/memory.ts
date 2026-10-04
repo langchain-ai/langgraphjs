@@ -151,19 +151,25 @@ export class InMemoryStore extends BaseStore {
     }
 
     // Handle put operations with embeddings
+    let pendingVectors:
+      | Map<string, Map<string, Map<string, number[]>>>
+      | undefined;
     if (putOps.size > 0 && this._indexConfig?.embeddings) {
       const toEmbed = this.extractTexts(Array.from(putOps.values()));
       if (Object.keys(toEmbed).length > 0) {
         const embeddings = await this._indexConfig.embeddings.embedDocuments(
           Object.keys(toEmbed)
         );
-        this.insertVectors(toEmbed, embeddings);
+        pendingVectors = this.prepareVectors(toEmbed, embeddings);
       }
     }
 
     // Apply all put operations
     for (const op of putOps.values()) {
-      this.putOperation(op);
+      this.putOperation(
+        op,
+        pendingVectors?.get(op.namespace.join(":"))?.get(op.key)
+      );
     }
 
     return results as OperationResults<Op>;
@@ -175,7 +181,10 @@ export class InMemoryStore extends BaseStore {
     return item ?? null;
   }
 
-  private putOperation(op: PutOperation): void {
+  private putOperation(
+    op: PutOperation,
+    vectors?: Map<string, number[]>
+  ): void {
     const namespaceKey = op.namespace.join(":");
     if (!this.data.has(namespaceKey)) {
       this.data.set(namespaceKey, new Map());
@@ -185,6 +194,14 @@ export class InMemoryStore extends BaseStore {
     if (op.value === null) {
       namespaceMap.delete(op.key);
     } else {
+      if (vectors) {
+        if (!this.vectors.has(namespaceKey)) {
+          this.vectors.set(namespaceKey, new Map());
+        }
+        this.vectors.get(namespaceKey)!.set(op.key, vectors);
+      } else {
+        this.vectors.get(namespaceKey)?.delete(op.key);
+      }
       const now = new Date();
       if (namespaceMap.has(op.key)) {
         const item = namespaceMap.get(op.key)!;
@@ -373,10 +390,11 @@ export class InMemoryStore extends BaseStore {
     return toEmbed;
   }
 
-  private insertVectors(
+  private prepareVectors(
     texts: { [text: string]: [string[], string, string][] },
     embeddings: number[][]
-  ): void {
+  ): Map<string, Map<string, Map<string, number[]>>> {
+    const vectors = new Map<string, Map<string, Map<string, number[]>>>();
     for (const [text, metadata] of Object.entries(texts)) {
       const embedding = embeddings.shift();
       if (!embedding) {
@@ -385,10 +403,10 @@ export class InMemoryStore extends BaseStore {
 
       for (const [namespace, key, field] of metadata) {
         const namespaceKey = namespace.join(":");
-        if (!this.vectors.has(namespaceKey)) {
-          this.vectors.set(namespaceKey, new Map());
+        if (!vectors.has(namespaceKey)) {
+          vectors.set(namespaceKey, new Map());
         }
-        const namespaceMap = this.vectors.get(namespaceKey)!;
+        const namespaceMap = vectors.get(namespaceKey)!;
         if (!namespaceMap.has(key)) {
           namespaceMap.set(key, new Map());
         }
@@ -396,6 +414,7 @@ export class InMemoryStore extends BaseStore {
         itemMap.set(field, embedding);
       }
     }
+    return vectors;
   }
 
   private getVectors(item: Item): number[][] {
