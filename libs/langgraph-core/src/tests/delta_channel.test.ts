@@ -26,7 +26,13 @@ import {
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
 import { StateGraph } from "../graph/state.js";
-import { START, END, Overwrite, NULL_TASK_ID } from "../constants.js";
+import {
+  START,
+  END,
+  Overwrite,
+  NULL_TASK_ID,
+  CONFIG_KEY_CHECKPOINTER,
+} from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
@@ -1056,6 +1062,40 @@ describe("channelsFromCheckpoint", () => {
     });
     expect(channels.messages.get()).toEqual([1, 2]);
   });
+
+  it("throws for a written delta channel without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(channelsFromCheckpoint(specs, written)).rejects.toThrow(
+      /no checkpointer/
+    );
+  });
+
+  it("throws for a written delta channel with a saver but no config", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(
+      channelsFromCheckpoint(specs, written, { saver: new MemorySaver() })
+    ).rejects.toThrow(/no checkpointer or config/);
+  });
+
+  it("hydrates a never-written delta channel empty without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const channels = await channelsFromCheckpoint(specs, emptyCheckpoint());
+    expect(channels.messages.get()).toEqual([]);
+  });
 });
 
 describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
@@ -1121,5 +1161,157 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
       expect(tup.checkpoint.channel_versions.neverWritten).toBeUndefined();
       expect(tup.checkpoint.channel_values.neverWritten).toBeUndefined();
     }
+  });
+});
+
+describe("DeltaChannel in a subgraph", () => {
+  const State = Annotation.Root({
+    delta: new DeltaChannel<string[], string[]>((state, writes) => [
+      ...state,
+      ...writes.flat(),
+    ]),
+    plain: Annotation<string[]>({
+      reducer: (a, b) => a.concat(b),
+      default: () => [],
+    }),
+  });
+  const written = { delta: ["a1"], plain: ["a1"] };
+
+  async function pausedParent(childCheckpointer?: boolean) {
+    const child = new StateGraph(State)
+      .addNode("a", () => written)
+      .addNode("b", () => ({ delta: ["b1"], plain: ["b1"] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", END)
+      .compile({ interruptBefore: ["b"], checkpointer: childCheckpointer });
+    const parent = new StateGraph(State)
+      .addNode("child", child)
+      .addEdge(START, "child")
+      .addEdge("child", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "t" } };
+    await parent.invoke({ plain: [] }, config);
+    return { parent, config };
+  }
+
+  it("getState with subgraphs hydrates the subgraph's delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory on a subgraph namespace hydrates its delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    const { config: subgraphConfig } = snapshot.tasks[0].state as {
+      config: Parameters<typeof parent.getStateHistory>[0];
+    };
+    const history = [];
+    for await (const s of parent.getStateHistory(subgraphConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
+
+  it("getState on a checkpointer: true subgraph namespace hydrates its delta channel", async () => {
+    const { parent } = await pausedParent(true);
+    const snapshot = await parent.getState({
+      configurable: { thread_id: "t", checkpoint_ns: "child" },
+    });
+    expect(snapshot.values).toEqual(written);
+  });
+
+  it("getState with subgraphs hydrates a checkpointer: true subgraph", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory from a checkpointer: true subgraph task hydrates its history", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config);
+    const taskConfig = snapshot.tasks[0].state as Parameters<
+      typeof parent.getStateHistory
+    >[0];
+    const history = [];
+    for await (const s of parent.getStateHistory(taskConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
+
+  it.each([undefined, true] as const)(
+    "updateState from a subgraph task config keeps the edit (checkpointer: %s)",
+    async (childCheckpointer) => {
+      const { parent, config } = await pausedParent(childCheckpointer);
+      const { tasks } = await parent.getState(config);
+      const taskConfig = tasks[0].state as Parameters<
+        typeof parent.updateState
+      >[0];
+
+      await parent.updateState(taskConfig, { delta: ["edit"], plain: ["edit"] }, "a");
+
+      const snapshot = await parent.getState(config, { subgraphs: true });
+      expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual({
+        delta: ["a1", "edit"],
+        plain: ["a1", "edit"],
+      });
+    }
+  );
+
+  it("a checkpointer: false subgraph has no task state to read", async () => {
+    const { parent, config } = await pausedParent(false);
+    const [flat, nested] = await Promise.all([
+      parent.getState(config),
+      parent.getState(config, { subgraphs: true }),
+    ]);
+    expect(flat.tasks.map((task) => task.state)).toEqual([undefined]);
+    expect(nested.tasks.map((task) => task.state)).toEqual([undefined]);
+  });
+
+  it("a checkpointer: true graph used as root rejects state methods like a run", async () => {
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: true });
+    const config = { configurable: { thread_id: "t" } };
+
+    await expect(graph.getState(config)).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+  });
+
+  it("a checkpointer: false graph ignores a lent checkpointer in updateState", async () => {
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: false });
+    const config = {
+      configurable: {
+        thread_id: "t",
+        checkpoint_ns: "child:1",
+        [CONFIG_KEY_CHECKPOINTER]: saver,
+      },
+    };
+
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /No checkpointer set/
+    );
+    const stored = [];
+    for await (const tuple of saver.list({ configurable: { thread_id: "t" } })) {
+      stored.push(tuple);
+    }
+    expect(stored).toEqual([]);
   });
 });

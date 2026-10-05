@@ -1395,15 +1395,6 @@ export class PregelLoop {
 
     const { configurable } = this.config;
 
-    // take resume value from parent
-    const scratchpad = configurable?.[
-      CONFIG_KEY_SCRATCHPAD
-    ] as PregelScratchpad;
-
-    if (scratchpad && scratchpad.nullResume !== undefined) {
-      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
-    }
-
     // map command to writes
     if (isCommand(this.input)) {
       const hasResume = this.input.resume != null;
@@ -1484,6 +1475,16 @@ export class PregelLoop {
       this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
         (w) => w[1] !== RESUME
       );
+    }
+
+    // Take the resume value from the parent only after the time-travel filter
+    // above, which drops this checkpoint's stale RESUME writes, not this one.
+    const scratchpad = configurable?.[
+      CONFIG_KEY_SCRATCHPAD
+    ] as PregelScratchpad;
+
+    if (scratchpad && scratchpad.nullResume !== undefined) {
+      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
     }
 
     const cachedIsResuming = this.isResuming;
