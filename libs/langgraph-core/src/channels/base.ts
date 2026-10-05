@@ -201,18 +201,27 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
  *
  * A channel snapshots when EITHER its accumulated update count reaches
  * `snapshotFrequency` OR the total supersteps since its last snapshot reaches
- * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. Pure predicate — no mutation.
+ * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. A channel without a version was
+ * never written on this branch, so it has nothing to snapshot. Pure
+ * predicate, no mutation.
  */
 export function deltaChannelsToSnapshot(
   channels: Record<string, BaseChannel>,
-  countersSinceDeltaSnapshot: Record<string, [number, number]>
+  countersSinceDeltaSnapshot: Record<string, [number, number]>,
+  channelVersions: Record<string, number | string>
 ): Set<string> {
   const result = new Set<string>();
   const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
   for (const name in channels) {
     if (!Object.prototype.hasOwnProperty.call(channels, name)) continue;
     const ch = channels[name];
-    if (!isDeltaChannel(ch) || !ch.isAvailable()) continue;
+    if (
+      !isDeltaChannel(ch) ||
+      !ch.isAvailable() ||
+      channelVersions[name] === undefined
+    ) {
+      continue;
+    }
     const [updates, supersteps] = countersSinceDeltaSnapshot[name] ?? [0, 0];
     if (
       updates >= (ch as DeltaChannelLike).snapshotFrequency ||

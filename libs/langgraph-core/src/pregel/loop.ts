@@ -1819,7 +1819,11 @@ export class PregelLoop {
     }
 
     const channelsToSnapshot = doCheckpoint
-      ? deltaChannelsToSnapshot(this.channels, newCounters)
+      ? deltaChannelsToSnapshot(
+          this.channels,
+          newCounters,
+          this.checkpoint.channel_versions
+        )
       : new Set<string>();
     // Force a snapshot for any delta channel that saw an Overwrite since the
     // last checkpoint, so the post-overwrite value is materialized and sparse
@@ -1897,7 +1901,11 @@ export class PregelLoop {
 
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
-    const channelsToSnapshot = deltaChannelsToSnapshot(this.channels, counters);
+    const channelsToSnapshot = deltaChannelsToSnapshot(
+      this.channels,
+      counters,
+      this.checkpoint.channel_versions
+    );
     // Channels that saw an Overwrite are force-snapshotted by the final
     // `_putCheckpoint` (which runs after this), so their accumulated exit
     // writes must NOT also be replayed on top of that snapshot — exclude them.

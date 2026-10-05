@@ -1559,10 +1559,10 @@ export class Pregel<
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
           _applyWrites(
-            saved.checkpoint,
+            checkpoint,
             channels,
             [{ name: INPUT, writes: nullWrites, triggers: [] }],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1584,7 +1584,7 @@ export class Pregel<
             checkpoint,
             channels,
             tasks as WritesProtocol[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
