@@ -321,6 +321,9 @@ describe("createCheckpoint / deltaChannelsToSnapshot", () => {
         "b"
       )
     ).toBe(false);
+    expect(
+      deltaChannelsToSnapshot(channels, { a: [3, 3], b: [0, 5000] }).has("b")
+    ).toBe(true);
   });
 });
 
