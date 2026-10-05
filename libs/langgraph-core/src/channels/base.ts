@@ -352,12 +352,9 @@ export async function channelsFromCheckpoint<
   const filteredSpecs = getOnlyChannels(specs);
   const deltaKeys = deltaChannelsToReplay(filteredSpecs, checkpoint);
 
-  const written = deltaKeys.filter(
-    (k) => checkpoint.channel_versions[k] !== undefined
-  );
-  if ((saver === undefined || config === undefined) && written.length > 0) {
+  if ((saver === undefined || config === undefined) && deltaKeys.length > 0) {
     throw new Error(
-      `DeltaChannel ${written.join(", ")} has history to replay but no checkpointer or config was passed to read it`
+      `DeltaChannel ${deltaKeys.join(", ")} has history to replay but no checkpointer or config was passed to read it`
     );
   }
   if (deltaKeys.length === 0 || saver === undefined || config === undefined) {
