@@ -24,9 +24,11 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
   exitDeltaTaskId,
   isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import type {
   Call,
@@ -190,6 +192,7 @@ type PregelLoopParams = {
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
   hasPersistedParent?: boolean;
+  deltaWritesVersioned?: boolean;
 };
 
 /**
@@ -325,6 +328,13 @@ export class PregelLoop {
 
   /** Whether a real checkpoint was loaded from the saver at initialization. */
   protected _hasPersistedParent = false;
+
+  /**
+   * Whether this branch carries {@link DELTA_WRITES_VERSIONED}: a graph with
+   * a DeltaChannel on a new thread, or a loaded checkpoint that has it. Every
+   * checkpoint this loop writes inherits it.
+   */
+  protected _deltaWritesVersioned = false;
 
   /** The checkpointConfig as captured at initialization (anchor for exit writes). */
   protected _initialCheckpointConfig: RunnableConfig | undefined;
@@ -529,6 +539,7 @@ export class PregelLoop {
     this._exitDeltaWrites =
       this.durability === "exit" && this.checkpointer != null ? [] : undefined;
     this._hasPersistedParent = params.hasPersistedParent ?? false;
+    this._deltaWritesVersioned = params.deltaWritesVersioned ?? false;
     this._initialCheckpointConfig = params.checkpointConfig;
     this.checkpointIdSaved = params.checkpoint.id;
   }
@@ -675,12 +686,16 @@ export class PregelLoop {
         checkpointMetadata.source !== "fork";
     }
 
+    const deltaWritesVersioned =
+      Object.values(params.channelSpecs).some(isDeltaChannel) &&
+      (!hasPersistedParent || isDeltaWritesVersioned(saved.metadata));
     const channels = await channelsFromCheckpoint(
       params.channelSpecs,
       checkpoint,
       {
         saver: params.checkpointer,
         config: checkpointConfig,
+        deltaWritesVersioned,
       }
     );
 
@@ -727,6 +742,7 @@ export class PregelLoop {
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
       hasPersistedParent,
+      deltaWritesVersioned,
     });
   }
 
@@ -1818,12 +1834,19 @@ export class PregelLoop {
         ...(this.checkpointMetadata.counters_since_delta_snapshot ?? {}),
       };
     }
+    if (this._deltaWritesVersioned) {
+      (this.checkpointMetadata as Record<string, unknown>)[
+        DELTA_WRITES_VERSIONED
+      ] = true;
+    }
 
     const channelsToSnapshot = doCheckpoint
       ? deltaChannelsToSnapshot(
           this.channels,
           newCounters,
-          this.checkpoint.channel_versions
+          this._deltaWritesVersioned
+            ? this.checkpoint.channel_versions
+            : undefined
         )
       : new Set<string>();
     // Force a snapshot for any delta channel that saw an Overwrite since the
@@ -1905,7 +1928,7 @@ export class PregelLoop {
     const channelsToSnapshot = deltaChannelsToSnapshot(
       this.channels,
       counters,
-      this.checkpoint.channel_versions
+      this._deltaWritesVersioned ? this.checkpoint.channel_versions : undefined
     );
     // Channels that saw an Overwrite are force-snapshotted by the final
     // `_putCheckpoint` (which runs after this), so their accumulated exit

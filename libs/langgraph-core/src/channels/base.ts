@@ -4,6 +4,7 @@ import {
   Checkpoint,
   DeltaSnapshot,
   type BaseCheckpointSaver,
+  type CheckpointMetadata,
   type DeltaChannelHistory,
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -203,12 +204,14 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
  * `snapshotFrequency` OR the total supersteps since its last snapshot reaches
  * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. Given `channelVersions`, a channel
  * without a version is skipped: it was never written on this branch, so it
- * has nothing to snapshot. Pure predicate, no mutation.
+ * has nothing to snapshot. Pass `undefined` on a branch without
+ * {@link DELTA_WRITES_VERSIONED}, where such a channel can still hold writes
+ * and this snapshot is what bounds its walk. Pure predicate, no mutation.
  */
 export function deltaChannelsToSnapshot(
   channels: Record<string, BaseChannel>,
   countersSinceDeltaSnapshot: Record<string, [number, number]>,
-  channelVersions?: Record<string, number | string>
+  channelVersions: Record<string, number | string> | undefined
 ): Set<string> {
   const result = new Set<string>();
   const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
@@ -301,24 +304,44 @@ export function createCheckpoint<ValueType>(
 }
 
 /**
+ * Checkpoint metadata key, `true` when every DeltaChannel write on the
+ * checkpoint's branch carries a version. A delta channel with no version there
+ * was never written, so it needs no walk. Branches started before this key
+ * existed never get it: an older `updateState` stored a delta channel's first
+ * write without a version, and only the walk finds such a write.
+ */
+export const DELTA_WRITES_VERSIONED = "delta_writes_versioned";
+
+export function isDeltaWritesVersioned(
+  metadata: CheckpointMetadata | undefined
+): boolean {
+  return (
+    (metadata as Record<string, unknown> | undefined)?.[
+      DELTA_WRITES_VERSIONED
+    ] === true
+  );
+}
+
+/**
  * Delta channels whose value at `checkpoint` the ancestor walk rebuilds.
  *
  * A {@link DeltaSnapshot} or a migrated plain value in `channel_values`
  * resolves directly, so only a channel with nothing stored there needs the
- * walk. A channel with no version was never written, so it is empty without
- * one; a walk for it would find no snapshot to stop at and read every
- * ancestor, every time the thread is loaded.
+ * walk. With `versionedOnly`, a channel with no version was never written, so
+ * it is empty without one; a walk for it would find no snapshot to stop at and
+ * read every ancestor, every time the thread is loaded.
  */
 function deltaChannelsToReplay(
   specs: Record<string, BaseChannel>,
-  checkpoint: ReadonlyCheckpoint
+  checkpoint: ReadonlyCheckpoint,
+  versionedOnly: boolean
 ): string[] {
   const keys: string[] = [];
   for (const k in specs) {
     if (!Object.prototype.hasOwnProperty.call(specs, k)) continue;
     if (
       isDeltaChannel(specs[k]) &&
-      checkpoint.channel_versions[k] !== undefined &&
+      (!versionedOnly || checkpoint.channel_versions[k] !== undefined) &&
       !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
     ) {
       keys.push(k);
@@ -337,24 +360,37 @@ function deltaChannelsToReplay(
  * from `channel_values`, an ancestor walk via `saver.getDeltaChannelHistory`
  * finds the nearest seed and accumulates the writes between it and the
  * target. All delta channels needing replay are batched into a single saver
- * call.
+ * call. Pass `deltaWritesVersioned` for a checkpoint whose metadata carries
+ * {@link DELTA_WRITES_VERSIONED}, so delta channels without a version are
+ * left empty instead of walked.
  */
 export async function channelsFromCheckpoint<
   Cc extends Record<string, BaseChannel>,
 >(
   specs: Cc,
   checkpoint: ReadonlyCheckpoint,
-  options?: { saver?: BaseCheckpointSaver; config?: RunnableConfig }
+  options?: {
+    saver?: BaseCheckpointSaver;
+    config?: RunnableConfig;
+    deltaWritesVersioned?: boolean;
+  }
 ): Promise<Cc> {
   const channels = emptyChannels(specs, checkpoint);
   const { saver, config } = options ?? {};
 
   const filteredSpecs = getOnlyChannels(specs);
-  const deltaKeys = deltaChannelsToReplay(filteredSpecs, checkpoint);
+  const deltaKeys = deltaChannelsToReplay(
+    filteredSpecs,
+    checkpoint,
+    options?.deltaWritesVersioned ?? false
+  );
 
-  if ((saver === undefined || config === undefined) && deltaKeys.length > 0) {
+  const written = deltaKeys.filter(
+    (k) => checkpoint.channel_versions[k] !== undefined
+  );
+  if ((saver === undefined || config === undefined) && written.length > 0) {
     throw new Error(
-      `DeltaChannel ${deltaKeys.join(", ")} has history to replay but no checkpointer or config was passed to read it`
+      `DeltaChannel ${written.join(", ")} has history to replay but no checkpointer or config was passed to read it`
     );
   }
   if (deltaKeys.length === 0 || saver === undefined || config === undefined) {

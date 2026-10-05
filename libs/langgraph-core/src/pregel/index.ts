@@ -33,7 +33,10 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
   getOnlyChannels,
+  isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -976,7 +979,11 @@ export class Pregel<
     const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint,
-      { saver, config: saved.config ?? config }
+      {
+        saver,
+        config: saved.config ?? config,
+        deltaWritesVersioned: isDeltaWritesVersioned(saved.metadata),
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -1306,6 +1313,14 @@ export class Pregel<
           ...checkpointMetadata,
         };
       }
+      const deltaWritesVersioned =
+        Object.values(this.channels as Record<string, BaseChannel>).some(
+          isDeltaChannel
+        ) &&
+        (saved === undefined || isDeltaWritesVersioned(saved.metadata));
+      const versionedMetadata = deltaWritesVersioned
+        ? { [DELTA_WRITES_VERSIONED]: true }
+        : {};
 
       // Find last node that updated the state, if not provided
       const { values, asNode } = updates[0];
@@ -1323,6 +1338,7 @@ export class Pregel<
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1336,7 +1352,11 @@ export class Pregel<
       const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
         checkpoint,
-        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
+        {
+          saver: checkpointer,
+          config: saved?.config ?? checkpointConfig,
+          deltaWritesVersioned,
+        }
       );
 
       if (values === null && asNode === END) {
@@ -1401,14 +1421,17 @@ export class Pregel<
           );
         }
         // save checkpoint
+        const { [DELTA_WRITES_VERSIONED]: _carried, ...endMetadata } =
+          checkpointMetadata as Record<string, unknown>;
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, step),
           {
-            ...checkpointMetadata,
+            ...endMetadata,
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1449,6 +1472,7 @@ export class Pregel<
             source: "fork",
             step: step + 1,
             parents: saved.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1545,6 +1569,7 @@ export class Pregel<
             source: "input",
             step: nextStep,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1779,17 +1804,33 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      // A new thread has no checkpoint to hold the writes, so the delta
+      // channels they wrote are stored whole on this one.
+      const channelsToSnapshot = new Set<string>();
+      if (saved === undefined) {
+        for (const [k, ch] of Object.entries(channels)) {
+          if (
+            isDeltaChannel(ch) &&
+            checkpoint.channel_versions[k] !== undefined
+          ) {
+            channelsToSnapshot.add(k);
+          }
+        }
+      }
       const newVersions = getNewChannelVersions(
         checkpointPreviousVersions,
         checkpoint.channel_versions
       );
       const nextConfig = await checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, channels, step + 1),
+        createCheckpoint(checkpoint, channels, step + 1, {
+          channelsToSnapshot,
+        }),
         {
           source: "update",
           step: step + 1,
           parents: saved?.metadata?.parents ?? {},
+          ...versionedMetadata,
         },
         newVersions
       );

@@ -5,10 +5,12 @@ import {
   HumanMessage,
   RemoveMessage,
 } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   MemorySaver,
   DeltaSnapshot,
   isDeltaSnapshot,
+  uuid6,
   type Checkpoint,
   type CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
@@ -16,8 +18,10 @@ import { DeltaChannel } from "../channels/delta.js";
 import {
   channelsFromCheckpoint,
   createCheckpoint,
+  DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
   exitDeltaTaskId,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   messagesDeltaReducer,
@@ -43,6 +47,24 @@ const listReducer = (state: number[], writes: number[][]): number[] => {
   for (const w of writes) out.push(...w);
   return out;
 };
+
+// Stores checkpoints the way releases before DELTA_WRITES_VERSIONED did.
+class OlderVersionSaver extends MemorySaver {
+  older = true;
+
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
+  ): Promise<RunnableConfig> {
+    if (!this.older) return super.put(config, checkpoint, metadata);
+    const { [DELTA_WRITES_VERSIONED]: _marker, ...older } = metadata as Record<
+      string,
+      unknown
+    >;
+    return super.put(config, checkpoint, older as CheckpointMetadata);
+  }
+}
 
 describe("DeltaChannel (unit)", () => {
   it("rejects a non-positive snapshotFrequency", () => {
@@ -322,7 +344,11 @@ describe("createCheckpoint / deltaChannelsToSnapshot", () => {
       )
     ).toBe(false);
     expect(
-      deltaChannelsToSnapshot(channels, { a: [3, 3], b: [0, 5000] }).has("b")
+      deltaChannelsToSnapshot(
+        channels,
+        { a: [3, 3], b: [0, 5000] },
+        undefined
+      ).has("b")
     ).toBe(true);
   });
 });
@@ -610,6 +636,121 @@ describe("a DeltaChannel that was never written", () => {
     const state = await graph.getState(config);
     expect(state.values.log).toEqual([1]);
   });
+
+  for (const durability of ["sync", "async", "exit"] as const) {
+    it(`still walks for a write an older updateState stored without a version (durability=${durability})`, async () => {
+      const State = Annotation.Root({
+        log: new DeltaChannel<number[], number[]>(listReducer),
+        other: Annotation<string[]>({
+          reducer: (a, b) => [...a, ...b],
+          default: () => [],
+        }),
+      });
+      const saver = new OlderVersionSaver();
+      const graph = new StateGraph(State)
+        .addNode("p", (s: typeof State.State) =>
+          s.log.length === 0 ? { log: [1] } : {}
+        )
+        .addNode("q", () => {
+          interrupt("continue?");
+          return {};
+        })
+        .addNode("r", () => ({ other: ["r"] }))
+        .addConditionalEdges(START, (s: typeof State.State) =>
+          s.other.includes("go") ? ["r"] : ["p", "q"]
+        )
+        .addEdge("p", END)
+        .addEdge("q", END)
+        .addEdge("r", END)
+        .compile({ checkpointer: saver });
+      const config = {
+        configurable: { thread_id: `older-update-${durability}` },
+      };
+      await graph.invoke({ other: ["start"] }, config);
+      const head = await saver.getTuple(config);
+      await saver.put(
+        head!.config,
+        { ...head!.checkpoint, id: uuid6(1) },
+        { source: "update", step: 1, parents: {} }
+      );
+      saver.older = false;
+
+      await graph.invoke({ other: ["go"] }, { ...config, durability });
+
+      const logs: number[][] = [];
+      for await (const snapshot of graph.getStateHistory(config)) {
+        if ((snapshot.metadata?.step ?? -1) >= 1) {
+          logs.push(snapshot.values.log);
+        }
+      }
+      expect(logs.length).toBeGreaterThan(1);
+      expect(logs).toEqual(logs.map(() => [1]));
+      const latest = await saver.getTuple(config);
+      expect(isDeltaWritesVersioned(latest!.metadata)).toBe(false);
+    });
+  }
+
+  it("keeps a write updateState makes on a new thread", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({}))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "update-new-thread" } };
+
+    await graph.updateState(config, { log: [1] }, "n");
+
+    expect((await graph.getState(config)).values.log).toEqual([1]);
+  });
+
+  const markedGraph = (saver: MemorySaver) =>
+    new StateGraph(
+      Annotation.Root({
+        log: new DeltaChannel<number[], number[]>(listReducer),
+      })
+    )
+      .addNode("n", () => ({ log: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+  const updates: [
+    string,
+    (
+      graph: ReturnType<typeof markedGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { log: [9] }, "n")],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END)],
+    [
+      "as input",
+      (graph, config) => graph.updateState(config, { log: [9] }, "__input__"),
+    ],
+    ["copying", (graph, config) => graph.updateState(config, undefined, "__copy__")],
+    ["with no values", (graph, config) => graph.updateState(config, undefined)],
+  ];
+  for (const [label, update] of updates) {
+    it(`updateState ${label} keeps DELTA_WRITES_VERSIONED only on a thread that has it`, async () => {
+      for (const older of [false, true]) {
+        const saver = new OlderVersionSaver();
+        saver.older = older;
+        const graph = markedGraph(saver);
+        const config = { configurable: { thread_id: `marker-${label}` } };
+        await graph.invoke({ log: [0] }, config);
+        saver.older = false;
+
+        const updated = await update(graph, config);
+
+        const tuple = await saver.getTuple(updated);
+        expect(isDeltaWritesVersioned(tuple?.metadata), `older=${older}`).toBe(
+          !older
+        );
+      }
+    });
+  }
 
   it("keeps a null write that updateState takes from the head", async () => {
     const State = Annotation.Root({
@@ -1143,6 +1284,32 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
     // counter is written once per invoke (4 invokes), and reconstruction
     // remains correct despite forced snapshots from the superstep bound.
     expect((state.values as { counter: number[] }).counter).toEqual([1, 1, 1, 1]);
+  });
+
+  it("still snapshots a channel that was never written on an older thread", async () => {
+    process.env[ENV] = "2";
+    const State = Annotation.Root({
+      written: new DeltaChannel<number[], number[]>(listReducer),
+      neverWritten: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const saver = new OlderVersionSaver();
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({ written: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "bound-older-thread" } };
+    await graph.invoke({ written: [0] }, config);
+    saver.older = false;
+    for (let i = 0; i < 3; i += 1) await graph.invoke({ written: [0] }, config);
+
+    let snapshots = 0;
+    for await (const tup of saver.list(config)) {
+      const cv = tup.checkpoint.channel_values as Record<string, unknown>;
+      if (isDeltaSnapshot(cv.neverWritten)) snapshots += 1;
+    }
+    expect(snapshots).toBeGreaterThan(0);
+    expect((await graph.getState(config)).values.neverWritten).toEqual([]);
   });
 
   it("leaves a channel that was never written without a version", async () => {
