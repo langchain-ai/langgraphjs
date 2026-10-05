@@ -292,6 +292,33 @@ export function createCheckpoint<ValueType>(
 }
 
 /**
+ * Delta channels whose value at `checkpoint` the ancestor walk rebuilds.
+ *
+ * A {@link DeltaSnapshot} or a migrated plain value in `channel_values`
+ * resolves directly, so only a channel with nothing stored there needs the
+ * walk. A channel with no version was never written, so it is empty without
+ * one; a walk for it would find no snapshot to stop at and read every
+ * ancestor, every time the thread is loaded.
+ */
+function deltaChannelsToReplay(
+  specs: Record<string, BaseChannel>,
+  checkpoint: ReadonlyCheckpoint
+): string[] {
+  const keys: string[] = [];
+  for (const k in specs) {
+    if (!Object.prototype.hasOwnProperty.call(specs, k)) continue;
+    if (
+      isDeltaChannel(specs[k]) &&
+      checkpoint.channel_versions[k] !== undefined &&
+      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
+    ) {
+      keys.push(k);
+    }
+  }
+  return keys;
+}
+
+/**
  * Hydrate channels from a checkpoint, reconstructing any {@link DeltaChannel}
  * whose value is absent from `channel_values` by replaying ancestor writes.
  *
@@ -302,10 +329,6 @@ export function createCheckpoint<ValueType>(
  * finds the nearest seed and accumulates the writes between it and the
  * target. All delta channels needing replay are batched into a single saver
  * call.
- *
- * A delta channel with no version at the checkpoint was never written, so it
- * is empty without a walk. A walk for it would find no snapshot to stop at
- * and read every ancestor, every time the thread is loaded.
  */
 export async function channelsFromCheckpoint<
   Cc extends Record<string, BaseChannel>,
@@ -318,17 +341,7 @@ export async function channelsFromCheckpoint<
   const { saver, config } = options ?? {};
 
   const filteredSpecs = getOnlyChannels(specs);
-  const deltaKeys: string[] = [];
-  for (const k in filteredSpecs) {
-    if (!Object.prototype.hasOwnProperty.call(filteredSpecs, k)) continue;
-    if (
-      isDeltaChannel(filteredSpecs[k]) &&
-      checkpoint.channel_versions[k] !== undefined &&
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
-    ) {
-      deltaKeys.push(k);
-    }
-  }
+  const deltaKeys = deltaChannelsToReplay(filteredSpecs, checkpoint);
 
   if (deltaKeys.length === 0 || saver === undefined || config === undefined) {
     return channels;
