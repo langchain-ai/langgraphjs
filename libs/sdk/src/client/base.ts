@@ -222,7 +222,7 @@ export class BaseClient {
     this.timeoutMs = config?.timeoutMs;
 
     this.apiUrl = config?.apiUrl?.replace(/\/$/, "") || defaultApiUrl;
-    this.defaultHeaders = config?.defaultHeaders || {};
+    this.defaultHeaders = mergeHeaders(config?.defaultHeaders);
     this.onRequest = config?.onRequest;
     this.streamProtocol = config?.streamProtocol ?? "legacy";
     const apiKey = getApiKey(config?.apiKey);

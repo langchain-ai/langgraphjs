@@ -628,3 +628,50 @@ describe("identifier path encoding", () => {
     expect(req.apiKey).toBe("secret");
   });
 });
+
+describe("defaultHeaders shared between clients", () => {
+  let requests: { url: string; apiKey: string | null }[];
+  let fetchMock: MockFetch;
+
+  beforeEach(() => {
+    requests = [];
+    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        apiKey: new Headers(init?.headers).get("x-api-key"),
+      });
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as MockFetch;
+    overrideFetchImplementation(fetchMock);
+  });
+
+  it("a later client's apiKey does not replace an earlier client's", async () => {
+    const defaultHeaders = { "x-tenant": "shared" };
+    const first = new Client({ apiKey: "key-A", defaultHeaders });
+    new Client({ apiKey: "key-B", defaultHeaders });
+
+    await first.threads.get("t");
+
+    expect(requests.map((r) => r.apiKey)).toEqual(["key-A"]);
+    expect(defaultHeaders).toEqual({ "x-tenant": "shared" });
+  });
+
+  it("a keyless client on another host does not send an earlier client's apiKey", async () => {
+    const defaultHeaders = { "x-tenant": "shared" };
+    new Client({ apiUrl: "https://mine.example", apiKey: "key-A", defaultHeaders });
+    const other = new Client({
+      apiUrl: "https://other.example",
+      apiKey: null,
+      defaultHeaders,
+    });
+
+    await other.threads.get("t");
+
+    expect(requests).toEqual([
+      { url: "https://other.example/threads/t", apiKey: null },
+    ]);
+  });
+});
