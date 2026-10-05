@@ -317,6 +317,24 @@ describe("namespace isolation", () => {
     expect(found.map((item) => item.key)).toEqual(["mine"]);
   });
 
+  it("falls back to the first-word query when the words match nothing", async () => {
+    // Redis accepts the all-words query for this label but it matches no
+    // document, so only the first-word query finds it.
+    await store.put(["memories", "CORP\\alice"], "mine", { text: "1" });
+    let found: Awaited<ReturnType<typeof store.search>> = [];
+    const queries = await queriesOf(container.client, async () => {
+      found = await store.search(["memories", "CORP\\alice"], {
+        query: "near",
+        limit: 100,
+      });
+    });
+    expect(queries).toEqual([
+      "(@prefix:(memories CORP\\alice))=>[KNN 100 @embedding $BLOB]",
+      "(@prefix:memories*)=>[KNN 100 @embedding $BLOB]",
+    ]);
+    expect(found.map((item) => item.key)).toEqual(["mine"]);
+  });
+
   it("falls back when a newer client reports the rejection", async () => {
     // node-redis v5 and later raise Redis's errors as subclasses of ErrorReply
     const Reply = class ErrorReply extends Error {};
@@ -354,10 +372,8 @@ describe("namespace isolation", () => {
     // Look-alikes rank level with ["lk", "a"], so the lookup searches twice.
     await store.put(["a", "lk"], "k", { v: 1 });
     await store.put(["A", "lk"], "k", { v: 2 });
-    const search = client.ft.search.bind(client.ft);
     const spy = vi
-      .spyOn(client.ft, "search")
-      .mockImplementationOnce(search as any)
+      .spyOn(client.ft, "searchNoContent")
       .mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
     try {
       await expect(store.put(["lk", "a"], "k", { v: 3 })).rejects.toThrow(

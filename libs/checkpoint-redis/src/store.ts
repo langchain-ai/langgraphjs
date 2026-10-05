@@ -719,14 +719,19 @@ export class RedisStore {
         );
 
       try {
-        // If Redis rejects the narrower query, run the original one. Other
-        // failures, such as a dropped connection, are thrown as before
-        const results = await knn(narrowQuery).catch((error) => {
+        // If Redis rejects the narrower query, or it finds nothing (a label
+        // such as `CORP\alice` can make it match no document), run the
+        // original one. Other failures, such as a dropped connection, are
+        // thrown as before
+        let results = await knn(narrowQuery).catch((error) => {
           if (!isErrorReply(error)) {
             throw error;
           }
-          return knn(queryStr);
+          return undefined;
         });
+        if (!results?.documents.length) {
+          results = await knn(queryStr);
+        }
 
         // Get matching store documents
         const items: SearchItem[] = [];
@@ -1123,17 +1128,23 @@ export class RedisStore {
       return undefined;
     }
     // From the start again: if a document ranked ahead is deleted between the
-    // two searches, this one moves up rather than out of view
-    const candidates = await this.client.ft.search("store", query, {
+    // two searches, this one moves up rather than out of view. Ids only, then
+    // each candidate's prefix: node-redis v4 cannot parse a search reply that
+    // holds a document which has expired but not yet been removed.
+    const candidates = await this.client.ft.searchNoContent("store", query, {
       LIMIT: { from: 0, size: 100 },
       SCORER: "TFIDF.DOCNORM",
-      RETURN: ["prefix"],
     });
-    const match = candidates.documents.find(
-      (doc) => (doc.value as unknown as StoreDocument).prefix === prefix
+    const prefixes = await Promise.all(
+      candidates.documents.map((id) =>
+        this.client.json.get(id, { path: "$.prefix" })
+      )
     );
-    const value = match && (await this.client.json.get(match.id));
-    return match && value ? { id: match.id, value } : undefined;
+    const match = candidates.documents.find(
+      (_, i) => (prefixes[i] as string[] | null)?.[0] === prefix
+    );
+    const value = match && (await this.client.json.get(match));
+    return match && value ? { id: match, value } : undefined;
   }
 
   /**
