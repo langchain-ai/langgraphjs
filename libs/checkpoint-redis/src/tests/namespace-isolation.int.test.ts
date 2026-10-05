@@ -288,6 +288,19 @@ describe("namespace isolation", () => {
     expect(found.every((item) => item.namespace[1] === "user-3")).toBe(true);
   });
 
+  it("searches every namespace's vectors through the empty namespace", async () => {
+    for (const namespace of [["all", "a"], ["all", "b"], ["every"]]) {
+      await store.put(namespace, "k", { text: "1" });
+    }
+    let found: Awaited<ReturnType<typeof store.search>> = [];
+    const queries = await queriesOf(container.client, async () => {
+      found = await store.search([], { query: "near", limit: 3 });
+    });
+    // The query earlier versions sent, with nothing filtered out
+    expect(queries).toEqual(["(*)=>[KNN 3 @embedding $BLOB]"]);
+    expect(found).toHaveLength(3);
+  });
+
   it("falls back to the first-word query when Redis rejects the words", async () => {
     await store.put(["memories", "a)"], "mine", { text: "1" });
     let found: Awaited<ReturnType<typeof store.search>> = [];
