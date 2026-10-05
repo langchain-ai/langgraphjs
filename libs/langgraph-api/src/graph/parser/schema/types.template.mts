@@ -1,9 +1,33 @@
-import type { BaseMessage } from "@langchain/core/messages";
+import type {
+  AIMessage,
+  BaseMessage,
+  ChatMessage,
+  FunctionMessage,
+  HumanMessage,
+  RemoveMessage,
+  SystemMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import type {
   StateType,
   UpdateType,
   StateDefinition,
 } from "@langchain/langgraph";
+
+// Concrete message subclasses are only ever referenced structurally through
+// `BaseMessage` in langgraph's own reducer code (except `RemoveMessage`, which
+// is imported by value there) — nothing pulls their declaration files into
+// the per-graph program the schema generator builds, so its class-hierarchy
+// walker never discovers them as `BaseMessage` subtypes. This export forces
+// them into that program.
+export type EnsureConcreteMessageSubclassesInProgram =
+  | AIMessage
+  | ChatMessage
+  | FunctionMessage
+  | HumanMessage
+  | RemoveMessage
+  | SystemMessage
+  | ToolMessage;
 
 // @ts-ignore
 type AnyPregel = {
