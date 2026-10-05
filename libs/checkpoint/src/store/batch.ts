@@ -93,9 +93,15 @@ export class AsyncBatchedStore extends BaseStore {
   async put(
     namespace: string[],
     key: string,
-    value: Record<string, any>
+    value: Record<string, any>,
+    index?: false | string[]
   ): Promise<void> {
-    return this.enqueueOperation({ namespace, key, value } as PutOperation);
+    return this.enqueueOperation({
+      namespace,
+      key,
+      value,
+      index,
+    } as PutOperation);
   }
 
   async delete(namespace: string[], key: string): Promise<void> {
