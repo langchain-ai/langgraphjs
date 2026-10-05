@@ -335,6 +335,41 @@ describe("namespace isolation", () => {
     expect(found.map((item) => item.key)).toEqual(["mine"]);
   });
 
+  it("doesn't fetch other namespaces' documents for vector search", async () => {
+    await store.put(["fetch", "other"], "k", { text: "1" });
+    const get = vi.spyOn(container.client.json, "get");
+    try {
+      const found = await store.search(["fetch", "none"], { query: "near" });
+      expect(found).toEqual([]);
+      expect(get).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it("trusts the stored document's namespace over its vector's", async () => {
+    // A vector whose namespace disagrees with its stored document's, as
+    // another client could write.
+    const { client } = container;
+    await client.json.set("store:mismatch", "$", {
+      prefix: "vm.other",
+      key: "k",
+      value: { text: "1" },
+      created_at: 1,
+      updated_at: 1,
+    });
+    await client.json.set("store_vectors:mismatch", "$", {
+      prefix: "vm.mine",
+      key: "k",
+      field_name: "text",
+      embedding: [1, 0],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const found = await store.search(["vm", "mine"], { query: "near" });
+    expect(found).toEqual([]);
+  });
+
   it("falls back when a newer client reports the rejection", async () => {
     // node-redis v5 and later raise Redis's errors as subclasses of ErrorReply
     const Reply = class ErrorReply extends Error {};

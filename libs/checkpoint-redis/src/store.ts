@@ -736,6 +736,12 @@ export class RedisStore {
         // Get matching store documents
         const items: SearchItem[] = [];
         for (const doc of results.documents) {
+          // Don't fetch another namespace's document; the stored document's
+          // own prefix is still checked below
+          const vectorPrefix = String((doc.value as any).prefix);
+          if (!isWithinNamespace(vectorPrefix, namespacePrefix)) {
+            continue;
+          }
           const docUuid = doc.id.split(":").pop();
           const storeKey = `${STORE_PREFIX}${REDIS_KEY_SEPARATOR}${docUuid}`;
 
