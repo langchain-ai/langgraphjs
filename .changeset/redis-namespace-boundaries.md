@@ -4,7 +4,7 @@
 
 Keep Redis store namespaces apart. A namespace's documents were found with a text search over their joined labels, which ignores order, case and punctuation, so `["tenant", "a"]` also matched `["a", "tenant"]`, `["tenant", "A"]` and `["tenant", "a-b"]`: `get()` could return another namespace's document, and `put()` and `delete()` could replace or delete it.
 
-Each document's namespace is now compared exactly before it is returned, replaced or deleted. Reads through a label containing `.` return nothing, since `["a.b"]` joins to the same prefix as `["a", "b"]` and `put()` rejects such labels; `search([""])` returns nothing rather than every namespace. Vector search now narrows by every word of the namespace, as plain search does, rather than by its first word only; if Redis rejects that query, it runs the earlier one. The index, stored documents and key matching are unchanged.
+Each document's namespace is now compared exactly before it is returned, replaced or deleted. Reads through a label containing `.` return nothing, since `["a.b"]` joins to the same prefix as `["a", "b"]` and `put()` rejects such labels; `search([""])` returns nothing rather than every namespace. Vector search now narrows by every word of the namespace, as plain search does, rather than by its first word only; if Redis rejects that query or it matches nothing, as for a label like `CORP\alice`, it runs the earlier one. The index, stored documents and key matching are unchanged.
 
 Other namespaces' documents are removed from `search()` results after the page is read, so a page can hold fewer than `limit` items, or none, while later pages still hold the namespace's own documents. Those places used to hold the other namespaces' documents.
 
