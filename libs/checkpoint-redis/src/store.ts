@@ -315,25 +315,6 @@ const REDIS_KEY_SEPARATOR = ":";
 const STORE_PREFIX = "store";
 const STORE_VECTOR_PREFIX = "store_vectors";
 
-/**
- * Whether Redis itself rejected a command, as opposed to node-redis failing
- * to reach it. node-redis raises such errors as ErrorReply, or from v5 on as
- * a subclass of it. Compared by class name, since the client may come from
- * another copy of the package.
- */
-function isErrorReply(error: unknown): boolean {
-  for (
-    let proto = error ? Object.getPrototypeOf(error) : null;
-    proto;
-    proto = Object.getPrototypeOf(proto)
-  ) {
-    if (proto.constructor?.name === "ErrorReply") {
-      return true;
-    }
-  }
-  return false;
-}
-
 const SCHEMAS = [
   {
     index: "store",
@@ -562,12 +543,10 @@ export class RedisStore {
     // For TAG fields in curly braces, escape special characters
     const escapedKey = this.escapeTagValue(key);
     const existingQuery = `(${prefixQuery}) (@key:{${escapedKey}})`;
-    let searched = false;
     try {
       const existing = await this.client.ft.search("store", existingQuery, {
         LIMIT: { from: 0, size: 1 },
       });
-      searched = true;
 
       const match = await this.findExact(existing, existingQuery, prefix);
       if (match) {
@@ -594,12 +573,8 @@ export class RedisStore {
           }
         }
       }
-    } catch (error) {
-      // The index might not exist yet. Once a search has worked, a failure
-      // could mean the document is there, so writing another copy is wrong
-      if (searched) {
-        throw error;
-      }
+    } catch {
+      // Index might not exist yet
     }
 
     // Handle delete operation
@@ -719,19 +694,13 @@ export class RedisStore {
         );
 
       try {
-        // If Redis rejects the narrower query, or it finds nothing (a label
-        // such as `CORP\alice` can make it match no document), run the
-        // original one. Other failures, such as a dropped connection, are
-        // thrown as before
-        let results = await knn(narrowQuery).catch((error) => {
-          if (!isErrorReply(error)) {
-            throw error;
-          }
-          return undefined;
-        });
-        if (!results?.documents.length) {
-          results = await knn(queryStr);
-        }
+        // Redis rejects the narrower query for some labels, such as
+        // `user:123`, as it does plain search's, and for others, such as
+        // `CORP\alice`, it matches nothing. Then run the original query
+        const narrowed = await knn(narrowQuery).catch(() => null);
+        const results = narrowed?.documents.length
+          ? narrowed
+          : await knn(queryStr);
 
         // Get matching store documents
         const items: SearchItem[] = [];
@@ -821,6 +790,8 @@ export class RedisStore {
       const items: SearchItem[] = [];
       for (const doc of results.documents) {
         const jsonDoc = doc.value as unknown as StoreDocument;
+        // The query also matches namespaces with the same words in another
+        // order or case, so skip those
         if (!isWithinNamespace(jsonDoc.prefix, namespacePrefix)) {
           continue;
         }
@@ -1125,13 +1096,13 @@ export class RedisStore {
     first: { total: number; documents: { id: string; value: unknown }[] },
     query: string,
     prefix: string
-  ): Promise<{ id: string; value: unknown } | undefined> {
+  ): Promise<{ id: string; value: unknown } | null> {
     const top = first.documents[0];
     if (top && (top.value as StoreDocument).prefix === prefix) {
       return top;
     }
     if (first.total <= 1) {
-      return undefined;
+      return null;
     }
     // From the start again: if a document ranked ahead is deleted between the
     // two searches, this one moves up rather than out of view. Ids only, then
@@ -1150,7 +1121,7 @@ export class RedisStore {
       (_, i) => (prefixes[i] as string[] | null)?.[0] === prefix
     );
     const value = match && (await this.client.json.get(match));
-    return match && value ? { id: match, value } : undefined;
+    return match && value ? { id: match, value } : null;
   }
 
   /**

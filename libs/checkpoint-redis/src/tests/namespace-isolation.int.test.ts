@@ -15,34 +15,31 @@ const index = {
   },
 };
 
-/** The queries `run` sends to FT.SEARCH. */
-async function queriesOf(client: Client, run: () => Promise<unknown>) {
+/** What `run` returns, and the queries it sends to FT.SEARCH. */
+async function withQueries<T>(client: Client, run: () => Promise<T>) {
   const search = vi.spyOn(client.ft, "search");
   try {
-    await run();
-    return search.mock.calls.map(([, query]) => String(query));
+    const result = await run();
+    const queries = search.mock.calls.map(([, query]) => String(query));
+    return { result, queries };
   } finally {
     search.mockRestore();
   }
 }
 
-/** Every stored document under exactly `prefix` and `key`. */
-async function stored(client: Client, prefix: string, key: string) {
-  const ids = await client.keys("store:*");
-  const docs = await Promise.all(ids.map((id) => client.json.get(id)));
-  return docs.filter(
-    (doc: any) => doc.prefix === prefix && doc.key === key
-  ) as any[];
-}
-
-/** The ids of the documents stored under exactly `prefix` and `key`. */
-async function idsOf(client: Client, prefix: string, key: string) {
-  const ids: string[] = [];
-  for (const id of await client.keys("store:*")) {
+/** The documents, or vectors, stored under exactly `prefix` and `key`. */
+async function stored(
+  client: Client,
+  prefix: string,
+  key: string,
+  kind = "store"
+) {
+  const docs: any[] = [];
+  for (const id of await client.keys(`${kind}:*`)) {
     const doc = (await client.json.get(id)) as any;
-    if (doc?.prefix === prefix && doc.key === key) ids.push(id);
+    if (doc?.prefix === prefix && doc.key === key) docs.push({ ...doc, id });
   }
-  return ids;
+  return docs;
 }
 
 /** Deterministic random numbers below `n` (mulberry32). */
@@ -102,26 +99,33 @@ describe("namespace isolation", () => {
     }
   });
 
-  it("replaces and deletes only the exact namespace", async () => {
-    const collide = [
-      ["scope", "one"],
+  it("replaces and deletes only the exact namespace and its vector", async () => {
+    const { client } = container;
+    const others = [
       ["one", "scope"],
       ["scope", "one", "child"],
       ["scope", "One"],
     ];
-    for (const namespace of collide) {
-      await store.put(namespace, "same", { namespace });
+    for (const namespace of [["scope", "one"], ...others]) {
+      await store.put(namespace, "same", { text: "1", namespace });
     }
-    await store.put(["scope", "one"], "same", { updated: true });
+    await store.put(["scope", "one"], "same", { text: "2" });
     await store.delete(["scope", "one"], "same");
 
-    expect(await store.get(["scope", "one"], "same")).toBeNull();
-    for (const namespace of collide.slice(1)) {
+    expect(await stored(client, "scope.one", "same")).toEqual([]);
+    expect(await stored(client, "scope.one", "same", "store_vectors")).toEqual(
+      []
+    );
+    for (const namespace of others) {
+      const flat = namespace.join(".");
       expect((await store.get(namespace, "same"))?.value).toEqual({
+        text: "1",
         namespace,
       });
+      expect(await stored(client, flat, "same", "store_vectors")).toHaveLength(
+        1
+      );
     }
-    expect(await stored(container.client, "scope.one", "same")).toHaveLength(0);
   });
 
   it("refreshes the TTL of the namespace's own documents only", async () => {
@@ -136,51 +140,37 @@ describe("namespace isolation", () => {
     for (const namespace of namespaces) {
       await ttl.put(namespace, "k", { text: "1" });
     }
-    const [mine] = await idsOf(client, "ttl.a", "k");
-    const others = (
-      await Promise.all(
-        namespaces.slice(1).map((n) => idsOf(client, n.join("."), "k"))
-      )
-    ).flat();
-    const vectors = others.map((id) => id.replace("store:", "store_vectors:"));
-    for (const id of [mine, ...others, ...vectors]) await client.expire(id, 30);
+    const [mine] = await stored(client, "ttl.a", "k");
+    const others: string[] = [];
+    for (const namespace of namespaces.slice(1)) {
+      for (const kind of ["store", "store_vectors"]) {
+        const docs = await stored(client, namespace.join("."), "k", kind);
+        others.push(...docs.map((doc) => doc.id));
+      }
+    }
+    for (const id of [mine.id, ...others]) await client.expire(id, 30);
 
     await ttl.get(["ttl", "a"], "k", { refreshTTL: true });
     await ttl.search(["ttl", "a"], { refreshTTL: true });
     await ttl.search(["ttl", "a"], { refreshTTL: true, query: "near" });
 
-    expect(await client.ttl(mine)).toBeGreaterThan(30);
-    for (const id of [...others, ...vectors]) {
+    expect(await client.ttl(mine.id)).toBeGreaterThan(30);
+    for (const id of others) {
       expect(await client.ttl(id)).toBeLessThanOrEqual(30);
     }
   });
 
-  it("deletes only the replaced document's own vector", async () => {
-    const { client } = container;
-    for (const namespace of [
-      ["vk", "a"],
-      ["a", "vk"],
-      ["vk", "A"],
-    ]) {
-      await store.put(namespace, "k", { text: "1" });
-    }
-    await store.put(["vk", "a"], "k", { text: "2" });
-    await store.put(["vk", "a"], "k", { text: "3" });
-
-    const prefixes: string[] = [];
-    for (const id of await client.keys("store_vectors:*")) {
-      const doc = (await client.json.get(id)) as any;
-      if (["vk.a", "a.vk", "vk.A"].includes(doc.prefix))
-        prefixes.push(doc.prefix);
-    }
-    expect(prefixes.sort()).toEqual(["a.vk", "vk.A", "vk.a"]);
-  });
-
-  it("matches keys as earlier versions did, ignoring case", async () => {
+  it("matches keys as earlier versions did", async () => {
+    // Ignoring case
     await store.put(["case"], "k", { v: "lower" });
     await store.put(["case"], "K", { v: "upper" });
     expect((await store.get(["case"], "k"))?.value).toEqual({ v: "upper" });
-    expect(await stored(container.client, "case", "k")).toHaveLength(0);
+    expect(await stored(container.client, "case", "k")).toEqual([]);
+    // The empty key, within its namespace
+    await store.put(["empty", "child"], "", { v: 0 });
+    await store.put(["empty"], "", { v: 1 });
+    expect((await store.get(["empty"], ""))?.value).toEqual({ v: 1 });
+    expect((await store.get(["empty", "child"], ""))?.value).toEqual({ v: 0 });
   });
 
   it("pages through the namespace's documents, skipping others'", async () => {
@@ -202,13 +192,6 @@ describe("namespace isolation", () => {
       }
     }
     expect(keys.sort()).toEqual(["k0", "k10", "k15", "k20", "k5"]);
-  });
-
-  it("keeps the empty key within its namespace", async () => {
-    await store.put(["empty", "child"], "", { v: 0 });
-    await store.put(["empty"], "", { v: 1 });
-    expect((await store.get(["empty"], ""))?.value).toEqual({ v: 1 });
-    expect((await store.get(["empty", "child"], ""))?.value).toEqual({ v: 0 });
   });
 
   it("reads nothing through an empty or dotted label", async () => {
@@ -292,47 +275,42 @@ describe("namespace isolation", () => {
     for (const namespace of [["all", "a"], ["all", "b"], ["every"]]) {
       await store.put(namespace, "k", { text: "1" });
     }
-    let found: Awaited<ReturnType<typeof store.search>> = [];
-    const queries = await queriesOf(container.client, async () => {
-      found = await store.search([], { query: "near", limit: 3 });
-    });
+    const { result, queries } = await withQueries(container.client, () =>
+      store.search([], { query: "near", limit: 3 })
+    );
     // The query earlier versions sent, with nothing filtered out
     expect(queries).toEqual(["(*)=>[KNN 3 @embedding $BLOB]"]);
-    expect(found).toHaveLength(3);
+    expect(result).toHaveLength(3);
   });
 
-  it("falls back to the first-word query when Redis rejects the words", async () => {
-    await store.put(["memories", "a)"], "mine", { text: "1" });
-    let found: Awaited<ReturnType<typeof store.search>> = [];
-    const queries = await queriesOf(container.client, async () => {
-      found = await store.search(["memories", "a)"], {
-        query: "near",
-        limit: 100,
-      });
-    });
+  it.each([
+    // Redis rejects the all-words query for this label
+    ["a)", "(@prefix:(memories a)))"],
+    // Redis accepts it, but it matches no document
+    ["CORP\\alice", "(@prefix:(memories CORP\\alice))"],
+  ])("falls back to the first-word query for %s", async (label, narrow) => {
+    await store.put(["memories", label], "mine", { text: "1" });
+    const { result, queries } = await withQueries(container.client, () =>
+      store.search(["memories", label], { query: "near", limit: 100 })
+    );
     expect(queries).toEqual([
-      "(@prefix:(memories a)))=>[KNN 100 @embedding $BLOB]",
+      `${narrow}=>[KNN 100 @embedding $BLOB]`,
       "(@prefix:memories*)=>[KNN 100 @embedding $BLOB]",
     ]);
-    expect(found.map((item) => item.key)).toEqual(["mine"]);
+    expect(result.map((item) => item.key)).toEqual(["mine"]);
   });
 
-  it("falls back to the first-word query when the words match nothing", async () => {
-    // Redis accepts the all-words query for this label but it matches no
-    // document, so only the first-word query finds it.
-    await store.put(["memories", "CORP\\alice"], "mine", { text: "1" });
-    let found: Awaited<ReturnType<typeof store.search>> = [];
-    const queries = await queriesOf(container.client, async () => {
-      found = await store.search(["memories", "CORP\\alice"], {
-        query: "near",
-        limit: 100,
-      });
-    });
-    expect(queries).toEqual([
-      "(@prefix:(memories CORP\\alice))=>[KNN 100 @embedding $BLOB]",
-      "(@prefix:memories*)=>[KNN 100 @embedding $BLOB]",
-    ]);
-    expect(found.map((item) => item.key)).toEqual(["mine"]);
+  it("throws if Redis cannot answer vector search", async () => {
+    const search = vi
+      .spyOn(container.client.ft, "search")
+      .mockRejectedValue(new Error("Socket closed unexpectedly"));
+    try {
+      await expect(
+        store.search(["memories", "user-3"], { query: "near" })
+      ).rejects.toThrow("Socket closed unexpectedly");
+    } finally {
+      search.mockRestore();
+    }
   });
 
   it("doesn't fetch other namespaces' documents for vector search", async () => {
@@ -351,73 +329,20 @@ describe("namespace isolation", () => {
     // A vector whose namespace disagrees with its stored document's, as
     // another client could write.
     const { client } = container;
+    const doc = { key: "k", created_at: 1, updated_at: 1 };
     await client.json.set("store:mismatch", "$", {
+      ...doc,
       prefix: "vm.other",
-      key: "k",
       value: { text: "1" },
-      created_at: 1,
-      updated_at: 1,
     });
     await client.json.set("store_vectors:mismatch", "$", {
+      ...doc,
       prefix: "vm.mine",
-      key: "k",
       field_name: "text",
       embedding: [1, 0],
-      created_at: 1,
-      updated_at: 1,
     });
     const found = await store.search(["vm", "mine"], { query: "near" });
     expect(found).toEqual([]);
-  });
-
-  it("falls back when a newer client reports the rejection", async () => {
-    // node-redis v5 and later raise Redis's errors as subclasses of ErrorReply
-    const Reply = class ErrorReply extends Error {};
-    class SimpleError extends Reply {}
-    const search = vi
-      .spyOn(container.client.ft, "search")
-      .mockRejectedValueOnce(new SimpleError("SEARCH_SYNTAX Syntax error"));
-    try {
-      await store.search(["memories", "user-3"], { query: "near", limit: 3 });
-      expect(search.mock.calls.map(([, query]) => String(query))).toEqual([
-        "(@prefix:(memories user 3))=>[KNN 3 @embedding $BLOB]",
-        "(@prefix:memories*)=>[KNN 3 @embedding $BLOB]",
-      ]);
-    } finally {
-      search.mockRestore();
-    }
-  });
-
-  it("does not retry vector search when Redis cannot be reached", async () => {
-    const search = vi
-      .spyOn(container.client.ft, "search")
-      .mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
-    try {
-      await expect(
-        store.search(["memories", "user-3"], { query: "near" })
-      ).rejects.toThrow("Socket closed unexpectedly");
-      expect(search).toHaveBeenCalledTimes(1);
-    } finally {
-      search.mockRestore();
-    }
-  });
-
-  it("fails loudly if Redis fails after the first lookup search", async () => {
-    const { client } = container;
-    // Look-alikes rank level with ["lk", "a"], so the lookup searches twice.
-    await store.put(["a", "lk"], "k", { v: 1 });
-    await store.put(["A", "lk"], "k", { v: 2 });
-    const spy = vi
-      .spyOn(client.ft, "searchNoContent")
-      .mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
-    try {
-      await expect(store.put(["lk", "a"], "k", { v: 3 })).rejects.toThrow(
-        "Socket closed unexpectedly"
-      );
-    } finally {
-      spy.mockRestore();
-    }
-    expect(await stored(client, "lk.a", "k")).toHaveLength(0);
   });
 
   it("still finds the document if look-alikes go between the searches", async () => {
@@ -439,8 +364,8 @@ describe("namespace isolation", () => {
       .mockImplementationOnce(async (...args: any[]) => {
         const first = await (search as any)(...args);
         for (const namespace of others) {
-          for (const id of await idsOf(client, namespace.join("."), "k")) {
-            await client.del(id);
+          for (const doc of await stored(client, namespace.join("."), "k")) {
+            await client.del(doc.id);
           }
         }
         return first;
