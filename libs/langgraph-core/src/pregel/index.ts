@@ -33,7 +33,10 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
   getOnlyChannels,
+  isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -976,7 +979,11 @@ export class Pregel<
     const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint,
-      { saver, config: saved.config ?? config }
+      {
+        saver,
+        config: saved.config ?? config,
+        deltaWritesVersioned: isDeltaWritesVersioned(saved.metadata),
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -1306,6 +1313,14 @@ export class Pregel<
           ...checkpointMetadata,
         };
       }
+      const deltaWritesVersioned =
+        Object.values(this.channels as Record<string, BaseChannel>).some(
+          isDeltaChannel
+        ) &&
+        (saved === undefined || isDeltaWritesVersioned(saved.metadata));
+      const versionedMetadata = deltaWritesVersioned
+        ? { [DELTA_WRITES_VERSIONED]: true }
+        : {};
 
       // Find last node that updated the state, if not provided
       const { values, asNode } = updates[0];
@@ -1323,6 +1338,7 @@ export class Pregel<
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1336,7 +1352,11 @@ export class Pregel<
       const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
         checkpoint,
-        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
+        {
+          saver: checkpointer,
+          config: saved?.config ?? checkpointConfig,
+          deltaWritesVersioned,
+        }
       );
 
       if (values === null && asNode === END) {
@@ -1401,14 +1421,17 @@ export class Pregel<
           );
         }
         // save checkpoint
+        const { [DELTA_WRITES_VERSIONED]: _carried, ...endMetadata } =
+          checkpointMetadata as Record<string, unknown>;
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, step),
           {
-            ...checkpointMetadata,
+            ...endMetadata,
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1449,6 +1472,7 @@ export class Pregel<
             source: "fork",
             step: step + 1,
             parents: saved.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1545,6 +1569,7 @@ export class Pregel<
             source: "input",
             step: nextStep,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1592,10 +1617,10 @@ export class Pregel<
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
           _applyWrites(
-            saved.checkpoint,
+            checkpoint,
             channels,
             [{ name: INPUT, writes: nullWrites, triggers: [] }],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1617,7 +1642,7 @@ export class Pregel<
             checkpoint,
             channels,
             tasks as WritesProtocol[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1693,7 +1718,7 @@ export class Pregel<
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values, taskId } of validUpdates) {
+      for (const [i, { asNode, values, taskId }] of validUpdates.entries()) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1719,7 +1744,12 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
+          // Savers keep one write per (task id, idx), so updates sharing an id
+          // lose all but the first one's writes, which a DeltaChannel replays.
+          // The first keeps the id a lone update has always had.
+          id:
+            taskId ??
+            uuid5(i === 0 ? INTERRUPT : `${INTERRUPT}:${i}`, checkpoint.id),
           writers: [],
         });
       }
@@ -1779,17 +1809,33 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      // A new thread has no checkpoint to hold the writes, so the delta
+      // channels they wrote are stored whole on this one.
+      const channelsToSnapshot = new Set<string>();
+      if (saved === undefined) {
+        for (const [k, ch] of Object.entries(channels)) {
+          if (
+            isDeltaChannel(ch) &&
+            checkpoint.channel_versions[k] !== undefined
+          ) {
+            channelsToSnapshot.add(k);
+          }
+        }
+      }
       const newVersions = getNewChannelVersions(
         checkpointPreviousVersions,
         checkpoint.channel_versions
       );
       const nextConfig = await checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, channels, step + 1),
+        createCheckpoint(checkpoint, channels, step + 1, {
+          channelsToSnapshot,
+        }),
         {
           source: "update",
           step: step + 1,
           parents: saved?.metadata?.parents ?? {},
+          ...versionedMetadata,
         },
         newVersions
       );
