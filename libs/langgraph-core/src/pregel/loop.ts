@@ -1762,6 +1762,9 @@ export class PregelLoop {
     inputMetadata: Omit<CheckpointMetadata, "step" | "parents">
   ) {
     const exiting = this.checkpointMetadata === inputMetadata;
+    // Nothing ran since this checkpoint was loaded: putting it again would
+    // store it as its own parent.
+    if (exiting && this.checkpoint.id === this.checkpointIdSaved) return;
 
     const doCheckpoint =
       this.checkpointer != null && (this.durability !== "exit" || exiting);
