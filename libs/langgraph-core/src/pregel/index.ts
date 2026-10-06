@@ -1718,7 +1718,7 @@ export class Pregel<
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values, taskId } of validUpdates) {
+      for (const [i, { asNode, values, taskId }] of validUpdates.entries()) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1744,7 +1744,12 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
+          // Savers keep one write per (task id, idx), so updates sharing an id
+          // lose all but the first one's writes, which a DeltaChannel replays.
+          // The first keeps the id a lone update has always had.
+          id:
+            taskId ??
+            uuid5(i === 0 ? INTERRUPT : `${INTERRUPT}:${i}`, checkpoint.id),
           writers: [],
         });
       }
