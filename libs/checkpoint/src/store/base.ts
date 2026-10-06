@@ -11,6 +11,16 @@ export class InvalidNamespaceError extends Error {
   }
 }
 
+export function validateNamespaceDelimiter(namespace: string[]): void {
+  for (const label of namespace) {
+    if (typeof label === "string" && label.includes(".")) {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
+      );
+    }
+  }
+}
+
 /**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
@@ -414,6 +424,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
+    validateNamespaceDelimiter(namespace);
     return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
@@ -506,6 +517,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
+    validateNamespaceDelimiter(namespace);
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
@@ -542,9 +554,11 @@ export abstract class BaseStore {
 
     const matchConditions: MatchCondition[] = [];
     if (prefix) {
+      validateNamespaceDelimiter(prefix);
       matchConditions.push({ matchType: "prefix", path: prefix });
     }
     if (suffix) {
+      validateNamespaceDelimiter(suffix);
       matchConditions.push({ matchType: "suffix", path: suffix });
     }
 

@@ -8,6 +8,8 @@ import {
   type GetOperation,
   type Operation,
   OperationResults,
+  validateNamespace,
+  validateNamespaceDelimiter,
 } from "./base.js";
 
 /**
@@ -121,6 +123,19 @@ export class AsyncBatchedStore extends BaseStore {
   }
 
   private enqueueOperation<T>(operation: Operation): Promise<T> {
+    if ("namespace" in operation) {
+      const isWrite = "value" in operation && operation.value !== null;
+      if (isWrite) {
+        validateNamespace(operation.namespace);
+      } else {
+        validateNamespaceDelimiter(operation.namespace);
+      }
+    } else if ("namespacePrefix" in operation) {
+      validateNamespace(operation.namespacePrefix, {
+        allowEmpty: true,
+        allowReservedRoot: true,
+      });
+    }
     return new Promise<T>((resolve, reject) => {
       const key = this.nextKey;
       this.nextKey += 1;
