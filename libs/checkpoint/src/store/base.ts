@@ -58,14 +58,6 @@ export function validateNamespace(
 }
 
 /**
- * Validates namespace labels for reads, deletes and filters. Unlike `put`,
- * these allow an empty namespace and the reserved `langgraph` root.
- */
-function validateNamespaceLabels(namespace: string[]): void {
-  validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
-}
-
-/**
  * Represents a stored item with metadata.
  */
 export interface Item {
@@ -422,7 +414,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
-    validateNamespaceLabels(namespace);
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
@@ -457,7 +449,10 @@ export abstract class BaseStore {
       query?: string;
     } = {}
   ): Promise<SearchItem[]> {
-    validateNamespaceLabels(namespacePrefix);
+    validateNamespace(namespacePrefix, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
     const { filter, limit = 10, offset = 0, query } = options;
     return (
       await this.batch<[SearchOperation]>([
@@ -512,7 +507,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
-    validateNamespaceLabels(namespace);
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
@@ -549,11 +544,11 @@ export abstract class BaseStore {
 
     const matchConditions: MatchCondition[] = [];
     if (prefix) {
-      validateNamespaceLabels(prefix);
+      validateNamespace(prefix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "prefix", path: prefix });
     }
     if (suffix) {
-      validateNamespaceLabels(suffix);
+      validateNamespace(suffix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "suffix", path: suffix });
     }
 
