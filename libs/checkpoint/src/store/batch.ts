@@ -9,8 +9,13 @@ import {
   type Operation,
   OperationResults,
   validateNamespace,
-  validateNamespaceDelimiter,
 } from "./base.js";
+
+/**
+ * Gets, deletes and searches only need label checks, as in `BaseStore`.
+ * Puts get the full `BaseStore.put` rules.
+ */
+const LABEL_CHECKS_ONLY = { allowEmpty: true, allowReservedRoot: true };
 
 /**
  * Extracts and returns the underlying store from an `AsyncBatchedStore`,
@@ -123,18 +128,13 @@ export class AsyncBatchedStore extends BaseStore {
   }
 
   private enqueueOperation<T>(operation: Operation): Promise<T> {
+    // Validate before queueing: a throw inside the shared batch would reject
+    // every queued operation, not just the invalid one.
     if ("namespace" in operation) {
-      const isWrite = "value" in operation && operation.value !== null;
-      if (isWrite) {
-        validateNamespace(operation.namespace);
-      } else {
-        validateNamespaceDelimiter(operation.namespace);
-      }
+      const isPut = "value" in operation && operation.value !== null;
+      validateNamespace(operation.namespace, isPut ? {} : LABEL_CHECKS_ONLY);
     } else if ("namespacePrefix" in operation) {
-      validateNamespace(operation.namespacePrefix, {
-        allowEmpty: true,
-        allowReservedRoot: true,
-      });
+      validateNamespace(operation.namespacePrefix, LABEL_CHECKS_ONLY);
     }
     return new Promise<T>((resolve, reject) => {
       const key = this.nextKey;

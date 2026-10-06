@@ -11,16 +11,6 @@ export class InvalidNamespaceError extends Error {
   }
 }
 
-export function validateNamespaceDelimiter(namespace: string[]): void {
-  for (const label of namespace) {
-    if (typeof label === "string" && label.includes(".")) {
-      throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
-      );
-    }
-  }
-}
-
 /**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
@@ -65,6 +55,14 @@ export function validateNamespace(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );
   }
+}
+
+/**
+ * Validates namespace labels for reads, deletes and filters. Unlike `put`,
+ * these allow an empty namespace and the reserved `langgraph` root.
+ */
+function validateNamespaceLabels(namespace: string[]): void {
+  validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
 }
 
 /**
@@ -424,7 +422,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
-    validateNamespaceDelimiter(namespace);
+    validateNamespaceLabels(namespace);
     return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
@@ -459,10 +457,7 @@ export abstract class BaseStore {
       query?: string;
     } = {}
   ): Promise<SearchItem[]> {
-    validateNamespace(namespacePrefix, {
-      allowEmpty: true,
-      allowReservedRoot: true,
-    });
+    validateNamespaceLabels(namespacePrefix);
     const { filter, limit = 10, offset = 0, query } = options;
     return (
       await this.batch<[SearchOperation]>([
@@ -517,7 +512,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
-    validateNamespaceDelimiter(namespace);
+    validateNamespaceLabels(namespace);
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
@@ -554,11 +549,11 @@ export abstract class BaseStore {
 
     const matchConditions: MatchCondition[] = [];
     if (prefix) {
-      validateNamespaceDelimiter(prefix);
+      validateNamespaceLabels(prefix);
       matchConditions.push({ matchType: "prefix", path: prefix });
     }
     if (suffix) {
-      validateNamespaceDelimiter(suffix);
+      validateNamespaceLabels(suffix);
       matchConditions.push({ matchType: "suffix", path: suffix });
     }
 

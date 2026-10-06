@@ -79,4 +79,112 @@ describe("namespace delimiter validation", () => {
       await store.stop();
     }
   });
+
+  const invalidLabels: [string, string[]][] = [
+    ["an empty label", ["tenant", ""]],
+    // `String(1.5)` contains the delimiter, so a type check is part of the label check.
+    ["a non-string label", ["tenant", 1.5 as unknown as string]],
+    ["a dotted label", ["tenant", "alice.files"]],
+  ];
+
+  describe.each([false, true])("shared namespace rules (batched: %s)", (batched) => {
+    const setup = () => {
+      const underlying = new RecordingStore();
+      const store = batched ? new AsyncBatchedStore(underlying) : underlying;
+      store.start();
+      return { underlying, store };
+    };
+
+    it.each(invalidLabels)("rejects %s in reads, deletes and searches", async (_, namespace) => {
+      const { underlying, store } = setup();
+      try {
+        await expect(store.get(namespace, "k")).rejects.toThrow(InvalidNamespaceError);
+        await expect(store.delete(namespace, "k")).rejects.toThrow(InvalidNamespaceError);
+        await expect(store.search(namespace)).rejects.toThrow(InvalidNamespaceError);
+        expect(underlying.execute).not.toHaveBeenCalled();
+      } finally {
+        await store.stop();
+      }
+    });
+
+    it("keeps write-only rules off reads, deletes and searches", async () => {
+      const { underlying, store } = setup();
+      try {
+        await store.get([], "k");
+        await store.get(["langgraph", "x"], "k");
+        await store.delete(["langgraph", "x"], "k");
+        await store.search([]);
+        await store.search(["langgraph"]);
+        expect(underlying.execute).toHaveBeenCalledTimes(5);
+      } finally {
+        await store.stop();
+      }
+    });
+
+    it("applies the BaseStore.put rules to puts", async () => {
+      const { underlying, store } = setup();
+      try {
+        await expect(store.put([], "k", { v: 1 })).rejects.toThrow(InvalidNamespaceError);
+        await expect(store.put(["langgraph", "x"], "k", { v: 1 })).rejects.toThrow(
+          InvalidNamespaceError,
+        );
+        for (const [, namespace] of invalidLabels) {
+          await expect(store.put(namespace, "k", { v: 1 })).rejects.toThrow(
+            InvalidNamespaceError,
+          );
+        }
+        expect(underlying.execute).not.toHaveBeenCalled();
+      } finally {
+        await store.stop();
+      }
+    });
+  });
+
+  it.each(invalidLabels)("rejects %s in namespace listing filters", async (_, namespace) => {
+    const store = new RecordingStore();
+    await expect(store.listNamespaces({ prefix: namespace })).rejects.toThrow(
+      InvalidNamespaceError,
+    );
+    await expect(store.listNamespaces({ suffix: namespace })).rejects.toThrow(
+      InvalidNamespaceError,
+    );
+    expect(store.execute).not.toHaveBeenCalled();
+  });
+
+  it("keeps empty, reserved-root and wildcard listing filters", async () => {
+    const store = new RecordingStore();
+    await store.listNamespaces({ prefix: [] });
+    await store.listNamespaces({ prefix: ["langgraph", "*"] });
+    await store.listNamespaces({ suffix: ["*", "files"] });
+    expect(store.execute).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails only the invalid caller when operations share a batch", async () => {
+    const underlying = new InMemoryStore();
+    await underlying.put(["tenant", "alice"], "k", { text: "original" });
+    const dispatched = vi.spyOn(underlying, "batch");
+    const store = new AsyncBatchedStore(underlying);
+    store.start();
+    try {
+      const [valid, ...invalid] = await Promise.allSettled([
+        store.get(["tenant", "alice"], "k"),
+        store.get(["tenant", ""], "k"),
+        store.delete(["tenant", 1.5 as unknown as string], "k"),
+        store.search(["tenant", ""]),
+        store.put(["tenant.alice"], "k", { text: "overwrite" }),
+      ]);
+      expect(valid).toMatchObject({
+        status: "fulfilled",
+        value: { value: { text: "original" } },
+      });
+      for (const result of invalid) {
+        expect(result.status).toBe("rejected");
+        expect((result as PromiseRejectedResult).reason).toBeInstanceOf(InvalidNamespaceError);
+      }
+      expect(dispatched).toHaveBeenCalledOnce();
+      expect(dispatched.mock.calls[0][0]).toEqual([{ namespace: ["tenant", "alice"], key: "k" }]);
+    } finally {
+      await store.stop();
+    }
+  });
 });
