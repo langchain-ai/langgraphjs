@@ -3,6 +3,21 @@ import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
 import type { IdleReconnectMode } from "./utils/stream.js";
 
+/**
+ * Runtime passed as the second argument to an Agent Server graph factory.
+ * Runs and resumes provide execution context. Assistant inspection and thread
+ * state operations have no execution runtime.
+ */
+export type ServerRuntime<Context = unknown> =
+  | {
+      accessContext: "threads.create_run";
+      executionRuntime: { context: Context | undefined };
+    }
+  | {
+      accessContext: "assistants.read" | "threads.read" | "threads.update";
+      executionRuntime: null;
+    };
+
 export type MultitaskStrategy = "reject" | "interrupt" | "rollback" | "enqueue";
 export type OnConflictBehavior = "raise" | "do_nothing";
 export type OnCompletionBehavior = "complete" | "continue";
