@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.12.2
+
+### Patch Changes
+
+- [#2944](https://github.com/langchain-ai/langgraphjs/pull/2944) [`413a9c7`](https://github.com/langchain-ai/langgraphjs/commit/413a9c77b647202ac87ce53a61de1e6f7a26e796) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - fix(sdk): URL-encode caller-supplied identifiers (thread, assistant, run, cron and checkpoint IDs, subgraph namespaces) in request paths so an untrusted ID can't redirect a request to another endpoint. IDs containing reserved characters such as `/`, `?`, `#`, `%` or spaces are now sent percent-encoded, so pass raw IDs rather than pre-encoded ones. `.` and `..` are no longer accepted as IDs: the method rejects with an `Invalid path segment` error instead of sending a request.
+
+- [#2959](https://github.com/langchain-ai/langgraphjs/pull/2959) [`67cfdd2`](https://github.com/langchain-ai/langgraphjs/commit/67cfdd2cca7c752561cbb37675573d7004bba222) Thanks [@casparb](https://github.com/casparb)! - Export the Agent Server graph factory `ServerRuntime` type from `@langchain/langgraph-sdk`.
+
 ## 1.12.1
 
 ### Patch Changes
