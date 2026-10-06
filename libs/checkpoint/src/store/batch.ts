@@ -12,12 +12,6 @@ import {
 } from "./base.js";
 
 /**
- * Gets, deletes and searches only need label checks, as in `BaseStore`.
- * Puts get the full `BaseStore.put` rules.
- */
-const LABEL_CHECKS_ONLY = { allowEmpty: true, allowReservedRoot: true };
-
-/**
  * Extracts and returns the underlying store from an `AsyncBatchedStore`,
  * or returns the input if it is not an `AsyncBatchedStore`.
  */
@@ -75,6 +69,7 @@ export class AsyncBatchedStore extends BaseStore {
   }
 
   async get(namespace: string[], key: string): Promise<Item | null> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     return this.enqueueOperation({ namespace, key } as GetOperation);
   }
 
@@ -87,6 +82,10 @@ export class AsyncBatchedStore extends BaseStore {
       query?: string;
     }
   ): Promise<Item[]> {
+    validateNamespace(namespacePrefix, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
     const { filter, limit = 10, offset = 0, query } = options || {};
     return this.enqueueOperation({
       namespacePrefix,
@@ -102,10 +101,12 @@ export class AsyncBatchedStore extends BaseStore {
     key: string,
     value: Record<string, any>
   ): Promise<void> {
+    validateNamespace(namespace);
     return this.enqueueOperation({ namespace, key, value } as PutOperation);
   }
 
   async delete(namespace: string[], key: string): Promise<void> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     return this.enqueueOperation({
       namespace,
       key,
@@ -128,14 +129,8 @@ export class AsyncBatchedStore extends BaseStore {
   }
 
   private enqueueOperation<T>(operation: Operation): Promise<T> {
-    // Validate before queueing: a throw inside the shared batch would reject
-    // every queued operation, not just the invalid one.
-    if ("namespace" in operation) {
-      const isPut = "value" in operation && operation.value !== null;
-      validateNamespace(operation.namespace, isPut ? {} : LABEL_CHECKS_ONLY);
-    } else if ("namespacePrefix" in operation) {
-      validateNamespace(operation.namespacePrefix, LABEL_CHECKS_ONLY);
-    }
+    // Callers validate namespaces first: a throw inside the shared batch would
+    // reject every queued operation, not just the invalid one.
     return new Promise<T>((resolve, reject) => {
       const key = this.nextKey;
       this.nextKey += 1;

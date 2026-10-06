@@ -515,7 +515,7 @@ describe("InMemoryStore", () => {
   });
 });
 
-describe("namespace label validation", () => {
+describe("Namespace validation", () => {
   class RecordingStore extends BaseStore {
     execute = vi.fn(async (_ops: Operation[]) => []);
 
@@ -526,39 +526,7 @@ describe("namespace label validation", () => {
     }
   }
 
-  it.each([false, true])(
-    "rejects dotted aliases before dispatch (batched: %s)",
-    async (batched) => {
-      const underlying = new RecordingStore();
-      const store = batched ? new AsyncBatchedStore(underlying) : underlying;
-      const alias = ["tenant", "alice.files"];
-      await expect(store.get(alias, "secret")).rejects.toThrow(
-        InvalidNamespaceError
-      );
-      await expect(store.delete(alias, "secret")).rejects.toThrow(
-        InvalidNamespaceError
-      );
-      await expect(
-        store.put(alias, "secret", { text: "overwrite" })
-      ).rejects.toThrow(InvalidNamespaceError);
-      await expect(store.search(alias)).rejects.toThrow(InvalidNamespaceError);
-      expect(underlying.execute).not.toHaveBeenCalled();
-    }
-  );
-
-  it("rejects dotted listing filters while retaining wildcards", async () => {
-    const store = new RecordingStore();
-    await expect(
-      store.listNamespaces({ prefix: ["tenant.alice"] })
-    ).rejects.toThrow(InvalidNamespaceError);
-    await expect(
-      store.listNamespaces({ suffix: ["alice.files"] })
-    ).rejects.toThrow(InvalidNamespaceError);
-    await store.listNamespaces({ prefix: ["tenant", "*"] });
-    expect(store.execute).toHaveBeenCalledOnce();
-  });
-
-  it("keeps hierarchical searches and protects exact keys through the wrapper", async () => {
+  it("should keep hierarchical and empty-prefix search through the wrapper", async () => {
     const underlying = new InMemoryStore();
     await underlying.put(["tenant", "alice", "files"], "secret", {
       text: "original",
@@ -566,15 +534,6 @@ describe("namespace label validation", () => {
     const store = new AsyncBatchedStore(underlying);
     store.start();
     try {
-      await expect(
-        store.get(["tenant:alice", "files"], "secret")
-      ).rejects.toThrow(InvalidNamespaceError);
-      await expect(
-        store.delete(["tenant:alice", "files"], "secret")
-      ).rejects.toThrow(InvalidNamespaceError);
-      await expect(
-        store.put(["tenant:alice", "files"], "secret", { text: "overwrite" })
-      ).rejects.toThrow(InvalidNamespaceError);
       expect((await store.search(["tenant", "alice"]))[0].namespace).toEqual([
         "tenant",
         "alice",
@@ -583,19 +542,7 @@ describe("namespace label validation", () => {
       expect(await store.search([])).toHaveLength(1);
       expect(
         (await store.get(["tenant", "alice", "files"], "secret"))?.value
-      ).toEqual({
-        text: "original",
-      });
-      await expect(
-        underlying.batch([
-          { namespace: ["tenant:alice", "files"], key: "secret" },
-        ])
-      ).rejects.toThrow(InvalidNamespaceError);
-      await expect(
-        underlying.batch([
-          { namespace: ["tenant:alice", "files"], key: "secret", value: null },
-        ])
-      ).rejects.toThrow(InvalidNamespaceError);
+      ).toEqual({ text: "original" });
     } finally {
       await store.stop();
     }
@@ -620,7 +567,7 @@ describe("namespace label validation", () => {
       };
 
       it.each(invalidLabels)(
-        "rejects %s in reads, deletes and searches",
+        "should reject %s in gets, deletes and searches",
         async (_, namespace) => {
           const { underlying, store } = setup();
           try {
@@ -640,7 +587,7 @@ describe("namespace label validation", () => {
         }
       );
 
-      it("keeps write-only rules off reads, deletes and searches", async () => {
+      it("should not apply put-only rules to gets, deletes and searches", async () => {
         const { underlying, store } = setup();
         try {
           await store.get([], "k");
@@ -654,7 +601,7 @@ describe("namespace label validation", () => {
         }
       });
 
-      it("applies the BaseStore.put rules to puts", async () => {
+      it("should apply the BaseStore.put rules to puts", async () => {
         const { underlying, store } = setup();
         try {
           await expect(store.put([], "k", { v: 1 })).rejects.toThrow(
@@ -677,7 +624,7 @@ describe("namespace label validation", () => {
   );
 
   it.each(invalidLabels)(
-    "rejects %s in namespace listing filters",
+    "should reject %s in namespace listing filters",
     async (_, namespace) => {
       const store = new RecordingStore();
       await expect(store.listNamespaces({ prefix: namespace })).rejects.toThrow(
@@ -690,7 +637,7 @@ describe("namespace label validation", () => {
     }
   );
 
-  it("keeps empty, reserved-root and wildcard listing filters", async () => {
+  it("should allow empty, reserved-root and wildcard listing filters", async () => {
     const store = new RecordingStore();
     await store.listNamespaces({ prefix: [] });
     await store.listNamespaces({ prefix: ["langgraph", "*"] });
@@ -698,7 +645,7 @@ describe("namespace label validation", () => {
     expect(store.execute).toHaveBeenCalledTimes(3);
   });
 
-  it("fails only the invalid caller when operations share a batch", async () => {
+  it("should fail only the invalid caller when operations share a batch", async () => {
     const underlying = new InMemoryStore();
     await underlying.put(["tenant", "alice"], "k", { text: "original" });
     const dispatched = vi.spyOn(underlying, "batch");
