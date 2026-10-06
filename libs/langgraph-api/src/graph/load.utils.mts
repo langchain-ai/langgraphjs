@@ -3,7 +3,6 @@ import type {
   Graph,
   LangGraphRunnableConfig,
 } from "@langchain/langgraph";
-import type { ServerRuntime } from "@langchain/langgraph-sdk";
 import * as uuid from "@langchain/core/utils/uuid";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -14,7 +13,15 @@ export const NAMESPACE_GRAPH = uuid.parse(
   "6ba7b821-9dad-11d1-80b4-00c04fd430c8"
 );
 
-export type { ServerRuntime } from "@langchain/langgraph-sdk";
+export type ServerRuntime<Context = unknown> =
+  | {
+      accessContext: "threads.create_run";
+      executionRuntime: { context: Context | undefined };
+    }
+  | {
+      accessContext: "assistants.read" | "threads.read" | "threads.update";
+      executionRuntime: null;
+    };
 
 export type CompiledGraphFactory<T extends string> = (
   config: LangGraphRunnableConfig,
