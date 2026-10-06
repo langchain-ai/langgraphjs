@@ -1,5 +1,18 @@
 # @langchain/langgraph
 
+## 1.4.20
+
+### Patch Changes
+
+- [#2923](https://github.com/langchain-ai/langgraphjs/pull/2923) [`8adc03d`](https://github.com/langchain-ai/langgraphjs/commit/8adc03d61b6b488b82c36111f249b4d290c73db7) Thanks [@eliornl](https://github.com/eliornl)! - give each update of a multi-update `bulkUpdateState` super-step its own task id, so a DeltaChannel keeps every update instead of only the first
+
+- [#2927](https://github.com/langchain-ai/langgraphjs/pull/2927) [`46584bc`](https://github.com/langchain-ai/langgraphjs/commit/46584bc279c1b654c31748d850002f73bfbe0f7c) Thanks [@eliornl](https://github.com/eliornl)! - don't ask the checkpointer for the history of a DeltaChannel that was never written; it is empty, and the walk for it read every ancestor of the thread on every load. Only checkpoints whose metadata has `delta_writes_versioned` skip it: graphs with a DeltaChannel set it on new threads, where every DeltaChannel write has a version, so threads started by earlier versions keep reading as before. `updateState` now versions the writes it takes from the head, which also stops PostgresSaver from dropping them, and keeps the DeltaChannel writes it makes on a new thread.
+
+- [#2954](https://github.com/langchain-ai/langgraphjs/pull/2954) [`f9483ca`](https://github.com/langchain-ai/langgraphjs/commit/f9483ca4326a38ec57cd192809f912e3c5a22ea1) Thanks [@eliornl](https://github.com/eliornl)! - exit durability no longer saves a checkpoint as its own parent when a run ends without running anything, such as replaying the newest checkpoint of a finished thread; with a DeltaChannel, reading such a thread crashed
+- Updated dependencies [[`8d6e6cf`](https://github.com/langchain-ai/langgraphjs/commit/8d6e6cf169fa4750dcb33a5477a6fc65fa3d5ba8), [`413a9c7`](https://github.com/langchain-ai/langgraphjs/commit/413a9c77b647202ac87ce53a61de1e6f7a26e796), [`67cfdd2`](https://github.com/langchain-ai/langgraphjs/commit/67cfdd2cca7c752561cbb37675573d7004bba222)]:
+  - @langchain/langgraph-checkpoint@1.1.6
+  - @langchain/langgraph-sdk@1.12.2
+
 ## 1.4.19
 
 ### Patch Changes

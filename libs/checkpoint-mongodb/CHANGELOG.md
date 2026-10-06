@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.4.2
+
+### Patch Changes
+
+- [#2931](https://github.com/langchain-ai/langgraphjs/pull/2931) [`5b0eb12`](https://github.com/langchain-ai/langgraphjs/commit/5b0eb128f75b9899d293f5b85480c84ad309fbad) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - fix(checkpoint-mongodb): re-check the namespace of `MongoDBStore` vector search results against the requested prefix, so a label like `"team/alice"` can no longer match items stored under `["team", "alice"]`
+
 ## 1.4.1
 
 ### Patch Changes
