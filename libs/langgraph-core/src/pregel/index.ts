@@ -34,6 +34,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
+  deltaChannelsWithPendingWrites,
   getOnlyChannels,
   isDeltaChannel,
   isDeltaWritesVersioned,
@@ -1285,7 +1286,12 @@ export class Pregel<
         values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
         taskId?: string;
-      }[]
+      }[],
+      // Only the first superstep of the update seals, matching Python's
+      // `perform_superstep(..., is_first)`; the `__copy__` recursion below
+      // passes `false` explicitly (its base is the fresh fork, which never
+      // walks the original base's writes).
+      isFirstSuperstep: boolean
     ) => {
       // get last checkpoint
       const config = this._ownCheckpointConfig(
@@ -1517,7 +1523,8 @@ export class Pregel<
 
           return updateSuperStep(
             patchCheckpointMap(nextConfig, saved.metadata),
-            Object.values(userGroupBy).flat()
+            Object.values(userGroupBy).flat(),
+            false
           );
         }
 
@@ -1809,6 +1816,10 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      const newVersions = getNewChannelVersions(
+        checkpointPreviousVersions,
+        checkpoint.channel_versions
+      );
       // A new thread has no checkpoint to hold the writes, so the delta
       // channels they wrote are stored whole on this one.
       const channelsToSnapshot = new Set<string>();
@@ -1821,11 +1832,33 @@ export class Pregel<
             channelsToSnapshot.add(k);
           }
         }
+      } else if (isFirstSuperstep) {
+        // First-superstep seal (port of Python #8548's
+        // `delta_channels_with_pending_writes` fork seal, scoped to channels
+        // whose version moved in this superstep): a checkpoint's pending
+        // writes belong to the child that consumed them, and nothing records
+        // which child that was, so a new branch snapshots every delta channel
+        // they touch — its ancestor walk then never replays them, and the
+        // relative order of the base's finished-task writes and this update's
+        // writes stops mattering.
+        //
+        // The version-moved scope keeps the selection persistable by
+        // construction: version-keyed savers (Postgres, Redis) store snapshot
+        // blobs only for channels in `newVersions`, and an update that names
+        // a `checkpoint_id` skips applying the pending writes
+        // (see above), so a touched-but-unwritten channel's version would not
+        // move and its snapshot would be silently dropped. That addressed
+        // case — plus the INPUT and END-clear branches and the rest of #8548
+        // (resume-by-`checkpoint_id` seal, new-input-on-interrupted-head seal,
+        // Command-goto-replaced-Send seal, and Python's snapshot-bump
+        // machinery) — stays on the alignment tracker.
+        for (const ch of deltaChannelsWithPendingWrites(
+          this.channels as Record<string, BaseChannel>,
+          saved.pendingWrites
+        )) {
+          if (ch in newVersions) channelsToSnapshot.add(ch);
+        }
       }
-      const newVersions = getNewChannelVersions(
-        checkpointPreviousVersions,
-        checkpoint.channel_versions
-      );
       const nextConfig = await checkpointer.put(
         checkpointConfig,
         createCheckpoint(checkpoint, channels, step + 1, {
@@ -1857,8 +1890,8 @@ export class Pregel<
     };
 
     let currentConfig = startConfig;
-    for (const { updates } of supersteps) {
-      currentConfig = await updateSuperStep(currentConfig, updates);
+    for (const [i, { updates }] of supersteps.entries()) {
+      currentConfig = await updateSuperStep(currentConfig, updates, i === 0);
     }
 
     return currentConfig;

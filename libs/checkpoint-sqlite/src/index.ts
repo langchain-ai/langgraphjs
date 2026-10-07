@@ -8,6 +8,8 @@ import {
   type SerializerProtocol,
   type PendingWrite,
   type CheckpointMetadata,
+  compareWritesSortKeys,
+  writesSortKey,
   TASKS,
   WRITES_IDX_MAP,
   copyCheckpoint,
@@ -30,6 +32,11 @@ interface PendingWriteColumn {
   channel: string;
   type: string;
   value: string;
+  /** Present when the database has the `task_path` column; `""` for rows
+   * written before it existed. Missing on pre-column databases read
+   * read-only. */
+  task_path?: string;
+  idx?: number;
 }
 
 interface PendingSendColumn {
@@ -37,7 +44,51 @@ interface PendingSendColumn {
   value: string;
 }
 
-function prepareSql(db: DatabaseType, checkpointId: boolean) {
+/**
+ * Sort raw pending-write columns into `writesSortKey` order.
+ *
+ * Sorting happens in JS, not SQL, so the order never depends on a database
+ * collation and always matches live execution (see `writesSortKey` in
+ * `@langchain/langgraph-checkpoint`). Rows from a pre-`task_path` database
+ * have no path and sort first by `task_id`, which is the order they were
+ * written in.
+ */
+function sortPendingWriteColumns(
+  columns: PendingWriteColumn[]
+): PendingWriteColumn[] {
+  // Compute each row's key once, then sort on the cached keys.
+  const keyed = columns.map((column) => ({
+    key: writesSortKey(column.task_path ?? "", column.task_id, column.idx ?? 0),
+    column,
+  }));
+  keyed.sort((a, b) => compareWritesSortKeys(a.key, b.key));
+  return keyed.map(({ column }) => column);
+}
+
+function isReadonlyError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "code" in e &&
+    (e as { code?: unknown }).code === "SQLITE_READONLY"
+  );
+}
+
+function isDuplicateColumnError(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "message" in e &&
+    String((e as { message?: unknown }).message).includes(
+      "duplicate column name"
+    )
+  );
+}
+
+function prepareSql(db: DatabaseType, checkpointId: boolean, hasTaskPath: boolean) {
+  // `task_path` is selected as '' on pre-column databases (read read-only)
+  // so the row shape is the same either way.
+  const taskPath = hasTaskPath ? "pw.task_path" : "''";
   const sql = `
   SELECT
     thread_id,
@@ -54,7 +105,9 @@ function prepareSql(db: DatabaseType, checkpointId: boolean) {
             'task_id', pw.task_id,
             'channel', pw.channel,
             'type', pw.type,
-            'value', CAST(pw.value AS TEXT)
+            'value', CAST(pw.value AS TEXT),
+            'task_path', ${taskPath},
+            'idx', pw.idx
           )
         )
       FROM writes as pw
@@ -92,6 +145,14 @@ export class SqliteSaver extends BaseCheckpointSaver {
 
   protected isSetup: boolean;
 
+  /**
+   * Whether the `writes` table has the `task_path` column. `false` only for a
+   * read-only database from before the column existed: its rows read back
+   * with path `""` (the order they were written in), and `putWrites` cannot
+   * store paths.
+   */
+  protected _hasTaskPath: boolean = true;
+
   protected withoutCheckpoint: Statement;
 
   protected withCheckpoint: Statement;
@@ -111,7 +172,13 @@ export class SqliteSaver extends BaseCheckpointSaver {
       return;
     }
 
-    this.db.pragma("journal_mode=WAL");
+    // A read-only database can't switch journal mode; skip instead of
+    // failing setup (reads still work, writes will fail on their own).
+    try {
+      this.db.pragma("journal_mode=WAL");
+    } catch (e) {
+      if (!isReadonlyError(e)) throw e;
+    }
     this.db.exec(`
 CREATE TABLE IF NOT EXISTS checkpoints (
   thread_id TEXT NOT NULL,
@@ -129,15 +196,33 @@ CREATE TABLE IF NOT EXISTS writes (
   checkpoint_ns TEXT NOT NULL DEFAULT '',
   checkpoint_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
+  task_path TEXT NOT NULL DEFAULT '',
   idx INTEGER NOT NULL,
   channel TEXT NOT NULL,
   type TEXT,
   value BLOB,
   PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );`);
+    // sqlite has no ADD COLUMN IF NOT EXISTS; this migrates databases
+    // created before `task_path` existed and is a no-op on the rest. The
+    // duplicate-column error surfaces while sqlite prepares the statement,
+    // before asking for the write lock, so setup on an up-to-date database
+    // never waits on other writers. A read-only database from before the
+    // column can still be read; its rows would all read back as '' anyway.
+    try {
+      this.db.exec(
+        "ALTER TABLE writes ADD COLUMN task_path TEXT NOT NULL DEFAULT ''"
+      );
+    } catch (e) {
+      if (isReadonlyError(e)) {
+        this._hasTaskPath = false;
+      } else if (!isDuplicateColumnError(e)) {
+        throw e;
+      }
+    }
 
-    this.withoutCheckpoint = prepareSql(this.db, false);
-    this.withCheckpoint = prepareSql(this.db, true);
+    this.withoutCheckpoint = prepareSql(this.db, false, this._hasTaskPath);
+    this.withCheckpoint = prepareSql(this.db, true, this._hasTaskPath);
 
     this.isSetup = true;
   }
@@ -177,18 +262,15 @@ CREATE TABLE IF NOT EXISTS writes (
     }
 
     const pendingWrites = await Promise.all(
-      (JSON.parse(row.pending_writes) as PendingWriteColumn[]).map(
-        async (write) => {
-          return [
-            write.task_id,
-            write.channel,
-            await this.serde.loadsTyped(
-              write.type ?? "json",
-              write.value ?? ""
-            ),
-          ] as [string, string, unknown];
-        }
-      )
+      sortPendingWriteColumns(
+        JSON.parse(row.pending_writes) as PendingWriteColumn[]
+      ).map(async (write) => {
+        return [
+          write.task_id,
+          write.channel,
+          await this.serde.loadsTyped(write.type ?? "json", write.value ?? ""),
+        ] as [string, string, unknown];
+      })
     );
 
     const checkpoint = (await this.serde.loadsTyped(
@@ -248,7 +330,9 @@ CREATE TABLE IF NOT EXISTS writes (
                 'task_id', pw.task_id,
                 'channel', pw.channel,
                 'type', pw.type,
-                'value', CAST(pw.value AS TEXT)
+                'value', CAST(pw.value AS TEXT),
+                'task_path', ${this._hasTaskPath ? "pw.task_path" : "''"},
+                'idx', pw.idx
               )
             )
           FROM writes as pw
@@ -325,18 +409,15 @@ CREATE TABLE IF NOT EXISTS writes (
     if (rows) {
       for (const row of rows) {
         const pendingWrites = await Promise.all(
-          (JSON.parse(row.pending_writes) as PendingWriteColumn[]).map(
-            async (write) => {
-              return [
-                write.task_id,
-                write.channel,
-                await this.serde.loadsTyped(
-                  write.type ?? "json",
-                  write.value ?? ""
-                ),
-              ] as [string, string, unknown];
-            }
-          )
+          sortPendingWriteColumns(
+            JSON.parse(row.pending_writes) as PendingWriteColumn[]
+          ).map(async (write) => {
+            return [
+              write.task_id,
+              write.channel,
+              await this.serde.loadsTyped(write.type ?? "json", write.value ?? ""),
+            ] as [string, string, unknown];
+          })
         );
 
         const checkpoint = (await this.serde.loadsTyped(
@@ -442,7 +523,8 @@ CREATE TABLE IF NOT EXISTS writes (
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void> {
     this.setup();
 
@@ -470,8 +552,8 @@ CREATE TABLE IF NOT EXISTS writes (
     const allSpecial = writes.every(([channel]) => channel in WRITES_IDX_MAP);
     const stmt = this.db.prepare(`
       INSERT ${allSpecial ? "OR REPLACE" : "OR IGNORE"} INTO writes
-      (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, value)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = this.db.transaction((rows) => {
@@ -488,6 +570,9 @@ CREATE TABLE IF NOT EXISTS writes (
           config.configurable?.checkpoint_ns,
           config.configurable?.checkpoint_id,
           taskId,
+          // `""` on a read-only pre-`task_path` database (and for callers
+          // that pass no path), which sorts first — see `writesSortKey`.
+          this._hasTaskPath ? (taskPath ?? "") : "",
           // Special channels are stored at fixed negative indices so they
           // never collide with regular per-step writes (whose `idx` is the
           // ordinal within `writes`).

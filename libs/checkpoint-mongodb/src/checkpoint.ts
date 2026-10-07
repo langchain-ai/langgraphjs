@@ -9,6 +9,8 @@ import {
   type PendingWrite,
   type CheckpointMetadata,
   CheckpointPendingWrite,
+  compareWritesSortKeys,
+  writesSortKey,
   WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
 
@@ -61,6 +63,25 @@ function getStringConfigValue(
  * await checkpointer.setup();
  * ```
  */
+/**
+ * Sort raw write documents into `writesSortKey` order — `(task_path, task_id,
+ * idx)` — the order live execution applies a superstep's writes in (see the
+ * `getTuple` contract on `BaseCheckpointSaver`). The `find` that produces
+ * them carries no sort, so this is where the order is established. Documents
+ * written before `task_path` existed have none and sort first by `task_id`,
+ * which is the order they were written in.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function orderSerializedWrites(serializedWrites: any[]): any[] {
+  // Compute each document's key once, then sort on the cached keys.
+  const keyed = serializedWrites.map((doc: any) => ({
+    key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),
+    doc,
+  }));
+  keyed.sort((a: any, b: any) => compareWritesSortKeys(a.key, b.key));
+  return keyed.map(({ doc }: { doc: any }) => doc);
+}
+
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
 
@@ -219,16 +240,18 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       .find(configurableValues)
       .toArray();
     const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-      serializedWrites.map(async (serializedWrite) => {
-        return [
-          serializedWrite.task_id,
-          serializedWrite.channel,
-          await this.serde.loadsTyped(
-            serializedWrite.type,
-            serializedWrite.value.value("utf8")
-          ),
-        ] as CheckpointPendingWrite;
-      })
+      orderSerializedWrites(serializedWrites).map(
+        async (serializedWrite) => {
+          return [
+            serializedWrite.task_id,
+            serializedWrite.channel,
+            await this.serde.loadsTyped(
+              serializedWrite.type,
+              serializedWrite.value.value("utf8")
+            ),
+          ] as CheckpointPendingWrite;
+        }
+      )
     );
     return {
       config: { configurable: configurableValues },
@@ -327,16 +350,18 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         })
         .toArray();
       const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-        serializedWrites.map(async (serializedWrite) => {
-          return [
-            serializedWrite.task_id,
-            serializedWrite.channel,
-            await this.serde.loadsTyped(
-              serializedWrite.type,
-              serializedWrite.value.value("utf8")
-            ),
-          ] as CheckpointPendingWrite;
-        })
+        orderSerializedWrites(serializedWrites).map(
+          async (serializedWrite) => {
+            return [
+              serializedWrite.task_id,
+              serializedWrite.channel,
+              await this.serde.loadsTyped(
+                serializedWrite.type,
+                serializedWrite.value.value("utf8")
+              ),
+            ] as CheckpointPendingWrite;
+          }
+        )
       );
 
       yield {
@@ -434,7 +459,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void> {
     const thread_id = getStringConfigValue(
       "thread_id",
@@ -477,7 +503,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         };
 
         const [type, serializedValue] = await this.serde.dumpsTyped(value);
-        const fields = { channel, type, value: serializedValue };
+        // `task_path` is the serialized task path; `""` sorts first (see
+        // `writesSortKey`). It is not part of the upsert filter, so rows
+        // written before it existed keep matching.
+        const fields = { channel, type, value: serializedValue, task_path: taskPath ?? "" };
 
         return {
           updateOne: {

@@ -13,10 +13,13 @@ import {
   copyCheckpoint,
   type PendingWrite,
   type PendingWriteValue,
+  type WritesSortKey,
   uuid5,
   maxChannelVersion,
   BaseStore,
   CheckpointPendingWrite,
+  compareWritesSortKeys,
+  writesSortKey,
   SendProtocol,
 } from "@langchain/langgraph-checkpoint";
 import {
@@ -94,6 +97,41 @@ export type WritesProtocol<C = string> = {
 export const increment = (current?: number) => {
   return current !== undefined ? current + 1 : 1;
 };
+
+/**
+ * Serialize a task path to the string stored with its writes, matching
+ * Python's `task_path_str` byte for byte:
+ *
+ * - arrays (nested paths included) become `"~"` + their serialized elements
+ *   joined by `", "` — so the empty path is `"~"`;
+ * - booleans format as ints (Python's `isinstance(x, int)` is true for
+ *   `bool` there): `true` → `"0000000001"`, `false` → `"0000000000"`;
+ * - ints are zero-padded to 10 digits, sign-aware: `-1` → `"-000000001"`;
+ * - anything else (node names) is used as-is.
+ *
+ * This is the `taskPath` passed to `BaseCheckpointSaver.putWrites` and the
+ * first component of `writesSortKey`, so the stored string and its sort
+ * order are identical across the JS and Python runtimes.
+ */
+export function taskPathStr(path: unknown): string {
+  if (Array.isArray(path)) {
+    return `~${path.map(taskPathStr).join(", ")}`;
+  }
+  if (typeof path === "boolean") {
+    return path ? "0000000001" : "0000000000";
+  }
+  if (typeof path === "number") {
+    return path < 0
+      ? `-${String(-path).padStart(9, "0")}`
+      : String(path).padStart(10, "0");
+  }
+  if (path === undefined || path === null) {
+    // Python serializes the empty tuple `()` — the path of input/null-task
+    // writes — to `"~"`.
+    return "~";
+  }
+  return String(path);
+}
 
 function triggersNextStep(
   updatedChannels: Set<string>,
@@ -274,28 +312,25 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   getNextVersion: ((version: any) => any) | undefined,
   triggerToNodes: Record<string, string[]> | undefined
 ): Set<string> {
-  // Pre-compute paths once before sorting to avoid repeated .slice() allocations
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pathCache = new Map<WritesProtocol<keyof Cc>, any[]>();
+  // Sort tasks on the serialized full task path, for deterministic order of
+  // update application. This is the same key every saver orders stored
+  // writes by (`writesSortKey`), so live execution and checkpointer replay
+  // cannot drift apart. Paths reaching here carry no task ids (call input
+  // paths are cut to `slice(0, 3) + true/false` in `_prepareSingleTask` and
+  // `acceptPush`), so this changes the live order only where the old
+  // 3-element array-coercion comparator disagreed with Python's serialized
+  // order (nested parent indices: it ordered `10` before `2`). Ties keep
+  // insertion order: the sort is stable and the key carries the default
+  // task-id/idx tie components, mirroring Python's `sorted`.
+  // Serialize each path once (taskPathStr allocates), then sort on the
+  // cached keys — the same precomputation the old comparator's pathCache did.
+  const sortKeys = new Map<WritesProtocol<keyof Cc>, WritesSortKey>();
   for (const task of tasks) {
-    pathCache.set(task, task.path?.slice(0, 3) || []);
+    sortKeys.set(task, writesSortKey(taskPathStr(task.path)));
   }
-
-  // Sort tasks by first 3 path elements for deterministic order
-  // Later path parts (like task IDs) are ignored for sorting
-  tasks.sort((a, b) => {
-    const aPath = pathCache.get(a)!;
-    const bPath = pathCache.get(b)!;
-
-    // Compare each path element
-    for (let i = 0; i < Math.min(aPath.length, bPath.length); i += 1) {
-      if (aPath[i] < bPath[i]) return -1;
-      if (aPath[i] > bPath[i]) return 1;
-    }
-
-    // If one path is shorter, it comes first
-    return aPath.length - bPath.length;
-  });
+  tasks.sort((a, b) =>
+    compareWritesSortKeys(sortKeys.get(a)!, sortKeys.get(b)!)
+  );
 
   // Filter out non instances of BaseChannel
   const onlyChannels = getOnlyChannels(channels);
@@ -332,38 +367,22 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
   // Group writes by channel
   const pendingWritesByChannel = {} as Record<keyof Cc, PendingWriteValue[]>;
-  // Originating task id per grouped write, used to reorder DeltaChannel writes
-  // below.
-  const pendingWriteTaskIdsByChannel = {} as Record<keyof Cc, string[]>;
   for (const task of tasks) {
-    const taskId = (task as { id?: string }).id ?? "";
     for (const [chan, val] of task.writes) {
       if (IGNORE.has(chan)) {
         // do nothing
       } else if (chan in onlyChannels) {
         pendingWritesByChannel[chan] ??= [];
         pendingWritesByChannel[chan].push(val);
-        pendingWriteTaskIdsByChannel[chan] ??= [];
-        pendingWriteTaskIdsByChannel[chan].push(taskId);
       }
     }
   }
 
-  // Reorder concurrent DeltaChannel writes to match the checkpointer replay
-  // order: task id ascending (byte/string order, matching both MemorySaver and
-  // the Postgres `COLLATE "C"` sort). A stable sort keeps each task's writes in
-  // their original `idx` order, so reconstruction (see
-  // `BaseCheckpointSaver.getDeltaChannelHistory`) matches the live value.
-  for (const [chan, vals] of Object.entries(pendingWritesByChannel)) {
-    if (vals.length < 2) continue;
-    if (onlyChannels[chan]?.lc_graph_name !== "DeltaChannel") continue;
-    const taskIds = pendingWriteTaskIdsByChannel[chan as keyof Cc];
-    const paired = vals.map((val, i) => ({ val, taskId: taskIds[i] }));
-    paired.sort((a, b) =>
-      a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0
-    );
-    pendingWritesByChannel[chan as keyof Cc] = paired.map((p) => p.val);
-  }
+  // Note: no DeltaChannel-specific reordering here. Concurrent writes to a
+  // DeltaChannel apply in task-path order, exactly like every other channel
+  // and exactly like the savers replay them (`writesSortKey`); the task-id
+  // re-sort this replaces (langgraphjs#2544) made live order match a task-id
+  // replay instead, which permuted parallel writers checkpoint by checkpoint.
 
   // Find the highest version of all channels
   if (maxVersion != null && getNextVersion != null) {
@@ -884,11 +903,19 @@ export function _prepareSingleTask<
       checkpoint.id
     );
     const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
+    // We append `false` to the task path to indicate that a call is not being
+    // made, so we should return interrupts from this task — matching Python's
+    // `(PUSH, idx, False)`. One translated path serves the executable task,
+    // the description, the metadata, and the local-read view.
+    const translatedTaskPath = [
+      ...taskPath.slice(0, 3),
+      false,
+    ] as VariadicTaskPath;
     let metadata = {
       langgraph_step: step,
       langgraph_node: packet.node,
       langgraph_triggers: triggers,
-      langgraph_path: taskPath.slice(0, 3),
+      langgraph_path: translatedTaskPath,
       langgraph_checkpoint_ns: taskCheckpointNamespace,
       checkpoint_ns: taskCheckpointNamespace,
     };
@@ -944,7 +971,7 @@ export function _prepareSingleTask<
                         name: packet.node,
                         writes: writes as PendingWrite[],
                         triggers,
-                        path: taskPath,
+                        path: translatedTaskPath,
                       },
                       select_,
                       fresh_
@@ -984,7 +1011,7 @@ export function _prepareSingleTask<
               }
             : undefined,
           id: taskId,
-          path: taskPath,
+          path: translatedTaskPath,
           writers: proc.getWriters(),
           // a per-Send timeout overrides the target node's configured timeout
           timeout: packet.timeout ?? proc.timeout,
@@ -995,7 +1022,7 @@ export function _prepareSingleTask<
         id: taskId,
         name: packet.node,
         interrupts: [],
-        path: taskPath,
+        path: translatedTaskPath,
       } satisfies PregelTaskDescription;
     }
   } else if (taskPath[0] === PULL) {
@@ -1245,12 +1272,17 @@ export function _prepareNodeErrorHandlerTask<
     checkpoint.id
   );
   const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
-  // Last path element is a string (not `true`), so interrupts raised by the
-  // handler are surfaced normally rather than deferred to a parent call.
+  // The path is the failed task's own path plus "node_error_handler" and a
+  // trailing `false` (a string, not `true`, so interrupts raised by the
+  // handler are surfaced normally rather than deferred to a parent call) —
+  // matching Python's `(*failed_task.path[:3], "node_error_handler", False)`,
+  // so the two runtimes order a handler's writes the same way relative to its
+  // siblings.
+  const failedPath = failedTask.path?.slice(0, 3) ?? [];
   const taskPath = [
-    PUSH,
-    String(failedTask.name),
-    handlerNodeName,
+    failedPath[0] ?? PUSH,
+    ...failedPath.slice(1),
+    "node_error_handler",
     false,
   ] as VariadicTaskPath;
 
