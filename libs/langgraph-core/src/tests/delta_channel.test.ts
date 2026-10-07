@@ -37,6 +37,7 @@ import {
   Overwrite,
   NULL_TASK_ID,
   CONFIG_KEY_CHECKPOINTER,
+  Command,
 } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
@@ -384,6 +385,7 @@ describe("exitDeltaTaskId", () => {
     const synth = exitDeltaTaskId(3, "00000000-0000-0000-0000-000000000000");
     expect(isPostgresUuid(synth)).toBe(true);
     expect(synth).toBe("00000003-0000-0000-0000-000000000000");
+    expect(exitDeltaTaskId(0, NULL_TASK_ID)).not.toBe(NULL_TASK_ID);
   });
 });
 
@@ -828,6 +830,37 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
       ]);
     });
   }
+
+  it("an exit-mode Command update on a new thread reads like a plain channel", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+      plain: Annotation<number[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+    const graph = new StateGraph(State)
+      .addNode("node", () => ({ log: [2], plain: [2] }))
+      .addEdge(START, "node")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "exit-command-new-thread" },
+      durability: "exit" as const,
+    };
+
+    await graph.invoke(
+      new Command({ update: { log: [1], plain: [1] }, goto: "node" }),
+      config
+    );
+
+    const history = [];
+    for await (const snapshot of graph.getStateHistory(config)) {
+      history.push(snapshot.values as { log?: number[]; plain?: number[] });
+    }
+    expect(history.map((values) => values.log ?? [])).toEqual(
+      history.map((values) => values.plain ?? [])
+    );
+  });
 
   it("does not store the full value in non-snapshot checkpoint blobs", async () => {
     const graph = buildGraph(1000);
