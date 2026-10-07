@@ -1,6 +1,7 @@
 import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { getAssistantId } from "../graph/load.mjs";
+import type { AuthContext } from "../auth/index.mjs";
 import type {
   Run,
   RunsRepo,
@@ -162,7 +163,6 @@ export class ProtocolService {
   ensureThread(options: {
     threadId: string;
     transport: ProtocolTransportName;
-    auth?: ThreadRecord["auth"];
     sendEvent?: EventSink;
   }): ThreadRecord {
     let record = this.threads.get(options.threadId);
@@ -170,7 +170,6 @@ export class ProtocolService {
       record = {
         threadId: options.threadId,
         transport: options.transport,
-        auth: options.auth,
         seq: 0,
         session: undefined,
         currentRunId: undefined,
@@ -273,17 +272,18 @@ export class ProtocolService {
    */
   async handleCommand(
     threadId: string,
-    command: ProtocolCommand
+    command: ProtocolCommand,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError | null> {
     const record = this.requireThread(threadId);
 
     switch (command.method) {
       case "run.start":
-        return await this.handleRunStart(record, command);
+        return await this.handleRunStart(record, command, auth);
       case "input.respond":
-        return await this.handleInputRespond(record, command);
+        return await this.handleInputRespond(record, command, auth);
       case "state.get":
-        return await this.handleStateGet(record, command);
+        return await this.handleStateGet(record, command, auth);
       default:
         return await this.forwardToRunSession(record, command);
     }
@@ -295,7 +295,8 @@ export class ProtocolService {
    */
   private async handleRunStart(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"run.start">
+    command: ProtocolCommandByMethod<"run.start">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = normalizeRunStart(command.params);
     if (!params.assistant_id) {
@@ -317,7 +318,7 @@ export class ProtocolService {
     }
     record.assistantId = params.assistant_id;
 
-    const run = await this.createOrResumeRun(record, params);
+    const run = await this.createOrResumeRun(record, params, auth);
     return {
       type: "success",
       id: command.id,
@@ -331,7 +332,8 @@ export class ProtocolService {
 
   private async handleInputRespond(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"input.respond">
+    command: ProtocolCommandByMethod<"input.respond">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     // Build the resume input map (`{ [interrupt_id]: response }`). The
     // SDK sends either a single `interrupt_id` / `response` or a
@@ -383,10 +385,13 @@ export class ProtocolService {
         ? await this.bindings.runs.get(
             record.currentRunId,
             record.threadId,
-            record.auth
+            auth
           )
         : null;
-    const hasPendingInterrupts = await this.hasPendingInterrupts(record);
+    const hasPendingInterrupts = await this.hasPendingInterruptsForThread(
+      record.threadId,
+      auth
+    );
     if (currentRun == null && !hasPendingInterrupts) {
       return this.error(
         command.id,
@@ -427,14 +432,18 @@ export class ProtocolService {
         ? (rawParams.goto as RunCommand["goto"])
         : undefined;
 
-    await this.createOrResumeRun(record, {
-      assistant_id: record.assistantId,
-      input: resumeInput,
-      update,
-      goto,
-      config: isRecord(rawParams.config) ? rawParams.config : undefined,
-      metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
-    });
+    await this.createOrResumeRun(
+      record,
+      {
+        assistant_id: record.assistantId,
+        input: resumeInput,
+        update,
+        goto,
+        config: isRecord(rawParams.config) ? rawParams.config : undefined,
+        metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
+      },
+      auth
+    );
 
     return {
       type: "success",
@@ -449,12 +458,13 @@ export class ProtocolService {
 
   private async createOrResumeRun(
     record: ThreadRecord,
-    params: NormalizedRunStart
+    params: NormalizedRunStart,
+    auth: AuthContext | undefined
   ) {
     const assistantId = getAssistantId(params.assistant_id);
     const hasPendingInterrupts =
       params.input != null
-        ? await this.hasPendingInterruptsForThread(record.threadId, record.auth)
+        ? await this.hasPendingInterruptsForThread(record.threadId, auth)
         : false;
     // Resume only when the thread actually has a pending `interrupt()`.
     // A cancelled run also ends with status "interrupted" but has no
@@ -478,7 +488,7 @@ export class ProtocolService {
         thread_id: record.threadId,
       },
     };
-    const userId = applyAuthToRunConfig(runConfig, record.auth);
+    const userId = applyAuthToRunConfig(runConfig, auth);
 
     const runPayload = {
       assistant_id: assistantId,
@@ -533,10 +543,10 @@ export class ProtocolService {
         preventInsertInInflight: false,
         ifNotExists: runPayload.if_not_exists,
       },
-      record.auth
+      auth
     );
 
-    await this.ensureRunSession(record, run);
+    await this.ensureRunSession(record, run, auth);
     record.currentRunId = run.run_id;
 
     // For WebSocket transports, register subscriptions on the session
@@ -576,13 +586,9 @@ export class ProtocolService {
     return run;
   }
 
-  private async hasPendingInterrupts(record: ThreadRecord) {
-    return this.hasPendingInterruptsForThread(record.threadId, record.auth);
-  }
-
   private async hasPendingInterruptsForThread(
     threadId: string,
-    auth: ThreadRecord["auth"]
+    auth: AuthContext | undefined
   ) {
     try {
       const state = await this.bindings.threads.state.get(
@@ -600,7 +606,8 @@ export class ProtocolService {
 
   private async handleStateGet(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"state.get">
+    command: ProtocolCommandByMethod<"state.get">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = isRecord(command.params)
       ? (command.params as Partial<
@@ -610,7 +617,7 @@ export class ProtocolService {
     const values = await this.bindings.threads.state.get(
       { configurable: { thread_id: record.threadId } },
       { subgraphs: true },
-      record.auth
+      auth
     );
     const checkpointConfig = isRecord(values.config?.configurable)
       ? values.config.configurable
@@ -736,7 +743,11 @@ export class ProtocolService {
    * Bind the thread record to a concrete LangGraph run and forward
    * normalized protocol events to attached sinks.
    */
-  private async ensureRunSession(record: ThreadRecord, run: Run) {
+  private async ensureRunSession(
+    record: ThreadRecord,
+    run: Run,
+    auth: AuthContext | undefined
+  ) {
     if (record.session != null && record.currentRunId === run.run_id) return;
 
     await record.session?.close();
@@ -749,7 +760,7 @@ export class ProtocolService {
         cancelOnDisconnect: false,
         lastEventId: run.kwargs.resumable ? "-1" : undefined,
       },
-      record.auth
+      auth
     );
 
     const isSSE = record.transport === "sse-http";
@@ -757,15 +768,14 @@ export class ProtocolService {
     const session = new RunProtocolSession({
       runId: run.run_id,
       threadId: run.thread_id,
-      auth: record.auth,
+      auth,
       initialRun: run,
-      getRun: () =>
-        this.bindings.runs.get(run.run_id, run.thread_id, record.auth),
+      getRun: () => this.bindings.runs.get(run.run_id, run.thread_id, auth),
       getThreadState: async () =>
         await this.bindings.threads.state.get(
           { configurable: { thread_id: run.thread_id } },
           { subgraphs: true },
-          record.auth
+          auth
         ),
       source,
       startSeq: record.seq,

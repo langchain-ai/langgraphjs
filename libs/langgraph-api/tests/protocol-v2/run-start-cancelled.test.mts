@@ -81,7 +81,7 @@ describe("run.start on a thread whose current run is interrupted", () => {
       id: 1,
       method: "run.start",
       params: { assistant_id: "agent", input },
-    });
+    }, undefined);
 
     expect(response).toMatchObject({ type: "success" });
     expect(puts).toHaveLength(1);
@@ -96,7 +96,7 @@ describe("run.start on a thread whose current run is interrupted", () => {
       id: 1,
       method: "run.start",
       params: { assistant_id: "agent", input },
-    });
+    }, undefined);
 
     expect(response).toMatchObject({ type: "success" });
     expect(puts).toHaveLength(1);
