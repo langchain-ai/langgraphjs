@@ -209,6 +209,55 @@ describe("ThreadStream (SSE shared stream)", () => {
     await thread.close();
   });
 
+  it("delivers a later run's root lifecycle events that arrive after a terminal pause", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+
+    const root = await thread.subscribe({
+      channels: ["lifecycle", "values"],
+      namespaces: [[]],
+      depth: 1,
+    });
+
+    // A pump parked on `waitForResume()` must wake for run 2's lifecycle.
+    const run1Terminal = eventOf(
+      "lifecycle",
+      { event: "interrupted" } as never,
+      { namespace: [], seq: 10, eventId: "run-1-interrupted" }
+    );
+    transport.pushEvent(run1Terminal);
+    await expect(nextValue(root)).resolves.toBe(run1Terminal);
+    await flush();
+    expect(root.isPaused).toBe(true);
+
+    let resumed = false;
+    void root.waitForResume().then(() => {
+      resumed = true;
+    });
+    const run2Running = eventOf(
+      "lifecycle",
+      { event: "running" } as never,
+      { namespace: [], seq: 11, eventId: "run-2-running" }
+    );
+    transport.pushEvent(run2Running);
+    await flush();
+    expect(resumed).toBe(true);
+    await expect(nextValue(root)).resolves.toBe(run2Running);
+
+    const run2Terminal = eventOf(
+      "lifecycle",
+      { event: "interrupted" } as never,
+      { namespace: [], seq: 14, eventId: "run-2-interrupted" }
+    );
+    transport.pushEvent(run2Terminal);
+    await flush();
+    await expect(nextValue(root)).resolves.toBe(run2Terminal);
+    await flush();
+    expect(root.isPaused).toBe(true);
+
+    await thread.close();
+  });
+
   it("dedups events during rotation overlap (open-before-close)", async () => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });
