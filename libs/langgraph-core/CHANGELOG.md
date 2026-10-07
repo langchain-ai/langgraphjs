@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.4.21
+
+### Patch Changes
+
+- [#2966](https://github.com/langchain-ai/langgraphjs/pull/2966) [`0a035e1`](https://github.com/langchain-ai/langgraphjs/commit/0a035e1a6f8803cb1b5edcf06503ce75e13ca7b6) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): `isCommand` no longer accepts plain objects, so JSON graph input shaped like `{ lg_name: "Command", goto, update }` is treated as ordinary state input instead of a control directive. `Command` instances, including ones built by another installed copy of `@langchain/langgraph`, are still recognized. To pass a command as input, construct it with `new Command(...)`.
+
+- [#2965](https://github.com/langchain-ai/langgraphjs/pull/2965) [`f4a7e6a`](https://github.com/langchain-ai/langgraphjs/commit/f4a7e6a7c13e5bf55e8fff62165816c7bfd92cf6) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): require `@langchain/langgraph-sdk` 1.12.3 or later.
+
 ## 1.4.20
 
 ### Patch Changes
