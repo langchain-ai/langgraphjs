@@ -2374,15 +2374,9 @@ export class ThreadStream<
       // but reconnect/replay can still deliver same-run trailing state
       // afterward (for example the final `values` snapshot). Drain that
       // event, briefly resume any paused consumers, then re-arm the
-      // terminal pause so idle subscriptions still settle.
-      if (
-        fannedToAny &&
-        this.#terminalPauseSeq !== undefined &&
-        !(
-          message.method === "lifecycle" &&
-          message.params.namespace.length === 0
-        )
-      ) {
+      // terminal pause so idle subscriptions still settle. This includes
+      // root lifecycle events from a later run in the same replay.
+      if (fannedToAny && this.#terminalPauseSeq !== undefined) {
         const eventSeq =
           typeof message.seq === "number" ? message.seq : undefined;
         const terminalSeq = this.#terminalPauseSeq;

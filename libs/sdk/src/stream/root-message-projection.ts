@@ -214,6 +214,12 @@ export class RootMessageProjection<
   #sealStep: number | undefined = undefined;
 
   /**
+   * Ids streamed by the current run that no `values` snapshot has
+   * carried yet. Dropped when the run ends (see {@link closeRun}).
+   */
+  readonly #openRunStreamIds = new Set<string>();
+
+  /**
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
@@ -245,6 +251,7 @@ export class RootMessageProjection<
     this.#maxStep = undefined;
     this.#sealedMessageIds.clear();
     this.#sealStep = undefined;
+    this.#openRunStreamIds.clear();
   }
 
   /**
@@ -337,6 +344,7 @@ export class RootMessageProjection<
     // turn. Drop the replayed delta — the authoritative seed already
     // holds the final content (see {@link #sealedMessageIds}).
     if (this.#sealedMessageIds.has(id)) return;
+    if (!this.#valuesMessageIds.has(id)) this.#openRunStreamIds.add(id);
     const captured = this.#roles.get(id) ?? { role: "ai" as const };
     const base = assembledMessageToBaseMessage(update.message, captured.role, {
       toolCallId: captured.toolCallId,
@@ -468,7 +476,12 @@ export class RootMessageProjection<
     // A stale replay snapshot must not shrink the authoritative id set:
     // keep the (larger) seeded set so a genuinely-newer removal is still
     // detected once the timeline advances past the seed.
-    if (!addOnly) this.#valuesMessageIds = reconciliation.valueMessageIds;
+    if (!addOnly) {
+      this.#valuesMessageIds = reconciliation.valueMessageIds;
+      for (const id of reconciliation.valueMessageIds) {
+        this.#openRunStreamIds.delete(id);
+      }
+    }
     const messages = reconciliation.messages as BaseMessage[];
     const values = {
       ...(nextValues as Record<string, unknown>),
@@ -583,14 +596,44 @@ export class RootMessageProjection<
   }
 
   /**
-   * Drop optimistic messages by id without disturbing the rest of the
-   * projection. Used by {@link StreamController.hydrate} to remove
-   * never-persisted optimistic messages (`pending` / `failed`) so a
-   * reload converges to server truth.
+   * Close the current run on a root `running` or terminal lifecycle event.
    *
-   * @param ids - Message ids to remove.
+   * @returns Ids dropped by {@link closeRun} (empty if none).
    */
-  dropOptimisticMessages(ids: ReadonlySet<string>): void {
+  applyLifecycle(event: string | undefined): Set<string> {
+    if (
+      event === "running" ||
+      event === "completed" ||
+      event === "interrupted" ||
+      event === "failed"
+    ) {
+      return this.closeRun();
+    }
+    return new Set();
+  }
+
+  /**
+   * Drop the current run's never-checkpointed messages and seal their ids
+   * so late deltas can't re-add them. A later snapshot still restores them.
+   *
+   * @returns The dropped ids.
+   */
+  closeRun(options?: { sync?: boolean }): Set<string> {
+    const ids = new Set(this.#openRunStreamIds);
+    this.#openRunStreamIds.clear();
+    if (ids.size === 0) return ids;
+    this.sealMessageIds(ids);
+    this.dropMessages(ids, options);
+    return ids;
+  }
+
+  /**
+   * Drop messages by id without disturbing the rest of the projection.
+   *
+   * @param ids     - Message ids to remove.
+   * @param options - `sync` commits the write immediately.
+   */
+  dropMessages(ids: ReadonlySet<string>, options?: { sync?: boolean }): void {
     if (ids.size === 0) return;
     const baselineMessages =
       this.#pendingMessages ?? this.#store.getSnapshot().messages;
@@ -608,7 +651,11 @@ export class RootMessageProjection<
       this.#messagesKey,
       next
     );
-    this.#scheduleFlush();
+    if (options?.sync) {
+      this.#flushPending();
+    } else {
+      this.#scheduleFlush();
+    }
   }
 
   /**
