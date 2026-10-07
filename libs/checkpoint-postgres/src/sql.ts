@@ -21,7 +21,14 @@ export type SQL_TYPES = {
     checkpoint_ns: string;
     checkpoint_id: string;
     metadata: Record<string, unknown>;
-    pending_writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array][];
+    pending_writes: [
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+    ][];
   };
   SELECT_PENDING_SENDS_SQL: {
     checkpoint_id: string;

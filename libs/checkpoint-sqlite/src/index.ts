@@ -85,7 +85,11 @@ function isDuplicateColumnError(e: unknown): boolean {
   );
 }
 
-function prepareSql(db: DatabaseType, checkpointId: boolean, hasTaskPath: boolean) {
+function prepareSql(
+  db: DatabaseType,
+  checkpointId: boolean,
+  hasTaskPath: boolean
+) {
   // `task_path` is selected as '' on pre-column databases (read read-only)
   // so the row shape is the same either way.
   const taskPath = hasTaskPath ? "pw.task_path" : "''";
@@ -415,7 +419,10 @@ CREATE TABLE IF NOT EXISTS writes (
             return [
               write.task_id,
               write.channel,
-              await this.serde.loadsTyped(write.type ?? "json", write.value ?? ""),
+              await this.serde.loadsTyped(
+                write.type ?? "json",
+                write.value ?? ""
+              ),
             ] as [string, string, unknown];
           })
         );

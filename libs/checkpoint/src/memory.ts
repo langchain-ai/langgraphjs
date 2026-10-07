@@ -190,7 +190,7 @@ export class MemorySaver extends BaseCheckpointSaver {
         entry: [taskId, idx, record] as [
           string,
           number,
-          [string, string, Uint8Array, string?]
+          [string, string, Uint8Array, string?],
         ],
       };
     });

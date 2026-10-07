@@ -223,7 +223,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
    */
   protected async _loadWrites(
     writes:
-      | [Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array][]
+      | [
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+        ][]
       | null
   ): Promise<[string, string, unknown][]> {
     const decoder = new TextDecoder();
@@ -302,7 +309,17 @@ export class PostgresSaver extends BaseCheckpointSaver {
     writes: [string, unknown][],
     taskPath = ""
   ): Promise<
-    [string, string, string, string, string, number, string, string, Uint8Array][]
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+      string,
+      string,
+      Uint8Array,
+    ][]
   > {
     return Promise.all(
       writes.map(async ([channel, value], idx) => {

@@ -240,18 +240,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       .find(configurableValues)
       .toArray();
     const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-      orderSerializedWrites(serializedWrites).map(
-        async (serializedWrite) => {
-          return [
-            serializedWrite.task_id,
-            serializedWrite.channel,
-            await this.serde.loadsTyped(
-              serializedWrite.type,
-              serializedWrite.value.value("utf8")
-            ),
-          ] as CheckpointPendingWrite;
-        }
-      )
+      orderSerializedWrites(serializedWrites).map(async (serializedWrite) => {
+        return [
+          serializedWrite.task_id,
+          serializedWrite.channel,
+          await this.serde.loadsTyped(
+            serializedWrite.type,
+            serializedWrite.value.value("utf8")
+          ),
+        ] as CheckpointPendingWrite;
+      })
     );
     return {
       config: { configurable: configurableValues },
@@ -350,18 +348,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         })
         .toArray();
       const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
-        orderSerializedWrites(serializedWrites).map(
-          async (serializedWrite) => {
-            return [
-              serializedWrite.task_id,
-              serializedWrite.channel,
-              await this.serde.loadsTyped(
-                serializedWrite.type,
-                serializedWrite.value.value("utf8")
-              ),
-            ] as CheckpointPendingWrite;
-          }
-        )
+        orderSerializedWrites(serializedWrites).map(async (serializedWrite) => {
+          return [
+            serializedWrite.task_id,
+            serializedWrite.channel,
+            await this.serde.loadsTyped(
+              serializedWrite.type,
+              serializedWrite.value.value("utf8")
+            ),
+          ] as CheckpointPendingWrite;
+        })
       );
 
       yield {
@@ -506,7 +502,12 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         // `task_path` is the serialized task path; `""` sorts first (see
         // `writesSortKey`). It is not part of the upsert filter, so rows
         // written before it existed keep matching.
-        const fields = { channel, type, value: serializedValue, task_path: taskPath ?? "" };
+        const fields = {
+          channel,
+          type,
+          value: serializedValue,
+          task_path: taskPath ?? "",
+        };
 
         return {
           updateOne: {
