@@ -16,6 +16,9 @@ import {
   type CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import { DeltaChannel } from "../channels/delta.js";
+import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { LastValue } from "../channels/last_value.js";
+import { Channel, Pregel } from "../pregel/index.js";
 import {
   channelsFromCheckpoint,
   createCheckpoint,
@@ -66,6 +69,22 @@ class OlderVersionSaver extends MemorySaver {
     return super.put(config, checkpoint, older as CheckpointMetadata);
   }
 }
+
+const twoDeltaChannelGraph = (saver: MemorySaver) =>
+  new StateGraph(
+    Annotation.Root({
+      a: new DeltaChannel<number[], number[]>(listReducer),
+      b: new DeltaChannel<number[], number[]>(listReducer),
+    })
+  )
+    .addNode("n", () => ({ a: [1] }))
+    .addEdge(START, "n")
+    .addEdge("n", END)
+    .compile({ checkpointer: saver });
+
+const deltaCounters = async (saver: MemorySaver, config: RunnableConfig) =>
+  (await saver.getTuple(config))?.metadata?.counters_since_delta_snapshot ??
+  {};
 
 describe("DeltaChannel (unit)", () => {
   it("rejects a non-positive snapshotFrequency", () => {
@@ -707,6 +726,40 @@ describe("a DeltaChannel that was never written", () => {
     expect((await graph.getState(config)).values.log).toEqual([1]);
   });
 
+  it("doesn't replay an update as input to a delta input channel twice", async () => {
+    const sorted = (values: number[]) => values.sort((a, b) => a - b);
+    const graph = new Pregel({
+      nodes: {
+        n: Channel.subscribeTo("go")
+          .pipe(() => [2])
+          .pipe(Channel.writeTo(["log", "plain"])),
+      },
+      channels: {
+        log: new DeltaChannel<number[], number[]>((state, writes) =>
+          sorted(listReducer(state, writes))
+        ),
+        plain: new BinaryOperatorAggregate<number[]>(
+          (a, b) => sorted([...a, ...b]),
+          () => []
+        ),
+        go: new LastValue<number>(),
+      },
+      inputChannels: ["log", "plain", "go"],
+      outputChannels: ["log", "plain"],
+      checkpointer: new MemorySaver(),
+    });
+    const config = { configurable: { thread_id: "input-to-delta-channel" } };
+
+    await graph.updateState(config, { log: [1], plain: [1], go: 1 }, "__input__");
+    await graph.invoke(null, config);
+
+    const { log, plain } = (await graph.getState(config)).values as Record<
+      string,
+      number[]
+    >;
+    expect(log).toEqual(plain);
+  });
+
   const markedGraph = (saver: MemorySaver) =>
     new StateGraph(
       Annotation.Root({
@@ -750,6 +803,56 @@ describe("a DeltaChannel that was never written", () => {
           !older
         );
       }
+    });
+  }
+
+  // [label, update, updates it adds to `a`, supersteps it adds]. An update as
+  // input writes the start channel, so it adds no update to `a`.
+  const countedUpdates: [
+    string,
+    (
+      graph: ReturnType<typeof twoDeltaChannelGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+    number,
+    number,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { a: [9] }, "n"), 1, 1],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END), 0, 1],
+    [
+      "as input",
+      (graph, config) => graph.updateState(config, { a: [9] }, "__input__"),
+      0,
+      1,
+    ],
+    ["copying", (graph, config) => graph.updateState(config, undefined, "__copy__"), 0, 0],
+    ["with no values", (graph, config) => graph.updateState(config, undefined), 0, 1],
+    [
+      "in two supersteps",
+      (graph, config) =>
+        graph.bulkUpdateState(config, [
+          { updates: [{ values: { a: [9] }, asNode: "n" }] },
+          { updates: [{ values: { a: [9] }, asNode: "n" }] },
+        ]),
+      2,
+      2,
+    ],
+  ];
+  for (const [label, update, aUpdates, supersteps] of countedUpdates) {
+    it(`updateState ${label} carries every delta channel's counters forward`, async () => {
+      const saver = new MemorySaver();
+      const graph = twoDeltaChannelGraph(saver);
+      const config = { configurable: { thread_id: `counters-${label}` } };
+      await graph.invoke({ a: [0], b: [0] }, config);
+      const before = await deltaCounters(saver, config);
+      expect(Object.keys(before).sort()).toEqual(["a", "b"]);
+
+      const updated = await update(graph, config);
+
+      expect(await deltaCounters(saver, updated)).toEqual({
+        a: [before.a[0] + aUpdates, before.a[1] + supersteps],
+        b: [before.b[0], before.b[1] + supersteps],
+      });
     });
   }
 
@@ -1415,6 +1518,35 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
       expect(tup.checkpoint.channel_values.neverWritten).toBeUndefined();
     }
   });
+
+  const updatesAddingASuperstep: [
+    string,
+    (
+      graph: ReturnType<typeof twoDeltaChannelGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { a: [] }, "n")],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END)],
+    ["as input", (graph, config) => graph.updateState(config, { a: [] }, "__input__")],
+  ];
+  for (const [label, update] of updatesAddingASuperstep) {
+    it(`updateState ${label} snapshots a channel it didn't write at the bound`, async () => {
+      const saver = new MemorySaver();
+      const graph = twoDeltaChannelGraph(saver);
+      const config = { configurable: { thread_id: `update-bound-${label}` } };
+      await graph.invoke({ a: [0], b: [0] }, config);
+      const expected = (await graph.getState(config)).values;
+      process.env[ENV] = String((await deltaCounters(saver, config)).b[1] + 1);
+
+      const updated = await update(graph, config);
+
+      const head = await saver.getTuple(updated);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.b)).toBe(true);
+      expect(head?.metadata?.counters_since_delta_snapshot?.b).toBeUndefined();
+      expect((await graph.getState(updated)).values).toEqual(expected);
+    });
+  }
 });
 
 describe("DeltaChannel in a subgraph", () => {
