@@ -1622,5 +1622,110 @@ describe("StreamManager", () => {
       expect(contents).toContain("Correct research result");
       expect(contents).not.toContain("Stale pending result");
     });
+
+    it.each([
+      {
+        label: "legacy Send path [PUSH, i]",
+        path: ["__pregel_push", 0],
+        maps: true,
+      },
+      {
+        label: "aligned Send path [PUSH, i, false]",
+        path: ["__pregel_push", 0, false],
+        maps: true,
+      },
+      {
+        label: "error-handler path (not a Send task)",
+        path: ["__pregel_push", 0, false, "node_error_handler", false],
+        maps: false,
+      },
+    ])(
+      "positional fallback recognizes Send shapes correctly: $label",
+      async ({ path, maps }) => {
+        // Pending head checkpoint with one push-shaped task and a subagent
+        // tool call; a namespace payload exists for the task's namespace, so
+        // a successful positional mapping is observable via getSubagent.
+        const aiMessage = {
+          type: "ai",
+          id: "ai-shape",
+          content: "",
+          tool_calls: [
+            {
+              id: "call-shape",
+              name: "task",
+              args: { subagent_type: "researcher", description: "d" },
+            },
+          ],
+        };
+        const mainHistory = [
+          {
+            values: { messages: [aiMessage] },
+            next: [],
+            checkpoint: { checkpoint_id: "cp-shape", thread_id: "t" },
+            metadata: {},
+            parent_checkpoint: null,
+            tasks: [
+              {
+                id: "uuid-shape",
+                name: "task",
+                path,
+                error: null,
+                interrupts: [],
+                checkpoint: null,
+                state: null,
+              },
+            ],
+          },
+        ];
+        const sm = new StreamManager<TestState>(messageManager, {
+          throttle: false,
+          subagentToolNames: ["task"],
+        });
+        // Register the pending subagent, as the stream would.
+        sm.reconstructSubagents(
+          [aiMessage] as unknown as Parameters<
+            typeof sm.reconstructSubagents
+          >[0]
+        );
+        const getHistory = vi.fn(
+          async (
+            _threadId: string,
+            opts?: { checkpoint?: { checkpoint_ns?: string } }
+          ) => {
+            const ns = opts?.checkpoint?.checkpoint_ns;
+            if (ns === "task:uuid-shape") {
+              return [
+                {
+                  values: {
+                    messages: [{ type: "human", content: "shape payload" }],
+                  },
+                },
+              ];
+            }
+            return mainHistory;
+          }
+        );
+        await sm.fetchSubagentHistory(
+          { getHistory } as unknown as Parameters<
+            typeof sm.fetchSubagentHistory
+          >[0],
+          "thread-shape"
+        );
+
+        const subagent = sm.getSubagent("call-shape");
+        if (maps) {
+          expect(subagent).toBeDefined();
+          expect(
+            (subagent?.messages ?? []).map(
+              (m) => (m as { content?: unknown }).content
+            )
+          ).toContain("shape payload");
+        } else {
+          // A handler task is not a Send: no positional mapping, no fetch of
+          // the task namespace.
+          expect(subagent?.messages ?? []).toEqual([]);
+        }
+      }
+    );
   });
 });

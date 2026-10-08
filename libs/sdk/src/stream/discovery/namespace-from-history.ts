@@ -101,6 +101,11 @@ export function collectPositionalTaskMappings(
       Array.isArray(t.path) &&
       t.path[0] === "__pregel_push" &&
       typeof t.path[1] === "number" &&
+      // Send tasks are `[PUSH, i]` (legacy JS servers) or `[PUSH, i, false]`
+      // (aligned with Python); longer paths are error handlers of failed
+      // Sends (`[PUSH, i, false, "node_error_handler", false]`) and must not
+      // be mistaken for a second Send at the same index.
+      t.path.length <= 3 &&
       typeof t.id === "string" &&
       typeof t.name === "string"
   );
