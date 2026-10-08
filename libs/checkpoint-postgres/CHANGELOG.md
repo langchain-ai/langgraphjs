@@ -1,5 +1,13 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2825](https://github.com/langchain-ai/langgraphjs/pull/2825) [`a1f9393`](https://github.com/langchain-ai/langgraphjs/commit/a1f9393b771606b1ad636c1f4555cd70cb083dea) Thanks [@byhow](https://github.com/byhow)! - Match Postgres store namespace prefixes and suffixes at segment boundaries. Validate namespace listing filters, escape namespace LIKE patterns, and reject colons inside namespace labels to prevent ambiguous paths.
+  
+  Align namespace listing `*` wildcards with InMemoryStore: match exactly one segment while treating stars embedded in labels literally.
+
 ## 1.0.5
 
 ### Patch Changes

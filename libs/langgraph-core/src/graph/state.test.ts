@@ -1598,4 +1598,57 @@ describe("StateGraph", () => {
       expect(times(result.ran, "merge")).toBe(0);
     });
   });
+
+  describe("Command input", () => {
+    const buildGraph = (visited: string[]) =>
+      new StateGraph(
+        Annotation.Root({
+          log: Annotation<string[]>({
+            reducer: (a, b) => a.concat(b),
+            default: () => [],
+          }),
+        })
+      )
+        .addNode("gate", () => {
+          visited.push("gate");
+          return { log: ["gate"] };
+        })
+        .addNode("tools", () => {
+          visited.push("tools");
+          return { log: ["tools"] };
+        })
+        .addEdge(START, "gate")
+        .addEdge("gate", "tools")
+        .addEdge("tools", END)
+        .compile();
+
+    it("follows goto and update from a Command instance", async () => {
+      const visited: string[] = [];
+      const result = await buildGraph(visited).invoke(
+        new Command({ goto: "tools", update: { log: ["injected"] } })
+      );
+      expect(visited).toEqual(["tools"]);
+      expect(result.log).toEqual(["injected", "tools"]);
+    });
+
+    it.each([
+      [
+        "plain object",
+        { lg_name: "Command", goto: "tools", update: { log: ["forged"] } },
+      ],
+      [
+        "JSON round-tripped Command",
+        JSON.parse(
+          JSON.stringify(
+            new Command({ goto: "tools", update: { log: ["forged"] } })
+          )
+        ),
+      ],
+    ])("treats a %s as state input, not a Command", async (_, input) => {
+      const visited: string[] = [];
+      const result = await buildGraph(visited).invoke(input);
+      expect(visited).toEqual(["gate", "tools"]);
+      expect(result.log).toEqual(["gate", "tools"]);
+    });
+  });
 });
