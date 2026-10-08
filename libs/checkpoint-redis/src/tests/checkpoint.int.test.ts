@@ -355,6 +355,54 @@ describe("RedisSaver Integration Tests", () => {
     await redisClient.flushAll();
   });
 
+  it("keeps each branch's value when two checkpoints from one parent write the same channel", async () => {
+    const saver = new RedisSaver(redisClient);
+    const parentConfig = await saver.put(
+      { configurable: { thread_id: "branches", checkpoint_ns: "" } },
+      {
+        ...emptyCheckpoint(),
+        id: uuid6(0),
+        channel_values: { ch: "base" },
+        channel_versions: { ch: 1 },
+      },
+      { source: "loop", step: 0, parents: {} },
+      { ch: 1 }
+    );
+    const branch = async (value: string, step: number) => {
+      const version = saver.getNextVersion(1);
+      const config = await saver.put(
+        parentConfig,
+        {
+          ...emptyCheckpoint(),
+          id: uuid6(step),
+          channel_values: { ch: value },
+          channel_versions: { ch: version },
+        },
+        { source: "update", step: 1, parents: {} },
+        { ch: version }
+      );
+      return { config, version };
+    };
+    const first = await branch("first", 1);
+    await branch("second", 2);
+
+    const firstChild = await saver.put(
+      first.config,
+      {
+        ...emptyCheckpoint(),
+        id: uuid6(3),
+        channel_values: { ch: "first", other: "x" },
+        channel_versions: { ch: first.version, other: 1 },
+      },
+      { source: "update", step: 2, parents: {} },
+      { other: 1 }
+    );
+
+    expect(
+      (await saver.getTuple(firstChild))?.checkpoint.channel_values
+    ).toEqual({ ch: "first", other: "x" });
+  });
+
   it("should handle basic integration workflow", async () => {
     const saver = new RedisSaver(redisClient);
 
