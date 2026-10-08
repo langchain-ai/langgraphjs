@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.0.12
+
+### Patch Changes
+
+- [#2829](https://github.com/langchain-ai/langgraphjs/pull/2829) [`a6ac791`](https://github.com/langchain-ai/langgraphjs/commit/a6ac79150252a9ba0c74b940c4919f34623927ba) Thanks [@byhow](https://github.com/byhow)! - fix(checkpoint-redis): check each `RedisStore` document's namespace exactly before returning, replacing or deleting it, so `["tenant", "a"]` no longer matches documents stored under `["a", "tenant"]`, `["tenant", "A"]` or `["tenant", "a-b"]`. Upgrade every process that writes to the store, since older versions can still overwrite or delete other namespaces' documents.
+
 ## 1.0.11
 
 ### Patch Changes

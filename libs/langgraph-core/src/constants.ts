@@ -669,7 +669,9 @@ export function isCommand(x: unknown): x is Command {
     return false;
   }
 
-  if ("lg_name" in x && x.lg_name === "Command") {
+  // Not `instanceof`: a Command built by another copy of this package must
+  // still pass. Plain objects are rejected so JSON input cannot forge one.
+  if (!isPlainObject(x) && "lg_name" in x && x.lg_name === "Command") {
     return true;
   }
 
@@ -723,8 +725,8 @@ export function _deserializeCommandSendObjectGraph(
     } else if (x instanceof Command || x instanceof Send || !isPlainObject(x)) {
       result = x;
       seen.set(x, result);
-    } else if (isCommand(x)) {
-      result = new Command(x);
+    } else if ("lg_name" in x && x.lg_name === "Command") {
+      result = new Command(x as CommandParams);
       seen.set(x, result);
     } else if (_isSendInterface(x)) {
       result = new Send(

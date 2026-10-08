@@ -15,7 +15,11 @@ import type {
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
 import type { IdleReconnectMode } from "../../utils/stream.js";
 
-import { BaseClient, getRunMetadataFromResponse } from "../base.js";
+import {
+  BaseClient,
+  getRunMetadataFromResponse,
+  encodePathSegment,
+} from "../base.js";
 
 export class RunsClient<
   TStateType = DefaultValues,
@@ -103,7 +107,9 @@ export class RunsClient<
 
     yield* this.streamWithRetry({
       endpoint:
-        threadId == null ? `/runs/stream` : `/threads/${threadId}/runs/stream`,
+        threadId == null
+          ? `/runs/stream`
+          : `/threads/${encodePathSegment(threadId)}/runs/stream`,
       method: "POST",
       json,
       signal: payload?.signal,
@@ -164,7 +170,10 @@ export class RunsClient<
         : undefined,
     };
 
-    const endpoint = threadId === null ? "/runs" : `/threads/${threadId}/runs`;
+    const endpoint =
+      threadId === null
+        ? "/runs"
+        : `/threads/${encodePathSegment(threadId)}/runs`;
     const [run, response] = await this.fetch<Run>(endpoint, {
       method: "POST",
       json,
@@ -255,7 +264,9 @@ export class RunsClient<
         : undefined,
     };
     const endpoint =
-      threadId == null ? `/runs/wait` : `/threads/${threadId}/runs/wait`;
+      threadId == null
+        ? `/runs/wait`
+        : `/threads/${encodePathSegment(threadId)}/runs/wait`;
     const [run, response] = await this.fetch<ThreadState["values"]>(endpoint, {
       method: "POST",
       json,
@@ -299,7 +310,7 @@ export class RunsClient<
       signal?: AbortSignal;
     }
   ): Promise<Run[]> {
-    return this.fetch<Run[]>(`/threads/${threadId}/runs`, {
+    return this.fetch<Run[]>(`/threads/${encodePathSegment(threadId)}/runs`, {
       params: {
         limit: options?.limit ?? 10,
         offset: options?.offset ?? 0,
@@ -322,9 +333,12 @@ export class RunsClient<
     runId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Run> {
-    return this.fetch<Run>(`/threads/${threadId}/runs/${runId}`, {
-      signal: options?.signal,
-    });
+    return this.fetch<Run>(
+      `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}`,
+      {
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -343,11 +357,14 @@ export class RunsClient<
     action: CancelAction = "interrupt",
     options: { signal?: AbortSignal } = {}
   ): Promise<void> {
-    return this.fetch<void>(`/threads/${threadId}/runs/${runId}/cancel`, {
-      method: "POST",
-      params: { wait: wait ? "1" : "0", action },
-      signal: options?.signal,
-    });
+    return this.fetch<void>(
+      `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/cancel`,
+      {
+        method: "POST",
+        params: { wait: wait ? "1" : "0", action },
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -387,11 +404,16 @@ export class RunsClient<
     runId: string,
     options?: { cancelOnDisconnect?: boolean; signal?: AbortSignal }
   ): Promise<TStateType> {
-    return this.fetch<TStateType>(`/threads/${threadId}/runs/${runId}/join`, {
-      timeoutMs: null,
-      params: { cancel_on_disconnect: options?.cancelOnDisconnect ? "1" : "0" },
-      signal: options?.signal,
-    });
+    return this.fetch<TStateType>(
+      `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/join`,
+      {
+        timeoutMs: null,
+        params: {
+          cancel_on_disconnect: options?.cancelOnDisconnect ? "1" : "0",
+        },
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -440,8 +462,8 @@ export class RunsClient<
     yield* this.streamWithRetry({
       endpoint:
         threadId != null
-          ? `/threads/${threadId}/runs/${runId}/stream`
-          : `/runs/${runId}/stream`,
+          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
+          : `/runs/${encodePathSegment(runId)}/stream`,
       method: "GET",
       signal: opts?.signal,
       idleReconnect: opts?.streamIdleReconnect,
@@ -467,9 +489,12 @@ export class RunsClient<
     runId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    return this.fetch<void>(`/threads/${threadId}/runs/${runId}`, {
-      method: "DELETE",
-      signal: options?.signal,
-    });
+    return this.fetch<void>(
+      `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}`,
+      {
+        method: "DELETE",
+        signal: options?.signal,
+      }
+    );
   }
 }

@@ -33,7 +33,10 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
   getOnlyChannels,
+  isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -859,12 +862,96 @@ export class Pregel<
   }
 
   /**
+   * The checkpointer runs and state methods use: none for `checkpointer: false`,
+   * else the one a parent lends a subgraph through the config, else this
+   * graph's own.
+   */
+  private _resolveCheckpointer(
+    config?: RunnableConfig
+  ): BaseCheckpointSaver | undefined {
+    if (this.checkpointer === false) return undefined;
+    const lent = config?.configurable?.[CONFIG_KEY_CHECKPOINTER];
+    if (lent !== undefined) return lent;
+    if (this.checkpointer === true) {
+      throw new Error("checkpointer: true cannot be used for root graphs.");
+    }
+    return this.checkpointer;
+  }
+
+  private _stateCheckpointer(config: RunnableConfig): BaseCheckpointSaver {
+    const checkpointer = this._resolveCheckpointer(config);
+    if (typeof checkpointer !== "object" || checkpointer === null) {
+      throw new GraphValueError("No checkpointer set", {
+        lc_error_code: "MISSING_CHECKPOINTER",
+      });
+    }
+    return checkpointer;
+  }
+
+  /**
+   * A `checkpointer: true` subgraph keeps one history per thread, stored
+   * under its namespace with the task ids removed.
+   */
+  private _ownCheckpointConfig<C extends RunnableConfig>(config: C): C {
+    if (this.checkpointer !== true) return config;
+    const ns: string = config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] ?? "";
+    return {
+      ...config,
+      configurable: {
+        ...config.configurable,
+        [CONFIG_KEY_CHECKPOINT_NS]: ns
+          .split(CHECKPOINT_NAMESPACE_SEPARATOR)
+          .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
+          .join(CHECKPOINT_NAMESPACE_SEPARATOR),
+      },
+    };
+  }
+
+  /**
+   * The subgraph a state method's namespaced config addresses, and the config
+   * to call it with, lending it `checkpointer`. `undefined` when the config is
+   * for this graph, comes from inside a running task, or names no declared
+   * subgraph (a dynamically created one, such as a tool-call subgraph).
+   */
+  private async _subgraphForNamespace(
+    config: RunnableConfig,
+    checkpointer: BaseCheckpointSaver
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<[Pregel<any, any>, RunnableConfig] | undefined> {
+    const checkpointNamespace: string =
+      config.configurable?.checkpoint_ns ?? "";
+    if (
+      checkpointNamespace === "" ||
+      config.configurable?.[CONFIG_KEY_READ] !== undefined ||
+      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
+    ) {
+      return undefined;
+    }
+    const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
+    for await (const [name, subgraph] of this.getSubgraphsAsync(
+      recastNamespace,
+      true
+    )) {
+      if (name === recastNamespace) {
+        return [
+          subgraph,
+          patchConfigurable(config, {
+            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+          }),
+        ];
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Prepares a state snapshot from saved checkpoint data.
    * This is an internal method used by getState and getStateHistory.
    *
    * @param config - Configuration for preparing the snapshot
    * @param saved - Optional saved checkpoint data
-   * @param subgraphCheckpointer - Optional checkpointer for subgraphs
+   * @param saver - Checkpointer the caller resolved; a subgraph's own `checkpointer` is unset or `true`
+   * @param recurse - Whether to include each subgraph task's state
    * @param applyPendingWrites - Whether to apply pending writes to tasks and then to channels
    * @returns A snapshot of the graph state
    * @internal
@@ -947,12 +1034,14 @@ export class Pregel<
   protected async _prepareStateSnapshot({
     config,
     saved,
-    subgraphCheckpointer,
+    saver,
+    recurse = false,
     applyPendingWrites = false,
   }: {
     config: RunnableConfig;
     saved?: CheckpointTuple;
-    subgraphCheckpointer?: BaseCheckpointSaver;
+    saver: BaseCheckpointSaver;
+    recurse?: boolean;
     applyPendingWrites?: boolean;
   }): Promise<StateSnapshot> {
     if (saved === undefined) {
@@ -970,9 +1059,9 @@ export class Pregel<
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint,
       {
-        saver:
-          typeof this.checkpointer === "object" ? this.checkpointer : undefined,
+        saver,
         config: saved.config ?? config,
+        deltaWritesVersioned: isDeltaWritesVersioned(saved.metadata),
       }
     );
 
@@ -1022,7 +1111,9 @@ export class Pregel<
     // Prepare task states for subgraphs
     for (const task of nextTasks) {
       const matchingSubgraph = subgraphs.find(([name]) => name === task.name);
-      if (!matchingSubgraph) {
+      // A `checkpointer: false` subgraph persists nothing, so it has no state
+      // to read.
+      if (!matchingSubgraph || matchingSubgraph[1].checkpointer === false) {
         continue;
       }
       // assemble checkpoint_ns for this task
@@ -1030,7 +1121,7 @@ export class Pregel<
       if (parentNamespace) {
         taskNs = `${parentNamespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${taskNs}`;
       }
-      if (subgraphCheckpointer === undefined) {
+      if (!recurse) {
         // set config as signal that subgraph checkpoints exist
         const config: RunnableConfig = {
           configurable: {
@@ -1043,7 +1134,7 @@ export class Pregel<
         // get the state of the subgraph
         const subgraphConfig: RunnableConfig = {
           configurable: {
-            [CONFIG_KEY_CHECKPOINTER]: subgraphCheckpointer,
+            [CONFIG_KEY_CHECKPOINTER]: saver,
             thread_id: saved.config.configurable?.thread_id,
             checkpoint_ns: taskNs,
           },
@@ -1162,48 +1253,27 @@ export class Pregel<
     config: RunnableConfig,
     options?: GetStateOptions
   ): Promise<StateSnapshot> {
-    const checkpointer =
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
+    const checkpointer = this._stateCheckpointer(config);
+
+    const subgraph = await this._subgraphForNamespace(config, checkpointer);
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      return await pregel.getState(subgraphConfig, {
+        subgraphs: options?.subgraphs,
       });
     }
+    // A namespace with no declared subgraph (e.g. a dynamically created
+    // tool-call subgraph like "tools:call_abc123") is read from the
+    // checkpointer directly, so callers can still see its persisted state.
 
-    const checkpointNamespace: string =
-      config.configurable?.checkpoint_ns ?? "";
-    if (
-      checkpointNamespace !== "" &&
-      config.configurable?.[CONFIG_KEY_READ] === undefined &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
-    ) {
-      // remove task_ids from checkpoint_ns
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-      for await (const [name, subgraph] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        if (name === recastNamespace) {
-          return await subgraph.getState(
-            patchConfigurable(config, {
-              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-            }),
-            { subgraphs: options?.subgraphs }
-          );
-        }
-      }
-      // No static subgraph found for this namespace (e.g. a dynamically-created
-      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
-      // checkpointer directly with the full checkpoint_ns so callers can still
-      // read persisted state (e.g. messages) for these transient subgraphs.
-    }
-
-    const mergedConfig = mergeConfigs(this.config, config);
-    const saved = await checkpointer.getTuple(config);
+    const ownConfig = this._ownCheckpointConfig(config);
+    const mergedConfig = mergeConfigs(this.config, ownConfig);
+    const saved = await checkpointer.getTuple(ownConfig);
     const snapshot = await this._prepareStateSnapshot({
       config: mergedConfig,
       saved,
-      subgraphCheckpointer: options?.subgraphs ? checkpointer : undefined,
+      saver: checkpointer,
+      recurse: options?.subgraphs,
       applyPendingWrites: !config.configurable?.checkpoint_id,
     });
     return snapshot;
@@ -1226,46 +1296,24 @@ export class Pregel<
     config: RunnableConfig,
     options?: CheckpointListOptions
   ): AsyncIterableIterator<StateSnapshot> {
-    const checkpointer: BaseCheckpointSaver =
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
-      });
+    const checkpointer = this._stateCheckpointer(config);
+
+    const subgraph = await this._subgraphForNamespace(config, checkpointer);
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      yield* pregel.getStateHistory(subgraphConfig, options);
+      return;
     }
+    // As in `getState`, a namespace with no declared subgraph is read from the
+    // checkpointer directly.
 
-    const checkpointNamespace: string =
-      config.configurable?.checkpoint_ns ?? "";
-    if (
-      checkpointNamespace !== "" &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
-    ) {
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-
-      // find the subgraph with the matching name
-      for await (const [name, pregel] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        if (name === recastNamespace) {
-          yield* pregel.getStateHistory(
-            patchConfigurable(config, {
-              [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-            }),
-            options
-          );
-          return;
-        }
-      }
-      // No static subgraph found for this namespace (e.g. a dynamically-created
-      // tool-call subgraph like "tools:call_abc123"). Fall back to querying the
-      // checkpointer directly with the full checkpoint_ns so callers can still
-      // read persisted state (e.g. messages) for these transient subgraphs.
-    }
-
-    const mergedConfig = mergeConfigs(this.config, config, {
-      configurable: { checkpoint_ns: checkpointNamespace },
-    });
+    const mergedConfig = this._ownCheckpointConfig(
+      mergeConfigs(this.config, config, {
+        configurable: {
+          checkpoint_ns: config.configurable?.checkpoint_ns ?? "",
+        },
+      })
+    );
 
     for await (const checkpointTuple of checkpointer.list(
       mergedConfig,
@@ -1274,6 +1322,7 @@ export class Pregel<
       yield this._prepareStateSnapshot({
         config: checkpointTuple.config,
         saved: checkpointTuple,
+        saver: checkpointer,
       });
     }
   }
@@ -1303,13 +1352,7 @@ export class Pregel<
       }>;
     }>
   ): Promise<RunnableConfig> {
-    const checkpointer: BaseCheckpointSaver | undefined =
-      startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] ?? this.checkpointer;
-    if (!checkpointer) {
-      throw new GraphValueError("No checkpointer set", {
-        lc_error_code: "MISSING_CHECKPOINTER",
-      });
-    }
+    const checkpointer = this._stateCheckpointer(startConfig);
     if (supersteps.length === 0) {
       throw new Error("No supersteps provided");
     }
@@ -1318,29 +1361,26 @@ export class Pregel<
       throw new Error("No updates provided");
     }
 
-    // delegate to subgraph
+    const subgraph = await this._subgraphForNamespace(
+      startConfig,
+      checkpointer
+    );
+    if (subgraph !== undefined) {
+      const [pregel, subgraphConfig] = subgraph;
+      return await pregel.bulkUpdateState(subgraphConfig, supersteps);
+    }
+    // Unlike a read, an update can't fall back to this graph: its nodes and
+    // channels would write the wrong state into the subgraph's namespace.
     const checkpointNamespace: string =
       startConfig.configurable?.checkpoint_ns ?? "";
     if (
       checkpointNamespace !== "" &&
+      startConfig.configurable?.[CONFIG_KEY_READ] === undefined &&
       startConfig.configurable?.[CONFIG_KEY_CHECKPOINTER] === undefined
     ) {
-      // remove task_ids from checkpoint_ns
-      const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-      // find the subgraph with the matching name
-      // eslint-disable-next-line no-unreachable-loop
-      for await (const [, pregel] of this.getSubgraphsAsync(
-        recastNamespace,
-        true
-      )) {
-        return await pregel.bulkUpdateState(
-          patchConfigurable(startConfig, {
-            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-          }),
-          supersteps
-        );
-      }
-      throw new Error(`Subgraph "${recastNamespace}" not found`);
+      throw new Error(
+        `Subgraph "${recastCheckpointNamespace(checkpointNamespace)}" not found`
+      );
     }
 
     const updateSuperStep = async (
@@ -1352,9 +1392,9 @@ export class Pregel<
       }[]
     ) => {
       // get last checkpoint
-      const config = this.config
-        ? mergeConfigs(this.config, inputConfig)
-        : inputConfig;
+      const config = this._ownCheckpointConfig(
+        this.config ? mergeConfigs(this.config, inputConfig) : inputConfig
+      );
       const saved = await checkpointer.getTuple(config);
       const checkpoint =
         saved !== undefined
@@ -1377,6 +1417,14 @@ export class Pregel<
           ...checkpointMetadata,
         };
       }
+      const deltaWritesVersioned =
+        Object.values(this.channels as Record<string, BaseChannel>).some(
+          isDeltaChannel
+        ) &&
+        (saved === undefined || isDeltaWritesVersioned(saved.metadata));
+      const versionedMetadata = deltaWritesVersioned
+        ? { [DELTA_WRITES_VERSIONED]: true }
+        : {};
 
       // Find last node that updated the state, if not provided
       const { values, asNode } = updates[0];
@@ -1394,6 +1442,7 @@ export class Pregel<
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1407,7 +1456,11 @@ export class Pregel<
       const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
         checkpoint,
-        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
+        {
+          saver: checkpointer,
+          config: saved?.config ?? checkpointConfig,
+          deltaWritesVersioned,
+        }
       );
 
       if (values === null && asNode === END) {
@@ -1472,14 +1525,17 @@ export class Pregel<
           );
         }
         // save checkpoint
+        const { [DELTA_WRITES_VERSIONED]: _carried, ...endMetadata } =
+          checkpointMetadata as Record<string, unknown>;
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, step),
           {
-            ...checkpointMetadata,
+            ...endMetadata,
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1520,6 +1576,7 @@ export class Pregel<
             source: "fork",
             step: step + 1,
             parents: saved.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1602,7 +1659,7 @@ export class Pregel<
               triggers: [],
             },
           ],
-          checkpointer.getNextVersion.bind(this.checkpointer),
+          checkpointer.getNextVersion.bind(checkpointer),
           this.triggerToNodes
         );
 
@@ -1616,6 +1673,7 @@ export class Pregel<
             source: "input",
             step: nextStep,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1663,10 +1721,10 @@ export class Pregel<
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
           _applyWrites(
-            saved.checkpoint,
+            checkpoint,
             channels,
             [{ name: INPUT, writes: nullWrites, triggers: [] }],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1688,7 +1746,7 @@ export class Pregel<
             checkpoint,
             channels,
             tasks as WritesProtocol[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1764,7 +1822,7 @@ export class Pregel<
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values, taskId } of validUpdates) {
+      for (const [i, { asNode, values, taskId }] of validUpdates.entries()) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1790,7 +1848,12 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
+          // Savers keep one write per (task id, idx), so updates sharing an id
+          // lose all but the first one's writes, which a DeltaChannel replays.
+          // The first keeps the id a lone update has always had.
+          id:
+            taskId ??
+            uuid5(i === 0 ? INTERRUPT : `${INTERRUPT}:${i}`, checkpoint.id),
           writers: [],
         });
       }
@@ -1846,21 +1909,37 @@ export class Pregel<
         checkpoint,
         channels,
         tasks as PregelExecutableTask<string, string>[],
-        checkpointer.getNextVersion.bind(this.checkpointer),
+        checkpointer.getNextVersion.bind(checkpointer),
         this.triggerToNodes
       );
 
+      // A new thread has no checkpoint to hold the writes, so the delta
+      // channels they wrote are stored whole on this one.
+      const channelsToSnapshot = new Set<string>();
+      if (saved === undefined) {
+        for (const [k, ch] of Object.entries(channels)) {
+          if (
+            isDeltaChannel(ch) &&
+            checkpoint.channel_versions[k] !== undefined
+          ) {
+            channelsToSnapshot.add(k);
+          }
+        }
+      }
       const newVersions = getNewChannelVersions(
         checkpointPreviousVersions,
         checkpoint.channel_versions
       );
       const nextConfig = await checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, channels, step + 1),
+        createCheckpoint(checkpoint, channels, step + 1, {
+          channelsToSnapshot,
+        }),
         {
           source: "update",
           step: step + 1,
           parents: saved?.metadata?.parents ?? {},
+          ...versionedMetadata,
         },
         newVersions
       );
@@ -1996,19 +2075,7 @@ export class Pregel<
       streamModeSingle = true;
     }
 
-    let defaultCheckpointer: BaseCheckpointSaver | undefined;
-    if (this.checkpointer === false) {
-      defaultCheckpointer = undefined;
-    } else if (
-      config !== undefined &&
-      config.configurable?.[CONFIG_KEY_CHECKPOINTER] !== undefined
-    ) {
-      defaultCheckpointer = config.configurable[CONFIG_KEY_CHECKPOINTER];
-    } else if (this.checkpointer === true) {
-      throw new Error("checkpointer: true cannot be used for root graphs.");
-    } else {
-      defaultCheckpointer = this.checkpointer;
-    }
+    const defaultCheckpointer = this._resolveCheckpointer(config);
     const defaultStore: BaseStore | undefined = config.store ?? this.store;
     const defaultCache: BaseCache | undefined = config.cache ?? this.cache;
 
@@ -2414,15 +2481,7 @@ export class Pregel<
       modes: new Set(streamMode),
     });
 
-    // set up subgraph checkpointing
-    if (this.checkpointer === true) {
-      config.configurable ??= {};
-      const ns: string = config.configurable[CONFIG_KEY_CHECKPOINT_NS] ?? "";
-      config.configurable[CONFIG_KEY_CHECKPOINT_NS] = ns
-        .split(CHECKPOINT_NAMESPACE_SEPARATOR)
-        .map((part) => part.split(CHECKPOINT_NAMESPACE_END)[0])
-        .join(CHECKPOINT_NAMESPACE_SEPARATOR);
-    }
+    config.configurable = this._ownCheckpointConfig(config).configurable;
 
     // set up messages stream mode
     if (streamMode.includes("messages")) {
