@@ -2,7 +2,7 @@
  * Tokenize a JSON path into parts.
  * @example
  * tokenizePath("metadata.title") // -> ["metadata", "title"]
- * tokenizePath("chapters[*].content") // -> ["chapters[*]", "content"]
+ * tokenizePath("chapters[*].content") // -> ["chapters", "[*]", "content"]
  */
 export function tokenizePath(path: string): string[] {
   if (!path) {
