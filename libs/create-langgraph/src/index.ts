@@ -11,9 +11,9 @@ import {
   cancel,
   confirm,
 } from "@clack/prompts";
-import zipExtract from "extract-zip";
 import color from "picocolors";
 import dedent from "dedent";
+import { unzipSync } from "fflate";
 
 const TEMPLATES = {
   "New LangGraph Project": {
@@ -83,6 +83,20 @@ const TEMPLATE_ID_TO_CONFIG = Object.entries(TEMPLATES).reduce(
 
 const TEMPLATE_IDS = Object.keys(TEMPLATE_ID_TO_CONFIG);
 
+// Replaces extract-zip, which hangs on Node.js 24.16+ / 26.1+
+export async function extractZip(data: Uint8Array, destDir: string) {
+  const root = path.resolve(destDir);
+  for (const [name, content] of Object.entries(unzipSync(data))) {
+    const target = path.resolve(root, name);
+    if (!target.startsWith(root + path.sep))
+      throw new Error(`Invalid zip entry: ${name}`);
+    await fs.mkdir(name.endsWith("/") ? target : path.dirname(target), {
+      recursive: true,
+    });
+    if (!name.endsWith("/")) await fs.writeFile(target, content);
+  }
+}
+
 async function downloadAndExtract(url: string, targetPath: string) {
   try {
     const response = await fetch(url);
@@ -94,15 +108,8 @@ async function downloadAndExtract(url: string, targetPath: string) {
 
     await fs.mkdir(targetPath, { recursive: true });
 
-    // Create a temporary file to store the zip
-    const tempFile = path.join(targetPath, "temp.zip");
-    await fs.writeFile(tempFile, buffer);
-
     // Extract the zip file
-    await zipExtract(tempFile, { dir: targetPath });
-
-    // Clean up temp file
-    await fs.unlink(tempFile);
+    await extractZip(buffer, targetPath);
 
     // Move files from the extracted directory to target path
     const extractedDir = (await fs.readdir(targetPath)).find((f) =>
