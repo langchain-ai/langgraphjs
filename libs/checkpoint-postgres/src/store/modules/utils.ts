@@ -1,23 +1,19 @@
 /**
- * Characters interpreted as wildcards (or escape) by Postgres `LIKE` patterns.
- * Search operations match namespaces via `namespace_path LIKE ${prefix}%`, so
- * any of these in a caller-supplied label silently changes the prefix match
- * into a glob. A namespace prefix of `["%"]` would match every namespace in
- * the store, exposing data across tenants. CWE-1336 / CWE-943.
- *
- * Equality-path operations (get / put / delete) use `namespace_path = $1` and
- * are safe on their own, but we reject these characters everywhere to keep the
- * Store API consistent (data written under such a namespace would never be
- * reachable via search anyway).
+ * Reject LIKE metacharacters consistently across reads, writes and list filters.
+ * Pattern construction also escapes them as a defense in depth.
  */
 const LIKE_RESERVED_PATTERN = /[%_\\]/;
 
 /**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
+ * @param options Whether the path starts at the namespace root (false for suffixes).
  * @throws {Error} If the namespace is invalid.
  */
-export function validateNamespace(namespace: string[]): void {
+export function validateNamespace(
+  namespace: string[],
+  { isRoot = true }: { isRoot?: boolean } = {}
+): void {
   if (namespace.length === 0) {
     throw new Error("Namespace cannot be empty.");
   }
@@ -33,6 +29,12 @@ export function validateNamespace(namespace: string[]): void {
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
       );
     }
+
+    if (label.includes(":")) {
+      throw new Error(
+        `Invalid namespace label '${label}'. Namespace labels cannot contain colons (':').`
+      );
+    }
     if (label === "") {
       throw new Error(
         `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
@@ -41,15 +43,49 @@ export function validateNamespace(namespace: string[]): void {
     if (LIKE_RESERVED_PATTERN.test(label)) {
       throw new Error(
         `Invalid namespace label '${label}' found in ${namespace}. Namespace ` +
-          `labels cannot contain SQL LIKE wildcards ('%', '_') or the ` +
-          `backslash escape character ('\\\\'); these would cause search() to ` +
-          `match namespaces outside the requested prefix.`
+          `labels cannot contain SQL LIKE wildcards ('%', '_') or backslashes.`
       );
     }
   }
-  if (namespace[0] === "langgraph") {
+
+  if (isRoot && namespace[0] === "langgraph") {
     throw new Error(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );
   }
+}
+
+/** Escape LIKE wildcards and PostgreSQL's default backslash escape character. */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+/** Listing wildcards span one segment; stars inside a label remain literal. */
+export function namespaceListingCondition(
+  namespace: string[],
+  matchType: "prefix" | "suffix",
+  params: unknown[]
+): string {
+  if (!namespace.includes("*")) {
+    const path = namespace.join(":");
+    const escapedPath = escapeLike(path);
+    const paramIndex = params.length + 1;
+    params.push(
+      path,
+      matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
+    );
+
+    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1})`;
+  }
+
+  const body = namespace
+    .map((label) =>
+      label === "*" ? "[^:]+" : label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    )
+    .join(":");
+
+  // PostgreSQL's \Z anchors at the actual end, including for newline labels.
+  params.push(matchType === "prefix" ? `^${body}(:|\\Z)` : `(^|:)${body}\\Z`);
+
+  return `namespace_path ~ $${params.length}`;
 }

@@ -118,17 +118,28 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
         expect(hist.messages.writes.map((w) => w[2])).toEqual([[2]]);
       });
 
-      it("orders concurrent same-superstep writes by task id", async () => {
+      it("orders concurrent same-superstep writes by task path", async () => {
         const root = rootConfig(uuid6(3));
 
         const c0 = await putCheckpoint(root, uuid6(3), {
           messages: new DeltaSnapshot([]),
         });
-        // Persist the two tasks' writes in reverse task-id order. The walk must
-        // re-sort them to (task_id, idx) so the reconstructed value matches live
-        // execution regardless of the store's pending-writes return order.
-        await checkpointer.putWrites(c0, [["messages", ["b"]]], "task-b");
-        await checkpointer.putWrites(c0, [["messages", ["a"]]], "task-a");
+        // Task ids are chosen to sort OPPOSITE to their task paths, so the
+        // test cannot pass by chance under a task-id ordering. Persist the
+        // writes in yet another (reverse path) order, so an
+        // insertion-order implementation cannot pass either.
+        await checkpointer.putWrites(
+          c0,
+          [["messages", ["b"]]],
+          "00000000-0000-0000-0000-000000000000",
+          "~pull, 02"
+        );
+        await checkpointer.putWrites(
+          c0,
+          [["messages", ["a"]]],
+          "ffffffff-ffff-ffff-ffff-ffffffffffff",
+          "~pull, 01"
+        );
         const c1 = await putCheckpoint(c0, uuid6(3), {});
 
         const hist = await checkpointer.getDeltaChannelHistory({
@@ -136,11 +147,43 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
           channels: ["messages"],
         });
 
-        expect(hist.messages.writes.map((w) => w[0])).toEqual([
-          "task-a",
-          "task-b",
-        ]);
+        // writesSortKey order — the order live execution applies a
+        // superstep's writes in. Task-id order would give ["b", "a"].
         expect(hist.messages.writes.map((w) => w[2])).toEqual([["a"], ["b"]]);
+      });
+
+      it("orders pathless writes first, by task id (legacy rows)", async () => {
+        const root = rootConfig(uuid6(3));
+
+        const c0 = await putCheckpoint(root, uuid6(3), {
+          messages: new DeltaSnapshot([]),
+        });
+        // Writes stored without a task path (graph input, pre-column rows,
+        // savers that don't persist one) sort first — before every real task
+        // path — then by task id. The task ids here sort opposite to that
+        // expectation, so a path-order-only implementation cannot pass.
+        await checkpointer.putWrites(
+          c0,
+          [["messages", ["from_node"]]],
+          "00000000-0000-0000-0000-000000000000",
+          "~pull, a"
+        );
+        await checkpointer.putWrites(
+          c0,
+          [["messages", ["from_input"]]],
+          "ffffffff-ffff-ffff-ffff-ffffffffffff"
+        );
+        const c1 = await putCheckpoint(c0, uuid6(3), {});
+
+        const hist = await checkpointer.getDeltaChannelHistory({
+          config: c1,
+          channels: ["messages"],
+        });
+
+        expect(hist.messages.writes.map((w) => w[2])).toEqual([
+          ["from_input"],
+          ["from_node"],
+        ]);
       });
 
       it("omits the seed when no ancestor stored a value", async () => {

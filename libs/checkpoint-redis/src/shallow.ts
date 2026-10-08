@@ -6,6 +6,8 @@ import {
   CheckpointMetadata,
   CheckpointTuple,
   PendingWrite,
+  compareWritesSortKeys,
+  writesSortKey,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
@@ -353,7 +355,15 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
             JSON.stringify(jsonDoc.checkpoint)
           );
 
-          yield await this.createCheckpointTuple(jsonDoc, checkpoint);
+          yield await this.createCheckpointTuple(
+            jsonDoc,
+            checkpoint,
+            await this.loadPendingWrites(
+              jsonDoc.thread_id,
+              jsonDoc.checkpoint_ns,
+              jsonDoc.checkpoint_id
+            )
+          );
           yieldCount++;
         }
       } catch (error: any) {
@@ -403,7 +413,15 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
               JSON.stringify(jsonDoc.checkpoint)
             );
 
-            yield await this.createCheckpointTuple(jsonDoc, checkpoint);
+            yield await this.createCheckpointTuple(
+              jsonDoc,
+              checkpoint,
+              await this.loadPendingWrites(
+                jsonDoc.thread_id,
+                jsonDoc.checkpoint_ns,
+                jsonDoc.checkpoint_id
+              )
+            );
             yieldCount++;
           }
           return;
@@ -416,7 +434,8 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void> {
     await this.ensureIndexes();
 
@@ -453,6 +472,8 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpointId,
         task_id: taskId,
+        // Serialized task path; `""` sorts first (see `writesSortKey`).
+        task_path: taskPath ?? "",
         idx: idx,
         channel: channel,
         type: typeof value === "object" ? "json" : "string",
@@ -627,20 +648,36 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       return undefined;
     }
 
-    const pendingWrites: Array<[string, string, any]> = [];
+    // Load documents first, then order them by `writesSortKey` —
+    // `(task_path, task_id, idx)` — the order live execution applies a
+    // superstep's writes in (see the `getTuple` contract on
+    // `BaseCheckpointSaver`), instead of the sorted-set's per-call index
+    // order. Documents written before `task_path` existed have none and sort
+    // first, by `task_id`.
+    const writeDocs: any[] = [];
     for (const writeKey of writeKeys) {
       const writeDoc = await this.client.json.get(writeKey);
-      if (writeDoc) {
-        // Deserialize write value using serde to restore LangChain objects
-        const deserializedValue = Object.hasOwn(writeDoc, "value")
-          ? await this.serde.loadsTyped("json", JSON.stringify(writeDoc.value))
-          : undefined;
-        pendingWrites.push([
-          writeDoc.task_id,
-          writeDoc.channel,
-          deserializedValue,
-        ]);
-      }
+      if (writeDoc) writeDocs.push(writeDoc);
+    }
+    // Compute each document's key once, then sort on the cached keys.
+    const keyed = writeDocs.map((doc: any) => ({
+      key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),
+      doc,
+    }));
+    keyed.sort((a: any, b: any) => compareWritesSortKeys(a.key, b.key));
+    const sortedDocs = keyed.map(({ doc }: { doc: any }) => doc);
+
+    const pendingWrites: Array<[string, string, any]> = [];
+    for (const writeDoc of sortedDocs) {
+      // Deserialize write value using serde to restore LangChain objects
+      const deserializedValue = Object.hasOwn(writeDoc, "value")
+        ? await this.serde.loadsTyped("json", JSON.stringify(writeDoc.value))
+        : undefined;
+      pendingWrites.push([
+        writeDoc.task_id,
+        writeDoc.channel,
+        deserializedValue,
+      ]);
     }
 
     return pendingWrites;

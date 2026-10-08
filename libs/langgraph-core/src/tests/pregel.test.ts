@@ -1135,7 +1135,9 @@ export function runPregelTests(
         retry_policy: undefined,
         subgraphs: undefined,
         id: expect.any(String),
-        path: [PUSH, 0],
+        // Send tasks carry the translated path `[PUSH, idx, false]`,
+        // matching Python.
+        path: [PUSH, 0, false],
         writers: expect.any(Array),
       });
       expect(task2).toEqual({
@@ -3250,6 +3252,40 @@ graph TD;
       }
     );
 
+    it("keeps a checkpoint's parent when an exit-mode run has nothing to do", async () => {
+      const checkpointer = await createCheckpointer();
+      const StateAnnotation = Annotation.Root({
+        log: Annotation<string[]>({
+          reducer: (a, b) => a.concat(b),
+          default: () => [],
+        }),
+      });
+      const graph = new StateGraph(StateAnnotation)
+        .addNode("a", () => ({ log: ["a"] }))
+        .addNode("ask", () => {
+          interrupt("continue?");
+          return { log: ["ask"] };
+        })
+        .addEdge(START, "a")
+        .addEdge("a", "ask")
+        .addEdge("ask", END)
+        .compile({ checkpointer });
+      const config = {
+        configurable: { thread_id: "exit-nothing-to-do" },
+        durability: "exit" as const,
+      };
+      await graph.invoke({ log: ["in"] }, config);
+      await graph.invoke(new Command({ resume: "yes" }), config);
+      const [newest] = await gatherIterator(checkpointer.list(config));
+
+      await graph.invoke(null, { ...newest.config, durability: "exit" });
+
+      const after = await checkpointer.getTuple(newest.config);
+      expect(after?.parentConfig?.configurable?.checkpoint_id).toBe(
+        newest.parentConfig?.configurable?.checkpoint_id
+      );
+    });
+
     it("should handle dynamic interrupt", async () => {
       const checkpointer = await createCheckpointer();
 
@@ -3605,7 +3641,9 @@ graph TD;
           {
             id: expect.any(String),
             name: "tool_one",
-            path: ["__pregel_push", 0],
+            // Send tasks carry the translated path `[PUSH, idx, false]`,
+            // matching Python.
+            path: ["__pregel_push", 0, false],
             interrupts: [],
             result: { my_key: " one" },
           },
@@ -4047,7 +4085,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
         ],
@@ -4101,7 +4139,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
         ],
@@ -4171,13 +4209,13 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 1],
+            path: [PUSH, 1, false],
             interrupts: [],
           },
         ],
@@ -8260,7 +8298,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "generateJoke",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
             state: {
               configurable: {
@@ -8272,7 +8310,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "generateJoke",
-            path: [PUSH, 1],
+            path: [PUSH, 1, false],
             interrupts: [],
             state: {
               configurable: {
@@ -8481,7 +8519,7 @@ graph TD;
             {
               id: expect.any(String),
               name: "generateJoke",
-              path: [PUSH, 0],
+              path: [PUSH, 0, false],
               interrupts: [],
               state: {
                 configurable: {
@@ -8497,7 +8535,7 @@ graph TD;
             {
               id: expect.any(String),
               name: "generateJoke",
-              path: [PUSH, 1],
+              path: [PUSH, 1, false],
               interrupts: [],
               state: {
                 configurable: {

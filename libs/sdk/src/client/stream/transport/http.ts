@@ -1,4 +1,5 @@
 import { AsyncQueue } from "./queue.js";
+import { encodePathSegment } from "../../base.js";
 import type {
   Message,
   SubscribeParams,
@@ -128,7 +129,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.commands,
       this.threadId,
-      (id) => `/threads/${id}/commands`
+      (id) => `/threads/${encodePathSegment(id)}/commands`
     );
   }
 
@@ -136,7 +137,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.stream,
       this.threadId,
-      (id) => `/threads/${id}/stream/events`
+      (id) => `/threads/${encodePathSegment(id)}/stream/events`
     );
   }
 
@@ -144,7 +145,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.state,
       this.threadId,
-      (id) => `/threads/${id}/state`
+      (id) => `/threads/${encodePathSegment(id)}/state`
     );
   }
 

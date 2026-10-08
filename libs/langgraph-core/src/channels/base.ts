@@ -4,6 +4,7 @@ import {
   Checkpoint,
   DeltaSnapshot,
   type BaseCheckpointSaver,
+  type CheckpointMetadata,
   type DeltaChannelHistory,
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -197,22 +198,75 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
 }
 
 /**
+ * Synthetic task id for exit-mode writes of a superstep after the anchor's
+ * own.
+ *
+ * Sorts after every real task id, in step order, so replay keeps them after
+ * the anchor's own superstep whether a saver orders writes by task path
+ * (`writesSortKey`) or by task id. Mirrors Python's
+ * `exit_delta_late_task_id` exactly, including the two hexadecimal step
+ * groups (step is split across them).
+ */
+export function exitDeltaLateTaskId(step: number, taskId: string): string {
+  if (!STRUCTURED_UUID.test(taskId)) {
+    throw new TypeError(`Invalid task id for exit delta: ${taskId}`);
+  }
+  const parts = taskId.toLowerCase().split("-");
+  const stepHi = (step >> 16).toString(16).padStart(4, "0");
+  const stepLo = (step & 0xffff).toString(16).padStart(4, "0");
+  return `ffffffff-${stepHi}-${stepLo}-${parts[3]}-${parts[4]}`;
+}
+
+/**
+ * DeltaChannels a branch starting from this checkpoint must snapshot.
+ *
+ * A checkpoint's pending writes belong to the child that consumed them, and
+ * nothing records which child that was. A new branch snapshots every delta
+ * channel they touch, so its ancestor walk never replays them (port of
+ * Python #8548's `delta_channels_with_pending_writes`; see the seal in
+ * `bulkUpdateState` for how JS scopes it to channels whose version moved).
+ */
+export function deltaChannelsWithPendingWrites(
+  channels: Record<string, BaseChannel>,
+  pendingWrites: ReadonlyArray<[string, string, unknown]> | undefined
+): Set<string> {
+  const result = new Set<string>();
+  if (pendingWrites === undefined) return result;
+  for (const [, ch] of pendingWrites) {
+    const channel = channels[ch];
+    if (channel != null && isDeltaChannel(channel)) result.add(ch);
+  }
+  return result;
+}
+
+/**
  * Return the set of {@link DeltaChannel} names that should snapshot now.
  *
  * A channel snapshots when EITHER its accumulated update count reaches
  * `snapshotFrequency` OR the total supersteps since its last snapshot reaches
- * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. Pure predicate — no mutation.
+ * `DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT`. Given `channelVersions`, a channel
+ * without a version is skipped: it was never written on this branch, so it
+ * has nothing to snapshot. Pass `undefined` on a branch without
+ * {@link DELTA_WRITES_VERSIONED}, where such a channel can still hold writes
+ * and this snapshot is what bounds its walk. Pure predicate, no mutation.
  */
 export function deltaChannelsToSnapshot(
   channels: Record<string, BaseChannel>,
-  countersSinceDeltaSnapshot: Record<string, [number, number]>
+  countersSinceDeltaSnapshot: Record<string, [number, number]>,
+  channelVersions: Record<string, number | string> | undefined
 ): Set<string> {
   const result = new Set<string>();
   const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
   for (const name in channels) {
     if (!Object.prototype.hasOwnProperty.call(channels, name)) continue;
     const ch = channels[name];
-    if (!isDeltaChannel(ch) || !ch.isAvailable()) continue;
+    if (
+      !isDeltaChannel(ch) ||
+      !ch.isAvailable() ||
+      (channelVersions !== undefined && channelVersions[name] === undefined)
+    ) {
+      continue;
+    }
     const [updates, supersteps] = countersSinceDeltaSnapshot[name] ?? [0, 0];
     if (
       updates >= (ch as DeltaChannelLike).snapshotFrequency ||
@@ -292,6 +346,53 @@ export function createCheckpoint<ValueType>(
 }
 
 /**
+ * Checkpoint metadata key, `true` when every DeltaChannel write on the
+ * checkpoint's branch carries a version. A delta channel with no version there
+ * was never written, so it needs no walk. Branches started before this key
+ * existed never get it: an older `updateState` stored a delta channel's first
+ * write without a version, and only the walk finds such a write.
+ */
+export const DELTA_WRITES_VERSIONED = "delta_writes_versioned";
+
+export function isDeltaWritesVersioned(
+  metadata: CheckpointMetadata | undefined
+): boolean {
+  return (
+    (metadata as Record<string, unknown> | undefined)?.[
+      DELTA_WRITES_VERSIONED
+    ] === true
+  );
+}
+
+/**
+ * Delta channels whose value at `checkpoint` the ancestor walk rebuilds.
+ *
+ * A {@link DeltaSnapshot} or a migrated plain value in `channel_values`
+ * resolves directly, so only a channel with nothing stored there needs the
+ * walk. With `versionedOnly`, a channel with no version was never written, so
+ * it is empty without one; a walk for it would find no snapshot to stop at and
+ * read every ancestor, every time the thread is loaded.
+ */
+function deltaChannelsToReplay(
+  specs: Record<string, BaseChannel>,
+  checkpoint: ReadonlyCheckpoint,
+  versionedOnly: boolean
+): string[] {
+  const keys: string[] = [];
+  for (const k in specs) {
+    if (!Object.prototype.hasOwnProperty.call(specs, k)) continue;
+    if (
+      isDeltaChannel(specs[k]) &&
+      (!versionedOnly || checkpoint.channel_versions[k] !== undefined) &&
+      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
+    ) {
+      keys.push(k);
+    }
+  }
+  return keys;
+}
+
+/**
  * Hydrate channels from a checkpoint, reconstructing any {@link DeltaChannel}
  * whose value is absent from `channel_values` by replaying ancestor writes.
  *
@@ -301,29 +402,30 @@ export function createCheckpoint<ValueType>(
  * from `channel_values`, an ancestor walk via `saver.getDeltaChannelHistory`
  * finds the nearest seed and accumulates the writes between it and the
  * target. All delta channels needing replay are batched into a single saver
- * call.
+ * call. Pass `deltaWritesVersioned` for a checkpoint whose metadata carries
+ * {@link DELTA_WRITES_VERSIONED}, so delta channels without a version are
+ * left empty instead of walked.
  */
 export async function channelsFromCheckpoint<
   Cc extends Record<string, BaseChannel>,
 >(
   specs: Cc,
   checkpoint: ReadonlyCheckpoint,
-  options?: { saver?: BaseCheckpointSaver; config?: RunnableConfig }
+  options?: {
+    saver?: BaseCheckpointSaver;
+    config?: RunnableConfig;
+    deltaWritesVersioned?: boolean;
+  }
 ): Promise<Cc> {
   const channels = emptyChannels(specs, checkpoint);
   const { saver, config } = options ?? {};
 
   const filteredSpecs = getOnlyChannels(specs);
-  const deltaKeys: string[] = [];
-  for (const k in filteredSpecs) {
-    if (!Object.prototype.hasOwnProperty.call(filteredSpecs, k)) continue;
-    if (
-      isDeltaChannel(filteredSpecs[k]) &&
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
-    ) {
-      deltaKeys.push(k);
-    }
-  }
+  const deltaKeys = deltaChannelsToReplay(
+    filteredSpecs,
+    checkpoint,
+    options?.deltaWritesVersioned ?? false
+  );
 
   const written = deltaKeys.filter(
     (k) => checkpoint.channel_versions[k] !== undefined

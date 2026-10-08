@@ -24,9 +24,12 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
+  exitDeltaLateTaskId,
   exitDeltaTaskId,
   isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import type {
   Call,
@@ -72,6 +75,7 @@ import {
   increment,
   shouldInterrupt,
   sanitizeUntrackedValuesInSend,
+  taskPathStr,
   WritesProtocol,
 } from "./algo.js";
 import {
@@ -190,6 +194,7 @@ type PregelLoopParams = {
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
   hasPersistedParent?: boolean;
+  deltaWritesVersioned?: boolean;
 };
 
 /**
@@ -310,9 +315,39 @@ export class PregelLoop {
 
   /**
    * Exit-mode accumulator of DeltaChannel writes across the whole run, as
-   * `[step, taskId, channel, value]`. `undefined` outside "exit" durability.
+   * `[step, taskId, taskPath, channel, value]` — see `_putExitDeltaWrites`
+   * for how they are ordered. `undefined` outside "exit" durability.
    */
-  protected _exitDeltaWrites: [number, string, string, unknown][] | undefined;
+  protected _exitDeltaWrites:
+    | [number, string, string, string, unknown][]
+    | undefined;
+
+  /**
+   * The `(taskId, channel)` pairs whose delta writes are stored on the loaded
+   * checkpoint, which a resume addressed by `checkpoint_id` can rerun.
+   * Captured in the constructor, before this run's Command processing adds
+   * writes (mirrors Python's `_first`). Used by the exit-mode accumulator to
+   * skip the loaded writes on the first superstep — they are already stored
+   * on the checkpoint.
+   */
+  protected _storedDeltaWrites: Set<string> = new Set();
+
+  /**
+   * This run's `Command` delta writes (`NULL_TASK_ID`), kept apart from the
+   * `NULL_TASK_ID` writes loaded with the checkpoint, which the first
+   * superstep skips. Written by the input handler; replayed into the
+   * exit-mode accumulator at the first superstep.
+   */
+  protected _exitCommandWrites: [string, unknown][] = [];
+
+  /**
+   * The step of the first superstep this run completed (the loaded
+   * checkpoint's own), or `null` before it ticks. The exit-mode accumulator
+   * keeps that superstep's real task paths so its writes interleave with the
+   * loaded ones as live execution did; later supersteps get `~~`-prefixed
+   * synthetic paths (see `_putExitDeltaWrites`).
+   */
+  protected _exitFirstStep: number | null = null;
 
   /**
    * DeltaChannels that saw an Overwrite since the last checkpoint. These
@@ -325,6 +360,13 @@ export class PregelLoop {
 
   /** Whether a real checkpoint was loaded from the saver at initialization. */
   protected _hasPersistedParent = false;
+
+  /**
+   * Whether this branch carries {@link DELTA_WRITES_VERSIONED}: a graph with
+   * a DeltaChannel on a new thread, or a loaded checkpoint that has it. Every
+   * checkpoint this loop writes inherits it.
+   */
+  protected _deltaWritesVersioned = false;
 
   /** The checkpointConfig as captured at initialization (anchor for exit writes). */
   protected _initialCheckpointConfig: RunnableConfig | undefined;
@@ -499,6 +541,18 @@ export class PregelLoop {
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
     this.checkpointPendingWrites = params.checkpointPendingWrites;
+    // Capture before this run's Command processing adds writes: these are the
+    // delta writes already stored on the loaded checkpoint. RESUME writes are
+    // never delta-channel writes, so the time-travel filter that drops them
+    // below does not affect this set.
+    for (const [tid, ch] of this.checkpointPendingWrites) {
+      if (
+        tid !== NULL_TASK_ID &&
+        isDeltaChannel(this.channels[ch] as BaseChannel)
+      ) {
+        this._storedDeltaWrites.add(`${tid}\u0000${ch}`);
+      }
+    }
     this.step = params.step;
     this.stop = params.stop;
     this.config = params.config;
@@ -529,6 +583,7 @@ export class PregelLoop {
     this._exitDeltaWrites =
       this.durability === "exit" && this.checkpointer != null ? [] : undefined;
     this._hasPersistedParent = params.hasPersistedParent ?? false;
+    this._deltaWritesVersioned = params.deltaWritesVersioned ?? false;
     this._initialCheckpointConfig = params.checkpointConfig;
     this.checkpointIdSaved = params.checkpoint.id;
   }
@@ -675,12 +730,16 @@ export class PregelLoop {
         checkpointMetadata.source !== "fork";
     }
 
+    const deltaWritesVersioned =
+      Object.values(params.channelSpecs).some(isDeltaChannel) &&
+      (!hasPersistedParent || isDeltaWritesVersioned(saved.metadata));
     const channels = await channelsFromCheckpoint(
       params.channelSpecs,
       checkpoint,
       {
         saver: params.checkpointer,
         config: checkpointConfig,
+        deltaWritesVersioned,
       }
     );
 
@@ -727,6 +786,7 @@ export class PregelLoop {
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
       hasPersistedParent,
+      deltaWritesVersioned,
     });
   }
 
@@ -825,9 +885,18 @@ export class PregelLoop {
     });
 
     if (this.durability !== "exit" && this.checkpointer != null) {
+      const task = this.tasks[taskId];
       this._trackCheckpointerPromise(
-        // Use sanitized writes for checkpointer
-        this.checkpointer.putWrites(config, writesToSave, taskId)
+        // Use sanitized writes for checkpointer; the task's serialized path
+        // orders its writes on replay (`writesSortKey`), `""` when the task
+        // is unknown (e.g. `NULL_TASK_ID`) — matching Python's
+        // `task_path_str(task.path) if task else ""`.
+        this.checkpointer.putWrites(
+          config,
+          writesToSave,
+          taskId,
+          task != null ? taskPathStr(task.path) : ""
+        )
       );
     }
 
@@ -1007,11 +1076,33 @@ export class PregelLoop {
       // capture delta-channel writes for the exit-mode accumulator before
       // clearing (in "exit" durability they are not persisted incrementally)
       if (this._exitDeltaWrites !== undefined) {
+        // On the first superstep the pending writes still hold the ones
+        // loaded with the checkpoint, which are already stored on it.
+        const first = this._exitFirstStep === null;
+        if (first) {
+          this._exitFirstStep = this.step;
+          for (const [ch, v] of this._exitCommandWrites) {
+            this._exitDeltaWrites.push([this.step, NULL_TASK_ID, "", ch, v]);
+          }
+        }
         for (const [tid, ch, v] of this.checkpointPendingWrites) {
           const channel = this.channels[ch];
-          if (channel != null && isDeltaChannel(channel)) {
-            this._exitDeltaWrites.push([this.step, tid, ch, v]);
+          if (channel == null || !isDeltaChannel(channel)) continue;
+          if (
+            first &&
+            (tid === NULL_TASK_ID ||
+              this._storedDeltaWrites.has(`${tid}\u0000${ch}`))
+          ) {
+            continue;
           }
+          const task = this.tasks[tid];
+          this._exitDeltaWrites.push([
+            this.step,
+            tid,
+            task != null ? taskPathStr(task.path) : "",
+            ch,
+            v,
+          ]);
         }
       }
       // clear pending writes
@@ -1429,6 +1520,14 @@ export class PregelLoop {
       // save writes
       for (const [tid, ws] of Object.entries(writes)) {
         this.putWrites(tid, ws);
+        if (this._exitDeltaWrites !== undefined && tid === NULL_TASK_ID) {
+          for (const [c, v] of ws) {
+            const channel = this.channels[c];
+            if (channel != null && isDeltaChannel(channel)) {
+              this._exitCommandWrites.push([c, v]);
+            }
+          }
+        }
       }
     }
 
@@ -1582,7 +1681,7 @@ export class PregelLoop {
           if (this._exitDeltaWrites !== undefined) {
             // Exit mode: capture so the accumulator includes input deltas.
             for (const [c, v] of deltaInput) {
-              this._exitDeltaWrites.push([this.step, NULL_TASK_ID, c, v]);
+              this._exitDeltaWrites.push([this.step, NULL_TASK_ID, "", c, v]);
             }
           } else if (this.checkpointer != null) {
             // Non-exit: persist so sub-frequency inputs are recoverable via the
@@ -1746,6 +1845,9 @@ export class PregelLoop {
     inputMetadata: Omit<CheckpointMetadata, "step" | "parents">
   ) {
     const exiting = this.checkpointMetadata === inputMetadata;
+    // Nothing ran since this checkpoint was loaded: putting it again would
+    // store it as its own parent.
+    if (exiting && this.checkpoint.id === this.checkpointIdSaved) return;
 
     const doCheckpoint =
       this.checkpointer != null && (this.durability !== "exit" || exiting);
@@ -1818,9 +1920,20 @@ export class PregelLoop {
         ...(this.checkpointMetadata.counters_since_delta_snapshot ?? {}),
       };
     }
+    if (this._deltaWritesVersioned) {
+      (this.checkpointMetadata as Record<string, unknown>)[
+        DELTA_WRITES_VERSIONED
+      ] = true;
+    }
 
     const channelsToSnapshot = doCheckpoint
-      ? deltaChannelsToSnapshot(this.channels, newCounters)
+      ? deltaChannelsToSnapshot(
+          this.channels,
+          newCounters,
+          this._deltaWritesVersioned
+            ? this.checkpoint.channel_versions
+            : undefined
+        )
       : new Set<string>();
     // Force a snapshot for any delta channel that saw an Overwrite since the
     // last checkpoint, so the post-overwrite value is materialized and sparse
@@ -1898,7 +2011,11 @@ export class PregelLoop {
 
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
-    const channelsToSnapshot = deltaChannelsToSnapshot(this.channels, counters);
+    const channelsToSnapshot = deltaChannelsToSnapshot(
+      this.channels,
+      counters,
+      this._deltaWritesVersioned ? this.checkpoint.channel_versions : undefined
+    );
     // Channels that saw an Overwrite are force-snapshotted by the final
     // `_putCheckpoint` (which runs after this), so their accumulated exit
     // writes must NOT also be replayed on top of that snapshot — exclude them.
@@ -1906,7 +2023,7 @@ export class PregelLoop {
       channelsToSnapshot.add(ch);
 
     const pending = this._exitDeltaWrites.filter(
-      ([, , ch]) => !channelsToSnapshot.has(ch)
+      ([, , , ch]) => !channelsToSnapshot.has(ch)
     );
     if (pending.length === 0) return;
 
@@ -1943,27 +2060,47 @@ export class PregelLoop {
         anchorConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID],
     });
 
-    // Group by [step, taskId]; a step-prefixed synthetic task id preserves
-    // chronological super-step order under the saver's (task_id, idx) sort.
+    // The checkpoint's own superstep keeps its real task paths, so it
+    // interleaves with the writes a resume loaded from it. Its task ids stay
+    // synthetic: under the real id, a run whose final checkpoint fails to
+    // save would leave the resumed task looking done to the next resume.
+    // Later supersteps sort after every real task path and task id, in step
+    // order, so this holds whether a saver orders writes by task path
+    // (`writesSortKey`) or by task id only. `NULL_TASK_ID` keeps the empty
+    // path, where live execution applies input.
     const grouped = new Map<string, PendingWrite<string>[]>();
-    const order: { key: string; step: number; tid: string }[] = [];
-    for (const [step, tid, ch, v] of pending) {
-      const key = `${step}\u0000${tid}`;
+    const order: { key: string; tid: string; path: string }[] = [];
+    for (const [step, tid, path, ch, v] of pending) {
+      let synthTid: string;
+      let synthPath: string;
+      if (tid === NULL_TASK_ID) {
+        synthTid = exitDeltaTaskId(step, tid);
+        synthPath = "";
+      } else if (step === this._exitFirstStep) {
+        synthTid = exitDeltaTaskId(step, tid);
+        synthPath = path;
+      } else {
+        synthTid = exitDeltaLateTaskId(step, tid);
+        // `~~` sorts after every real path (which starts with a single `~`),
+        // in step order — `taskPathStr` gives the sign-aware 10-digit padding.
+        synthPath = `~~${taskPathStr(step)}${path}`;
+      }
+      const key = `${synthTid}\u0000${synthPath}`;
       let group = grouped.get(key);
       if (group === undefined) {
         group = [];
         grouped.set(key, group);
-        order.push({ key, step, tid });
+        order.push({ key, tid: synthTid, path: synthPath });
       }
       group.push([ch, v]);
     }
-    for (const { key, step, tid } of order) {
-      const synthTid = exitDeltaTaskId(step, tid);
+    for (const { key, tid, path } of order) {
       this._trackCheckpointerPromise(
         this.checkpointer.putWrites(
           anchorWriteConfig,
           grouped.get(key)!,
-          synthTid
+          tid,
+          path
         )
       );
     }
@@ -1988,8 +2125,14 @@ export class PregelLoop {
 
     // submit writes to checkpointer
     for (const [tid, ws] of Object.entries(byTask)) {
+      const task = this.tasks[tid];
       this._trackCheckpointerPromise(
-        this.checkpointer.putWrites(config, ws, tid)
+        this.checkpointer.putWrites(
+          config,
+          ws,
+          tid,
+          task != null ? taskPathStr(task.path) : ""
+        )
       );
     }
   }

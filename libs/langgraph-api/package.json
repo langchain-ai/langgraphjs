@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "1.5.2-dev.0",
+  "version": "1.5.2",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -86,7 +86,7 @@
   "peerDependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "^1.4.18-rc.0",
-    "@langchain/langgraph-checkpoint": "^1.1.4",
+    "@langchain/langgraph-checkpoint": "^1.2.0",
     "@langchain/langgraph-sdk": "^1.12.0-rc.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"

@@ -33,7 +33,11 @@ import {
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
+  DELTA_WRITES_VERSIONED,
+  deltaChannelsWithPendingWrites,
   getOnlyChannels,
+  isDeltaChannel,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   CHECKPOINT_NAMESPACE_END,
@@ -72,6 +76,7 @@ import {
   _localRead,
   _prepareNextTasks,
   StrRecord,
+  taskPathStr,
   WritesProtocol,
 } from "./algo.js";
 import {
@@ -976,7 +981,11 @@ export class Pregel<
     const channels = await channelsFromCheckpoint(
       this.channels as Record<string, BaseChannel>,
       saved.checkpoint,
-      { saver, config: saved.config ?? config }
+      {
+        saver,
+        config: saved.config ?? config,
+        deltaWritesVersioned: isDeltaWritesVersioned(saved.metadata),
+      }
     );
 
     // Apply null writes first (from NULL_TASK_ID)
@@ -1278,7 +1287,12 @@ export class Pregel<
         values?: Record<string, unknown> | unknown;
         asNode?: keyof Nodes | string;
         taskId?: string;
-      }[]
+      }[],
+      // Only the first superstep of the update seals, matching Python's
+      // `perform_superstep(..., is_first)`; the `__copy__` recursion below
+      // passes `false` explicitly (its base is the fresh fork, which never
+      // walks the original base's writes).
+      isFirstSuperstep: boolean
     ) => {
       // get last checkpoint
       const config = this._ownCheckpointConfig(
@@ -1306,6 +1320,14 @@ export class Pregel<
           ...checkpointMetadata,
         };
       }
+      const deltaWritesVersioned =
+        Object.values(this.channels as Record<string, BaseChannel>).some(
+          isDeltaChannel
+        ) &&
+        (saved === undefined || isDeltaWritesVersioned(saved.metadata));
+      const versionedMetadata = deltaWritesVersioned
+        ? { [DELTA_WRITES_VERSIONED]: true }
+        : {};
 
       // Find last node that updated the state, if not provided
       const { values, asNode } = updates[0];
@@ -1323,6 +1345,7 @@ export class Pregel<
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1336,7 +1359,11 @@ export class Pregel<
       const channels = await channelsFromCheckpoint(
         this.channels as Record<string, BaseChannel>,
         checkpoint,
-        { saver: checkpointer, config: saved?.config ?? checkpointConfig }
+        {
+          saver: checkpointer,
+          config: saved?.config ?? checkpointConfig,
+          deltaWritesVersioned,
+        }
       );
 
       if (values === null && asNode === END) {
@@ -1401,14 +1428,17 @@ export class Pregel<
           );
         }
         // save checkpoint
+        const { [DELTA_WRITES_VERSIONED]: _carried, ...endMetadata } =
+          checkpointMetadata as Record<string, unknown>;
         const nextConfig = await checkpointer.put(
           checkpointConfig,
           createCheckpoint(checkpoint, channels, step),
           {
-            ...checkpointMetadata,
+            ...endMetadata,
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1449,6 +1479,7 @@ export class Pregel<
             source: "fork",
             step: step + 1,
             parents: saved.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           {}
         );
@@ -1493,7 +1524,8 @@ export class Pregel<
 
           return updateSuperStep(
             patchCheckpointMap(nextConfig, saved.metadata),
-            Object.values(userGroupBy).flat()
+            Object.values(userGroupBy).flat(),
+            false
           );
         }
 
@@ -1545,6 +1577,7 @@ export class Pregel<
             source: "input",
             step: nextStep,
             parents: saved?.metadata?.parents ?? {},
+            ...versionedMetadata,
           },
           getNewChannelVersions(
             checkpointPreviousVersions,
@@ -1592,10 +1625,10 @@ export class Pregel<
           .map((w) => w.slice(1)) as PendingWrite<string>[];
         if (nullWrites.length > 0) {
           _applyWrites(
-            saved.checkpoint,
+            checkpoint,
             channels,
             [{ name: INPUT, writes: nullWrites, triggers: [] }],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1617,7 +1650,7 @@ export class Pregel<
             checkpoint,
             channels,
             tasks as WritesProtocol[],
-            undefined,
+            checkpointer.getNextVersion.bind(checkpointer),
             this.triggerToNodes
           );
         }
@@ -1693,7 +1726,7 @@ export class Pregel<
       }
 
       const tasks: PregelExecutableTask<keyof Nodes, keyof Channels>[] = [];
-      for (const { asNode, values, taskId } of validUpdates) {
+      for (const [i, { asNode, values, taskId }] of validUpdates.entries()) {
         if (this.nodes[asNode] === undefined) {
           throw new InvalidUpdateError(
             `Node "${asNode.toString()}" does not exist`
@@ -1719,7 +1752,13 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
-          id: taskId ?? uuid5(INTERRUPT, checkpoint.id),
+          path: [INTERRUPT, i],
+          // Savers keep one write per (task id, idx), so updates sharing an id
+          // lose all but the first one's writes, which a DeltaChannel replays.
+          // The first keeps the id a lone update has always had.
+          id:
+            taskId ??
+            uuid5(i === 0 ? INTERRUPT : `${INTERRUPT}:${i}`, checkpoint.id),
           writers: [],
         });
       }
@@ -1764,7 +1803,8 @@ export class Pregel<
           await checkpointer.putWrites(
             checkpointConfig,
             channelWrites as PendingWrite[],
-            task.id
+            task.id,
+            taskPathStr(task.path)
           );
         }
       }
@@ -1783,13 +1823,55 @@ export class Pregel<
         checkpointPreviousVersions,
         checkpoint.channel_versions
       );
+      // A new thread has no checkpoint to hold the writes, so the delta
+      // channels they wrote are stored whole on this one.
+      const channelsToSnapshot = new Set<string>();
+      if (saved === undefined) {
+        for (const [k, ch] of Object.entries(channels)) {
+          if (
+            isDeltaChannel(ch) &&
+            checkpoint.channel_versions[k] !== undefined
+          ) {
+            channelsToSnapshot.add(k);
+          }
+        }
+      } else if (isFirstSuperstep) {
+        // First-superstep seal (port of Python #8548's
+        // `delta_channels_with_pending_writes` fork seal, scoped to channels
+        // whose version moved in this superstep): a checkpoint's pending
+        // writes belong to the child that consumed them, and nothing records
+        // which child that was, so a new branch snapshots every delta channel
+        // they touch — its ancestor walk then never replays them, and the
+        // relative order of the base's finished-task writes and this update's
+        // writes stops mattering.
+        //
+        // The version-moved scope keeps the selection persistable by
+        // construction: version-keyed savers (Postgres, Redis) store snapshot
+        // blobs only for channels in `newVersions`, and an update that names
+        // a `checkpoint_id` skips applying the pending writes
+        // (see above), so a touched-but-unwritten channel's version would not
+        // move and its snapshot would be silently dropped. That addressed
+        // case — plus the INPUT and END-clear branches and the rest of #8548
+        // (resume-by-`checkpoint_id` seal, new-input-on-interrupted-head seal,
+        // Command-goto-replaced-Send seal, and Python's snapshot-bump
+        // machinery) — stays on the alignment tracker.
+        for (const ch of deltaChannelsWithPendingWrites(
+          this.channels as Record<string, BaseChannel>,
+          saved.pendingWrites
+        )) {
+          if (ch in newVersions) channelsToSnapshot.add(ch);
+        }
+      }
       const nextConfig = await checkpointer.put(
         checkpointConfig,
-        createCheckpoint(checkpoint, channels, step + 1),
+        createCheckpoint(checkpoint, channels, step + 1, {
+          channelsToSnapshot,
+        }),
         {
           source: "update",
           step: step + 1,
           parents: saved?.metadata?.parents ?? {},
+          ...versionedMetadata,
         },
         newVersions
       );
@@ -1811,8 +1893,8 @@ export class Pregel<
     };
 
     let currentConfig = startConfig;
-    for (const { updates } of supersteps) {
-      currentConfig = await updateSuperStep(currentConfig, updates);
+    for (const [i, { updates }] of supersteps.entries()) {
+      currentConfig = await updateSuperStep(currentConfig, updates, i === 0);
     }
 
     return currentConfig;

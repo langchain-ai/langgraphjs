@@ -8,7 +8,7 @@ import {
   SortOrder,
 } from "../../schema.js";
 import type { CronsCreatePayload, CronsUpdatePayload } from "../../types.js";
-import { BaseClient } from "../base.js";
+import { BaseClient, encodePathSegment } from "../base.js";
 
 export class CronsClient extends BaseClient {
   /**
@@ -45,7 +45,7 @@ export class CronsClient extends BaseClient {
       on_run_completed: payload?.onRunCompleted,
     };
     return this.fetch<CronCreateForThreadResponse>(
-      `/threads/${threadId}/runs/crons`,
+      `/threads/${encodePathSegment(threadId)}/runs/crons`,
       {
         method: "POST",
         json,
@@ -121,7 +121,7 @@ export class CronsClient extends BaseClient {
       durability: payload?.durability,
     };
 
-    return this.fetch<Cron>(`/runs/crons/${cronId}`, {
+    return this.fetch<Cron>(`/runs/crons/${encodePathSegment(cronId)}`, {
       method: "PATCH",
       json,
       signal: payload?.signal,
@@ -138,7 +138,7 @@ export class CronsClient extends BaseClient {
     cronId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    await this.fetch<void>(`/runs/crons/${cronId}`, {
+    await this.fetch<void>(`/runs/crons/${encodePathSegment(cronId)}`, {
       method: "DELETE",
       signal: options?.signal,
     });

@@ -386,6 +386,9 @@ describe("MongoDBStore Integration Tests", () => {
           { namespace: ["docs", "ai"], key: "dl", value: { content: "Deep neural networks and backpropagation" } } as PutOperation,
           { namespace: ["docs", "db"], key: "idx", value: { content: "Database indexing strategies for performance" } } as PutOperation,
           { namespace: ["docs", "db"], key: "sql", value: { content: "SQL query optimization techniques" } } as PutOperation,
+          // ["docs/db"] stores namespacePath ["docs/db"], and ["docs", "db"] stores
+          // ["docs", "docs/db"]. Both contain "docs/db", so $vectorSearch matches both.
+          { namespace: ["docs/db"], key: "collision", value: { content: "database performance" } } as PutOperation,
         ]);
       }, 120_000);
 
@@ -481,6 +484,18 @@ describe("MongoDBStore Integration Tests", () => {
           expect(item.namespace[0]).toBe("docs");
           expect(item.namespace[1]).toBe("db");
         }
+        expect(results.map((r) => r.key)).not.toContain("collision");
+      });
+
+      it("should not return ['docs', 'db'] items when searching ['docs/db']", async () => {
+        const results = await searchWithRetry(manualStore, {
+          namespacePrefix: ["docs/db"],
+          query: "database performance",
+          limit: 10,
+          offset: 0,
+        } as SearchOperation);
+
+        expect(results.map((r) => r.key)).toEqual(["collision"]);
       });
     });
 

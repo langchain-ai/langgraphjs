@@ -14,10 +14,21 @@ export class InvalidNamespaceError extends Error {
 /**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
+ * @param options.allowEmpty When true, an empty namespace is permitted
+ *   (`search([])` means "search everything"). Put still rejects empty.
+ * @param options.allowReservedRoot When true, the `langgraph` root label is
+ *   permitted. Put still rejects it; search may read a namespace written via
+ *   `batch()` which bypasses put validation.
  * @throws {InvalidNamespaceError} If the namespace is invalid.
  */
-function validateNamespace(namespace: string[]): void {
+export function validateNamespace(
+  namespace: string[],
+  options: { allowEmpty?: boolean; allowReservedRoot?: boolean } = {}
+): void {
   if (namespace.length === 0) {
+    if (options.allowEmpty) {
+      return;
+    }
     throw new InvalidNamespaceError("Namespace cannot be empty.");
   }
   for (const label of namespace) {
@@ -38,7 +49,8 @@ function validateNamespace(namespace: string[]): void {
       );
     }
   }
-  if (namespace[0] === "langgraph") {
+
+  if (namespace[0] === "langgraph" && !options.allowReservedRoot) {
     throw new InvalidNamespaceError(
       `Root label for namespace cannot be "langgraph". Got: ${namespace}`
     );
@@ -402,6 +414,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
@@ -436,6 +449,10 @@ export abstract class BaseStore {
       query?: string;
     } = {}
   ): Promise<SearchItem[]> {
+    validateNamespace(namespacePrefix, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
     const { filter, limit = 10, offset = 0, query } = options;
     return (
       await this.batch<[SearchOperation]>([
@@ -490,6 +507,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
@@ -526,9 +544,11 @@ export abstract class BaseStore {
 
     const matchConditions: MatchCondition[] = [];
     if (prefix) {
+      validateNamespace(prefix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "prefix", path: prefix });
     }
     if (suffix) {
+      validateNamespace(suffix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "suffix", path: suffix });
     }
 
