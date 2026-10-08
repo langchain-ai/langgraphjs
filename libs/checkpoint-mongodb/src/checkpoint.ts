@@ -53,17 +53,6 @@ function getStringConfigValue(
 }
 
 /**
- * A LangGraph checkpoint saver backed by a MongoDB database.
- *
- * NOTE: you need to call .setup() the first time you're using your checkpointer.
- *
- * @example
- * ```typescript
- * const checkpointer = new MongoDBSaver({ client });
- * await checkpointer.setup();
- * ```
- */
-/**
  * Sort raw write documents into `writesSortKey` order — `(task_path, task_id,
  * idx)` — the order live execution applies a superstep's writes in (see the
  * `getTuple` contract on `BaseCheckpointSaver`). The `find` that produces
@@ -82,6 +71,17 @@ function orderSerializedWrites(serializedWrites: any[]): any[] {
   return keyed.map(({ doc }: { doc: any }) => doc);
 }
 
+/**
+ * A LangGraph checkpoint saver backed by a MongoDB database.
+ *
+ * NOTE: you need to call .setup() the first time you're using your checkpointer.
+ *
+ * @example
+ * ```typescript
+ * const checkpointer = new MongoDBSaver({ client });
+ * await checkpointer.setup();
+ * ```
+ */
 export class MongoDBSaver extends BaseCheckpointSaver {
   protected client: MongoClient;
 
