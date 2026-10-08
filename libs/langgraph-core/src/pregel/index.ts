@@ -1196,8 +1196,8 @@ export class Pregel<
 
     const waitingEdges: WaitingEdgeDescription[] = [
       ...collectWaitingEdges(channels),
-      ...(subgraphCheckpointer && this._hasSubgraphNode()
-        ? await this._collectNestedWaitingEdges(subgraphCheckpointer, config)
+      ...(recurse && this._hasSubgraphNode()
+        ? await this._collectNestedWaitingEdges(saver, config)
         : []),
     ];
 
