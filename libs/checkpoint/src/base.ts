@@ -122,8 +122,8 @@ export type WritesSortKey = readonly [string, string, number];
  * order-sensitive (but batching-invariant) reducer rebuilds a different value
  * than the run produced. `taskPath` is the string passed to `putWrites`.
  *
- * Writes stored without a task path (graph input, `updateState` updates,
- * exit-durability runs, rows predating the column) use `""`, which sorts
+ * Writes stored without a task path (graph input, `Command` updates, rows
+ * predating the column) use `""`, which sorts
  * first, before any real task path — which is also where live execution
  * applies input.
  */
@@ -259,7 +259,7 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
    * (`CheckpointPendingWrite` carries no path), so it relies on `getTuple`
    * returning `pendingWrites` already in `writesSortKey` order, which the
    * contract above requires of every saver. Writes stored without a
-   * `task_path` (graph input, `updateState` updates, rows predating the
+   * `task_path` (graph input, `Command` updates, rows predating the
    * column) sort first, by `task_id`.
    *
    * The default implementation walks `getTuple` + `parentConfig` once for all

@@ -76,6 +76,7 @@ import {
   _localRead,
   _prepareNextTasks,
   StrRecord,
+  taskPathStr,
   WritesProtocol,
 } from "./algo.js";
 import {
@@ -1751,6 +1752,7 @@ export class Pregel<
               : writers[0],
           writes: [],
           triggers: [INTERRUPT],
+          path: [INTERRUPT, i],
           // Savers keep one write per (task id, idx), so updates sharing an id
           // lose all but the first one's writes, which a DeltaChannel replays.
           // The first keeps the id a lone update has always had.
@@ -1801,7 +1803,8 @@ export class Pregel<
           await checkpointer.putWrites(
             checkpointConfig,
             channelWrites as PendingWrite[],
-            task.id
+            task.id,
+            taskPathStr(task.path)
           );
         }
       }

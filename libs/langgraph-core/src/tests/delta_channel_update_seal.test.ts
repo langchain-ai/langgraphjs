@@ -188,7 +188,7 @@ describe("bulkUpdateState first-superstep seal", () => {
   }
 });
 
-describe("bulkUpdateState multi-update ordering (known limitation)", () => {
+describe("bulkUpdateState multi-update ordering", () => {
   const build = (checkpointer: BaseCheckpointSaver) => {
     const State = sealState();
     return new StateGraph(State)
@@ -198,10 +198,6 @@ describe("bulkUpdateState multi-update ordering (known limitation)", () => {
   };
 
   it("establishes the base: one update replays exactly (no pending writes)", async () => {
-    // Passing companion for the expected-failure below: after a completed
-    // run, the base has no pending delta writes, and a single update
-    // replays in its live position. The expected-failure case therefore
-    // fails because of the two-update reversal, not because of setup.
     const saver = new MemorySaver();
     const graph = build(saver);
     const config = { configurable: { thread_id: "multi-update-single" } };
@@ -224,17 +220,7 @@ describe("bulkUpdateState multi-update ordering (known limitation)", () => {
     ]);
   });
 
-  // KNOWN FAILURE, aligned with Python main for updates with distinct ids
-  // (tracked on Python #9128, open): several updates in one superstep are
-  // applied live in the order given, but their stored writes carry no task
-  // path ("" — exactly what Python main stores), so replay orders them by
-  // task id. With the ids below opposing the caller order, live appends
-  // [first, second] and replay appends [second, first]. The assertion fails
-  // specifically on that reversal — the committed prefix ["in", "x"] is
-  // asserted by the passing companion above — and flips to an unexpected
-  // pass (removing the .fails marker) together with the port of Python
-  // #9128's (INTERRUPT, i) task paths, which land only after that PR merges.
-  it.fails(
+  it(
     "multiple updates with explicit ids replay in the order given",
     async () => {
       const graph = build(new MemorySaver());
@@ -265,8 +251,6 @@ describe("bulkUpdateState multi-update ordering (known limitation)", () => {
 
       const state = await graph.getState(config);
       const log = (state.values as { log: string[] }).log;
-      // Live (caller) order: [in, x, first, second]. Task-id replay today
-      // yields [in, x, second, first].
       expect(log).toEqual(["in", "x", "first", "second"]);
     }
   );
