@@ -292,6 +292,43 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
     });
   }
 
+  it("keeps every update of a multi-update bulkUpdateState super-step", async () => {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    });
+    const graph = new StateGraph(State)
+      .addNode("model", () => ({}))
+      .addNode("assistant", () => ({}))
+      .addEdge(START, "model")
+      .addEdge("model", "assistant")
+      .addEdge("assistant", END)
+      .compile({ checkpointer });
+    const config = { configurable: { thread_id: "bulk-no-task-ids" } };
+    await graph.invoke({ messages: [human("hi")] }, config);
+    const update = (content: string, asNode: string) => ({
+      values: { messages: [human(content)] },
+      asNode,
+    });
+
+    await graph.bulkUpdateState(config, [
+      {
+        updates: [
+          update("first", "model"),
+          update("second", "model"),
+          update("third", "assistant"),
+        ],
+      },
+    ]);
+
+    const state = await graph.getState(config);
+    expect(contents(messagesOf(state.values)).sort()).toEqual([
+      "first",
+      "hi",
+      "second",
+      "third",
+    ]);
+  });
+
   it("reconstructs state from a fresh graph instance sharing only the saver (cold read)", async () => {
     const config = { configurable: { thread_id: "cold" } };
     await deltaChatGraph(checkpointer).invoke(

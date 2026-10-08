@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint
 
+## 1.1.6
+
+### Patch Changes
+
+- [#2828](https://github.com/langchain-ai/langgraphjs/pull/2828) [`8d6e6cf`](https://github.com/langchain-ai/langgraphjs/commit/8d6e6cf169fa4750dcb33a5477a6fc65fa3d5ba8) Thanks [@byhow](https://github.com/byhow)! - Match InMemoryStore search prefixes at namespace segment boundaries and reject colon-containing labels. Preserve unrestricted empty-prefix searches.
+
 ## 1.1.5
 
 ### Patch Changes

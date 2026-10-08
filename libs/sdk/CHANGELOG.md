@@ -1,5 +1,27 @@
 # @langchain/langgraph-sdk
 
+## 1.12.3
+
+### Patch Changes
+
+- [#2956](https://github.com/langchain-ai/langgraphjs/pull/2956) [`218ea20`](https://github.com/langchain-ai/langgraphjs/commit/218ea2040b81edf7427ee1fd0517ee5a07311019) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): copy `defaultHeaders` when constructing a `Client` instead of writing `x-api-key` into the caller's object. Previously, clients created from the same `defaultHeaders` object shared one set of headers, so a later client's API key was sent by earlier clients, and a client created with no API key could send another client's key to its own `apiUrl`.
+
+## 1.12.2
+
+### Patch Changes
+
+- [#2944](https://github.com/langchain-ai/langgraphjs/pull/2944) [`413a9c7`](https://github.com/langchain-ai/langgraphjs/commit/413a9c77b647202ac87ce53a61de1e6f7a26e796) Thanks [@thushanth-bengre-langchain](https://github.com/thushanth-bengre-langchain)! - fix(sdk): URL-encode caller-supplied identifiers (thread, assistant, run, cron and checkpoint IDs, subgraph namespaces) in request paths so an untrusted ID can't redirect a request to another endpoint. IDs containing reserved characters such as `/`, `?`, `#`, `%` or spaces are now sent percent-encoded, so pass raw IDs rather than pre-encoded ones. `.` and `..` are no longer accepted as IDs: the method rejects with an `Invalid path segment` error instead of sending a request.
+
+- [#2959](https://github.com/langchain-ai/langgraphjs/pull/2959) [`67cfdd2`](https://github.com/langchain-ai/langgraphjs/commit/67cfdd2cca7c752561cbb37675573d7004bba222) Thanks [@casparb](https://github.com/casparb)! - Export the Agent Server graph factory `ServerRuntime` type from `@langchain/langgraph-sdk`.
+
+## 1.12.1
+
+### Patch Changes
+
+- [#2882](https://github.com/langchain-ai/langgraphjs/pull/2882) [`cca4806`](https://github.com/langchain-ai/langgraphjs/commit/cca48067b78fa9e3dc632c02a3431e74ff3f91b1) Thanks [@buenjybar](https://github.com/buenjybar)! - Fix `useStream`/`StreamOrchestrator` leaving stale, never-checkpointed messages visible after `stop()` cancels a run mid-turn. The buffer is now reconciled against the persisted thread state (refetching it when the caller needs authoritative thread state, otherwise falling back to the cached history) instead of only clearing on a thread switch or remount.
+
+- [#2918](https://github.com/langchain-ai/langgraphjs/pull/2918) [`7343768`](https://github.com/langchain-ai/langgraphjs/commit/7343768628570b864dc50f25d0f2b38bf825ccb8) Thanks [@brydar](https://github.com/brydar)! - Stop the protocol SSE transport from retrying `stream/events` on 4xx responses (except 408 and 429): the stream now ends at once with the error. Protocol request errors now keep the HTTP `status` and response body `text`. The reconnect attempt counter now resets after every successful connect, so idle reconnects no longer use up `maxReconnectAttempts`.
+
 ## 1.12.0
 
 ### Minor Changes
