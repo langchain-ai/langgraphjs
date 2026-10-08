@@ -1890,6 +1890,62 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("finishes hydration when a concurrent submit starts a replacement root pump", async () => {
+    const rootSubscription = makePushableSubscription();
+    const submitRun = vi.fn(async () => ({ run_id: "run-1" }));
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async () => ({
+      values: {},
+      next: [],
+      tasks: [],
+    }));
+    const client = {
+      threads: {
+        getState,
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "deep-agent",
+      client: client as never,
+    });
+
+    const hydration = controller.hydrate("thread-shared");
+    const submission = controller.submit(
+      { messages: [{ type: "human", content: "hello" }] },
+      { threadId: "thread-shared" }
+    );
+
+    try {
+      await waitForExpectation(() => {
+        expect(submitRun).toHaveBeenCalledOnce();
+        expect(thread.subscribe).toHaveBeenCalledOnce();
+      });
+      await rootSubscription.started;
+
+      await waitForExpectation(() => {
+        expect(getState).toHaveBeenCalledOnce();
+        expect(
+          controller.rootStore.getSnapshot().isThreadLoading
+        ).toBe(false);
+      });
+      await hydration;
+    } finally {
+      await controller.dispose();
+      await Promise.allSettled([submission]);
+    }
+  });
+
   it("hydrate(null) clears messages even when teardown is blocked on a pending interrupt", async () => {
     // Regression: useStream reuses the controller and fire-and-forgets
     // hydrate(null) when threadId goes undefined. If the previous thread
