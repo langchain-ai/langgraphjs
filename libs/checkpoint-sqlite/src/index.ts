@@ -50,8 +50,7 @@ interface PendingSendColumn {
  * Sorting happens in JS, not SQL, so the order never depends on a database
  * collation and always matches live execution (see `writesSortKey` in
  * `@langchain/langgraph-checkpoint`). Rows from a pre-`task_path` database
- * have no path and sort first by `task_id`, which is the order they were
- * written in.
+ * have no path and sort first, by `task_id`.
  */
 function sortPendingWriteColumns(
   columns: PendingWriteColumn[]
@@ -152,7 +151,7 @@ export class SqliteSaver extends BaseCheckpointSaver {
   /**
    * Whether the `writes` table has the `task_path` column. `false` only for a
    * read-only database from before the column existed: its rows read back
-   * with path `""` (the order they were written in), and `putWrites` cannot
+   * with path `""` (sorting first, by `task_id`), and `putWrites` cannot
    * store paths.
    */
   protected _hasTaskPath: boolean = true;

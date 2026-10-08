@@ -885,8 +885,7 @@ export class RedisSaver extends BaseCheckpointSaver {
     // execution applies a superstep's writes in (see the `getTuple` contract on
     // `BaseCheckpointSaver`). `global_idx`/`timestamp` remain insertion-time
     // retrieval indexes, not the ordering authority. Documents written before
-    // `task_path` existed have none and sort first by `task_id`, which is the
-    // order they were written in.
+    // `task_path` existed have none and sort first, by `task_id`.
     // Compute each document's key once, then sort on the cached keys.
     const keyed = writeDocuments.map((doc: any) => ({
       key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),

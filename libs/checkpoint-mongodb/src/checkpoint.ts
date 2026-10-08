@@ -68,8 +68,8 @@ function getStringConfigValue(
  * idx)` — the order live execution applies a superstep's writes in (see the
  * `getTuple` contract on `BaseCheckpointSaver`). The `find` that produces
  * them carries no sort, so this is where the order is established. Documents
- * written before `task_path` existed have none and sort first by `task_id`,
- * which is the order they were written in.
+ * written before `task_path` existed have none and sort first, by
+ * `task_id`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function orderSerializedWrites(serializedWrites: any[]): any[] {

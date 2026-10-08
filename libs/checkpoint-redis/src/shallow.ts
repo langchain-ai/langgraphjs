@@ -653,7 +653,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     // superstep's writes in (see the `getTuple` contract on
     // `BaseCheckpointSaver`), instead of the sorted-set's per-call index
     // order. Documents written before `task_path` existed have none and sort
-    // first by `task_id`, which is the order they were written in.
+    // first, by `task_id`.
     const writeDocs: any[] = [];
     for (const writeKey of writeKeys) {
       const writeDoc = await this.client.json.get(writeKey);

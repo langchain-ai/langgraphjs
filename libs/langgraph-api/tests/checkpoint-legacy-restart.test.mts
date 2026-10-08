@@ -10,11 +10,11 @@ import { InMemorySaver } from "../src/storage/checkpoint.mjs";
  * `langgraph-api` holds MemorySaver write records without the `taskPath`
  * element (plain `[taskId, channel, serializedValue]` tuples). After
  * upgrading, the reloaded saver must keep reading them — the missing path
- * defaults to `""`, which sorts first, preserving the order they were
- * written in (see `writesSortKey` in `@langchain/langgraph-checkpoint`).
+ * defaults to `""`, which sorts first, by task id (see `writesSortKey` in
+ * `@langchain/langgraph-checkpoint`).
  */
 describe("InMemorySaver restart with a legacy persistence file", () => {
-  it("reads pre-taskPath write records in their original order", async () => {
+  it("reads pre-taskPath write records in task-id order", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "lg-api-restart-"));
     try {
       const enc = new TextEncoder();
@@ -46,8 +46,8 @@ describe("InMemorySaver restart with a legacy persistence file", () => {
         },
         writes: {
           [JSON.stringify(["t", "", checkpointId])]: {
-            [`${tid},0`]: [tid, "ch", enc.encode('"first"')],
-            [`${last},0`]: [last, "ch", enc.encode('"second"')],
+            [`${last},0`]: [last, "ch", enc.encode('"written first"')],
+            [`${tid},0`]: [tid, "ch", enc.encode('"written second"')],
           },
         },
       };
@@ -64,8 +64,8 @@ describe("InMemorySaver restart with a legacy persistence file", () => {
         configurable: { thread_id: "t", checkpoint_ns: "", checkpoint_id: checkpointId },
       });
       expect(tuple?.pendingWrites?.map((w) => [w[0], w[2]])).toEqual([
-        [tid, "first"],
-        [last, "second"],
+        [tid, "written second"],
+        [last, "written first"],
       ]);
       expect(tuple?.checkpoint.id).toBe(checkpointId);
     } finally {

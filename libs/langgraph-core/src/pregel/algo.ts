@@ -1273,7 +1273,7 @@ export function _prepareNodeErrorHandlerTask<
   );
   const taskCheckpointNamespace = `${checkpointNamespace}${CHECKPOINT_NAMESPACE_END}${taskId}`;
   // The path is the failed task's own path plus "node_error_handler" and a
-  // trailing `false` (a string, not `true`, so interrupts raised by the
+  // trailing `false` (not `true`, so interrupts raised by the
   // handler are surfaced normally rather than deferred to a parent call) —
   // matching Python's `(*failed_task.path[:3], "node_error_handler", False)`,
   // so the two runtimes order a handler's writes the same way relative to its

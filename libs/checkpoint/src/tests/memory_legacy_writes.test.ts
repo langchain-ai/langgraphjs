@@ -12,11 +12,10 @@ import { MemorySaver } from "../memory.js";
  * Records written before the `taskPath` element existed — e.g. a
  * `.langgraphjs_api.checkpointer.json` file persisted by an older
  * `langgraph-api` and reloaded after upgrade — must keep reading correctly:
- * the missing path defaults to `""`, which sorts first, and the old
- * `(taskId, idx)` order is exactly what those records were written in.
+ * the missing path defaults to `""`, which sorts first, by `(taskId, idx)`.
  */
 describe("MemorySaver legacy 3-tuple write records", () => {
-  it("reads old-format records in their original order", async () => {
+  it("reads old-format records in task-id order", async () => {
     const saver = new MemorySaver();
     const cfg: RunnableConfig = {
       configurable: { thread_id: "t", checkpoint_ns: "", checkpoint_id: "c" },
@@ -26,28 +25,27 @@ describe("MemorySaver legacy 3-tuple write records", () => {
     await saver.put(cfg, checkpoint, metadata);
 
     // Old on-disk shape: `[taskId, channel, serializedValue]` keyed by
-    // `${taskId},${idx}` — written in task-id order (the pre-path order).
-    // Same shape MemorySaver keys its writes by.
+    // `${taskId},${idx}`, the same shape MemorySaver keys its writes by.
     const key = JSON.stringify(["t", "", "c"]);
     const enc = new TextEncoder();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (saver.writes as any)[key] = {
-      "00000000-0000-0000-0000-000000000000,0": [
-        "00000000-0000-0000-0000-000000000000",
-        "ch",
-        enc.encode('"first"'),
-      ],
       "ffffffff-ffff-ffff-ffff-ffffffffffff,0": [
         "ffffffff-ffff-ffff-ffff-ffffffffffff",
         "ch",
-        enc.encode('"second"'),
+        enc.encode('"written first"'),
+      ],
+      "00000000-0000-0000-0000-000000000000,0": [
+        "00000000-0000-0000-0000-000000000000",
+        "ch",
+        enc.encode('"written second"'),
       ],
     };
 
     const tuple = (await saver.getTuple(cfg)) as CheckpointTuple;
     expect(tuple.pendingWrites?.map((w) => [w[0], w[2]])).toEqual([
-      ["00000000-0000-0000-0000-000000000000", "first"],
-      ["ffffffff-ffff-ffff-ffff-ffffffffffff", "second"],
+      ["00000000-0000-0000-0000-000000000000", "written second"],
+      ["ffffffff-ffff-ffff-ffff-ffffffffffff", "written first"],
     ]);
   });
 

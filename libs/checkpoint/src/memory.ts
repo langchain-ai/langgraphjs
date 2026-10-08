@@ -120,8 +120,8 @@ export class MemorySaver extends BaseCheckpointSaver {
   // keyed by `${taskId},${idx}`. The optional 4th element is append-only:
   // records persisted before task paths existed (e.g. a `langgraph-api`
   // `.langgraphjs_api.checkpointer.json` file written by an older version)
-  // have 3 elements and read back with path `""`, which sorts first — the
-  // order they were written in.
+  // have 3 elements and read back with path `""`, which sorts first, by
+  // task id.
   writes: Record<
     string,
     Record<string, [string, string, Uint8Array, string?]>
