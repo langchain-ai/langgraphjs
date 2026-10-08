@@ -87,6 +87,11 @@ export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
 /** Special channel reserved for cases when a task exits without any writes */
 export const NO_WRITES = "__no_writes__";
+/**
+ * `versions_seen` key recording which entries a snapshot-only version bump
+ * advanced, and the versions those nodes really read.
+ */
+export const SNAPSHOT_BUMPS = "__snapshot_bumps__";
 /** Special channel reserved for graph return */
 export const RETURN = "__return__";
 /** Special channel reserved for graph previous state */
@@ -119,6 +124,7 @@ export const RESERVED = [
   ERROR,
   ERROR_SOURCE_NODE,
   NO_WRITES,
+  SNAPSHOT_BUMPS,
 
   // reserved config.configurable keys
   CONFIG_KEY_SEND,

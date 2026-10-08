@@ -46,11 +46,9 @@ export function deltaCountersMetadata(
 /**
  * The delta channels a checkpoint `updateState` saves after `saved` must
  * snapshot, and its `counters_since_delta_snapshot` metadata. The checkpoint
- * counts as a superstep, so a channel that reaches its bound snapshots. A new
- * thread has no checkpoint to hold the writes, so it snapshots every delta
- * channel it wrote instead.
- *
- * A channel in `forkChannels` snapshots too.
+ * counts as a superstep, so a channel that reaches its bound snapshots, and
+ * so does every channel in `forkChannels`. A new thread has no checkpoint to
+ * hold the writes, so it snapshots every delta channel it wrote instead.
  */
 export function updateStateDeltaPlan(
   channels: Record<string, BaseChannel>,
@@ -58,7 +56,7 @@ export function updateStateDeltaPlan(
   saved: CheckpointTuple | undefined,
   channelVersions: Record<string, number | string>,
   deltaWritesVersioned: boolean,
-  forkChannels: Set<string> = new Set()
+  forkChannels: Set<string>
 ): {
   channelsToSnapshot: Set<string>;
   metadata: Pick<CheckpointMetadata, "counters_since_delta_snapshot">;
