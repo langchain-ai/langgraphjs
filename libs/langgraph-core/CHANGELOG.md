@@ -1,5 +1,34 @@
 # @langchain/langgraph
 
+## 1.4.21
+
+### Patch Changes
+
+- [#2966](https://github.com/langchain-ai/langgraphjs/pull/2966) [`0a035e1`](https://github.com/langchain-ai/langgraphjs/commit/0a035e1a6f8803cb1b5edcf06503ce75e13ca7b6) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): `isCommand` no longer accepts plain objects, so JSON graph input shaped like `{ lg_name: "Command", goto, update }` is treated as ordinary state input instead of a control directive. `Command` instances, including ones built by another installed copy of `@langchain/langgraph`, are still recognized. To pass a command as input, construct it with `new Command(...)`.
+
+- [#2965](https://github.com/langchain-ai/langgraphjs/pull/2965) [`f4a7e6a`](https://github.com/langchain-ai/langgraphjs/commit/f4a7e6a7c13e5bf55e8fff62165816c7bfd92cf6) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): require `@langchain/langgraph-sdk` 1.12.3 or later.
+
+## 1.4.20
+
+### Patch Changes
+
+- [#2923](https://github.com/langchain-ai/langgraphjs/pull/2923) [`8adc03d`](https://github.com/langchain-ai/langgraphjs/commit/8adc03d61b6b488b82c36111f249b4d290c73db7) Thanks [@eliornl](https://github.com/eliornl)! - give each update of a multi-update `bulkUpdateState` super-step its own task id, so a DeltaChannel keeps every update instead of only the first
+
+- [#2927](https://github.com/langchain-ai/langgraphjs/pull/2927) [`46584bc`](https://github.com/langchain-ai/langgraphjs/commit/46584bc279c1b654c31748d850002f73bfbe0f7c) Thanks [@eliornl](https://github.com/eliornl)! - don't ask the checkpointer for the history of a DeltaChannel that was never written; it is empty, and the walk for it read every ancestor of the thread on every load. Only checkpoints whose metadata has `delta_writes_versioned` skip it: graphs with a DeltaChannel set it on new threads, where every DeltaChannel write has a version, so threads started by earlier versions keep reading as before. `updateState` now versions the writes it takes from the head, which also stops PostgresSaver from dropping them, and keeps the DeltaChannel writes it makes on a new thread.
+
+- [#2954](https://github.com/langchain-ai/langgraphjs/pull/2954) [`f9483ca`](https://github.com/langchain-ai/langgraphjs/commit/f9483ca4326a38ec57cd192809f912e3c5a22ea1) Thanks [@eliornl](https://github.com/eliornl)! - exit durability no longer saves a checkpoint as its own parent when a run ends without running anything, such as replaying the newest checkpoint of a finished thread; with a DeltaChannel, reading such a thread crashed
+- Updated dependencies [[`8d6e6cf`](https://github.com/langchain-ai/langgraphjs/commit/8d6e6cf169fa4750dcb33a5477a6fc65fa3d5ba8), [`413a9c7`](https://github.com/langchain-ai/langgraphjs/commit/413a9c77b647202ac87ce53a61de1e6f7a26e796), [`67cfdd2`](https://github.com/langchain-ai/langgraphjs/commit/67cfdd2cca7c752561cbb37675573d7004bba222)]:
+  - @langchain/langgraph-checkpoint@1.1.6
+  - @langchain/langgraph-sdk@1.12.2
+
+## 1.4.19
+
+### Patch Changes
+
+- [#2906](https://github.com/langchain-ai/langgraphjs/pull/2906) [`9876bf0`](https://github.com/langchain-ai/langgraphjs/commit/9876bf0e07d31e1f3143be644d80c9e4df88f281) Thanks [@eliornl](https://github.com/eliornl)! - read a subgraph's DeltaChannel with the checkpointer the parent resolved, instead of hydrating it empty; hydrating a written DeltaChannel without a checkpointer or config now throws instead of returning an empty value; state methods resolve the checkpointer the way a run does, so a `checkpointer: false` graph no longer writes state with a checkpointer lent through the config and has no task state in `getState`, and a `checkpointer: true` graph used as a root rejects state methods with the run's error; `getState`, `getStateHistory` and `updateState` use a `checkpointer: true` subgraph's namespace as its run stores it, so reads find its state and updates are no longer lost; resuming from a subgraph checkpoint returned by `getState(config, { subgraphs: true })` now applies the resume value instead of re-firing the interrupt
+- Updated dependencies [[`cca4806`](https://github.com/langchain-ai/langgraphjs/commit/cca48067b78fa9e3dc632c02a3431e74ff3f91b1), [`7343768`](https://github.com/langchain-ai/langgraphjs/commit/7343768628570b864dc50f25d0f2b38bf825ccb8)]:
+  - @langchain/langgraph-sdk@1.12.1
+
 ## 1.4.18
 
 ### Patch Changes

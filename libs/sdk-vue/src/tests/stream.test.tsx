@@ -46,7 +46,7 @@ it("stop() does not clear stream values", async () => {
     },
   });
 
-  const screen = render(TestComponent);
+  const screen = await render(TestComponent);
 
   await screen.getByTestId("submit").click();
 
@@ -103,7 +103,7 @@ it("make sure to pass metadata to the thread", async () => {
     },
   });
 
-  const screen = render(TestComponent);
+  const screen = await render(TestComponent);
 
   await screen.getByTestId("submit").click();
 
