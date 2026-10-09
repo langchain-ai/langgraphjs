@@ -2711,7 +2711,7 @@ export class Pregel<
         if (emitLifecycleEvents)
           await emitLifecycleEvents(loop.lifecycleEvents);
         for (const { task } of await loop._matchCachedWrites()) {
-          loop._outputWrites(task.id, task.writes, true);
+          loop.putWrites(task.id, task.writes, true);
         }
 
         if (debug) {
