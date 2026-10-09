@@ -279,7 +279,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (checkpoints !== undefined) {
         // eslint-disable-next-line prefer-destructuring
         checkpoint_id = Object.keys(checkpoints).sort((a, b) =>
-          b.localeCompare(a)
+          a < b ? 1 : a > b ? -1 : 0
         )[0];
         const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
@@ -368,8 +368,8 @@ export class MemorySaver extends BaseCheckpointSaver {
           continue;
         }
         const checkpoints = this.storage[threadId]?.[checkpointNamespace] ?? {};
-        const sortedCheckpoints = Object.entries(checkpoints).sort((a, b) =>
-          b[0].localeCompare(a[0])
+        const sortedCheckpoints = Object.entries(checkpoints).sort(([a], [b]) =>
+          a < b ? 1 : a > b ? -1 : 0
         );
 
         for (const [
@@ -605,7 +605,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     const nsStorage = this.storage[threadId]?.[checkpointNs] ?? {};
     const checkpointId =
       getCheckpointId(config) ||
-      Object.keys(nsStorage).sort((a, b) => b.localeCompare(a))[0];
+      Object.keys(nsStorage).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))[0];
 
     // Build the parent chain starting at the target's parent (the target's
     // own pending writes are for the next super-step and excluded).
