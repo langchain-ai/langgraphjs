@@ -478,6 +478,12 @@ describe.each([
     ).toEqual({ ch: "second" });
   });
 
+  it("throws on a string version, as the base saver does", () => {
+    expect(() =>
+      postgresSaver.getNextVersion("00000000000000000000000000000001.0.5" as never)
+    ).toThrow("Please override this method to use string versions.");
+  });
+
   it("should delete thread", async () => {
     const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
     const thread2 = { configurable: { thread_id: "2", checkpoint_ns: "" } };
