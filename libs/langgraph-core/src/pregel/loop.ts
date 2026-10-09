@@ -447,10 +447,11 @@ export class PregelLoop {
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
   /**
-   * DeltaChannel writes saved since the last checkpoint save was scheduled.
-   * That save waits for them, and a rejection skips it and every later save:
-   * a DeltaChannel is rebuilt from its writes along the parent chain, so a
-   * checkpoint saved past a missing write or parent reads back short for good.
+   * The DeltaChannel writes this loop sent to the saver since the last
+   * checkpoint save was scheduled. That save waits for them, and a rejection
+   * skips it and every later save: a DeltaChannel is rebuilt from its writes
+   * along the parent chain, so a checkpoint saved past a missing write or
+   * parent reads back short for good.
    */
   protected _pendingDeltaWrites: Promise<unknown>[] = [];
 
