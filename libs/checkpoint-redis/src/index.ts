@@ -6,6 +6,8 @@ import {
   CheckpointMetadata,
   CheckpointTuple,
   PendingWrite,
+  compareWritesSortKeys,
+  writesSortKey,
   uuid6,
   TASKS,
   WRITES_IDX_MAP,
@@ -699,7 +701,8 @@ export class RedisSaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void> {
     await this.ensureIndexes();
 
@@ -748,12 +751,17 @@ export class RedisSaver extends BaseCheckpointSaver {
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpointId,
         task_id: taskId,
+        // Serialized task path; `""` sorts first (see `writesSortKey`).
+        task_path: taskPath ?? "",
         idx: writeIdx,
         channel: channel,
         type: typeof value === "object" ? "json" : "string",
         value: value,
         timestamp: baseTimestamp,
-        global_idx: baseTimestamp + idx, // Add microseconds for sub-millisecond ordering
+        // Insertion-time retrieval index only — NOT the ordering authority
+        // for `pendingWrites`, which is `writesSortKey` (see
+        // `loadPendingWrites`).
+        global_idx: baseTimestamp + idx,
       };
 
       if (allSpecial) {
@@ -883,12 +891,21 @@ export class RedisSaver extends BaseCheckpointSaver {
       }
     }
 
-    // Sort by global_idx (which represents insertion order across all putWrites calls)
-    // This matches how SQLite would naturally order by insertion time + idx
-    writeDocuments.sort((a, b) => (a.global_idx || 0) - (b.global_idx || 0));
+    // Order by `writesSortKey` — `(task_path, task_id, idx)` — the order live
+    // execution applies a superstep's writes in (see the `getTuple` contract on
+    // `BaseCheckpointSaver`). `global_idx`/`timestamp` remain insertion-time
+    // retrieval indexes, not the ordering authority. Documents written before
+    // `task_path` existed have none and sort first, by `task_id`.
+    // Compute each document's key once, then sort on the cached keys.
+    const keyed = writeDocuments.map((doc: any) => ({
+      key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),
+      doc,
+    }));
+    keyed.sort((a: any, b: any) => compareWritesSortKeys(a.key, b.key));
+    const sortedDocs = keyed.map(({ doc }: { doc: any }) => doc);
 
     const pendingWrites: Array<[string, string, any]> = [];
-    for (const writeDoc of writeDocuments) {
+    for (const writeDoc of sortedDocs) {
       // Deserialize write value using serde to restore LangChain objects
       const deserializedValue = Object.hasOwn(writeDoc, "value")
         ? await this.serde.loadsTyped("json", JSON.stringify(writeDoc.value))

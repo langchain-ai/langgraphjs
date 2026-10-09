@@ -21,7 +21,14 @@ export type SQL_TYPES = {
     checkpoint_ns: string;
     checkpoint_id: string;
     metadata: Record<string, unknown>;
-    pending_writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array][];
+    pending_writes: [
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+    ][];
   };
   SELECT_PENDING_SENDS_SQL: {
     checkpoint_id: string;
@@ -77,7 +84,7 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     ) as channel_values,
     (
       select
-      array_agg(array[cw.task_id::text::bytea, cw.channel::bytea, cw.type::bytea, cw.blob] order by cw.task_id, cw.idx)
+      array_agg(array[cw.task_id::text::bytea, cw.channel::bytea, cw.type::bytea, cw.blob, convert_to(cw.task_path, 'UTF8'), cw.idx::text::bytea])
       from ${SCHEMA_TABLES.checkpoint_writes} cw
       where cw.thread_id = cp.thread_id
         and cw.checkpoint_ns = cp.checkpoint_ns
@@ -87,7 +94,7 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
 
     SELECT_PENDING_SENDS_SQL: `select
       checkpoint_id,
-      array_agg(array[cw.type::bytea, cw.blob] order by cw.task_id, cw.idx) as pending_sends
+      array_agg(array[cw.type::bytea, cw.blob] order by cw.task_path, cw.task_id, cw.idx) as pending_sends
     from ${SCHEMA_TABLES.checkpoint_writes} cw
     where cw.thread_id = $1
       and cw.checkpoint_id = any($2)
@@ -108,16 +115,16 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     metadata = EXCLUDED.metadata;
   `,
 
-    UPSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    UPSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO UPDATE SET
     channel = EXCLUDED.channel,
     type = EXCLUDED.type,
     blob = EXCLUDED.blob;
   `,
 
-    INSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    INSERT_CHECKPOINT_WRITES_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING
   `,
 

@@ -438,7 +438,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     ]);
   });
 
-  it("orders concurrent same-super-step writes by task id", async () => {
+  it("pathless concurrent same-super-step writes fall back to task-id order (legacy)", async () => {
     const saver = new MemorySaver();
     const cfg = { configurable: { thread_id: "t-group", checkpoint_ns: "" } };
     const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
