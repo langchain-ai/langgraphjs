@@ -70,6 +70,7 @@ import {
   CONFIG_KEY_CHECKPOINT_NS,
   type CommandInstance,
   TASKS,
+  _isOverwriteValue,
 } from "../constants.js";
 import {
   GraphDrained,
@@ -1374,6 +1375,23 @@ export class Pregel<
           if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
         }
       };
+      // An Overwrite snapshots its DeltaChannel on the checkpoint saved here,
+      // as a node's does in the loop, so no read replays across the reset.
+      const sealOverwrites = (
+        writes: ReadonlyArray<readonly [PropertyKey, unknown]>
+      ) => {
+        for (const [ch, value] of writes) {
+          const name = String(ch);
+          const spec = (this.channels as Record<string, BaseChannel>)[name];
+          if (
+            spec !== undefined &&
+            isDeltaChannel(spec) &&
+            _isOverwriteValue(value)
+          ) {
+            forkPending.add(name);
+          }
+        }
+      };
 
       // update channels, reconstructing any DeltaChannel from ancestor writes
       const loadChannels = () =>
@@ -1692,6 +1710,8 @@ export class Pregel<
           this.triggerToNodes
         );
 
+        sealOverwrites(inputWrites as PendingWrite[]);
+
         // apply input write to channels
         const nextStep =
           saved?.metadata?.step != null ? saved.metadata.step + 1 : -1;
@@ -1963,6 +1983,7 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      for (const task of tasks) sealOverwrites(task.writes);
       const updatedChannels = writtenChannels();
       const { channelsToSnapshot, metadata: countersMetadata } =
         updateStateDeltaPlan(
