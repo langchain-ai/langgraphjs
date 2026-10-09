@@ -1375,8 +1375,10 @@ export class Pregel<
           if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
         }
       };
-      // An Overwrite snapshots its DeltaChannel on the checkpoint saved here,
-      // as a node's does in the loop, so no read replays across the reset.
+      // updateState saves a full snapshot of a DeltaChannel these writes set
+      // with an Overwrite, like the loop does when a node returns one.
+      // Otherwise, reading the channel later starts from an older snapshot and
+      // replays the writes the Overwrite threw away.
       const sealOverwrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
