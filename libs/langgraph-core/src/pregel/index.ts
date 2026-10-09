@@ -1357,6 +1357,24 @@ export class Pregel<
           )
         : new Set<string>();
 
+      // The base's other children replay whatever is stored on it, so an edit
+      // of an older checkpoint stores none of its writes there: the checkpoint
+      // written here carries them, its delta channels snapshotted. Later
+      // supersteps address the checkpoint just written.
+      const editsOlderCheckpoint = async () =>
+        isFirstSuperstep &&
+        saved !== undefined &&
+        (await checkpointSuperseded(checkpointer, config, saved));
+      const sealDeltaWrites = (
+        writes: ReadonlyArray<readonly [PropertyKey, unknown]>
+      ) => {
+        for (const [ch] of writes) {
+          const name = String(ch);
+          const spec = (this.channels as Record<string, BaseChannel>)[name];
+          if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
+        }
+      };
+
       // update channels, reconstructing any DeltaChannel from ancestor writes
       const loadChannels = () =>
         channelsFromCheckpoint(
@@ -1649,7 +1667,9 @@ export class Pregel<
         // A DeltaChannel reads the writes stored on a checkpoint's ancestors,
         // not its own, so they go on the checkpoint this update builds on, as
         // a node's writes do.
-        if (saved !== undefined) {
+        if (await editsOlderCheckpoint()) {
+          sealDeltaWrites(inputWrites as PendingWrite[]);
+        } else if (saved !== undefined) {
           await checkpointer.putWrites(
             checkpointConfig,
             inputWrites as PendingWrite[],
@@ -1915,23 +1935,8 @@ export class Pregel<
         );
       }
 
-      // The base's other children replay whatever is stored on it, so an edit
-      // of an older checkpoint stores none of its writes there: the checkpoint
-      // written here carries them, its delta channels snapshotted. Later
-      // supersteps address the checkpoint just written.
-      if (
-        isFirstSuperstep &&
-        saved !== undefined &&
-        (await checkpointSuperseded(checkpointer, config, saved))
-      ) {
-        for (const task of tasks) {
-          for (const [ch] of task.writes) {
-            const name = String(ch);
-            const spec = (this.channels as Record<string, BaseChannel>)[name];
-            if (spec !== undefined && isDeltaChannel(spec))
-              forkPending.add(name);
-          }
-        }
+      if (await editsOlderCheckpoint()) {
+        for (const task of tasks) sealDeltaWrites(task.writes);
       } else {
         for (const task of tasks) {
           // channel writes are saved to current checkpoint
