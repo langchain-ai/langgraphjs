@@ -1600,6 +1600,17 @@ export class Pregel<
           );
         }
 
+        // A DeltaChannel reads the writes stored on a checkpoint's ancestors,
+        // not its own, so they go on the checkpoint this update builds on, as
+        // a node's writes do.
+        if (saved !== undefined) {
+          await checkpointer.putWrites(
+            checkpointConfig,
+            inputWrites as PendingWrite[],
+            uuid5(INPUT, checkpoint.id)
+          );
+        }
+
         // apply to checkpoint
         _applyWrites(
           checkpoint,
@@ -1625,9 +1636,7 @@ export class Pregel<
             updatedChannels,
             saved,
             checkpoint.channel_versions,
-            deltaWritesVersioned,
-            new Set(),
-            updatedChannels
+            deltaWritesVersioned
           );
         const nextCheckpoint = createCheckpoint(
           checkpoint,
@@ -1653,13 +1662,6 @@ export class Pregel<
             checkpointPreviousVersions,
             nextCheckpoint.channel_versions
           )
-        );
-
-        // Store the writes
-        await checkpointer.putWrites(
-          nextConfig,
-          inputWrites as PendingWrite[],
-          uuid5(INPUT, checkpoint.id)
         );
 
         return patchCheckpointMap(

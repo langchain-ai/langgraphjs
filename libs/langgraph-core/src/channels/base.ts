@@ -321,9 +321,7 @@ export function deltaCountersMetadata(
  * thread has no checkpoint to hold the writes, so it snapshots every delta
  * channel it wrote instead.
  *
- * A channel in `forkChannels` snapshots too. A channel in `writesStoredHere`
- * never snapshots: its children replay the writes stored on this checkpoint,
- * so a snapshot would apply them twice.
+ * A channel in `forkChannels` snapshots too.
  */
 export function updateStateDeltaPlan(
   channels: Record<string, BaseChannel>,
@@ -331,8 +329,7 @@ export function updateStateDeltaPlan(
   saved: CheckpointTuple | undefined,
   channelVersions: Record<string, number | string>,
   deltaWritesVersioned: boolean,
-  forkChannels: Set<string> = new Set(),
-  writesStoredHere: Set<string> = new Set()
+  forkChannels: Set<string> = new Set()
 ): {
   channelsToSnapshot: Set<string>;
   metadata: Pick<CheckpointMetadata, "counters_since_delta_snapshot">;
@@ -344,8 +341,7 @@ export function updateStateDeltaPlan(
         Object.prototype.hasOwnProperty.call(channels, name) &&
         isDeltaChannel(channels[name]) &&
         channels[name].isAvailable() &&
-        channelVersions[name] !== undefined &&
-        !writesStoredHere.has(name)
+        channelVersions[name] !== undefined
       ) {
         channelsToSnapshot.add(name);
       }
@@ -363,7 +359,6 @@ export function updateStateDeltaPlan(
     deltaWritesVersioned ? channelVersions : undefined
   );
   for (const name of forkChannels) channelsToSnapshot.add(name);
-  for (const name of writesStoredHere) channelsToSnapshot.delete(name);
   for (const name of channelsToSnapshot) delete counters[name];
   return { channelsToSnapshot, metadata: deltaCountersMetadata(counters) };
 }

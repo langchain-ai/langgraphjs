@@ -726,17 +726,18 @@ describe("a DeltaChannel that was never written", () => {
     expect((await graph.getState(config)).values.log).toEqual([1]);
   });
 
-  it("doesn't replay an update as input to a delta input channel twice", async () => {
-    const sorted = (values: number[]) => values.sort((a, b) => a - b);
-    const graph = new Pregel({
+  const sorted = (values: number[]) => values.sort((a, b) => a - b);
+  const deltaInputGraph = (snapshotFrequency?: number) =>
+    new Pregel({
       nodes: {
         n: Channel.subscribeTo("go")
           .pipe(() => [2])
           .pipe(Channel.writeTo(["log", "plain"])),
       },
       channels: {
-        log: new DeltaChannel<number[], number[]>((state, writes) =>
-          sorted(listReducer(state, writes))
+        log: new DeltaChannel<number[], number[]>(
+          (state, writes) => sorted(listReducer(state, writes)),
+          { snapshotFrequency }
         ),
         plain: new BinaryOperatorAggregate<number[]>(
           (a, b) => sorted([...a, ...b]),
@@ -748,15 +749,71 @@ describe("a DeltaChannel that was never written", () => {
       outputChannels: ["log", "plain"],
       checkpointer: new MemorySaver(),
     });
+  const logAndPlain = async (
+    graph: ReturnType<typeof deltaInputGraph>,
+    config: RunnableConfig
+  ) => (await graph.getState(config)).values as Record<string, number[]>;
+
+  it("doesn't replay an update as input to a delta input channel twice", async () => {
+    const graph = deltaInputGraph();
     const config = { configurable: { thread_id: "input-to-delta-channel" } };
 
     await graph.updateState(config, { log: [1], plain: [1], go: 1 }, "__input__");
     await graph.invoke(null, config);
 
+    const { log, plain } = await logAndPlain(graph, config);
+    expect(log).toEqual(plain);
+  });
+
+  it.each([1, 2])(
+    "reads an update as input to a delta input channel on the checkpoint it saves and after the next run, with snapshotFrequency %i",
+    async (snapshotFrequency) => {
+      const graph = deltaInputGraph(snapshotFrequency);
+      const config = {
+        configurable: { thread_id: `input-update-${snapshotFrequency}` },
+      };
+      await graph.invoke({ log: [0], plain: [0], go: 1 }, config);
+
+      await graph.updateState(config, { log: [1], plain: [1], go: 1 }, "__input__");
+      const afterUpdate = await logAndPlain(graph, config);
+      await graph.invoke(null, config);
+      const afterRun = await logAndPlain(graph, config);
+
+      expect(afterUpdate.log).toEqual(afterUpdate.plain);
+      expect(afterRun.log).toEqual(afterRun.plain);
+    }
+  );
+
+  it("keeps both inputs when a node update follows two updates as input", async () => {
+    const graph = new Pregel({
+      nodes: {
+        n: Channel.subscribeTo("go")
+          .pipe(() => [0])
+          .pipe(Channel.writeTo(["log", "plain"])),
+      },
+      channels: {
+        log: new DeltaChannel<number[], number[]>(listReducer),
+        plain: new BinaryOperatorAggregate<number[]>(
+          (a, b) => [...a, ...b],
+          () => []
+        ),
+        go: new LastValue<number>(),
+      },
+      inputChannels: ["log", "plain", "go"],
+      outputChannels: ["log", "plain"],
+      checkpointer: new MemorySaver(),
+    });
+    const config = { configurable: { thread_id: "two-inputs-then-update" } };
+
+    await graph.updateState(config, { log: [1], plain: [1] }, "__input__");
+    await graph.updateState(config, { log: [2], plain: [2] }, "__input__");
+    await graph.updateState(config, [3], "n");
+
     const { log, plain } = (await graph.getState(config)).values as Record<
       string,
       number[]
     >;
+    expect(log).toEqual([1, 2, 3]);
     expect(log).toEqual(plain);
   });
 
