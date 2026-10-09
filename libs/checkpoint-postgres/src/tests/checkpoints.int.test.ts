@@ -315,6 +315,12 @@ describe.each([
           is_nullable: "NO",
           column_default: null,
         },
+        {
+          column_name: "task_path",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
       ]);
 
       // Verify migrations table has correct number of entries

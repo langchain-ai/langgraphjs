@@ -214,6 +214,59 @@ describe("mapSubagentNamespaces", () => {
     expect(map.size).toBe(1);
   });
 
+  it("recognizes all three Send path shapes and rejects handler paths", () => {
+    // Legacy JS servers emit `[PUSH, i]`; aligned servers (JS and Python)
+    // emit `[PUSH, i, false]`; error handlers of failed Sends emit
+    // `[PUSH, i, false, "node_error_handler", false]` and must NOT be
+    // mistaken for a second Send at the same index.
+    const make = (path: unknown) =>
+      ({
+        values: {
+          messages: [
+            { type: "ai", tool_calls: [{ id: "task-1", name: "task" }] },
+          ],
+        },
+        next: [],
+        checkpoint: checkpoint("", "cp-shape"),
+        metadata: {},
+        parent_checkpoint: null,
+        tasks: [
+          {
+            id: "legacy-uuid",
+            name: "tools",
+            path,
+            error: null,
+            interrupts: [],
+            checkpoint: null,
+            state: null,
+          },
+        ],
+      }) as unknown as ThreadState<Record<string, unknown>>;
+
+    // Legacy two-element path: maps.
+    expect(mapSubagentNamespaces([make(["__pregel_push", 0])], ["task-1"]).get("task-1")).toBe(
+      "tools:legacy-uuid"
+    );
+    // Aligned three-element path: maps.
+    expect(
+      mapSubagentNamespaces([make(["__pregel_push", 0, false])], ["task-1"]).get("task-1")
+    ).toBe("tools:legacy-uuid");
+    // Handler-of-failed-Send path (five elements): not a Send task.
+    expect(
+      mapSubagentNamespaces(
+        [make(["__pregel_push", 0, false, "node_error_handler", false])],
+        ["task-1"]
+      ).size
+    ).toBe(0);
+    // Call tasks (path[1] is a nested path, not a number): not Send tasks.
+    expect(
+      mapSubagentNamespaces(
+        [make(["__pregel_push", ["__pregel_pull", "a"], 0, true])],
+        ["task-1"]
+      ).size
+    ).toBe(0);
+  });
+
   it("prefers direct mapping over positional across the whole history", () => {
     // Newer checkpoint only has a positional (pending) guess; older has the
     // correct direct mapping. Direct must win.

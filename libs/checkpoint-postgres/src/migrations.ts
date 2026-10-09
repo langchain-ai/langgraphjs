@@ -41,5 +41,8 @@ export const getMigrations = (schema: string) => {
     PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
   );`,
     `ALTER TABLE ${SCHEMA_TABLES.checkpoint_blobs} ALTER COLUMN blob DROP not null;`,
+    // Position in this list is the recorded migration version; this is the
+    // sixth entry, recorded as v=5.
+    `ALTER TABLE ${SCHEMA_TABLES.checkpoint_writes} ADD COLUMN IF NOT EXISTS task_path TEXT NOT NULL DEFAULT '';`,
   ];
 };

@@ -198,6 +198,48 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
 }
 
 /**
+ * Synthetic task id for exit-mode writes of a superstep after the anchor's
+ * own.
+ *
+ * Sorts after every real task id, in step order, so replay keeps them after
+ * the anchor's own superstep whether a saver orders writes by task path
+ * (`writesSortKey`) or by task id. Mirrors Python's
+ * `exit_delta_late_task_id` exactly, including the two hexadecimal step
+ * groups (step is split across them).
+ */
+export function exitDeltaLateTaskId(step: number, taskId: string): string {
+  if (!STRUCTURED_UUID.test(taskId)) {
+    throw new TypeError(`Invalid task id for exit delta: ${taskId}`);
+  }
+  const parts = taskId.toLowerCase().split("-");
+  const stepHi = (step >> 16).toString(16).padStart(4, "0");
+  const stepLo = (step & 0xffff).toString(16).padStart(4, "0");
+  return `ffffffff-${stepHi}-${stepLo}-${parts[3]}-${parts[4]}`;
+}
+
+/**
+ * DeltaChannels a branch starting from this checkpoint must snapshot.
+ *
+ * A checkpoint's pending writes belong to the child that consumed them, and
+ * nothing records which child that was. A new branch snapshots every delta
+ * channel they touch, so its ancestor walk never replays them (port of
+ * Python #8548's `delta_channels_with_pending_writes`; see the seal in
+ * `bulkUpdateState` for how JS scopes it to channels whose version moved).
+ */
+export function deltaChannelsWithPendingWrites(
+  channels: Record<string, BaseChannel>,
+  pendingWrites: ReadonlyArray<[string, string, unknown]> | undefined
+): Set<string> {
+  const result = new Set<string>();
+  if (pendingWrites === undefined) return result;
+  for (const [, ch] of pendingWrites) {
+    const channel = channels[ch];
+    if (channel != null && isDeltaChannel(channel)) result.add(ch);
+  }
+  return result;
+}
+
+/**
  * Return the set of {@link DeltaChannel} names that should snapshot now.
  *
  * A channel snapshots when EITHER its accumulated update count reaches

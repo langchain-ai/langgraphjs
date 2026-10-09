@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import {
   BaseCheckpointSaver,
@@ -2112,5 +2113,112 @@ describe("ShallowRedisSaver", () => {
       value: "survive-double-put",
       resumable: true,
     });
+  });
+});
+
+// ============================================================================
+// SHALLOW REDIS: pending-write ordering through both all-thread list branches
+// ============================================================================
+describe("ShallowRedisSaver list pending-write ordering", () => {
+  let container: StartedTestContainer;
+  let client: any;
+  let saver: ShallowRedisSaver;
+
+  beforeEach(async () => {
+    container = await new GenericContainer("redis/redis-stack-server:latest")
+      .withExposedPorts(6379)
+      .start();
+    client = createClient({
+      url: `redis://${container.getHost()}:${container.getMappedPort(6379)}`,
+    });
+    await client.connect();
+    saver = new ShallowRedisSaver(client);
+  });
+
+  afterEach(async () => {
+    if (client && client.isOpen) await client.disconnect();
+    if (container) await container.stop();
+  });
+
+  async function putThreadWithOpposingOrders(threadId: string) {
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_values: { counter: 1 },
+      channel_versions: { counter: "1.0" },
+    };
+    const saved = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} }
+    );
+    // Task ids sort OPPOSITE to their task paths, and the put order is a
+    // third permutation, so only writesSortKey order gives the result below.
+    await saver.putWrites(
+      saved,
+      [["ch", "b"] as PendingWrite],
+      "00000000-0000-0000-0000-000000000000",
+      "~pull, 02"
+    );
+    await saver.putWrites(
+      saved,
+      [["ch", "a"] as PendingWrite],
+      "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "~pull, 01"
+    );
+    await saver.putWrites(
+      saved,
+      [["ch", "input"] as PendingWrite],
+      "88888888-8888-8888-8888-888888888888"
+    );
+    return checkpoint.id;
+  }
+
+  it("search branch: all-thread list returns writes in writesSortKey order", async () => {
+    const checkpointId = await putThreadWithOpposingOrders("order-search");
+
+    const tuples = [];
+    for await (const t of saver.list(null)) tuples.push(t);
+    const tuple = tuples.find((t) => t.checkpoint.id === checkpointId);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+      "input",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("fallback branch: all-thread list returns writes in writesSortKey order", async () => {
+    const checkpointId = await putThreadWithOpposingOrders("order-fallback");
+    // `list` recreates a dropped index in `ensureIndexes`, so dropping it
+    // would not exercise the fallback. Instead, make the search itself fail
+    // with the recognized "no such index" error, and watch the checkpoint-key
+    // scan that the fallback performs.
+    const searchSpy = vi
+      .spyOn(client.ft, "search")
+      .mockRejectedValue(new Error("no such index"));
+    const keysSpy = vi.spyOn(client, "keys");
+
+    const tuples = [];
+    for await (const t of saver.list(null)) tuples.push(t);
+    const tuple = tuples.find((t) => t.checkpoint.id === checkpointId);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+      "input",
+      "a",
+      "b",
+    ]);
+    // The fallback branch ran: the search failed and the checkpoint-key
+    // scan produced the results.
+    expect(searchSpy).toHaveBeenCalled();
+    expect(
+      keysSpy.mock.calls.some(([pattern]) =>
+        String(pattern).startsWith("checkpoint:")
+      )
+    ).toBe(true);
+    searchSpy.mockRestore();
+    keysSpy.mockRestore();
   });
 });

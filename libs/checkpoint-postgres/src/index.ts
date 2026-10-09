@@ -8,6 +8,8 @@ import {
   type PendingWrite,
   type CheckpointMetadata,
   type ChannelVersions,
+  compareWritesSortKeys,
+  writesSortKey,
   WRITES_IDX_MAP,
   TASKS,
   maxChannelVersion,
@@ -210,19 +212,49 @@ export class PostgresSaver extends BaseCheckpointSaver {
     return this.serde.loadsTyped(type, dumpedValue);
   }
 
+  /**
+   * Deserialize pending-write rows into public pending writes, in
+   * `writesSortKey` order.
+   *
+   * Rows are `(task_id, channel, type, blob, task_path, idx)` — the SQL
+   * aggregate deliberately carries no `ORDER BY`, so the order never depends
+   * on a database collation; sorting happens here, through the shared
+   * comparator, matching live execution.
+   */
   protected async _loadWrites(
-    writes: [Uint8Array, Uint8Array, Uint8Array, Uint8Array][]
+    writes:
+      | [
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+          Uint8Array,
+        ][]
+      | null
   ): Promise<[string, string, unknown][]> {
     const decoder = new TextDecoder();
-    return writes
-      ? await Promise.all(
-          writes.map(async ([tid, channel, t, v]) => [
-            decoder.decode(tid),
-            decoder.decode(channel),
-            await this.serde.loadsTyped(decoder.decode(t), v),
-          ])
-        )
-      : [];
+    if (!writes) return [];
+    // Decode the ordering fields once per row, then sort on the cached keys.
+    const keyed = writes.map((row) => {
+      const [tid, , , , taskPath, idx] = row;
+      return {
+        key: writesSortKey(
+          decoder.decode(taskPath),
+          decoder.decode(tid),
+          Number(decoder.decode(idx))
+        ),
+        row,
+      };
+    });
+    keyed.sort((a, b) => compareWritesSortKeys(a.key, b.key));
+    return Promise.all(
+      keyed.map(async ({ row: [tid, channel, t, v] }) => [
+        decoder.decode(tid),
+        decoder.decode(channel),
+        await this.serde.loadsTyped(decoder.decode(t), v),
+      ])
+    );
   }
 
   protected async _dumpBlobs(
@@ -284,9 +316,20 @@ export class PostgresSaver extends BaseCheckpointSaver {
     checkpointNs: string,
     checkpointId: string,
     taskId: string,
-    writes: [string, unknown][]
+    writes: [string, unknown][],
+    taskPath = ""
   ): Promise<
-    [string, string, string, string, number, string, string, Uint8Array][]
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+      string,
+      string,
+      Uint8Array,
+    ][]
   > {
     return Promise.all(
       writes.map(async ([channel, value], idx) => {
@@ -296,6 +339,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
           checkpointNs,
           checkpointId,
           taskId,
+          taskPath,
           WRITES_IDX_MAP[channel] ?? idx,
           channel,
           type,
@@ -641,7 +685,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
   async putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void> {
     const query = writes.every((w) => w[0] in WRITES_IDX_MAP)
       ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WRITES_SQL
@@ -652,7 +697,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
       config.configurable?.checkpoint_ns,
       config.configurable?.checkpoint_id,
       taskId,
-      writes
+      writes,
+      taskPath ?? ""
     );
     const client = await this.pool.connect();
     try {
