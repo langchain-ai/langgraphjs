@@ -355,12 +355,16 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // Find the highest version of all channels
   let maxVersion = maxChannelMapVersion(checkpoint.channel_versions);
 
-  let usedNewVersion = false;
+  // Each version is minted once and shared by every channel it stamps, as in
+  // Python: a saver that adds a random fraction would otherwise give channels
+  // written together different versions, and updateState's "Ambiguous update"
+  // check compares them.
+  let consumedVersion: number | string | undefined;
   for (const chan of channelsToConsume) {
     if (chan in onlyChannels && onlyChannels[chan].consume()) {
       if (getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
-        usedNewVersion = true;
+        consumedVersion ??= getNextVersion(maxVersion);
+        checkpoint.channel_versions[chan] = consumedVersion!;
       }
     }
   }
@@ -385,9 +389,10 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
   // replay instead, which permuted parallel writers checkpoint by checkpoint.
 
   // Find the highest version of all channels
-  if (maxVersion != null && getNextVersion != null) {
-    maxVersion = usedNewVersion ? getNextVersion(maxVersion) : maxVersion;
+  if (maxVersion != null && consumedVersion !== undefined) {
+    maxVersion = consumedVersion;
   }
+  const nextVersion = getNextVersion?.(maxVersion);
 
   const updatedChannels: Set<string> = new Set();
   // Apply writes to channels
@@ -412,7 +417,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         }
       }
       if (updated && getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        checkpoint.channel_versions[chan] = nextVersion;
 
         // unavailable channels can't trigger tasks, so don't add them
         if (channel.isAvailable()) updatedChannels.add(chan);
@@ -430,7 +435,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
         const updated = channel.update([]);
 
         if (updated && getNextVersion !== undefined) {
-          checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+          checkpoint.channel_versions[chan] = nextVersion;
 
           // unavailable channels can't trigger tasks, so don't add them
           if (channel.isAvailable()) updatedChannels.add(chan);
@@ -446,7 +451,7 @@ export function _applyWrites<Cc extends Record<string, BaseChannel>>(
 
       const channel = onlyChannels[chan];
       if (channel.finish() && getNextVersion !== undefined) {
-        checkpoint.channel_versions[chan] = getNextVersion(maxVersion);
+        checkpoint.channel_versions[chan] = nextVersion;
 
         // unavailable channels can't trigger tasks, so don't add them
         if (channel.isAvailable()) updatedChannels.add(chan);
