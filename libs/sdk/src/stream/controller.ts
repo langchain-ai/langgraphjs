@@ -739,7 +739,7 @@ export class StreamController<
        */
       const unpersisted = this.#messageMetadata.unpersistedOptimisticIds();
       if (unpersisted.size > 0) {
-        this.#rootMessages.dropOptimisticMessages(unpersisted);
+        this.#rootMessages.dropMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
       /**
@@ -1231,9 +1231,27 @@ export class StreamController<
    */
   async stop(options?: StreamStopOptions): Promise<void> {
     const shouldCancel = options?.cancel ?? true;
+    const wasLoading = this.rootStore.getSnapshot().isLoading;
+    if (shouldCancel && wasLoading) {
+      // Drop the partial reply now rather than on the server's terminal.
+      const dropped = this.#rootMessages.closeRun({ sync: true });
+      if (dropped.size > 0) this.#messageMetadata.forget(dropped);
+    }
     if (shouldCancel) {
       const threadId = this.#currentThreadId;
-      const runId = this.#activeRunId;
+      let runId = this.#activeRunId;
+      // No run id when we attached to a run we didn't start (e.g. reload).
+      if (runId == null && threadId != null && wasLoading) {
+        try {
+          const running = await this.#options.client.runs.list(threadId, {
+            status: "running",
+            limit: 1,
+          });
+          runId = running?.[0]?.run_id;
+        } catch {
+          /* lookup failures must not block client disconnect */
+        }
+      }
       if (threadId != null && runId != null) {
         try {
           await this.#options.client.runs.cancel(threadId, runId);
@@ -2230,12 +2248,14 @@ export class StreamController<
     if (event.method === "lifecycle") {
       /**
        * Root lifecycle transitions are observed elsewhere
-       * (#awaitTerminal) to unblock `submit`.
+       * (#awaitTerminal) to unblock `submit`. Here they drop a closed
+       * run's never-checkpointed messages.
        */
       const lifecycle = (event as LifecycleEvent).params.data as {
         event?: string;
       };
-      void lifecycle;
+      const dropped = this.#rootMessages.applyLifecycle(lifecycle?.event);
+      if (dropped.size > 0) this.#messageMetadata.forget(dropped);
     }
   }
 
