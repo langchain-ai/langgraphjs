@@ -598,12 +598,14 @@ export class MemorySaver extends BaseCheckpointSaver {
 
     const threadId = config.configurable?.thread_id;
     const checkpointNs = config.configurable?.checkpoint_ns ?? "";
-    const checkpointId = getCheckpointId(config);
 
     if (threadId !== undefined) assertSafeStorageKey("thread_id", threadId);
     assertSafeStorageKey("checkpoint_ns", checkpointNs, { allowEmpty: true });
 
     const nsStorage = this.storage[threadId]?.[checkpointNs] ?? {};
+    const checkpointId =
+      getCheckpointId(config) ||
+      Object.keys(nsStorage).sort((a, b) => b.localeCompare(a))[0];
 
     // Build the parent chain starting at the target's parent (the target's
     // own pending writes are for the next super-step and excluded).
