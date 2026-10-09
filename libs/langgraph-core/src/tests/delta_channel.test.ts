@@ -1586,6 +1586,7 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
     ["as a node", (graph, config) => graph.updateState(config, { a: [] }, "n")],
     ["clearing as END", (graph, config) => graph.updateState(config, null, END)],
     ["as input", (graph, config) => graph.updateState(config, { a: [] }, "__input__")],
+    ["with no values", (graph, config) => graph.updateState(config, undefined)],
   ];
   for (const [label, update] of updatesAddingASuperstep) {
     it(`updateState ${label} snapshots a channel it didn't write at the bound`, async () => {

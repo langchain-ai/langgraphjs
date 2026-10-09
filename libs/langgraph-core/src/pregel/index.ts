@@ -40,6 +40,7 @@ import {
   getOnlyChannels,
   isDeltaChannel,
   isDeltaWritesVersioned,
+  reachedSnapshotBound,
   updateStateDeltaPlan,
 } from "../channels/base.js";
 import {
@@ -1353,27 +1354,60 @@ export class Pregel<
           );
         }
 
+        const counters =
+          saved === undefined
+            ? {}
+            : advanceDeltaCounters(
+                this.channels as Record<string, BaseChannel>,
+                new Set(),
+                saved.metadata?.counters_since_delta_snapshot
+              );
+        // Only a channel that has to snapshot needs its value rebuilt.
+        const channels = Object.entries(counters).some(([name, count]) =>
+          reachedSnapshotBound(this.channels[name] as BaseChannel, count)
+        )
+          ? await channelsFromCheckpoint(
+              this.channels as Record<string, BaseChannel>,
+              checkpoint,
+              {
+                saver: checkpointer,
+                config: saved?.config ?? checkpointConfig,
+                deltaWritesVersioned,
+              }
+            )
+          : undefined;
+        const { channelsToSnapshot, metadata: countersMetadata } =
+          channels === undefined
+            ? {
+                channelsToSnapshot: new Set<string>(),
+                metadata: deltaCountersMetadata(counters),
+              }
+            : updateStateDeltaPlan(
+                channels,
+                new Set(),
+                saved,
+                checkpoint.channel_versions,
+                deltaWritesVersioned
+              );
+        const nextCheckpoint = createCheckpoint(checkpoint, channels, step, {
+          channelsToSnapshot,
+          updatedChannels: new Set(),
+          getNextVersion,
+        });
         const nextConfig = await checkpointer.put(
           checkpointConfig,
-          createCheckpoint(checkpoint, undefined, step),
+          nextCheckpoint,
           {
             source: "update",
             step: step + 1,
             parents: saved?.metadata?.parents ?? {},
             ...versionedMetadata,
-            // Without channels nothing can snapshot here: a delta channel at
-            // its bound snapshots on the next checkpoint instead.
-            ...(saved === undefined
-              ? {}
-              : deltaCountersMetadata(
-                  advanceDeltaCounters(
-                    this.channels as Record<string, BaseChannel>,
-                    new Set(),
-                    saved.metadata?.counters_since_delta_snapshot
-                  )
-                )),
+            ...countersMetadata,
           },
-          {}
+          getNewChannelVersions(
+            checkpointPreviousVersions,
+            nextCheckpoint.channel_versions
+          )
         );
         return patchCheckpointMap(
           nextConfig,
