@@ -447,11 +447,10 @@ export class PregelLoop {
   protected _checkpointerChainedPromise: Promise<unknown> = Promise.resolve();
 
   /**
-   * DeltaChannel writes (and the exit-mode stub checkpoint) saved since the
-   * last checkpoint save was scheduled. That save waits for them, and a
-   * rejection skips it and every later save: a DeltaChannel is rebuilt from
-   * its writes along the parent chain, so a checkpoint saved past a missing
-   * write or parent reads back short for good.
+   * DeltaChannel writes saved since the last checkpoint save was scheduled.
+   * That save waits for them, and a rejection skips it and every later save:
+   * a DeltaChannel is rebuilt from its writes along the parent chain, so a
+   * checkpoint saved past a missing write or parent reads back short for good.
    */
   protected _pendingDeltaWrites: Promise<unknown>[] = [];
 
@@ -2114,14 +2113,12 @@ export class PregelLoop {
       anchorConfig = patchConfigurable(this._initialCheckpointConfig, {
         [CONFIG_KEY_CHECKPOINT_ID]: stubCp.id,
       });
-      const stubSaved = this.checkpointer.put(
-        stubPutConfig,
-        stubCp,
-        { source: "loop", step: -2, parents: {} },
-        {}
-      );
-      this._trackCheckpointerPromise(stubSaved);
-      this._pendingDeltaWrites.push(stubSaved);
+      this._checkpointerPutAfterPrevious({
+        config: stubPutConfig,
+        checkpoint: stubCp,
+        metadata: { source: "loop", step: -2, parents: {} },
+        newVersions: {},
+      });
       this.checkpointConfig = anchorConfig;
     }
 
