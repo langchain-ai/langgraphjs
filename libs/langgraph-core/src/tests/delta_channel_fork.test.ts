@@ -630,6 +630,24 @@ describe.each(savers)("DeltaChannel fork (%s)", (_name, makeSaver) => {
     }
   );
 
+  it("an edit of an older checkpoint before a delta channel's first write leaves it empty", async () => {
+    const graph = new StateGraph(State)
+      .addNode("a", () => ({ other: ["a"] }))
+      .addNode("b", () => both("b"))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile({ checkpointer: makeSaver() });
+    const config = thread("t");
+    await graph.invoke({ other: ["in"] }, config);
+    const beforeB = await newest(graph, config, (snapshot) =>
+      snapshot.next.includes("b")
+    );
+
+    const edited = await graph.updateState(beforeB.config, { other: ["edit"] }, "a");
+
+    expectBoth((await graph.getState(edited)).values, []);
+  });
+
   it("resuming a subgraph edit the subgraph moved past stores nothing on it", async () => {
     const saver = makeSaver();
     const executor = new StateGraph(State)
