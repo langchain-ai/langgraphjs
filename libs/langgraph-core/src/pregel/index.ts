@@ -30,19 +30,21 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { getGraphCallbackDispatcher } from "./callbacks.js";
 import {
-  advanceDeltaCounters,
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
   deltaChannelsWithPendingWrites,
-  deltaCountersMetadata,
   getOnlyChannels,
   isDeltaChannel,
   isDeltaWritesVersioned,
   reachedSnapshotBound,
-  updateStateDeltaPlan,
 } from "../channels/base.js";
+import {
+  advanceDeltaCounters,
+  deltaCountersMetadata,
+  updateStateDeltaPlan,
+} from "./checkpoint.js";
 import {
   CHECKPOINT_NAMESPACE_END,
   CHECKPOINT_NAMESPACE_SEPARATOR,

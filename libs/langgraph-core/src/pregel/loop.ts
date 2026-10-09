@@ -21,7 +21,6 @@ import {
 } from "@langchain/langgraph-checkpoint";
 
 import {
-  advanceDeltaCounters,
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
@@ -32,6 +31,7 @@ import {
   isDeltaChannel,
   isDeltaWritesVersioned,
 } from "../channels/base.js";
+import { advanceDeltaCounters } from "./checkpoint.js";
 import type {
   Call,
   CallTaskPath,
