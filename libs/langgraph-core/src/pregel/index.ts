@@ -31,7 +31,6 @@ import {
 import { getGraphCallbackDispatcher } from "./callbacks.js";
 import {
   BaseChannel,
-  checkpointSuperseded,
   createCheckpoint,
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
@@ -44,6 +43,7 @@ import {
 } from "../channels/base.js";
 import {
   advanceDeltaCounters,
+  checkpointSuperseded,
   deltaCountersMetadata,
   updateStateDeltaPlan,
 } from "./checkpoint.js";

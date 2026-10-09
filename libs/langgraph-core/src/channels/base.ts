@@ -5,7 +5,6 @@ import {
   DeltaSnapshot,
   type BaseCheckpointSaver,
   type CheckpointMetadata,
-  type CheckpointTuple,
   type DeltaChannelHistory,
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -435,27 +434,6 @@ export function versionsSeenWithoutBumps(
     }
   }
   return out;
-}
-
-/**
- * Whether the thread has moved past `saved`, the checkpoint `config`
- * addressed.
- *
- * A checkpoint with a child is never the latest put, so this misses none. A
- * leaf of an abandoned branch counts as well; telling it apart would mean
- * listing the thread to look for children, which the saver can't do cheaply.
- */
-export async function checkpointSuperseded(
-  saver: BaseCheckpointSaver,
-  config: RunnableConfig,
-  saved: CheckpointTuple
-): Promise<boolean> {
-  if (!config.configurable?.checkpoint_id) return false;
-  const latest = await saver.getTuple({
-    ...config,
-    configurable: { ...config.configurable, checkpoint_id: undefined },
-  });
-  return latest !== undefined && latest.checkpoint.id !== saved.checkpoint.id;
 }
 
 /**
