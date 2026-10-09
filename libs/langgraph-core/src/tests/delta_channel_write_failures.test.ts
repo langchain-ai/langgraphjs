@@ -49,6 +49,7 @@ function aThenBThenC() {
 }
 
 const INPUT = { log: [], plain: [] };
+const ABC = ["a", "b", "c"];
 
 async function failOnBsWrite(
   graph: ReturnType<typeof aThenBThenC>,
@@ -86,6 +87,35 @@ describe("a failed DeltaChannel write", () => {
       expect((await graph.getState(config)).values).toEqual({
         log: ["a", "b", "c"],
         plain: ["a", "b", "c"],
+      });
+    }
+  );
+
+  it.each([
+    { thread: "a new thread", savedBefore: false },
+    { thread: "a thread with a saved checkpoint", savedBefore: true },
+  ])(
+    "with durability exit, leaves nothing the next run on $thread replays",
+    async ({ savedBefore }) => {
+      const graph = aThenBThenC();
+      const saver = graph.checkpointer as FailsTheWriteOfBOnce;
+      const config = {
+        configurable: { thread_id: "t" },
+        durability: "exit" as const,
+      };
+      if (savedBefore) {
+        saver.failed = true;
+        await graph.invoke(INPUT, config);
+        saver.failed = false;
+      }
+      await failOnBsWrite(graph, config);
+
+      await graph.invoke(INPUT, config);
+
+      const expected = savedBefore ? [...ABC, ...ABC] : ABC;
+      expect((await graph.getState(config)).values).toEqual({
+        log: expected,
+        plain: expected,
       });
     }
   );
