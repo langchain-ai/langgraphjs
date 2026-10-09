@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  RemoveMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
 import { LLMResult } from "@langchain/core/outputs";
 import { Serialized } from "@langchain/core/load/serializable";
 import { ChainValues } from "@langchain/core/utils/types";
@@ -327,6 +332,33 @@ describe("StreamProtocolMessagesHandler", () => {
       }),
       runId
     );
+
+    expect(streamFn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["HumanMessage", new HumanMessage({ id: "summary-1", content: "summary" })],
+    ["RemoveMessage", new RemoveMessage({ id: "__remove_all__" })],
+  ])("does not emit %s chain outputs as chat message streams", (_, message) => {
+    const streamFn = vi.fn();
+    const handler = new StreamProtocolMessagesHandler(streamFn);
+    const runId = "summarize-chain-123";
+
+    handler.handleChainStart(
+      {} as Serialized,
+      {} as ChainValues,
+      runId,
+      undefined,
+      [],
+      {
+        langgraph_checkpoint_ns: "ns1",
+        langgraph_node: "summarize",
+      },
+      undefined,
+      "summarize"
+    );
+
+    handler.handleChainEnd({ messages: [message] }, runId);
 
     expect(streamFn).not.toHaveBeenCalled();
   });
