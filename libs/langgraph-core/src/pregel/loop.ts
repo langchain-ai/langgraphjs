@@ -813,8 +813,10 @@ export class PregelLoop {
    * Put writes for a task, to be read by the next tick.
    * @param taskId
    * @param writes
+   * @param cached The writes were served from the node cache: stream them as
+   * cached and don't write them to the cache again.
    */
-  putWrites(taskId: string, writes: PendingWrite<string>[]) {
+  putWrites(taskId: string, writes: PendingWrite<string>[], cached = false) {
     let writesCopy = writes;
     if (writesCopy.length === 0) return;
 
@@ -901,10 +903,10 @@ export class PregelLoop {
     }
 
     if (this.tasks) {
-      this._outputWrites(taskId, writesCopy);
+      this._outputWrites(taskId, writesCopy, cached);
     }
 
-    if (!writes.length || !this.cache || !this.tasks) {
+    if (cached || !writes.length || !this.cache || !this.tasks) {
       return;
     }
 
@@ -1362,7 +1364,7 @@ export class PregelLoop {
 
     const tasks = await this._matchCachedWrites();
     for (const { task } of tasks) {
-      this._outputWrites(task.id, task.writes, true);
+      this.putWrites(task.id, task.writes, true);
     }
 
     return pushed;
