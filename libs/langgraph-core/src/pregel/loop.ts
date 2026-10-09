@@ -1237,21 +1237,7 @@ export class PregelLoop {
     }
     // if there are pending writes from a previous loop, apply them
     if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
-      for (const [tid, k, v] of this.checkpointPendingWrites) {
-        if (
-          k === ERROR ||
-          k === ERROR_SOURCE_NODE ||
-          k === INTERRUPT ||
-          k === RESUME
-        ) {
-          continue;
-        }
-        const task = taskList.find((t) => t.id === tid);
-        if (task) {
-          task.writes.push([k, v]);
-          this._reappliedTaskIds.add(tid);
-        }
-      }
+      this._reapplyWritesToSucceededNodes(this.tasks);
       // On resume, re-schedule error handlers for nodes that failed in a prior
       // run (recorded via ERROR_SOURCE_NODE) before they completed handling.
       this._resumeErrorHandlersIfApplicable();
@@ -2209,19 +2195,36 @@ export class PregelLoop {
     }
   }
 
-  protected _matchWrites(
-    tasks: Record<string, PregelExecutableTask<string, string>>
+  /**
+   * Hands the writes loaded with the checkpoint back to the finished tasks
+   * among `tasks`. A failed or interrupted task keeps empty writes, so it
+   * reruns or goes to its error handler.
+   */
+  protected _reapplyWritesToSucceededNodes(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tasks: Record<string, PregelExecutableTask<any, any>>
   ) {
     for (const [tid, k, v] of this.checkpointPendingWrites) {
-      if (k === ERROR || k === INTERRUPT || k === RESUME) {
+      if (
+        k === ERROR ||
+        k === ERROR_SOURCE_NODE ||
+        k === INTERRUPT ||
+        k === RESUME
+      ) {
         continue;
       }
-      const task = Object.values(tasks).find((t) => t.id === tid);
+      const task = tasks[tid];
       if (task) {
         task.writes.push([k, v]);
         this._reappliedTaskIds.add(tid);
       }
     }
+  }
+
+  protected _matchWrites(
+    tasks: Record<string, PregelExecutableTask<string, string>>
+  ) {
+    this._reapplyWritesToSucceededNodes(tasks);
     for (const task of Object.values(tasks)) {
       if (task.writes.length > 0) {
         this._outputWrites(task.id, task.writes, true);
