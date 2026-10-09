@@ -404,6 +404,13 @@ describe("RedisSaver Integration Tests", () => {
     ).toEqual({ ch: "first", other: "x" });
   });
 
+  it("throws on a string version, as the base saver does", () => {
+    const saver = new RedisSaver(redisClient);
+    expect(() =>
+      saver.getNextVersion("00000000000000000000000000000001.0.5" as never)
+    ).toThrow("Please override this method to use string versions.");
+  });
+
   it("should handle basic integration workflow", async () => {
     const saver = new RedisSaver(redisClient);
 

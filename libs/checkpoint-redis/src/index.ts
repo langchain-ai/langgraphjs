@@ -124,10 +124,11 @@ export class RedisSaver extends BaseCheckpointSaver {
    * One past the integer part of `current`, plus a random fraction. Blobs are
    * keyed by channel and version, so two branches from one checkpoint that
    * minted the same version would share a blob: the second branch's value
-   * replaces the first's, and the first branch reads it back from then on.
+   * replaces the first's, and the first branch reads it back from then on. A
+   * string version throws in the base class rather than turn into `NaN`.
    */
   getNextVersion(current: number | undefined): number {
-    return Math.floor(current ?? 0) + 1 + Math.random();
+    return Math.floor(super.getNextVersion(current)) + Math.random();
   }
 
   async get(config: RunnableConfig): Promise<Checkpoint | undefined> {
