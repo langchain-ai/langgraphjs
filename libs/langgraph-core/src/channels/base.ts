@@ -10,6 +10,7 @@ import {
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { EmptyChannelError } from "../errors.js";
 import {
+  EXIT_DELTA_NULL_TASK_ID,
   getDeltaMaxSuperstepsSinceSnapshot,
   NULL_TASK_ID,
 } from "../constants.js";
@@ -199,9 +200,7 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
   const parts = taskId.toLowerCase().split("-");
   const stepPart = String(step).padStart(8, "0");
   const synthetic = `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
-  return synthetic === NULL_TASK_ID
-    ? `${stepPart}-0000-0000-0000-000000000001`
-    : synthetic;
+  return synthetic === NULL_TASK_ID ? EXIT_DELTA_NULL_TASK_ID : synthetic;
 }
 
 /**
