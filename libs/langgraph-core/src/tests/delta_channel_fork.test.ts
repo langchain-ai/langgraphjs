@@ -630,6 +630,32 @@ describe.each(savers)("DeltaChannel fork (%s)", (_name, makeSaver) => {
     }
   );
 
+  it("resuming a subgraph edit the subgraph moved past stores nothing on it", async () => {
+    const saver = makeSaver();
+    const executor = new StateGraph(State)
+      .addNode("ask", () => both(`ask:${interrupt("question?")}`))
+      .addEdge(START, "ask")
+      .compile({ checkpointer: true });
+    const graph = new StateGraph(State)
+      .addNode("executor", executor)
+      .addEdge(START, "executor")
+      .compile({ checkpointer: saver });
+    const config = thread("t");
+    await graph.invoke(both("in"), config);
+    const atInterrupt = (await graph.getState(config, { subgraphs: true }))
+      .tasks[0].state as StateSnapshot;
+    const edit = await graph.updateState(atInterrupt.config, both("edit"));
+    await graph.invoke(new Command({ resume: "first" }), config);
+    const writesOnEdit = (await saver.getTuple(edit))?.pendingWrites;
+
+    await graph.invoke(new Command({ resume: "second" }), edit);
+
+    expect(
+      (await saver.getTuple(edit))?.pendingWrites,
+      "a replay of the subgraph edit stored its writes on it"
+    ).toEqual(writesOnEdit);
+  });
+
   it.each(
     durabilities.flatMap((durability) =>
       ["update", "goto"].map((command) => ({ durability, command }))

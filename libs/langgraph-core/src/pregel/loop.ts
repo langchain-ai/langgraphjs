@@ -32,7 +32,7 @@ import {
   isDeltaChannel,
   isDeltaWritesVersioned,
 } from "../channels/base.js";
-import { advanceDeltaCounters } from "./checkpoint.js";
+import { advanceDeltaCounters, checkpointSuperseded } from "./checkpoint.js";
 import type {
   Call,
   CallTaskPath,
@@ -642,10 +642,6 @@ export class PregelLoop {
       scratchpad.subgraphCounter += 1;
     }
 
-    const requestedCheckpointId = config.configurable?.checkpoint_id as
-      | string
-      | undefined;
-
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -697,6 +693,7 @@ export class PregelLoop {
       saved = await params.checkpointer.getTuple(checkpointConfig);
     }
     const hasPersistedParent = saved !== undefined;
+    const addressedConfig = checkpointConfig;
     if (!saved) {
       saved = {
         config,
@@ -737,24 +734,22 @@ export class PregelLoop {
 
     let resumeAtHead = false;
     let addressedCheckpointSuperseded = false;
-    const threadId = checkpointConfig.configurable?.thread_id;
-    const checkpointNs = checkpointConfig.configurable?.checkpoint_ns ?? "";
-    if (
-      params.checkpointer &&
-      requestedCheckpointId &&
-      typeof threadId === "string"
-    ) {
-      const latest = await params.checkpointer.getTuple({
-        configurable: { thread_id: threadId, checkpoint_ns: checkpointNs },
-      });
-      const isLatest =
-        latest?.config.configurable?.checkpoint_id === requestedCheckpointId;
+    // The id the checkpoint was loaded by, which a subgraph replayed through
+    // `checkpoint_map` only gets from the map.
+    if (params.checkpointer && hasPersistedParent) {
+      const superseded = await checkpointSuperseded(
+        params.checkpointer,
+        addressedConfig,
+        saved
+      );
       const isUpdateOrFork =
         checkpointMetadata.source === "update" ||
         checkpointMetadata.source === "fork";
-      resumeAtHead = isLatest && !isUpdateOrFork;
-      addressedCheckpointSuperseded =
-        latest !== undefined && !isLatest && isUpdateOrFork;
+      resumeAtHead =
+        addressedConfig.configurable?.checkpoint_id !== undefined &&
+        !superseded &&
+        !isUpdateOrFork;
+      addressedCheckpointSuperseded = superseded && isUpdateOrFork;
     }
 
     const deltaWritesVersioned =
@@ -1657,12 +1652,12 @@ export class PregelLoop {
 
     // Take the resume value from the parent only after the time-travel filter
     // above, which drops this checkpoint's stale RESUME writes, not this one.
-    const scratchpad = configurable?.[
-      CONFIG_KEY_SCRATCHPAD
-    ] as PregelScratchpad;
-
-    if (scratchpad && scratchpad.nullResume !== undefined) {
-      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
+    // A run that forks stores it on the fork, below.
+    const nullResume = (
+      configurable?.[CONFIG_KEY_SCRATCHPAD] as PregelScratchpad | undefined
+    )?.nullResume;
+    if (nullResume !== undefined && !forks) {
+      this.putWrites(NULL_TASK_ID, [[RESUME, nullResume]]);
     }
 
     // The parent checkpoint subgraphs replay from, when the fork below would
@@ -1696,6 +1691,9 @@ export class PregelLoop {
           (w) => w[1] !== INTERRUPT
         );
         await this._putCheckpoint({ source: "fork" });
+        if (nullResume !== undefined) {
+          this.putWrites(NULL_TASK_ID, [[RESUME, nullResume]]);
+        }
       }
 
       // produce values output
