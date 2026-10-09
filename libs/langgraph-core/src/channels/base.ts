@@ -303,6 +303,7 @@ export function createCheckpoint<ValueType>(
     /** The channel versions of the last checkpoint the saver stored. */
     storedVersions?: Record<string, number | string>;
     getNextVersion?: (current: number | string | undefined) => number | string;
+    triggerToNodes?: Record<string, string[]>;
   }
 ): Checkpoint {
   const channelsToSnapshot = options?.channelsToSnapshot ?? new Set<string>();
@@ -361,7 +362,11 @@ export function createCheckpoint<ValueType>(
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: channelVersions,
-    versions_seen: markBumpsSeen(checkpoint.versions_seen, bumped),
+    versions_seen: markBumpsSeen(
+      checkpoint.versions_seen,
+      bumped,
+      options?.triggerToNodes
+    ),
   };
 }
 
@@ -369,27 +374,34 @@ export function createCheckpoint<ValueType>(
  * Advance whoever had seen a bumped channel's old version to the new one.
  *
  * A bump that only stores a snapshot is not a write. Left unseen, it would
- * re-fire `interruptBefore` and rerun the channel's subscribers. For each
- * entry it advances, {@link SNAPSHOT_BUMPS} keeps the new version and the one
- * the node really read, so {@link versionsSeenWithoutBumps} can put the read
- * back.
+ * re-fire `interruptBefore` and rerun the channel's subscribers. A channel
+ * bumped from no version was never written, so it also goes to the
+ * subscribers that never ran: they have no entry, and would start on the bump.
+ * For each entry it advances, {@link SNAPSHOT_BUMPS} keeps the new version and
+ * the one the node really read, so {@link versionsSeenWithoutBumps} can put
+ * the read back.
  */
 function markBumpsSeen(
   versionsSeen: ReadonlyCheckpoint["versions_seen"],
-  bumped: Record<string, [number | string | undefined, number | string]>
+  bumped: Record<string, [number | string | undefined, number | string]>,
+  triggerToNodes: Record<string, string[]> = {}
 ): Checkpoint["versions_seen"] {
   if (Object.keys(bumped).length === 0) return versionsSeen;
   const out = { ...versionsSeen };
+  for (const [k, [old]] of Object.entries(bumped)) {
+    if (old !== undefined) continue;
+    for (const node of triggerToNodes[k] ?? []) out[node] ??= {};
+  }
   const marks = { ...versionsSeen[SNAPSHOT_BUMPS] };
-  for (const node in versionsSeen) {
+  for (const node in out) {
     if (
-      !Object.prototype.hasOwnProperty.call(versionsSeen, node) ||
+      !Object.prototype.hasOwnProperty.call(out, node) ||
       node === SNAPSHOT_BUMPS
     ) {
       continue;
     }
     for (const [k, [old, next]] of Object.entries(bumped)) {
-      if (versionsSeen[node][k] !== old) continue;
+      if (out[node][k] !== old) continue;
       const [advanced, read] = bumpKeys(node, k);
       // If an earlier bump set `old`, the real read is already recorded.
       if (old !== undefined && marks[advanced] !== old) marks[read] = old;

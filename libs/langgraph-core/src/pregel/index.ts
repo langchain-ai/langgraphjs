@@ -1431,6 +1431,7 @@ export class Pregel<
           channelsToSnapshot,
           storedVersions: checkpointPreviousVersions,
           getNextVersion,
+          triggerToNodes: this.triggerToNodes,
         });
         const nextConfig = await checkpointer.put(
           checkpointConfig,
@@ -1531,6 +1532,7 @@ export class Pregel<
           channelsToSnapshot,
           storedVersions: checkpointPreviousVersions,
           getNextVersion,
+          triggerToNodes: this.triggerToNodes,
         });
         const {
           [DELTA_WRITES_VERSIONED]: _carried,
@@ -1713,6 +1715,7 @@ export class Pregel<
             channelsToSnapshot,
             storedVersions: checkpointPreviousVersions,
             getNextVersion,
+            triggerToNodes: this.triggerToNodes,
           }
         );
         const nextConfig = await checkpointer.put(
@@ -1977,6 +1980,7 @@ export class Pregel<
         channelsToSnapshot,
         storedVersions: checkpointPreviousVersions,
         getNextVersion,
+        triggerToNodes: this.triggerToNodes,
       });
       const nextConfig = await checkpointer.put(
         checkpointConfig,

@@ -2016,6 +2016,7 @@ export class PregelLoop {
           ? (current) =>
               this.checkpointerGetNextVersion(current as number | undefined)
           : undefined,
+        triggerToNodes: this.triggerToNodes,
       }
     );
 
