@@ -18,6 +18,7 @@ import {
   BaseCache,
   CacheFullKey,
   CacheNamespace,
+  uuid5,
 } from "@langchain/langgraph-checkpoint";
 
 import {
@@ -197,6 +198,7 @@ type PregelLoopParams = {
   debug: boolean;
   triggerToNodes: Record<string, string[]>;
   hasPersistedParent?: boolean;
+  loadedLatest?: boolean;
   deltaWritesVersioned?: boolean;
 };
 
@@ -381,6 +383,12 @@ export class PregelLoop {
 
   /** Whether a real checkpoint was loaded from the saver at initialization. */
   protected _hasPersistedParent = false;
+
+  /**
+   * Whether initialization loaded the thread's latest checkpoint, not one a
+   * `checkpoint_id` addressed, so nothing has been built on it yet.
+   */
+  protected _loadedLatest = false;
 
   /**
    * Whether this branch carries {@link DELTA_WRITES_VERSIONED}: a graph with
@@ -605,6 +613,7 @@ export class PregelLoop {
     this._exitDeltaWrites =
       this.durability === "exit" && this.checkpointer != null ? [] : undefined;
     this._hasPersistedParent = params.hasPersistedParent ?? false;
+    this._loadedLatest = params.loadedLatest ?? false;
     this._deltaWritesVersioned = params.deltaWritesVersioned ?? false;
     this._initialCheckpointConfig = params.checkpointConfig;
     this.checkpointIdSaved = params.checkpoint.id;
@@ -673,6 +682,7 @@ export class PregelLoop {
     );
 
     let saved: CheckpointTuple | undefined;
+    let loadedLatest = false;
     if (!params.checkpointer) {
       saved = undefined;
     } else if (checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID]) {
@@ -691,6 +701,7 @@ export class PregelLoop {
       }
     } else {
       saved = await params.checkpointer.getTuple(checkpointConfig);
+      loadedLatest = true;
     }
     const hasPersistedParent = saved !== undefined;
     const addressedConfig = checkpointConfig;
@@ -809,6 +820,7 @@ export class PregelLoop {
       debug: params.debug,
       triggerToNodes: params.triggerToNodes,
       hasPersistedParent,
+      loadedLatest,
       deltaWritesVersioned,
     });
   }
@@ -1752,10 +1764,19 @@ export class PregelLoop {
               this._exitDeltaWrites.push([this.step, NULL_TASK_ID, "", c, v]);
             }
           } else if (this.checkpointer != null) {
-            // Non-exit: persist so sub-frequency inputs are recoverable via the
-            // ancestor walk (StateGraph routes inputs through a START node whose
-            // writes are persisted; this covers raw Pregel delta input channels).
-            this.putWrites(NULL_TASK_ID, deltaInput);
+            // A DeltaChannel reads its input from the writes stored on the
+            // checkpoint this run starts from, under a task id of their own:
+            // readers apply a checkpoint's NULL_TASK_ID writes as its own
+            // state. A new thread has no checkpoint to store them on, and one
+            // a `checkpoint_id` addressed may have children that would read
+            // them, so then the input checkpoint snapshots the channel instead.
+            if (this._hasPersistedParent && this._loadedLatest) {
+              this.putWrites(uuid5(INPUT, this.checkpoint.id), deltaInput);
+            } else {
+              for (const [c] of deltaInput) {
+                this._deltaChannelsForcedSnapshot.add(c);
+              }
+            }
           }
         }
         // save input checkpoint
