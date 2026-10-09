@@ -21,6 +21,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 
 import {
+  advanceDeltaCounters,
   BaseChannel,
   createCheckpoint,
   channelsFromCheckpoint,
@@ -1892,24 +1893,15 @@ export class PregelLoop {
       };
     };
 
-    // Per-delta-channel counter bookkeeping. Each delta channel tracks a
-    // [updates, supersteps] pair: `updates` increments only when the channel
-    // is written this step; `supersteps` increments every superstep. The exit
-    // call must NOT bump again (the last intermediate call already counted the
-    // final superstep) or it would double-count.
+    // The exit call must NOT bump the counters again (the last intermediate
+    // call already counted the final superstep) or it would double-count.
     let newCounters: Record<string, [number, number]>;
     if (!exiting) {
-      const prevCounters =
-        this.checkpointMetadata.counters_since_delta_snapshot ?? {};
-      newCounters = {};
-      const updated = this.updatedChannels ?? new Set<string>();
-      for (const chName in this.channels) {
-        if (!Object.prototype.hasOwnProperty.call(this.channels, chName))
-          continue;
-        if (!isDeltaChannel(this.channels[chName])) continue;
-        const [u, s] = prevCounters[chName] ?? [0, 0];
-        newCounters[chName] = [updated.has(chName) ? u + 1 : u, s + 1];
-      }
+      newCounters = advanceDeltaCounters(
+        this.channels,
+        this.updatedChannels ?? new Set<string>(),
+        this.checkpointMetadata.counters_since_delta_snapshot
+      );
       this.checkpointMetadata = {
         ...inputMetadata,
         step: this.step,
