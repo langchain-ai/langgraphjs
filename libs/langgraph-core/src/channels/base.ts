@@ -9,7 +9,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { EmptyChannelError } from "../errors.js";
-import { getDeltaMaxSuperstepsSinceSnapshot } from "../constants.js";
+import {
+  EXIT_DELTA_NULL_TASK_ID,
+  getDeltaMaxSuperstepsSinceSnapshot,
+  NULL_TASK_ID,
+} from "../constants.js";
 
 /** Matches Postgres `uuid` / Python `uuid.UUID` (128-bit, 8-4-4-4-12 hex). */
 const STRUCTURED_UUID =
@@ -186,7 +190,8 @@ interface DeltaChannelLike extends BaseChannel {
  *
  * Embeds the superstep in the first UUID group so `ORDER BY task_id, idx`
  * preserves chronological order while remaining a valid RFC UUID (required by
- * Postgres `checkpoint_writes.task_id uuid` columns).
+ * Postgres `checkpoint_writes.task_id uuid` columns). Never `NULL_TASK_ID`:
+ * readers apply writes under it as the anchor checkpoint's own pending writes.
  */
 export function exitDeltaTaskId(step: number, taskId: string): string {
   if (!STRUCTURED_UUID.test(taskId)) {
@@ -194,7 +199,8 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
   }
   const parts = taskId.toLowerCase().split("-");
   const stepPart = String(step).padStart(8, "0");
-  return `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
+  const synthetic = `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
+  return synthetic === NULL_TASK_ID ? EXIT_DELTA_NULL_TASK_ID : synthetic;
 }
 
 /**

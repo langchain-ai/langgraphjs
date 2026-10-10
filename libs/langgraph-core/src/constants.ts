@@ -104,6 +104,12 @@ export const PULL = "__pregel_pull";
 
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
+/**
+ * Stands in for `NULL_TASK_ID` as an exit-mode delta write's synthetic id (see
+ * `exitDeltaTaskId`). No task's synthetic id can equal it: those keep the task
+ * id's third group, and task ids are uuid5, so that group starts with 5.
+ */
+export const EXIT_DELTA_NULL_TASK_ID = "00000000-0000-0000-0000-000000000001";
 
 export const RESERVED = [
   TAG_HIDDEN,
