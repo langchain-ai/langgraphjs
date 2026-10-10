@@ -15,10 +15,11 @@ function makeStore(): StreamStore<TestSnapshot> {
 
 function lifecycleEvent(
   data: { event?: string; error?: string },
-  overrides: { namespace?: string[]; seq?: number } = {}
+  overrides: { namespace?: string[]; seq?: number; run_id?: string } = {}
 ): Event {
   return {
     type: "event",
+    ...(overrides.run_id != null ? { run_id: overrides.run_id } : {}),
     method: "lifecycle",
     seq: overrides.seq,
     params: {
@@ -153,6 +154,38 @@ describe("LifecycleLoadingTracker", () => {
     // A genuinely new `running` (higher seq) is honoured.
     tracker.handle(lifecycleEvent({ event: "running" }, { seq: 12 }));
     expect(store.getSnapshot().isLoading).toBe(true);
+  });
+
+  it("ignores lifecycle events from other runs while a local run is active", () => {
+    const store = makeStore();
+    const localRun: { id?: string } = {};
+    store.setState((state) => ({ ...state, isLoading: true }));
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+      isLocalRunActive: () => true,
+      getLocalRunId: () => localRun.id,
+    });
+
+    // The command response has not identified the new run yet.
+    tracker.handle(
+      lifecycleEvent({ event: "completed" }, { seq: 2, run_id: "old-run" })
+    );
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(true);
+
+    localRun.id = "new-run";
+    tracker.handle(
+      lifecycleEvent({ event: "completed" }, { seq: 3, run_id: "old-run" })
+    );
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(true);
+
+    tracker.handle(
+      lifecycleEvent({ event: "completed" }, { seq: 4, run_id: "new-run" })
+    );
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(false);
   });
 
   it("keeps isLoading true when a newer running supersedes a deferred interrupt reset", () => {
