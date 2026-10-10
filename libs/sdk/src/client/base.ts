@@ -193,6 +193,8 @@ export class BaseClient {
 
   protected streamProtocol: StreamProtocol;
 
+  private readonly hasCustomFetch: boolean;
+
   constructor(config?: ClientConfig) {
     const callerOptions = {
       maxRetries: 4,
@@ -219,6 +221,7 @@ export class BaseClient {
     }
 
     this.asyncCaller = new AsyncCaller(callerOptions);
+    this.hasCustomFetch = callerOptions.fetch != null;
     this.timeoutMs = config?.timeoutMs;
 
     this.apiUrl = config?.apiUrl?.replace(/\/$/, "") || defaultApiUrl;
@@ -347,7 +350,7 @@ export class BaseClient {
      * (`dedupe: true`), is not asking for the raw `Response`, did not
      * supply its own `AbortSignal` (sharing a request across consumers
      * must never let one consumer's abort cancel another's), and no
-     * `onRequest` hook is configured.
+     * `onRequest` hook or custom fetch implementation is configured.
      *
      * `onRequest` is excluded because it can inject per-request headers
      * (e.g. a freshly-minted `Authorization` bearer) that are not
@@ -355,12 +358,15 @@ export class BaseClient {
      * computed — so two requests that look identical here could be sent
      * with different credentials. Coalescing them would let one
      * consumer receive a response fetched with another's auth.
+     * A custom fetch can likewise change headers or route requests to
+     * different backends, including when injected by the runtime.
      */
     const canDedupe =
       options?.dedupe === true &&
       options?.withResponse !== true &&
       options?.signal == null &&
-      this.onRequest == null;
+      this.onRequest == null &&
+      !this.hasCustomFetch;
 
     if (canDedupe) {
       const body = typeof init.body === "string" ? init.body : "";

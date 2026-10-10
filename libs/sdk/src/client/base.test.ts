@@ -354,6 +354,115 @@ describe.each([["global"], ["mocked"]])(
         await Promise.all([p1, p2]);
       });
 
+      it.each(["state", "history"] as const)(
+        "does not coalesce %s reads across clients using different custom fetch implementations",
+        async (kind) => {
+          const payload = (backend: string) => {
+            const state = { values: { backend }, next: [] };
+            return kind === "state" ? state : [state];
+          };
+          const makeFetch = (backend: string) =>
+            vi.fn(
+              () => new Promise<Response>((resolve) => {
+                pending.push(() => resolve(Response.json(payload(backend))));
+              })
+            );
+          const fetchA = makeFetch("a");
+          const fetchB = makeFetch("b");
+          const clientA = new Client({
+            apiKey: "same",
+            callerOptions: { fetch: fetchA },
+          });
+          const clientB = new Client({
+            apiKey: "same",
+            callerOptions: { fetch: fetchB },
+          });
+
+          const read = (client: Client) =>
+            kind === "state"
+              ? client.threads.getState("t-custom-fetch")
+              : client.threads.getHistory("t-custom-fetch");
+          const reads = [read(clientA), read(clientB)];
+          await tick();
+          flush();
+
+          expect(await Promise.all(reads)).toEqual([payload("a"), payload("b")]);
+          expect(fetchA).toHaveBeenCalledTimes(1);
+          expect(fetchB).toHaveBeenCalledTimes(1);
+        }
+      );
+
+      it("does not coalesce concurrent reads using the same custom fetch", async () => {
+        let request = 0;
+        const customFetch = vi.fn(() => {
+          const state = { values: { request: ++request }, next: [] };
+          return new Promise<Response>((resolve) => {
+            pending.push(() => resolve(Response.json(state)));
+          });
+        });
+        const client = new Client({
+          apiKey: "k",
+          callerOptions: { fetch: customFetch },
+        });
+
+        const reads = [
+          client.threads.getState("t-dynamic-fetch"),
+          client.threads.getState("t-dynamic-fetch"),
+        ];
+        await tick();
+        flush();
+        const states = await Promise.all(reads);
+
+        expect(states.map((state) => state.values)).toEqual([
+          { request: 1 },
+          { request: 2 },
+        ]);
+        expect(customFetch).toHaveBeenCalledTimes(2);
+      });
+
+      it("does not coalesce reads using different runtime-injected fetch implementations", async () => {
+        const fetchSymbol = Symbol.for("langgraph_api:fetch");
+        const runtime = globalThis as unknown as {
+          [fetchSymbol]?: typeof fetch;
+        };
+        const previousFetch = runtime[fetchSymbol];
+        const makeFetch = (backend: string) =>
+          vi.fn(
+            () => new Promise<Response>((resolve) => {
+              pending.push(() =>
+                resolve(Response.json({ values: { backend }, next: [] }))
+              );
+            })
+          );
+        const fetchA = makeFetch("a");
+        const fetchB = makeFetch("b");
+
+        try {
+          runtime[fetchSymbol] = fetchA;
+          const clientA = new Client({ apiKey: "same" });
+          runtime[fetchSymbol] = fetchB;
+          const clientB = new Client({ apiKey: "same" });
+
+          const reads = [
+            clientA.threads.getState("t-runtime-fetch"),
+            clientB.threads.getState("t-runtime-fetch"),
+          ];
+          await tick();
+          flush();
+          const states = await Promise.all(reads);
+
+          expect(states.map((state) => state.values)).toEqual([
+            { backend: "a" },
+            { backend: "b" },
+          ]);
+          expect(fetchA).toHaveBeenCalledTimes(1);
+          expect(fetchB).toHaveBeenCalledTimes(1);
+        } finally {
+          if (previousFetch === undefined) delete runtime[fetchSymbol];
+          else runtime[fetchSymbol] = previousFetch;
+        }
+      });
+
       it("does not coalesce when an onRequest hook is configured", async () => {
         // `onRequest` can inject per-request auth that is invisible at
         // key-computation time, so dedupe must be disabled entirely.
