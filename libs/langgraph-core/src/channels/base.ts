@@ -256,7 +256,6 @@ export function deltaChannelsToSnapshot(
   channelVersions: Record<string, number | string> | undefined
 ): Set<string> {
   const result = new Set<string>();
-  const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
   for (const name in channels) {
     if (!Object.prototype.hasOwnProperty.call(channels, name)) continue;
     const ch = channels[name];
@@ -267,15 +266,23 @@ export function deltaChannelsToSnapshot(
     ) {
       continue;
     }
-    const [updates, supersteps] = countersSinceDeltaSnapshot[name] ?? [0, 0];
-    if (
-      updates >= (ch as DeltaChannelLike).snapshotFrequency ||
-      supersteps >= maxSupersteps
-    ) {
+    if (reachedSnapshotBound(ch, countersSinceDeltaSnapshot[name])) {
       result.add(name);
     }
   }
   return result;
+}
+
+/** Whether a delta channel's counters reached the bound where it snapshots. */
+export function reachedSnapshotBound(
+  channel: BaseChannel,
+  counters: [number, number] | undefined
+): boolean {
+  const [updates, supersteps] = counters ?? [0, 0];
+  return (
+    updates >= (channel as DeltaChannelLike).snapshotFrequency ||
+    supersteps >= getDeltaMaxSuperstepsSinceSnapshot()
+  );
 }
 
 export function createCheckpoint<ValueType>(
