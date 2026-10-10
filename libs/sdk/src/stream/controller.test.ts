@@ -3942,6 +3942,79 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("keeps an older subagent unresolved when hydrate history only contains a later tool call", async () => {
+    const { thread } = discoveryThread();
+    const laterMessages = [
+      ...taskMessages,
+      {
+        type: "ai",
+        id: "later-orchestrator",
+        tool_calls: [{ id: "ls-1", name: "ls", args: { path: "/" } }],
+      },
+    ];
+    // The delegation's checkpoint is outside the fetched history. Its AI
+    // message is still in state, but Send index 0 now belongs to `ls`.
+    const laterHistory = [
+      {
+        values: { messages: laterMessages },
+        tasks: [
+          {
+            id: "ls-exec",
+            name: "tools",
+            path: ["__pregel_push", 0],
+            result: { messages: [{ type: "tool", tool_call_id: "ls-1" }] },
+          },
+        ],
+        checkpoint: checkpointState("", "cp-later"),
+      },
+    ];
+    const getHistory = vi
+      .fn()
+      .mockResolvedValueOnce(laterHistory) // hydrate discovery seed
+      .mockResolvedValueOnce(laterHistory) // lazy resolution's first page
+      .mockResolvedValueOnce([]); // bounded fallback cannot find the delegation
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              ...laterMessages,
+              { type: "tool", id: "ls-result", tool_call_id: "ls-1", content: "[]" },
+              { type: "ai", id: "finished", content: "done" },
+            ],
+          },
+          next: [],
+          tasks: [],
+        })),
+        getHistory,
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, unknown>({
+      assistantId: "deep_agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    try {
+      await controller.hydrationPromise;
+      // Await the seed as well as the lazy lookup: checking immediately
+      // after hydration could see the placeholder before a wrong promotion.
+      await controller.resolveSubagentNamespace("task-1");
+
+      expect(controller.subagentStore.getSnapshot().get("task-1")).toMatchObject({
+        namespace: ["tools:task-1"],
+        status: "complete",
+      });
+      expect(getHistory).toHaveBeenCalledTimes(3);
+      expect(getHistory.mock.calls[2][1]).toMatchObject({
+        limit: 20,
+        before: { configurable: { checkpoint_id: "cp-later" } },
+      });
+    } finally {
+      await controller.dispose();
+    }
+  });
+
   it("hydrate seeds subgraphStore from a values-only (single-level) subgraph in getHistory", async () => {
     const { thread } = discoveryThread();
     // The values-only subgraph shape: the host checkpoint namespace appears

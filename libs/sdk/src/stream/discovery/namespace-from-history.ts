@@ -124,18 +124,15 @@ export function collectPositionalTaskMappings(
       m as unknown as Parameters<typeof normalizeAIMessageToolCalls>[0]
     ) as Record<string, unknown>;
     const normalizedToolCalls = normalized.tool_calls;
-    if (
-      Array.isArray(normalizedToolCalls) &&
-      (normalizedToolCalls as Array<{ name?: string }>).some(
-        (tc) => tc.name === "task"
-      )
-    ) {
+    if (Array.isArray(normalizedToolCalls)) {
       toolCalls = normalizedToolCalls as Array<{
         id?: string;
         name?: string;
       }>;
-      break;
     }
+    // Do not skip a newer AI turn to find an older delegation: the same
+    // Send index may now belong to an unrelated tool call.
+    break;
   }
   if (toolCalls == null) return;
 
