@@ -1349,8 +1349,11 @@ export class Pregel<
             )
           )
         );
-      // Later supersteps, including the one after a `__copy__` (stored under
-      // the base's parent), never walk through the base's writes.
+      // DeltaChannels the checkpoint saved here snapshots: the ones with writes
+      // pending on the base, plus the ones `sealDeltaWrites` and
+      // `sealOverwrites` add below. Later supersteps, including the one after
+      // a `__copy__` (stored under the base's parent), never walk through the
+      // base's writes.
       const forkPending = isFirstSuperstep
         ? deltaChannelsWithPendingWrites(
             this.channels as Record<string, BaseChannel>,
