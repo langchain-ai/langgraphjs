@@ -36,6 +36,8 @@ import {
 } from "../../../utils/reconnect.js";
 import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
 
+const STREAM_ENTRY_ID = /^\d+-\d+(\.\d+)?$/;
+
 /**
  * True for a 4xx HTTP error other than 408 (Request Timeout) and 429
  * (Too Many Requests): retrying the same request cannot succeed. Errors
@@ -281,6 +283,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         : undefined;
 
     let readySettled = false;
+    // Header, not body: server body schemas are strict and reject unknown
+    // keys. Only durable `ms-seq` ids are sent; anything else is rejected.
+    let lastEventId: string | undefined;
 
     const startStream = async () => {
       let attempt = 0;
@@ -294,6 +299,9 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               headers: {
                 "content-type": "application/json",
                 accept: "text/event-stream",
+                ...(readySettled && lastEventId != null
+                  ? { "last-event-id": lastEventId }
+                  : {}),
               },
               body: JSON.stringify({
                 channels: params.channels,
@@ -362,7 +370,15 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              streamQueue.push(event.data as Message);
+              const message = event.data as Message;
+              const eventId = (message as { event_id?: unknown }).event_id;
+              if (
+                typeof eventId === "string" &&
+                STREAM_ENTRY_ID.test(eventId)
+              ) {
+                lastEventId = eventId;
+              }
+              streamQueue.push(message);
             }
           }
           if (
