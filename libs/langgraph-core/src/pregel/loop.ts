@@ -128,7 +128,7 @@ const DEFAULT_LOOP_LIMIT = 25;
  * array, or an object's values) that is missing an `id`. Used so DeltaChannel
  * writes — replayed on every read — reconstruct identical message identities.
  */
-function ensureMessageIds(value: unknown): void {
+export function ensureMessageIds(value: unknown): void {
   if (value == null || typeof value !== "object") return;
   if (BaseMessage.isInstance(value)) {
     const msg = value as BaseMessage;
