@@ -1,5 +1,50 @@
 # @langchain/langgraph
 
+## 1.5.0
+
+### Minor Changes
+
+- [#2961](https://github.com/langchain-ai/langgraphjs/pull/2961) [`1631fd8`](https://github.com/langchain-ai/langgraphjs/commit/1631fd895723c4553345ceb5d9fc425b68bda959) Thanks [@soarez](https://github.com/soarez)! - order parallel writes by task path, like langgraph (Python) — one sort key for live execution and every saver, instead of the task-id order [#2544](https://github.com/langchain-ai/langgraphjs/issues/2544) added for DeltaChannel writes
+  
+  When two or more tasks in one superstep write the same `DeltaChannel`, their writes are now applied and replayed in `(task_path, task_id, idx)` order — the order Python's langgraph#8544 established — instead of task-id order. Task ids are uuid5 hashes that include the checkpoint id, so the old order permuted parallel writers from run to run and disagreed with Python.
+  
+  - `BaseCheckpointSaver.putWrites` takes an optional `taskPath` (the serialized task path, `taskPathStr`), and `getTuple`/`list` must return `pendingWrites` in the new `writesSortKey` order. `writesSortKey` and `compareWritesSortKeys` are new exports of `@langchain/langgraph-checkpoint`; every saver (memory, SQLite, Postgres, Redis incl. ShallowRedisSaver, MongoDB) stores the path and sorts in JS — no database collation is involved.
+  - SQLite and Postgres gain a `task_path` column (migrated automatically on `setup()`; read-only pre-column SQLite databases keep reading, with their rows keeping the old order). Redis and MongoDB documents gain a `task_path` field. Rows written before the upgrade keep their old order.
+  - Exit-durability resumes replay delta writes in live order (port of langgraph#9114): the resumed superstep's writes interleave with the loaded ones by task path, later supersteps sort after every real write, and writes loaded with the checkpoint are no longer stored twice.
+  - `bulkUpdateState` seals the first update superstep: DeltaChannels touched by the base checkpoint's pending writes (and whose version moved) snapshot on the update checkpoint, so a finished sibling's writes and the update's can't replay in the wrong order (partial port of langgraph#8548).
+  - `bulkUpdateState`/`updateState` update tasks carry `(__interrupt__, i)` task paths, as in langgraph#9128, so several updates in one superstep writing the same DeltaChannel replay in the order given.
+  - Send task paths become `[PUSH, i, false]` and node-error-handler paths become `[*failedTask.path[:3], "node_error_handler", false]` (the failed task's first three path elements), matching Python's shapes — `langgraph_path` task metadata changes accordingly, and task ids of functional `task()` calls under a Send or handler task change with them. The SDK's Send-task detection accepts both the old and new shapes.
+  
+  Upgrade notes:
+  
+  - `PostgresSaver`: run `setup()` once after upgrading, from one process, before the new version serves traffic. The `task_path` column comes from the first new migration since the saver shipped, and until it runs, reads and writes fail with `column "task_path" does not exist`. Several processes running `setup()` at once on a database that still needs the migration can fail with a duplicate key error on `checkpoint_migrations`.
+  - Third-party checkpoint savers remain source-compatible but must now persist the `taskPath` they are given and return `pendingWrites` in `writesSortKey` order; the conformance suite's new base tests enforce this. A saver that ignores the new argument replays in task-id order and can rebuild a different DeltaChannel value than the run produced.
+  - An incomplete superstep containing stored delta writes that must interleave with resumed or retried task writes is affected by the upgrade, whether the incompleteness came from an interrupt, a task error, a crash, or a drain: finish such threads with the old runtime before upgrading writers. A single interrupted node with no finished delta-writing siblings is safe to resume. The same applies to resuming work that includes functional `task()` calls under a Send or error-handler task, whose child task ids change.
+  - `@langchain/langgraph-checkpoint` 1.2.0 must be released before any package requiring its new exports; the consumers' minimum ranges are raised accordingly.
+
+### Patch Changes
+
+- [#2980](https://github.com/langchain-ai/langgraphjs/pull/2980) [`5c81e5f`](https://github.com/langchain-ai/langgraphjs/commit/5c81e5fefe50d262a112814fa819a8178ad4c38c) Thanks [@eliornl](https://github.com/eliornl)! - A node served from the node cache now saves its writes like a node that ran. They were applied but never saved, so a `DeltaChannel` read back without them once the state was loaded again, under every durability. A cache hit is still streamed as cached and isn't written back to the cache.
+
+- [#2969](https://github.com/langchain-ai/langgraphjs/pull/2969) [`5a4f831`](https://github.com/langchain-ai/langgraphjs/commit/5a4f83146c3c33961a908216e7792650ca3f5256) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): a checkpoint save now waits for the DeltaChannel writes the run sent before it and is skipped if one of them failed, so a failed write no longer leaves the channel reading back without it.
+
+- [#2974](https://github.com/langchain-ai/langgraphjs/pull/2974) [`0dc519c`](https://github.com/langchain-ai/langgraphjs/commit/0dc519cf91d4c9eb13752fab6dbc092342b79027) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): a DeltaChannel no longer reads back writes from another branch. The first checkpoint of a new branch snapshots the delta channels its base has pending writes for, an `updateState` on a checkpoint the thread moved past stores none of its writes there, and a replay of such a checkpoint forks before storing a `Command`'s writes.
+
+- [#2981](https://github.com/langchain-ai/langgraphjs/pull/2981) [`3f763ae`](https://github.com/langchain-ai/langgraphjs/commit/3f763aefe408b422364064922590b5416b567eba) Thanks [@eliornl](https://github.com/eliornl)! - A run's input to a DeltaChannel input channel of a raw `Pregel` graph reads back only on the checkpoints built from it. With `"sync"` or `"async"` durability it was saved as the starting checkpoint's own state: on a new thread the first run's input was lost, the previous run's last checkpoint read the next run's input, and a run from an older checkpoint leaked its input into the branch that already grew from it. Now the input is stored on the starting checkpoint under its own task id, or, on a new thread or an addressed checkpoint, the input checkpoint snapshots the channel. Threads saved before this keep the input already stored on their checkpoints.
+
+- [#2983](https://github.com/langchain-ai/langgraphjs/pull/2983) [`f9cfb1e`](https://github.com/langchain-ai/langgraphjs/commit/f9cfb1e4d76bdfc250cd4763d59d59392adc6c51) Thanks [@eliornl](https://github.com/eliornl)! - A fork from a checkpoint before a DeltaChannel's first write no longer starts the channel's subscribers that never ran. The fork's snapshot gave the channel its first version, and a node subscribed to it ran on the empty value before the node that writes it.
+
+- [#2973](https://github.com/langchain-ai/langgraphjs/pull/2973) [`800ed57`](https://github.com/langchain-ai/langgraphjs/commit/800ed570f604b0eb1cb29b62ef8866edc29ddcc8) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): `updateState` saves `counters_since_delta_snapshot` on every checkpoint it creates, so the next run keeps counting from it instead of from zero and DeltaChannels snapshot on schedule after an update.
+
+- [#2982](https://github.com/langchain-ai/langgraphjs/pull/2982) [`7a01526`](https://github.com/langchain-ai/langgraphjs/commit/7a01526f07d165c14f09fd62217eed956b25c4de) Thanks [@eliornl](https://github.com/eliornl)! - An `Overwrite` through `updateState` snapshots the DeltaChannel it resets on the checkpoint the update saves, as a node's `Overwrite` does in the loop. The value already read back right; reads of that checkpoint and the ones after it no longer walk back past the reset.
+
+- [#2968](https://github.com/langchain-ai/langgraphjs/pull/2968) [`8aa37d4`](https://github.com/langchain-ai/langgraphjs/commit/8aa37d4fa50255e622f5b033de61ca5d4fcbda86) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): exit-mode DeltaChannel writes are never stored under the null task id. A run that started at step 0 with a `Command` update, such as a new thread started with `Command({ update, goto })` under `durability: "exit"`, stored the update under `NULL_TASK_ID`, so reading or replaying that first checkpoint applied it to the DeltaChannel but not to plain channels.
+
+- [#2969](https://github.com/langchain-ai/langgraphjs/pull/2969) [`5a4f831`](https://github.com/langchain-ai/langgraphjs/commit/5a4f83146c3c33961a908216e7792650ca3f5256) Thanks [@eliornl](https://github.com/eliornl)! - Prevent checkpointer write failures from surfacing as process-level `unhandledRejection` events before the run boundary reports them.
+- Updated dependencies [[`e827007`](https://github.com/langchain-ai/langgraphjs/commit/e827007d85d86f7a80781107f0657b5435168276), [`50f1490`](https://github.com/langchain-ai/langgraphjs/commit/50f1490bf337496d10a9faf23d679f8a37b69d2f), [`1631fd8`](https://github.com/langchain-ai/langgraphjs/commit/1631fd895723c4553345ceb5d9fc425b68bda959), [`55902f3`](https://github.com/langchain-ai/langgraphjs/commit/55902f308249f5e3a11c0404c51d8831a53df5fc)]:
+  - @langchain/langgraph-checkpoint@1.2.0
+  - @langchain/langgraph-sdk@1.12.4
+
 ## 1.4.21
 
 ### Patch Changes
