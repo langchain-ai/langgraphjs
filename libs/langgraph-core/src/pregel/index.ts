@@ -70,6 +70,7 @@ import {
   CONFIG_KEY_CHECKPOINT_NS,
   type CommandInstance,
   TASKS,
+  _isOverwriteValue,
 } from "../constants.js";
 import {
   GraphDrained,
@@ -1348,8 +1349,11 @@ export class Pregel<
             )
           )
         );
-      // Later supersteps, including the one after a `__copy__` (stored under
-      // the base's parent), never walk through the base's writes.
+      // DeltaChannels the checkpoint saved here snapshots: the ones with writes
+      // pending on the base, plus the ones `sealDeltaWrites` and
+      // `sealOverwrites` add below. Later supersteps, including the one after
+      // a `__copy__` (stored under the base's parent), never walk through the
+      // base's writes.
       const forkPending = isFirstSuperstep
         ? deltaChannelsWithPendingWrites(
             this.channels as Record<string, BaseChannel>,
@@ -1372,6 +1376,25 @@ export class Pregel<
           const name = String(ch);
           const spec = (this.channels as Record<string, BaseChannel>)[name];
           if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
+        }
+      };
+      // updateState saves a full snapshot of a DeltaChannel these writes set
+      // with an Overwrite, like the loop does when a node returns one.
+      // Otherwise, reading the channel later starts from an older snapshot and
+      // replays the writes the Overwrite threw away.
+      const sealOverwrites = (
+        writes: ReadonlyArray<readonly [PropertyKey, unknown]>
+      ) => {
+        for (const [ch, value] of writes) {
+          const name = String(ch);
+          const spec = (this.channels as Record<string, BaseChannel>)[name];
+          if (
+            spec !== undefined &&
+            isDeltaChannel(spec) &&
+            _isOverwriteValue(value)
+          ) {
+            forkPending.add(name);
+          }
         }
       };
 
@@ -1692,6 +1715,8 @@ export class Pregel<
           this.triggerToNodes
         );
 
+        sealOverwrites(inputWrites as PendingWrite[]);
+
         // apply input write to channels
         const nextStep =
           saved?.metadata?.step != null ? saved.metadata.step + 1 : -1;
@@ -1963,6 +1988,7 @@ export class Pregel<
         this.triggerToNodes
       );
 
+      for (const task of tasks) sealOverwrites(task.writes);
       const updatedChannels = writtenChannels();
       const { channelsToSnapshot, metadata: countersMetadata } =
         updateStateDeltaPlan(
