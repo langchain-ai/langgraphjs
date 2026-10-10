@@ -786,6 +786,27 @@ describe("a DeltaChannel that was never written", () => {
     }
   );
 
+  it("keeps an update as input to an older checkpoint out of its other branch", async () => {
+    const graph = deltaInputGraph();
+    const config = { configurable: { thread_id: "input-to-older-checkpoint" } };
+    await graph.invoke({ go: 1 }, config);
+    const older = (await graph.getState(config)).config;
+    await graph.invoke({ go: 1 }, config);
+    const otherBranch = await graph.getState(config);
+
+    const edited = await graph.updateState(
+      older,
+      { log: [1], plain: [1], go: 1 },
+      "__input__"
+    );
+
+    const { log, plain } = await logAndPlain(graph, edited);
+    expect(log).toEqual(plain);
+    expect((await graph.getState(otherBranch.config)).values).toEqual(
+      otherBranch.values
+    );
+  });
+
   it("keeps both inputs when a node update follows two updates as input", async () => {
     const graph = new Pregel({
       nodes: {

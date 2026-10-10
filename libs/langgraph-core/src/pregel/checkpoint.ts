@@ -1,7 +1,9 @@
 import type {
+  BaseCheckpointSaver,
   CheckpointMetadata,
   CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   type BaseChannel,
   deltaChannelsToSnapshot,
@@ -46,11 +48,9 @@ export function deltaCountersMetadata(
 /**
  * The delta channels a checkpoint `updateState` saves after `saved` must
  * snapshot, and its `counters_since_delta_snapshot` metadata. The checkpoint
- * counts as a superstep, so a channel that reaches its bound snapshots. A new
- * thread has no checkpoint to hold the writes, so it snapshots every delta
- * channel it wrote instead.
- *
- * A channel in `forkChannels` snapshots too.
+ * counts as a superstep, so a channel that reaches its bound snapshots, and
+ * so does every channel in `forkChannels`. A new thread has no checkpoint to
+ * hold the writes, so it snapshots every delta channel it wrote instead.
  */
 export function updateStateDeltaPlan(
   channels: Record<string, BaseChannel>,
@@ -58,7 +58,7 @@ export function updateStateDeltaPlan(
   saved: CheckpointTuple | undefined,
   channelVersions: Record<string, number | string>,
   deltaWritesVersioned: boolean,
-  forkChannels: Set<string> = new Set()
+  forkChannels: Set<string>
 ): {
   channelsToSnapshot: Set<string>;
   metadata: Pick<CheckpointMetadata, "counters_since_delta_snapshot">;
@@ -90,4 +90,25 @@ export function updateStateDeltaPlan(
   for (const name of forkChannels) channelsToSnapshot.add(name);
   for (const name of channelsToSnapshot) delete counters[name];
   return { channelsToSnapshot, metadata: deltaCountersMetadata(counters) };
+}
+
+/**
+ * Whether the thread has moved past `saved`, the checkpoint `config`
+ * addressed.
+ *
+ * A checkpoint with a child is never the latest put, so this misses none. A
+ * leaf of an abandoned branch counts as well; telling it apart would mean
+ * listing the thread to look for children, which the saver can't do cheaply.
+ */
+export async function checkpointSuperseded(
+  saver: BaseCheckpointSaver,
+  config: RunnableConfig,
+  saved: CheckpointTuple
+): Promise<boolean> {
+  if (!config.configurable?.checkpoint_id) return false;
+  const latest = await saver.getTuple({
+    ...config,
+    configurable: { ...config.configurable, checkpoint_id: undefined },
+  });
+  return latest !== undefined && latest.checkpoint.id !== saved.checkpoint.id;
 }

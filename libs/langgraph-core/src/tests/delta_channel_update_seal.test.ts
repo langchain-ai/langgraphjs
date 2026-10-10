@@ -12,8 +12,8 @@ import { DeltaChannel } from "../channels/delta.js";
 import { interrupt } from "../interrupt.js";
 
 /**
- * The #8548 first-superstep seal in `bulkUpdateState` (ported from Python,
- * scoped to channels whose version moved): a checkpoint's pending writes
+ * The #8548 first-superstep seal in `bulkUpdateState` (ported from Python):
+ * a checkpoint's pending writes
  * belong to the child that consumed them, so a new branch snapshots every
  * delta channel they touch — its ancestor walk then never replays them, and
  * the relative order of the base's finished-task writes and the update's
@@ -107,9 +107,8 @@ describe("bulkUpdateState first-superstep seal", () => {
     });
 
     it(`an addressed update that writes the channel is sealed (${name})`, async () => {
-      // Addressed updates skip folding the base's pending writes, but a
-      // channel the update itself writes still moves its version, so the seal
-      // applies and freezes the live value (Python #8548's behavior).
+      // Addressed updates skip folding the base's pending writes, so the seal
+      // freezes the live value (Python #8548's behavior).
       const saver = makeSaver();
       const graph = buildGraph(saver);
       const config = { configurable: { thread_id: "seal-addressed-write" } };
@@ -144,13 +143,7 @@ describe("bulkUpdateState first-superstep seal", () => {
       expect(log).toEqual(["in", "upd"]);
     });
 
-    it(`an addressed update that skips the channel is not sealed (${name})`, async () => {
-      // The tracker gap, made observable: an addressed update that writes
-      // nothing to the pending delta channel leaves its version unmoved, so
-      // the seal cannot run (a snapshot with an unmoved version would be
-      // silently dropped by version-keyed savers). The channel stays sparse
-      // and replays the base's writes in canonical order — the pre-existing
-      // leak, unchanged by this PR, tracked with the rest of #8548.
+    it(`an addressed update that skips the channel is sealed too (${name})`, async () => {
       const State = Annotation.Root({
         log: new DeltaChannel<string[], string[]>(appendReducer),
         other: Annotation<string[]>({
@@ -178,12 +171,13 @@ describe("bulkUpdateState first-superstep seal", () => {
         string,
         unknown
       >;
-      // No seal: `log` is not snapshotted on the update checkpoint.
-      expect(Object.hasOwnProperty.call(values, "log")).toBe(false);
+      expect(isDeltaSnapshot(values.log)).toBe(true);
 
-      // The walk still reads the base's writes (in canonical order).
       const state = await graph.getState(config);
-      expect((state.values as { log: string[] }).log).toEqual(["in", "done"]);
+      expect(
+        (state.values as { log: string[] }).log,
+        "an addressed update doesn't fold the base's pending writes"
+      ).toEqual(["in"]);
     });
   }
 });

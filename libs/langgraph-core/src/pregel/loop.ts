@@ -26,12 +26,13 @@ import {
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
+  deltaChannelsWithPendingWrites,
   exitDeltaLateTaskId,
   exitDeltaTaskId,
   isDeltaChannel,
   isDeltaWritesVersioned,
 } from "../channels/base.js";
-import { advanceDeltaCounters } from "./checkpoint.js";
+import { advanceDeltaCounters, checkpointSuperseded } from "./checkpoint.js";
 import type {
   Call,
   CallTaskPath,
@@ -183,6 +184,7 @@ type PregelLoopParams = {
   skipDoneTasks: boolean;
   isNested: boolean;
   resumeAtHead: boolean;
+  addressedCheckpointSuperseded: boolean;
   manager?: CallbackManagerForChainRun;
   hasGraphCallbacks?: boolean;
   stream: IterableReadableWritableStream;
@@ -351,13 +353,31 @@ export class PregelLoop {
   protected _exitFirstStep: number | null = null;
 
   /**
-   * DeltaChannels that saw an Overwrite since the last checkpoint. These
-   * channels are force-snapshotted at the next checkpoint so reconstruction
-   * starts from the post-overwrite value and never has to replay across the
-   * reset (the live `update` discards every sibling write in the overwriting
-   * super-step). Cleared once the channel snapshots.
+   * DeltaChannels that must snapshot at the next checkpoint, whatever their
+   * cadence counters say:
+   * - an Overwrite arrived since the last checkpoint, so sparse replay has to
+   *   start from the post-overwrite value;
+   * - the checkpoint this run starts from has pending writes to them; see
+   *   {@link deltaChannelsWithPendingWrites}.
+   * Cleared once the channel snapshots.
    */
-  protected _deltaChannelsWithOverwrite: Set<string> = new Set();
+  protected _deltaChannelsForcedSnapshot: Set<string> = new Set();
+
+  /**
+   * Set by `_first` for a resume: the writes it loaded with the checkpoint,
+   * which the end of the superstep checks against the ones handed back to
+   * their tasks.
+   */
+  protected _resumeLoadedWrites: CheckpointPendingWrite[] = [];
+
+  /** Tasks a resume handed loaded writes back to. */
+  protected _reappliedTaskIds: Set<string> = new Set();
+
+  /**
+   * An update or fork checkpoint addressed by `checkpoint_id` that the thread
+   * has moved past, so it may already have children.
+   */
+  protected addressedCheckpointSuperseded: boolean;
 
   /** Whether a real checkpoint was loaded from the saver at initialization. */
   protected _hasPersistedParent = false;
@@ -560,6 +580,7 @@ export class PregelLoop {
     this.checkpointConfig = params.checkpointConfig;
     this.isNested = params.isNested;
     this.resumeAtHead = params.resumeAtHead;
+    this.addressedCheckpointSuperseded = params.addressedCheckpointSuperseded;
     this.manager = params.manager;
     this.lifecycleEvents = params.hasGraphCallbacks ? [] : undefined;
     this.outputKeys = params.outputKeys;
@@ -621,10 +642,6 @@ export class PregelLoop {
       scratchpad.subgraphCounter += 1;
     }
 
-    const requestedCheckpointId = config.configurable?.checkpoint_id as
-      | string
-      | undefined;
-
     const isNested = CONFIG_KEY_READ in (config.configurable ?? {});
     if (
       !isNested &&
@@ -676,6 +693,7 @@ export class PregelLoop {
       saved = await params.checkpointer.getTuple(checkpointConfig);
     }
     const hasPersistedParent = saved !== undefined;
+    const addressedConfig = checkpointConfig;
     if (!saved) {
       saved = {
         config,
@@ -715,20 +733,23 @@ export class PregelLoop {
     }
 
     let resumeAtHead = false;
-    const threadId = checkpointConfig.configurable?.thread_id;
-    const checkpointNs = checkpointConfig.configurable?.checkpoint_ns ?? "";
-    if (
-      params.checkpointer &&
-      requestedCheckpointId &&
-      typeof threadId === "string"
-    ) {
-      const latest = await params.checkpointer.getTuple({
-        configurable: { thread_id: threadId, checkpoint_ns: checkpointNs },
-      });
+    let addressedCheckpointSuperseded = false;
+    // The id the checkpoint was loaded by, which a subgraph replayed through
+    // `checkpoint_map` only gets from the map.
+    if (params.checkpointer && hasPersistedParent) {
+      const superseded = await checkpointSuperseded(
+        params.checkpointer,
+        addressedConfig,
+        saved
+      );
+      const isUpdateOrFork =
+        checkpointMetadata.source === "update" ||
+        checkpointMetadata.source === "fork";
       resumeAtHead =
-        latest?.config.configurable?.checkpoint_id === requestedCheckpointId &&
-        checkpointMetadata.source !== "update" &&
-        checkpointMetadata.source !== "fork";
+        addressedConfig.configurable?.checkpoint_id !== undefined &&
+        !superseded &&
+        !isUpdateOrFork;
+      addressedCheckpointSuperseded = superseded && isUpdateOrFork;
     }
 
     const deltaWritesVersioned =
@@ -768,6 +789,7 @@ export class PregelLoop {
       channels,
       isNested,
       resumeAtHead,
+      addressedCheckpointSuperseded,
       manager: params.manager,
       hasGraphCallbacks: params.hasGraphCallbacks,
       skipDoneTasks,
@@ -1066,8 +1088,22 @@ export class PregelLoop {
           isDeltaChannel(channel) &&
           _isOverwriteValue(v)
         ) {
-          this._deltaChannelsWithOverwrite.add(ch);
+          this._deltaChannelsForcedSnapshot.add(ch);
         }
+      }
+      if (this._resumeLoadedWrites.length > 0) {
+        // A loaded write the resume didn't hand back belongs to a task this
+        // run drops or reruns: a `Send` that `Command({ goto })` replaced, or
+        // an error handler that runs again.
+        for (const ch of deltaChannelsWithPendingWrites(
+          this.channels,
+          this._resumeLoadedWrites.filter(
+            ([tid]) => !this._reappliedTaskIds.has(tid)
+          )
+        )) {
+          this._deltaChannelsForcedSnapshot.add(ch);
+        }
+        this._resumeLoadedWrites = [];
       }
       // produce values output
       const valuesOutput = await gatherIterator(
@@ -1201,20 +1237,7 @@ export class PregelLoop {
     }
     // if there are pending writes from a previous loop, apply them
     if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
-      for (const [tid, k, v] of this.checkpointPendingWrites) {
-        if (
-          k === ERROR ||
-          k === ERROR_SOURCE_NODE ||
-          k === INTERRUPT ||
-          k === RESUME
-        ) {
-          continue;
-        }
-        const task = taskList.find((t) => t.id === tid);
-        if (task) {
-          task.writes.push([k, v]);
-        }
-      }
+      this._reapplyWritesToSucceededNodes(this.tasks);
       // On resume, re-schedule error handlers for nodes that failed in a prior
       // run (recorded via ERROR_SOURCE_NODE) before they completed handling.
       this._resumeErrorHandlersIfApplicable();
@@ -1488,73 +1511,7 @@ export class PregelLoop {
      */
 
     const { configurable } = this.config;
-
-    // map command to writes
-    if (isCommand(this.input)) {
-      const hasResume = this.input.resume != null;
-
-      if (
-        this.input.resume != null &&
-        typeof this.input.resume === "object" &&
-        Object.keys(this.input.resume).every(isXXH3)
-      ) {
-        this.config.configurable ??= {};
-        this.config.configurable[CONFIG_KEY_RESUME_MAP] = this.input.resume;
-      }
-
-      if (hasResume && this.checkpointer == null) {
-        throw new Error("Cannot use Command(resume=...) without checkpointer");
-      }
-
-      const writes: { [key: string]: PendingWrite[] } = {};
-
-      // group writes by task id
-      for (const [tid, key, value] of mapCommand(
-        this.input,
-        this.checkpointPendingWrites
-      )) {
-        writes[tid] ??= [];
-        writes[tid].push([key, value]);
-      }
-      if (Object.keys(writes).length === 0) {
-        throw new EmptyInputError("Received empty Command input");
-      }
-
-      // save writes
-      for (const [tid, ws] of Object.entries(writes)) {
-        this.putWrites(tid, ws);
-        if (this._exitDeltaWrites !== undefined && tid === NULL_TASK_ID) {
-          for (const [c, v] of ws) {
-            const channel = this.channels[c];
-            if (channel != null && isDeltaChannel(channel)) {
-              this._exitCommandWrites.push([c, v]);
-            }
-          }
-        }
-      }
-    }
-
-    // apply null writes
-    const nullWrites = (this.checkpointPendingWrites ?? [])
-      .filter((w) => w[0] === NULL_TASK_ID)
-      .map((w) => w.slice(1)) as PendingWrite<string>[];
-    if (nullWrites.length > 0) {
-      _applyWrites(
-        this.checkpoint,
-        this.channels,
-        [
-          {
-            name: INPUT,
-            writes: nullWrites,
-            triggers: [],
-          },
-        ],
-        this.checkpointerGetNextVersion,
-        this.triggerToNodes
-      );
-    }
     const inputIsCommand = isCommand(this.input);
-    const isCommandUpdateOrGoto = inputIsCommand && nullWrites.length > 0;
 
     const isTimeTraveling =
       this.isReplaying &&
@@ -1572,6 +1529,106 @@ export class PregelLoop {
           configurable?.[CONFIG_KEY_RESUMING] === true ||
           this.resumeAtHead
         ));
+    const isUpdateOrFork =
+      this.checkpointMetadata.source === "update" ||
+      this.checkpointMetadata.source === "fork";
+    // Whether this run saves a fork checkpoint (below) to start its branch.
+    // The fork carries a `Command`'s writes itself, so nothing this run writes
+    // is stored on the checkpoint it addressed, which may have children that
+    // replay it.
+    const forks =
+      isTimeTraveling &&
+      (inputIsCommand || this.isResuming) &&
+      (!isUpdateOrFork || this.addressedCheckpointSuperseded);
+    const carried: CheckpointPendingWrite[] = [];
+    // A resume that hands the head's pending writes back to their tasks only
+    // learns which of them go back once those are scheduled, so the end of
+    // the superstep seals the rest. Kept apart from the writes this run adds.
+    const reapplies = this.isResuming && this.skipDoneTasks;
+    this._resumeLoadedWrites = reapplies
+      ? this.checkpointPendingWrites.filter(([tid]) => tid !== NULL_TASK_ID)
+      : [];
+    this._reappliedTaskIds = new Set();
+    this._deltaChannelsForcedSnapshot = reapplies
+      ? new Set()
+      : deltaChannelsWithPendingWrites(
+          this.channels,
+          this.checkpointPendingWrites
+        );
+
+    // map command to writes
+    if (inputIsCommand) {
+      const command = this.input as Command;
+      const hasResume = command.resume != null;
+
+      if (
+        command.resume != null &&
+        typeof command.resume === "object" &&
+        Object.keys(command.resume).every(isXXH3)
+      ) {
+        this.config.configurable ??= {};
+        this.config.configurable[CONFIG_KEY_RESUME_MAP] = command.resume;
+      }
+
+      if (hasResume && this.checkpointer == null) {
+        throw new Error("Cannot use Command(resume=...) without checkpointer");
+      }
+
+      const writes: { [key: string]: PendingWrite[] } = {};
+
+      // group writes by task id
+      for (const [tid, key, value] of mapCommand(
+        command,
+        this.checkpointPendingWrites
+      )) {
+        writes[tid] ??= [];
+        writes[tid].push([key, value]);
+      }
+      if (Object.keys(writes).length === 0) {
+        throw new EmptyInputError("Received empty Command input");
+      }
+
+      // save writes
+      for (const [tid, ws] of Object.entries(writes)) {
+        if (forks) {
+          for (const [c, v] of ws) carried.push([tid, c, v]);
+        } else {
+          this.putWrites(tid, ws);
+          if (this._exitDeltaWrites !== undefined && tid === NULL_TASK_ID) {
+            for (const [c, v] of ws) {
+              const channel = this.channels[c];
+              if (channel != null && isDeltaChannel(channel)) {
+                this._exitCommandWrites.push([c, v]);
+              }
+            }
+          }
+        }
+      }
+      for (const ch of deltaChannelsWithPendingWrites(this.channels, carried)) {
+        this._deltaChannelsForcedSnapshot.add(ch);
+      }
+    }
+
+    // apply null writes
+    const nullWrites = [...(this.checkpointPendingWrites ?? []), ...carried]
+      .filter((w) => w[0] === NULL_TASK_ID)
+      .map((w) => w.slice(1)) as PendingWrite<string>[];
+    if (nullWrites.length > 0) {
+      _applyWrites(
+        this.checkpoint,
+        this.channels,
+        [
+          {
+            name: INPUT,
+            writes: nullWrites,
+            triggers: [],
+          },
+        ],
+        this.checkpointerGetNextVersion,
+        this.triggerToNodes
+      );
+    }
+    const isCommandUpdateOrGoto = inputIsCommand && nullWrites.length > 0;
 
     if (isTimeTraveling) {
       this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
@@ -1581,14 +1638,17 @@ export class PregelLoop {
 
     // Take the resume value from the parent only after the time-travel filter
     // above, which drops this checkpoint's stale RESUME writes, not this one.
-    const scratchpad = configurable?.[
-      CONFIG_KEY_SCRATCHPAD
-    ] as PregelScratchpad;
-
-    if (scratchpad && scratchpad.nullResume !== undefined) {
-      this.putWrites(NULL_TASK_ID, [[RESUME, scratchpad.nullResume]]);
+    // A run that forks stores it on the fork, below.
+    const nullResume = (
+      configurable?.[CONFIG_KEY_SCRATCHPAD] as PregelScratchpad | undefined
+    )?.nullResume;
+    if (nullResume !== undefined && !forks) {
+      this.putWrites(NULL_TASK_ID, [[RESUME, nullResume]]);
     }
 
+    // The parent checkpoint subgraphs replay from, when the fork below would
+    // otherwise move it
+    let replayBound: RunnableConfig | undefined;
     const cachedIsResuming = this.isResuming;
     if (cachedIsResuming || isCommandUpdateOrGoto) {
       // One spread (O(N)) instead of O(N²) per-channel spreads. Must be a
@@ -1606,15 +1666,20 @@ export class PregelLoop {
       }
       this.checkpoint.versions_seen[INTERRUPT] = interruptSeen;
 
-      if (
-        isTimeTraveling &&
-        this.checkpointMetadata.source !== "update" &&
-        this.checkpointMetadata.source !== "fork"
-      ) {
+      // An update or fork checkpoint is a branch of its own, unless the thread
+      // moved past it: its other children would replay whatever this run
+      // stores on it.
+      if (forks) {
+        if (isUpdateOrFork && this.prevCheckpointConfig) {
+          replayBound = this.prevCheckpointConfig;
+        }
         this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
           (w) => w[1] !== INTERRUPT
         );
         await this._putCheckpoint({ source: "fork" });
+        if (nullResume !== undefined) {
+          this.putWrites(NULL_TASK_ID, [[RESUME, nullResume]]);
+        }
       }
 
       // produce values output
@@ -1678,7 +1743,7 @@ export class PregelLoop {
         });
         // An Overwrite supplied as input must also force a snapshot.
         for (const [c, v] of deltaInput) {
-          if (_isOverwriteValue(v)) this._deltaChannelsWithOverwrite.add(c);
+          if (_isOverwriteValue(v)) this._deltaChannelsForcedSnapshot.add(c);
         }
         if (deltaInput.length > 0) {
           if (this._exitDeltaWrites !== undefined) {
@@ -1712,7 +1777,11 @@ export class PregelLoop {
       // current head with an explicit checkpoint_id (see Python _loop._first).
       if (isTimeTraveling) {
         let replayCheckpointId = this.checkpoint.id;
-        if (
+        if (replayBound !== undefined) {
+          replayCheckpointId =
+            replayBound.configurable?.[CONFIG_KEY_CHECKPOINT_ID] ??
+            replayCheckpointId;
+        } else if (
           (this.checkpointMetadata.source === "update" ||
             this.checkpointMetadata.source === "fork") &&
           this.prevCheckpointConfig
@@ -1929,11 +1998,8 @@ export class PregelLoop {
             : undefined
         )
       : new Set<string>();
-    // Force a snapshot for any delta channel that saw an Overwrite since the
-    // last checkpoint, so the post-overwrite value is materialized and sparse
-    // replay never has to fold across the reset.
     if (doCheckpoint) {
-      for (const ch of this._deltaChannelsWithOverwrite)
+      for (const ch of this._deltaChannelsForcedSnapshot)
         channelsToSnapshot.add(ch);
     }
 
@@ -1945,7 +2011,7 @@ export class PregelLoop {
       {
         id: exiting ? this.checkpoint.id : undefined,
         channelsToSnapshot,
-        updatedChannels: this.updatedChannels,
+        storedVersions: this.checkpointPreviousVersions,
         getNextVersion: doCheckpoint
           ? (current) =>
               this.checkpointerGetNextVersion(current as number | undefined)
@@ -1957,9 +2023,7 @@ export class PregelLoop {
     // non-zero remainder into metadata (or clear the field entirely).
     for (const k of channelsToSnapshot) {
       newCounters[k] = [0, 0];
-      // The overwrite was just materialized into `channel_values`; stop
-      // forcing a snapshot for it.
-      this._deltaChannelsWithOverwrite.delete(k);
+      this._deltaChannelsForcedSnapshot.delete(k);
     }
     const nonZero: Record<string, [number, number]> = {};
     for (const k in newCounters) {
@@ -2010,10 +2074,10 @@ export class PregelLoop {
       counters,
       this._deltaWritesVersioned ? this.checkpoint.channel_versions : undefined
     );
-    // Channels that saw an Overwrite are force-snapshotted by the final
-    // `_putCheckpoint` (which runs after this), so their accumulated exit
-    // writes must NOT also be replayed on top of that snapshot — exclude them.
-    for (const ch of this._deltaChannelsWithOverwrite)
+    // Forced snapshots are taken by the final `_putCheckpoint` (which runs
+    // after this), so their accumulated exit writes must NOT also be replayed
+    // on top of that snapshot — exclude them.
+    for (const ch of this._deltaChannelsForcedSnapshot)
       channelsToSnapshot.add(ch);
 
     const pending = this._exitDeltaWrites.filter(
@@ -2131,18 +2195,36 @@ export class PregelLoop {
     }
   }
 
+  /**
+   * Hands the writes loaded with the checkpoint back to the finished tasks
+   * among `tasks`. A failed or interrupted task keeps empty writes, so it
+   * reruns or goes to its error handler.
+   */
+  protected _reapplyWritesToSucceededNodes(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tasks: Record<string, PregelExecutableTask<any, any>>
+  ) {
+    for (const [tid, k, v] of this.checkpointPendingWrites) {
+      if (
+        k === ERROR ||
+        k === ERROR_SOURCE_NODE ||
+        k === INTERRUPT ||
+        k === RESUME
+      ) {
+        continue;
+      }
+      const task = tasks[tid];
+      if (task) {
+        task.writes.push([k, v]);
+        this._reappliedTaskIds.add(tid);
+      }
+    }
+  }
+
   protected _matchWrites(
     tasks: Record<string, PregelExecutableTask<string, string>>
   ) {
-    for (const [tid, k, v] of this.checkpointPendingWrites) {
-      if (k === ERROR || k === INTERRUPT || k === RESUME) {
-        continue;
-      }
-      const task = Object.values(tasks).find((t) => t.id === tid);
-      if (task) {
-        task.writes.push([k, v]);
-      }
-    }
+    this._reapplyWritesToSucceededNodes(tasks);
     for (const task of Object.values(tasks)) {
       if (task.writes.length > 0) {
         this._outputWrites(task.id, task.writes, true);
