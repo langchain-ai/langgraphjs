@@ -34,6 +34,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
+  deltaChannelWrites,
   deltaChannelsWithPendingWrites,
   getOnlyChannels,
   isDeltaChannel,
@@ -1369,28 +1370,22 @@ export class Pregel<
         isFirstSuperstep &&
         saved !== undefined &&
         (await checkpointSuperseded(checkpointer, config, saved));
+      const specs = this.channels as Record<string, BaseChannel>;
       // Messages in DeltaChannel writes get ids before they're saved or
       // snapshotted, as the loop's putWrites does, so every read of them
       // returns the same ids.
       const ensureDeltaMessageIds = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
-        for (const [ch, value] of writes) {
-          const spec = (this.channels as Record<string, BaseChannel>)[
-            String(ch)
-          ];
-          if (spec !== undefined && isDeltaChannel(spec)) {
-            ensureMessageIds(value);
-          }
+        for (const [, value] of deltaChannelWrites(specs, writes)) {
+          ensureMessageIds(value);
         }
       };
       const sealDeltaWrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
-        for (const [ch] of writes) {
-          const name = String(ch);
-          const spec = (this.channels as Record<string, BaseChannel>)[name];
-          if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
+        for (const [ch] of deltaChannelWrites(specs, writes)) {
+          forkPending.add(String(ch));
         }
       };
       // updateState saves a full snapshot of a DeltaChannel these writes set
@@ -1400,16 +1395,8 @@ export class Pregel<
       const sealOverwrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
-        for (const [ch, value] of writes) {
-          const name = String(ch);
-          const spec = (this.channels as Record<string, BaseChannel>)[name];
-          if (
-            spec !== undefined &&
-            isDeltaChannel(spec) &&
-            _isOverwriteValue(value)
-          ) {
-            forkPending.add(name);
-          }
+        for (const [ch, value] of deltaChannelWrites(specs, writes)) {
+          if (_isOverwriteValue(value)) forkPending.add(String(ch));
         }
       };
 

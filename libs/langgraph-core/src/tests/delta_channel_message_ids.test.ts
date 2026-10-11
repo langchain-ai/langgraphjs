@@ -5,7 +5,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { Annotation } from "../graph/index.js";
 import { messagesDeltaReducer } from "../graph/messages_reducer.js";
 import { StateGraph } from "../graph/state.js";
-import { START } from "../constants.js";
+import { Overwrite, START } from "../constants.js";
 import { DeltaChannel } from "../channels/delta.js";
 import { LastValue } from "../channels/last_value.js";
 import { Channel, Pregel } from "../pregel/index.js";
@@ -19,25 +19,31 @@ async function messageIds(
   return (values as { messages: BaseMessage[] }).messages.map((m) => m.id);
 }
 
-function messagesGraph() {
-  return new StateGraph(
-    Annotation.Root({ messages: new DeltaChannel(messagesDeltaReducer) })
-  )
-    .addNode("model", () => ({}))
+const MessagesState = Annotation.Root({
+  messages: new DeltaChannel(messagesDeltaReducer),
+});
+
+function messagesGraph(
+  model: () => typeof MessagesState.Update = () => ({})
+) {
+  return new StateGraph(MessagesState)
+    .addNode("model", model)
     .addEdge(START, "model")
     .compile({ checkpointer: new MemorySaver() });
 }
 
-describe("a message saved through updateState", () => {
-  it("gets an id that every read keeps", async () => {
-    const graph = messagesGraph();
+describe.each([
+  ["a message", () => [new HumanMessage("b")]],
+  ["a plain message object", () => [{ role: "user", content: "b" }]],
+  [
+    "a message inside an Overwrite",
+    () => new Overwrite([new HumanMessage("b")]),
+  ],
+])("%s written to a DeltaChannel", (_, write) => {
+  it("gets an id from a node that every read keeps", async () => {
+    const graph = messagesGraph(() => ({ messages: write() }));
     const config = { configurable: { thread_id: "t" } };
-    await graph.invoke(
-      { messages: [new HumanMessage({ content: "a", id: "a" })] },
-      config
-    );
-
-    await graph.updateState(config, { messages: [new HumanMessage("b")] }, "model");
+    await graph.invoke({ messages: [] }, config);
 
     const first = await messageIds(graph, config);
     const second = await messageIds(graph, config);
@@ -45,6 +51,24 @@ describe("a message saved through updateState", () => {
     expect(first).toEqual(second);
   });
 
+  it("gets an id from updateState that every read keeps", async () => {
+    const graph = messagesGraph();
+    const config = { configurable: { thread_id: "t" } };
+    await graph.invoke(
+      { messages: [new HumanMessage({ content: "a", id: "a" })] },
+      config
+    );
+
+    await graph.updateState(config, { messages: write() }, "model");
+
+    const first = await messageIds(graph, config);
+    const second = await messageIds(graph, config);
+    expect(first.at(-1)).toEqual(expect.any(String));
+    expect(first).toEqual(second);
+  });
+});
+
+describe("a message saved through updateState", () => {
   it("gets an id on a checkpoint the thread moved past", async () => {
     const graph = messagesGraph();
     const config = { configurable: { thread_id: "t" } };

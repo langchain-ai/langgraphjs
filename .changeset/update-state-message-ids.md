@@ -2,4 +2,4 @@
 "@langchain/langgraph": patch
 ---
 
-Give a message saved through `updateState` to a DeltaChannel an id, as a node's messages get, so every read returns the same id.
+Give every message saved to a DeltaChannel an id, so `RemoveMessage` can target it: one saved through `updateState`, a plain message object, or one inside an `Overwrite`.

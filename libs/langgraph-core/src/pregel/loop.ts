@@ -27,6 +27,7 @@ import {
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
+  deltaChannelWrites,
   deltaChannelsWithPendingWrites,
   exitDeltaLateTaskId,
   exitDeltaTaskId,
@@ -45,6 +46,7 @@ import type {
 import {
   isCommand,
   _isSend,
+  _getOverwriteValue,
   _isOverwriteValue,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
@@ -123,10 +125,24 @@ const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
+// The kinds `coerceMessageLikeToMessage` turns a plain object into, by its
+// `role` or `type`. A remove names the message it removes, so it never gets
+// a new id.
+const MESSAGE_KINDS = new Set([
+  "human",
+  "user",
+  "ai",
+  "assistant",
+  "system",
+  "developer",
+  "tool",
+]);
+
 /**
- * Recursively assign a stable UUID to any {@link BaseMessage} (in a value, an
- * array, or an object's values) that is missing an `id`. Used so DeltaChannel
- * writes — replayed on every read — reconstruct identical message identities.
+ * Assign a stable UUID to any id-less message in a DeltaChannel write: a
+ * {@link BaseMessage} or a plain message object, on its own or inside an
+ * array or an `Overwrite`. DeltaChannel writes are replayed on every read, so
+ * every read must see the same message ids.
  */
 export function ensureMessageIds(value: unknown): void {
   if (value == null || typeof value !== "object") return;
@@ -141,6 +157,16 @@ export function ensureMessageIds(value: unknown): void {
   if (Array.isArray(value)) {
     for (const item of value) ensureMessageIds(item);
     return;
+  }
+  const [isOverwrite, overwriteValue] = _getOverwriteValue(value);
+  if (isOverwrite) {
+    ensureMessageIds(overwriteValue);
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  const kind = obj.role ?? obj.type;
+  if (typeof kind === "string" && MESSAGE_KINDS.has(kind) && obj.id == null) {
+    obj.id = uuidv4();
   }
 }
 
@@ -921,18 +947,12 @@ export class PregelLoop {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
-    // Assign stable IDs to any id-less BaseMessages in DeltaChannel writes
+    // Assign stable IDs to any id-less messages in DeltaChannel writes
     // before they are serialised. DeltaChannel state is reconstructed by
     // replaying these stored writes, so without stable IDs every getState()
     // replay would mint a fresh UUID and dedup/RemoveMessage would break.
-    let hasDeltaWrite = false;
-    for (const [c, v] of writesToSave) {
-      const channel = this.channels[c];
-      if (channel != null && isDeltaChannel(channel)) {
-        ensureMessageIds(v);
-        hasDeltaWrite = true;
-      }
-    }
+    const deltaWrites = deltaChannelWrites(this.channels, writesToSave);
+    for (const [, v] of deltaWrites) ensureMessageIds(v);
 
     const config = patchConfigurable(this.checkpointConfig, {
       [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
@@ -952,7 +972,7 @@ export class PregelLoop {
         task != null ? taskPathStr(task.path) : ""
       );
       this._trackCheckpointerPromise(saved);
-      if (hasDeltaWrite) this._pendingDeltaWrites.push(saved);
+      if (deltaWrites.length > 0) this._pendingDeltaWrites.push(saved);
     }
 
     if (this.tasks) {
@@ -1111,15 +1131,8 @@ export class PregelLoop {
       // Track DeltaChannels that saw an Overwrite this super-step. They must
       // snapshot at the next checkpoint so sparse replay starts from the
       // post-overwrite value (live `update` already discarded the siblings).
-      for (const [ch, v] of writes) {
-        const channel = this.channels[ch];
-        if (
-          channel != null &&
-          isDeltaChannel(channel) &&
-          _isOverwriteValue(v)
-        ) {
-          this._deltaChannelsForcedSnapshot.add(ch);
-        }
+      for (const [ch, v] of deltaChannelWrites(this.channels, writes)) {
+        if (_isOverwriteValue(v)) this._deltaChannelsForcedSnapshot.add(ch);
       }
       if (this._resumeLoadedWrites.length > 0) {
         // A loaded write the resume didn't hand back belongs to a task this
@@ -1625,12 +1638,9 @@ export class PregelLoop {
         } else {
           this.putWrites(tid, ws);
           if (this._exitDeltaWrites !== undefined && tid === NULL_TASK_ID) {
-            for (const [c, v] of ws) {
-              const channel = this.channels[c];
-              if (channel != null && isDeltaChannel(channel)) {
-                this._exitCommandWrites.push([c, v]);
-              }
-            }
+            this._exitCommandWrites.push(
+              ...deltaChannelWrites(this.channels, ws)
+            );
           }
         }
       }

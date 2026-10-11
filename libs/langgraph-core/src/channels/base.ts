@@ -30,6 +30,13 @@ export function isDeltaChannel(channel: BaseChannel): boolean {
   return channel != null && channel.lc_graph_name === "DeltaChannel";
 }
 
+export function deltaChannelWrites<W extends readonly [PropertyKey, unknown]>(
+  channels: Record<string, BaseChannel>,
+  writes: ReadonlyArray<W>
+): W[] {
+  return writes.filter(([ch]) => isDeltaChannel(channels[String(ch)]));
+}
+
 export function isBaseChannel(obj: unknown): obj is BaseChannel {
   return obj != null && (obj as BaseChannel).lg_is_channel === true;
 }
