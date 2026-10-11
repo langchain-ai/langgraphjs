@@ -2107,6 +2107,14 @@ export class PregelLoop {
       return;
     }
 
+    // A checkpoint a `checkpoint_id` addressed may already have children,
+    // which read the writes stored on it, so then the channels this run wrote
+    // snapshot instead.
+    if (this._hasPersistedParent && !this._loadedLatest) {
+      for (const [, , , ch] of this._exitDeltaWrites)
+        this._deltaChannelsForcedSnapshot.add(ch);
+    }
+
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
     const channelsToSnapshot = deltaChannelsToSnapshot(

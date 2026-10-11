@@ -278,3 +278,44 @@ describe("exit durability: a resume retried after its final checkpoint fails", (
     expect([...plain].sort()).toEqual(["ask", "done", "in"]);
   });
 });
+
+describe("exit durability: a run from a checkpoint the thread moved past", () => {
+  it.each([1, 2])(
+    "leaves the branch that grew from it alone (%i exit runs)",
+    async (exitRuns) => {
+      const State = Annotation.Root({
+        log: new DeltaChannel<string[], string[]>(appendReducer),
+        plain: Annotation<string[]>({
+          reducer: (a, b) => [...a, ...b],
+          default: () => [],
+        }),
+        turn: Annotation<number>,
+      });
+      const graph = new StateGraph(State)
+        .addNode("a", (state) => both(`a${state.turn}`))
+        .addNode("b", (state) => both(`b${state.turn}`))
+        .addEdge(START, "a")
+        .addEdge("a", "b")
+        .compile({ checkpointer: new MemorySaver() });
+      const config = { configurable: { thread_id: "moved-past" } };
+      await graph.invoke({ turn: 1, ...both("in1") }, config);
+      const endOfTurn1 = (await graph.getState(config)).config;
+      await graph.invoke({ turn: 2, ...both("in2") }, config);
+
+      for (let turn = 3; turn < 3 + exitRuns; turn += 1) {
+        await graph.invoke(
+          { turn, ...both(`in${turn}`) },
+          { ...endOfTurn1, durability: "exit" as const }
+        );
+      }
+
+      const history: { log?: string[]; plain?: string[] }[] = [];
+      for await (const snapshot of graph.getStateHistory(config)) {
+        history.push(snapshot.values);
+      }
+      expect(history.map((v) => v.log ?? [])).toEqual(
+        history.map((v) => v.plain ?? [])
+      );
+    }
+  );
+});
