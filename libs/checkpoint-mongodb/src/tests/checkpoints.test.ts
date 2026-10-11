@@ -374,6 +374,101 @@ describe("MongoDBSaver", () => {
       expect(setDoc.metadata).not.toEqual(metadata);
     });
 
+    it("should only persist channel values listed in newVersions", async () => {
+      const { client, updateOneMock } = createCapturingMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const checkpoint = {
+        v: 4,
+        id: "cp-delta",
+        ts: "2024-04-19T17:19:07.952Z",
+        channel_values: { foo: "bar", baz: "qux" },
+        channel_versions: { foo: 1, baz: 1 },
+        versions_seen: {},
+      };
+
+      await saver.put(
+        { configurable: { thread_id: "test-thread" } },
+        checkpoint,
+        { source: "loop", step: 1, parents: {} },
+        { foo: 1 }
+      );
+
+      const setDoc = updateOneMock.mock.calls[0][1].$set;
+      const storedCheckpoint = await saver.serde.loadsTyped(
+        setDoc.type,
+        setDoc.checkpoint
+      );
+
+      expect(storedCheckpoint).toHaveProperty("channel_values", {
+        foo: "bar",
+      });
+      expect(checkpoint.channel_values).toEqual({ foo: "bar", baz: "qux" });
+    });
+
+    it("should persist no channel values when newVersions is empty", async () => {
+      const { client, updateOneMock } = createCapturingMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const checkpoint = {
+        v: 4,
+        id: "cp-no-deltas",
+        ts: "2024-04-19T17:19:07.952Z",
+        channel_values: { foo: "bar", baz: "qux" },
+        channel_versions: { foo: 1, baz: 1 },
+        versions_seen: {},
+      };
+
+      await saver.put(
+        { configurable: { thread_id: "test-thread" } },
+        checkpoint,
+        { source: "loop", step: 1, parents: {} },
+        {}
+      );
+
+      const setDoc = updateOneMock.mock.calls[0][1].$set;
+      const storedCheckpoint = await saver.serde.loadsTyped(
+        setDoc.type,
+        setDoc.checkpoint
+      );
+
+      expect(storedCheckpoint).toHaveProperty("channel_values", {});
+    });
+
+    it("should keep full channel values when newVersions is omitted", async () => {
+      const { client, updateOneMock } = createCapturingMockClient();
+      const saver = new MongoDBSaver({
+        client: client as unknown as MongoClient,
+      });
+      const checkpoint = {
+        v: 4,
+        id: "cp-legacy",
+        ts: "2024-04-19T17:19:07.952Z",
+        channel_values: { foo: "bar", baz: "qux" },
+        channel_versions: { foo: 1, baz: 1 },
+        versions_seen: {},
+      };
+
+      await saver.put(
+        { configurable: { thread_id: "test-thread" } },
+        checkpoint,
+        { source: "loop", step: 1, parents: {} }
+      );
+
+      const setDoc = updateOneMock.mock.calls[0][1].$set;
+      const storedCheckpoint = await saver.serde.loadsTyped(
+        setDoc.type,
+        setDoc.checkpoint
+      );
+
+      expect(storedCheckpoint).toHaveProperty("channel_values", {
+        foo: "bar",
+        baz: "qux",
+      });
+    });
+
     it("should query metadata_search fields in list()", async () => {
       const { client, findMock } = createCapturingMockClient();
       const saver = new MongoDBSaver({
