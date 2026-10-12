@@ -1681,10 +1681,10 @@ export class Pregel<
           );
         }
 
+        ensureDeltaMessageIds(specs, inputWrites as PendingWrite[]);
         // A DeltaChannel reads the writes stored on a checkpoint's ancestors,
         // not its own, so they go on the checkpoint this update builds on, as
         // a node's writes do.
-        ensureDeltaMessageIds(specs, inputWrites as PendingWrite[]);
         if (await editsOlderCheckpoint()) {
           sealDeltaWrites(inputWrites as PendingWrite[]);
         } else if (saved !== undefined) {
