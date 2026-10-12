@@ -144,7 +144,7 @@ const MESSAGE_KINDS = new Set([
  * array or an `Overwrite`. DeltaChannel writes are replayed on every read, so
  * every read must see the same message ids.
  */
-export function ensureMessageIds(value: unknown): void {
+function ensureMessageIds(value: unknown): void {
   if (value == null || typeof value !== "object") return;
   if (BaseMessage.isInstance(value)) {
     const msg = value as BaseMessage;
@@ -168,6 +168,19 @@ export function ensureMessageIds(value: unknown): void {
   if (typeof kind === "string" && MESSAGE_KINDS.has(kind) && obj.id == null) {
     obj.id = uuidv4();
   }
+}
+
+/**
+ * Give the messages in `writes` that go to a DeltaChannel stable ids, as
+ * `ensureMessageIds` does, and return those writes. The loop and
+ * `updateState` call it before they save or snapshot the writes.
+ */
+export function ensureDeltaMessageIds<
+  W extends readonly [PropertyKey, unknown],
+>(channels: Record<string, BaseChannel>, writes: ReadonlyArray<W>): W[] {
+  const deltaWrites = deltaChannelWrites(channels, writes);
+  for (const [, value] of deltaWrites) ensureMessageIds(value);
+  return deltaWrites;
 }
 
 export type PregelLoopInitializeParams = {
@@ -951,8 +964,7 @@ export class PregelLoop {
     // before they are serialised. DeltaChannel state is reconstructed by
     // replaying these stored writes, so without stable IDs every getState()
     // replay would mint a fresh UUID and dedup/RemoveMessage would break.
-    const deltaWrites = deltaChannelWrites(this.channels, writesToSave);
-    for (const [, v] of deltaWrites) ensureMessageIds(v);
+    const deltaWrites = ensureDeltaMessageIds(this.channels, writesToSave);
 
     const config = patchConfigurable(this.checkpointConfig, {
       [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",

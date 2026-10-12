@@ -96,7 +96,7 @@ import {
   tasksWithWrites,
 } from "./debug.js";
 import { mapInput, readChannels } from "./io.js";
-import { ensureMessageIds, PregelLoop } from "./loop.js";
+import { ensureDeltaMessageIds, PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { StreamProtocolMessagesHandler } from "./messages-v2.js";
 import { PregelNode } from "./read.js";
@@ -1371,16 +1371,6 @@ export class Pregel<
         saved !== undefined &&
         (await checkpointSuperseded(checkpointer, config, saved));
       const specs = this.channels as Record<string, BaseChannel>;
-      // Messages in DeltaChannel writes get ids before they're saved or
-      // snapshotted, as the loop's putWrites does, so every read of them
-      // returns the same ids.
-      const ensureDeltaMessageIds = (
-        writes: ReadonlyArray<readonly [PropertyKey, unknown]>
-      ) => {
-        for (const [, value] of deltaChannelWrites(specs, writes)) {
-          ensureMessageIds(value);
-        }
-      };
       const sealDeltaWrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
@@ -1694,7 +1684,7 @@ export class Pregel<
         // A DeltaChannel reads the writes stored on a checkpoint's ancestors,
         // not its own, so they go on the checkpoint this update builds on, as
         // a node's writes do.
-        ensureDeltaMessageIds(inputWrites as PendingWrite[]);
+        ensureDeltaMessageIds(specs, inputWrites as PendingWrite[]);
         if (await editsOlderCheckpoint()) {
           sealDeltaWrites(inputWrites as PendingWrite[]);
         } else if (saved !== undefined) {
@@ -1966,7 +1956,7 @@ export class Pregel<
         );
       }
 
-      for (const task of tasks) ensureDeltaMessageIds(task.writes);
+      for (const task of tasks) ensureDeltaMessageIds(specs, task.writes);
       if (await editsOlderCheckpoint()) {
         for (const task of tasks) sealDeltaWrites(task.writes);
       } else {
