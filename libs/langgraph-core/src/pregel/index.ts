@@ -34,6 +34,7 @@ import {
   createCheckpoint,
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
+  deltaChannelWrites,
   deltaChannelsWithPendingWrites,
   getOnlyChannels,
   isDeltaChannel,
@@ -95,7 +96,7 @@ import {
   tasksWithWrites,
 } from "./debug.js";
 import { mapInput, readChannels } from "./io.js";
-import { PregelLoop } from "./loop.js";
+import { ensureDeltaMessageIds, PregelLoop } from "./loop.js";
 import { StreamMessagesHandler } from "./messages.js";
 import { StreamProtocolMessagesHandler } from "./messages-v2.js";
 import { PregelNode } from "./read.js";
@@ -1369,13 +1370,12 @@ export class Pregel<
         isFirstSuperstep &&
         saved !== undefined &&
         (await checkpointSuperseded(checkpointer, config, saved));
+      const specs = this.channels as Record<string, BaseChannel>;
       const sealDeltaWrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
-        for (const [ch] of writes) {
-          const name = String(ch);
-          const spec = (this.channels as Record<string, BaseChannel>)[name];
-          if (spec !== undefined && isDeltaChannel(spec)) forkPending.add(name);
+        for (const [ch] of deltaChannelWrites(specs, writes)) {
+          forkPending.add(String(ch));
         }
       };
       // updateState saves a full snapshot of a DeltaChannel these writes set
@@ -1385,16 +1385,8 @@ export class Pregel<
       const sealOverwrites = (
         writes: ReadonlyArray<readonly [PropertyKey, unknown]>
       ) => {
-        for (const [ch, value] of writes) {
-          const name = String(ch);
-          const spec = (this.channels as Record<string, BaseChannel>)[name];
-          if (
-            spec !== undefined &&
-            isDeltaChannel(spec) &&
-            _isOverwriteValue(value)
-          ) {
-            forkPending.add(name);
-          }
+        for (const [ch, value] of deltaChannelWrites(specs, writes)) {
+          if (_isOverwriteValue(value)) forkPending.add(String(ch));
         }
       };
 
@@ -1689,6 +1681,7 @@ export class Pregel<
           );
         }
 
+        ensureDeltaMessageIds(specs, inputWrites as PendingWrite[]);
         // A DeltaChannel reads the writes stored on a checkpoint's ancestors,
         // not its own, so they go on the checkpoint this update builds on, as
         // a node's writes do.
@@ -1963,6 +1956,7 @@ export class Pregel<
         );
       }
 
+      for (const task of tasks) ensureDeltaMessageIds(specs, task.writes);
       if (await editsOlderCheckpoint()) {
         for (const task of tasks) sealDeltaWrites(task.writes);
       } else {

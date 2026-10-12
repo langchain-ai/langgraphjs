@@ -1,6 +1,10 @@
 import type { RunnableConfig } from "@langchain/core/runnables";
 import type { CallbackManagerForChainRun } from "@langchain/core/callbacks/manager";
-import { BaseMessage } from "@langchain/core/messages";
+import {
+  BaseMessage,
+  type BaseMessageLike,
+  coerceMessageLikeToMessage,
+} from "@langchain/core/messages";
 import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
 import {
   BaseCheckpointSaver,
@@ -27,12 +31,15 @@ import {
   channelsFromCheckpoint,
   DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
+  deltaChannelWrites,
   deltaChannelsWithPendingWrites,
   exitDeltaLateTaskId,
   exitDeltaTaskId,
   isDeltaChannel,
   isDeltaWritesVersioned,
 } from "../channels/base.js";
+import type { DeltaChannel } from "../channels/delta.js";
+import { isMessagesDeltaReducer } from "../graph/messages_reducer.js";
 import { advanceDeltaCounters, checkpointSuperseded } from "./checkpoint.js";
 import type {
   Call,
@@ -45,7 +52,9 @@ import type {
 import {
   isCommand,
   _isSend,
+  _getOverwriteValue,
   _isOverwriteValue,
+  Overwrite,
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINT_MAP,
@@ -124,24 +133,113 @@ const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
 /**
- * Recursively assign a stable UUID to any {@link BaseMessage} (in a value, an
- * array, or an object's values) that is missing an `id`. Used so DeltaChannel
- * writes — replayed on every read — reconstruct identical message identities.
+ * Give the messages written to DeltaChannels stable ids, and return the writes
+ * in `writes` that go to a DeltaChannel.
+ *
+ * A DeltaChannel replays its saved writes on every read, and its reducer may
+ * not assign missing ids (`messagesDeltaReducer` doesn't), so a message saved
+ * without an id comes back without one, or with a new one on every read, and
+ * nothing can target it by id, for example `RemoveMessage`.
+ *
+ * In a channel whose reducer is {@link messagesDeltaReducer}, every
+ * message-like it accepts (a message, a plain object, a string, a
+ * `[role, content]` pair; alone, in an array or in an `Overwrite`) gets an id.
+ * A plain message object stays plain, with the id on a copy, except in an
+ * `Overwrite`, whose value the channel keeps as it is, so there it becomes a
+ * message. Other DeltaChannels may hold other data, so there only message
+ * objects get ids. Anything that can't become a message is left as it is, so
+ * it fails where it always has, when the reducer reads it.
+ *
+ * A write that changes is replaced in `writes` by a new `[channel, value]`
+ * pair: arrays and pairs the caller passed in are never changed, only the ids
+ * of message objects.
  */
-function ensureMessageIds(value: unknown): void {
-  if (value == null || typeof value !== "object") return;
-  if (BaseMessage.isInstance(value)) {
-    const msg = value as BaseMessage;
-    if (msg.id == null) {
-      msg.id = uuidv4();
-      if (msg.lc_kwargs != null) msg.lc_kwargs.id = msg.id;
+export function ensureDeltaMessageIds<W extends [PropertyKey, unknown]>(
+  channels: Record<string, BaseChannel>,
+  writes: W[]
+): W[] {
+  const deltaWrites: W[] = [];
+  for (let i = 0; i < writes.length; i += 1) {
+    const [channelName, value] = writes[i];
+    const channel = channels[String(channelName)];
+    if (!isDeltaChannel(channel)) continue;
+    if (isMessagesDeltaReducer((channel as DeltaChannel<unknown>).reducer)) {
+      const newValue = withMessageIds(value);
+      if (newValue !== value) writes[i] = [channelName, newValue] as W;
+    } else {
+      stampMessageIds(value);
     }
+    deltaWrites.push(writes[i]);
+  }
+  return deltaWrites;
+}
+
+function withMessageIds(value: unknown): unknown {
+  const [isOverwrite, overwriteValue] = _getOverwriteValue<unknown>(value);
+  if (!isOverwrite) {
+    return Array.isArray(value)
+      ? mapItems(value, writtenMessageWithId)
+      : writtenMessageWithId(value);
+  }
+  if (!Array.isArray(overwriteValue)) return value;
+  const items = mapItems(overwriteValue, messageWithId);
+  return items === overwriteValue ? value : new Overwrite(items);
+}
+
+function mapItems(items: unknown[], fn: (item: unknown) => unknown): unknown[] {
+  const mapped = items.map(fn);
+  return mapped.every((item, i) => item === items[i]) ? items : mapped;
+}
+
+function writtenMessageWithId(item: unknown): unknown {
+  if (!isPlainObject(item)) return messageWithId(item);
+  // A plain message object stays plain: it's smaller to save and faster to
+  // replay, and the reducer makes the same message from it.
+  try {
+    if (coerceMessageLikeToMessage(item as BaseMessageLike).id) return item;
+  } catch {
+    return item;
+  }
+  return { ...item, id: uuidv4() };
+}
+
+function messageWithId(item: unknown): unknown {
+  if (BaseMessage.isInstance(item)) {
+    stampMessageIds(item);
+    return item;
+  }
+  let message: BaseMessage;
+  try {
+    message = coerceMessageLikeToMessage(item as BaseMessageLike);
+  } catch {
+    return item;
+  }
+  if (!message.id) setMessageId(message);
+  return message;
+}
+
+function isPlainObject(item: unknown): item is Record<string, unknown> {
+  if (typeof item !== "object" || item === null) return false;
+  const proto = Object.getPrototypeOf(item);
+  return (proto === Object.prototype || proto === null) && !("lc" in item);
+}
+
+function stampMessageIds(value: unknown): void {
+  if (BaseMessage.isInstance(value)) {
+    if (value.id == null) setMessageId(value);
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) ensureMessageIds(item);
+    for (const item of value) stampMessageIds(item);
     return;
   }
+  const [isOverwrite, overwriteValue] = _getOverwriteValue<unknown>(value);
+  if (isOverwrite) stampMessageIds(overwriteValue);
+}
+
+function setMessageId(message: BaseMessage): void {
+  message.id = uuidv4();
+  if (message.lc_kwargs != null) message.lc_kwargs.id = message.id;
 }
 
 export type PregelLoopInitializeParams = {
@@ -870,6 +968,9 @@ export class PregelLoop {
   putWrites(taskId: string, writes: PendingWrite<string>[], cached = false) {
     let writesCopy = writes;
     if (writesCopy.length === 0) return;
+    // Before the writes are saved, kept in `checkpointPendingWrites` or
+    // applied, so all of them hold the same message ids.
+    const deltaWrites = ensureDeltaMessageIds(this.channels, writes);
 
     // deduplicate writes to special channels, last write wins
     if (writesCopy.every(([key]) => key in WRITES_IDX_MAP)) {
@@ -921,19 +1022,6 @@ export class PregelLoop {
       this.checkpointPendingWrites.push([taskId, c, v]);
     }
 
-    // Assign stable IDs to any id-less BaseMessages in DeltaChannel writes
-    // before they are serialised. DeltaChannel state is reconstructed by
-    // replaying these stored writes, so without stable IDs every getState()
-    // replay would mint a fresh UUID and dedup/RemoveMessage would break.
-    let hasDeltaWrite = false;
-    for (const [c, v] of writesToSave) {
-      const channel = this.channels[c];
-      if (channel != null && isDeltaChannel(channel)) {
-        ensureMessageIds(v);
-        hasDeltaWrite = true;
-      }
-    }
-
     const config = patchConfigurable(this.checkpointConfig, {
       [CONFIG_KEY_CHECKPOINT_NS]: this.config.configurable?.checkpoint_ns ?? "",
       [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
@@ -952,7 +1040,7 @@ export class PregelLoop {
         task != null ? taskPathStr(task.path) : ""
       );
       this._trackCheckpointerPromise(saved);
-      if (hasDeltaWrite) this._pendingDeltaWrites.push(saved);
+      if (deltaWrites.length > 0) this._pendingDeltaWrites.push(saved);
     }
 
     if (this.tasks) {
@@ -1120,15 +1208,8 @@ export class PregelLoop {
       // Track DeltaChannels that saw an Overwrite this super-step. They must
       // snapshot at the next checkpoint so sparse replay starts from the
       // post-overwrite value (live `update` already discarded the siblings).
-      for (const [ch, v] of writes) {
-        const channel = this.channels[ch];
-        if (
-          channel != null &&
-          isDeltaChannel(channel) &&
-          _isOverwriteValue(v)
-        ) {
-          this._deltaChannelsForcedSnapshot.add(ch);
-        }
+      for (const [ch, v] of deltaChannelWrites(this.channels, writes)) {
+        if (_isOverwriteValue(v)) this._deltaChannelsForcedSnapshot.add(ch);
       }
       if (this._resumeLoadedWrites.length > 0) {
         // A loaded write the resume didn't hand back belongs to a task this
@@ -1633,16 +1714,15 @@ export class PregelLoop {
       // save writes
       for (const [tid, ws] of Object.entries(writes)) {
         if (forks) {
+          // These skip `putWrites`, which gives messages their ids.
+          ensureDeltaMessageIds(this.channels, ws);
           for (const [c, v] of ws) carried.push([tid, c, v]);
         } else {
           this.putWrites(tid, ws);
           if (this._exitDeltaWrites !== undefined && tid === NULL_TASK_ID) {
-            for (const [c, v] of ws) {
-              const channel = this.channels[c];
-              if (channel != null && isDeltaChannel(channel)) {
-                this._exitCommandWrites.push([c, v]);
-              }
-            }
+            this._exitCommandWrites.push(
+              ...deltaChannelWrites(this.channels, ws)
+            );
           }
         }
       }
@@ -1754,6 +1834,12 @@ export class PregelLoop {
       // map inputs to channel updates
       const inputWrites = await gatherIterator(mapInput(inputKeys, this.input));
       if (inputWrites.length > 0) {
+        // Before the input is applied, so this run reads the message ids that
+        // are saved with it.
+        const deltaInput = ensureDeltaMessageIds(
+          this.channels,
+          inputWrites as PendingWrite[]
+        );
         const discardTasks = _prepareNextTasks(
           this.checkpoint,
           this.checkpointPendingWrites,
@@ -1776,20 +1862,14 @@ export class PregelLoop {
           this.checkpointerGetNextVersion,
           this.triggerToNodes
         );
-        // Input writes go through `_applyWrites` directly (above) — they never
-        // enter `checkpointPendingWrites`, so the after-tick capture site does
-        // not see them.
-        const deltaInput = (inputWrites as PendingWrite[]).filter(([c]) => {
-          const channel = this.channels[c];
-          return channel != null && isDeltaChannel(channel);
-        });
         // An Overwrite supplied as input must also force a snapshot.
         for (const [c, v] of deltaInput) {
           if (_isOverwriteValue(v)) this._deltaChannelsForcedSnapshot.add(c);
         }
         if (deltaInput.length > 0) {
           if (this._exitDeltaWrites !== undefined) {
-            // Exit mode: capture so the accumulator includes input deltas.
+            // Exit mode: input writes never enter `checkpointPendingWrites`,
+            // so the after-tick capture misses them; capture them here.
             for (const [c, v] of deltaInput) {
               this._exitDeltaWrites.push([this.step, NULL_TASK_ID, "", c, v]);
             }
