@@ -983,6 +983,15 @@ export class PregelLoop {
     ]);
   }
 
+  /** Streams the writes reapplied to tasks that finished in a previous run. */
+  protected _outputCachedWrites(tasks: PregelExecutableTask<any, any>[]) {
+    for (const task of tasks) {
+      if (task.writes.length > 0) {
+        this._outputWrites(task.id, task.writes, true);
+      }
+    }
+  }
+
   _outputWrites(taskId: string, writes: [string, unknown][], cached = false) {
     const task = this.tasks[taskId];
     if (task !== undefined) {
@@ -1257,14 +1266,6 @@ export class PregelLoop {
       this.status = "done";
       return false;
     }
-    // Cooperative drain: the previous superstep's writes have been applied
-    // and checkpointed above, and the next tasks have been prepared. If a
-    // drain was requested and tasks remain, stop here (without dispatching
-    // them) so the run can be resumed later from the saved checkpoint.
-    if (this.control != null && this.control.drainRequested) {
-      this.status = "draining";
-      return false;
-    }
     // if there are pending writes from a previous loop, apply them
     if (this.skipDoneTasks && this.checkpointPendingWrites.length > 0) {
       this._reapplyWritesToSucceededNodes(this.tasks);
@@ -1275,14 +1276,10 @@ export class PregelLoop {
       // cached task list before emitting writes and the downstream re-tick /
       // interrupt / debug checks see the newly scheduled handlers.
       taskList = Object.values(this.tasks);
-      for (const task of taskList) {
-        if (task.writes.length > 0) {
-          this._outputWrites(task.id, task.writes, true);
-        }
-      }
     }
     // if all tasks have finished, re-tick
     if (taskList.every((task) => task.writes.length > 0)) {
+      this._outputCachedWrites(taskList);
       return this.tick({ inputKeys });
     }
 
@@ -1291,6 +1288,21 @@ export class PregelLoop {
       this.status = "interrupt_before";
       throw new GraphInterrupt();
     }
+
+    // Cooperative drain: the previous superstep's writes have been applied
+    // and checkpointed above, and the next tasks have been prepared. If a
+    // drain was requested and tasks remain, stop here (without dispatching
+    // them) so the run can be resumed later from the saved checkpoint. This
+    // comes after the breakpoint check: a resume passes the next step's
+    // breakpoints, so draining in front of one would skip it.
+    if (this.control != null && this.control.drainRequested) {
+      this.status = "draining";
+      return false;
+    }
+
+    // Stream the reapplied writes only after the breakpoint and drain checks:
+    // a run that stops at either would stream them again when it resumes.
+    this._outputCachedWrites(taskList);
 
     if (this.stream.modes.has("tasks") || this.stream.modes.has("debug")) {
       const debugOutput = await gatherIterator(
