@@ -35,7 +35,7 @@ const conn = new FileSystemPersistence<{
   writes: {},
 }));
 
-class InMemorySaver extends MemorySaver {
+export class InMemorySaver extends MemorySaver {
   async initialize(cwd: string) {
     await conn.initialize(cwd);
     await conn.with(({ storage, writes }) => {
