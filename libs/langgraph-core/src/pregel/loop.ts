@@ -522,8 +522,8 @@ export class PregelLoop {
 
   protected skipDoneTasks: boolean;
 
-  /** Set in _first(); the narrow "replaying a specific checkpoint" predicate. */
-  protected isTimeTraveling = false;
+  /** Set in _first(): whether recorded pending writes are handed back to their tasks. */
+  protected reappliesPendingWrites = false;
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
@@ -1351,7 +1351,10 @@ export class PregelLoop {
       return false;
     }
     // if there are pending writes from a previous loop, apply them
-    if (!this.isTimeTraveling && this.checkpointPendingWrites.length > 0) {
+    if (
+      this.reappliesPendingWrites &&
+      this.checkpointPendingWrites.length > 0
+    ) {
       this._reapplyWritesToSucceededNodes(this.tasks);
       // On resume, re-schedule error handlers for nodes that failed in a prior
       // run (recorded via ERROR_SOURCE_NODE) before they completed handling.
@@ -1510,7 +1513,7 @@ export class PregelLoop {
 
     if (this.debug) printStepTasks(this.step, [pushed]);
     this.tasks[pushed.id] = pushed;
-    if (!this.isTimeTraveling) this._matchWrites({ [pushed.id]: pushed });
+    if (this.reappliesPendingWrites) this._matchWrites({ [pushed.id]: pushed });
 
     const tasks = await this._matchCachedWrites();
     for (const { task } of tasks) {
@@ -1670,7 +1673,11 @@ export class PregelLoop {
     // A resume that hands the head's pending writes back to their tasks only
     // learns which of them go back once those are scheduled, so the end of
     // the superstep seals the rest. Kept apart from the writes this run adds.
-    const reapplies = this.isResuming && this.skipDoneTasks;
+    // A subgraph never has `skipDoneTasks` (its `checkpoint_id` is always
+    // set), so it hands writes back unless it is replaying a checkpoint.
+    this.reappliesPendingWrites =
+      this.skipDoneTasks || (this.isNested && !isTimeTraveling);
+    const reapplies = this.isResuming && this.reappliesPendingWrites;
     this._resumeLoadedWrites = reapplies
       ? this.checkpointPendingWrites.filter(([tid]) => tid !== NULL_TASK_ID)
       : [];
@@ -1755,7 +1762,6 @@ export class PregelLoop {
     }
     const isCommandUpdateOrGoto = inputIsCommand && nullWrites.length > 0;
 
-    this.isTimeTraveling = isTimeTraveling;
     if (isTimeTraveling) {
       this.checkpointPendingWrites = this.checkpointPendingWrites.filter(
         (w) => w[1] !== RESUME
