@@ -216,3 +216,20 @@ export function messagesDeltaReducer(
   }
   return result.filter((m): m is BaseMessage => m !== null);
 }
+
+// A brand rather than reference equality, so the reducer is still recognized
+// from another copy of this package (its ESM and CJS builds both loaded, or a
+// copy nested under another package).
+const MESSAGES_DELTA_REDUCER = Symbol.for("langgraph.messages_delta_reducer");
+Object.defineProperty(messagesDeltaReducer, MESSAGES_DELTA_REDUCER, {
+  value: true,
+});
+
+/** @internal */
+export function isMessagesDeltaReducer(reducer: unknown): boolean {
+  return (
+    typeof reducer === "function" &&
+    (reducer as unknown as Record<symbol, unknown>)[MESSAGES_DELTA_REDUCER] ===
+      true
+  );
+}

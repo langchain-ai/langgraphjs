@@ -414,6 +414,7 @@ export abstract class BaseStore {
    * @returns Promise resolving to the item or null if not found
    */
   async get(namespace: string[], key: string): Promise<Item | null> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     return (await this.batch<[GetOperation]>([{ namespace, key }]))[0];
   }
 
@@ -506,6 +507,7 @@ export abstract class BaseStore {
    * @param key Unique identifier within the namespace
    */
   async delete(namespace: string[], key: string): Promise<void> {
+    validateNamespace(namespace, { allowEmpty: true, allowReservedRoot: true });
     await this.batch<[PutOperation]>([{ namespace, key, value: null }]);
   }
 
@@ -542,9 +544,11 @@ export abstract class BaseStore {
 
     const matchConditions: MatchCondition[] = [];
     if (prefix) {
+      validateNamespace(prefix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "prefix", path: prefix });
     }
     if (suffix) {
+      validateNamespace(suffix, { allowEmpty: true, allowReservedRoot: true });
       matchConditions.push({ matchType: "suffix", path: suffix });
     }
 
