@@ -20,7 +20,6 @@ import {
   MemorySaver,
   Checkpoint,
   CheckpointMetadata,
-  PendingWrite,
   CacheFullKey,
   InMemoryCache,
 } from "@langchain/langgraph-checkpoint";
@@ -100,12 +99,10 @@ export class MemorySaverAssertImmutableSlow extends MemorySaverAssertImmutable {
   }
 
   async putWrites(
-    config: RunnableConfig,
-    writes: PendingWrite[],
-    taskId: string
+    ...args: Parameters<MemorySaver["putWrites"]>
   ): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 500));
-    return super.putWrites(config, writes, taskId);
+    return super.putWrites(...args);
   }
 }
 
