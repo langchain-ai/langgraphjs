@@ -87,6 +87,11 @@ export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
 /** Special channel reserved for cases when a task exits without any writes */
 export const NO_WRITES = "__no_writes__";
+/**
+ * `versions_seen` key recording which entries a snapshot-only version bump
+ * advanced, and the versions those nodes really read.
+ */
+export const SNAPSHOT_BUMPS = "__snapshot_bumps__";
 /** Special channel reserved for graph return */
 export const RETURN = "__return__";
 /** Special channel reserved for graph previous state */
@@ -111,6 +116,12 @@ export const WAITING_EDGE_CHANNEL_PREFIX = "join:";
 
 export const TASK_NAMESPACE = "6ba7b831-9dad-11d1-80b4-00c04fd430c8";
 export const NULL_TASK_ID = "00000000-0000-0000-0000-000000000000";
+/**
+ * Stands in for `NULL_TASK_ID` as an exit-mode delta write's synthetic id (see
+ * `exitDeltaTaskId`). No task's synthetic id can equal it: those keep the task
+ * id's third group, and task ids are uuid5, so that group starts with 5.
+ */
+export const EXIT_DELTA_NULL_TASK_ID = "00000000-0000-0000-0000-000000000001";
 
 export const RESERVED = [
   TAG_HIDDEN,
@@ -120,6 +131,7 @@ export const RESERVED = [
   ERROR,
   ERROR_SOURCE_NODE,
   NO_WRITES,
+  SNAPSHOT_BUMPS,
 
   // reserved config.configurable keys
   CONFIG_KEY_SEND,
