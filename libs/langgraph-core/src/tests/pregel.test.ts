@@ -1135,7 +1135,9 @@ export function runPregelTests(
         retry_policy: undefined,
         subgraphs: undefined,
         id: expect.any(String),
-        path: [PUSH, 0],
+        // Send tasks carry the translated path `[PUSH, idx, false]`,
+        // matching Python.
+        path: [PUSH, 0, false],
         writers: expect.any(Array),
       });
       expect(task2).toEqual({
@@ -3639,7 +3641,9 @@ graph TD;
           {
             id: expect.any(String),
             name: "tool_one",
-            path: ["__pregel_push", 0],
+            // Send tasks carry the translated path `[PUSH, idx, false]`,
+            // matching Python.
+            path: ["__pregel_push", 0, false],
             interrupts: [],
             result: { my_key: " one" },
           },
@@ -4081,7 +4085,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
         ],
@@ -4135,7 +4139,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
         ],
@@ -4205,13 +4209,13 @@ graph TD;
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
           },
           {
             id: expect.any(String),
             name: "tools",
-            path: [PUSH, 1],
+            path: [PUSH, 1, false],
             interrupts: [],
           },
         ],
@@ -8294,7 +8298,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "generateJoke",
-            path: [PUSH, 0],
+            path: [PUSH, 0, false],
             interrupts: [],
             state: {
               configurable: {
@@ -8306,7 +8310,7 @@ graph TD;
           {
             id: expect.any(String),
             name: "generateJoke",
-            path: [PUSH, 1],
+            path: [PUSH, 1, false],
             interrupts: [],
             state: {
               configurable: {
@@ -8515,7 +8519,7 @@ graph TD;
             {
               id: expect.any(String),
               name: "generateJoke",
-              path: [PUSH, 0],
+              path: [PUSH, 0, false],
               interrupts: [],
               state: {
                 configurable: {
@@ -8531,7 +8535,7 @@ graph TD;
             {
               id: expect.any(String),
               name: "generateJoke",
-              path: [PUSH, 1],
+              path: [PUSH, 1, false],
               interrupts: [],
               state: {
                 configurable: {

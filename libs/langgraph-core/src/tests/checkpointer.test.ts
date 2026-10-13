@@ -91,3 +91,26 @@ describe("JsonPlusSerializer checkpoint restoration security", () => {
     }
   });
 });
+
+describe("a saver that mints versions with a random fraction", () => {
+  class RandomFractionSaver extends MemorySaver {
+    getNextVersion(current: number | undefined): number {
+      return Math.floor(current ?? 0) + 1 + Math.random();
+    }
+  }
+
+  it("still finds an update after two parallel nodes ambiguous", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("a", () => ({}))
+      .addNode("b", () => ({}))
+      .addEdge(START, "a")
+      .addEdge(START, "b")
+      .compile({ checkpointer: new RandomFractionSaver() });
+    const config = { configurable: { thread_id: "t" } };
+    await graph.invoke({ messages: [] }, config);
+
+    await expect(graph.updateState(config, { messages: [] })).rejects.toThrow(
+      'Ambiguous update, specify "asNode"'
+    );
+  });
+});

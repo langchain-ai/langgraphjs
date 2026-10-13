@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import {
   BaseCheckpointSaver,
@@ -353,6 +354,61 @@ describe("RedisSaver Integration Tests", () => {
 
   beforeEach(async () => {
     await redisClient.flushAll();
+  });
+
+  it("keeps each branch's value when two checkpoints from one parent write the same channel", async () => {
+    const saver = new RedisSaver(redisClient);
+    const parentConfig = await saver.put(
+      { configurable: { thread_id: "branches", checkpoint_ns: "" } },
+      {
+        ...emptyCheckpoint(),
+        id: uuid6(0),
+        channel_values: { ch: "base" },
+        channel_versions: { ch: 1 },
+      },
+      { source: "loop", step: 0, parents: {} },
+      { ch: 1 }
+    );
+    const branch = async (value: string, step: number) => {
+      const version = saver.getNextVersion(1);
+      const config = await saver.put(
+        parentConfig,
+        {
+          ...emptyCheckpoint(),
+          id: uuid6(step),
+          channel_values: { ch: value },
+          channel_versions: { ch: version },
+        },
+        { source: "update", step: 1, parents: {} },
+        { ch: version }
+      );
+      return { config, version };
+    };
+    const first = await branch("first", 1);
+    await branch("second", 2);
+
+    const firstChild = await saver.put(
+      first.config,
+      {
+        ...emptyCheckpoint(),
+        id: uuid6(3),
+        channel_values: { ch: "first", other: "x" },
+        channel_versions: { ch: first.version, other: 1 },
+      },
+      { source: "update", step: 2, parents: {} },
+      { other: 1 }
+    );
+
+    expect(
+      (await saver.getTuple(firstChild))?.checkpoint.channel_values
+    ).toEqual({ ch: "first", other: "x" });
+  });
+
+  it("throws on a string version, as the base saver does", () => {
+    const saver = new RedisSaver(redisClient);
+    expect(() =>
+      saver.getNextVersion("00000000000000000000000000000001.0.5" as never)
+    ).toThrow("Please override this method to use string versions.");
   });
 
   it("should handle basic integration workflow", async () => {
@@ -2112,5 +2168,112 @@ describe("ShallowRedisSaver", () => {
       value: "survive-double-put",
       resumable: true,
     });
+  });
+});
+
+// ============================================================================
+// SHALLOW REDIS: pending-write ordering through both all-thread list branches
+// ============================================================================
+describe("ShallowRedisSaver list pending-write ordering", () => {
+  let container: StartedTestContainer;
+  let client: any;
+  let saver: ShallowRedisSaver;
+
+  beforeEach(async () => {
+    container = await new GenericContainer("redis/redis-stack-server:latest")
+      .withExposedPorts(6379)
+      .start();
+    client = createClient({
+      url: `redis://${container.getHost()}:${container.getMappedPort(6379)}`,
+    });
+    await client.connect();
+    saver = new ShallowRedisSaver(client);
+  });
+
+  afterEach(async () => {
+    if (client && client.isOpen) await client.disconnect();
+    if (container) await container.stop();
+  });
+
+  async function putThreadWithOpposingOrders(threadId: string) {
+    const config: RunnableConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: "" },
+    };
+    const checkpoint: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_values: { counter: 1 },
+      channel_versions: { counter: "1.0" },
+    };
+    const saved = await saver.put(
+      config,
+      checkpoint,
+      { source: "loop", step: 1, parents: {} }
+    );
+    // Task ids sort OPPOSITE to their task paths, and the put order is a
+    // third permutation, so only writesSortKey order gives the result below.
+    await saver.putWrites(
+      saved,
+      [["ch", "b"] as PendingWrite],
+      "00000000-0000-0000-0000-000000000000",
+      "~pull, 02"
+    );
+    await saver.putWrites(
+      saved,
+      [["ch", "a"] as PendingWrite],
+      "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "~pull, 01"
+    );
+    await saver.putWrites(
+      saved,
+      [["ch", "input"] as PendingWrite],
+      "88888888-8888-8888-8888-888888888888"
+    );
+    return checkpoint.id;
+  }
+
+  it("search branch: all-thread list returns writes in writesSortKey order", async () => {
+    const checkpointId = await putThreadWithOpposingOrders("order-search");
+
+    const tuples = [];
+    for await (const t of saver.list(null)) tuples.push(t);
+    const tuple = tuples.find((t) => t.checkpoint.id === checkpointId);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+      "input",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("fallback branch: all-thread list returns writes in writesSortKey order", async () => {
+    const checkpointId = await putThreadWithOpposingOrders("order-fallback");
+    // `list` recreates a dropped index in `ensureIndexes`, so dropping it
+    // would not exercise the fallback. Instead, make the search itself fail
+    // with the recognized "no such index" error, and watch the checkpoint-key
+    // scan that the fallback performs.
+    const searchSpy = vi
+      .spyOn(client.ft, "search")
+      .mockRejectedValue(new Error("no such index"));
+    const keysSpy = vi.spyOn(client, "keys");
+
+    const tuples = [];
+    for await (const t of saver.list(null)) tuples.push(t);
+    const tuple = tuples.find((t) => t.checkpoint.id === checkpointId);
+    expect(tuple).toBeDefined();
+    expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+      "input",
+      "a",
+      "b",
+    ]);
+    // The fallback branch ran: the search failed and the checkpoint-key
+    // scan produced the results.
+    expect(searchSpy).toHaveBeenCalled();
+    expect(
+      keysSpy.mock.calls.some(([pattern]) =>
+        String(pattern).startsWith("checkpoint:")
+      )
+    ).toBe(true);
+    searchSpy.mockRestore();
+    keysSpy.mockRestore();
   });
 });
