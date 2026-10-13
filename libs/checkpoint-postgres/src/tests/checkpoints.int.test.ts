@@ -315,6 +315,12 @@ describe.each([
           is_nullable: "NO",
           column_default: null,
         },
+        {
+          column_name: "task_path",
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "''::text",
+        },
       ]);
 
       // Verify migrations table has correct number of entries
@@ -432,6 +438,50 @@ describe.each([
     const checkpointTuple2 = checkpointTuples[1];
     expect(checkpointTuple1.checkpoint.ts).toBe("2024-04-20T17:19:07.952Z");
     expect(checkpointTuple2.checkpoint.ts).toBe("2024-04-19T17:19:07.952Z");
+  });
+
+  it("keeps each branch's value when two checkpoints from one parent write the same channel", async () => {
+    const parentConfig = await postgresSaver.put(
+      { configurable: { thread_id: "branches" } },
+      {
+        ...emptyCheckpoint(),
+        id: uuid6(0),
+        channel_values: { ch: "base" },
+        channel_versions: { ch: 1 },
+      },
+      { source: "loop", step: 0, parents: {} },
+      { ch: 1 }
+    );
+    const branch = async (value: string, step: number) => {
+      const version = postgresSaver.getNextVersion(1);
+      return postgresSaver.put(
+        parentConfig,
+        {
+          ...emptyCheckpoint(),
+          id: uuid6(step),
+          channel_values: { ch: value },
+          channel_versions: { ch: version },
+        },
+        { source: "update", step: 1, parents: {} },
+        { ch: version }
+      );
+    };
+
+    const first = await branch("first", 1);
+    const second = await branch("second", 2);
+
+    expect(
+      (await postgresSaver.getTuple(first))?.checkpoint.channel_values
+    ).toEqual({ ch: "first" });
+    expect(
+      (await postgresSaver.getTuple(second))?.checkpoint.channel_values
+    ).toEqual({ ch: "second" });
+  });
+
+  it("throws on a string version, as the base saver does", () => {
+    expect(() =>
+      postgresSaver.getNextVersion("00000000000000000000000000000001.0.5" as never)
+    ).toThrow("Please override this method to use string versions.");
   });
 
   it("should delete thread", async () => {

@@ -110,6 +110,73 @@ export type CheckpointListOptions = {
   filter?: Record<string, any>;
 };
 
+/** Sort key for the writes of one superstep: `(task_path, task_id, idx)`. */
+export type WritesSortKey = readonly [string, string, number];
+
+/**
+ * Sort key for the writes of one superstep.
+ *
+ * Live execution applies a superstep's tasks in this order (see `_applyWrites`
+ * in `@langchain/langgraph-core`), so a saver that replays stored writes, as
+ * `getDeltaChannelHistory` does, must sort them by it too, or an
+ * order-sensitive (but batching-invariant) reducer rebuilds a different value
+ * than the run produced. `taskPath` is the string passed to `putWrites`.
+ *
+ * Writes stored without a task path (graph input, `Command` updates, rows
+ * predating the column) use `""`, which sorts
+ * first, before any real task path — which is also where live execution
+ * applies input.
+ */
+export function writesSortKey(
+  taskPath: string,
+  taskId = "",
+  idx = 0
+): WritesSortKey {
+  return [taskPath, taskId, idx];
+}
+
+/**
+ * Compare two {@link WritesSortKey}s: strings by code point (matching Python
+ * `str` order, which differs from UTF-16 code-unit order for astral
+ * characters), `idx` numerically.
+ *
+ * The one comparator for a superstep's writes — used by live execution and
+ * every saver, so they cannot drift apart. Do not sort write keys with `<`,
+ * `localeCompare`, or default `Array.prototype.sort` on the key tuple.
+ */
+export function compareWritesSortKeys(
+  a: WritesSortKey,
+  b: WritesSortKey
+): number {
+  if (a[0] !== b[0]) return compareStringsByCodePoint(a[0], b[0]);
+  if (a[1] !== b[1]) return compareStringsByCodePoint(a[1], b[1]);
+  return a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0;
+}
+
+/**
+ * Compare strings by Unicode code point (Python `str` order).
+ *
+ * Iterates actual code points with independent offsets, so unpaired
+ * surrogates compare as their own values, exactly as Python's `str`
+ * ordering treats them: "\ud800" < "\ue000", and an astral character
+ * (any surrogate pair) sorts after every BMP code point.
+ */
+function compareStringsByCodePoint(a: string, b: string): number {
+  let ai = 0;
+  let bi = 0;
+  while (ai < a.length && bi < b.length) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const ac = a.codePointAt(ai)!;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const bc = b.codePointAt(bi)!;
+    if (ac !== bc) return ac < bc ? -1 : 1;
+    ai += ac > 0xffff ? 2 : 1;
+    bi += bc > 0xffff ? 2 : 1;
+  }
+  if (ai >= a.length && bi >= b.length) return 0;
+  return ai >= a.length ? -1 : 1;
+}
+
 export abstract class BaseCheckpointSaver<V extends string | number = number> {
   serde: SerializerProtocol = new JsonPlusSerializer();
 
@@ -148,11 +215,21 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
 
   /**
    * Store intermediate writes linked to a checkpoint.
+   *
+   * `taskPath` is the serialized path of the task creating the writes (see
+   * `writesSortKey`). Implementations should persist it when they can, and
+   * must return `pendingWrites` from `getTuple`/`list` in `writesSortKey`
+   * order — live execution applies a superstep's writes in that order, so
+   * replaying in any other order can rebuild a different value for an
+   * order-sensitive reducer. Writes stored without a path (rows predating it,
+   * savers that don't persist one) sort first by `taskId`, which is also the
+   * order live execution applies input in.
    */
   abstract putWrites(
     config: RunnableConfig,
     writes: PendingWrite[],
-    taskId: string
+    taskId: string,
+    taskPath?: string
   ): Promise<void>;
 
   /**
@@ -175,6 +252,15 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
    *
    * Walks the parent chain (not `list({ before })`): for forked threads, only
    * on-path ancestors contribute.
+   *
+   * Within a single checkpoint, writes are ordered by `writesSortKey` —
+   * `(task_path, task_id, idx)` — the order live execution applies a
+   * superstep's task writes in. This default walk cannot sort by path itself
+   * (`CheckpointPendingWrite` carries no path), so it relies on `getTuple`
+   * returning `pendingWrites` already in `writesSortKey` order, which the
+   * contract above requires of every saver. Writes stored without a
+   * `task_path` (graph input, `Command` updates, rows predating the
+   * column) sort first, by `task_id`.
    *
    * The default implementation walks `getTuple` + `parentConfig` once for all
    * channels — each ancestor visited once, not once per channel. Savers with
@@ -210,12 +296,11 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
         await this.getTuple(cursorConfig);
       if (tup === undefined) break;
       if (tup.pendingWrites && tup.pendingWrites.length > 0) {
-        // DeltaChannel reconstruction must replay concurrent same-superstep
-        // writes in the canonical (task_id, idx) order that live execution uses
-        // (see `_applyWrites`), or the reconstructed value can diverge from the
-        // live one. Group per channel and stable-sort by task id: a stable sort
-        // keeps each task's writes in their stored `idx` order, making the
-        // result independent of how a saver returns `pendingWrites`.
+        // `getTuple` returns `pendingWrites` in `writesSortKey` order (see its
+        // contract), which is the order live execution applies a superstep's
+        // writes in — so no re-sorting here; just group per channel. Each
+        // block is pushed reversed so the final `.reverse()` below yields
+        // oldest→newest checkpoints with each checkpoint's writes ascending.
         const perChannel: Record<string, CheckpointPendingWrite[]> = {};
         for (const write of tup.pendingWrites) {
           const ch = write[1];
@@ -223,9 +308,6 @@ export abstract class BaseCheckpointSaver<V extends string | number = number> {
         }
         for (const ch of Object.keys(perChannel)) {
           const block = perChannel[ch];
-          block.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-          // Pushed reversed so the final `.reverse()` below yields oldest→newest
-          // checkpoints with each checkpoint's writes ascending by (task_id, idx).
           for (let i = block.length - 1; i >= 0; i -= 1) {
             collectedByCh[ch].push(block[i]);
           }
