@@ -8,6 +8,7 @@ import {
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   MemorySaver,
+  InMemoryCache,
   DeltaSnapshot,
   type BaseCheckpointSaver,
   isDeltaSnapshot,
@@ -53,6 +54,40 @@ const listReducer = (state: number[], writes: number[][]): number[] => {
   for (const w of writes) out.push(...w);
   return out;
 };
+
+const strListReducer = (state: string[], writes: string[][]): string[] => {
+  const out = [...state];
+  for (const w of writes) out.push(...w);
+  return out;
+};
+
+const sorted = (values: number[]) => values.sort((a, b) => a - b);
+const deltaInputGraph = (snapshotFrequency?: number) =>
+  new Pregel({
+    nodes: {
+      n: Channel.subscribeTo("go")
+        .pipe(() => [2])
+        .pipe(Channel.writeTo(["log", "plain"])),
+    },
+    channels: {
+      log: new DeltaChannel<number[], number[]>(
+        (state, writes) => sorted(listReducer(state, writes)),
+        { snapshotFrequency }
+      ),
+      plain: new BinaryOperatorAggregate<number[]>(
+        (a, b) => sorted([...a, ...b]),
+        () => []
+      ),
+      go: new LastValue<number>(),
+    },
+    inputChannels: ["log", "plain", "go"],
+    outputChannels: ["log", "plain"],
+    checkpointer: new MemorySaver(),
+  });
+const logAndPlain = async (
+  graph: ReturnType<typeof deltaInputGraph>,
+  config: RunnableConfig
+) => (await graph.getState(config)).values as Record<string, number[]>;
 
 // Stores checkpoints the way releases before DELTA_WRITES_VERSIONED did.
 class OlderVersionSaver extends MemorySaver {
@@ -729,34 +764,6 @@ describe("a DeltaChannel that was never written", () => {
     expect((await graph.getState(config)).values.log).toEqual([1]);
   });
 
-  const sorted = (values: number[]) => values.sort((a, b) => a - b);
-  const deltaInputGraph = (snapshotFrequency?: number) =>
-    new Pregel({
-      nodes: {
-        n: Channel.subscribeTo("go")
-          .pipe(() => [2])
-          .pipe(Channel.writeTo(["log", "plain"])),
-      },
-      channels: {
-        log: new DeltaChannel<number[], number[]>(
-          (state, writes) => sorted(listReducer(state, writes)),
-          { snapshotFrequency }
-        ),
-        plain: new BinaryOperatorAggregate<number[]>(
-          (a, b) => sorted([...a, ...b]),
-          () => []
-        ),
-        go: new LastValue<number>(),
-      },
-      inputChannels: ["log", "plain", "go"],
-      outputChannels: ["log", "plain"],
-      checkpointer: new MemorySaver(),
-    });
-  const logAndPlain = async (
-    graph: ReturnType<typeof deltaInputGraph>,
-    config: RunnableConfig
-  ) => (await graph.getState(config)).values as Record<string, number[]>;
-
   it("doesn't replay an update as input to a delta input channel twice", async () => {
     const graph = deltaInputGraph();
     const config = { configurable: { thread_id: "input-to-delta-channel" } };
@@ -964,7 +971,109 @@ describe("a DeltaChannel that was never written", () => {
   });
 });
 
+// Python twin: libs/langgraph/tests/test_delta_channel_run_input.py
+describe.each(["sync", "async", "exit"] as const)(
+  "a run's input to a DeltaChannel input channel (durability: %s)",
+  (durability) => {
+    const expectLogToReadLikePlainEverywhere = async (
+      graph: ReturnType<typeof deltaInputGraph>,
+      config: RunnableConfig
+    ) => {
+      for await (const state of graph.getStateHistory(config)) {
+        const values = state.values as Record<string, number[] | undefined>;
+        expect(values.log ?? []).toEqual(values.plain ?? []);
+      }
+    };
+
+
+    it("reads back on its own checkpoints", async () => {
+      const graph = deltaInputGraph();
+      const config = { configurable: { thread_id: "t" } };
+
+      await graph.invoke({ log: [0], plain: [0], go: 1 }, { ...config, durability });
+      await graph.invoke({ log: [5], plain: [5], go: 1 }, { ...config, durability });
+
+      await expectLogToReadLikePlainEverywhere(graph, config);
+    });
+
+    it.each([
+      ["without", { go: 1 }],
+      ["with", { log: [5], plain: [5], go: 1 }],
+    ])(
+      "from an older checkpoint stays out of its other branch, %s delta input",
+      async (_, otherBranchInput) => {
+        const graph = deltaInputGraph();
+        const config = { configurable: { thread_id: "t" } };
+        await graph.invoke({ go: 1 }, { ...config, durability });
+        const older = (await graph.getState(config)).config;
+        await graph.invoke(otherBranchInput, { ...config, durability });
+
+        await graph.invoke({ log: [7], plain: [7], go: 1 }, { ...older, durability });
+
+        await expectLogToReadLikePlainEverywhere(graph, config);
+      }
+    );
+  }
+);
+
 describe("DeltaChannel end-to-end via StateGraph", () => {
+  // Python twin: libs/langgraph/tests/test_delta_channel_node_cache.py
+  describe("a node served from the node cache", () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<string[], string[]>(strListReducer),
+      plain: Annotation<string[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+
+    const INPUT = { log: [], plain: [] };
+
+    class CountsSets extends InMemoryCache {
+      sets = 0;
+
+      async set(pairs: Parameters<InMemoryCache["set"]>[0]) {
+        this.sets += 1;
+        return super.set(pairs);
+      }
+    }
+
+    it.each(["sync", "async", "exit"] as const)(
+      "saves its writes like a node that ran, without caching them again (durability: %s)",
+      async (durability) => {
+        const runs: string[] = [];
+        const node = (name: string) => () => {
+          runs.push(name);
+          return { log: [name], plain: [name] };
+        };
+        const cache = new CountsSets();
+        const graph = new StateGraph(State)
+          .addNode("a", node("a"))
+          .addNode("b", node("b"), { cachePolicy: true })
+          .addNode("c", node("c"))
+          .addEdge(START, "a")
+          .addEdge("a", "b")
+          .addEdge("b", "c")
+          .compile({ checkpointer: new MemorySaver(), cache });
+        await graph.invoke(INPUT, {
+          configurable: { thread_id: "1" },
+          durability,
+        });
+        const config = { configurable: { thread_id: "2" } };
+
+        await graph.invoke(INPUT, { ...config, durability });
+
+        expect(runs).toEqual(["a", "b", "c", "a", "c"]);
+        expect(cache.sets, "the cache hit was written back to the cache").toBe(
+          1
+        );
+        for await (const state of graph.getStateHistory(config)) {
+          expect(state.values.log ?? []).toEqual(state.values.plain ?? []);
+        }
+      }
+    );
+  });
+
   const buildGraph = (snapshotFrequency: number) => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(
@@ -1322,11 +1431,53 @@ describe("bulkUpdateState with several updates in one super-step", () => {
 // Overwrite force-snapshots `messages` to ["b"], the cold read seeds from that
 // snapshot and replays only step 3's ["d"] — matching live.
 describe("DeltaChannel Overwrite parity (langgraph#8124, #8125)", () => {
-  const strListReducer = (state: string[], writes: string[][]): string[] => {
-    const out = [...state];
-    for (const w of writes) out.push(...w);
-    return out;
-  };
+  // Python twin: libs/langgraph/tests/test_delta_channel_update_overwrite.py
+  describe("an Overwrite through updateState", () => {
+    it("snapshots its DeltaChannel on the checkpoint it saves, as a node's does", async () => {
+      const saver = new MemorySaver();
+      const graph = new StateGraph(
+        Annotation.Root({ log: new DeltaChannel<number[], number[]>(listReducer) })
+      )
+        .addNode("model", () => ({}))
+        .addEdge(START, "model")
+        .compile({ checkpointer: saver });
+      const config = { configurable: { thread_id: "t" } };
+      await graph.invoke({ log: [0] }, config);
+
+      await graph.updateState(config, { log: new Overwrite([1]) }, "model");
+
+      const head = await saver.getTuple(config);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.log)).toBe(true);
+      expect((await graph.getState(config)).values.log).toEqual([1]);
+    });
+
+    it("snapshots its DeltaChannel when the update is the input", async () => {
+      const saver = new MemorySaver();
+      const graph = new Pregel({
+        nodes: {
+          n: Channel.subscribeTo("go")
+            .pipe(() => [2])
+            .pipe(Channel.writeTo(["log"])),
+        },
+        channels: {
+          log: new DeltaChannel<number[], number[]>(listReducer),
+          go: new LastValue<number>(),
+        },
+        inputChannels: ["log", "go"],
+        outputChannels: ["log"],
+        checkpointer: saver,
+      });
+      const config = { configurable: { thread_id: "t" } };
+      await graph.invoke({ log: [0], go: 1 }, config);
+
+      await graph.updateState(config, { log: new Overwrite([1]) }, "__input__");
+
+      const head = await saver.getTuple(config);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.log)).toBe(true);
+      expect((await graph.getState(config)).values.log).toEqual([1]);
+    });
+  });
+
   const State = Annotation.Root({
     messages: new DeltaChannel<string[], string[]>(strListReducer),
   });
