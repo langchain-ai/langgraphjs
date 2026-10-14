@@ -1652,6 +1652,12 @@ export class PregelLoop {
           configurable?.[CONFIG_KEY_RESUMING] === true ||
           this.resumeAtHead
         ));
+    if (this.isNested && !isTimeTraveling) {
+      // Task configs always carry a `checkpoint_id` key, so a nested graph
+      // starts out replaying even on a plain resume, which would rerun its
+      // finished tasks instead of handing back their writes.
+      this.skipDoneTasks = true;
+    }
     const isUpdateOrFork =
       this.checkpointMetadata.source === "update" ||
       this.checkpointMetadata.source === "fork";
