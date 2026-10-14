@@ -341,46 +341,13 @@ export interface IndexConfig {
 }
 
 /**
- * Utility function to get text at a specific JSON path
+ * Utility function to get text at a specific JSON path.
+ *
+ * This is the implementation InMemoryStore indexes with, and the one the path
+ * syntax documented on IndexConfig.fields above describes. It is re-exported
+ * here so the package entry point exposes the same semantics the store applies.
  */
-export function getTextAtPath(obj: any, path: string): string[] {
-  const parts = path.split(".");
-  let current: any = obj;
-
-  for (const part of parts) {
-    if (part.includes("[")) {
-      const [arrayName, indexStr] = part.split("[");
-      const index = indexStr.replace("]", "");
-
-      if (!current[arrayName]) return [];
-
-      if (index === "*") {
-        const results: string[] = [];
-        for (const item of current[arrayName]) {
-          if (typeof item === "string") results.push(item);
-        }
-        return results;
-      }
-
-      const idx = parseInt(index, 10);
-      if (Number.isNaN(idx)) return [];
-      current = current[arrayName][idx];
-    } else {
-      current = current[part];
-    }
-
-    if (current === undefined) return [];
-  }
-
-  return typeof current === "string" ? [current] : [];
-}
-
-/**
- * Tokenizes a JSON path into parts
- */
-export function tokenizePath(path: string): string[] {
-  return path.split(".");
-}
+export { getTextAtPath, tokenizePath } from "./utils.js";
 
 /**
  * Abstract base class for persistent key-value stores.
