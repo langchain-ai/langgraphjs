@@ -475,13 +475,17 @@ export function isDeltaWritesVersioned(
 }
 
 /**
- * Delta channels whose value at `checkpoint` the ancestor walk rebuilds.
+ * Channels whose value at `checkpoint` the ancestor walk rebuilds.
  *
  * A {@link DeltaSnapshot} or a migrated plain value in `channel_values`
  * resolves directly, so only a channel with nothing stored there needs the
  * walk. With `versionedOnly`, a channel with no version was never written, so
  * it is empty without one; a walk for it would find no snapshot to stop at and
  * read every ancestor, every time the thread is loaded.
+ *
+ * A `BinaryOperatorAggregate` stores its value at every version, so one with a
+ * version and nothing stored was written as a DeltaChannel before its
+ * annotation changed, and is rebuilt the same way.
  */
 function deltaChannelsToReplay(
   specs: Record<string, BaseChannel>,
@@ -491,10 +495,13 @@ function deltaChannelsToReplay(
   const keys: string[] = [];
   for (const k in specs) {
     if (!Object.prototype.hasOwnProperty.call(specs, k)) continue;
+    if (Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)) {
+      continue;
+    }
+    const versioned = checkpoint.channel_versions[k] !== undefined;
     if (
-      isDeltaChannel(specs[k]) &&
-      (!versionedOnly || checkpoint.channel_versions[k] !== undefined) &&
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
+      (isDeltaChannel(specs[k]) && (versioned || !versionedOnly)) ||
+      (specs[k].lc_graph_name === "BinaryOperatorAggregate" && versioned)
     ) {
       keys.push(k);
     }
@@ -556,10 +563,14 @@ export async function channelsFromCheckpoint<
   for (const k of deltaKeys) {
     const history = histories[k];
     if (history === undefined) continue;
-    const replayCh = filteredSpecs[k].fromCheckpoint(
-      history.seed
-    ) as unknown as DeltaChannelLike;
-    replayCh.replayWrites(history.writes);
+    const replayCh = filteredSpecs[k].fromCheckpoint(history.seed);
+    if (isDeltaChannel(replayCh)) {
+      (replayCh as DeltaChannelLike).replayWrites(history.writes);
+    } else {
+      // One update per write: the writes span many supersteps, and a single
+      // call would reject a second Overwrite and drop the writes after one.
+      for (const [, , value] of history.writes) replayCh.update([value]);
+    }
     (channels as Record<string, BaseChannel>)[k] = replayCh;
   }
   return channels;

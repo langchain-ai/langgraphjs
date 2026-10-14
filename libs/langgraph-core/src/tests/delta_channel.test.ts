@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIMessage,
   BaseMessage,
@@ -33,6 +33,7 @@ import {
   type Messages,
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { StateGraph } from "../graph/state.js";
 import {
   START,
@@ -1536,6 +1537,142 @@ describe("channelsFromCheckpoint", () => {
     };
     const channels = await channelsFromCheckpoint(specs, emptyCheckpoint());
     expect(channels.messages.get()).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a snapshot seed",
+      new DeltaSnapshot(["a"]),
+      [["b"], ["c"]],
+      ["a", "b", "c"],
+    ],
+    ["an Overwrite", ["a"], [["b"], new Overwrite(["c"]), ["d"]], ["c", "d"]],
+    [
+      "two Overwrites and no seed",
+      undefined,
+      [["b"], new Overwrite(["c"]), new Overwrite(["d"]), ["e"]],
+      ["d", "e"],
+    ],
+  ])(
+    "replays a plain reducer's delta history one write at a time (%s)",
+    async (_, seed, writes, expected) => {
+      const saver = new MemorySaver();
+      vi.spyOn(saver, "getDeltaChannelHistory").mockResolvedValue({
+        items: { seed, writes: writes.map((w) => ["t", "items", w]) },
+      });
+      const specs = {
+        items: new BinaryOperatorAggregate<string[], string[]>(
+          (a, b) => [...a, ...b],
+          () => []
+        ),
+      };
+      const channels = await channelsFromCheckpoint(
+        specs,
+        { ...emptyCheckpoint(), channel_versions: { items: 1 } },
+        { saver, config: { configurable: { thread_id: "1" } } }
+      );
+      expect(channels.items.get()).toEqual(expected);
+    }
+  );
+});
+
+describe("a DeltaChannel changed to a plain reducer", () => {
+  const DeltaState = Annotation.Root({
+    messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer, {
+      snapshotFrequency: 3,
+    }),
+  });
+  const chat = (state: { messages: BaseMessage[] }) => ({
+    messages: [new AIMessage(`reply ${state.messages.length}`)],
+  });
+  const deltaGraph = (checkpointer: BaseCheckpointSaver) =>
+    new StateGraph(DeltaState)
+      .addNode("chat", chat)
+      .addEdge(START, "chat")
+      .addEdge("chat", END)
+      .compile({ checkpointer });
+  const plainGraph = (checkpointer: BaseCheckpointSaver) =>
+    new StateGraph(MessagesAnnotation)
+      .addNode("chat", chat)
+      .addEdge(START, "chat")
+      .addEdge("chat", END)
+      .compile({ checkpointer });
+  const config = { configurable: { thread_id: "to-plain" } };
+  const messagesOf = (values: unknown) =>
+    (values as { messages: BaseMessage[] }).messages;
+
+  const writeDeltaThread = async (saver: BaseCheckpointSaver) => {
+    const graph = deltaGraph(saver);
+    for (let i = 0; i < 4; i += 1) {
+      await graph.invoke({ messages: [new HumanMessage(`q${i}`)] }, config);
+    }
+    const stored: unknown[] = [];
+    for await (const t of saver.list(config)) {
+      stored.push(t.checkpoint.channel_values.messages);
+    }
+    expect(stored.some((v) => isDeltaSnapshot(v))).toBe(true);
+  };
+  const historyValues = async (
+    graph: ReturnType<typeof plainGraph> | ReturnType<typeof deltaGraph>
+  ) => {
+    const values: unknown[] = [];
+    for await (const s of graph.getStateHistory(config)) values.push(s.values);
+    return values;
+  };
+
+  const savers: Record<string, () => BaseCheckpointSaver> = {
+    MemorySaver: () => new MemorySaver(),
+    SqliteSaver: () => SqliteSaver.fromConnString(":memory:"),
+  };
+  for (const [name, makeSaver] of Object.entries(savers)) {
+    it(`reads every delta-written checkpoint (${name})`, async () => {
+      const saver = makeSaver();
+      await writeDeltaThread(saver);
+
+      expect(await historyValues(plainGraph(saver))).toEqual(
+        await historyValues(deltaGraph(saver))
+      );
+    });
+
+    it(`continues a delta-written thread (${name})`, async () => {
+      const saver = makeSaver();
+      await writeDeltaThread(saver);
+      const before = messagesOf(
+        (await deltaGraph(saver).getState(config)).values
+      );
+
+      const after = messagesOf(
+        await plainGraph(saver).invoke(
+          { messages: [new HumanMessage("q4")] },
+          config
+        )
+      );
+
+      expect(after.slice(0, -2)).toEqual(before);
+      expect(after.slice(-2).map((m) => m.content)).toEqual([
+        "q4",
+        `reply ${before.length + 1}`,
+      ]);
+      const head = await saver.getTuple(config);
+      expect(head?.checkpoint.channel_values.messages).toEqual(after);
+      expect(
+        messagesOf((await deltaGraph(saver).getState(config)).values)
+      ).toEqual(after);
+    });
+  }
+
+  it("never walks history for a plain thread", async () => {
+    const saver = new MemorySaver();
+    const walk = vi.spyOn(saver, "getDeltaChannelHistory");
+    const graph = plainGraph(saver);
+
+    await graph.invoke({ messages: [new HumanMessage("q0")] }, config);
+    await graph.updateState(config, { messages: [new HumanMessage("note")] });
+    await graph.invoke({ messages: [new HumanMessage("q1")] }, config);
+    await graph.getState(config);
+    await historyValues(graph);
+
+    expect(walk).not.toHaveBeenCalled();
   });
 });
 
