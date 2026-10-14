@@ -287,6 +287,17 @@ export class PostgresSaver extends BaseCheckpointSaver {
     );
   }
 
+  /**
+   * One past the integer part of `current`, plus a random fraction. Blobs are
+   * stored per channel and version, so two branches from one checkpoint that
+   * minted the same version would share a blob: the second branch's value is
+   * dropped and it reads back the first one's. A string version (from a
+   * Python saver) throws in the base class rather than turn into `NaN`.
+   */
+  getNextVersion(current: number | undefined): number {
+    return Math.floor(super.getNextVersion(current)) + Math.random();
+  }
+
   protected _dumpCheckpoint(checkpoint: Checkpoint) {
     const serialized: Record<string, unknown> = { ...checkpoint };
     if ("channel_values" in serialized) delete serialized.channel_values;

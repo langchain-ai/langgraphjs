@@ -278,9 +278,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       const checkpoints = this.storage[thread_id]?.[checkpoint_ns];
       if (checkpoints !== undefined) {
         // eslint-disable-next-line prefer-destructuring
-        checkpoint_id = Object.keys(checkpoints).sort((a, b) =>
-          b.localeCompare(a)
-        )[0];
+        checkpoint_id = Object.keys(checkpoints).sort().reverse()[0];
         const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
         const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
@@ -368,9 +366,10 @@ export class MemorySaver extends BaseCheckpointSaver {
           continue;
         }
         const checkpoints = this.storage[threadId]?.[checkpointNamespace] ?? {};
-        const sortedCheckpoints = Object.entries(checkpoints).sort((a, b) =>
-          b[0].localeCompare(a[0])
-        );
+        const sortedCheckpoints = Object.keys(checkpoints)
+          .sort()
+          .reverse()
+          .map((id) => [id, checkpoints[id]] as const);
 
         for (const [
           checkpointId,
@@ -598,12 +597,13 @@ export class MemorySaver extends BaseCheckpointSaver {
 
     const threadId = config.configurable?.thread_id;
     const checkpointNs = config.configurable?.checkpoint_ns ?? "";
-    const checkpointId = getCheckpointId(config);
 
     if (threadId !== undefined) assertSafeStorageKey("thread_id", threadId);
     assertSafeStorageKey("checkpoint_ns", checkpointNs, { allowEmpty: true });
 
     const nsStorage = this.storage[threadId]?.[checkpointNs] ?? {};
+    const checkpointId =
+      getCheckpointId(config) || Object.keys(nsStorage).sort().reverse()[0];
 
     // Build the parent chain starting at the target's parent (the target's
     // own pending writes are for the next super-step and excluded).

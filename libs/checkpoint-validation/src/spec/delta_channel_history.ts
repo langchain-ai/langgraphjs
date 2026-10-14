@@ -202,6 +202,24 @@ export function deltaChannelHistoryTests<T extends BaseCheckpointSaver>(
         expect(hist.messages.seed).toBeUndefined();
         expect(hist.messages.writes.map((w) => w[2])).toEqual([[1]]);
       });
+
+      it("reads from the latest checkpoint when the config has no checkpoint id", async () => {
+        const root = rootConfig(uuid6(3));
+
+        const c0 = await putCheckpoint(root, uuid6(3), {
+          messages: new DeltaSnapshot([0]),
+        });
+        await checkpointer.putWrites(c0, [["messages", [1]]], "task0");
+        await putCheckpoint(c0, uuid6(3), {});
+
+        const hist = await checkpointer.getDeltaChannelHistory({
+          config: root,
+          channels: ["messages"],
+        });
+
+        expect(hist.messages.writes.map((w) => w[2])).toEqual([[1]]);
+        expect((hist.messages.seed as DeltaSnapshot).value).toEqual([0]);
+      });
     });
   });
 }

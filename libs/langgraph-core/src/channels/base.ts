@@ -9,7 +9,14 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { EmptyChannelError } from "../errors.js";
-import { getDeltaMaxSuperstepsSinceSnapshot } from "../constants.js";
+import {
+  CHECKPOINT_NAMESPACE_END,
+  CHECKPOINT_NAMESPACE_SEPARATOR,
+  EXIT_DELTA_NULL_TASK_ID,
+  getDeltaMaxSuperstepsSinceSnapshot,
+  NULL_TASK_ID,
+  SNAPSHOT_BUMPS,
+} from "../constants.js";
 
 /** Matches Postgres `uuid` / Python `uuid.UUID` (128-bit, 8-4-4-4-12 hex). */
 const STRUCTURED_UUID =
@@ -21,6 +28,13 @@ const STRUCTURED_UUID =
  */
 export function isDeltaChannel(channel: BaseChannel): boolean {
   return channel != null && channel.lc_graph_name === "DeltaChannel";
+}
+
+export function deltaChannelWrites<W extends readonly [PropertyKey, unknown]>(
+  channels: Record<string, BaseChannel>,
+  writes: ReadonlyArray<W>
+): W[] {
+  return writes.filter(([ch]) => isDeltaChannel(channels[String(ch)]));
 }
 
 export function isBaseChannel(obj: unknown): obj is BaseChannel {
@@ -186,7 +200,8 @@ interface DeltaChannelLike extends BaseChannel {
  *
  * Embeds the superstep in the first UUID group so `ORDER BY task_id, idx`
  * preserves chronological order while remaining a valid RFC UUID (required by
- * Postgres `checkpoint_writes.task_id uuid` columns).
+ * Postgres `checkpoint_writes.task_id uuid` columns). Never `NULL_TASK_ID`:
+ * readers apply writes under it as the anchor checkpoint's own pending writes.
  */
 export function exitDeltaTaskId(step: number, taskId: string): string {
   if (!STRUCTURED_UUID.test(taskId)) {
@@ -194,7 +209,8 @@ export function exitDeltaTaskId(step: number, taskId: string): string {
   }
   const parts = taskId.toLowerCase().split("-");
   const stepPart = String(step).padStart(8, "0");
-  return `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
+  const synthetic = `${stepPart}-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}`;
+  return synthetic === NULL_TASK_ID ? EXIT_DELTA_NULL_TASK_ID : synthetic;
 }
 
 /**
@@ -223,8 +239,7 @@ export function exitDeltaLateTaskId(step: number, taskId: string): string {
  * A checkpoint's pending writes belong to the child that consumed them, and
  * nothing records which child that was. A new branch snapshots every delta
  * channel they touch, so its ancestor walk never replays them (port of
- * Python #8548's `delta_channels_with_pending_writes`; see the seal in
- * `bulkUpdateState` for how JS scopes it to channels whose version moved).
+ * Python #8548's `delta_channels_with_pending_writes`).
  */
 export function deltaChannelsWithPendingWrites(
   channels: Record<string, BaseChannel>,
@@ -256,7 +271,6 @@ export function deltaChannelsToSnapshot(
   channelVersions: Record<string, number | string> | undefined
 ): Set<string> {
   const result = new Set<string>();
-  const maxSupersteps = getDeltaMaxSuperstepsSinceSnapshot();
   for (const name in channels) {
     if (!Object.prototype.hasOwnProperty.call(channels, name)) continue;
     const ch = channels[name];
@@ -267,15 +281,23 @@ export function deltaChannelsToSnapshot(
     ) {
       continue;
     }
-    const [updates, supersteps] = countersSinceDeltaSnapshot[name] ?? [0, 0];
-    if (
-      updates >= (ch as DeltaChannelLike).snapshotFrequency ||
-      supersteps >= maxSupersteps
-    ) {
+    if (reachedSnapshotBound(ch, countersSinceDeltaSnapshot[name])) {
       result.add(name);
     }
   }
   return result;
+}
+
+/** Whether a delta channel's counters reached the bound where it snapshots. */
+export function reachedSnapshotBound(
+  channel: BaseChannel,
+  counters: [number, number] | undefined
+): boolean {
+  const [updates, supersteps] = counters ?? [0, 0];
+  return (
+    updates >= (channel as DeltaChannelLike).snapshotFrequency ||
+    supersteps >= getDeltaMaxSuperstepsSinceSnapshot()
+  );
 }
 
 export function createCheckpoint<ValueType>(
@@ -285,12 +307,16 @@ export function createCheckpoint<ValueType>(
   options?: {
     id?: string;
     channelsToSnapshot?: Set<string>;
-    updatedChannels?: Set<string>;
+    /** The channel versions of the last checkpoint the saver stored. */
+    storedVersions?: Record<string, number | string>;
     getNextVersion?: (current: number | string | undefined) => number | string;
+    triggerToNodes?: Record<string, string[]>;
   }
 ): Checkpoint {
   const channelsToSnapshot = options?.channelsToSnapshot ?? new Set<string>();
-  const { updatedChannels, getNextVersion } = options ?? {};
+  const { storedVersions, getNextVersion } = options ?? {};
+  const bumped: Record<string, [number | string | undefined, number | string]> =
+    {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let values: Record<string, any>;
   let channelVersions: Record<string, number | string> =
@@ -304,16 +330,18 @@ export function createCheckpoint<ValueType>(
       if (!Object.prototype.hasOwnProperty.call(channels, k)) continue;
       const channel = channels[k];
       if (channelsToSnapshot.has(k)) {
-        // Snapshot a DeltaChannel: store the materialized value directly. In
-        // exit/deferred modes the channel may have reached its snapshot
-        // threshold over several supersteps without the LAST superstep
-        // writing to it, so its version wouldn't be bumped by applyWrites —
-        // bump it here so the saver includes the snapshot blob.
+        // `put` only stores a blob for a channel whose version moved, so
+        // snapshotting a channel that didn't move since the last stored
+        // checkpoint needs a bump: exit mode reaching the cadence on a
+        // superstep that skipped the channel, and a fork's first checkpoint.
         if (
           getNextVersion !== undefined &&
-          (updatedChannels === undefined || !updatedChannels.has(k))
+          storedVersions !== undefined &&
+          channelVersions[k] === storedVersions[k]
         ) {
-          channelVersions[k] = getNextVersion(channelVersions[k]);
+          const old = channelVersions[k];
+          channelVersions[k] = getNextVersion(old);
+          bumped[k] = [old, channelVersions[k]];
         }
         values[k] = new DeltaSnapshot(channel.get());
         continue;
@@ -341,8 +369,90 @@ export function createCheckpoint<ValueType>(
     ts: new Date().toISOString(),
     channel_values: values,
     channel_versions: channelVersions,
-    versions_seen: checkpoint.versions_seen,
+    versions_seen: markBumpsSeen(
+      checkpoint.versions_seen,
+      bumped,
+      options?.triggerToNodes
+    ),
   };
+}
+
+/**
+ * Advance whoever had seen a bumped channel's old version to the new one.
+ *
+ * A bump that only stores a snapshot is not a write. Left unseen, it would
+ * re-fire `interruptBefore` and rerun the channel's subscribers. A channel
+ * bumped from no version was never written, so it also goes to the
+ * subscribers that never ran: they have no entry, and would start on the bump.
+ * For each entry it advances, {@link SNAPSHOT_BUMPS} keeps the new version and
+ * the one the node really read, so {@link versionsSeenWithoutBumps} can put
+ * the read back.
+ */
+function markBumpsSeen(
+  versionsSeen: ReadonlyCheckpoint["versions_seen"],
+  bumped: Record<string, [number | string | undefined, number | string]>,
+  triggerToNodes: Record<string, string[]> = {}
+): Checkpoint["versions_seen"] {
+  if (Object.keys(bumped).length === 0) return versionsSeen;
+  const out = { ...versionsSeen };
+  for (const [k, [old]] of Object.entries(bumped)) {
+    if (old !== undefined) continue;
+    for (const node of triggerToNodes[k] ?? []) out[node] ??= {};
+  }
+  const marks = { ...versionsSeen[SNAPSHOT_BUMPS] };
+  for (const node in out) {
+    if (
+      !Object.prototype.hasOwnProperty.call(out, node) ||
+      node === SNAPSHOT_BUMPS
+    ) {
+      continue;
+    }
+    for (const [k, [old, next]] of Object.entries(bumped)) {
+      if (out[node][k] !== old) continue;
+      const [advanced, read] = bumpKeys(node, k);
+      // If an earlier bump set `old`, the real read is already recorded.
+      if (old !== undefined && marks[advanced] !== old) marks[read] = old;
+      marks[advanced] = next;
+      out[node] = { ...out[node], [k]: next };
+    }
+  }
+  if (Object.keys(marks).length > 0) out[SNAPSHOT_BUMPS] = marks;
+  return out;
+}
+
+// Node names can't contain either separator, so the keys can't collide.
+const bumpKeys = (node: string, channel: string): [string, string] => [
+  `${node}${CHECKPOINT_NAMESPACE_SEPARATOR}${channel}`,
+  `${node}${CHECKPOINT_NAMESPACE_END}${channel}`,
+];
+
+/**
+ * `versions_seen` as the nodes read it: an entry a snapshot bump advanced goes
+ * back to the version the node really read, or away if it never read one.
+ */
+export function versionsSeenWithoutBumps(
+  versionsSeen: ReadonlyCheckpoint["versions_seen"]
+): ReadonlyCheckpoint["versions_seen"] {
+  const marks = versionsSeen[SNAPSHOT_BUMPS];
+  if (marks === undefined || Object.keys(marks).length === 0) {
+    return versionsSeen;
+  }
+  const out: Checkpoint["versions_seen"] = {};
+  for (const node in versionsSeen) {
+    if (
+      !Object.prototype.hasOwnProperty.call(versionsSeen, node) ||
+      node === SNAPSHOT_BUMPS
+    ) {
+      continue;
+    }
+    out[node] = {};
+    for (const [k, v] of Object.entries(versionsSeen[node])) {
+      const [advanced, read] = bumpKeys(node, k);
+      if (marks[advanced] !== v) out[node][k] = v;
+      else if (read in marks) out[node][k] = marks[read];
+    }
+  }
+  return out;
 }
 
 /**
@@ -365,13 +475,17 @@ export function isDeltaWritesVersioned(
 }
 
 /**
- * Delta channels whose value at `checkpoint` the ancestor walk rebuilds.
+ * Channels whose value at `checkpoint` the ancestor walk rebuilds.
  *
  * A {@link DeltaSnapshot} or a migrated plain value in `channel_values`
  * resolves directly, so only a channel with nothing stored there needs the
  * walk. With `versionedOnly`, a channel with no version was never written, so
  * it is empty without one; a walk for it would find no snapshot to stop at and
  * read every ancestor, every time the thread is loaded.
+ *
+ * A `BinaryOperatorAggregate` stores its value at every version, so one with a
+ * version and nothing stored was written as a DeltaChannel before its
+ * annotation changed, and is rebuilt the same way.
  */
 function deltaChannelsToReplay(
   specs: Record<string, BaseChannel>,
@@ -381,10 +495,13 @@ function deltaChannelsToReplay(
   const keys: string[] = [];
   for (const k in specs) {
     if (!Object.prototype.hasOwnProperty.call(specs, k)) continue;
+    if (Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)) {
+      continue;
+    }
+    const versioned = checkpoint.channel_versions[k] !== undefined;
     if (
-      isDeltaChannel(specs[k]) &&
-      (!versionedOnly || checkpoint.channel_versions[k] !== undefined) &&
-      !Object.prototype.hasOwnProperty.call(checkpoint.channel_values, k)
+      (isDeltaChannel(specs[k]) && (versioned || !versionedOnly)) ||
+      (specs[k].lc_graph_name === "BinaryOperatorAggregate" && versioned)
     ) {
       keys.push(k);
     }
@@ -446,10 +563,14 @@ export async function channelsFromCheckpoint<
   for (const k of deltaKeys) {
     const history = histories[k];
     if (history === undefined) continue;
-    const replayCh = filteredSpecs[k].fromCheckpoint(
-      history.seed
-    ) as unknown as DeltaChannelLike;
-    replayCh.replayWrites(history.writes);
+    const replayCh = filteredSpecs[k].fromCheckpoint(history.seed);
+    if (isDeltaChannel(replayCh)) {
+      (replayCh as DeltaChannelLike).replayWrites(history.writes);
+    } else {
+      // One update per write: the writes span many supersteps, and a single
+      // call would reject a second Overwrite and drop the writes after one.
+      for (const [, , value] of history.writes) replayCh.update([value]);
+    }
     (channels as Record<string, BaseChannel>)[k] = replayCh;
   }
   return channels;
