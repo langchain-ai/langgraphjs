@@ -911,11 +911,18 @@ export class ThreadStream<
     void this.#startProjection(
       ["messages", ...this.#lifecycleChannels()],
       (event) => {
+        if (isRootTerminalLifecycle(event)) {
+          assembler.abandonActive();
+          return;
+        }
         if (event.method !== "messages") return;
         const msg = assembler.consume(event as MessagesEvent);
         if (msg) buffer.push(toStreamingMessageHandle(msg));
       },
-      () => buffer.close()
+      () => {
+        assembler.abandonActive();
+        buffer.close();
+      }
     );
     return buffer;
   }

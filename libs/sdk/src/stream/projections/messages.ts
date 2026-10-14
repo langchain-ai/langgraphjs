@@ -69,6 +69,13 @@ export function messagesProjection(
       // are preserved — their enclosing superstep may simply not have
       // committed yet.
       let valuesMessageIds = new Set<string>();
+      // Same run-boundary rule as the root projection, driven by root
+      // lifecycle events: a terminal drops streamed, uncommitted messages
+      // that never finished; the next `running` drops the rest. Dropped
+      // ids are sealed so late deltas can't re-add them.
+      const uncommittedIds = new Set<string>();
+      const finishedIds = new Set<string>();
+      const sealedIds = new Set<string>();
 
       // Root-scoped projections whose channels are already covered by
       // the controller's root pump attach to the shared fan-out
@@ -200,6 +207,11 @@ export function messagesProjection(
           preferValuesMessage: shouldPreferValuesMessage,
         });
         valuesMessageIds = reconciliation.valueMessageIds;
+        for (const id of valuesMessageIds) {
+          uncommittedIds.delete(id);
+          finishedIds.delete(id);
+          sealedIds.delete(id);
+        }
         const reconciledMessages = [...reconciliation.messages];
 
         pendingMessages.length = 0;
@@ -236,7 +248,9 @@ export function messagesProjection(
         if (update == null) return;
         const msg = update.message;
         const id = msg.id;
-        if (id == null) return;
+        if (id == null || sealedIds.has(id)) return;
+        if (!valuesMessageIds.has(id)) uncommittedIds.add(id);
+        if (update.kind === "message-finish") finishedIds.add(id);
         const captured = roleByKey.get(id) ?? { role: "ai" as const };
         const base = assembledMessageToBaseMessage(msg, captured.role, {
           toolCallId: captured.toolCallId,
@@ -252,6 +266,49 @@ export function messagesProjection(
         }
         scheduleFlush();
       };
+
+      const closeRun = (unfinishedOnly: boolean): void => {
+        assembler.abandonActive();
+        const dropped = new Set<string>();
+        for (const id of uncommittedIds) {
+          if (unfinishedOnly && finishedIds.has(id)) continue;
+          dropped.add(id);
+        }
+        if (dropped.size === 0) return;
+        for (const id of dropped) {
+          uncommittedIds.delete(id);
+          finishedIds.delete(id);
+          sealedIds.add(id);
+        }
+        const kept = pendingMessages.filter(
+          (m) => m.id == null || !dropped.has(m.id)
+        );
+        pendingMessages.length = 0;
+        pendingMessages.push(...kept);
+        indexById.clear();
+        for (const [id, idx] of buildMessageIndex(pendingMessages)) {
+          indexById.set(id, idx);
+        }
+        scheduleFlush();
+      };
+
+      // Root lifecycle arrives on the root pump, not this subscription.
+      // Defer a macrotask so events this subscription has already
+      // received from before the terminal are applied first.
+      const unsubscribeLifecycle = rootBus.subscribe((event) => {
+        if (event.method !== "lifecycle") return;
+        if (!isRootNamespace(event.params.namespace)) return;
+        const lifecycle = (event.params.data as { event?: string })?.event;
+        if (lifecycle === "running") {
+          setTimeout(() => !disposed && closeRun(false), 0);
+        } else if (
+          lifecycle === "completed" ||
+          lifecycle === "interrupted" ||
+          lifecycle === "failed"
+        ) {
+          setTimeout(() => !disposed && closeRun(true), 0);
+        }
+      });
 
       let runtime: ProjectionRuntime | undefined;
       const openSubscription = () => {
@@ -299,6 +356,7 @@ export function messagesProjection(
       return {
         async dispose() {
           disposed = true;
+          unsubscribeLifecycle();
           if (flushChannel != null) {
             flushChannel.port1.onmessage = null;
             flushChannel.port1.close();

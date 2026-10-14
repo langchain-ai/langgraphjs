@@ -215,6 +215,20 @@ function toolStartedEvent(toolCallId: string, seq: number): Event {
   } as unknown as Event;
 }
 
+function messageFinishEvent(seq: number): Event {
+  return {
+    type: "event",
+    event_id: `msg-finish-${seq}`,
+    seq,
+    method: "messages",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: { event: "message-finish", reason: "stop" },
+    },
+  } as unknown as Event;
+}
+
 function at(event: Event, timestamp: number): Event {
   return { ...event, params: { ...event.params, timestamp } } as Event;
 }
@@ -4665,11 +4679,7 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     { type: "ai", id: "ai-1", content: "hello" },
   ];
 
-  function setup(options?: {
-    next?: string[];
-    step?: number;
-    runningRuns?: Array<{ run_id: string }>;
-  }) {
+  function setup(options?: { next?: string[]; step?: number }) {
     const subscription = makePushableSubscription();
     let runN = 0;
     const thread = {
@@ -4693,10 +4703,7 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
         getHistory: vi.fn(async () => []),
         stream: vi.fn(() => thread),
       },
-      runs: {
-        cancel: vi.fn(async () => undefined),
-        list: vi.fn(async () => options?.runningRuns ?? []),
-      },
+      runs: { cancel: vi.fn(async () => undefined) },
     };
     const controller = new StreamController<State>({
       assistantId: "agent",
@@ -4727,7 +4734,6 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
 
     await controller.stop();
     expect(client.runs.cancel).toHaveBeenCalledWith("thread-1", "run-1");
-    expect(client.runs.list).not.toHaveBeenCalled();
     expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2"]);
     subscription.push(lifecycleEvent("interrupted", ++seq));
 
@@ -4856,29 +4862,8 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     await controller.dispose();
   });
 
-  it("stop() looks up and cancels the running run when it did not start it", async () => {
-    const { client, controller } = setup({
-      next: ["agent"],
-      runningRuns: [{ run_id: "run-foreign" }],
-    });
-    await controller.hydrationPromise;
-    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
-
-    await controller.stop();
-    expect(client.runs.list).toHaveBeenCalledWith("thread-1", {
-      status: "running",
-      limit: 1,
-    });
-    expect(client.runs.cancel).toHaveBeenCalledWith("thread-1", "run-foreign");
-
-    await controller.dispose();
-  });
-
-  it("disconnect() neither looks up nor cancels the run, and keeps its messages", async () => {
-    const { subscription, client, controller } = setup({
-      next: ["agent"],
-      runningRuns: [{ run_id: "run-foreign" }],
-    });
+  it("disconnect() does not cancel the run and keeps its messages", async () => {
+    const { subscription, client, controller } = setup({ next: ["agent"] });
     await controller.hydrationPromise;
     await subscription.started;
     subscription.push(lifecycleEvent("running", 1));
@@ -4890,7 +4875,6 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
 
     await controller.disconnect();
     await settle();
-    expect(client.runs.list).not.toHaveBeenCalled();
     expect(client.runs.cancel).not.toHaveBeenCalled();
     expect(ids(controller)).toContain("ai-live");
 
@@ -4930,6 +4914,94 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     );
     await settle();
     expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2", "ai-2"]);
+
+    await controller.dispose();
+  });
+  it("keeps a finished reply through a pause for input and replaces it on resume", async () => {
+    const { subscription, controller } = setup();
+    await controller.hydrationPromise;
+
+    const human2 = { type: "human", id: "human-2", content: "[hitl]" };
+    void controller.submit({ messages: [human2] });
+    await subscription.started;
+    let seq = 0;
+    subscription.push(lifecycleEvent("running", ++seq));
+    subscription.push(checkpointsEvent(3, ++seq));
+    subscription.push(valuesEvent([...seeded, human2], ++seq));
+    subscription.push(messageStartEvent("ai-draft-1", ++seq));
+    subscription.push(messageDeltaEvent(++seq, "Draft"));
+    subscription.push(messageFinishEvent(++seq));
+    subscription.push(lifecycleEvent("interrupted", ++seq));
+    await settle();
+    expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2", "ai-draft-1"]);
+
+    // The resumed run re-runs the node and streams the reply again.
+    subscription.push(lifecycleEvent("running", ++seq));
+    await settle();
+    expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2"]);
+    subscription.push(messageStartEvent("ai-draft-2", ++seq));
+    subscription.push(messageDeltaEvent(++seq, "Draft"));
+    subscription.push(messageFinishEvent(++seq));
+    subscription.push(checkpointsEvent(4, ++seq));
+    subscription.push(
+      valuesEvent(
+        [...seeded, human2, { type: "ai", id: "ai-draft-2", content: "Draft" }],
+        ++seq
+      )
+    );
+    subscription.push(lifecycleEvent("completed", ++seq));
+    await settle();
+    expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2", "ai-draft-2"]);
+
+    await controller.dispose();
+  });
+
+  it("keeps a finished reply when a replayed terminal reports interrupted", async () => {
+    const { subscription, controller } = setup({ next: ["agent"] });
+    await controller.hydrationPromise;
+    await subscription.started;
+
+    let seq = 0;
+    subscription.push(lifecycleEvent("running", ++seq));
+    subscription.push(checkpointsEvent(2, ++seq));
+    subscription.push(valuesEvent(seeded, ++seq));
+    subscription.push(messageStartEvent("ai-done", ++seq));
+    subscription.push(messageDeltaEvent(++seq, "All done"));
+    subscription.push(messageFinishEvent(++seq));
+    subscription.push(lifecycleEvent("interrupted", ++seq));
+    await settle();
+
+    expect(ids(controller)).toEqual(["human-1", "ai-1", "ai-done"]);
+
+    await controller.dispose();
+  });
+
+  it("keeps a finished but uncommitted reply after stop() until the next run starts", async () => {
+    const { subscription, controller } = setup();
+    await controller.hydrationPromise;
+
+    const human2 = { type: "human", id: "human-2", content: "go" };
+    void controller.submit({ messages: [human2] });
+    await subscription.started;
+    let seq = 0;
+    subscription.push(lifecycleEvent("running", ++seq));
+    subscription.push(checkpointsEvent(3, ++seq));
+    subscription.push(valuesEvent([...seeded, human2], ++seq));
+    subscription.push(messageStartEvent("ai-2", ++seq));
+    subscription.push(messageDeltaEvent(++seq, "Finished"));
+    subscription.push(messageFinishEvent(++seq));
+    await waitForExpectation(() => {
+      expect(ids(controller)).toContain("ai-2");
+    });
+
+    await controller.stop();
+    subscription.push(lifecycleEvent("interrupted", ++seq));
+    await settle();
+    expect(ids(controller)).toContain("ai-2");
+
+    subscription.push(lifecycleEvent("running", ++seq));
+    await settle();
+    expect(ids(controller)).not.toContain("ai-2");
 
     await controller.dispose();
   });

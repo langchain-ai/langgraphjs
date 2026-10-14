@@ -1279,26 +1279,16 @@ export class StreamController<
    */
   async stop(options?: StreamStopOptions): Promise<void> {
     const shouldCancel = options?.cancel ?? true;
-    const wasLoading = this.rootStore.getSnapshot().isLoading;
-    if (shouldCancel && wasLoading) {
-      // Drop the partial reply now rather than on the server's terminal.
-      const dropped = this.#rootMessages.closeRun({ sync: true });
-      if (dropped.size > 0) this.#messageMetadata.forget(dropped);
-    }
     if (shouldCancel) {
       const threadId = this.#currentThreadId;
-      let runId = this.#activeRunId;
-      // No run id when we attached to a run we didn't start (e.g. reload).
-      if (runId == null && threadId != null && wasLoading) {
-        try {
-          const running = await this.#options.client.runs.list(threadId, {
-            status: "running",
-            limit: 1,
-          });
-          runId = running?.[0]?.run_id;
-        } catch {
-          /* lookup failures must not block client disconnect */
-        }
+      const runId = this.#activeRunId;
+      if (runId != null && this.rootStore.getSnapshot().isLoading) {
+        // Drop the partial reply now rather than on the server's terminal.
+        const dropped = this.#rootMessages.closeRun({
+          sync: true,
+          unfinishedOnly: true,
+        });
+        if (dropped.size > 0) this.#messageMetadata.forget(dropped);
       }
       if (threadId != null && runId != null) {
         try {
