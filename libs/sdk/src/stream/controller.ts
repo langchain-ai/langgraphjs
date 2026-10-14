@@ -738,6 +738,24 @@ export class StreamController<
         if (Array.isArray(seedMessages)) {
           this.#subagents.seedFromCheckpointMessages(seedMessages);
 
+          // Root `toolCalls` are otherwise only built from `tools` events,
+          // and the replayed ones predate the seed and are skipped. A call
+          // with no result yet is left to the live stream, as an open tab
+          // would only show it once it starts.
+          const finishedToolCalls = seedToolCallsFromMessages(
+            ROOT_NAMESPACE,
+            ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
+          ).filter((toolCall) => toolCall.status === "finished");
+          if (finishedToolCalls.length > 0) {
+            this.rootStore.setState((s) => ({
+              ...s,
+              toolCalls: finishedToolCalls.reduce(
+                (toolCalls, toolCall) => upsertToolCall(toolCalls, toolCall),
+                s.toolCalls
+              ),
+            }));
+          }
+
           /**
            * An idle (finished) thread defers its root SSE pump; the first
            * `submit()` brings it up and the transport replays the finished

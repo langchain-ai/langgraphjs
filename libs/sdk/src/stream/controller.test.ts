@@ -1917,6 +1917,91 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("seeds root toolCalls with the finished calls of the hydrated messages", async () => {
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const checkpointCreatedAt = "2026-10-14T12:00:10.000Z";
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", content: "weather?", id: "human-1" },
+              {
+                type: "ai",
+                content: "",
+                id: "ai-1",
+                tool_calls: [
+                  {
+                    id: "call-done",
+                    name: "get_weather",
+                    args: { city: "sf" },
+                    type: "tool_call",
+                  },
+                  {
+                    id: "call-next",
+                    name: "get_weather",
+                    args: { city: "nyc" },
+                    type: "tool_call",
+                  },
+                ],
+              },
+              {
+                type: "tool",
+                content: "sunny",
+                id: "tool-1",
+                tool_call_id: "call-done",
+              },
+            ],
+          },
+          next: ["tools"],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-3" },
+          metadata: { step: 3 },
+          created_at: checkpointCreatedAt,
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-running",
+    });
+    await controller.hydrationPromise;
+
+    const callStatuses = () =>
+      controller.rootStore
+        .getSnapshot()
+        .toolCalls.map((toolCall) => `${toolCall.callId}:${toolCall.status}`);
+    expect(callStatuses()).toEqual(["call-done:finished"]);
+
+    await rootSubscription.started;
+    rootSubscription.push(
+      at(
+        toolStartedEvent("call-next", 1),
+        Date.parse(checkpointCreatedAt) + 1_000
+      )
+    );
+    await waitForExpectation(() => {
+      expect(callStatuses()).toEqual([
+        "call-done:finished",
+        "call-next:running",
+      ]);
+    });
+
+    await controller.dispose();
+  });
+
   it("does not settle submit() on another run's replayed terminal", async () => {
     const rootSubscription = makePushableSubscription();
     const onCompleted = vi.fn();
