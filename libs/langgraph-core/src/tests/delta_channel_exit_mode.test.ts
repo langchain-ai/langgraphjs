@@ -343,17 +343,11 @@ describe("a failed DeltaChannel write", () => {
   }
 
   function aThenBThenC() {
-    const State = Annotation.Root({
-      log: new DeltaChannel<string[], string[]>(appendReducer),
-      plain: Annotation<string[]>({
-        reducer: (a, b) => [...a, ...b],
-        default: () => [],
-      }),
-    });
+    const State = resumeState();
     return new StateGraph(State)
-      .addNode("a", () => ({ log: ["a"], plain: ["a"] }))
-      .addNode("b", () => ({ log: ["b"], plain: ["b"] }))
-      .addNode("c", () => ({ log: ["c"], plain: ["c"] }))
+      .addNode("a", () => both("a"))
+      .addNode("b", () => both("b"))
+      .addNode("c", () => both("c"))
       .addEdge(START, "a")
       .addEdge("a", "b")
       .addEdge("b", "c")
