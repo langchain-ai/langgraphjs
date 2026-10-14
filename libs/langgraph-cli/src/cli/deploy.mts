@@ -53,6 +53,7 @@ import {
   levelColor,
   normalizeImageTag,
   normalizeName,
+  resolvePushTarget,
   secretsFromEnv,
   smithDashboardBaseUrl,
 } from "./utils/deploy-helpers.mjs";
@@ -684,9 +685,10 @@ async function printDeploymentResult(
 
 async function dockerConfigForToken(
   registryHost: string,
-  token: string
+  token: string,
+  username: string
 ): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const authB64 = Buffer.from(`oauth2accesstoken:${token}`).toString("base64");
+  const authB64 = Buffer.from(`${username}:${token}`).toString("base64");
   const data = { auths: { [registryHost]: { auth: authB64 } } };
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "langgraph-docker-"));
   await fs.writeFile(path.join(dir, "config.json"), JSON.stringify(data));
@@ -938,21 +940,21 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
   }
   step += 1;
 
-  let normalizedRegistry = registryUrl.replace(/\/+$/, "");
-  if (normalizedRegistry.includes("://")) {
-    normalizedRegistry = normalizedRegistry.slice(
-      normalizedRegistry.indexOf("//") + 2
-    );
-  }
   const repoSeed = args.imageName || args.name || path.basename(projectDir);
-  const repoName = normalizeName(repoSeed);
-  const tagValue = normalizeImageTag(args.tag);
-  const remoteImage = `${normalizedRegistry}/${repoName}:${tagValue}`;
-  const registryHost = normalizedRegistry.split("/")[0];
+  const {
+    image: remoteImage,
+    registryHost,
+    username,
+  } = resolvePushTarget(
+    pushData,
+    normalizeName(repoSeed),
+    normalizeImageTag(args.tag)
+  );
 
   const { dir: cfgDir, cleanup } = await dockerConfigForToken(
     registryHost,
-    deploymentToken
+    deploymentToken,
+    username
   );
   try {
     // -- Login --
@@ -964,7 +966,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
       ...baseOpts,
       ...stdio,
       input: tokenInput,
-    })`docker --config ${cfgDir} login -u oauth2accesstoken --password-stdin ${registryHost}`;
+    })`docker --config ${cfgDir} login -u ${username} --password-stdin ${registryHost}`;
     step += 1;
 
     // -- Tag + push --

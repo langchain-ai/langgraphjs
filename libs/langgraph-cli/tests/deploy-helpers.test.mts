@@ -13,6 +13,7 @@ import {
   levelColor,
   normalizeImageTag,
   normalizeName,
+  resolvePushTarget,
   secretsFromEnv,
   smithDashboardBaseUrl,
 } from "../src/cli/utils/deploy-helpers.mjs";
@@ -234,5 +235,41 @@ describe("findDeploymentIdByName", () => {
     ).toBeNull();
     expect(findDeploymentIdByName({ resources: [] }, "foo")).toBeNull();
     expect(findDeploymentIdByName(null, "foo")).toBeNull();
+  });
+});
+
+describe("resolvePushTarget", () => {
+  it("pushes under registry_url with Artifact Registry's username by default", () => {
+    expect(
+      resolvePushTarget(
+        { token: "t", registry_url: "https://us-docker.pkg.dev/proj/repo/" },
+        "my-app",
+        "v1"
+      )
+    ).toEqual({
+      image: "us-docker.pkg.dev/proj/repo/my-app:v1",
+      registryHost: "us-docker.pkg.dev",
+      username: "oauth2accesstoken",
+    });
+  });
+
+  it("pushes to exactly repository_url with the returned username", () => {
+    const repository = "123456789012.dkr.ecr.us-east-2.amazonaws.com/lsd/my-app";
+    expect(
+      resolvePushTarget(
+        {
+          token: "t",
+          registry_url: repository,
+          repository_url: repository,
+          username: "AWS",
+        },
+        "other-name",
+        "latest"
+      )
+    ).toEqual({
+      image: `${repository}:latest`,
+      registryHost: "123456789012.dkr.ecr.us-east-2.amazonaws.com",
+      username: "AWS",
+    });
   });
 });
