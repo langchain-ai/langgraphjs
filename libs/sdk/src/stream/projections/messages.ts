@@ -276,9 +276,12 @@ export function messagesProjection(
       if (rootShortCircuit) {
         runtime = {
           dispose: rootBus.subscribe((event) => {
-            if (event.method !== "messages") return;
             if (!isRootNamespace(event.params.namespace)) return;
-            applyEvent(event as MessagesEvent);
+            if (event.method === "messages") {
+              applyEvent(event as MessagesEvent);
+            } else if (event.method === "values") {
+              applyValuesEvent(event as ValuesEvent);
+            }
           }),
         };
       } else {

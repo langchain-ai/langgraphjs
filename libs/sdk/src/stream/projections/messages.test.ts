@@ -8,7 +8,7 @@ import { messagesProjection } from "./messages.js";
 function makeRootBus() {
   const listeners = new Set<(event: Event) => void>();
   return {
-    channels: ["messages"],
+    channels: ["messages", "values"],
     subscribe: vi.fn((listener: (event: Event) => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -49,6 +49,37 @@ describe("messagesProjection", () => {
     await vi.waitFor(() => {
       expect(store.getSnapshot().map((message) => message.text)).toEqual([
         "Hello",
+      ]);
+    });
+
+    release();
+  });
+
+  it("takes root-namespace values snapshots for messages that never streamed", async () => {
+    const rootBus = makeRootBus();
+    const registry = new ChannelRegistry(rootBus as unknown as RootEventBus);
+    registry.bind({} as ThreadStream);
+    const { store, release } = registry.acquire(messagesProjection([]));
+
+    rootBus.emit({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: {
+          messages: [
+            { type: "human", content: "hi", id: "human-1" },
+            { type: "ai", content: "Hello there.", id: "ai-1" },
+          ],
+        },
+      },
+    } as unknown as Event);
+
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().map((message) => message.id)).toEqual([
+        "human-1",
+        "ai-1",
       ]);
     });
 
