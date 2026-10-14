@@ -209,7 +209,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   protected async _loadCheckpointValues(row: SQL_TYPES["SELECT_SQL"]) {
     const args = [row.thread_id, row.checkpoint_ns, row.checkpoint_id];
-    const blobs = await this.pool.query<{
+    const blobsPromise = this.pool.query<{
       channel: string;
       type: string;
       blob: Uint8Array;
@@ -218,7 +218,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       row.checkpoint_ns,
       JSON.stringify(row.checkpoint.channel_versions ?? {}),
     ]);
-    const writes = await this.pool.query<{
+    const writesPromise = this.pool.query<{
       task_id: string;
       channel: string;
       type: string;
@@ -226,6 +226,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
       task_path: string;
       idx: number;
     }>(this.SQL_STATEMENTS.SELECT_WRITES_SQL, args);
+    const [blobs, writes] = await Promise.all([blobsPromise, writesPromise]);
     const encoder = new TextEncoder();
     row.channel_values = blobs.rows.map(({ channel, type, blob }) => [
       encoder.encode(channel),
@@ -550,9 +551,6 @@ export class PostgresSaver extends BaseCheckpointSaver {
     }
 
     const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
-    for (const row of result.rows) {
-      await this._loadCheckpointValues(row);
-    }
     const toMigrate = result.rows.filter(
       (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
     );
@@ -584,12 +582,16 @@ export class PostgresSaver extends BaseCheckpointSaver {
           ({ type, blob }) => [new TextEncoder().encode(type), blob]
         );
         for (const row of rows) {
+          await this._loadCheckpointValues(row);
           await this._migratePendingSends(pendingSends, row);
         }
       }
     }
 
     for (const value of result.rows) {
+      if (value.channel_values === undefined) {
+        await this._loadCheckpointValues(value);
+      }
       yield {
         config: {
           configurable: {
