@@ -4013,3 +4013,71 @@ describe("ToolNode should raise GraphInterrupt", () => {
     ).rejects.toThrow(GraphInterrupt);
   });
 });
+
+describe("ToolNode should re-raise ParentCommand", () => {
+  it("routes a Command.PARENT raised by a graph invoked inside a tool", async () => {
+    // A graph called as a tool hands off to a node of the graph that runs the
+    // ToolNode. The handoff travels as a thrown `ParentCommand`, which must
+    // not be turned into an error ToolMessage by `handleToolErrors`.
+    const innerGraph = new StateGraph(MessagesAnnotation)
+      .addNode(
+        "handoff",
+        () =>
+          new Command({
+            graph: Command.PARENT,
+            goto: "target",
+            update: {
+              messages: [
+                new ToolMessage({
+                  content: "Transferred to target",
+                  name: "delegate",
+                  tool_call_id: "call_1",
+                }),
+              ],
+            },
+          })
+      )
+      .addEdge("__start__", "handoff")
+      .compile();
+
+    const delegate = tool(
+      async () => {
+        await innerGraph.invoke({ messages: [] });
+        return "inner graph finished without a handoff";
+      },
+      {
+        name: "delegate",
+        description: "Delegate to a nested graph",
+        schema: z.object({}),
+      }
+    );
+
+    const visited: string[] = [];
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("agent", () => ({
+        messages: [
+          new AIMessage({
+            content: "",
+            tool_calls: [{ name: "delegate", args: {}, id: "call_1" }],
+          }),
+        ],
+      }))
+      .addNode("tools", new ToolNode([delegate]), { ends: ["target"] })
+      .addNode("target", () => {
+        visited.push("target");
+        return {};
+      })
+      .addEdge("__start__", "agent")
+      .addEdge("agent", "tools")
+      .addEdge("target", "__end__")
+      .compile();
+
+    const result = await graph.invoke({ messages: [] });
+
+    expect(visited).toEqual(["target"]);
+    const toolMessages = result.messages.filter(ToolMessage.isInstance);
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0].content).toBe("Transferred to target");
+    expect(toolMessages[0].status).not.toBe("error");
+  });
+});
