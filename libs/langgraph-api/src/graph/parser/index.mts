@@ -58,19 +58,34 @@ export async function getStaticGraphSchema(
           { argv: process.argv.slice(-1) }
         );
 
-        // Set a timeout to reject if the worker takes too long
+        // Settle once and always clear the timeout: a pending timer keeps the
+        // event loop alive, so a failed extraction would otherwise hold the
+        // process (e.g. the image prebuild) open until the timeout fires.
+        let settled = false;
+        const settle = (done: () => void) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          void worker.terminate();
+          done();
+        };
+
         const timeoutId = setTimeout(() => {
-          worker.terminate();
-          reject(new Error("Schema extract worker timed out"));
+          settle(() => reject(new Error("Schema extract worker timed out")));
         }, options?.timeoutMs ?? 30000);
 
-        worker.on("message", (result) => {
-          worker.terminate();
-          clearTimeout(timeoutId);
-          resolve(result);
+        worker.on("message", (result) => settle(() => resolve(result)));
+        worker.on("error", (error) => settle(() => reject(error)));
+        worker.on("exit", (code) => {
+          settle(() =>
+            reject(
+              new Error(
+                `Schema extract worker exited with code ${code} before returning a result`
+              )
+            )
+          );
         });
 
-        worker.on("error", reject);
         worker.postMessage(specs);
       }
     );
