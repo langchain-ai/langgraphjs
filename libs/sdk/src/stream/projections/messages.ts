@@ -277,6 +277,20 @@ export function messagesProjection(
           channels: ["messages", "values"],
           namespace: ns,
           onEvent(event) {
+            // The subscription runs at `depth: 1`, so a nested subagent
+            // (whose namespace is exactly one segment below `ns`) also
+            // matches the filter. Applying a child snapshot here would
+            // rebuild this store from the CHILD's state and blank the
+            // parent messages for the rest of the child run — only fold
+            // events emitted at exactly this namespace. The root branch
+            // short-circuits above and already guards with
+            // `isRootNamespace`; this is the nested equivalent.
+            if (
+              event.params == null ||
+              namespaceKey(event.params.namespace) !== namespaceKey(ns)
+            ) {
+              return;
+            }
             if (event.method === "messages") {
               applyEvent(event as MessagesEvent);
             } else if (event.method === "values") {
