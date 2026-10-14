@@ -119,6 +119,24 @@ Alternatively, implement a thin `BaseCheckpointSaver` on top of an HTTP/WebSocke
 
 > Note: standard Node.js, Deno, and Bun deployments are unaffected — `PostgresSaver` works there out of the box.
 
+## Large checkpoint values
+
+`PostgresSaver` reads a checkpoint in one query: all of its channel values come back in one `bytea[]` column, and its pending writes in another. node-postgres receives each column as text, with every byte written as two hex characters, and decodes it into a single JavaScript string. V8 caps strings at about 536 million characters, so the stored channel values of one checkpoint can total roughly 268 MB; pending writes have a separate limit of the same size.
+
+Versions up to 1.1.0 parsed these columns with `postgres-array` 2, which `pg` 8 depends on through `pg-types`. Loading a checkpoint with any single stored value over about 61 MB aborted Node with `FATAL ERROR: invalid array length`, and every later `getState()` or resume on that thread crashed again. Upgrading makes those threads readable without changing stored data. If you can't upgrade yet, override the parser in your application, for example with pnpm:
+
+```json
+{
+  "pnpm": {
+    "overrides": {
+      "pg-types>postgres-array": "3.0.4"
+    }
+  }
+}
+```
+
+Values usually grow that large from repeated state. For example, `createAgent` from `langchain` passes a copy of the agent state with each parallel tool call, so a step with four parallel tool calls stores about four copies of the message history in one value.
+
 ## Testing
 
 Spin up testing PostgreSQL

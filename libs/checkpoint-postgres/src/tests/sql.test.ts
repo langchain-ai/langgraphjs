@@ -54,12 +54,8 @@ describe("getSQLStatements", () => {
     const statements = getSQLStatements("my-schema");
 
     // All SQL statements should contain the quoted schema
-    expect(statements.SELECT_BLOBS_SQL).toContain(
-      '"my-schema".checkpoint_blobs'
-    );
-    expect(statements.SELECT_WRITES_SQL).toContain(
-      '"my-schema".checkpoint_writes'
-    );
+    expect(statements.SELECT_SQL).toContain('"my-schema".checkpoint_blobs');
+    expect(statements.SELECT_SQL).toContain('"my-schema".checkpoint_writes');
     expect(statements.SELECT_SQL).toContain('"my-schema".checkpoints');
 
     expect(statements.SELECT_PENDING_SENDS_SQL).toContain(

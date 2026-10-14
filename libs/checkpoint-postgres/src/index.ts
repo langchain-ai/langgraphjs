@@ -15,6 +15,7 @@ import {
   maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
+import { parse as parseArray } from "postgres-array";
 
 import { getMigrations } from "./migrations.js";
 import {
@@ -28,6 +29,23 @@ import {
 interface PostgresSaverOptions {
   schema: string;
 }
+
+const BYTEA_ARRAY_OID = 1001;
+const parseBytea = pg.types.getTypeParser(pg.types.builtins.BYTEA, "text");
+
+/**
+ * Type parsers for the checkpoint reads, which return blobs as `bytea[]`.
+ * pg@8 pins `pg-types@2.2.0`, whose `postgres-array@2` parser collects each
+ * element one character at a time: a blob over ~61 MB exceeds V8's array
+ * length limit and aborts the process. postgres-array@3 slices the source
+ * instead. Other types fall through to `pg.types`.
+ */
+const READ_TYPES = {
+  getTypeParser: (oid: number, format?: "text" | "binary") =>
+    oid === BYTEA_ARRAY_OID && format !== "binary"
+      ? (value: string) => parseArray(value, parseBytea)
+      : pg.types.getTypeParser(oid, format),
+};
 
 const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
@@ -205,44 +223,6 @@ export class PostgresSaver extends BaseCheckpointSaver {
         ])
     );
     return Object.fromEntries(entries);
-  }
-
-  protected async _loadCheckpointValues(row: SQL_TYPES["SELECT_SQL"]) {
-    const args = [row.thread_id, row.checkpoint_ns, row.checkpoint_id];
-    const blobsPromise = this.pool.query<{
-      channel: string;
-      type: string;
-      blob: Uint8Array;
-    }>(this.SQL_STATEMENTS.SELECT_BLOBS_SQL, [
-      row.thread_id,
-      row.checkpoint_ns,
-      JSON.stringify(row.checkpoint.channel_versions ?? {}),
-    ]);
-    const writesPromise = this.pool.query<{
-      task_id: string;
-      channel: string;
-      type: string;
-      blob: Uint8Array;
-      task_path: string;
-      idx: number;
-    }>(this.SQL_STATEMENTS.SELECT_WRITES_SQL, args);
-    const [blobs, writes] = await Promise.all([blobsPromise, writesPromise]);
-    const encoder = new TextEncoder();
-    row.channel_values = blobs.rows.map(({ channel, type, blob }) => [
-      encoder.encode(channel),
-      encoder.encode(type),
-      blob,
-    ]);
-    row.pending_writes = writes.rows.map(
-      ({ task_id, channel, type, blob, task_path, idx }) => [
-        encoder.encode(task_id),
-        encoder.encode(channel),
-        encoder.encode(type),
-        blob,
-        encoder.encode(task_path),
-        encoder.encode(String(idx)),
-      ]
-    );
   }
 
   protected async _loadMetadata(metadata: Record<string, unknown>) {
@@ -471,32 +451,27 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(
-      this.SQL_STATEMENTS.SELECT_SQL + where,
-      args
-    );
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>({
+      text: this.SQL_STATEMENTS.SELECT_SQL + where,
+      values: args,
+      types: READ_TYPES,
+    });
 
     const [row] = result.rows;
     if (row === undefined) return undefined;
 
-    await this._loadCheckpointValues(row);
-
     if (row.checkpoint.v < 4 && row.parent_checkpoint_id != null) {
       const sendsResult = await this.pool.query<
         SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
-      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
-        thread_id,
-        [row.parent_checkpoint_id],
-      ]);
+      >({
+        text: this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL,
+        values: [thread_id, [row.parent_checkpoint_id]],
+        types: READ_TYPES,
+      });
 
-      if (sendsResult.rows.length > 0) {
-        await this._migratePendingSends(
-          sendsResult.rows.map(({ type, blob }) => [
-            new TextEncoder().encode(type),
-            blob,
-          ]),
-          row
-        );
+      const [sendsRow] = sendsResult.rows;
+      if (sendsRow != null) {
+        await this._migratePendingSends(sendsRow.pending_sends, row);
       }
     }
 
@@ -550,7 +525,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
       query += ` LIMIT ${Number.parseInt(limit.toString(), 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
-    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>({
+      text: query,
+      values: args,
+      types: READ_TYPES,
+    });
     const toMigrate = result.rows.filter(
       (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
     );
@@ -558,10 +537,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
     if (toMigrate.length > 0) {
       const sendsResult = await this.pool.query<
         SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
-      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
-        toMigrate[0].thread_id,
-        toMigrate.map((row) => row.parent_checkpoint_id),
-      ]);
+      >({
+        text: this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL,
+        values: [
+          toMigrate[0].thread_id,
+          toMigrate.map((row) => row.parent_checkpoint_id),
+        ],
+        types: READ_TYPES,
+      });
 
       const parentMap = toMigrate.reduce<
         Record<string, SQL_TYPES["SELECT_SQL"][]>
@@ -573,25 +556,15 @@ export class PostgresSaver extends BaseCheckpointSaver {
         return acc;
       }, {});
 
-      for (const [parentId, rows] of Object.entries(parentMap)) {
-        const sends = sendsResult.rows.filter(
-          (send) => send.checkpoint_id === parentId
-        );
-        if (sends.length === 0) continue;
-        const pendingSends: [Uint8Array, Uint8Array][] = sends.map(
-          ({ type, blob }) => [new TextEncoder().encode(type), blob]
-        );
-        for (const row of rows) {
-          await this._loadCheckpointValues(row);
-          await this._migratePendingSends(pendingSends, row);
+      // add to values
+      for (const sendsRow of sendsResult.rows) {
+        for (const row of parentMap[sendsRow.checkpoint_id]) {
+          await this._migratePendingSends(sendsRow.pending_sends, row);
         }
       }
     }
 
     for (const value of result.rows) {
-      if (value.channel_values === undefined) {
-        await this._loadCheckpointValues(value);
-      }
       yield {
         config: {
           configurable: {
