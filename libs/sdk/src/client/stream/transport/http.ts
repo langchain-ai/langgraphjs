@@ -19,6 +19,7 @@ import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 import {
   toAbsoluteUrl,
   isRecord,
+  isNonRetryableHttpError,
   mergeHeaders,
   toError,
   isProtocolResponse,
@@ -35,18 +36,6 @@ import {
   reconnectDelayMs,
 } from "../../../utils/reconnect.js";
 import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
-
-/**
- * True for a 4xx HTTP error other than 408 (Request Timeout) and 429
- * (Too Many Requests): retrying the same request cannot succeed. Errors
- * with no `status` (network errors, idle timeouts, server closes) stay
- * retryable.
- */
-function isNonRetryableHttpError(error: unknown): boolean {
-  if (!isRecord(error) || typeof error.status !== "number") return false;
-  const { status } = error;
-  return status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
