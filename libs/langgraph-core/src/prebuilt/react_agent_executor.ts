@@ -995,9 +995,11 @@ export function createReactAgent<
           const message = agentState.messages[i];
           if (!isToolMessage(message)) break;
 
-          // Check if this tool is configured to return directly
+          // Check if this tool is configured to return directly. A failed
+          // call goes back to the model so it can correct itself and retry.
           if (
             message.name !== undefined &&
+            message.status !== "error" &&
             shouldReturnDirect.has(message.name)
           ) {
             return END;
