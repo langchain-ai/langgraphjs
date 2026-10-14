@@ -173,6 +173,9 @@ describe("useStream — return type", () => {
 
   test("root status fields", () => {
     expectTypeOf(stream.isLoading).toBeBoolean();
+    expectTypeOf(stream.status).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
     expectTypeOf(stream.isThreadLoading).toBeBoolean();
     expectTypeOf(stream.error).toBeUnknown();
     expectTypeOf(stream.threadId).toEqualTypeOf<string | null>();

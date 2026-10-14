@@ -24,6 +24,9 @@ describe("useStream return shape", () => {
     expectTypeOf(stream.messages).toExtend<Signal<BaseMessage[]>>();
     expectTypeOf(stream.toolCalls).toExtend<Signal<AssembledToolCall[]>>();
     expectTypeOf(stream.isLoading()).toEqualTypeOf<boolean>();
+    expectTypeOf(stream.status()).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
     expectTypeOf(stream.threadId()).toEqualTypeOf<string | null>();
   });
 
@@ -83,6 +86,9 @@ describe("StreamService mirrors the stream surface", () => {
     expectTypeOf(svc.values).toExtend<Signal<BasicState>>();
     expectTypeOf(svc.messages).toExtend<Signal<BaseMessage[]>>();
     expectTypeOf(svc.isLoading()).toEqualTypeOf<boolean>();
+    expectTypeOf(svc.status()).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
     expectTypeOf(svc.submit(null)).toEqualTypeOf<Promise<void>>();
     expectTypeOf(svc.getThread()).not.toBeNever();
   });
