@@ -3,6 +3,8 @@ import { type Checkpoint, TASKS } from "@langchain/langgraph-checkpoint";
 export interface SQL_STATEMENTS {
   SELECT_SQL: string;
   SELECT_PENDING_SENDS_SQL: string;
+  SELECT_BLOBS_SQL: string;
+  SELECT_WRITES_SQL: string;
   UPSERT_CHECKPOINT_BLOBS_SQL: string;
   UPSERT_CHECKPOINTS_SQL: string;
   UPSERT_CHECKPOINT_WRITES_SQL: string;
@@ -32,7 +34,8 @@ export type SQL_TYPES = {
   };
   SELECT_PENDING_SENDS_SQL: {
     checkpoint_id: string;
-    pending_sends: [Uint8Array, Uint8Array][];
+    type: string;
+    blob: Uint8Array;
   };
   UPSERT_CHECKPOINT_BLOBS_SQL: unknown;
   UPSERT_CHECKPOINTS_SQL: unknown;
@@ -72,34 +75,25 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     checkpoint_ns,
     checkpoint_id,
     parent_checkpoint_id,
-    metadata,
-    (
-      select array_agg(array[bl.channel::bytea, bl.type::bytea, bl.blob])
-      from jsonb_each_text(checkpoint -> 'channel_versions')
-      inner join ${SCHEMA_TABLES.checkpoint_blobs} bl
-        on bl.thread_id = cp.thread_id
-        and bl.checkpoint_ns = cp.checkpoint_ns
-        and bl.channel = jsonb_each_text.key
-        and bl.version = jsonb_each_text.value
-    ) as channel_values,
-    (
-      select
-      array_agg(array[cw.task_id::text::bytea, cw.channel::bytea, cw.type::bytea, cw.blob, convert_to(cw.task_path, 'UTF8'), cw.idx::text::bytea])
-      from ${SCHEMA_TABLES.checkpoint_writes} cw
-      where cw.thread_id = cp.thread_id
-        and cw.checkpoint_ns = cp.checkpoint_ns
-        and cw.checkpoint_id = cp.checkpoint_id
-    ) as pending_writes
-  from ${SCHEMA_TABLES.checkpoints} cp `, // <-- the trailing space is necessary for combining with WHERE clauses
+    metadata
+  from ${SCHEMA_TABLES.checkpoints} cp `,
 
-    SELECT_PENDING_SENDS_SQL: `select
-      checkpoint_id,
-      array_agg(array[cw.type::bytea, cw.blob] order by cw.task_path, cw.task_id, cw.idx) as pending_sends
-    from ${SCHEMA_TABLES.checkpoint_writes} cw
-    where cw.thread_id = $1
-      and cw.checkpoint_id = any($2)
-      and cw.channel = '${TASKS}'
-    group by cw.checkpoint_id
+    SELECT_BLOBS_SQL: `select bl.channel, bl.type, bl.blob
+    from jsonb_each_text($3::jsonb) versions,
+      ${SCHEMA_TABLES.checkpoint_blobs} bl
+    where bl.thread_id = $1 and bl.checkpoint_ns = $2
+      and bl.channel = versions.key and bl.version = versions.value`,
+
+    SELECT_WRITES_SQL: `select task_id, channel, type, blob, task_path, idx
+    from ${SCHEMA_TABLES.checkpoint_writes}
+    where thread_id = $1 and checkpoint_ns = $2 and checkpoint_id = $3`,
+
+    SELECT_PENDING_SENDS_SQL: `select checkpoint_id, type, blob
+    from ${SCHEMA_TABLES.checkpoint_writes}
+    where thread_id = $1
+      and checkpoint_id = any($2)
+      and channel = '${TASKS}'
+    order by task_path, task_id, idx
   `,
 
     UPSERT_CHECKPOINT_BLOBS_SQL: `INSERT INTO ${SCHEMA_TABLES.checkpoint_blobs} (thread_id, checkpoint_ns, channel, version, type, blob)

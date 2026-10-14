@@ -207,6 +207,43 @@ export class PostgresSaver extends BaseCheckpointSaver {
     return Object.fromEntries(entries);
   }
 
+  protected async _loadCheckpointValues(row: SQL_TYPES["SELECT_SQL"]) {
+    const args = [row.thread_id, row.checkpoint_ns, row.checkpoint_id];
+    const blobs = await this.pool.query<{
+      channel: string;
+      type: string;
+      blob: Uint8Array;
+    }>(this.SQL_STATEMENTS.SELECT_BLOBS_SQL, [
+      row.thread_id,
+      row.checkpoint_ns,
+      JSON.stringify(row.checkpoint.channel_versions ?? {}),
+    ]);
+    const writes = await this.pool.query<{
+      task_id: string;
+      channel: string;
+      type: string;
+      blob: Uint8Array;
+      task_path: string;
+      idx: number;
+    }>(this.SQL_STATEMENTS.SELECT_WRITES_SQL, args);
+    const encoder = new TextEncoder();
+    row.channel_values = blobs.rows.map(({ channel, type, blob }) => [
+      encoder.encode(channel),
+      encoder.encode(type),
+      blob,
+    ]);
+    row.pending_writes = writes.rows.map(
+      ({ task_id, channel, type, blob, task_path, idx }) => [
+        encoder.encode(task_id),
+        encoder.encode(channel),
+        encoder.encode(type),
+        blob,
+        encoder.encode(task_path),
+        encoder.encode(String(idx)),
+      ]
+    );
+  }
+
   protected async _loadMetadata(metadata: Record<string, unknown>) {
     const [type, dumpedValue] = await this.serde.dumpsTyped(metadata);
     return this.serde.loadsTyped(type, dumpedValue);
@@ -441,6 +478,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
     const [row] = result.rows;
     if (row === undefined) return undefined;
 
+    await this._loadCheckpointValues(row);
+
     if (row.checkpoint.v < 4 && row.parent_checkpoint_id != null) {
       const sendsResult = await this.pool.query<
         SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
@@ -449,9 +488,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
         [row.parent_checkpoint_id],
       ]);
 
-      const [sendsRow] = sendsResult.rows;
-      if (sendsRow != null) {
-        await this._migratePendingSends(sendsRow.pending_sends, row);
+      if (sendsResult.rows.length > 0) {
+        await this._migratePendingSends(
+          sendsResult.rows.map(({ type, blob }) => [
+            new TextEncoder().encode(type),
+            blob,
+          ]),
+          row
+        );
       }
     }
 
@@ -506,6 +550,9 @@ export class PostgresSaver extends BaseCheckpointSaver {
     }
 
     const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
+    for (const row of result.rows) {
+      await this._loadCheckpointValues(row);
+    }
     const toMigrate = result.rows.filter(
       (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
     );
@@ -528,10 +575,16 @@ export class PostgresSaver extends BaseCheckpointSaver {
         return acc;
       }, {});
 
-      // add to values
-      for (const sendsRow of sendsResult.rows) {
-        for (const row of parentMap[sendsRow.checkpoint_id]) {
-          await this._migratePendingSends(sendsRow.pending_sends, row);
+      for (const [parentId, rows] of Object.entries(parentMap)) {
+        const sends = sendsResult.rows.filter(
+          (send) => send.checkpoint_id === parentId
+        );
+        if (sends.length === 0) continue;
+        const pendingSends: [Uint8Array, Uint8Array][] = sends.map(
+          ({ type, blob }) => [new TextEncoder().encode(type), blob]
+        );
+        for (const row of rows) {
+          await this._migratePendingSends(pendingSends, row);
         }
       }
     }
