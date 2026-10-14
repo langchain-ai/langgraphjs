@@ -268,6 +268,14 @@ export class StreamController<
    */
   #hydratedActiveInterruptIds: Set<string> | null = null;
   /**
+   * Creation time of the checkpoint the latest {@link hydrate} seeded
+   * from. A new stream subscription replays the thread's retained
+   * history, and events produced before this moment are already part of
+   * the seed: applying them again rewinds `messages`, `values` and
+   * `toolCalls` to older turns and then rebuilds them.
+   */
+  #hydratedCheckpointTime: number | undefined;
+  /**
    * Highest event sequence already applied when the latest run command
    * was accepted. Interrupts outside the hydrate-time allowlist remain
    * filtered through this sequence, while newer events are live output
@@ -342,6 +350,16 @@ export class StreamController<
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
+  /**
+   * Run id `run.start` returned for the in-flight local `submit()`. Kept
+   * apart from {@link #activeRunId}, which a rolled-back submit's late
+   * response can still overwrite.
+   */
+  #submittedRunId: string | undefined;
+  /** `true` from a local run's dispatch until its `run.start` answers. */
+  #submittedRunIdPending = false;
+  /** Re-runs lifecycle events the armed terminal wait held until `run.start` answered. */
+  #releaseHeldLifecycle: (() => void) | undefined;
   #localRunDepth = 0;
   /**
    * `true` once a root `values` event has been applied for the current
@@ -415,6 +433,9 @@ export class StreamController<
       // `#submitter` is assigned just below; this callback only ever
       // fires later (async), by which point construction has finished.
       onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
+      // `submit()` settles `isLoading` itself, so skipping a pending
+      // event here can't leave the flag stuck.
+      ignore: (event) => this.#submittedRunMatch(event) != null,
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -460,6 +481,11 @@ export class StreamController<
         this.#pendingHydrationInterruptEvents = [];
       },
       onRunStart: () => this.#markLocalRunStart(),
+      onRunStartReturned: (runId) => {
+        this.#submittedRunId = runId;
+        this.#submittedRunIdPending = false;
+        this.#releaseHeldLifecycle?.();
+      },
       onRunCreated: (runId) => {
         this.#advanceInterruptReplayBarrier();
         this.#notifyCreated(runId);
@@ -657,6 +683,10 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      const checkpointTime = Date.parse(state?.created_at ?? "");
+      this.#hydratedCheckpointTime = Number.isNaN(checkpointTime)
+        ? undefined
+        : checkpointTime;
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
@@ -1255,10 +1285,13 @@ export class StreamController<
 
   #markLocalRunStart(): void {
     this.#localRunDepth += 1;
+    this.#submittedRunId = undefined;
+    this.#submittedRunIdPending = true;
   }
 
   #markLocalRunEnd(): void {
     this.#localRunDepth = Math.max(0, this.#localRunDepth - 1);
+    if (this.#localRunDepth === 0) this.#submittedRunIdPending = false;
   }
 
   #notifyCreated(runId: string): void {
@@ -1814,6 +1847,7 @@ export class StreamController<
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
+    this.#hydratedCheckpointTime = undefined;
     this.#interruptReplayThroughSeq = undefined;
     this.#pendingHydrationInterruptEvents = [];
     this.#discardPendingInterruptEvents();
@@ -2110,6 +2144,11 @@ export class StreamController<
       }
     }
 
+    // After discovery and the root bus on purpose: root selector projections
+    // start empty and build from the replayed history.
+    const floor = this.#hydratedCheckpointTime;
+    if (floor != null && event.params.timestamp < floor) return;
+
     /**
      * `messages` and `tools` events are emitted under a node's
      * namespace — for a typical StateGraph the LLM's token deltas
@@ -2237,6 +2276,25 @@ export class StreamController<
       };
       void lifecycle;
     }
+  }
+
+  /**
+   * How a lifecycle event relates to the run a local `submit()` started.
+   * New subscriptions replay earlier runs' terminals, and accepting one
+   * would end the submitted run early: `"other"` marks those, `"pending"`
+   * an event that names a run before `run.start` has answered. `undefined`
+   * when it can't be told apart (no submit in flight, no run named, or no
+   * run id returned).
+   */
+  #submittedRunMatch(event: Event): "other" | "pending" | undefined {
+    if (event.method !== "lifecycle" || this.#localRunDepth === 0) {
+      return undefined;
+    }
+    const runId = synthesizedEventRunId(event.event_id);
+    if (runId == null) return undefined;
+    if (this.#submittedRunIdPending) return "pending";
+    if (this.#submittedRunId == null) return undefined;
+    return runId === this.#submittedRunId ? undefined : "other";
   }
 
   /**
@@ -2758,6 +2816,7 @@ export class StreamController<
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
+      const held: Event[] = [];
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
@@ -2775,6 +2834,12 @@ export class StreamController<
         if (settled) return;
         if (event.method !== "lifecycle") return;
         if (!isRootNamespace(event.params.namespace)) return;
+        const match = this.#submittedRunMatch(event);
+        if (match === "other") return;
+        if (match === "pending") {
+          held.push(event);
+          return;
+        }
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
           error?: string;
@@ -2796,6 +2861,9 @@ export class StreamController<
           }
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
+      };
+      this.#releaseHeldLifecycle = () => {
+        for (const event of held.splice(0)) onEvent(event);
       };
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
@@ -2942,3 +3010,15 @@ function collectActiveInterruptsFromTasks<InterruptType>(tasks: unknown[]): {
 
 // Unused import guard — `AIMessage` is only referenced by type tests.
 void AIMessage;
+
+/**
+ * Run id from a `synth:<run_id>:...` event id, the form the agent server
+ * uses for events it synthesizes such as root `lifecycle`. Events carry no
+ * run id field.
+ */
+function synthesizedEventRunId(
+  eventId: string | undefined
+): string | undefined {
+  if (eventId == null || !eventId.startsWith("synth:")) return undefined;
+  return eventId.split(":")[1] || undefined;
+}

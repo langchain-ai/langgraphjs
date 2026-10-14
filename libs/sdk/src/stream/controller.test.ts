@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
 import { messagesProjection } from "./projections/messages.js";
+import { toolCallsProjection } from "./projections/tool-calls.js";
 import type { ThreadStream } from "../client/stream/index.js";
 
 interface State {
@@ -186,6 +187,36 @@ function messageDeltaEvent(seq: number, text: string): Event {
       },
     },
   } as unknown as Event;
+}
+
+function runLifecycleEvent(runId: string, event: string, seq: number): Event {
+  return {
+    ...lifecycleEvent(event, seq),
+    event_id: `synth:${runId}:lc||${event}`,
+  } as Event;
+}
+
+function toolStartedEvent(toolCallId: string, seq: number): Event {
+  return {
+    type: "event",
+    event_id: `tool-started-${toolCallId}-${seq}`,
+    seq,
+    method: "tools",
+    params: {
+      namespace: [],
+      timestamp: 0,
+      data: {
+        event: "tool-started",
+        tool_call_id: toolCallId,
+        tool_name: "get_weather",
+        input: { city: "sf" },
+      },
+    },
+  } as unknown as Event;
+}
+
+function at(event: Event, timestamp: number): Event {
+  return { ...event, params: { ...event.params, timestamp } } as Event;
 }
 
 function namespacedLifecycleEvent(
@@ -1813,6 +1844,253 @@ describe("StreamController", () => {
       "ai-1",
     ]);
     expect((messages[1] as { text?: string }).text).toBe("All done.");
+
+    await controller.dispose();
+  });
+
+  it("applies history replayed from before the hydrated checkpoint to root projections only, not the root store", async () => {
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const seededMessages = [
+      { type: "human", content: "hi", id: "human-1" },
+      { type: "ai", content: "Hello there.", id: "ai-1" },
+      { type: "human", content: "and now?", id: "human-2" },
+    ];
+    const checkpointCreatedAt = "2026-10-14T12:00:10.000Z";
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: seededMessages },
+          next: ["model"],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-3" },
+          metadata: { step: 3 },
+          created_at: checkpointCreatedAt,
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-running",
+    });
+    const rootToolCalls = controller.registry.acquire(toolCallsProjection([]));
+    await controller.hydrationPromise;
+    await rootSubscription.started;
+
+    const replayedAt = Date.parse(checkpointCreatedAt) - 5_000;
+    const liveAt = Date.parse(checkpointCreatedAt) + 1_000;
+    rootSubscription.push(at(valuesEvent([seededMessages[0]], 1), replayedAt));
+    rootSubscription.push(at(messageStartEvent("ai-1", 2), replayedAt));
+    rootSubscription.push(at(messageDeltaEvent(3, "Hel"), replayedAt));
+    rootSubscription.push(at(toolStartedEvent("call-old", 4), replayedAt));
+    rootSubscription.push(at(messageStartEvent("ai-2", 5), liveAt));
+    rootSubscription.push(at(messageDeltaEvent(6, "Working on it"), liveAt));
+
+    await waitForExpectation(() => {
+      const messages = controller.rootStore.getSnapshot().messages;
+      expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+        "human-1",
+        "ai-1",
+        "human-2",
+        "ai-2",
+      ]);
+      expect((messages[1] as { text?: string }).text).toBe("Hello there.");
+      expect((messages[3] as { text?: string }).text).toBe("Working on it");
+    });
+    expect(controller.rootStore.getSnapshot().toolCalls).toEqual([]);
+    expect(
+      rootToolCalls.store.getSnapshot().map((toolCall) => toolCall.callId)
+    ).toEqual(["call-old"]);
+
+    rootToolCalls.release();
+    await controller.dispose();
+  });
+
+  it("does not settle submit() on another run's replayed terminal", async () => {
+    const rootSubscription = makePushableSubscription();
+    const onCompleted = vi.fn();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(async () => ({ run_id: "run-new" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: [] },
+          next: [],
+          tasks: [],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-idle",
+      onCompleted,
+    });
+    await controller.hydrationPromise;
+
+    let submitSettled = false;
+    const submitted = controller.submit({ messages: [] }).then(() => {
+      submitSettled = true;
+    });
+    await rootSubscription.started;
+    rootSubscription.push(runLifecycleEvent("run-old", "running", 1));
+    rootSubscription.push(runLifecycleEvent("run-old", "completed", 2));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(submitSettled).toBe(false);
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    expect(onCompleted).not.toHaveBeenCalled();
+
+    rootSubscription.push(runLifecycleEvent("run-new", "running", 3));
+    rootSubscription.push(runLifecycleEvent("run-new", "completed", 4));
+    await submitted;
+
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+    await waitForExpectation(() => {
+      expect(onCompleted).toHaveBeenCalledTimes(1);
+    });
+    expect(onCompleted).toHaveBeenCalledWith({
+      runId: "run-new",
+      reason: "success",
+    });
+
+    await controller.dispose();
+  });
+
+  it("settles submit() on its own run's terminal even when it arrives before run.start returns", async () => {
+    const rootSubscription = makePushableSubscription();
+    const onCompleted = vi.fn();
+    let resolveRunStart!: (result: { run_id: string }) => void;
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(
+        () =>
+          new Promise<{ run_id: string }>((resolve) => {
+            resolveRunStart = resolve;
+          })
+      ),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: [] },
+          next: ["model"],
+          tasks: [],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-running",
+      onCompleted,
+    });
+    await controller.hydrationPromise;
+    await rootSubscription.started;
+
+    let submitSettled = false;
+    const submitted = controller.submit({ messages: [] }).then(() => {
+      submitSettled = true;
+    });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+    });
+    rootSubscription.push(runLifecycleEvent("run-old", "completed", 1));
+    rootSubscription.push(runLifecycleEvent("run-new", "running", 2));
+    rootSubscription.push(runLifecycleEvent("run-new", "completed", 3));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(submitSettled).toBe(false);
+
+    resolveRunStart({ run_id: "run-new" });
+    await submitted;
+
+    await waitForExpectation(() => {
+      expect(onCompleted).toHaveBeenCalledTimes(1);
+    });
+    expect(onCompleted).toHaveBeenCalledWith({
+      runId: "run-new",
+      reason: "success",
+    });
+
+    await controller.dispose();
+  });
+
+  it("settles submit() on a held terminal when run.start returns no run id", async () => {
+    const rootSubscription = makePushableSubscription();
+    let resolveRunStart!: (result: Record<string, unknown>) => void;
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(
+        () =>
+          new Promise<Record<string, unknown>>((resolve) => {
+            resolveRunStart = resolve;
+          })
+      ),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: { messages: [] },
+          next: ["model"],
+          tasks: [],
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-running",
+    });
+    await controller.hydrationPromise;
+    await rootSubscription.started;
+
+    const submitted = controller.submit({ messages: [] });
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalled();
+    });
+    rootSubscription.push(runLifecycleEvent("run-new", "completed", 1));
+    resolveRunStart({});
+
+    await submitted;
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
 
     await controller.dispose();
   });
