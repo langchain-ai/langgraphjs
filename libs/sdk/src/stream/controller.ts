@@ -358,8 +358,8 @@ export class StreamController<
   #submittedRunId: string | undefined;
   /** `true` from a local run's dispatch until its `run.start` answers. */
   #submittedRunIdPending = false;
-  /** Re-runs lifecycle events the armed terminal wait held until `run.start` answered. */
-  #releaseHeldLifecycle: (() => void) | undefined;
+  /** One per armed terminal wait: re-runs the lifecycle events it held until `run.start` answered. */
+  readonly #heldLifecycleReleases = new Set<() => void>();
   #localRunDepth = 0;
   /**
    * `true` once a root `values` event has been applied for the current
@@ -484,7 +484,7 @@ export class StreamController<
       onRunStartReturned: (runId) => {
         this.#submittedRunId = runId;
         this.#submittedRunIdPending = false;
-        this.#releaseHeldLifecycle?.();
+        for (const release of [...this.#heldLifecycleReleases]) release();
       },
       onRunCreated: (runId) => {
         this.#advanceInterruptReplayBarrier();
@@ -2835,12 +2835,14 @@ export class StreamController<
       let settled = false;
       let sawRunning = false;
       const held: Event[] = [];
+      const heldReleases = this.#heldLifecycleReleases;
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
       }) {
         if (settled) return;
         settled = true;
+        heldReleases.delete(releaseHeld);
         unsubscribeRoot?.();
         unsubscribeThread?.();
         unsubscribeError?.();
@@ -2880,9 +2882,10 @@ export class StreamController<
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       };
-      this.#releaseHeldLifecycle = () => {
+      const releaseHeld = () => {
         for (const event of held.splice(0)) onEvent(event);
       };
+      heldReleases.add(releaseHeld);
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
       const unsubscribeError = this.#thread?.onError((error) =>
