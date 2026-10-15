@@ -1540,6 +1540,64 @@ describe("interrupts", () => {
     expect(thread.interrupts[0].interruptId).toBe("int_2");
   });
 
+  it.each(["run.start", "submitRun"])(
+    "%s keeps the pending interrupts when the server refuses it",
+    async (method) => {
+      const transport = new MockTransport();
+      const send = transport.send.bind(transport);
+      transport.send = async (command) => {
+        if (command.method !== "run.start") return send(command);
+        throw new ProtocolError({
+          type: "error",
+          id: command.id,
+          error: "invalid_argument",
+          message: "The thread is waiting on an interrupt",
+        });
+      };
+      const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+      const sub = await thread.subscribe({ channels: ["input"] });
+      transport.pushEvent(
+        eventOf(
+          "input.requested" as never,
+          { interrupt_id: "int_1", payload: { action: "approve" } } as never,
+          { namespace: [], seq: 1 }
+        )
+      );
+      await nextValue(sub);
+
+      await expect(
+        method === "run.start"
+          ? thread.run.start({ input: {} })
+          : thread.submitRun({ input: {} })
+      ).rejects.toThrow(/waiting on an interrupt/);
+      expect(thread.interrupts.map((i) => i.interruptId)).toEqual(["int_1"]);
+    }
+  );
+
+  it("run.start leaves the interrupts cleared when it fails without a server answer", async () => {
+    const transport = new MockTransport();
+    const send = transport.send.bind(transport);
+    transport.send = async (command) => {
+      if (command.method !== "run.start") return send(command);
+      throw new TypeError("fetch failed");
+    };
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const sub = await thread.subscribe({ channels: ["input"] });
+    transport.pushEvent(
+      eventOf(
+        "input.requested" as never,
+        { interrupt_id: "int_1", payload: { action: "approve" } } as never,
+        { namespace: [], seq: 1 }
+      )
+    );
+    await nextValue(sub);
+
+    await expect(thread.run.start({ input: {} })).rejects.toThrow(
+      /fetch failed/
+    );
+    expect(thread.interrupts).toHaveLength(0);
+  });
+
   it("run.start resets interrupted state", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

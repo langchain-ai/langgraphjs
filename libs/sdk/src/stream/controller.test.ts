@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { StreamController } from "./controller.js";
 import { messagesProjection } from "./projections/messages.js";
 import { toolCallsProjection } from "./projections/tool-calls.js";
+import { ProtocolError } from "../client/stream/error.js";
 import type { ThreadStream } from "../client/stream/index.js";
 
 interface State {
@@ -1060,6 +1061,52 @@ describe("StreamController", () => {
     checkpoint: { checkpoint_id: "checkpoint-after-refresh" },
   });
   const finishedIdle = { values: {}, next: [], tasks: [] };
+
+  const lagging = (state: Record<string, unknown>) => async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return state;
+  };
+
+  it("holds the queue on an interrupt parked after a rejoin until the server confirms it", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+    ]);
+    await controller.hydrationPromise;
+    getState.mockImplementationOnce(
+      lagging(interruptedOn("raised-after-refresh"))
+    );
+    await controller.submit(null, { multitaskStrategy: "enqueue" });
+    expect(controller.queueStore.getSnapshot()).toHaveLength(1);
+
+    emit(inputRequestedEvent("raised-after-refresh", {}, [], 12));
+    emit(lifecycleEvent("interrupted", 13));
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore.getSnapshot().interrupts.map((item) => item.id)
+      ).toEqual(["raised-after-refresh"]);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(controller.queueStore.getSnapshot()).toHaveLength(1);
+    await controller.dispose();
+  });
+
+  it("drains the queue after a rejoin once a parked interrupt turns out to be history", async () => {
+    const { controller, emit, getState } = passiveRejoinFixture([
+      runningAtRefresh,
+    ]);
+    await controller.hydrationPromise;
+    getState.mockImplementationOnce(lagging(finishedIdle));
+    await controller.submit(null, { multitaskStrategy: "enqueue" });
+
+    emit(inputRequestedEvent("resolved-long-ago", {}, [], 3));
+    emit(lifecycleEvent("interrupted", 4));
+    await waitForExpectation(() => expect(getState).toHaveBeenCalledTimes(2));
+    await waitForExpectation(() => {
+      expect(controller.queueStore.getSnapshot()).toHaveLength(0);
+    });
+    await controller.dispose();
+  });
 
   it("shows an interrupt raised after a passive rejoin without a checkpoints event", async () => {
     const { controller, emit, getState } = passiveRejoinFixture([
@@ -2643,6 +2690,357 @@ describe("StreamController", () => {
 
     await controller.dispose();
     await submitPromise.catch(() => undefined);
+  });
+
+  it("stop() after respond() cancels the resumed run", async () => {
+    const listeners = new Set<(event: Event) => void>();
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        {
+          interruptId: "int-1",
+          payload: { prompt: "Approve?" },
+          namespace: [],
+        },
+      ],
+      respondInput: vi.fn(async () => undefined),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["agent"] })),
+        stream: vi.fn(() => thread),
+      },
+      runs: { cancel },
+    };
+
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    for (const listener of [...listeners]) {
+      listener(inputRequestedEvent("int-1", { prompt: "Approve?" }));
+    }
+
+    await controller.respond({ approved: true });
+    for (const listener of [...listeners]) {
+      listener(runLifecycleEvent("run-resumed", "running", 2));
+    }
+
+    await controller.stop();
+    expect(cancel).toHaveBeenCalledWith("thread-1", "run-resumed");
+
+    await controller.dispose();
+  });
+
+  it("drains the queue once a run it didn't start answers the shown interrupt", async () => {
+    const { controller, thread, emit, setTasks, shownIds } = resumeFixture();
+    await controller.hydrationPromise;
+    expect(shownIds()).toEqual(["int-1"]);
+
+    emit(lifecycleEvent("running", 1));
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    });
+    await controller.submit({ messages: [] }, { multitaskStrategy: "enqueue" });
+    expect(controller.queueStore.getSnapshot()).toHaveLength(1);
+
+    setTasks([]);
+    emit(lifecycleEvent("completed", 2));
+    await waitForExpectation(() => {
+      expect(thread.submitRun).toHaveBeenCalledTimes(1);
+    });
+    expect(shownIds()).toEqual([]);
+
+    await controller.dispose();
+  });
+
+  function resumeFixture(
+    options: { submitRun?: () => Promise<unknown>; tasks?: unknown[] } = {}
+  ) {
+    const listeners = new Set<(event: Event) => void>();
+    let tasks: unknown[] = options.tasks ?? [
+      { interrupts: [{ id: "int-1", value: { prompt: "Approve?" } }] },
+    ];
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [] as unknown[],
+      respondInput,
+      submitRun: vi.fn(options.submitRun ?? (async () => ({ run_id: "run-2" }))),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async () => ({ values: {}, next: [], tasks }));
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: { getState, stream: vi.fn(() => thread) },
+      runs: { cancel },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    return {
+      controller,
+      thread,
+      respondInput,
+      getState,
+      cancel,
+      setTasks: (next: unknown[]) => {
+        tasks = next;
+      },
+      emit: (event: Event) => {
+        for (const listener of [...listeners]) listener(event);
+      },
+      shownIds: () =>
+        controller.rootStore.getSnapshot().interrupts.map((i) => i.id),
+    };
+  }
+
+  it("respond() answers an interrupt shown from server state before its event replays", async () => {
+    const { controller, respondInput } = resumeFixture();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true });
+
+    expect(respondInput).toHaveBeenCalledWith(
+      expect.objectContaining({ interrupt_id: "int-1", namespace: [] })
+    );
+    await controller.dispose();
+  });
+
+  it("shows the interrupt a stopped resume answered again and holds the queue on it", async () => {
+    const { controller, thread, emit, cancel, shownIds } = resumeFixture();
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+    emit(runLifecycleEvent("run-resumed", "running", 2));
+    await controller.submit({ messages: [] }, { multitaskStrategy: "enqueue" });
+    await controller.submit({ messages: [] }, { multitaskStrategy: "enqueue" });
+    expect(shownIds()).toEqual([]);
+
+    await controller.stop();
+
+    expect(cancel).toHaveBeenCalledWith("thread-1", "run-resumed");
+    await waitForExpectation(() => expect(shownIds()).toEqual(["int-1"]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(thread.submitRun).not.toHaveBeenCalled();
+    expect(controller.queueStore.getSnapshot()).toHaveLength(2);
+    await controller.dispose();
+  });
+
+  it("keeps an interrupt answered by a finished resume hidden when the next message is refused", async () => {
+    const { controller, emit, shownIds } = resumeFixture({
+      submitRun: async () => {
+        throw new ProtocolError({
+          type: "error",
+          id: 1,
+          error: "invalid_argument",
+          message: "The thread is waiting on an interrupt",
+        });
+      },
+      tasks: [
+        { interrupts: [{ id: "int-1", value: { prompt: "Approve?" } }] },
+        { interrupts: [{ id: "int-2", value: { prompt: "Approve?" } }] },
+      ],
+    });
+    await controller.hydrationPromise;
+    expect(shownIds()).toEqual(["int-1", "int-2"]);
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-resumed", "running", 2));
+    emit(runLifecycleEvent("run-resumed", "interrupted", 3));
+    await waitForExpectation(() => expect(shownIds()).toEqual(["int-2"]));
+
+    await controller.submit({ messages: [] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(shownIds()).toEqual(["int-2"]);
+    await controller.dispose();
+  });
+
+  it("does not show a resume's interrupt again when only the stream failed", async () => {
+    let failStream: ((error: Error) => void) | undefined;
+    const { controller, thread, shownIds } = resumeFixture();
+    (thread as unknown as { onError: unknown }).onError = vi.fn(
+      (listener: (error: Error) => void) => {
+        failStream = listener;
+        return vi.fn();
+      }
+    );
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+
+    failStream?.(new Error("socket closed"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(shownIds()).toEqual([]);
+    await controller.dispose();
+  });
+
+  it("shows the interrupt again when its resumed run fails", async () => {
+    const { controller, emit, shownIds } = resumeFixture();
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+    expect(shownIds()).toEqual([]);
+
+    emit(runLifecycleEvent("run-resumed", "running", 2));
+    emit({
+      ...runLifecycleEvent("run-resumed", "failed", 3),
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { event: "failed", error: "tool raised" },
+      },
+    } as Event);
+
+    await waitForExpectation(() => expect(shownIds()).toEqual(["int-1"]));
+    expect(controller.rootStore.getSnapshot().error).toBeDefined();
+    await controller.dispose();
+  });
+
+  it("stop() after the resumed run ended does not cancel it", async () => {
+    const { controller, emit, cancel } = resumeFixture();
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+    emit(runLifecycleEvent("run-resumed", "running", 2));
+    emit(runLifecycleEvent("run-resumed", "completed", 3));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    await controller.stop();
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("stop() does not cancel a run on the thread it switched to", async () => {
+    const { controller, emit, cancel } = resumeFixture();
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+    await controller.hydrate("thread-2");
+    emit(runLifecycleEvent("run-on-thread-2", "running", 5));
+
+    await controller.stop();
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("keeps holding the queue when events carry no seq to order them", async () => {
+    const { controller, thread, emit, setTasks, getState } = resumeFixture();
+    const withoutSeq = (event: Event) =>
+      ({ ...event, seq: undefined }) as unknown as Event;
+    await controller.hydrationPromise;
+    emit(withoutSeq(lifecycleEvent("running", 1)));
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    });
+    await controller.submit({ messages: [] }, { multitaskStrategy: "enqueue" });
+
+    setTasks([]);
+    emit(withoutSeq(lifecycleEvent("completed", 2)));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(getState).toHaveBeenCalledTimes(1);
+    expect(thread.submitRun).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("stop() cancels the resumed run, not an earlier run replayed after it", async () => {
+    const { controller, emit, cancel } = resumeFixture();
+    await controller.hydrationPromise;
+    await controller.respond({ approved: true });
+
+    emit(runLifecycleEvent("run-resumed", "running", 5));
+    emit(runLifecycleEvent("run-earlier", "running", 2));
+    await controller.stop();
+
+    expect(cancel).toHaveBeenCalledWith("thread-1", "run-resumed");
+    await controller.dispose();
+  });
+
+  it("stop() after a failed respond() does not cancel the next run on the thread", async () => {
+    const { controller, emit, cancel, respondInput } = resumeFixture();
+    await controller.hydrationPromise;
+    respondInput.mockRejectedValueOnce(new Error("network down"));
+    await expect(controller.respond({ approved: true })).rejects.toThrow(
+      /network down/
+    );
+
+    emit(runLifecycleEvent("run-from-another-tab", "running", 5));
+    await controller.stop();
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("keeps an interrupt a run it didn't start raised and holds the queue on it", async () => {
+    const listeners = new Set<(event: Event) => void>();
+    const ordering: ThreadStream["ordering"] = {};
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering,
+      submitRun: vi.fn(async () => {
+        ordering.lastAppliedThroughSeq = 0;
+        return { run_id: "run-1" };
+      }),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async () => ({ values: {}, next: [], tasks: [] }));
+    const controller = new StreamController<State>({
+      assistantId: "interrupt_graph",
+      client: { threads: { getState, stream: vi.fn(() => thread) } } as never,
+      threadId: "thread-1",
+    });
+    const emit = (event: Event) => {
+      for (const listener of [...listeners]) listener(event);
+    };
+    await controller.hydrationPromise;
+
+    const first = controller.submit({ messages: [] });
+    await waitForExpectation(() => expect(thread.submitRun).toHaveBeenCalled());
+    emit(lifecycleEvent("running", 1));
+    emit(lifecycleEvent("completed", 2));
+    await first;
+
+    emit(lifecycleEvent("running", 3));
+    await waitForExpectation(() => {
+      expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    });
+    await controller.submit({ messages: [] }, { multitaskStrategy: "enqueue" });
+    emit(inputRequestedEvent("fresh", {}, [], 4));
+    emit(lifecycleEvent("interrupted", 5));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["fresh"]);
+    expect(getState).toHaveBeenCalledTimes(1);
+    expect(thread.submitRun).toHaveBeenCalledTimes(1);
+    expect(controller.queueStore.getSnapshot()).toHaveLength(1);
+
+    await controller.dispose();
   });
 
   it("respond() removes the targeted interrupt from rootStore", async () => {

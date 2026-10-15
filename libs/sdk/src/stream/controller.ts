@@ -351,6 +351,19 @@ export class StreamController<
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
   /**
+   * Run a `respond()` resumed, for `stop()` to cancel. `input.respond`
+   * returns no run id, so it comes from the run's root `running` lifecycle.
+   */
+  #resumedRunId: string | undefined;
+  /** Interrupts the resume in flight answered, for `stop()` to show again. */
+  #resumeAnsweredIds: readonly string[] = [];
+  /** A state read the queue waits on before draining. */
+  #interruptReread: Promise<unknown> | undefined;
+  /** Highest `seq` of a root `running` lifecycle event seen. */
+  #lastRunningSeq = -1;
+  /** Highest `seq` of an `input.requested` event that showed an interrupt. */
+  #lastInterruptSeq = -1;
+  /**
    * Run id `run.start` returned for the in-flight local `submit()`. Kept
    * apart from {@link #activeRunId}, which a rolled-back submit's late
    * response can still overwrite.
@@ -432,7 +445,21 @@ export class StreamController<
       isDisposed: () => this.#disposed,
       // `#submitter` is assigned just below; this callback only ever
       // fires later (async), by which point construction has finished.
-      onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
+      // Shown interrupts hold the queue. When all of them predate the run
+      // that just ended, that run may have answered them (another tab), so
+      // ask the server before draining; a newer one is live, and a lagging
+      // state read would wipe it.
+      onSettled: () => {
+        if (
+          this.rootStore.getSnapshot().interrupts.length > 0 &&
+          this.queueStore.getSnapshot().length > 0 &&
+          this.#lastRunningSeq > this.#lastInterruptSeq
+        ) {
+          this.#rereadInterrupts();
+        } else {
+          this.#submitter.scheduleQueueDrainOnObservedIdle();
+        }
+      },
       // `submit()` settles `isLoading` itself, so skipping a pending
       // event here can't leave the flag stuck.
       ignore: (event) => this.#submittedRunMatch(event) != null,
@@ -467,8 +494,8 @@ export class StreamController<
       },
       waitForRootPumpReady: () => this.#rootPumpReady,
       awaitNextTerminal: (signal) => this.#awaitNextTerminal(signal),
-      awaitResumedRunTerminal: (signal) =>
-        this.#awaitResumedRunTerminal(signal),
+      awaitResumedRunTerminal: (signal, answeredIds) =>
+        this.#awaitResumedRunTerminal(signal, answeredIds),
       onSubmitStart: () => {
         // Bump the generation so any in-flight hydrate skips its
         // allowlist write on return. Keep an existing allowlist until
@@ -491,6 +518,10 @@ export class StreamController<
         this.#notifyCreated(runId);
       },
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
+      holdQueue: () =>
+        this.#pendingHydrationInterruptEvents.length > 0 ||
+        this.#interruptReread != null,
+      onRunRefused: () => this.#rereadInterrupts(),
       onRunEnd: () => {
         // Stop buffering new events, but keep any already-queued
         // `input.requested` frames. A fast run can emit its interrupt
@@ -1281,7 +1312,7 @@ export class StreamController<
     const shouldCancel = options?.cancel ?? true;
     if (shouldCancel) {
       const threadId = this.#currentThreadId;
-      const runId = this.#activeRunId;
+      const runId = this.#activeRunId ?? this.#resumedRunId;
       if (runId != null && this.rootStore.getSnapshot().isLoading) {
         // Drop the partial reply now rather than on the server's terminal.
         const dropped = this.#rootMessages.closeRun({
@@ -1295,6 +1326,10 @@ export class StreamController<
           await this.#options.client.runs.cancel(threadId, runId);
         } catch {
           /* server cancel failures must not block client disconnect */
+        }
+        // The cancelled resume leaves the interrupts it answered pending.
+        if (runId === this.#resumedRunId) {
+          this.#rereadInterrupts(this.#resumeAnsweredIds);
         }
       }
     }
@@ -1489,24 +1524,28 @@ export class StreamController<
       // what's awaited; the resumed run's terminal is watched in the
       // background (see {@link SubmitCoordinator.dispatchResume}), which also
       // settles the optimistic handle (rolls back un-echoed keys on failure).
-      await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          namespace: resolved.namespace,
-          interrupt_id: resolved.interruptId,
-          response: normalizeHitlResponseForServer(response),
-          // Fold an optional state update / directed jump into the same
-          // superstep as the resume (HITL "push card into state + resume").
-          // Omitted when absent so the server still sees a plain resume.
-          // `BaseMessage` instances under the messages key are serialized to
-          // plain dicts (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-        });
-        this.#advanceInterruptReplayBarrier();
-        this.#markInterruptResolvedInRootStore(resolved.interruptId);
-      }, prepared?.handle);
+      await this.#submitter.dispatchResume(
+        async () => {
+          await thread.respondInput({
+            namespace: resolved.namespace,
+            interrupt_id: resolved.interruptId,
+            response: normalizeHitlResponseForServer(response),
+            // Fold an optional state update / directed jump into the same
+            // superstep as the resume (HITL "push card into state + resume").
+            // Omitted when absent so the server still sees a plain resume.
+            // `BaseMessage` instances under the messages key are serialized to
+            // plain dicts (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          });
+          this.#advanceInterruptReplayBarrier();
+          this.#markInterruptResolvedInRootStore(resolved.interruptId);
+        },
+        prepared?.handle,
+        [resolved.interruptId]
+      );
     } catch (error) {
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
@@ -1590,24 +1629,28 @@ export class StreamController<
       // See `respond()` — route through the coordinator so the single run
       // that services the batched resume surfaces failures on the reactive
       // `rootStore.error` slot and settles the optimistic handle.
-      await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          responses,
-          // A batched resume services every targeted interrupt in one run, so
-          // the update / jump are run-level (not per-entry) — applied once in
-          // that run's superstep alongside all the resumes. `BaseMessage`
-          // instances under the messages key are serialized to plain dicts
-          // (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-        });
-        this.#advanceInterruptReplayBarrier();
-        for (const { interrupt_id: interruptId } of responses) {
-          this.#markInterruptResolvedInRootStore(interruptId);
-        }
-      }, prepared?.handle);
+      await this.#submitter.dispatchResume(
+        async () => {
+          await thread.respondInput({
+            responses,
+            // A batched resume services every targeted interrupt in one run, so
+            // the update / jump are run-level (not per-entry) — applied once in
+            // that run's superstep alongside all the resumes. `BaseMessage`
+            // instances under the messages key are serialized to plain dicts
+            // (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          });
+          this.#advanceInterruptReplayBarrier();
+          for (const { interrupt_id: interruptId } of responses) {
+            this.#markInterruptResolvedInRootStore(interruptId);
+          }
+        },
+        prepared?.handle,
+        responses.map((entry) => entry.interrupt_id)
+      );
     } catch (error) {
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
@@ -1868,6 +1911,11 @@ export class StreamController<
     this.#subgraphs.reset();
     this.#scopedHistorySeeds.clear();
     this.#activeRunId = undefined;
+    this.#resumedRunId = undefined;
+    this.#lastRunningSeq = -1;
+    this.#lastInterruptSeq = -1;
+    this.#resumeAnsweredIds = [];
+    this.#interruptReread = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
@@ -2121,6 +2169,14 @@ export class StreamController<
     }
     this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
+    if (
+      event.method === "lifecycle" &&
+      isRootNamespace(event.params.namespace) &&
+      (event as LifecycleEvent).params.data?.event === "running" &&
+      typeof event.seq === "number"
+    ) {
+      this.#lastRunningSeq = Math.max(this.#lastRunningSeq, event.seq);
+    }
 
     /**
      * `input.requested` events (including HITL inside a subagent /
@@ -2573,6 +2629,9 @@ export class StreamController<
       value: data.payload as InterruptType,
       namespace,
     });
+    if (eventSeq != null) {
+      this.#lastInterruptSeq = Math.max(this.#lastInterruptSeq, eventSeq);
+    }
     this.rootStore.setState((s) => {
       if (s.interrupts.some((entry) => entry.id === interruptId)) return s;
       const interrupts = [...s.interrupts, interrupt];
@@ -2660,6 +2719,23 @@ export class StreamController<
         interrupt: interrupts[0],
       };
     });
+  }
+
+  /**
+   * Re-read the pending interrupts while holding the queue, then drain it.
+   *
+   * @param answeredIds - Interrupts this client answered whose answer
+   *   didn't take (the resumed run failed or was stopped); shown again if
+   *   the server still lists them.
+   */
+  #rereadInterrupts(answeredIds: readonly string[] = []): void {
+    for (const id of answeredIds) this.#resolvedInterrupts.delete(id);
+    const reread: Promise<unknown> =
+      this.#reconcilePendingInterruptsFromServer().finally(() => {
+        if (this.#interruptReread === reread) this.#interruptReread = undefined;
+        this.#submitter.scheduleQueueDrainOnObservedIdle();
+      });
+    this.#interruptReread = reread;
   }
 
   /**
@@ -2775,6 +2851,8 @@ export class StreamController<
         }
       } finally {
         this.#settleParkedInterruptsPromise = undefined;
+        // Parked interrupts held the queue.
+        this.#submitter.scheduleQueueDrainOnObservedIdle();
       }
     };
     this.#settleParkedInterruptsPromise ??= makePromise();
@@ -2817,29 +2895,56 @@ export class StreamController<
    * server state so optimistic clears from {@link respond} cannot leave
    * `stream.interrupts` empty while the checkpoint still has siblings.
    */
-  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
+  async #awaitResumedRunTerminal(
+    signal: AbortSignal,
+    answeredIds: readonly string[]
+  ): Promise<{
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
+    const threadId = this.#currentThreadId;
+    this.#resumeAnsweredIds = answeredIds;
+    let resumedRunId: string | undefined;
+    let resumedSeq = -1;
     const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
+      // A replayed `running` of an earlier run can arrive after this one's.
+      onRunning: (event) => {
+        const runId = synthesizedEventRunId(event.event_id);
+        if (runId == null || this.#currentThreadId !== threadId) return;
+        if (typeof event.seq === "number") {
+          if (event.seq <= resumedSeq) return;
+          resumedSeq = event.seq;
+        }
+        resumedRunId = runId;
+        this.#resumedRunId = runId;
+      },
     });
-    if (
-      !signal.aborted &&
-      !this.#disposed &&
-      (terminal.event === "interrupted" || terminal.event === "completed")
-    ) {
-      await this.#reconcilePendingInterruptsFromServer();
+    if (resumedRunId != null && this.#resumedRunId === resumedRunId) {
+      this.#resumedRunId = undefined;
+    }
+    if (this.#resumeAnsweredIds === answeredIds) this.#resumeAnsweredIds = [];
+    if (!signal.aborted && !this.#disposed) {
+      if (terminal.event === "interrupted" || terminal.event === "completed") {
+        await this.#reconcilePendingInterruptsFromServer();
+      } else if (terminal.event === "failed" && !terminal.stream) {
+        this.#rereadInterrupts(answeredIds);
+      }
     }
     return terminal;
   }
 
   #awaitRootTerminal(
     signal: AbortSignal,
-    options: { skipInterruptedUntilRunning: boolean }
+    options: {
+      skipInterruptedUntilRunning: boolean;
+      onRunning?: (event: Event) => void;
+    }
   ): Promise<{
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
+    /** `failed` because the stream errored, not because the run did. */
+    stream?: boolean;
   }> {
     return new Promise((resolve) => {
       let settled = false;
@@ -2849,6 +2954,7 @@ export class StreamController<
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
+        stream?: boolean;
       }) {
         if (settled) return;
         settled = true;
@@ -2876,6 +2982,7 @@ export class StreamController<
         };
         if (lifecycle?.event === "running") {
           sawRunning = true;
+          options.onRunning?.(event);
           return;
         }
         if (lifecycle?.event === "completed") {
@@ -2899,7 +3006,7 @@ export class StreamController<
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
       const unsubscribeError = this.#thread?.onError((error) =>
-        finish({ event: "failed", error: error.message })
+        finish({ event: "failed", error: error.message, stream: true })
       );
       if (signal.aborted) {
         finishAborted();
@@ -2918,11 +3025,22 @@ export class StreamController<
   #resolveInterruptForResume(resume?: unknown): ResolvedInterrupt | null {
     const thread = this.#thread;
     if (thread == null) return null;
-    return resolveInterruptTargetForHeadlessResume(
+    const target = resolveInterruptTargetForHeadlessResume(
       resume,
       thread.interrupts,
       this.#resolvedInterrupts
     );
+    if (target != null) return target;
+    // Interrupts read from server state (hydrate, a refused run.start) are
+    // shown before, or without, the stream replaying their `input.requested`.
+    const shown = [...this.rootStore.getSnapshot().interrupts]
+      .reverse()
+      .find(
+        (entry) => entry.id != null && !this.#resolvedInterrupts.has(entry.id)
+      );
+    return shown?.id == null
+      ? null
+      : { interruptId: shown.id, namespace: [...(shown.namespace ?? [])] };
   }
 
   /**
