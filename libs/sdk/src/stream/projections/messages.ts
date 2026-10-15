@@ -276,6 +276,7 @@ export function messagesProjection(
           // projections backfill history after the run has finished.
           channels: ["messages", "values"],
           namespace: ns,
+          resumeOnPause: true,
           onEvent(event) {
             if (event.method === "messages") {
               applyEvent(event as MessagesEvent);

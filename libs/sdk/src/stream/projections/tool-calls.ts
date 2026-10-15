@@ -65,6 +65,7 @@ export function toolCallsProjection(
           thread,
           channels: ["tools"],
           namespace: ns,
+          resumeOnPause: true,
           onEvent(event) {
             if (event.method !== "tools") return;
             applyToolsEvent(event as ToolsEvent);
