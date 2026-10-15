@@ -88,15 +88,46 @@ it.skipIf(process.platform === "win32")(
   }
 );
 
+/** Put a stub `docker` on PATH that answers only the context-endpoint query. */
+async function stubDockerContext(endpoint: string) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lg-docker-"));
+  tempDirs.push(dir);
+  const bin = path.join(dir, "docker");
+  await fs.writeFile(
+    bin,
+    [
+      "#!/bin/sh",
+      'if [ "$*" = "context inspect --format {{.Endpoints.docker.Host}}" ]; then',
+      `  echo '${endpoint}'`,
+      "else",
+      "  exit 1",
+      "fi",
+      "",
+    ].join("\n")
+  );
+  await fs.chmod(bin, 0o755);
+  process.env.PATH = `${dir}${path.delimiter}${process.env.PATH}`;
+}
+
 it.skipIf(process.platform === "win32")(
   "reads the daemon endpoint of the active docker context",
   async () => {
     delete process.env.DOCKER_HOST;
-    await stubDockerOnPath("unix:///Users/dev/.docker/run/docker.sock");
+    await stubDockerContext("unix:///Users/dev/.docker/run/docker.sock");
 
     await expect(activeDockerHost()).resolves.toBe(
       "unix:///Users/dev/.docker/run/docker.sock"
     );
+  }
+);
+
+it.skipIf(process.platform === "win32")(
+  "ignores a context without a docker endpoint",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    await stubDockerContext("<no value>");
+
+    await expect(activeDockerHost()).resolves.toBeUndefined();
   }
 );
 
