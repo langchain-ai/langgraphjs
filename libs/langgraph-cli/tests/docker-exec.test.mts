@@ -2,8 +2,10 @@ import { afterEach, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getDockerCapabilities } from "../src/docker/compose.mjs";
-import { activeDockerHost } from "../src/docker/docker.mjs";
+import {
+  activeDockerHost,
+  getDockerCapabilities,
+} from "../src/docker/compose.mjs";
 import { isBinaryNotFound } from "../src/docker/errors.mjs";
 
 const DOCKER_INFO = JSON.stringify({
@@ -40,6 +42,13 @@ async function stubDockerOnPath(stdout: string) {
   return dir;
 }
 
+/** Point PATH at an empty directory, so no `docker` can be found. */
+async function emptyPath() {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
+  tempDirs.push(dir);
+  process.env.PATH = dir;
+}
+
 it("classifies a missing binary separately from a non-zero exit", () => {
   expect(isBinaryNotFound({ code: "ENOENT" })).toBe(true);
   expect(isBinaryNotFound({ code: "EACCES" })).toBe(false);
@@ -71,9 +80,7 @@ it.skipIf(process.platform === "win32")(
 it.skipIf(process.platform === "win32")(
   "reports docker as not installed when it is absent from PATH",
   async () => {
-    const empty = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
-    tempDirs.push(empty);
-    process.env.PATH = empty;
+    await emptyPath();
 
     await expect(getDockerCapabilities()).rejects.toThrow(
       /Docker is required but not installed/
@@ -103,9 +110,7 @@ it.skipIf(process.platform === "win32")(
   "keeps docker's default when the context can't be read",
   async () => {
     delete process.env.DOCKER_HOST;
-    const empty = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
-    tempDirs.push(empty);
-    process.env.PATH = empty;
+    await emptyPath();
 
     await expect(activeDockerHost()).resolves.toBeUndefined();
   }
