@@ -5005,4 +5005,52 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
 
     await controller.dispose();
   });
+  it.each([
+    { label: "without", next: ["agent"] },
+    { label: "after", next: [] as string[] },
+  ])(
+    "never rebuilds a dropped message from a replayed message-start, $label an earlier hydrate seal",
+    async ({ next }) => {
+      // An idle thread (`next: []`) is seeded and sealed at step 2 by
+      // hydrate; an active one isn't sealed.
+      const { subscription, controller } = setup({ next });
+      await controller.hydrationPromise;
+
+      const human2 = { type: "human", id: "human-2", content: "go" };
+      if (next.length === 0) void controller.submit({ messages: [human2] });
+      await subscription.started;
+      let seq = 0;
+      subscription.push(lifecycleEvent("running", ++seq));
+      subscription.push(checkpointsEvent(3, ++seq));
+      subscription.push(valuesEvent([...seeded, human2], ++seq));
+      subscription.push(messageStartEvent("ai-cut", ++seq));
+      subscription.push(messageDeltaEvent(++seq, "Part"));
+      subscription.push(lifecycleEvent("interrupted", ++seq));
+      await waitForExpectation(() => {
+        expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2"]);
+      });
+
+      let reappeared = false;
+      const unsubscribe = controller.rootStore.subscribe(() => {
+        if (ids(controller).includes("ai-cut")) reappeared = true;
+      });
+
+      // A later checkpoint moves past every seal step, then the cut-off
+      // message is replayed from its start.
+      subscription.push(checkpointsEvent(4, ++seq));
+      subscription.push(valuesEvent([...seeded, human2], ++seq));
+      await settle();
+      subscription.push(messageStartEvent("ai-cut", ++seq));
+      subscription.push(messageDeltaEvent(++seq, "Part"));
+      await settle();
+      subscription.push(lifecycleEvent("interrupted", ++seq));
+      await settle();
+
+      expect(reappeared).toBe(false);
+      expect(ids(controller)).toEqual(["human-1", "ai-1", "human-2"]);
+
+      unsubscribe();
+      await controller.dispose();
+    }
+  );
 });

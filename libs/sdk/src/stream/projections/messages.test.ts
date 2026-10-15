@@ -94,7 +94,7 @@ function open() {
   const store = new StreamStore<BaseMessage[]>(projection.initial);
   const runtime = projection.open({ thread, store, rootBus });
   const ids = () => store.getSnapshot().map((m) => m.id);
-  return { push, rootBus, ids, runtime };
+  return { push, rootBus, ids, store, runtime };
 }
 
 describe("messagesProjection (scoped) run boundaries", () => {
@@ -154,6 +154,29 @@ describe("messagesProjection (scoped) run boundaries", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(ids()).toEqual(["cut"]);
 
+    await runtime.dispose();
+  });
+  it("never rebuilds a dropped message from a replayed message-start", async () => {
+    const { push, rootBus, ids, store, runtime } = open();
+    push(start("cut"), delta("par"));
+    await vi.waitFor(() => expect(ids()).toEqual(["cut"]));
+    rootBus.emit(rootLifecycle("interrupted"));
+    await vi.waitFor(() => expect(ids()).toEqual([]));
+
+    let reappeared = false;
+    const unsubscribe = store.subscribe(() => {
+      if (ids().includes("cut")) reappeared = true;
+    });
+    push(start("other"), delta("x"), values(["other"]));
+    await vi.waitFor(() => expect(ids()).toEqual(["other"]));
+    push(start("cut"), delta("partial"));
+    await new Promise((r) => setTimeout(r, 20));
+    rootBus.emit(rootLifecycle("interrupted"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reappeared).toBe(false);
+    expect(ids()).toEqual(["other"]);
+
+    unsubscribe();
     await runtime.dispose();
   });
 });

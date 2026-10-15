@@ -223,6 +223,14 @@ export class RootMessageProjection<
   readonly #finishedStreamIds = new Set<string>();
 
   /**
+   * Ids dropped by {@link closeRun}. Streamed events for them are ignored
+   * until {@link reset}, so a replayed `message-start` can't rebuild a
+   * dropped message. A `values` snapshot that carries one still restores
+   * it.
+   */
+  readonly #droppedRunIds = new Set<string>();
+
+  /**
    * @param params.messagesKey - Key inside `values` that holds the
    *   message array.
    * @param params.store       - Root snapshot store to mutate.
@@ -256,6 +264,7 @@ export class RootMessageProjection<
     this.#sealStep = undefined;
     this.#openRunStreamIds.clear();
     this.#finishedStreamIds.clear();
+    this.#droppedRunIds.clear();
   }
 
   /**
@@ -348,6 +357,7 @@ export class RootMessageProjection<
     // turn. Drop the replayed delta — the authoritative seed already
     // holds the final content (see {@link #sealedMessageIds}).
     if (this.#sealedMessageIds.has(id)) return;
+    if (this.#droppedRunIds.has(id)) return;
     if (!this.#valuesMessageIds.has(id)) this.#openRunStreamIds.add(id);
     if (update.kind === "message-finish") this.#finishedStreamIds.add(id);
     const captured = this.#roles.get(id) ?? { role: "ai" as const };
@@ -622,8 +632,9 @@ export class RootMessageProjection<
   }
 
   /**
-   * Drop never-checkpointed streamed messages and seal their ids so late
-   * deltas can't re-add them. A later snapshot still restores them.
+   * Drop never-checkpointed streamed messages and ignore further streamed
+   * events for their ids (see {@link #droppedRunIds}). A later snapshot
+   * still restores them.
    *
    * @param options.unfinishedOnly - Keep messages that reached
    *   `message-finish`.
@@ -644,7 +655,7 @@ export class RootMessageProjection<
       this.#finishedStreamIds.delete(id);
     }
     if (ids.size === 0) return ids;
-    this.sealMessageIds(ids);
+    for (const id of ids) this.#droppedRunIds.add(id);
     this.dropMessages(ids, options);
     return ids;
   }

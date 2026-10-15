@@ -71,11 +71,12 @@ export function messagesProjection(
       let valuesMessageIds = new Set<string>();
       // Same run-boundary rule as the root projection, driven by root
       // lifecycle events: a terminal drops streamed, uncommitted messages
-      // that never finished; the next `running` drops the rest. Dropped
-      // ids are sealed so late deltas can't re-add them.
+      // that never finished; the next `running` drops the rest. Streamed
+      // events for a dropped id are ignored from then on, so a replayed
+      // `message-start` can't rebuild it.
       const uncommittedIds = new Set<string>();
       const finishedIds = new Set<string>();
-      const sealedIds = new Set<string>();
+      const droppedIds = new Set<string>();
 
       // Root-scoped projections whose channels are already covered by
       // the controller's root pump attach to the shared fan-out
@@ -210,7 +211,6 @@ export function messagesProjection(
         for (const id of valuesMessageIds) {
           uncommittedIds.delete(id);
           finishedIds.delete(id);
-          sealedIds.delete(id);
         }
         const reconciledMessages = [...reconciliation.messages];
 
@@ -248,7 +248,7 @@ export function messagesProjection(
         if (update == null) return;
         const msg = update.message;
         const id = msg.id;
-        if (id == null || sealedIds.has(id)) return;
+        if (id == null || droppedIds.has(id)) return;
         if (!valuesMessageIds.has(id)) uncommittedIds.add(id);
         if (update.kind === "message-finish") finishedIds.add(id);
         const captured = roleByKey.get(id) ?? { role: "ai" as const };
@@ -278,7 +278,7 @@ export function messagesProjection(
         for (const id of dropped) {
           uncommittedIds.delete(id);
           finishedIds.delete(id);
-          sealedIds.add(id);
+          droppedIds.add(id);
         }
         const kept = pendingMessages.filter(
           (m) => m.id == null || !dropped.has(m.id)
