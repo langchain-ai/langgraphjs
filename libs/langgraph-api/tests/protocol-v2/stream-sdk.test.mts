@@ -12,6 +12,7 @@ import {
   describe,
   it,
   expect,
+  vi,
 } from "vitest";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -32,6 +33,7 @@ import {
 import { graph as agent } from "../graphs/agent.mjs";
 import { graph as agentWithToolsGraph } from "../graphs/agent_with_tools.mjs";
 import { graph as agentWithStatsGraph } from "../graphs/agent_with_stats.mjs";
+import { graph as parallelInterruptGraph } from "./graphs/parallel_interrupt.mjs";
 
 const threads = (() => {
   let store: Record<
@@ -87,6 +89,7 @@ beforeAll(async () => {
       agent_with_tools: agentWithToolsGraph,
       agent_with_stats:
         agentWithStatsGraph as unknown as Pregel<any, any, any, any, any>,
+      parallel_interrupt: parallelInterruptGraph,
     },
     checkpointer,
     threads,
@@ -292,6 +295,30 @@ describe("SDK streaming projections against embed server", () => {
         "number"
       );
 
+      await thread.close();
+    });
+  });
+
+  describe("run.start while several interrupts are pending", () => {
+    it("refuses the input and leaves both interrupts pending", async () => {
+      const thread = createThread("parallel_interrupt");
+      const pendingInterrupts = async () => {
+        const state = await parallelInterruptGraph.getState({
+          configurable: { thread_id: thread.threadId },
+        });
+        return state.tasks.flatMap((task) => task.interrupts);
+      };
+
+      await thread.run.start({ input: { answers: [] } });
+      await vi.waitFor(
+        async () => expect(await pendingInterrupts()).toHaveLength(2),
+        { timeout: 10_000 }
+      );
+
+      await expect(
+        thread.run.start({ input: { answers: ["x"] } })
+      ).rejects.toMatchObject({ code: "invalid_argument" });
+      expect(await pendingInterrupts()).toHaveLength(2);
       await thread.close();
     });
   });
