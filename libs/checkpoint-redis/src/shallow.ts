@@ -164,9 +164,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       channel_blobs: undefined,
     };
 
-    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
     const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
-    const writesExist = await this.client.exists(zsetKey);
 
     // Structure matching Python implementation
     const jsonDoc: any = {
@@ -177,7 +175,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       checkpoint: checkpointCopy,
       metadata: this.sanitizeMetadata(metadata),
       checkpoint_ts: Date.now(),
-      has_writes: writesExist ? "true" : "false",
+      has_writes: "false",
     };
 
     // Store metadata fields at top-level for searching
@@ -185,6 +183,12 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
 
     // Use Redis JSON commands
     await this.client.json.set(key, "$", jsonDoc);
+
+    // Check after storing the checkpoint so putWrites racing this put cannot
+    // have its has_writes marker overwritten by the root document write.
+    if (await this.client.exists(zsetKey)) {
+      await this.client.json.set(key, "$.has_writes", "true");
+    }
 
     // Apply TTL if configured
     if (this.ttlConfig?.defaultTTL) {
@@ -505,14 +509,11 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
 
     // Update checkpoint to indicate it has writes
     const checkpointKey = `checkpoint:${threadId}:${checkpointNs}:shallow`;
-    const checkpointExists = await this.client.exists(checkpointKey);
-    if (checkpointExists) {
-      const currentDoc = await this.client.json.get(checkpointKey);
-      if (currentDoc) {
-        currentDoc.has_writes = "true";
-        await this.client.json.set(checkpointKey, "$", currentDoc);
-      }
-    }
+    // Update only the marker in one Redis command. Reading and rewriting the
+    // whole document can overwrite a newer checkpoint committed concurrently
+    // by put(). If the checkpoint does not exist yet, JSON.SET leaves it
+    // untouched; a later put() sees the write registry and sets has_writes.
+    await this.client.json.set(checkpointKey, "$.has_writes", "true");
   }
 
   async deleteThread(threadId: string): Promise<void> {
