@@ -138,7 +138,7 @@ it("leaves an explicit DOCKER_HOST to docker", async () => {
 });
 
 it.skipIf(process.platform === "win32")(
-  "keeps docker's default when the context can't be read",
+  "keeps docker's default when the context lookup fails",
   async () => {
     delete process.env.DOCKER_HOST;
     await emptyPath();
