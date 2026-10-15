@@ -15,6 +15,7 @@ import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
 import {
   isKeyedByInterruptId,
   matchesSinkFilter,
+  openInterruptsMessage,
   normalizeMultitaskStrategy,
   DEFAULT_MULTITASK_STRATEGY,
 } from "../../protocol/service.mjs";
@@ -150,9 +151,26 @@ export function registerProtocolRoutes(
     return protocolSession;
   }
 
-  async function pendingInterruptCount(thread: EmbedThread): Promise<number> {
-    const assistantId = thread.assistantId;
-    if (assistantId == null) return 0;
+  /**
+   * The assistant the thread last ran, for an in-memory thread a restart
+   * left without one.
+   */
+  async function persistedAssistantId(
+    thread: EmbedThread
+  ): Promise<string | undefined> {
+    try {
+      const persisted = await context.threads.get(thread.threadId);
+      const assistantId = persisted?.metadata?.assistant_id;
+      return typeof assistantId === "string" ? assistantId : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function pendingInterruptCount(
+    thread: EmbedThread,
+    assistantId: string
+  ): Promise<number> {
     try {
       const graph = await context.getGraph(assistantId);
       const snapshot = await graph.getState(
@@ -192,25 +210,48 @@ export function registerProtocolRoutes(
         message: `Thread ${thread.threadId} is bound to assistant ${thread.assistantId}; cannot run ${assistantId}.`,
       });
     }
-    const pendingInterrupts =
-      params.input != null ? await pendingInterruptCount(thread) : 0;
-    // One answer can't say which of several pending interrupts it is for:
-    // LangGraph fails the run, or picks one when they share a subgraph task.
-    // While a run is in flight the count can still change, so it keeps
-    // resuming as before.
+    // Fork/time-travel replays from `config.configurable.checkpoint_id`
+    // — the single legacy-compliant fork field. The SDK folds its
+    // `forkFrom` convenience option into this field client-side, so the
+    // server reads it from there rather than a top-level `forkFrom`.
+    // `createStubRun` only reliably forwards a fork target via the
+    // top-level `checkpoint_id`, so lift it out of `configurable` below.
+    const forkCheckpointId = (() => {
+      const configurable =
+        isRecord(params.config) && isRecord(params.config.configurable)
+          ? params.config.configurable
+          : undefined;
+      const checkpointId = configurable?.checkpoint_id;
+      return typeof checkpointId === "string" && checkpointId.length > 0
+        ? checkpointId
+        : undefined;
+    })();
+
+    // Only input keyed by interrupt id answers interrupts; any other input is
+    // refused while the thread waits on one, and is a new run while a run is
+    // in flight or when it forks (see `ProtocolService.handleRunStart`).
+    const keyed = isKeyedByInterruptId(params.input);
     const runInFlight =
       thread.currentRun?.status === "pending" ||
       thread.currentRun?.status === "running";
-    if (
-      pendingInterrupts > 1 &&
-      !isKeyedByInterruptId(params.input) &&
-      !runInFlight
-    ) {
+    // A restart leaves the thread unbound, and its interrupts belong to the
+    // graph it last ran, which the request may not name.
+    const pendingInterrupts =
+      params.input != null &&
+      (keyed || (forkCheckpointId == null && !runInFlight))
+        ? await pendingInterruptCount(
+            thread,
+            thread.assistantId ??
+              (await persistedAssistantId(thread)) ??
+              assistantId
+          )
+        : 0;
+    if (pendingInterrupts > 0 && !keyed) {
       return jsonResponse({
         type: "error",
         id: command.id,
         error: "invalid_argument",
-        message: `run.start input can't say which of the ${pendingInterrupts} pending interrupts it answers; answer them with input.respond.`,
+        message: openInterruptsMessage(pendingInterrupts),
       });
     }
     thread.assistantId = assistantId;
@@ -247,29 +288,6 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Fork/time-travel replays from `config.configurable.checkpoint_id`
-    // — the single legacy-compliant fork field. The SDK folds its
-    // `forkFrom` convenience option into this field client-side, so the
-    // server reads it from there rather than a top-level `forkFrom`.
-    // `createStubRun` only reliably forwards a fork target via the
-    // top-level `checkpoint_id`, so lift it out of `configurable` below.
-    const forkCheckpointId = (() => {
-      const configurable =
-        isRecord(params.config) && isRecord(params.config.configurable)
-          ? params.config.configurable
-          : undefined;
-      const checkpointId = configurable?.checkpoint_id;
-      return typeof checkpointId === "string" && checkpointId.length > 0
-        ? checkpointId
-        : undefined;
-    })();
-
-    // Resume only when the thread actually has a pending `interrupt()`.
-    // A cancelled run also ends with status "interrupted" but has no
-    // pending interrupt to consume the resume value, so folding the
-    // input into `Command(resume)` there would silently drop the user's
-    // message; a cancelled thread must get plain input (a fresh run from
-    // the checkpoint that applies the input to state).
     const isResume = pendingInterrupts > 0;
 
     if (isResume) {
@@ -368,7 +386,8 @@ export function registerProtocolRoutes(
       });
     }
 
-    const assistantId = thread.assistantId;
+    const assistantId =
+      thread.assistantId ?? (await persistedAssistantId(thread));
     if (assistantId == null) {
       return jsonResponse({
         type: "error",
