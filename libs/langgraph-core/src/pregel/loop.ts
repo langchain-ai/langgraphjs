@@ -742,10 +742,6 @@ export class PregelLoop {
         config.configurable[CONFIG_KEY_STREAM]
       );
     }
-    const skipDoneTasks = config.configurable
-      ? !("checkpoint_id" in config.configurable)
-      : true;
-
     const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as
       | PregelScratchpad
       | undefined;
@@ -789,6 +785,14 @@ export class PregelLoop {
           ],
       });
     }
+    // A run replays only when it's pointed at a checkpoint: a truthy
+    // `checkpoint_id`, this graph's `checkpoint_map` entry, or a replaying
+    // parent. Every task config carries a `checkpoint_id` key, so a key check
+    // would make every subgraph replay its finished tasks.
+    const skipDoneTasks = !(
+      checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID] ||
+      config.configurable?.[CONFIG_KEY_REPLAY_STATE]
+    );
     const checkpointNamespace = checkpointNamespaceFromNs(
       config.configurable?.checkpoint_ns
     );
@@ -1652,12 +1656,6 @@ export class PregelLoop {
           configurable?.[CONFIG_KEY_RESUMING] === true ||
           this.resumeAtHead
         ));
-    if (this.isNested && !isTimeTraveling) {
-      // Task configs always carry a `checkpoint_id` key, so a nested graph
-      // starts out replaying even on a plain resume, which would rerun its
-      // finished tasks instead of handing back their writes.
-      this.skipDoneTasks = true;
-    }
     const isUpdateOrFork =
       this.checkpointMetadata.source === "update" ||
       this.checkpointMetadata.source === "fork";
