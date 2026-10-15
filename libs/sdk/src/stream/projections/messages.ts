@@ -78,19 +78,6 @@ export function messagesProjection(
       const rootShortCircuit =
         isRootNamespace(ns) && rootBus.channels.includes("messages");
 
-      if (rootShortCircuit) {
-        const unsubscribe = rootBus.subscribe((event) => {
-          if (event.method !== "messages") return;
-          if (!isRootNamespace(event.params.namespace)) return;
-          applyEvent(event as MessagesEvent);
-        });
-        return {
-          dispose() {
-            unsubscribe();
-          },
-        };
-      }
-
       let disposed = false;
 
       // Local mirror of the store contents. Every `applyEvent` /
@@ -286,15 +273,28 @@ export function messagesProjection(
         });
       };
 
-      void (async () => {
-        const seeded =
-          (await rootBus.trySeedFromHistory?.({
-            kind: "messages",
-            namespace: ns,
-            store,
-          })) === true;
-        if (!seeded && !disposed) openSubscription();
-      })();
+      if (rootShortCircuit) {
+        runtime = {
+          dispose: rootBus.subscribe((event) => {
+            if (!isRootNamespace(event.params.namespace)) return;
+            if (event.method === "messages") {
+              applyEvent(event as MessagesEvent);
+            } else if (event.method === "values") {
+              applyValuesEvent(event as ValuesEvent);
+            }
+          }),
+        };
+      } else {
+        void (async () => {
+          const seeded =
+            (await rootBus.trySeedFromHistory?.({
+              kind: "messages",
+              namespace: ns,
+              store,
+            })) === true;
+          if (!seeded && !disposed) openSubscription();
+        })();
+      }
 
       return {
         async dispose() {
