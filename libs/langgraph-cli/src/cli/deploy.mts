@@ -20,6 +20,7 @@ import { withAnalytics } from "./utils/analytics.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { getConfig, type Config } from "../utils/config.mjs";
 import {
+  activeDockerHost,
   assembleLocalDeps,
   configToDocker,
   getBaseImage,
@@ -951,6 +952,10 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
     normalizeImageTag(args.tag)
   );
 
+  // A config directory has no current context, so Docker would fall back to
+  // /var/run/docker.sock; keep talking to the daemon the build used.
+  const dockerHost = await activeDockerHost();
+  const hostArgs = dockerHost ? ["--host", dockerHost] : [];
   const { dir: cfgDir, cleanup } = await dockerConfigForToken(
     registryHost,
     deploymentToken,
@@ -966,7 +971,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
       ...baseOpts,
       ...stdio,
       input: tokenInput,
-    })`docker --config ${cfgDir} login -u ${username} --password-stdin ${registryHost}`;
+    })`docker --config ${cfgDir} ${hostArgs} login -u ${username} --password-stdin ${registryHost}`;
     step += 1;
 
     // -- Tag + push --
@@ -984,7 +989,7 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
         await $({
           ...baseOpts,
           ...stdio,
-        })`docker --config ${cfgDir} push ${remoteImage}`;
+        })`docker --config ${cfgDir} ${hostArgs} push ${remoteImage}`;
         pushSpinner.stop();
         break;
       } catch (error) {

@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getDockerCapabilities } from "../src/docker/compose.mjs";
+import { activeDockerHost } from "../src/docker/docker.mjs";
 import { isBinaryNotFound } from "../src/docker/errors.mjs";
 
 const DOCKER_INFO = JSON.stringify({
@@ -16,10 +17,13 @@ const DOCKER_INFO = JSON.stringify({
 });
 
 const originalPath = process.env.PATH;
+const originalDockerHost = process.env.DOCKER_HOST;
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   process.env.PATH = originalPath;
+  if (originalDockerHost === undefined) delete process.env.DOCKER_HOST;
+  else process.env.DOCKER_HOST = originalDockerHost;
   await Promise.all(
     tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true }))
   );
@@ -74,5 +78,35 @@ it.skipIf(process.platform === "win32")(
     await expect(getDockerCapabilities()).rejects.toThrow(
       /Docker is required but not installed/
     );
+  }
+);
+
+it.skipIf(process.platform === "win32")(
+  "reads the daemon endpoint of the active docker context",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    await stubDockerOnPath("unix:///Users/dev/.docker/run/docker.sock");
+
+    await expect(activeDockerHost()).resolves.toBe(
+      "unix:///Users/dev/.docker/run/docker.sock"
+    );
+  }
+);
+
+it("leaves an explicit DOCKER_HOST to docker", async () => {
+  process.env.DOCKER_HOST = "tcp://127.0.0.1:2375";
+
+  await expect(activeDockerHost()).resolves.toBeUndefined();
+});
+
+it.skipIf(process.platform === "win32")(
+  "keeps docker's default when the context can't be read",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    const empty = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
+    tempDirs.push(empty);
+    process.env.PATH = empty;
+
+    await expect(activeDockerHost()).resolves.toBeUndefined();
   }
 );
