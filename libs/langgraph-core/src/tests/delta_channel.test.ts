@@ -1,23 +1,32 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIMessage,
   BaseMessage,
   HumanMessage,
   RemoveMessage,
 } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   MemorySaver,
+  InMemoryCache,
   DeltaSnapshot,
+  type BaseCheckpointSaver,
   isDeltaSnapshot,
+  uuid6,
   type Checkpoint,
   type CheckpointMetadata,
 } from "@langchain/langgraph-checkpoint";
 import { DeltaChannel } from "../channels/delta.js";
+import { BinaryOperatorAggregate } from "../channels/binop.js";
+import { LastValue } from "../channels/last_value.js";
+import { Channel, Pregel } from "../pregel/index.js";
 import {
   channelsFromCheckpoint,
   createCheckpoint,
+  DELTA_WRITES_VERSIONED,
   deltaChannelsToSnapshot,
   exitDeltaTaskId,
+  isDeltaWritesVersioned,
 } from "../channels/base.js";
 import {
   messagesDeltaReducer,
@@ -25,8 +34,17 @@ import {
   type Messages,
 } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
+import { MessagesAnnotation } from "../graph/messages_annotation.js";
 import { StateGraph } from "../graph/state.js";
-import { START, END, Overwrite } from "../constants.js";
+import {
+  START,
+  END,
+  Overwrite,
+  NULL_TASK_ID,
+  CONFIG_KEY_CHECKPOINTER,
+  Command,
+} from "../constants.js";
+import { interrupt } from "../interrupt.js";
 import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 
@@ -36,6 +54,74 @@ const listReducer = (state: number[], writes: number[][]): number[] => {
   for (const w of writes) out.push(...w);
   return out;
 };
+
+const strListReducer = (state: string[], writes: string[][]): string[] => {
+  const out = [...state];
+  for (const w of writes) out.push(...w);
+  return out;
+};
+
+const sorted = (values: number[]) => values.sort((a, b) => a - b);
+const deltaInputGraph = (snapshotFrequency?: number) =>
+  new Pregel({
+    nodes: {
+      n: Channel.subscribeTo("go")
+        .pipe(() => [2])
+        .pipe(Channel.writeTo(["log", "plain"])),
+    },
+    channels: {
+      log: new DeltaChannel<number[], number[]>(
+        (state, writes) => sorted(listReducer(state, writes)),
+        { snapshotFrequency }
+      ),
+      plain: new BinaryOperatorAggregate<number[]>(
+        (a, b) => sorted([...a, ...b]),
+        () => []
+      ),
+      go: new LastValue<number>(),
+    },
+    inputChannels: ["log", "plain", "go"],
+    outputChannels: ["log", "plain"],
+    checkpointer: new MemorySaver(),
+  });
+const logAndPlain = async (
+  graph: ReturnType<typeof deltaInputGraph>,
+  config: RunnableConfig
+) => (await graph.getState(config)).values as Record<string, number[]>;
+
+// Stores checkpoints the way releases before DELTA_WRITES_VERSIONED did.
+class OlderVersionSaver extends MemorySaver {
+  older = true;
+
+  async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata
+  ): Promise<RunnableConfig> {
+    if (!this.older) return super.put(config, checkpoint, metadata);
+    const { [DELTA_WRITES_VERSIONED]: _marker, ...older } = metadata as Record<
+      string,
+      unknown
+    >;
+    return super.put(config, checkpoint, older as CheckpointMetadata);
+  }
+}
+
+const twoDeltaChannelGraph = (saver: MemorySaver) =>
+  new StateGraph(
+    Annotation.Root({
+      a: new DeltaChannel<number[], number[]>(listReducer),
+      b: new DeltaChannel<number[], number[]>(listReducer),
+    })
+  )
+    .addNode("n", () => ({ a: [1] }))
+    .addEdge(START, "n")
+    .addEdge("n", END)
+    .compile({ checkpointer: saver });
+
+const deltaCounters = async (saver: MemorySaver, config: RunnableConfig) =>
+  (await saver.getTuple(config))?.metadata?.counters_since_delta_snapshot ??
+  {};
 
 describe("DeltaChannel (unit)", () => {
   it("rejects a non-positive snapshotFrequency", () => {
@@ -296,16 +382,31 @@ describe("createCheckpoint / deltaChannelsToSnapshot", () => {
     channels.a.update([[1]]);
     channels.b.update([[1]]);
     // a reached its update frequency (3); b reached the superstep bound
-    const out = deltaChannelsToSnapshot(channels, {
-      a: [3, 3],
-      b: [0, 5000],
-    });
+    const versions = { a: 1, b: 1 };
+    const out = deltaChannelsToSnapshot(
+      channels,
+      { a: [3, 3], b: [0, 5000] },
+      versions
+    );
     expect(out.has("a")).toBe(true);
     expect(out.has("b")).toBe(true);
     // neither bound reached
-    expect(deltaChannelsToSnapshot(channels, { a: [1, 1], b: [0, 1] }).size).toBe(
-      0
-    );
+    expect(
+      deltaChannelsToSnapshot(channels, { a: [1, 1], b: [0, 1] }, versions).size
+    ).toBe(0);
+    // a channel without a version was never written: nothing to snapshot
+    expect(
+      deltaChannelsToSnapshot(channels, { a: [3, 3], b: [0, 5000] }, { a: 1 }).has(
+        "b"
+      )
+    ).toBe(false);
+    expect(
+      deltaChannelsToSnapshot(
+        channels,
+        { a: [3, 3], b: [0, 5000] },
+        undefined
+      ).has("b")
+    ).toBe(true);
   });
 });
 
@@ -339,6 +440,7 @@ describe("exitDeltaTaskId", () => {
     const synth = exitDeltaTaskId(3, "00000000-0000-0000-0000-000000000000");
     expect(isPostgresUuid(synth)).toBe(true);
     expect(synth).toBe("00000003-0000-0000-0000-000000000000");
+    expect(exitDeltaTaskId(0, NULL_TASK_ID)).not.toBe(NULL_TASK_ID);
   });
 });
 
@@ -393,7 +495,7 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
     ]);
   });
 
-  it("orders concurrent same-super-step writes by task id", async () => {
+  it("pathless concurrent same-super-step writes fall back to task-id order (legacy)", async () => {
     const saver = new MemorySaver();
     const cfg = { configurable: { thread_id: "t-group", checkpoint_ns: "" } };
     const meta: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
@@ -533,7 +635,445 @@ describe("MemorySaver.getDeltaChannelHistory", () => {
   });
 });
 
+describe("a DeltaChannel that was never written", () => {
+  it("is not walked when the thread is loaded", async () => {
+    class RecordingSaver extends MemorySaver {
+      requested: string[][] = [];
+
+      async getDeltaChannelHistory(
+        args: Parameters<MemorySaver["getDeltaChannelHistory"]>[0]
+      ) {
+        this.requested.push([...args.channels].sort());
+        return super.getDeltaChannelHistory(args);
+      }
+    }
+    const State = Annotation.Root({
+      written: new DeltaChannel<number[], number[]>(listReducer),
+      neverWritten: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const saver = new RecordingSaver();
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({ written: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "never-written" } };
+    await graph.invoke({ written: [0] }, config);
+    saver.requested = [];
+
+    await graph.invoke({ written: [2] }, config);
+    const state = await graph.getState(config);
+
+    expect(state.values.neverWritten).toEqual([]);
+    expect(saver.requested.length).toBeGreaterThan(0);
+    expect(saver.requested).toEqual(saver.requested.map(() => ["written"]));
+  });
+
+  it("keeps a first write that updateState takes from the interrupted head", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+      other: Annotation<number[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+    const graph = new StateGraph(State)
+      .addNode("p", () => ({ log: [1] }))
+      .addNode("q", () => {
+        interrupt("continue?");
+        return { other: [2] };
+      })
+      .addEdge(START, "p")
+      .addEdge(START, "q")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "pending-first-write" } };
+    await graph.invoke({ other: [0] }, config);
+
+    await graph.updateState(config, { other: [3] }, "q");
+
+    const state = await graph.getState(config);
+    expect(state.values.log).toEqual([1]);
+  });
+
+  for (const durability of ["sync", "async", "exit"] as const) {
+    it(`still walks for a write an older updateState stored without a version (durability=${durability})`, async () => {
+      const State = Annotation.Root({
+        log: new DeltaChannel<number[], number[]>(listReducer),
+        other: Annotation<string[]>({
+          reducer: (a, b) => [...a, ...b],
+          default: () => [],
+        }),
+      });
+      const saver = new OlderVersionSaver();
+      const graph = new StateGraph(State)
+        .addNode("p", (s: typeof State.State) =>
+          s.log.length === 0 ? { log: [1] } : {}
+        )
+        .addNode("q", () => {
+          interrupt("continue?");
+          return {};
+        })
+        .addNode("r", () => ({ other: ["r"] }))
+        .addConditionalEdges(START, (s: typeof State.State) =>
+          s.other.includes("go") ? ["r"] : ["p", "q"]
+        )
+        .addEdge("p", END)
+        .addEdge("q", END)
+        .addEdge("r", END)
+        .compile({ checkpointer: saver });
+      const config = {
+        configurable: { thread_id: `older-update-${durability}` },
+      };
+      await graph.invoke({ other: ["start"] }, config);
+      const head = await saver.getTuple(config);
+      await saver.put(
+        head!.config,
+        { ...head!.checkpoint, id: uuid6(1) },
+        { source: "update", step: 1, parents: {} }
+      );
+      saver.older = false;
+
+      await graph.invoke({ other: ["go"] }, { ...config, durability });
+
+      const logs: number[][] = [];
+      for await (const snapshot of graph.getStateHistory(config)) {
+        if ((snapshot.metadata?.step ?? -1) >= 1) {
+          logs.push(snapshot.values.log);
+        }
+      }
+      expect(logs.length).toBeGreaterThan(1);
+      expect(logs).toEqual(logs.map(() => [1]));
+      const latest = await saver.getTuple(config);
+      expect(isDeltaWritesVersioned(latest!.metadata)).toBe(false);
+    });
+  }
+
+  it("keeps a write updateState makes on a new thread", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({}))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "update-new-thread" } };
+
+    await graph.updateState(config, { log: [1] }, "n");
+
+    expect((await graph.getState(config)).values.log).toEqual([1]);
+  });
+
+  it("doesn't replay an update as input to a delta input channel twice", async () => {
+    const graph = deltaInputGraph();
+    const config = { configurable: { thread_id: "input-to-delta-channel" } };
+
+    await graph.updateState(config, { log: [1], plain: [1], go: 1 }, "__input__");
+    await graph.invoke(null, config);
+
+    const { log, plain } = await logAndPlain(graph, config);
+    expect(log).toEqual(plain);
+  });
+
+  it.each([1, 2])(
+    "reads an update as input to a delta input channel on the checkpoint it saves and after the next run, with snapshotFrequency %i",
+    async (snapshotFrequency) => {
+      const graph = deltaInputGraph(snapshotFrequency);
+      const config = {
+        configurable: { thread_id: `input-update-${snapshotFrequency}` },
+      };
+      await graph.invoke({ log: [0], plain: [0], go: 1 }, config);
+
+      await graph.updateState(config, { log: [1], plain: [1], go: 1 }, "__input__");
+      const afterUpdate = await logAndPlain(graph, config);
+      await graph.invoke(null, config);
+      const afterRun = await logAndPlain(graph, config);
+
+      expect(afterUpdate.log).toEqual(afterUpdate.plain);
+      expect(afterRun.log).toEqual(afterRun.plain);
+    }
+  );
+
+  it("keeps an update as input to an older checkpoint out of its other branch", async () => {
+    const graph = deltaInputGraph();
+    const config = { configurable: { thread_id: "input-to-older-checkpoint" } };
+    await graph.invoke({ go: 1 }, config);
+    const older = (await graph.getState(config)).config;
+    await graph.invoke({ go: 1 }, config);
+    const otherBranch = await graph.getState(config);
+
+    const edited = await graph.updateState(
+      older,
+      { log: [1], plain: [1], go: 1 },
+      "__input__"
+    );
+
+    const { log, plain } = await logAndPlain(graph, edited);
+    expect(log).toEqual(plain);
+    expect((await graph.getState(otherBranch.config)).values).toEqual(
+      otherBranch.values
+    );
+  });
+
+  it("keeps both inputs when a node update follows two updates as input", async () => {
+    const graph = new Pregel({
+      nodes: {
+        n: Channel.subscribeTo("go")
+          .pipe(() => [0])
+          .pipe(Channel.writeTo(["log", "plain"])),
+      },
+      channels: {
+        log: new DeltaChannel<number[], number[]>(listReducer),
+        plain: new BinaryOperatorAggregate<number[]>(
+          (a, b) => [...a, ...b],
+          () => []
+        ),
+        go: new LastValue<number>(),
+      },
+      inputChannels: ["log", "plain", "go"],
+      outputChannels: ["log", "plain"],
+      checkpointer: new MemorySaver(),
+    });
+    const config = { configurable: { thread_id: "two-inputs-then-update" } };
+
+    await graph.updateState(config, { log: [1], plain: [1] }, "__input__");
+    await graph.updateState(config, { log: [2], plain: [2] }, "__input__");
+    await graph.updateState(config, [3], "n");
+
+    const { log, plain } = (await graph.getState(config)).values as Record<
+      string,
+      number[]
+    >;
+    expect(log).toEqual([1, 2, 3]);
+    expect(log).toEqual(plain);
+  });
+
+  const markedGraph = (saver: MemorySaver) =>
+    new StateGraph(
+      Annotation.Root({
+        log: new DeltaChannel<number[], number[]>(listReducer),
+      })
+    )
+      .addNode("n", () => ({ log: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+  const updates: [
+    string,
+    (
+      graph: ReturnType<typeof markedGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { log: [9] }, "n")],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END)],
+    [
+      "as input",
+      (graph, config) => graph.updateState(config, { log: [9] }, "__input__"),
+    ],
+    ["copying", (graph, config) => graph.updateState(config, undefined, "__copy__")],
+    ["with no values", (graph, config) => graph.updateState(config, undefined)],
+  ];
+  for (const [label, update] of updates) {
+    it(`updateState ${label} keeps DELTA_WRITES_VERSIONED only on a thread that has it`, async () => {
+      for (const older of [false, true]) {
+        const saver = new OlderVersionSaver();
+        saver.older = older;
+        const graph = markedGraph(saver);
+        const config = { configurable: { thread_id: `marker-${label}` } };
+        await graph.invoke({ log: [0] }, config);
+        saver.older = false;
+
+        const updated = await update(graph, config);
+
+        const tuple = await saver.getTuple(updated);
+        expect(isDeltaWritesVersioned(tuple?.metadata), `older=${older}`).toBe(
+          !older
+        );
+      }
+    });
+  }
+
+  // [label, update, updates it adds to `a`, supersteps it adds]. An update as
+  // input writes the start channel, so it adds no update to `a`.
+  const countedUpdates: [
+    string,
+    (
+      graph: ReturnType<typeof twoDeltaChannelGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+    number,
+    number,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { a: [9] }, "n"), 1, 1],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END), 0, 1],
+    [
+      "as input",
+      (graph, config) => graph.updateState(config, { a: [9] }, "__input__"),
+      0,
+      1,
+    ],
+    ["copying", (graph, config) => graph.updateState(config, undefined, "__copy__"), 0, 0],
+    ["with no values", (graph, config) => graph.updateState(config, undefined), 0, 1],
+    [
+      "in two supersteps",
+      (graph, config) =>
+        graph.bulkUpdateState(config, [
+          { updates: [{ values: { a: [9] }, asNode: "n" }] },
+          { updates: [{ values: { a: [9] }, asNode: "n" }] },
+        ]),
+      2,
+      2,
+    ],
+  ];
+  for (const [label, update, aUpdates, supersteps] of countedUpdates) {
+    it(`updateState ${label} carries every delta channel's counters forward`, async () => {
+      const saver = new MemorySaver();
+      const graph = twoDeltaChannelGraph(saver);
+      const config = { configurable: { thread_id: `counters-${label}` } };
+      await graph.invoke({ a: [0], b: [0] }, config);
+      const before = await deltaCounters(saver, config);
+      expect(Object.keys(before).sort()).toEqual(["a", "b"]);
+
+      const updated = await update(graph, config);
+
+      expect(await deltaCounters(saver, updated)).toEqual({
+        a: [before.a[0] + aUpdates, before.a[1] + supersteps],
+        b: [before.b[0], before.b[1] + supersteps],
+      });
+    });
+  }
+
+  it("keeps a null write that updateState takes from the head", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+      other: Annotation<number[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => ({ other: [1] }))
+      .addNode("b", () => ({ other: [2] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .compile({ checkpointer: saver, interruptBefore: ["b"] });
+    const config = { configurable: { thread_id: "pending-null-write" } };
+    await graph.invoke({ other: [0] }, config);
+    const head = await graph.getState(config);
+    await saver.putWrites(head.config, [["log", [5]]], NULL_TASK_ID);
+
+    await graph.updateState(config, { other: [3] }, "a");
+
+    const state = await graph.getState(config);
+    expect(state.values.log).toEqual([5]);
+  });
+});
+
+// Python twin: libs/langgraph/tests/test_delta_channel_run_input.py
+describe.each(["sync", "async", "exit"] as const)(
+  "a run's input to a DeltaChannel input channel (durability: %s)",
+  (durability) => {
+    const expectLogToReadLikePlainEverywhere = async (
+      graph: ReturnType<typeof deltaInputGraph>,
+      config: RunnableConfig
+    ) => {
+      for await (const state of graph.getStateHistory(config)) {
+        const values = state.values as Record<string, number[] | undefined>;
+        expect(values.log ?? []).toEqual(values.plain ?? []);
+      }
+    };
+
+
+    it("reads back on its own checkpoints", async () => {
+      const graph = deltaInputGraph();
+      const config = { configurable: { thread_id: "t" } };
+
+      await graph.invoke({ log: [0], plain: [0], go: 1 }, { ...config, durability });
+      await graph.invoke({ log: [5], plain: [5], go: 1 }, { ...config, durability });
+
+      await expectLogToReadLikePlainEverywhere(graph, config);
+    });
+
+    it.each([
+      ["without", { go: 1 }],
+      ["with", { log: [5], plain: [5], go: 1 }],
+    ])(
+      "from an older checkpoint stays out of its other branch, %s delta input",
+      async (_, otherBranchInput) => {
+        const graph = deltaInputGraph();
+        const config = { configurable: { thread_id: "t" } };
+        await graph.invoke({ go: 1 }, { ...config, durability });
+        const older = (await graph.getState(config)).config;
+        await graph.invoke(otherBranchInput, { ...config, durability });
+
+        await graph.invoke({ log: [7], plain: [7], go: 1 }, { ...older, durability });
+
+        await expectLogToReadLikePlainEverywhere(graph, config);
+      }
+    );
+  }
+);
+
 describe("DeltaChannel end-to-end via StateGraph", () => {
+  // Python twin: libs/langgraph/tests/test_delta_channel_node_cache.py
+  describe("a node served from the node cache", () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<string[], string[]>(strListReducer),
+      plain: Annotation<string[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+
+    const INPUT = { log: [], plain: [] };
+
+    class CountsSets extends InMemoryCache {
+      sets = 0;
+
+      async set(pairs: Parameters<InMemoryCache["set"]>[0]) {
+        this.sets += 1;
+        return super.set(pairs);
+      }
+    }
+
+    it.each(["sync", "async", "exit"] as const)(
+      "saves its writes like a node that ran, without caching them again (durability: %s)",
+      async (durability) => {
+        const runs: string[] = [];
+        const node = (name: string) => () => {
+          runs.push(name);
+          return { log: [name], plain: [name] };
+        };
+        const cache = new CountsSets();
+        const graph = new StateGraph(State)
+          .addNode("a", node("a"))
+          .addNode("b", node("b"), { cachePolicy: true })
+          .addNode("c", node("c"))
+          .addEdge(START, "a")
+          .addEdge("a", "b")
+          .addEdge("b", "c")
+          .compile({ checkpointer: new MemorySaver(), cache });
+        await graph.invoke(INPUT, {
+          configurable: { thread_id: "1" },
+          durability,
+        });
+        const config = { configurable: { thread_id: "2" } };
+
+        await graph.invoke(INPUT, { ...config, durability });
+
+        expect(runs).toEqual(["a", "b", "c", "a", "c"]);
+        expect(cache.sets, "the cache hit was written back to the cache").toBe(
+          1
+        );
+        for await (const state of graph.getStateHistory(config)) {
+          expect(state.values.log ?? []).toEqual(state.values.plain ?? []);
+        }
+      }
+    );
+  });
+
   const buildGraph = (snapshotFrequency: number) => {
     const State = Annotation.Root({
       messages: new DeltaChannel<BaseMessage[], Messages>(
@@ -581,6 +1121,37 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
       ]);
     });
   }
+
+  it("an exit-mode Command update on a new thread reads like a plain channel", async () => {
+    const State = Annotation.Root({
+      log: new DeltaChannel<number[], number[]>(listReducer),
+      plain: Annotation<number[]>({
+        reducer: (a, b) => [...a, ...b],
+        default: () => [],
+      }),
+    });
+    const graph = new StateGraph(State)
+      .addNode("node", () => ({ log: [2], plain: [2] }))
+      .addEdge(START, "node")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "exit-command-new-thread" },
+      durability: "exit" as const,
+    };
+
+    await graph.invoke(
+      new Command({ update: { log: [1], plain: [1] }, goto: "node" }),
+      config
+    );
+
+    const history = [];
+    for await (const snapshot of graph.getStateHistory(config)) {
+      history.push(snapshot.values as { log?: number[]; plain?: number[] });
+    }
+    expect(history.map((values) => values.log ?? [])).toEqual(
+      history.map((values) => values.plain ?? [])
+    );
+  });
 
   it("does not store the full value in non-snapshot checkpoint blobs", async () => {
     const graph = buildGraph(1000);
@@ -769,6 +1340,88 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
   });
 });
 
+describe("bulkUpdateState with several updates in one super-step", () => {
+  const buildGraph = (
+    checkpointer: BaseCheckpointSaver,
+    interruptBefore?: "assistant"[]
+  ) => {
+    const State = Annotation.Root({
+      messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer),
+    });
+    return new StateGraph(State)
+      .addNode("model", () => ({}))
+      .addNode("assistant", () => ({}))
+      .addEdge(START, "model")
+      .addEdge("model", "assistant")
+      .addEdge("assistant", END)
+      .compile({ checkpointer, interruptBefore });
+  };
+  const update = (content: string, asNode: string) => ({
+    values: { messages: [new HumanMessage({ id: content, content })] },
+    asNode,
+  });
+  const hi = { messages: [new HumanMessage({ id: "hi", content: "hi" })] };
+  const sortedContents = (values: unknown) =>
+    (values as { messages: BaseMessage[] }).messages
+      .map((m) => m.content)
+      .sort();
+
+  const savers: Record<string, () => BaseCheckpointSaver> = {
+    MemorySaver: () => new MemorySaver(),
+    SqliteSaver: () => SqliteSaver.fromConnString(":memory:"),
+  };
+  for (const [name, makeSaver] of Object.entries(savers)) {
+    it(`keeps every update without task ids (${name})`, async () => {
+      const graph = buildGraph(makeSaver());
+      const config = { configurable: { thread_id: "bulk-no-task-ids" } };
+      await graph.invoke(hi, config);
+
+      await graph.bulkUpdateState(config, [
+        {
+          updates: [
+            update("first", "model"),
+            update("second", "model"),
+            update("third", "assistant"),
+          ],
+        },
+      ]);
+
+      const state = await graph.getState(config);
+      expect(sortedContents(state.values)).toEqual([
+        "first",
+        "hi",
+        "second",
+        "third",
+      ]);
+    });
+
+    it(`keeps every update next to a pending task (${name})`, async () => {
+      const graph = buildGraph(makeSaver(), ["assistant"]);
+      const config = { configurable: { thread_id: "bulk-pending-task" } };
+      await graph.invoke(hi, config);
+      expect((await graph.getState(config)).next).toEqual(["assistant"]);
+
+      await graph.bulkUpdateState(config, [
+        {
+          updates: [
+            update("first", "assistant"),
+            update("second", "model"),
+            update("third", "model"),
+          ],
+        },
+      ]);
+
+      const state = await graph.getState(config);
+      expect(sortedContents(state.values)).toEqual([
+        "first",
+        "hi",
+        "second",
+        "third",
+      ]);
+    });
+  }
+});
+
 // Cross-language parity with the Python PRs that align DeltaChannel Overwrite
 // semantics: #8124 (live: an Overwrite wins its whole super-step) and #8125
 // (replay: force-snapshot any channel that saw an Overwrite). These mirror the
@@ -778,11 +1431,53 @@ describe("DeltaChannel end-to-end via StateGraph", () => {
 // Overwrite force-snapshots `messages` to ["b"], the cold read seeds from that
 // snapshot and replays only step 3's ["d"] — matching live.
 describe("DeltaChannel Overwrite parity (langgraph#8124, #8125)", () => {
-  const strListReducer = (state: string[], writes: string[][]): string[] => {
-    const out = [...state];
-    for (const w of writes) out.push(...w);
-    return out;
-  };
+  // Python twin: libs/langgraph/tests/test_delta_channel_update_overwrite.py
+  describe("an Overwrite through updateState", () => {
+    it("snapshots its DeltaChannel on the checkpoint it saves, as a node's does", async () => {
+      const saver = new MemorySaver();
+      const graph = new StateGraph(
+        Annotation.Root({ log: new DeltaChannel<number[], number[]>(listReducer) })
+      )
+        .addNode("model", () => ({}))
+        .addEdge(START, "model")
+        .compile({ checkpointer: saver });
+      const config = { configurable: { thread_id: "t" } };
+      await graph.invoke({ log: [0] }, config);
+
+      await graph.updateState(config, { log: new Overwrite([1]) }, "model");
+
+      const head = await saver.getTuple(config);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.log)).toBe(true);
+      expect((await graph.getState(config)).values.log).toEqual([1]);
+    });
+
+    it("snapshots its DeltaChannel when the update is the input", async () => {
+      const saver = new MemorySaver();
+      const graph = new Pregel({
+        nodes: {
+          n: Channel.subscribeTo("go")
+            .pipe(() => [2])
+            .pipe(Channel.writeTo(["log"])),
+        },
+        channels: {
+          log: new DeltaChannel<number[], number[]>(listReducer),
+          go: new LastValue<number>(),
+        },
+        inputChannels: ["log", "go"],
+        outputChannels: ["log"],
+        checkpointer: saver,
+      });
+      const config = { configurable: { thread_id: "t" } };
+      await graph.invoke({ log: [0], go: 1 }, config);
+
+      await graph.updateState(config, { log: new Overwrite([1]) }, "__input__");
+
+      const head = await saver.getTuple(config);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.log)).toBe(true);
+      expect((await graph.getState(config)).values.log).toEqual([1]);
+    });
+  });
+
   const State = Annotation.Root({
     messages: new DeltaChannel<string[], string[]>(strListReducer),
   });
@@ -960,6 +1655,176 @@ describe("channelsFromCheckpoint", () => {
     });
     expect(channels.messages.get()).toEqual([1, 2]);
   });
+
+  it("throws for a written delta channel without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(channelsFromCheckpoint(specs, written)).rejects.toThrow(
+      /no checkpointer/
+    );
+  });
+
+  it("throws for a written delta channel with a saver but no config", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const written: Checkpoint = {
+      ...emptyCheckpoint(),
+      channel_versions: { messages: 1 },
+    };
+    await expect(
+      channelsFromCheckpoint(specs, written, { saver: new MemorySaver() })
+    ).rejects.toThrow(/no checkpointer or config/);
+  });
+
+  it("hydrates a never-written delta channel empty without a saver", async () => {
+    const specs = {
+      messages: new DeltaChannel<number[], number[]>(listReducer),
+    };
+    const channels = await channelsFromCheckpoint(specs, emptyCheckpoint());
+    expect(channels.messages.get()).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a snapshot seed",
+      new DeltaSnapshot(["a"]),
+      [["b"], ["c"]],
+      ["a", "b", "c"],
+    ],
+    ["an Overwrite", ["a"], [["b"], new Overwrite(["c"]), ["d"]], ["c", "d"]],
+    [
+      "two Overwrites and no seed",
+      undefined,
+      [["b"], new Overwrite(["c"]), new Overwrite(["d"]), ["e"]],
+      ["d", "e"],
+    ],
+  ])(
+    "replays a plain reducer's delta history one write at a time (%s)",
+    async (_, seed, writes, expected) => {
+      const saver = new MemorySaver();
+      vi.spyOn(saver, "getDeltaChannelHistory").mockResolvedValue({
+        items: { seed, writes: writes.map((w) => ["t", "items", w]) },
+      });
+      const specs = {
+        items: new BinaryOperatorAggregate<string[], string[]>(
+          (a, b) => [...a, ...b],
+          () => []
+        ),
+      };
+      const channels = await channelsFromCheckpoint(
+        specs,
+        { ...emptyCheckpoint(), channel_versions: { items: 1 } },
+        { saver, config: { configurable: { thread_id: "1" } } }
+      );
+      expect(channels.items.get()).toEqual(expected);
+    }
+  );
+});
+
+describe("a DeltaChannel changed to a plain reducer", () => {
+  const DeltaState = Annotation.Root({
+    messages: new DeltaChannel<BaseMessage[], Messages>(messagesDeltaReducer, {
+      snapshotFrequency: 3,
+    }),
+  });
+  const chat = (state: { messages: BaseMessage[] }) => ({
+    messages: [new AIMessage(`reply ${state.messages.length}`)],
+  });
+  const deltaGraph = (checkpointer: BaseCheckpointSaver) =>
+    new StateGraph(DeltaState)
+      .addNode("chat", chat)
+      .addEdge(START, "chat")
+      .addEdge("chat", END)
+      .compile({ checkpointer });
+  const plainGraph = (checkpointer: BaseCheckpointSaver) =>
+    new StateGraph(MessagesAnnotation)
+      .addNode("chat", chat)
+      .addEdge(START, "chat")
+      .addEdge("chat", END)
+      .compile({ checkpointer });
+  const config = { configurable: { thread_id: "to-plain" } };
+  const messagesOf = (values: unknown) =>
+    (values as { messages: BaseMessage[] }).messages;
+
+  const writeDeltaThread = async (saver: BaseCheckpointSaver) => {
+    const graph = deltaGraph(saver);
+    for (let i = 0; i < 4; i += 1) {
+      await graph.invoke({ messages: [new HumanMessage(`q${i}`)] }, config);
+    }
+    const stored: unknown[] = [];
+    for await (const t of saver.list(config)) {
+      stored.push(t.checkpoint.channel_values.messages);
+    }
+    expect(stored.some((v) => isDeltaSnapshot(v))).toBe(true);
+  };
+  const historyValues = async (
+    graph: ReturnType<typeof plainGraph> | ReturnType<typeof deltaGraph>
+  ) => {
+    const values: unknown[] = [];
+    for await (const s of graph.getStateHistory(config)) values.push(s.values);
+    return values;
+  };
+
+  const savers: Record<string, () => BaseCheckpointSaver> = {
+    MemorySaver: () => new MemorySaver(),
+    SqliteSaver: () => SqliteSaver.fromConnString(":memory:"),
+  };
+  for (const [name, makeSaver] of Object.entries(savers)) {
+    it(`reads every delta-written checkpoint (${name})`, async () => {
+      const saver = makeSaver();
+      await writeDeltaThread(saver);
+
+      expect(await historyValues(plainGraph(saver))).toEqual(
+        await historyValues(deltaGraph(saver))
+      );
+    });
+
+    it(`continues a delta-written thread (${name})`, async () => {
+      const saver = makeSaver();
+      await writeDeltaThread(saver);
+      const before = messagesOf(
+        (await deltaGraph(saver).getState(config)).values
+      );
+
+      const after = messagesOf(
+        await plainGraph(saver).invoke(
+          { messages: [new HumanMessage("q4")] },
+          config
+        )
+      );
+
+      expect(after.slice(0, -2)).toEqual(before);
+      expect(after.slice(-2).map((m) => m.content)).toEqual([
+        "q4",
+        `reply ${before.length + 1}`,
+      ]);
+      const head = await saver.getTuple(config);
+      expect(head?.checkpoint.channel_values.messages).toEqual(after);
+      expect(
+        messagesOf((await deltaGraph(saver).getState(config)).values)
+      ).toEqual(after);
+    });
+  }
+
+  it("never walks history for a plain thread", async () => {
+    const saver = new MemorySaver();
+    const walk = vi.spyOn(saver, "getDeltaChannelHistory");
+    const graph = plainGraph(saver);
+
+    await graph.invoke({ messages: [new HumanMessage("q0")] }, config);
+    await graph.updateState(config, { messages: [new HumanMessage("note")] });
+    await graph.invoke({ messages: [new HumanMessage("q1")] }, config);
+    await graph.getState(config);
+    await historyValues(graph);
+
+    expect(walk).not.toHaveBeenCalled();
+  });
 });
 
 describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
@@ -1004,5 +1869,234 @@ describe("DELTA_MAX_SUPERSTEPS_SINCE_SNAPSHOT", () => {
     // counter is written once per invoke (4 invokes), and reconstruction
     // remains correct despite forced snapshots from the superstep bound.
     expect((state.values as { counter: number[] }).counter).toEqual([1, 1, 1, 1]);
+  });
+
+  it("still snapshots a channel that was never written on an older thread", async () => {
+    process.env[ENV] = "2";
+    const State = Annotation.Root({
+      written: new DeltaChannel<number[], number[]>(listReducer),
+      neverWritten: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const saver = new OlderVersionSaver();
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({ written: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "bound-older-thread" } };
+    await graph.invoke({ written: [0] }, config);
+    saver.older = false;
+    for (let i = 0; i < 3; i += 1) await graph.invoke({ written: [0] }, config);
+
+    let snapshots = 0;
+    for await (const tup of saver.list(config)) {
+      const cv = tup.checkpoint.channel_values as Record<string, unknown>;
+      if (isDeltaSnapshot(cv.neverWritten)) snapshots += 1;
+    }
+    expect(snapshots).toBeGreaterThan(0);
+    expect((await graph.getState(config)).values.neverWritten).toEqual([]);
+  });
+
+  it("leaves a channel that was never written without a version", async () => {
+    process.env[ENV] = "2";
+    const State = Annotation.Root({
+      written: new DeltaChannel<number[], number[]>(listReducer),
+      neverWritten: new DeltaChannel<number[], number[]>(listReducer),
+    });
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("n", () => ({ written: [1] }))
+      .addEdge(START, "n")
+      .addEdge("n", END)
+      .compile({ checkpointer: saver });
+    const config = { configurable: { thread_id: "bound-never-written" } };
+    for (let i = 0; i < 4; i += 1) await graph.invoke({ written: [0] }, config);
+
+    for await (const tup of saver.list(config)) {
+      expect(tup.checkpoint.channel_versions.neverWritten).toBeUndefined();
+      expect(tup.checkpoint.channel_values.neverWritten).toBeUndefined();
+    }
+  });
+
+  const updatesAddingASuperstep: [
+    string,
+    (
+      graph: ReturnType<typeof twoDeltaChannelGraph>,
+      config: RunnableConfig
+    ) => Promise<RunnableConfig>,
+  ][] = [
+    ["as a node", (graph, config) => graph.updateState(config, { a: [] }, "n")],
+    ["clearing as END", (graph, config) => graph.updateState(config, null, END)],
+    ["as input", (graph, config) => graph.updateState(config, { a: [] }, "__input__")],
+    ["with no values", (graph, config) => graph.updateState(config, undefined)],
+  ];
+  for (const [label, update] of updatesAddingASuperstep) {
+    it(`updateState ${label} snapshots a channel it didn't write at the bound`, async () => {
+      const saver = new MemorySaver();
+      const graph = twoDeltaChannelGraph(saver);
+      const config = { configurable: { thread_id: `update-bound-${label}` } };
+      await graph.invoke({ a: [0], b: [0] }, config);
+      const expected = (await graph.getState(config)).values;
+      process.env[ENV] = String((await deltaCounters(saver, config)).b[1] + 1);
+
+      const updated = await update(graph, config);
+
+      const head = await saver.getTuple(updated);
+      expect(isDeltaSnapshot(head?.checkpoint.channel_values.b)).toBe(true);
+      expect(head?.metadata?.counters_since_delta_snapshot?.b).toBeUndefined();
+      expect((await graph.getState(updated)).values).toEqual(expected);
+    });
+  }
+});
+
+describe("DeltaChannel in a subgraph", () => {
+  const State = Annotation.Root({
+    delta: new DeltaChannel<string[], string[]>((state, writes) => [
+      ...state,
+      ...writes.flat(),
+    ]),
+    plain: Annotation<string[]>({
+      reducer: (a, b) => a.concat(b),
+      default: () => [],
+    }),
+  });
+  const written = { delta: ["a1"], plain: ["a1"] };
+
+  async function pausedParent(childCheckpointer?: boolean) {
+    const child = new StateGraph(State)
+      .addNode("a", () => written)
+      .addNode("b", () => ({ delta: ["b1"], plain: ["b1"] }))
+      .addEdge(START, "a")
+      .addEdge("a", "b")
+      .addEdge("b", END)
+      .compile({ interruptBefore: ["b"], checkpointer: childCheckpointer });
+    const parent = new StateGraph(State)
+      .addNode("child", child)
+      .addEdge(START, "child")
+      .addEdge("child", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "t" } };
+    await parent.invoke({ plain: [] }, config);
+    return { parent, config };
+  }
+
+  it("getState with subgraphs hydrates the subgraph's delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory on a subgraph namespace hydrates its delta channel", async () => {
+    const { parent, config } = await pausedParent();
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    const { config: subgraphConfig } = snapshot.tasks[0].state as {
+      config: Parameters<typeof parent.getStateHistory>[0];
+    };
+    const history = [];
+    for await (const s of parent.getStateHistory(subgraphConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
+
+  it("getState on a checkpointer: true subgraph namespace hydrates its delta channel", async () => {
+    const { parent } = await pausedParent(true);
+    const snapshot = await parent.getState({
+      configurable: { thread_id: "t", checkpoint_ns: "child" },
+    });
+    expect(snapshot.values).toEqual(written);
+  });
+
+  it("getState with subgraphs hydrates a checkpointer: true subgraph", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config, { subgraphs: true });
+    expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual(
+      written
+    );
+  });
+
+  it("getStateHistory from a checkpointer: true subgraph task hydrates its history", async () => {
+    const { parent, config } = await pausedParent(true);
+    const snapshot = await parent.getState(config);
+    const taskConfig = snapshot.tasks[0].state as Parameters<
+      typeof parent.getStateHistory
+    >[0];
+    const history = [];
+    for await (const s of parent.getStateHistory(taskConfig)) {
+      history.push(s.values);
+    }
+    expect(history[0]).toEqual(written);
+  });
+
+  it.each([undefined, true] as const)(
+    "updateState from a subgraph task config keeps the edit (checkpointer: %s)",
+    async (childCheckpointer) => {
+      const { parent, config } = await pausedParent(childCheckpointer);
+      const { tasks } = await parent.getState(config);
+      const taskConfig = tasks[0].state as Parameters<
+        typeof parent.updateState
+      >[0];
+
+      await parent.updateState(taskConfig, { delta: ["edit"], plain: ["edit"] }, "a");
+
+      const snapshot = await parent.getState(config, { subgraphs: true });
+      expect((snapshot.tasks[0].state as { values: unknown }).values).toEqual({
+        delta: ["a1", "edit"],
+        plain: ["a1", "edit"],
+      });
+    }
+  );
+
+  it("a checkpointer: false subgraph has no task state to read", async () => {
+    const { parent, config } = await pausedParent(false);
+    const [flat, nested] = await Promise.all([
+      parent.getState(config),
+      parent.getState(config, { subgraphs: true }),
+    ]);
+    expect(flat.tasks.map((task) => task.state)).toEqual([undefined]);
+    expect(nested.tasks.map((task) => task.state)).toEqual([undefined]);
+  });
+
+  it("a checkpointer: true graph used as root rejects state methods like a run", async () => {
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: true });
+    const config = { configurable: { thread_id: "t" } };
+
+    await expect(graph.getState(config)).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /checkpointer: true cannot be used for root graphs/
+    );
+  });
+
+  it("a checkpointer: false graph ignores a lent checkpointer in updateState", async () => {
+    const saver = new MemorySaver();
+    const graph = new StateGraph(State)
+      .addNode("a", () => written)
+      .addEdge(START, "a")
+      .addEdge("a", END)
+      .compile({ checkpointer: false });
+    const config = {
+      configurable: {
+        thread_id: "t",
+        checkpoint_ns: "child:1",
+        [CONFIG_KEY_CHECKPOINTER]: saver,
+      },
+    };
+
+    await expect(graph.updateState(config, written, "a")).rejects.toThrow(
+      /No checkpointer set/
+    );
+    const stored = [];
+    for await (const tuple of saver.list({ configurable: { thread_id: "t" } })) {
+      stored.push(tuple);
+    }
+    expect(stored).toEqual([]);
   });
 });

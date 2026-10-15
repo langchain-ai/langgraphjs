@@ -692,6 +692,17 @@ export class MongoDBStore extends BaseStore {
       { $addFields: { score: { $meta: "vectorSearchScore" } } },
     ];
 
+    // The namespacePath filter above can match other namespaces, since
+    // ["team/alice"] and ["team", "alice"] both store "team/alice".
+    // Match on the real namespace array to drop them before paging.
+    if (namespacePrefix.length > 0) {
+      const namespaceMatch: Record<string, string> = {};
+      namespacePrefix.forEach((label, idx) => {
+        namespaceMatch[`namespace.${idx}`] = label;
+      });
+      pipeline.push({ $match: namespaceMatch });
+    }
+
     // Strip the embedding field from manual mode results (vectors can be large)
     if (this.embeddings) {
       pipeline.push({ $project: { [path]: 0 } });

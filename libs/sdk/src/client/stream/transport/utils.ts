@@ -8,8 +8,8 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
  * Resolve a {@link ProtocolPath} against the transport's currently-bound
  * thread.
  *
- * - a fixed `string` is used verbatim (back-compat: a baked path is
- *   independent of the bound thread);
+ * - a fixed `string` is trusted and used verbatim, with no encoding
+ *   (back-compat: a baked path is independent of the bound thread);
  * - a function path and the default fallback are evaluated against
  *   `threadId`, so late-bound / re-bound adapters target the right thread.
  *

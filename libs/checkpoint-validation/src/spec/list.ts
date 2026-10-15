@@ -3,6 +3,7 @@ import {
   type CheckpointTuple,
   type BaseCheckpointSaver,
   type PendingWrite,
+  emptyCheckpoint,
   uuid6,
   TASKS,
 } from "@langchain/langgraph-checkpoint";
@@ -74,6 +75,85 @@ export function listTests<T extends BaseCheckpointSaver>(
 
     afterAll(async () => {
       await initializer.destroyCheckpointer?.(checkpointer);
+    });
+
+    it("should return pending writes in writesSortKey order", async () => {
+      // Same fixture as the getTuple ordering test, read through list().
+      const tid = uuid6(3);
+      let config: RunnableConfig = {
+        configurable: { thread_id: tid, checkpoint_ns: "" },
+      };
+      const checkpoint: Checkpoint = {
+        ...emptyCheckpoint(),
+        id: uuid6(3),
+      };
+      config = await checkpointer.put(
+        config,
+        checkpoint,
+        { source: "loop", step: 0, parents: {} },
+        {}
+      );
+      await checkpointer.putWrites(
+        config,
+        Array.from({ length: 11 }, (_, i) => ["ch", `a${i}`] as PendingWrite),
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "~pull, 02"
+      );
+      await checkpointer.putWrites(
+        config,
+        [["ch", "input"] as PendingWrite],
+        "88888888-8888-8888-8888-888888888888"
+      );
+      await checkpointer.putWrites(
+        config,
+        [["ch", "b"] as PendingWrite],
+        "00000000-0000-0000-0000-000000000000",
+        "~pull, 01"
+      );
+      // BMP private-use path element (U+E000), then an astral one
+      // (U+10000) — astral sorts after every BMP code point under Python str
+      // ordering, which `compareWritesSortKeys` matches; exercised through
+      // real backend storage.
+      await checkpointer.putWrites(
+        config,
+        [["ch", "bmp"] as PendingWrite],
+        "99999999-9999-9999-9999-999999999999",
+        "~pull, \uE000"
+      );
+      await checkpointer.putWrites(
+        config,
+        [["ch", "astral"] as PendingWrite],
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "~pull, \uD800\uDC00"
+      );
+
+      const tuples = await toArray(
+        checkpointer.list({
+          configurable: { thread_id: tid, checkpoint_ns: "" },
+        })
+      );
+      const tuple = tuples.find((t) => t.checkpoint.id === checkpoint.id);
+      expect(tuple).not.toBeUndefined();
+      expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+        "input",
+        "b",
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "a8",
+        "a9",
+        "a10",
+        "bmp",
+        "astral",
+      ]);
+      // This suite shares one checkpointer across tests, and the cases above
+      // count tuples across all threads — clean this thread up.
+      await checkpointer.deleteThread(tid);
     });
 
     // can't reference argumentCombinations directly here because it isn't built at the time this is evaluated.

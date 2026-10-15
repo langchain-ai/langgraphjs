@@ -741,3 +741,205 @@ describe("ProtocolSseTransportAdapter SSE reconnect with custom fetch", () => {
     handle.close();
   });
 });
+
+describe("ProtocolSseTransportAdapter SSE reconnect on HTTP errors", () => {
+  const encoder = new TextEncoder();
+
+  function sseResponse(frames: string[], options?: { keepOpen?: boolean }) {
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) controller.enqueue(encoder.encode(frame));
+          if (!options?.keepOpen) controller.close();
+        },
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } }
+    );
+  }
+
+  const valuesFrame = (id: string) =>
+    `event: values\ndata: {"type":"event","method":"values","seq":1,"event_id":"${id}"}\n\n`;
+
+  const unauthorized = () =>
+    new Response(JSON.stringify({ detail: "Authentication failed" }), {
+      status: 401,
+      statusText: "Unauthorized",
+      headers: { "content-type": "application/json" },
+    });
+
+  it("ends the stream on a 401 without reconnecting", async () => {
+    const onReconnect = vi.fn();
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(unauthorized())
+    ) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 5,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    const expected = {
+      status: 401,
+      message:
+        'Protocol request failed: 401 Unauthorized — {"detail":"Authentication failed"}',
+    };
+    await expect(handle.ready).rejects.toMatchObject(expected);
+    await expect(
+      handle.events[Symbol.asyncIterator]().next()
+    ).rejects.toMatchObject(expected);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(onReconnect).not.toHaveBeenCalled();
+
+    await transport.close();
+  });
+
+  it("ends the stream on a 401 during a reconnect", async () => {
+    const onReconnect = vi.fn();
+    let streamOpens = 0;
+    const fetchImpl = vi.fn(() => {
+      streamOpens += 1;
+      return Promise.resolve(
+        streamOpens === 1 ? sseResponse([valuesFrame("e1")]) : unauthorized()
+      );
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 5,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const iterator = handle.events[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ event_id: "e1" });
+    await expect(iterator.next()).rejects.toMatchObject({ status: 401 });
+
+    // One reconnect for the server close, none for the 401.
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(streamOpens).toBe(2);
+
+    await transport.close();
+  });
+
+  it.each([408, 429, 503])(
+    "still retries a %i response",
+    async (status) => {
+      const onReconnect = vi.fn();
+      let streamOpens = 0;
+      const fetchImpl = vi.fn(() => {
+        streamOpens += 1;
+        return Promise.resolve(
+          streamOpens === 1
+            ? new Response("try again", { status })
+            : sseResponse([valuesFrame("e1")], { keepOpen: true })
+        );
+      }) as MockFetch;
+
+      const transport = new ProtocolSseTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: THREAD_ID,
+        fetch: fetchImpl,
+        maxReconnectAttempts: 3,
+        reconnectDelayMs: () => 0,
+        onReconnect,
+        idleReconnect: 0,
+      });
+
+      const handle = transport.openEventStream({ channels: ["values"] });
+      await handle.ready;
+
+      const first = await handle.events[Symbol.asyncIterator]().next();
+      expect(first.value).toMatchObject({ event_id: "e1" });
+      expect(onReconnect).toHaveBeenCalledTimes(1);
+      expect(onReconnect.mock.calls[0][0]).toMatchObject({
+        attempt: 1,
+        cause: { status },
+      });
+      expect(streamOpens).toBe(2);
+
+      await transport.close();
+    }
+  );
+
+  it("resets the reconnect budget after every successful connect, even with no events", async () => {
+    const onReconnect = vi.fn();
+    const onConnected = vi.fn();
+    let streamOpens = 0;
+    const fetchImpl = vi.fn(() => {
+      streamOpens += 1;
+      // Opens 1-4: the server accepts, then closes with no events (idle
+      // thread). Opens 5-6: network errors. Open 7: delivers an event.
+      if (streamOpens <= 4) return Promise.resolve(sseResponse([]));
+      if (streamOpens <= 6) return Promise.reject(new TypeError("network error"));
+      return Promise.resolve(sseResponse([valuesFrame("e1")], { keepOpen: true }));
+    }) as MockFetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      onConnected,
+      idleReconnect: 0,
+    });
+
+    const handle = transport.openEventStream({ channels: ["values"] });
+    await handle.ready;
+
+    const first = await handle.events[Symbol.asyncIterator]().next();
+    expect(first.value).toMatchObject({ event_id: "e1" });
+    expect(onReconnect.mock.calls.map(([info]) => info.attempt)).toEqual([
+      1, 1, 1, 1, 2, 3,
+    ]);
+    expect(onConnected.mock.calls.map(([info]) => info)).toEqual([
+      { kind: "initial", attempt: 0 },
+      { kind: "reconnected", attempt: 1 },
+      { kind: "reconnected", attempt: 1 },
+      { kind: "reconnected", attempt: 1 },
+      { kind: "reconnected", attempt: 3 },
+    ]);
+    expect(streamOpens).toBe(7);
+
+    await transport.close();
+  });
+});
+
+describe("ProtocolSseTransportAdapter request errors", () => {
+  it("keeps the HTTP status and body on a failed command", async () => {
+    const body = JSON.stringify({ message: "boom" });
+    const { fetch } = createFetchRecorder({
+      response: new Response(body, {
+        status: 500,
+        statusText: "Internal Server Error",
+      }),
+    });
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+    });
+
+    await expect(
+      transport.send({ id: 1, method: "state.get", params: { namespace: [] } })
+    ).rejects.toMatchObject({
+      status: 500,
+      text: body,
+      message: "Protocol request failed: 500 Internal Server Error — boom",
+    });
+  });
+});

@@ -416,5 +416,59 @@ describe("MongoDBStore", () => {
         store.batch([{ namespacePrefix: ["docs"], query: "find something", limit: 10, offset: 0 }])
       ).rejects.toThrow(/indexConfig/i);
     });
+
+    // Regression: namespacePath is string-joined, so a label containing "/"
+    // (["team/alice"]) matches another namespace's path (["team", "alice"]).
+    // The real namespace array must be re-checked before pagination.
+    it("should re-check the namespace array before $skip/$limit", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(pipeline);
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeAuto.batch([
+        { namespacePrefix: ["team/alice"], query: "profile", limit: 10, offset: 5 },
+        { namespacePrefix: ["team", "alice"], query: "profile", limit: 10, offset: 5 },
+      ]);
+
+      for (const [pipeline, expectedMatch] of [
+        [capturedPipelines[0], { "namespace.0": "team/alice" }],
+        [capturedPipelines[1], { "namespace.0": "team", "namespace.1": "alice" }],
+      ] as const) {
+        const stages = pipeline.map((stage: any) => Object.keys(stage)[0]);
+        const matchIdx = stages.indexOf("$match");
+        expect(pipeline[matchIdx].$match).toEqual(expectedMatch);
+        expect(matchIdx).toBeGreaterThan(stages.indexOf("$vectorSearch"));
+        expect(matchIdx).toBeLessThan(stages.indexOf("$skip"));
+        expect(matchIdx).toBeLessThan(stages.indexOf("$limit"));
+      }
+    });
+
+    it("should not add a namespace $match for an empty prefix", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(pipeline);
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeAuto.batch([{ namespacePrefix: [], query: "profile", limit: 10, offset: 0 }]);
+
+      expect(capturedPipelines[0].some((stage: any) => "$match" in stage)).toBe(false);
+    });
   });
 });

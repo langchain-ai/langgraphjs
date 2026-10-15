@@ -6,13 +6,13 @@
     "start": "tsx -r dotenv/config sql_agent.ts"
   },
   "devDependencies": {
-    "@langchain/classic": "^1.0.45",
-    "@langchain/core": "^1.2.9",
+    "@langchain/classic": "^1.0.50",
+    "@langchain/core": "^1.2.13",
     "@langchain/langgraph": "workspace:*",
-    "@langchain/openai": "^1.5.10",
+    "@langchain/openai": "^1.6.0",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.5",
-    "langchain": "^1.5.10",
+    "langchain": "^1.5.14",
     "reflect-metadata": "^0.2.2",
     "tsx": "^4.19.3",
     "typeorm": "^0.3.31",

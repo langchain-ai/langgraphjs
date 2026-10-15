@@ -1,5 +1,13 @@
 # @langchain/langgraph-ui
 
+## 1.5.3
+
+No changes in this release.
+
+## 1.5.2
+
+No changes in this release.
+
 ## 1.5.2-dev.0
 
 No changes in this release.

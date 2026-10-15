@@ -586,8 +586,10 @@ describe("Time Travel Tests (extended Python parity)", () => {
       expect(called).toContain("post_process");
     });
 
-    it("should replay from subgraph checkpoint via getState subgraphs", async () => {
-      const { graph, called } = buildRouterSubgraphGraph(true);
+    it.each([true, undefined] as const)(
+      "should replay from subgraph checkpoint via getState subgraphs (checkpointer: %s)",
+      async (subCheckpointer) => {
+      const { graph, called } = buildRouterSubgraphGraph(subCheckpointer);
       const config = { configurable: { thread_id: "tt-subint-5" } };
 
       await graph.invoke({ value: [] }, config);
@@ -608,7 +610,8 @@ describe("Time Travel Tests (extended Python parity)", () => {
       expect(final.value).toContain("human:replayed_answer");
       expect(called).toContain("step_b");
       expect(called).toContain("post_process");
-    });
+      }
+    );
   });
 
   describe("Copy fork and update_state", () => {

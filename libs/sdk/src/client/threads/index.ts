@@ -15,7 +15,7 @@ import {
 } from "../../schema.js";
 import type { Command, OnConflictBehavior, StreamEvent } from "../../types.js";
 import type { ThreadStreamMode } from "../../types.stream.js";
-import { BaseClient } from "../base.js";
+import { BaseClient, encodePathSegment } from "../base.js";
 import { ThreadStream } from "../stream/index.js";
 import type {
   ThreadStreamOptions,
@@ -40,12 +40,15 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal; include?: string[] }
   ): Promise<Thread<ValuesType>> {
-    return this.fetch<Thread<ValuesType>>(`/threads/${threadId}`, {
-      params: {
-        include: options?.include ?? undefined,
-      },
-      signal: options?.signal,
-    });
+    return this.fetch<Thread<ValuesType>>(
+      `/threads/${encodePathSegment(threadId)}`,
+      {
+        params: {
+          include: options?.include ?? undefined,
+        },
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -101,10 +104,13 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Thread<TStateType>> {
-    return this.fetch<Thread<TStateType>>(`/threads/${threadId}/copy`, {
-      method: "POST",
-      signal: options?.signal,
-    });
+    return this.fetch<Thread<TStateType>>(
+      `/threads/${encodePathSegment(threadId)}/copy`,
+      {
+        method: "POST",
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -155,14 +161,17 @@ export class ThreadsClient<
         ? { ttl: payload.ttl, strategy: "delete" as const }
         : payload?.ttl;
 
-    return this.fetch<Thread | void>(`/threads/${threadId}`, {
-      method: "PATCH",
-      headers: payload?.returnMinimal
-        ? { Prefer: "return=minimal" }
-        : undefined,
-      json: { metadata: payload?.metadata, ttl: ttlPayload },
-      signal: payload?.signal,
-    });
+    return this.fetch<Thread | void>(
+      `/threads/${encodePathSegment(threadId)}`,
+      {
+        method: "PATCH",
+        headers: payload?.returnMinimal
+          ? { Prefer: "return=minimal" }
+          : undefined,
+        json: { metadata: payload?.metadata, ttl: ttlPayload },
+        signal: payload?.signal,
+      }
+    );
   }
 
   /**
@@ -174,7 +183,7 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    return this.fetch<void>(`/threads/${threadId}`, {
+    return this.fetch<void>(`/threads/${encodePathSegment(threadId)}`, {
       method: "DELETE",
       signal: options?.signal,
     });
@@ -284,7 +293,7 @@ export class ThreadsClient<
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
         return this.fetch<ThreadState<ValuesType>>(
-          `/threads/${threadId}/state/checkpoint`,
+          `/threads/${encodePathSegment(threadId)}/state/checkpoint`,
           {
             method: "POST",
             json: { checkpoint, subgraphs: options?.subgraphs },
@@ -295,19 +304,22 @@ export class ThreadsClient<
 
       // deprecated
       return this.fetch<ThreadState<ValuesType>>(
-        `/threads/${threadId}/state/${checkpoint}`,
+        `/threads/${encodePathSegment(threadId)}/state/${encodePathSegment(checkpoint)}`,
         { params: { subgraphs: options?.subgraphs }, signal: options?.signal }
       );
     }
 
-    return this.fetch<ThreadState<ValuesType>>(`/threads/${threadId}/state`, {
-      params: { subgraphs: options?.subgraphs },
-      signal: options?.signal,
-      // Coalesce concurrent identical reads (e.g. two controllers
-      // hydrating the same thread on reconnect). Skipped automatically
-      // when a caller supplies its own `signal`.
-      dedupe: true,
-    });
+    return this.fetch<ThreadState<ValuesType>>(
+      `/threads/${encodePathSegment(threadId)}/state`,
+      {
+        params: { subgraphs: options?.subgraphs },
+        signal: options?.signal,
+        // Coalesce concurrent identical reads (e.g. two controllers
+        // hydrating the same thread on reconnect). Skipped automatically
+        // when a caller supplies its own `signal`.
+        dedupe: true,
+      }
+    );
   }
 
   /**
@@ -327,7 +339,7 @@ export class ThreadsClient<
     }
   ): Promise<Pick<Config, "configurable">> {
     return this.fetch<Pick<Config, "configurable">>(
-      `/threads/${threadId}/state`,
+      `/threads/${encodePathSegment(threadId)}/state`,
       {
         method: "POST",
         json: {
@@ -365,7 +377,7 @@ export class ThreadsClient<
       threadId = threadIdOrConfig;
     }
 
-    return this.fetch<void>(`/threads/${threadId}/state`, {
+    return this.fetch<void>(`/threads/${encodePathSegment(threadId)}/state`, {
       method: "PATCH",
       json: { metadata },
       signal: options?.signal,
@@ -390,7 +402,7 @@ export class ThreadsClient<
     }
   ): Promise<ThreadState<ValuesType>[]> {
     return this.fetch<ThreadState<ValuesType>[]>(
-      `/threads/${threadId}/history`,
+      `/threads/${encodePathSegment(threadId)}/history`,
       {
         method: "POST",
         json: {
@@ -418,7 +430,7 @@ export class ThreadsClient<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
     yield* this.streamWithRetry({
-      endpoint: `/threads/${threadId}/stream`,
+      endpoint: `/threads/${encodePathSegment(threadId)}/stream`,
       method: "GET",
       signal: options?.signal,
       headers: options?.lastEventId

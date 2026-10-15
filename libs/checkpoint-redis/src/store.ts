@@ -18,6 +18,7 @@ import {
   type SearchOperation,
 } from "@langchain/langgraph-checkpoint";
 
+import { hasDottedLabel, isWithinNamespace } from "./namespace.js";
 import { escapeRediSearchTagValue } from "./utils.js";
 
 // Type guard functions for operations
@@ -439,6 +440,9 @@ export class RedisStore {
     key: string,
     options?: { refreshTTL?: boolean }
   ): Promise<Item | null> {
+    if (hasDottedLabel(namespace)) {
+      return null;
+    }
     const prefix = namespace.join(".");
     // For TEXT fields, we need to match all tokens (split by dots and hyphens)
     const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
@@ -489,7 +493,10 @@ export class RedisStore {
         return null;
       }
 
-      const doc = results.documents[0];
+      const doc = await this.findExact(results, query, prefix);
+      if (!doc) {
+        return null;
+      }
       const jsonDoc = doc.value as unknown as StoreDocument;
       const docId = doc.id;
 
@@ -541,8 +548,9 @@ export class RedisStore {
         LIMIT: { from: 0, size: 1 },
       });
 
-      if (existing && existing.documents && existing.documents.length > 0) {
-        const oldDocId = existing.documents[0].id;
+      const match = await this.findExact(existing, existingQuery, prefix);
+      if (match) {
+        const oldDocId = match.id;
         // Preserve the original created_at timestamp
         const existingDoc = await this.client.json.get(oldDocId);
         if (
@@ -651,6 +659,9 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
+    if (hasDottedLabel(namespacePrefix)) {
+      return [];
+    }
     const prefix = namespacePrefix.join(".");
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
@@ -662,13 +673,16 @@ export class RedisStore {
       // Build KNN query
       // For prefix search, use wildcard since we want to match any document starting with this prefix
       const queryStr = prefix ? `@prefix:${prefix.split(/[.-]/)[0]}*` : "*";
+      // Narrow by every word, as plain search does: by the first word alone,
+      // the nearest neighbours can all belong to other namespaces
+      const tokens = prefix.split(/[.-]/).filter((t) => t.length > 0);
+      const narrowQuery =
+        tokens.length > 0 ? `@prefix:(${tokens.join(" ")})` : "*";
       const vectorBytes = Buffer.from(new Float32Array(embedding).buffer);
-
-      try {
-        // Use KNN query with proper syntax
-        const results = await this.client.ft.search(
+      const knn = (filter: string) =>
+        this.client.ft.search(
           "store_vectors",
-          `(${queryStr})=>[KNN ${limit} @embedding $BLOB]`,
+          `(${filter})=>[KNN ${limit} @embedding $BLOB]`,
           {
             PARAMS: {
               BLOB: vectorBytes,
@@ -679,16 +693,31 @@ export class RedisStore {
           }
         );
 
+      try {
+        // Redis rejects the narrower query for some labels, such as
+        // `user:123`, as it does plain search's, and for others, such as
+        // `CORP\alice`, it matches nothing. Then run the original query
+        const narrowed = await knn(narrowQuery).catch(() => null);
+        const results = narrowed?.documents.length
+          ? narrowed
+          : await knn(queryStr);
+
         // Get matching store documents
         const items: SearchItem[] = [];
         for (const doc of results.documents) {
+          // Don't fetch another namespace's document; the stored document's
+          // own prefix is still checked below
+          const vectorPrefix = String((doc.value as any).prefix);
+          if (!isWithinNamespace(vectorPrefix, namespacePrefix)) {
+            continue;
+          }
           const docUuid = doc.id.split(":").pop();
           const storeKey = `${STORE_PREFIX}${REDIS_KEY_SEPARATOR}${docUuid}`;
 
           const storeDoc = (await this.client.json.get(
             storeKey
           )) as StoreDocument | null;
-          if (storeDoc) {
+          if (storeDoc && isWithinNamespace(storeDoc.prefix, namespacePrefix)) {
             // Apply advanced filter if provided
             if (options.filter) {
               if (
@@ -761,6 +790,11 @@ export class RedisStore {
       const items: SearchItem[] = [];
       for (const doc of results.documents) {
         const jsonDoc = doc.value as unknown as StoreDocument;
+        // The query also matches namespaces with the same words in another
+        // order or case, so skip those
+        if (!isWithinNamespace(jsonDoc.prefix, namespacePrefix)) {
+          continue;
+        }
 
         // Apply advanced filter
         if (options?.filter) {
@@ -1049,6 +1083,45 @@ export class RedisStore {
   private escapeTagValue(value: string): string {
     // Delegate to shared utility for RediSearch TAG field escaping
     return escapeRediSearchTagValue(value);
+  }
+
+  /**
+   * `prefix` is a TEXT field, so a query on it also matches namespaces with
+   * the same words in another order, case or punctuation. Use a document only
+   * if its stored prefix is exactly `prefix`. That is usually the first
+   * candidate; if not, look through the first 100, ranked by `TFIDF.DOCNORM`
+   * so that a namespace comes ahead of the longer ones below it, and stop.
+   */
+  private async findExact(
+    first: { total: number; documents: { id: string; value: unknown }[] },
+    query: string,
+    prefix: string
+  ): Promise<{ id: string; value: unknown } | null> {
+    const top = first.documents[0];
+    if (top && (top.value as StoreDocument).prefix === prefix) {
+      return top;
+    }
+    if (first.total <= 1) {
+      return null;
+    }
+    // From the start again: if a document ranked ahead is deleted between the
+    // two searches, this one moves up rather than out of view. Ids only, then
+    // each candidate's prefix: node-redis v4 cannot parse a search reply that
+    // holds a document which has expired but not yet been removed.
+    const candidates = await this.client.ft.searchNoContent("store", query, {
+      LIMIT: { from: 0, size: 100 },
+      SCORER: "TFIDF.DOCNORM",
+    });
+    const prefixes = await Promise.all(
+      candidates.documents.map((id) =>
+        this.client.json.get(id, { path: "$.prefix" })
+      )
+    );
+    const match = candidates.documents.find(
+      (_, i) => (prefixes[i] as string[] | null)?.[0] === prefix
+    );
+    const value = match && (await this.client.json.get(match));
+    return match && value ? { id: match, value } : null;
   }
 
   /**

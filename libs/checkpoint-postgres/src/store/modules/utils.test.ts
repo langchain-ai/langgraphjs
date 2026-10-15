@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateNamespace } from "./utils.js";
+import { namespaceListingCondition, validateNamespace } from "./utils.js";
 
 describe("validateNamespace", () => {
   it("accepts a simple, well-formed namespace", () => {
@@ -16,6 +16,12 @@ describe("validateNamespace", () => {
     );
   });
 
+  it("rejects labels containing the namespace separator", () => {
+    expect(() => validateNamespace(["tenant:a"])).toThrow(
+      /cannot contain colons/
+    );
+  });
+
   it("rejects labels containing periods", () => {
     expect(() => validateNamespace(["a.b"])).toThrow(/cannot contain periods/);
   });
@@ -26,11 +32,16 @@ describe("validateNamespace", () => {
     );
   });
 
-  // The block below covers the LIKE-wildcard cross-namespace leak. Search
-  // operations match via `namespace_path LIKE ${prefix}%` (bound parameter),
-  // and `%` / `_` / `\` in caller-supplied labels are still interpreted as
-  // LIKE wildcards / escapes by Postgres regardless of binding. A namespace
-  // prefix of `["%"]` would otherwise match every namespace in the store.
+  it("validates suffix labels without applying the reserved-root rule", () => {
+    expect(() =>
+      validateNamespace(["langgraph"], { isRoot: false })
+    ).not.toThrow();
+
+    for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
+      expect(() => validateNamespace([label], { isRoot: false })).toThrow();
+    }
+  });
+
   describe("LIKE wildcard / escape character rejection", () => {
     it.each([
       ["%"],
@@ -47,10 +58,21 @@ describe("validateNamespace", () => {
     });
 
     it("does not reject benign characters that look similar", () => {
-      // colon is the namespace path separator, hyphen / digit / unicode are fine
+      // Hyphens, digits and Unicode are valid label characters.
       expect(() =>
-        validateNamespace(["tenant-1", "user:42", "プロジェクト"])
+        validateNamespace(["tenant-1", "user-42", "プロジェクト"])
       ).not.toThrow();
     });
   });
+});
+
+it("escapes LIKE patterns independently of namespace validation", () => {
+  for (const matchType of ["prefix", "suffix"] as const) {
+    const params: unknown[] = [];
+    namespaceListingCondition(["a!%_\\b"], matchType, params);
+    expect(params).toEqual([
+      "a!%_\\b",
+      matchType === "prefix" ? "a!\\%\\_\\\\b:%" : "%:a!\\%\\_\\\\b",
+    ]);
+  }
 });

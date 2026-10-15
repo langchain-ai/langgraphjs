@@ -72,6 +72,7 @@ export type {
   Command,
   OnConflictBehavior,
   RunsInvokePayload,
+  ServerRuntime,
   StreamEvent,
 } from "./types.js";
 export type {

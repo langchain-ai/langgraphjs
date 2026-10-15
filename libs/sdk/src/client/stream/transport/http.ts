@@ -1,4 +1,5 @@
 import { AsyncQueue } from "./queue.js";
+import { encodePathSegment } from "../../base.js";
 import type {
   Message,
   SubscribeParams,
@@ -34,6 +35,18 @@ import {
   reconnectDelayMs,
 } from "../../../utils/reconnect.js";
 import { DEFAULT_IDLE_RECONNECT } from "../../../utils/stream.js";
+
+/**
+ * True for a 4xx HTTP error other than 408 (Request Timeout) and 429
+ * (Too Many Requests): retrying the same request cannot succeed. Errors
+ * with no `status` (network errors, idle timeouts, server closes) stay
+ * retryable.
+ */
+function isNonRetryableHttpError(error: unknown): boolean {
+  if (!isRecord(error) || typeof error.status !== "number") return false;
+  const { status } = error;
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
 
 /**
  * Transport adapter that speaks the thread-centric protocol over HTTP
@@ -116,7 +129,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.commands,
       this.threadId,
-      (id) => `/threads/${id}/commands`
+      (id) => `/threads/${encodePathSegment(id)}/commands`
     );
   }
 
@@ -124,7 +137,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.stream,
       this.threadId,
-      (id) => `/threads/${id}/stream/events`
+      (id) => `/threads/${encodePathSegment(id)}/stream/events`
     );
   }
 
@@ -132,7 +145,7 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.state,
       this.threadId,
-      (id) => `/threads/${id}/state`
+      (id) => `/threads/${encodePathSegment(id)}/state`
     );
   }
 
@@ -271,7 +284,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     const startStream = async () => {
       let attempt = 0;
-      let receivedEvent = false;
 
       while (!ac.signal.aborted && !this.closed) {
         try {
@@ -309,6 +321,11 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             kind: attempt === 0 ? "initial" : "reconnected",
             attempt,
           });
+          // A successful (re)connect restores the full retry budget, even
+          // if the stream then closes with no events (idle thread, idle
+          // timeout). Reset after `onConnected` so it still reports how
+          // many attempts this reconnect took.
+          attempt = 0;
 
           if (!readySettled) {
             readySettled = true;
@@ -345,7 +362,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
               break;
             }
             if (isRecord(event.data)) {
-              receivedEvent = true;
               streamQueue.push(event.data as Message);
             }
           }
@@ -362,10 +378,6 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
           // clean close is a disconnect, not the end of the thread.
           throw new Error("Event stream closed by the server");
         } catch (error) {
-          if (receivedEvent) {
-            attempt = 0;
-            receivedEvent = false;
-          }
           if (ac.signal.aborted || this.closed) {
             if (!readySettled) {
               rejectReady(error);
@@ -373,7 +385,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
             streamQueue.close();
             return;
           }
-          if (this.maxReconnectAttempts <= 0) {
+          // A client error (e.g. 401/403) fails the same way on every retry,
+          // so end the stream without using the retry budget.
+          if (
+            this.maxReconnectAttempts <= 0 ||
+            isNonRetryableHttpError(error)
+          ) {
             if (!readySettled) {
               rejectReady(error);
             }
@@ -464,9 +481,10 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         if (useAsyncCaller) {
           throw response;
         }
+        let body = "";
         let detail = "";
         try {
-          const body = await response.text();
+          body = await response.text();
           const parsed = JSON.parse(body);
           if (typeof parsed === "object" && parsed != null) {
             detail =
@@ -481,7 +499,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
         const message = detail
           ? `Protocol request failed: ${response.status} ${response.statusText} — ${detail}`
           : `Protocol request failed: ${response.status} ${response.statusText}`;
-        throw new Error(message);
+        // Keep the status (like `getState`) so callers can tell an auth
+        // failure from a network failure without parsing the message.
+        throw Object.assign(new Error(message), {
+          status: response.status,
+          text: body,
+        });
       }
       return response;
     };

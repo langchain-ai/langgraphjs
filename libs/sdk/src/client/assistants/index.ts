@@ -12,7 +12,7 @@ import {
   Subgraphs,
 } from "../../schema.js";
 import type { OnConflictBehavior } from "../../types.js";
-import { BaseClient } from "../base.js";
+import { BaseClient, encodePathSegment } from "../base.js";
 
 export class AssistantsClient extends BaseClient {
   /**
@@ -25,9 +25,12 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(`/assistants/${assistantId}`, {
-      signal: options?.signal,
-    });
+    return this.fetch<Assistant>(
+      `/assistants/${encodePathSegment(assistantId)}`,
+      {
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -40,10 +43,13 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { xray?: boolean | number; signal?: AbortSignal }
   ): Promise<AssistantGraph> {
-    return this.fetch<AssistantGraph>(`/assistants/${assistantId}/graph`, {
-      params: { xray: options?.xray },
-      signal: options?.signal,
-    });
+    return this.fetch<AssistantGraph>(
+      `/assistants/${encodePathSegment(assistantId)}/graph`,
+      {
+        params: { xray: options?.xray },
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -55,9 +61,12 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal }
   ): Promise<GraphSchema> {
-    return this.fetch<GraphSchema>(`/assistants/${assistantId}/schemas`, {
-      signal: options?.signal,
-    });
+    return this.fetch<GraphSchema>(
+      `/assistants/${encodePathSegment(assistantId)}/schemas`,
+      {
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -77,14 +86,17 @@ export class AssistantsClient extends BaseClient {
   ): Promise<Subgraphs> {
     if (options?.namespace) {
       return this.fetch<Subgraphs>(
-        `/assistants/${assistantId}/subgraphs/${options.namespace}`,
+        `/assistants/${encodePathSegment(assistantId)}/subgraphs/${encodePathSegment(options.namespace)}`,
         { params: { recurse: options?.recurse }, signal: options?.signal }
       );
     }
-    return this.fetch<Subgraphs>(`/assistants/${assistantId}/subgraphs`, {
-      params: { recurse: options?.recurse },
-      signal: options?.signal,
-    });
+    return this.fetch<Subgraphs>(
+      `/assistants/${encodePathSegment(assistantId)}/subgraphs`,
+      {
+        params: { recurse: options?.recurse },
+        signal: options?.signal,
+      }
+    );
   }
 
   /**
@@ -137,18 +149,21 @@ export class AssistantsClient extends BaseClient {
       signal?: AbortSignal;
     }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(`/assistants/${assistantId}`, {
-      method: "PATCH",
-      json: {
-        graph_id: payload.graphId,
-        config: payload.config,
-        context: payload.context,
-        metadata: payload.metadata,
-        name: payload.name,
-        description: payload.description,
-      },
-      signal: payload.signal,
-    });
+    return this.fetch<Assistant>(
+      `/assistants/${encodePathSegment(assistantId)}`,
+      {
+        method: "PATCH",
+        json: {
+          graph_id: payload.graphId,
+          config: payload.config,
+          context: payload.context,
+          metadata: payload.metadata,
+          name: payload.name,
+          description: payload.description,
+        },
+        signal: payload.signal,
+      }
+    );
   }
 
   /**
@@ -161,15 +176,11 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal; deleteThreads?: boolean }
   ): Promise<void> {
-    return this.fetch<void>(
-      `/assistants/${assistantId}?delete_threads=${
-        options?.deleteThreads ?? false
-      }`,
-      {
-        method: "DELETE",
-        signal: options?.signal,
-      }
-    );
+    return this.fetch<void>(`/assistants/${encodePathSegment(assistantId)}`, {
+      method: "DELETE",
+      params: { delete_threads: options?.deleteThreads ?? false },
+      signal: options?.signal,
+    });
   }
 
   /**
@@ -284,7 +295,7 @@ export class AssistantsClient extends BaseClient {
     }
   ): Promise<AssistantVersion[]> {
     return this.fetch<AssistantVersion[]>(
-      `/assistants/${assistantId}/versions`,
+      `/assistants/${encodePathSegment(assistantId)}/versions`,
       {
         method: "POST",
         json: {
@@ -309,10 +320,13 @@ export class AssistantsClient extends BaseClient {
     version: number,
     options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(`/assistants/${assistantId}/latest`, {
-      method: "POST",
-      json: { version },
-      signal: options?.signal,
-    });
+    return this.fetch<Assistant>(
+      `/assistants/${encodePathSegment(assistantId)}/latest`,
+      {
+        method: "POST",
+        json: { version },
+        signal: options?.signal,
+      }
+    );
   }
 }

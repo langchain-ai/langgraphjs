@@ -110,7 +110,7 @@ it("deep agent: subagents call tools and render args/results", async () => {
     },
   });
 
-  const screen = render(TestComponent);
+  const screen = await render(TestComponent);
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -226,7 +226,7 @@ it("deep agent: subagent discovery renders while subagents are still running", a
     },
   });
 
-  const screen = render(TestComponent);
+  const screen = await render(TestComponent);
 
   await expect
     .element(screen.getByTestId("loading"))
@@ -303,7 +303,7 @@ it("deep agent: retained subagent summaries react to latest tool calls", async (
     },
   });
 
-  const screen = render(TestComponent);
+  const screen = await render(TestComponent);
 
   await expect
     .element(screen.getByTestId("retained-subagent-summary-tool"))

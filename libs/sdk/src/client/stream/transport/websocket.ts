@@ -1,4 +1,5 @@
 import { AsyncQueue } from "./queue.js";
+import { encodePathSegment } from "../../base.js";
 import type {
   Message,
   Command,
@@ -137,7 +138,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     return resolveProtocolPath(
       this.paths?.stream,
       this.threadId,
-      (id) => `/threads/${id}/stream/events`
+      (id) => `/threads/${encodePathSegment(id)}/stream/events`
     );
   }
 

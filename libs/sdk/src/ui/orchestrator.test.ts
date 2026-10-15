@@ -745,6 +745,61 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("reconciles the stream buffer against server state after a cancel", async () => {
+      const partialValues: TestState = {
+        messages: [{ id: "m1", content: "partial", type: "ai" }],
+      };
+
+      let submitSignal: AbortSignal | undefined;
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { event: "values" as const, data: partialValues };
+          // Hang until the run is aborted, like a real in-flight fetch would.
+          await new Promise<never>((_resolve, reject) => {
+            submitSignal?.addEventListener("abort", () => {
+              const err = new Error("The operation was aborted");
+              err.name = "AbortError";
+              reject(err);
+            });
+          });
+        },
+      };
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { signal: AbortSignal }
+        ) => {
+          submitSignal = payload.signal;
+          return mockStream;
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      const submitPromise = orch.submit({ messages: [] });
+      await flushMicrotasks();
+
+      // The in-flight chunk is optimistically visible while streaming.
+      expect(orch.messages).toEqual(partialValues.messages);
+
+      await orch.stop();
+      await flushMicrotasks();
+
+      // The cancelled run was never persisted server-side (mocked
+      // `getState` reports empty messages), so the stray buffered chunk
+      // must not stay stuck once `stop()` resolves.
+      expect(orch.messages).toEqual([]);
+      expect(client.threads.getState).toHaveBeenCalledWith("t1");
+
+      await submitPromise;
+      orch.dispose();
+    });
   });
 
   describe("auto-reconnect", () => {

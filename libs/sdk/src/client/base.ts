@@ -110,6 +110,18 @@ export function getApiKey(apiKey?: string | null): string | undefined {
   return undefined;
 }
 
+/**
+ * Encode an identifier as a single URL path segment so it can't change the
+ * request's path or query. `.` and `..` are rejected since `new URL()` would
+ * resolve them as dot segments.
+ */
+export function encodePathSegment(value: string): string {
+  if (value === "." || value === "..") {
+    throw new Error(`Invalid path segment: ${JSON.stringify(value)}`);
+  }
+  return encodeURIComponent(value);
+}
+
 export type RequestHook = (
   url: URL,
   init: RequestInit
@@ -210,7 +222,7 @@ export class BaseClient {
     this.timeoutMs = config?.timeoutMs;
 
     this.apiUrl = config?.apiUrl?.replace(/\/$/, "") || defaultApiUrl;
-    this.defaultHeaders = config?.defaultHeaders || {};
+    this.defaultHeaders = mergeHeaders(config?.defaultHeaders);
     this.onRequest = config?.onRequest;
     this.streamProtocol = config?.streamProtocol ?? "legacy";
     const apiKey = getApiKey(config?.apiKey);

@@ -8,6 +8,7 @@ import {
   OVERWRITE,
   _deserializeCommandSendObjectGraph,
   _getOverwriteValue,
+  isCommand,
 } from "../constants.js";
 
 // Cross-language parity with langgraph#8127: an Overwrite must survive a JSON
@@ -43,6 +44,35 @@ describe("_getOverwriteValue", () => {
     ]);
     expect(_getOverwriteValue(["b"])).toEqual([false, undefined]);
     expect(_getOverwriteValue(null)).toEqual([false, undefined]);
+  });
+});
+
+describe("isCommand", () => {
+  it("accepts a Command instance", () => {
+    expect(isCommand(new Command({ resume: 1 }))).toBe(true);
+  });
+
+  it("accepts a Command built by another copy of the package", () => {
+    class ForeignCommand {
+      readonly lg_name = "Command";
+
+      resume = 1;
+    }
+    expect(isCommand(new ForeignCommand())).toBe(true);
+  });
+
+  it.each([
+    ["plain object", { lg_name: "Command", goto: "tools" }],
+    [
+      "JSON round-tripped Command",
+      JSON.parse(JSON.stringify(new Command({ goto: "tools" }))),
+    ],
+    [
+      "null-prototype object",
+      Object.assign(Object.create(null), { lg_name: "Command" }),
+    ],
+  ])("rejects a %s", (_, value) => {
+    expect(isCommand(value)).toBe(false);
   });
 });
 

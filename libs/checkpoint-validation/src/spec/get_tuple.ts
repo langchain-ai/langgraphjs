@@ -3,6 +3,7 @@ import {
   type CheckpointTuple,
   type PendingWrite,
   type Checkpoint,
+  emptyCheckpoint,
   TASKS,
   uuid6,
 } from "@langchain/langgraph-checkpoint";
@@ -25,6 +26,88 @@ export function getTupleTests<T extends BaseCheckpointSaver>(
 
     afterAll(async () => {
       await initializer.destroyCheckpointer?.(checkpointer);
+    });
+
+    it("should return pending writes in writesSortKey order", async () => {
+      // Port of Python's test_get_tuple_pending_writes_in_writes_sort_key_order,
+      // hardened per the panel review: three tasks, so insertion order,
+      // task-id order, and task-path order are all different (two tasks give
+      // only two permutations); multiple writes in one task; and idx values 2
+      // and 10, so a lexical idx comparison cannot pass.
+      const tid = uuid6(3);
+      let config: RunnableConfig = {
+        configurable: { thread_id: tid, checkpoint_ns: "" },
+      };
+      const checkpoint: Checkpoint = {
+        ...emptyCheckpoint(),
+        id: uuid6(3),
+      };
+      config = await checkpointer.put(
+        config,
+        checkpoint,
+        { source: "loop", step: 0, parents: {} },
+        {}
+      );
+
+      // Task A: id sorts LAST, path sorts LAST; eleven writes (idx 0..10).
+      await checkpointer.putWrites(
+        config,
+        Array.from({ length: 11 }, (_, i) => ["ch", `a${i}`] as PendingWrite),
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "~pull, 02"
+      );
+      // Task C: no path (input-like); id sorts between B and A.
+      await checkpointer.putWrites(
+        config,
+        [["ch", "input"] as PendingWrite],
+        "88888888-8888-8888-8888-888888888888"
+      );
+      // Task B: id sorts FIRST, path sorts between C and A.
+      await checkpointer.putWrites(
+        config,
+        [["ch", "b"] as PendingWrite],
+        "00000000-0000-0000-0000-000000000000",
+        "~pull, 01"
+      );
+      // Task D: BMP private-use path element (U+E000); id sorts mid-range.
+      await checkpointer.putWrites(
+        config,
+        [["ch", "bmp"] as PendingWrite],
+        "99999999-9999-9999-9999-999999999999",
+        "~pull, \uE000"
+      );
+      // Task E: astral path element (U+10000); sorts after every BMP code
+      // point under Python str ordering, which `compareWritesSortKeys`
+      // matches — exercised here through real backend storage.
+      await checkpointer.putWrites(
+        config,
+        [["ch", "astral"] as PendingWrite],
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "~pull, \uD800\uDC00"
+      );
+
+      const tuple = await checkpointer.getTuple(config);
+      expect(tuple).not.toBeUndefined();
+      // Put order gives [a0..a10, "input", "b"]; task-id order gives
+      // ["b", "input", a0..a10]; writesSortKey order gives the following
+      // ("" path first, then paths ascending, idx numeric within a task).
+      expect(tuple?.pendingWrites?.map((w) => w[2])).toEqual([
+        "input",
+        "b",
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "a8",
+        "a9",
+        "a10",
+        "bmp",
+        "astral",
+      ]);
     });
 
     describe.each(["root", "child"])("namespace: %s", (namespace) => {
