@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
   HumanMessage,
   RemoveMessage,
@@ -238,6 +239,34 @@ describe("DeltaChannel (unit)", () => {
 });
 
 describe("messagesDeltaReducer", () => {
+  it("stores message chunks as their non-chunk class", () => {
+    const [ai] = messagesDeltaReducer(
+      [],
+      [
+        [
+          new AIMessageChunk({
+            id: "ai",
+            content: "",
+            tool_call_chunks: [
+              {
+                index: 0,
+                id: "call",
+                name: "search",
+                args: "{}",
+                type: "tool_call_chunk",
+              },
+            ],
+          }),
+        ],
+      ]
+    );
+    expect(AIMessageChunk.isInstance(ai)).toBe(false);
+    expect((ai as AIMessage).tool_calls).toEqual([
+      { id: "call", name: "search", args: {}, type: "tool_call" },
+    ]);
+    expect(JSON.stringify(ai)).not.toContain("tool_call_chunks");
+  });
+
   it("appends, dedups by id and is batching-invariant", () => {
     const m1 = new HumanMessage({ id: "1", content: "a" });
     const m2 = new AIMessage({ id: "2", content: "b" });
