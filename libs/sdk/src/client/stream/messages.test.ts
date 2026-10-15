@@ -161,6 +161,72 @@ describe("MessageAssembler", () => {
     });
   });
 
+  it("concatenates tool_call_chunk args when deltas arrive as block-delta", () => {
+    // Regression: the Python v3 emitter sends tool-call argument fragments as
+    // content-block-delta events with `delta: { type: "block-delta", fields: {
+    // type: "tool_call_chunk", args: "fragment" } }`.  The previous block-delta
+    // handler spread `fields` onto the current block, overwriting `args` with
+    // the latest fragment instead of appending to it — so only the last
+    // fragment was ever visible, which caused downstream `parsePartialJson` to
+    // fail on non-self-contained JSON and drop the call from `tool_calls`.
+    const assembler = new MessageAssembler();
+
+    assembler.consume(
+      eventOf("messages", { event: "message-start", id: "msg_bd" }, {
+        namespace: ["agent_1"],
+        node: "writer",
+      }) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-start",
+          index: 0,
+          content: { type: "tool_call_chunk", id: "tc_1", name: "lookup", args: "" },
+        },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: {
+            type: "block-delta",
+            fields: { type: "tool_call_chunk", args: '{"q":' } as never,
+          },
+        },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+    const done = assembler.consume(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          delta: {
+            type: "block-delta",
+            fields: { type: "tool_call_chunk", args: '"hello"}' } as never,
+          },
+        },
+        { namespace: ["agent_1"], node: "writer" }
+      ) as Extract<Event, { method: "messages" }>
+    );
+
+    expect(done?.kind).toBe("content-block-delta");
+    // Both fragments must be accumulated — not just the last one.
+    expect(done?.message.blocks[0]).toEqual({
+      type: "tool_call_chunk",
+      id: "tc_1",
+      name: "lookup",
+      args: '{"q":"hello"}',
+    });
+  });
+
   it("handles text delta concatenation", () => {
     const assembler = new MessageAssembler();
 
