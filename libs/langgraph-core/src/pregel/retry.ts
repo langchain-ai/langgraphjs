@@ -26,16 +26,17 @@ const DEFAULT_STATUS_NO_RETRY = [
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const DEFAULT_RETRY_ON_HANDLER = (error: any) => {
+  const message = typeof error?.message === "string" ? error.message : "";
   if (
-    error.message.startsWith("Cancel") ||
-    error.message.startsWith("AbortError") ||
-    error.name === "AbortError"
+    message.startsWith("Cancel") ||
+    message.startsWith("AbortError") ||
+    error?.name === "AbortError"
   ) {
     return false;
   }
 
   // Thrown when interrupt is called without a checkpointer
-  if (error.name === "GraphValueError") {
+  if (error?.name === "GraphValueError") {
     return false;
   }
 
@@ -125,7 +126,9 @@ export async function _runWithRetry<
       break;
     } catch (e: unknown) {
       error = e;
-      (error as { pregelTaskId: string }).pregelTaskId = pregelTask.id;
+      if (typeof error === "object" && error !== null) {
+        (error as { pregelTaskId: string }).pregelTaskId = pregelTask.id;
+      }
       if (isParentCommand(error)) {
         const ns: string = config?.configurable?.checkpoint_ns;
         const cmd = error.command;
