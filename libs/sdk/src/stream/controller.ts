@@ -30,7 +30,7 @@ import type {
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type { Interrupt, Thread, ThreadState } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
@@ -106,6 +106,11 @@ function isAbortLikeError(error: unknown): boolean {
     (typeof maybeError.message === "string" &&
       maybeError.message.includes("aborted"))
   );
+}
+
+/** The server no longer lists the interrupt: another tab or client answered it. */
+function isNoSuchInterrupt(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === "no_such_interrupt";
 }
 
 function lifecycleReason(event: string | undefined): RunExecutionReason | null {
@@ -369,6 +374,13 @@ export class StreamController<
    * non-message keys are rolled back to their pre-submit values.
    */
   #sawValuesForRun = false;
+  /** The transport reconnected since the last catch-up, so events may be missing. */
+  #streamDropped = false;
+  /** The error the transport gave up with, cleared once the stream is back. */
+  #streamError: unknown;
+  #catchUpPromise: Promise<void> | undefined;
+  #cardCheckPromise: Promise<void> | undefined;
+  #stopWatchingPage: (() => void) | undefined;
 
   /**
    * Single-shot hydration promise. Exposed via `hydrationPromise`
@@ -593,6 +605,14 @@ export class StreamController<
    * @param threadId - Optional replacement thread id; `null` clears the active thread.
    */
   async hydrate(threadId?: string | null): Promise<void> {
+    await this.#hydrate(threadId, false);
+  }
+
+  /** `quiet` reloads the bound thread without flipping `isThreadLoading`. */
+  async #hydrate(
+    threadId: string | null | undefined,
+    quiet: boolean
+  ): Promise<void> {
     if (this.#disposed) return;
     const target = threadId === undefined ? this.#currentThreadId : threadId;
     const changed = target !== this.#currentThreadId;
@@ -601,7 +621,11 @@ export class StreamController<
     // not be awaited by this thread's lazy namespace resolves.
     this.#discoverySeedPromise = undefined;
     this.#scopedHistorySeeds.clear();
-    this.rootStore.setState((s) => ({ ...s, threadId: this.#currentThreadId }));
+    this.rootStore.setState((s) =>
+      s.threadId === this.#currentThreadId
+        ? s
+        : { ...s, threadId: this.#currentThreadId }
+    );
 
     if (changed) {
       /**
@@ -652,7 +676,9 @@ export class StreamController<
       return;
     }
 
-    this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
+    if (!quiet) {
+      this.rootStore.setState((s) => ({ ...s, isThreadLoading: true }));
+    }
     // Thread id this hydrate cycle is fetching for; used to detect a thread
     // clear/swap across the getState() await below.
     const hydratedThreadId = this.#currentThreadId;
@@ -672,6 +698,7 @@ export class StreamController<
     // with `threadActive` where it's used, to decide whether to seed
     // `isLoading`.
     let hasActiveInterrupts = false;
+    const submitGeneration = this.#submitGeneration;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -681,6 +708,9 @@ export class StreamController<
       // the reconnect below would call threads.stream(null, …) → `.fetch` on
       // null. Bail before touching any state. Hydration is settled in finally.
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
+      // A send or answer since the fetch brings its own stream, and applying
+      // the older state would drop its optimistic messages.
+      if (quiet && this.#submitGeneration !== submitGeneration) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
       const checkpointTime = Date.parse(state?.created_at ?? "");
@@ -849,7 +879,9 @@ export class StreamController<
         threadMissing = true;
       }
     } finally {
-      this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
+      this.rootStore.setState((s) =>
+        s.isThreadLoading ? { ...s, isThreadLoading: false } : s
+      );
       if (hydrationError != null) {
         this.#rejectHydration(hydrationError);
       } else {
@@ -886,6 +918,8 @@ export class StreamController<
      * nothing is missed.
      */
     const thread = this.#ensureThread(hydratedThreadId, !threadActive);
+    // A reload can find a run on a thread that was idle when it loaded.
+    if (threadActive) this.#startDeferredRootPump();
 
     /**
      * Picks up runs pending from before this page load, or another tab.
@@ -951,7 +985,24 @@ export class StreamController<
         }
       });
       this.#discoverySeedPromise = seed;
+      if (!threadActive) void this.#followIfRunning(hydratedThreadId);
     }
+  }
+
+  /**
+   * `getState()` returns the previous checkpoint until a new run writes its
+   * first one, so a tab that loads right after a send can take a running
+   * thread for finished. The thread row already says busy then.
+   */
+  async #followIfRunning(threadId: string): Promise<void> {
+    const row = await this.#readThreadRow(threadId);
+    if (row?.status !== "busy") return;
+    if (this.#disposed || this.#currentThreadId !== threadId) return;
+    this.#startDeferredRootPump();
+    this.#thread?.startLifecycleWatcher();
+    this.rootStore.setState((s) =>
+      s.isLoading ? s : { ...s, isLoading: true }
+    );
   }
 
   /**
@@ -1512,6 +1563,7 @@ export class StreamController<
       if (this.#disposed && isAbortLikeError(error)) {
         return;
       }
+      if (isNoSuchInterrupt(error)) this.#checkCards();
       throw error;
     }
   }
@@ -1613,6 +1665,7 @@ export class StreamController<
       if (this.#disposed && isAbortLikeError(error)) {
         return;
       }
+      if (isNoSuchInterrupt(error)) this.#checkCards();
       throw error;
     }
   }
@@ -1624,6 +1677,8 @@ export class StreamController<
     if (this.#disposed) return;
     this.#cancelPendingDispose();
     this.#disposed = true;
+    this.#stopWatchingPage?.();
+    this.#stopWatchingPage = undefined;
     this.#submitter.abortActiveRun();
     await this.#teardownThread();
     await this.registry.dispose();
@@ -1644,9 +1699,14 @@ export class StreamController<
    * disposal: a `release()` only schedules a dispose on the next
    * microtask, which is cancelled if another `activate()` arrives
    * before it fires (the normal StrictMode remount path).
+   *
+   * In a browser it also catches the thread up when the page is shown
+   * again or the network comes back, since a hidden tab can miss events
+   * or lose its stream.
    */
   activate(): () => void {
     this.#cancelPendingDispose();
+    this.#watchPage();
     return () => {
       if (this.#disposed) return;
       this.#pendingDisposeTimer = setTimeout(() => {
@@ -1664,6 +1724,166 @@ export class StreamController<
       clearTimeout(this.#pendingDisposeTimer);
       this.#pendingDisposeTimer = null;
     }
+  }
+
+  /**
+   * Reload the bound thread without clearing what is on screen, and
+   * reopen the event stream if the transport gave up on it. Use it after
+   * writing to the thread outside this controller (`threads.updateState`,
+   * a backend job). Returning tabs and dropped connections don't need it:
+   * {@link activate} handles those with a cheaper check.
+   */
+  async resync(): Promise<void> {
+    const threadId = this.#currentThreadId;
+    if (this.#disposed || threadId == null) return;
+    if (this.#selfCreatedThreadIds.has(threadId)) return;
+    this.#reviveFailedStream();
+    await this.#hydrate(threadId, true);
+  }
+
+  #watchPage(): void {
+    if (this.#stopWatchingPage != null) return;
+    const { document, window } = globalThis as {
+      document?: Document;
+      window?: Window;
+    };
+    if (document == null || window == null) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") this.#onPageBack();
+    };
+    const onOnline = () => this.#onPageBack();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    this.#stopWatchingPage = () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+    };
+  }
+
+  #onPageBack(): void {
+    // A stream that stayed up has delivered everything.
+    if (this.#rootPump != null && !this.#streamDropped) return;
+    if (this.#catchUpPromise != null) return;
+    this.#catchUpPromise = this.#catchUp().finally(() => {
+      this.#catchUpPromise = undefined;
+    });
+  }
+
+  /**
+   * Compare the view with the thread row and reload only when the thread
+   * moved on without it. The row comes back without its values, a few
+   * hundred bytes against a `getState()` and history page that carry the
+   * whole state.
+   */
+  async #catchUp(): Promise<void> {
+    const threadId = this.#currentThreadId;
+    if (this.#disposed || threadId == null || this.#localRunDepth > 0) return;
+    if (this.#selfCreatedThreadIds.has(threadId)) return;
+    this.#reviveFailedStream();
+    this.#streamDropped = false;
+    const following = this.#rootPump != null;
+    const row = await this.#readThreadRow(threadId);
+    if (this.#disposed || this.#currentThreadId !== threadId) return;
+    if (row === null) return;
+    if (row === undefined || this.#missingThreadIds.has(threadId)) {
+      await this.#hydrate(threadId, true);
+      return;
+    }
+    // A live stream follows the run; without one, reloading opens it.
+    if (row.status === "busy") {
+      if (!following) await this.#hydrate(threadId, true);
+      return;
+    }
+    const pending = this.#dropAnsweredCards(row);
+    const view = this.rootStore.getSnapshot();
+    const shown = new Set(view.interrupts.map((interrupt) => interrupt.id));
+    const lastMessageId = row.extracted?.last_message_id;
+    const behind =
+      row.extracted == null ||
+      [...pending].some((id) => !shown.has(id)) ||
+      (lastMessageId != null &&
+        !view.messages.some((message) => message.id === lastMessageId));
+    if (behind) await this.#hydrate(threadId, true);
+  }
+
+  /**
+   * Drop the cards another tab or client answered. Nothing on the stream
+   * says a card was answered; the thread row lists what is still open.
+   */
+  #checkCards(): void {
+    const threadId = this.#currentThreadId;
+    if (this.#disposed || threadId == null || this.#cardCheckPromise != null) {
+      return;
+    }
+    this.#cardCheckPromise = this.#readThreadRow(threadId)
+      .then((row) => {
+        if (this.#disposed || this.#currentThreadId !== threadId) return;
+        // A row that is still busy has not settled its cards yet.
+        if (row != null && row.status !== "busy") this.#dropAnsweredCards(row);
+      })
+      .finally(() => {
+        this.#cardCheckPromise = undefined;
+      });
+  }
+
+  /** Returns the ids the row still lists as open. */
+  #dropAnsweredCards(row: Thread<StateType>): Set<string> {
+    const pending = new Set(
+      Object.values(row.interrupts ?? {})
+        .flat()
+        .map((interrupt) => interrupt?.id)
+        .filter((id): id is string => typeof id === "string")
+    );
+    for (const interrupt of this.rootStore.getSnapshot().interrupts) {
+      if (interrupt.id != null && !pending.has(interrupt.id)) {
+        this.#markInterruptResolvedInRootStore(interrupt.id);
+      }
+    }
+    return pending;
+  }
+
+  /**
+   * The thread row without its values, `null` when the thread doesn't
+   * exist and `undefined` when it can't be read (custom transport, older
+   * server, network).
+   */
+  async #readThreadRow(
+    threadId: string
+  ): Promise<Thread<StateType> | null | undefined> {
+    if (typeof this.#options.transport === "object") return undefined;
+    try {
+      const rows = await this.#options.client.threads.search({
+        ids: [threadId],
+        limit: 1,
+        select: ["thread_id", "status", "interrupts"],
+        extract: { last_message_id: `values.${this.#messagesKey}[-1].id` },
+      });
+      if (rows.length === 0) return null;
+      // A server that ignores `ids` answers with some other thread.
+      return rows.find((row) => row.thread_id === threadId);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The transport closes every subscription on the thread stream when it
+   * gives up. Reopen the selector projections, and park the root pump like
+   * an idle thread's so the next hydrate or submit starts it again.
+   */
+  #reviveFailedStream(): void {
+    const thread = this.#thread;
+    if (thread == null || this.#rootPump != null || this.#rootPumpDeferred) {
+      return;
+    }
+    this.#rootPumpDeferred = true;
+    this.#rootPumpReady = Promise.resolve();
+    this.registry.bind(undefined);
+    this.registry.bind(thread);
+    if (this.rootStore.getSnapshot().error === this.#streamError) {
+      this.rootStore.setState((s) => ({ ...s, error: undefined }));
+    }
+    this.#streamError = undefined;
   }
 
   // ---------- thread access ----------
@@ -1766,7 +1986,10 @@ export class StreamController<
       maxReconnectAttempts: this.#options.maxReconnectAttempts,
       streamIdleReconnect: this.#options.streamIdleReconnect,
       reconnectDelayMs: this.#options.reconnectDelayMs,
-      onReconnect: this.#options.onReconnect,
+      onReconnect: (info) => {
+        this.#streamDropped = true;
+        this.#options.onReconnect?.(info);
+      },
       onConnected: this.#options.onConnected,
     });
     this.registry.bind(this.#thread);
@@ -1939,6 +2162,7 @@ export class StreamController<
       this.#onWildcardEvent(event)
     );
     this.#threadErrorUnsubscribe = thread.onError((error) => {
+      this.#streamError = error;
       this.rootStore.setState((s) => ({ ...s, error, isLoading: false }));
       this.#rootSubscription?.close();
     });
@@ -2303,6 +2527,13 @@ export class StreamController<
       };
       const dropped = this.#rootMessages.applyLifecycle(lifecycle?.event);
       if (dropped.size > 0) this.#messageMetadata.forget(dropped);
+      // Another tab's run may have answered the cards this one shows.
+      if (
+        lifecycleReason(lifecycle?.event) != null &&
+        this.rootStore.getSnapshot().interrupts.length > 0
+      ) {
+        this.#checkCards();
+      }
     }
   }
 

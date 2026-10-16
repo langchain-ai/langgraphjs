@@ -5054,3 +5054,332 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     }
   );
 });
+
+describe("StreamController catching up after missed events", () => {
+  let page: ReturnType<typeof installPage> | undefined;
+
+  function installPage() {
+    const document = Object.assign(new EventTarget(), {
+      visibilityState: "visible",
+    });
+    const window = new EventTarget();
+    Object.assign(globalThis, { document, window });
+    return {
+      show() {
+        document.dispatchEvent(new Event("visibilitychange"));
+      },
+      online() {
+        window.dispatchEvent(new Event("online"));
+      },
+      remove() {
+        delete (globalThis as { document?: unknown }).document;
+        delete (globalThis as { window?: unknown }).window;
+      },
+    };
+  }
+
+  afterEach(() => {
+    page?.remove();
+    page = undefined;
+  });
+
+  const human = (id: string) => ({ type: "human", id, content: id });
+  const ids = (controller: StreamController<State, unknown>) =>
+    controller.rootStore.getSnapshot().messages.map((m) => m.id);
+
+  function rig(options: {
+    states: Array<Record<string, unknown>>;
+    rows: Array<Record<string, unknown>>;
+  }) {
+    const errorListeners = new Set<(error: Error) => void>();
+    const subscriptions: ReturnType<typeof makePushableSubscription>[] = [];
+    const respondInput = vi.fn(async () => undefined);
+    const thread = {
+      subscribe: vi.fn(async () => {
+        const subscription = makePushableSubscription();
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        errorListeners.add(listener);
+        return vi.fn(() => errorListeners.delete(listener));
+      }),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      ordering: {},
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    let state = 0;
+    let row = 0;
+    const client = {
+      threads: {
+        getState: vi.fn(
+          async () =>
+            options.states[Math.min(state++, options.states.length - 1)]
+        ),
+        getHistory: vi.fn(async () => []),
+        search: vi.fn(async () => [
+          {
+            thread_id: "thread-1",
+            ...options.rows[Math.min(row++, options.rows.length - 1)],
+          },
+        ]),
+        stream: vi.fn(() => thread),
+      },
+    };
+    page = installPage();
+    const controller = new StreamController<State, unknown>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    controller.activate();
+    return {
+      controller,
+      client,
+      thread,
+      subscriptions,
+      errorListeners,
+      respondInput,
+    };
+  }
+
+  it("reloads a finished thread that another tab moved on when the page is shown again", async () => {
+    const { controller, client } = rig({
+      states: [
+        { values: { messages: [human("h1")] }, next: [], tasks: [] },
+        {
+          values: { messages: [human("h1"), human("h2")] },
+          next: [],
+          tasks: [],
+        },
+      ],
+      rows: [
+        {
+          status: "idle",
+          interrupts: {},
+          extracted: { last_message_id: "h2" },
+        },
+      ],
+    });
+    await waitForExpectation(() => expect(ids(controller)).toEqual(["h1"]));
+
+    page?.show();
+
+    await waitForExpectation(() =>
+      expect(ids(controller)).toEqual(["h1", "h2"])
+    );
+    expect(client.threads.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ids: ["thread-1"],
+        select: expect.not.arrayContaining(["values"]),
+      })
+    );
+    expect(controller.rootStore.getSnapshot().isThreadLoading).toBe(false);
+    await controller.dispose();
+  });
+
+  it("does not reload a finished thread nobody changed", async () => {
+    const { controller, client } = rig({
+      states: [{ values: { messages: [human("h1")] }, next: [], tasks: [] }],
+      rows: [
+        {
+          status: "idle",
+          interrupts: {},
+          extracted: { last_message_id: "h1" },
+        },
+      ],
+    });
+    await waitForExpectation(() => expect(ids(controller)).toEqual(["h1"]));
+    await waitForExpectation(() =>
+      expect(client.threads.search).toHaveBeenCalledTimes(1)
+    );
+
+    page?.show();
+
+    await waitForExpectation(() =>
+      expect(client.threads.search).toHaveBeenCalledTimes(2)
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(client.threads.getState).toHaveBeenCalledTimes(1);
+    await controller.dispose();
+  });
+
+  it("makes no request when the page is shown again while the stream stayed up", async () => {
+    const { controller, client, subscriptions } = rig({
+      states: [{ values: { messages: [human("h1")] }, next: ["agent"] }],
+      rows: [{ status: "busy", interrupts: {} }],
+    });
+    await controller.hydrationPromise;
+    await subscriptions[0]?.started;
+
+    page?.show();
+    page?.online();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(client.threads.search).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("reopens the stream the transport gave up on once the network is back", async () => {
+    const { controller, thread, subscriptions, errorListeners } = rig({
+      states: [{ values: { messages: [human("h1")] }, next: ["agent"] }],
+      rows: [{ status: "busy", interrupts: {} }],
+    });
+    await controller.hydrationPromise;
+    await subscriptions[0]?.started;
+    const gaveUp = new Error("fetch failed");
+    for (const listener of errorListeners) listener(gaveUp);
+    await waitForExpectation(() => expect(errorListeners.size).toBe(0));
+    expect(controller.rootStore.getSnapshot().error).toBe(gaveUp);
+
+    page?.online();
+
+    await waitForExpectation(() =>
+      expect(thread.subscribe).toHaveBeenCalledTimes(2)
+    );
+    expect(controller.rootStore.getSnapshot().error).toBeUndefined();
+    await controller.dispose();
+  });
+
+  it("drops a card another tab answered once that tab's run ends", async () => {
+    const { controller, client, subscriptions } = rig({
+      states: [
+        {
+          values: { messages: [human("h1")] },
+          next: ["agent"],
+          tasks: [
+            { interrupts: [{ id: "card-1", value: { question: "ok?" } }] },
+          ],
+        },
+      ],
+      rows: [
+        {
+          status: "idle",
+          interrupts: {},
+          extracted: { last_message_id: "h1" },
+        },
+      ],
+    });
+    await subscriptions[0]?.started;
+    await waitForExpectation(() => expect(ids(controller)).toEqual(["h1"]));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["card-1"]);
+
+    subscriptions[0]?.push(runLifecycleEvent("run-from-tab-a", "running", 1));
+    subscriptions[0]?.push(runLifecycleEvent("run-from-tab-a", "completed", 2));
+
+    await waitForExpectation(() =>
+      expect(controller.rootStore.getSnapshot().interrupts).toEqual([])
+    );
+    expect(client.threads.getState).toHaveBeenCalledTimes(1);
+    await controller.dispose();
+  });
+
+  it("opens the stream when getState still shows a run that just started as finished", async () => {
+    const { controller, thread } = rig({
+      states: [{ values: { messages: [human("h1")] }, next: [], tasks: [] }],
+      rows: [{ status: "busy", interrupts: {} }],
+    });
+    await controller.hydrationPromise;
+
+    await waitForExpectation(() =>
+      expect(thread.subscribe).toHaveBeenCalledTimes(1)
+    );
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(true);
+    await controller.dispose();
+  });
+
+  it("ignores a search result for another thread", async () => {
+    const { controller, client, thread } = rig({
+      states: [{ values: { messages: [human("h1")] }, next: [], tasks: [] }],
+      rows: [{ thread_id: "thread-2", status: "busy", interrupts: {} }],
+    });
+    await waitForExpectation(() =>
+      expect(client.threads.search).toHaveBeenCalled()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(thread.subscribe).not.toHaveBeenCalled();
+    expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+    await controller.dispose();
+  });
+
+  it("keeps the cards the thread row still lists after a run ends", async () => {
+    const card = { id: "card-1", value: { question: "ok?" } };
+    const { controller, client, subscriptions } = rig({
+      states: [
+        {
+          values: { messages: [human("h1")] },
+          next: ["agent"],
+          tasks: [{ interrupts: [card] }],
+        },
+      ],
+      rows: [
+        {
+          status: "interrupted",
+          interrupts: { "task-1": [card] },
+          extracted: { last_message_id: "h1" },
+        },
+      ],
+    });
+    await subscriptions[0]?.started;
+    await waitForExpectation(() => expect(ids(controller)).toEqual(["h1"]));
+
+    subscriptions[0]?.push(
+      runLifecycleEvent("run-from-tab-a", "interrupted", 1)
+    );
+
+    await waitForExpectation(() =>
+      expect(client.threads.search).toHaveBeenCalled()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
+    ).toEqual(["card-1"]);
+    await controller.dispose();
+  });
+
+  it("drops a card the server says was already answered", async () => {
+    const { controller, respondInput, subscriptions } = rig({
+      states: [
+        {
+          values: { messages: [human("h1")] },
+          next: ["agent"],
+          tasks: [
+            { interrupts: [{ id: "card-1", value: { question: "ok?" } }] },
+          ],
+        },
+      ],
+      rows: [
+        {
+          status: "idle",
+          interrupts: {},
+          extracted: { last_message_id: "h1" },
+        },
+      ],
+    });
+    await subscriptions[0]?.started;
+    await waitForExpectation(() => expect(ids(controller)).toEqual(["h1"]));
+    respondInput.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Unknown or already-consumed interrupt: card-1"),
+        {
+          code: "no_such_interrupt",
+        }
+      )
+    );
+
+    await expect(
+      controller.respond("yes", { interruptId: "card-1" })
+    ).rejects.toThrow("already-consumed");
+
+    await waitForExpectation(() =>
+      expect(controller.rootStore.getSnapshot().interrupts).toEqual([])
+    );
+    await controller.dispose();
+  });
+});
