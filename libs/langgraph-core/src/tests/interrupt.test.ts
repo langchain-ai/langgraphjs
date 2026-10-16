@@ -11,6 +11,7 @@ import {
   START,
   StateGraph,
   interrupt,
+  isInvalidResume,
   type InterruptOptions,
 } from "../index.js";
 
@@ -128,4 +129,82 @@ describe("interrupt responseSchema", () => {
       ).resolves.toEqual({ answer: { approved: false, note: "" } });
     }
   );
+
+  it("marks only resume validation errors as invalid resumes", async () => {
+    const graph = buildGraph(ZOD_SCHEMA);
+    const config = { configurable: { thread_id: "1" } };
+    await graph.invoke({ answer: null }, config);
+    const error: unknown = await graph
+      .invoke(new Command({ resume: { approved: "nope" } }), config)
+      .catch((e: unknown) => e);
+
+    expect([
+      isInvalidResume(error),
+      // Agent middleware rethrows errors wrapped, with the original as `cause`.
+      isInvalidResume(new Error("wrapped", { cause: error })),
+      isInvalidResume(ZOD_SCHEMA.safeParse({}).error),
+      isInvalidResume(new Error("nope")),
+    ]).toEqual([true, true, false, false]);
+  });
+
+  // A task cut off after its side effect keeps its answer and runs again on the
+  // next resume, so the side effect would happen twice.
+  it("lets the other answered tasks finish when one answer is invalid", async () => {
+    const sent: string[] = [];
+    const LogState = Annotation.Root({
+      log: Annotation<string[]>({
+        reducer: (left, right) => left.concat(right),
+        default: () => [],
+      }),
+    });
+    const graph = new StateGraph(LogState)
+      .addNode("send", async () => {
+        interrupt("send?", { responseSchema: ZOD_SCHEMA });
+        sent.push("email");
+        // Waiting on the reply to a request already sent.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { log: ["sent"] };
+      })
+      .addNode("check", async () => {
+        interrupt("check?", { responseSchema: ZOD_SCHEMA });
+        return { log: ["checked"] };
+      })
+      .addEdge(START, "send")
+      .addEdge(START, "check")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "1" } };
+    await graph.invoke({ log: [] }, config);
+    const ids = Object.fromEntries(
+      (await graph.getState(config)).tasks
+        .flatMap((task) => task.interrupts)
+        .map((i) => [String(i.value), i.id ?? ""])
+    );
+
+    await expect(
+      graph.invoke(
+        new Command({
+          resume: {
+            [ids["send?"]]: { approved: true },
+            [ids["check?"]]: { approved: "nope" },
+          },
+        }),
+        config
+      )
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ path: ["approved"] })],
+    });
+    const failed = (await graph.getState(config)).tasks
+      .filter((task) => task.error !== undefined)
+      .map((task) => task.name);
+    expect([failed, sent]).toEqual([["check"], ["email"]]);
+
+    const result = await graph.invoke(
+      new Command({ resume: { [ids["check?"]]: { approved: true } } }),
+      config
+    );
+    expect([[...result.log].sort(), sent]).toEqual([
+      ["checked", "sent"],
+      ["email"],
+    ]);
+  });
 });
