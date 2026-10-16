@@ -397,6 +397,38 @@ export const normalizeProtocolStateToolCalls = (value: unknown) => {
  * @param value - Raw message object.
  * @returns The normalized message shape.
  */
+/**
+ * `additional_kwargs` keys that the protocol already exposes as first-class
+ * fields on an AI message: `tool_calls` is lifted into `tool_calls`, and
+ * `audio` / `tool_outputs` are lifted into protocol content blocks. Forwarding
+ * them again would duplicate normalized data on the wire.
+ */
+const LIFTED_AI_ADDITIONAL_KWARGS = new Set([
+  "tool_calls",
+  "audio",
+  "tool_outputs",
+]);
+
+/**
+ * Select the `additional_kwargs` entries worth forwarding on a normalized
+ * message, or `undefined` when nothing remains.
+ *
+ * @param additionalKwargs - The message's `additional_kwargs` record.
+ * @param type - The normalized protocol message type.
+ * @returns The forwardable subset, or `undefined`.
+ */
+const pickForwardableAdditionalKwargs = (
+  additionalKwargs: Record<string, unknown> | undefined,
+  type: string
+) => {
+  if (additionalKwargs == null) return undefined;
+  const entries = Object.entries(additionalKwargs).filter(
+    ([key]) => type !== "ai" || !LIFTED_AI_ADDITIONAL_KWARGS.has(key)
+  );
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries);
+};
+
 export const normalizeProtocolStateMessage = (
   value: Record<string, unknown>
 ) => {
@@ -434,6 +466,21 @@ export const normalizeProtocolStateMessage = (
     Object.keys(value.response_metadata).length > 0
   ) {
     message.response_metadata = value.response_metadata;
+  }
+  // Preserve `additional_kwargs` for the same reason. It is the field
+  // LangChain designates for application and provider metadata travelling
+  // with a message, and graphs write to it during a run (e.g. a middleware
+  // committing file attachments onto the human message via `add_messages`
+  // same-id replacement). Dropping it here makes such a write invisible to a
+  // live subscriber while `GET /threads/:id/state` still returns it, so the
+  // same message has two shapes depending on which endpoint you ask, and
+  // `useStream`'s same-id reconciliation has no enrichment to prefer.
+  const forwardedKwargs = pickForwardableAdditionalKwargs(
+    additionalKwargs,
+    type
+  );
+  if (forwardedKwargs != null) {
+    message.additional_kwargs = forwardedKwargs;
   }
   if (
     (type === "ai" || type === "human") &&
