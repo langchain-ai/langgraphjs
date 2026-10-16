@@ -52,6 +52,7 @@
  * @see StreamController - The owner; injects every collaborator dep.
  */
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
+import { ProtocolError } from "../client/stream/error.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import { bindThreadConfig } from "./dispatch-config.js";
 import {
@@ -171,7 +172,8 @@ export class SubmitCoordinator<
    * events from the run being resumed (see {@link dispatchResume}).
    */
   readonly #awaitResumedRunTerminal: (
-    signal: AbortSignal
+    signal: AbortSignal,
+    answeredIds: readonly string[]
   ) => Promise<TerminalResult>;
   /** Called once at the start of every {@link submit} invocation. */
   readonly #onSubmitStart: () => void;
@@ -188,6 +190,11 @@ export class SubmitCoordinator<
   ) => void;
   /** Marks the local run dispatch lifecycle as settled. */
   readonly #onRunEnd: () => void;
+  /** Whether the queue waits on interrupts the server hasn't confirmed yet. */
+  readonly #holdQueue: () => boolean;
+  readonly #queueStore: StreamStore<SubmissionQueueSnapshot<StateType>>;
+  /** The server refused `run.start`, so the thread's interrupts are still pending. */
+  readonly #onRunRefused: () => void;
   /**
    * Apply a submit input optimistically before dispatch. Returns the
    * id-injected payload to dispatch plus a handle for terminal
@@ -228,13 +235,18 @@ export class SubmitCoordinator<
     abandonDeferredRootPump: () => void;
     waitForRootPumpReady: () => Promise<void> | undefined;
     awaitNextTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
-    awaitResumedRunTerminal: (signal: AbortSignal) => Promise<TerminalResult>;
+    awaitResumedRunTerminal: (
+      signal: AbortSignal,
+      answeredIds: readonly string[]
+    ) => Promise<TerminalResult>;
     onSubmitStart?: () => void;
     onRunStart?: () => void;
     onRunCreated?: (runId: string) => void;
     onRunStartReturned?: (runId: string | undefined) => void;
     onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
     onRunEnd?: () => void;
+    holdQueue?: () => boolean;
+    onRunRefused?: () => void;
     beginOptimistic?: (
       input: unknown
     ) => { dispatchInput: unknown; handle: OptimisticHandle } | undefined;
@@ -285,6 +297,9 @@ export class SubmitCoordinator<
     this.#onRunStartReturned = params.onRunStartReturned ?? (() => undefined);
     this.#onRunCompleted = params.onRunCompleted ?? (() => undefined);
     this.#onRunEnd = params.onRunEnd ?? (() => undefined);
+    this.#holdQueue = params.holdQueue ?? (() => false);
+    this.#queueStore = params.queueStore;
+    this.#onRunRefused = params.onRunRefused ?? (() => undefined);
     this.#beginOptimistic = params.beginOptimistic ?? (() => undefined);
     this.#settleOptimistic = params.settleOptimistic ?? (() => undefined);
   }
@@ -382,7 +397,10 @@ export class SubmitCoordinator<
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
       );
     }
-    if (hasActiveRun && strategy === "enqueue") {
+    // A queue held on an interrupt has no active run, but later
+    // submissions still wait behind it.
+    const queued = this.#queueStore.getSnapshot().length > 0;
+    if ((hasActiveRun || queued) && strategy === "enqueue") {
       try {
         await this.#queueAdapter.enqueue(
           currentThreadId,
@@ -414,6 +432,8 @@ export class SubmitCoordinator<
     // Claim the in-flight slot before awaiting the root pump so
     // concurrent `enqueue` submits in the same tick observe
     // `hasActiveRun` and land in {@link queueStore}.
+    const { interrupts: openInterrupts, interrupt: openInterrupt } =
+      this.#rootStore.getSnapshot();
     this.#rootStore.setState((s) => ({
       ...s,
       interrupts: [],
@@ -575,7 +595,23 @@ export class SubmitCoordinator<
       }
       notifyCompletion(terminalReason(terminal.event));
     } catch (error) {
-      if (!abort.signal.aborted) settleEvent = "failed";
+      if (!abort.signal.aborted) {
+        settleEvent = "failed";
+        // A refused run.start started no run (the server refuses new input
+        // while interrupts are open), so the interrupts cleared above are
+        // still pending.
+        // oxlint-disable-next-line no-instanceof/no-instanceof
+        if (createdRunId == null && error instanceof ProtocolError) {
+          if (openInterrupts.length > 0) {
+            this.#rootStore.setState((s) =>
+              s.interrupts.length > 0
+                ? s
+                : { ...s, interrupts: openInterrupts, interrupt: openInterrupt }
+            );
+          }
+          this.#onRunRefused();
+        }
+      }
       reportError(error);
     } finally {
       // Always settle loading and clear our slot of the abort
@@ -607,7 +643,11 @@ export class SubmitCoordinator<
     setTimeout(() => {
       if (this.#getDisposed()) return;
       if (this.#runAbort != null && !this.#runAbort.signal.aborted) return;
-      if (this.#rootStore.getSnapshot().isLoading) return;
+      const { isLoading, interrupts } = this.#rootStore.getSnapshot();
+      if (isLoading) return;
+      // A thread waiting on an interrupt refuses new input (older servers
+      // took it as the answer), so the queue drains once it is answered.
+      if (interrupts.length > 0 || this.#holdQueue()) return;
 
       this.#queueAdapter.onIdle?.((values, drainOptions) =>
         this.submit(
@@ -663,10 +703,13 @@ export class SubmitCoordinator<
    *   on the resumed run's terminal — pending messages flip to `sent` and
    *   un-echoed non-message keys roll back on failure — exactly like the
    *   `submit()` optimistic lifecycle. A dispatch failure settles it `failed`.
+   * @param answeredIds - Interrupts the resume answers, shown again if the
+   *   resumed run fails or is stopped.
    */
   async dispatchResume(
     dispatch: () => Promise<void>,
-    optimisticHandle?: OptimisticHandle
+    optimisticHandle?: OptimisticHandle,
+    answeredIds: readonly string[] = []
   ): Promise<void> {
     if (this.#getDisposed()) return;
 
@@ -708,7 +751,10 @@ export class SubmitCoordinator<
     // ignores stale `interrupted` events until root `running` is seen.
     // Watched in the background — we never gate the returned promise on the
     // resumed run's terminal.
-    const terminalPromise = this.#awaitResumedRunTerminal(abort.signal);
+    const terminalPromise = this.#awaitResumedRunTerminal(
+      abort.signal,
+      answeredIds
+    );
     void terminalPromise.then((terminal) => {
       if (this.#runAbort === abort) this.#runAbort = undefined;
       if (terminal.event === "failed" && !abort.signal.aborted) {
@@ -728,6 +774,8 @@ export class SubmitCoordinator<
       reportError(error);
       settleOptimisticOnce("failed");
       if (this.#runAbort === abort) this.#runAbort = undefined;
+      // Or the watch would take the next run on the thread for this one.
+      abort.abort();
       throw error;
     }
   }
