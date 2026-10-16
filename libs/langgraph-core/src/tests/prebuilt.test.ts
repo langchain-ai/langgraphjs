@@ -10,12 +10,14 @@ import {
 
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
   HumanMessage,
   isAIMessage,
   RemoveMessage,
   SystemMessage,
   ToolMessage,
+  ToolMessageChunk,
 } from "@langchain/core/messages";
 import { z } from "zod/v3";
 import { z as z4 } from "zod/v4";
@@ -3074,6 +3076,50 @@ describe("ToolNode", () => {
 });
 
 describe("MessagesAnnotation", () => {
+  it("keeps an in-place tool_calls edit of a returned AIMessageChunk after a reload", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("model", () => ({
+        messages: [
+          new AIMessageChunk({
+            id: "ai",
+            content: "",
+            tool_call_chunks: [
+              {
+                index: 0,
+                id: "a",
+                name: "send_email",
+                args: "{}",
+                type: "tool_call_chunk",
+              },
+              {
+                index: 1,
+                id: "b",
+                name: "delete_file",
+                args: "{}",
+                type: "tool_call_chunk",
+              },
+            ],
+          }),
+        ],
+      }))
+      .addNode("review", ({ messages }) => {
+        const last = messages.at(-1) as AIMessage;
+        last.tool_calls = last.tool_calls!.filter((call) => call.id === "b");
+        return { messages: [last] };
+      })
+      .addEdge("__start__", "model")
+      .addEdge("model", "review")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "1" } };
+
+    await graph.invoke({ messages: [] }, config);
+
+    const { values } = await graph.getState(config);
+    const [ai] = values.messages as AIMessage[];
+    expect(AIMessageChunk.isInstance(ai)).toBe(false);
+    expect(ai.tool_calls!.map((call) => call.id)).toEqual(["b"]);
+  });
+
   it("should assign ids properly and avoid duping added messages", async () => {
     const childGraph = new StateGraph(MessagesAnnotation)
       .addNode("duper", ({ messages }) => ({ messages }))
@@ -3210,6 +3256,58 @@ describe("messagesStateReducer", () => {
     );
     expect(deduped.length).toEqual(1);
     expect(deduped[0].content).toEqual("bar2");
+  });
+
+  it("stores message chunks as their non-chunk class", () => {
+    const [ai, toolMessage] = messagesStateReducer(
+      [],
+      [
+        new AIMessageChunk({
+          id: "ai",
+          name: "agent",
+          content: "hi",
+          tool_call_chunks: [
+            {
+              index: 0,
+              id: "call",
+              name: "search",
+              args: '{"q": "x"}',
+              type: "tool_call_chunk",
+            },
+          ],
+          usage_metadata: {
+            input_tokens: 1,
+            output_tokens: 2,
+            total_tokens: 3,
+          },
+          response_metadata: { model_name: "fake" },
+        }),
+        new ToolMessageChunk({
+          id: "tool",
+          tool_call_id: "call",
+          content: "done",
+        }),
+      ]
+    );
+
+    expect(AIMessageChunk.isInstance(ai)).toBe(false);
+    expect(ai).toMatchObject({
+      id: "ai",
+      name: "agent",
+      content: "hi",
+      tool_calls: [
+        { id: "call", name: "search", args: { q: "x" }, type: "tool_call" },
+      ],
+      usage_metadata: { input_tokens: 1, output_tokens: 2, total_tokens: 3 },
+      response_metadata: { model_name: "fake" },
+    });
+    expect(JSON.stringify(ai)).not.toContain("tool_call_chunks");
+    expect(ToolMessageChunk.isInstance(toolMessage)).toBe(false);
+    expect(toolMessage).toMatchObject({
+      id: "tool",
+      tool_call_id: "call",
+      content: "done",
+    });
   });
 });
 

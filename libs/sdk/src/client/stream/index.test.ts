@@ -1144,6 +1144,40 @@ describe("thread.messages projection", () => {
     const text = await msg.text;
     expect(text).toBe("Hello");
   });
+
+  it("settles a message cut off by the root terminal", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+
+    const messages = thread.messages;
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "messages",
+        { event: "message-start", id: "m1" },
+        { namespace: [], node: "agent", seq: 1 }
+      )
+    );
+    transport.pushEvent(
+      eventOf(
+        "messages",
+        {
+          event: "content-block-delta",
+          index: 0,
+          content: { type: "text", text: "Hel" },
+        },
+        { namespace: [], node: "agent", seq: 2 }
+      )
+    );
+    const msg = await nextValue(messages);
+    transport.pushEvent(
+      eventOf("lifecycle", { event: "interrupted" }, { namespace: [], seq: 3 })
+    );
+
+    expect(await msg.text).toBe("Hel");
+    expect(msg.assembled.error?.code).toBe("aborted");
+  });
 });
 
 describe("thread.subagents projection", () => {

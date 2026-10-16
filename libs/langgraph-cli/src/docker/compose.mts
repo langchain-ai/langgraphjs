@@ -245,3 +245,23 @@ export function createCompose(
 
   return yaml.stringify(compose, { blockQuote: "literal" });
 }
+
+/**
+ * The daemon endpoint of the user's active Docker context.
+ *
+ * Undefined when `DOCKER_HOST` is set, which Docker honors with any config
+ * directory. Also undefined when the lookup fails (for example, `DOCKER_CONTEXT`
+ * names a context that doesn't exist) or the context has no Docker endpoint
+ * (Docker prints `<no value>`); that keeps Docker's own default in place.
+ */
+export async function activeDockerHost(): Promise<string | undefined> {
+  if (process.env.DOCKER_HOST) return undefined;
+  try {
+    const { stdout } =
+      await $`docker context inspect --format ${"{{.Endpoints.docker.Host}}"}`;
+    const host = String(stdout).trim();
+    return host.includes("://") ? host : undefined;
+  } catch {
+    return undefined;
+  }
+}
