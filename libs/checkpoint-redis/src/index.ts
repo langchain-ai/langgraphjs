@@ -129,10 +129,14 @@ export class RedisSaver extends BaseCheckpointSaver {
    */
   getNextVersion(current: number | undefined): number {
     const suffixRange = 1_000_000_000;
-    const nextMajor = Math.floor(super.getNextVersion(current) / suffixRange) + 1;
-    const version = nextMajor * suffixRange + Math.floor(Math.random() * suffixRange);
+    const nextMajor =
+      Math.floor(super.getNextVersion(current) / suffixRange) + 1;
+    const version =
+      nextMajor * suffixRange + Math.floor(Math.random() * suffixRange);
     if (!Number.isSafeInteger(version)) {
-      throw new Error("Redis checkpoint version exceeded the safe integer range.");
+      throw new Error(
+        "Redis checkpoint version exceeded the safe integer range."
+      );
     }
     return version;
   }
