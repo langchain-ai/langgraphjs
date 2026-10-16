@@ -27,6 +27,7 @@ export function uuid6(clockseq: number, afterId?: string): string {
   if (msecs <= lastMsecs) {
     // Clock did not advance; bump the 100ns-resolution counter so the
     // generated time bits remain strictly monotonic.
+    msecs = lastMsecs;
     lastNsecs += 1;
     if (lastNsecs >= 10000) {
       lastNsecs = 0;
@@ -41,7 +42,8 @@ export function uuid6(clockseq: number, afterId?: string): string {
   // continues, even if this process has a clock that is behind its parent.
   const parentTicks = afterId ? uuid6UnixTicks(afterId) : undefined;
   if (parentTicks !== undefined) {
-    const nextTicks = BigInt(msecs) * UUID_TICKS_PER_MILLISECOND + BigInt(lastNsecs);
+    const nextTicks =
+      BigInt(msecs) * UUID_TICKS_PER_MILLISECOND + BigInt(lastNsecs);
     if (nextTicks <= parentTicks) {
       const clampedTicks = parentTicks + 1n;
       msecs = Number(clampedTicks / UUID_TICKS_PER_MILLISECOND);
