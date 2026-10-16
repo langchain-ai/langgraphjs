@@ -36,7 +36,14 @@ describe("StreamProtocolMessagesHandler", () => {
       ["ns1", "ns2"],
       "messages",
       [
-        { event: "message-start", id: "msg-123" },
+        {
+          event: "message-start",
+          id: "msg-123",
+          metadata: expect.objectContaining({
+            langgraph_message_source: "model",
+            langgraph_node: "node-a",
+          }),
+        },
         {
           langgraph_checkpoint_ns: "ns1|ns2",
           langgraph_node: "node-a",
@@ -89,7 +96,14 @@ describe("StreamProtocolMessagesHandler", () => {
     );
 
     expect(streamFn.mock.calls.map((call) => call[0][2][0])).toEqual([
-      { event: "message-start", id: "msg-123" },
+      {
+        event: "message-start",
+        id: "msg-123",
+        metadata: expect.objectContaining({
+          langgraph_message_source: "model",
+          langgraph_node: "node-a",
+        }),
+      },
       {
         event: "content-block-start",
         index: 0,
@@ -170,7 +184,13 @@ describe("StreamProtocolMessagesHandler", () => {
     );
 
     expect(streamFn.mock.calls.map((call) => call[0][2][0])).toEqual([
-      { event: "message-start", id: "msg-123" },
+      {
+        event: "message-start",
+        id: "msg-123",
+        metadata: expect.objectContaining({
+          langgraph_message_source: "model",
+        }),
+      },
       {
         event: "content-block-start",
         index: 0,
@@ -276,7 +296,14 @@ describe("StreamProtocolMessagesHandler", () => {
     );
 
     expect(streamFn.mock.calls.map((call) => call[0][2][0])).toEqual([
-      { event: "message-start", id: "msg-456" },
+      {
+        event: "message-start",
+        id: "msg-456",
+        metadata: expect.objectContaining({
+          langgraph_message_source: "node",
+          langgraph_node: "NodeName",
+        }),
+      },
       {
         event: "content-block-start",
         index: 0,
