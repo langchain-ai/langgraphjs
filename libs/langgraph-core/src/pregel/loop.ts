@@ -473,6 +473,9 @@ export class PregelLoop {
   /** Tasks a resume handed loaded writes back to. */
   protected _reappliedTaskIds: Set<string> = new Set();
 
+  /** Tasks that wrote during this run, the only ones exit mode saves at exit. */
+  protected _writtenTaskIds: Set<string> = new Set();
+
   /**
    * An update or fork checkpoint addressed by `checkpoint_id` that the thread
    * has moved past, so it may already have children.
@@ -968,6 +971,7 @@ export class PregelLoop {
   putWrites(taskId: string, writes: PendingWrite<string>[], cached = false) {
     let writesCopy = writes;
     if (writesCopy.length === 0) return;
+    this._writtenTaskIds.add(taskId);
     // Before the writes are saved, kept in `checkpointPendingWrites` or
     // applied, so all of them hold the same message ids.
     const deltaWrites = ensureDeltaMessageIds(this.channels, writes);
@@ -2312,9 +2316,11 @@ export class PregelLoop {
       [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
     });
 
-    // group writes by task id
+    // Writes loaded with the checkpoint are stored on it already. Saving them
+    // again can file them under new indexes, and then they apply twice.
     const byTask: Record<string, PendingWrite<string>[]> = {};
     for (const [tid, key, value] of this.checkpointPendingWrites) {
+      if (!this._writtenTaskIds.has(tid)) continue;
       byTask[tid] ??= [];
       byTask[tid].push([key, value]);
     }
