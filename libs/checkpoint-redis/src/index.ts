@@ -121,14 +121,20 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * One past the integer part of `current`, plus a random fraction. Blobs are
-   * keyed by channel and version, so two branches from one checkpoint that
-   * minted the same version would share a blob: the second branch's value
-   * replaces the first's, and the first branch reads it back from then on. A
-   * string version throws in the base class rather than turn into `NaN`.
+   * Allocate an exact integer version with a random suffix. RedisJSON can
+   * change the decimal representation of some floating-point versions when
+   * they are read back, which makes the blob key impossible to reconstruct.
+   * The major part advances from `current`; the suffix keeps versions minted
+   * by branches from the same checkpoint distinct.
    */
   getNextVersion(current: number | undefined): number {
-    return Math.floor(super.getNextVersion(current)) + Math.random();
+    const suffixRange = 1_000_000_000;
+    const nextMajor = Math.floor(super.getNextVersion(current) / suffixRange) + 1;
+    const version = nextMajor * suffixRange + Math.floor(Math.random() * suffixRange);
+    if (!Number.isSafeInteger(version)) {
+      throw new Error("Redis checkpoint version exceeded the safe integer range.");
+    }
+    return version;
   }
 
   async get(config: RunnableConfig): Promise<Checkpoint | undefined> {
