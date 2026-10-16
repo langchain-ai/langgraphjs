@@ -1,5 +1,19 @@
 # @langchain/langgraph-sdk
 
+## 1.12.5
+
+### Patch Changes
+
+- [#2962](https://github.com/langchain-ai/langgraphjs/pull/2962) [`2e1fe5b`](https://github.com/langchain-ai/langgraphjs/commit/2e1fe5b3fffd87b2f7ba260da3726a2c03c2f72f) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): a reply cut off mid-stream, for example by `stop()`, no longer lingers in `useStream` messages after its run ends: it is dropped as soon as the run ends, stays gone after a page refresh, and is dropped in other tabs watching the thread too. A reply that finished streaming before the run paused for input stays visible while paused and is replaced, not duplicated, when the run resumes. Streaming message handles for a cut-off message now settle with an `aborted` error instead of never resolving.
+
+- [#3024](https://github.com/langchain-ai/langgraphjs/pull/3024) [`0acf88d`](https://github.com/langchain-ai/langgraphjs/commit/0acf88db9fdc6441c8b3a162b7a328b9b91e115e) Thanks [@eliornl](https://github.com/eliornl)! - Opening a thread with recent activity no longer replays it in `useStream`. Every new stream subscription receives the thread's recent events again, and the controller applied them on top of the state it had just loaded, so `messages`, `values` and `toolCalls` rewound to earlier turns and rebuilt themselves while old tool calls flashed through running and finished. The controller now skips events produced before the checkpoint it loaded. Scoped views, such as `useMessages` on a subagent, still receive the full history.
+  
+  A `submit()` sent right after opening a thread also no longer ends early. A replayed completion from an earlier run used to settle it, clear `isLoading` and fire `onCompleted` while the new run was still going.
+
+- [#3023](https://github.com/langchain-ai/langgraphjs/pull/3023) [`9cc54cc`](https://github.com/langchain-ai/langgraphjs/commit/9cc54cce575ae00deb0bb5946aa457f44f485427) Thanks [@eliornl](https://github.com/eliornl)! - `messagesProjection([])`, the root-namespace messages projection acquired through `StreamController.registry`, now fills from the root event stream. It threw a `ReferenceError` on every event and stayed empty. The framework hooks were not affected: `useMessages` returns `stream.messages` for the root.
+
+- [#3031](https://github.com/langchain-ai/langgraphjs/pull/3031) [`4690a5b`](https://github.com/langchain-ai/langgraphjs/commit/4690a5b9a59f4f96790fdce45160f744272ca054) Thanks [@eliornl](https://github.com/eliornl)! - Stop the protocol WebSocket transport from reconnecting when the server closes the socket with 4000 plus a 4xx status (4403, 4404, 4422 and the like; 4408 and 4429 still reconnect): the event stream now ends at once with an error that carries the `status`. Other 4xxx closes still reconnect, with the `status` on the `onReconnect` cause. A WebSocket thread stream that fails for good now reaches `ThreadStream.onError`, so `useStream` sets `error` and clears `isLoading`, as it already did for SSE. A command whose send fails no longer leaves a response promise behind to be rejected later as an unhandled rejection.
+
 ## 1.12.4
 
 ### Patch Changes
