@@ -263,7 +263,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     } catch (e: any) {
       if (!this.handleToolErrors) throw e;
 
-      if (isGraphInterrupt(e)) {
+      if (e != null && isGraphInterrupt(e)) {
         // `NodeInterrupt` errors are a breakpoint to bring a human into the loop.
         // As such, they are not recoverable by the agent and shouldn't be fed
         // back. Instead, re-throw these errors even when `handleToolErrors = true`.
@@ -272,7 +272,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
 
       return new ToolMessage({
         status: "error",
-        content: `Error: ${e.message}\n Please fix your mistakes.`,
+        content: `Error: ${e?.message ?? String(e)}\n Please fix your mistakes.`,
         name: call.name,
         tool_call_id: call.id ?? "",
       });
