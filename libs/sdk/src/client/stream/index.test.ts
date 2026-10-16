@@ -259,6 +259,51 @@ describe("ThreadStream", () => {
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
     expect(thread.threadId).toBe("my-thread");
   });
+
+  it("reports a failed WebSocket event stream to onError listeners", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const errors: Error[] = [];
+    thread.onError((err) => errors.push(err));
+    await thread.subscribe({ channels: ["values"] });
+
+    transport.failEvents(
+      Object.assign(
+        new Error("Protocol WebSocket closed by the server: 4404"),
+        { status: 404 }
+      )
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ status: 404 });
+
+    await thread.close();
+  });
+
+  it("leaves no unhandled rejection when a command fails and then the event stream fails", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const errors: Error[] = [];
+    thread.onError((err) => errors.push(err));
+    const closed = Object.assign(
+      new Error("Protocol WebSocket closed by the server: 4422"),
+      { status: 422 }
+    );
+    transport.send = async () => {
+      throw closed;
+    };
+
+    await expect(thread.subscribe({ channels: ["values"] })).rejects.toBe(
+      closed
+    );
+    transport.failEvents(closed);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errors).toEqual([closed]);
+
+    await thread.close();
+  });
 });
 
 describe("SubscriptionHandle", () => {
