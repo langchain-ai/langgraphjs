@@ -15,6 +15,10 @@ import {
 } from "./base.js";
 import { tokenizePath, compareValues, getTextAtPath } from "./utils.js";
 
+function getItemIdentity(namespace: string[], key: string): string {
+  return JSON.stringify([namespace, key]);
+}
+
 function validateMemoryNamespace(namespace: string[]): void {
   validateNamespace(namespace, { allowReservedRoot: true });
 
@@ -105,7 +109,7 @@ export class InMemoryStore extends BaseStore {
         results.push(null);
       } else if ("value" in op) {
         // PutOperation
-        const key = `${op.namespace.join(":")}:${op.key}`;
+        const key = getItemIdentity(op.namespace, op.key);
         putOps.set(key, op);
         results.push(null);
       } else if ("matchConditions" in op) {
@@ -326,7 +330,7 @@ export class InMemoryStore extends BaseStore {
     const kept: Array<[number | undefined, Item]> = [];
 
     for (const [score, item] of sortedResults) {
-      const key = `${item.namespace.join(":")}:${item.key}`;
+      const key = getItemIdentity(item.namespace, item.key);
       if (seen.has(key)) continue;
 
       const ix = seen.size;
@@ -342,7 +346,7 @@ export class InMemoryStore extends BaseStore {
 
     if (scoreless.length && kept.length < limit) {
       for (const item of scoreless.slice(0, limit - kept.length)) {
-        const key = `${item.namespace.join(":")}:${item.key}`;
+        const key = getItemIdentity(item.namespace, item.key);
         if (!seen.has(key)) {
           seen.add(key);
           kept.push([undefined, item]);
