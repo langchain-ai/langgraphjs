@@ -2027,6 +2027,54 @@ describe("subgraphs", () => {
   });
 });
 
+describe("waiting edges", () => {
+  it("reach the client, in the payload's casing", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "waiting_edges", { input: {} });
+
+    const state = await client.threads.getState(thread.thread_id);
+
+    // `b` was never selected, so `merge` never ran and `a`'s write was dropped.
+    expect(state.values).toMatchObject({ ran: ["a", "ia"] });
+    expect(state.waiting_edges).toEqual([
+      { target: "merge", completed: ["a"], missing: ["b"] },
+    ]);
+  });
+
+  it("include a subgraph's edge only when subgraphs is requested", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "waiting_edges", { input: {} });
+
+    const withSubgraphs = await client.threads.getState(
+      thread.thread_id,
+      undefined,
+      { subgraphs: true }
+    );
+
+    const nested = withSubgraphs.waiting_edges?.find(
+      (edge) => edge.target === "imerge"
+    );
+    expect(nested).toMatchObject({
+      completed: ["ia"],
+      missing: ["ib"],
+      path: ["sub"],
+    });
+    expect(nested?.namespace).toMatch(/^sub:/);
+  });
+
+  it("are absent from a payload with nothing waiting", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "agent_simple", {
+      input: { messages: [] },
+    });
+
+    const state = await client.threads.getState(thread.thread_id);
+
+    expect(state.waiting_edges).toBeUndefined();
+    expect("waiting_edges" in state).toBe(false);
+  });
+});
+
 describe("errors", () => {
   it.concurrent("stream", async () => {
     const assistant = await client.assistants.create({ graphId: "error" });
