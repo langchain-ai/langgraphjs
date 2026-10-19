@@ -323,6 +323,41 @@ describe("SDK streaming projections against embed server", () => {
     });
   });
 
+  describe("runs cancel", () => {
+    it("cancels a protocol run that is in flight", { timeout: 15_000 }, async () => {
+      const thread = createThread("agent");
+      const lifecycle = await thread.subscribe({ channels: ["lifecycle"] });
+
+      const { run_id: runId } = (await thread.run.start({
+        input: { messages: [{ role: "user", content: "hello" }], sleep: 5 },
+        config: { configurable: { user_id: "test-cancel" } },
+      })) as { run_id: string };
+      const cancelledAt = Date.now();
+      const response = await fetch(
+        `${serverUrl}/threads/${thread.threadId}/runs/${runId}/cancel`,
+        { method: "POST" }
+      );
+      expect(response.status).toBe(204);
+
+      let terminal: string | undefined;
+      for await (const event of lifecycle) {
+        const { namespace, data } = event.params as {
+          namespace: string[];
+          data: { event?: string };
+        };
+        if (namespace.length === 0 && data.event !== "running") {
+          terminal = data.event;
+          break;
+        }
+      }
+
+      // Ends as interrupted, long before the node's 5s sleep would finish.
+      expect(terminal).toBe("interrupted");
+      expect(Date.now() - cancelledAt).toBeLessThan(4_000);
+      await thread.close();
+    });
+  });
+
   describe("run.start forkFrom", () => {
     it("branches checkpoint history from the provided checkpoint id", async () => {
       // Uses `agent_with_tools` because it is compiled synchronously

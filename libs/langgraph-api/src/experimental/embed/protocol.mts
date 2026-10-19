@@ -87,24 +87,40 @@ export function registerProtocolRoutes(
 
   async function* trackRunStatus(
     source: AsyncGenerator<SourceStreamEvent>,
-    run: Run
+    run: Run,
+    signal: AbortSignal
   ): AsyncGenerator<SourceStreamEvent> {
     try {
       yield* source;
       (run as Run & { status: string }).status = "success";
     } catch (error) {
+      // A cancelled run ends as interrupted, as on the agent server.
+      if (signal.aborted) {
+        (run as Run & { status: string }).status = "interrupted";
+        return;
+      }
       (run as Run & { status: string }).status = "error";
       throw error;
     }
   }
 
+  context.cancelProtocolRun = (threadId, runId) => {
+    const thread = threads.get(threadId);
+    const run = thread?.currentRun;
+    if (thread == null || run == null || run.run_id !== runId) return false;
+    if (run.status !== "pending" && run.status !== "running") return false;
+    thread.currentRunAbort?.abort();
+    return true;
+  };
+
   function attachRunSession(thread: EmbedThread, run: Run) {
+    const abort = new AbortController();
     const rawSource = streamState(run, {
       attempt: 1,
       getGraph: context.getGraph,
-      signal: undefined,
+      signal: abort.signal,
     });
-    const source = trackRunStatus(rawSource, run);
+    const source = trackRunStatus(rawSource, run, abort.signal);
 
     const protocolSession = new RunProtocolSession({
       runId: run.run_id,
@@ -147,6 +163,7 @@ export function registerProtocolRoutes(
 
     thread.runSession = protocolSession;
     thread.currentRun = run;
+    thread.currentRunAbort = abort;
     return protocolSession;
   }
 

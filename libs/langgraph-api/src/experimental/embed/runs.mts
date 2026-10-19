@@ -158,6 +158,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
       if (idx >= 0) {
         state.pendingRuns.splice(idx, 1);
       }
+      context.cancelProtocolRun?.(thread_id, run_id);
       return new Response(null, { status: 204 });
     }
   );
