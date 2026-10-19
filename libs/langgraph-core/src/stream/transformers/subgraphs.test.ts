@@ -57,7 +57,7 @@ describe("SubgraphDiscoveryTransformer", () => {
     expect(items[0].stream).toBeInstanceOf(MockSubgraphStream);
   });
 
-  it("uses only the top-level namespace segment as the discovery key", async () => {
+  it("announces each unseen namespace prefix when a deep event arrives first", async () => {
     const mux = new StreamMux();
     installTransformer(mux);
 
@@ -65,11 +65,17 @@ describe("SubgraphDiscoveryTransformer", () => {
       ["parent", "child"],
       makeEvent("messages", ["parent", "child"])
     );
+    mux.push(
+      ["parent", "child"],
+      makeEvent("messages", ["parent", "child"], 1)
+    );
     mux._discoveries.close();
 
     const items = await collect(mux._discoveries.iterate());
-    expect(items).toHaveLength(1);
-    expect(items[0].ns).toEqual(["parent"]);
+    expect(items.map(({ ns }) => ns)).toEqual([
+      ["parent"],
+      ["parent", "child"],
+    ]);
   });
 
   it("does not create duplicate discoveries for repeated events on the same namespace", async () => {
@@ -152,7 +158,7 @@ describe("SubgraphDiscoveryTransformer", () => {
     mux.addTransformer(transformer);
     const projection = transformer.init();
 
-    // Deep namespace — only top-level ["parent"] is announced
+    // Deep namespace — root projection still yields only top-level streams
     mux.push(
       ["parent", "child", "grandchild"],
       makeEvent("messages", ["parent", "child", "grandchild"])

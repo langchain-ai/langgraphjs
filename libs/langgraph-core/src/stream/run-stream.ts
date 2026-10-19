@@ -505,7 +505,7 @@ export interface CreateGraphRunStreamOptions {
  *
  * Built-in transformers are registered in this order:
  *   1. subgraph discovery — materializes SubgraphRunStream handles
- *      for each newly observed top-level namespace and announces them
+ *      for each newly observed namespace prefix and announces them
  *      on the mux `_discoveries` log.
  *   2. lifecycle — synthesizes `lifecycle` channel events.
  *   3. values — powers `run.values` / `run.output`.
