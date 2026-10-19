@@ -43,32 +43,32 @@ it(
   "drops a reply cut off by stop() and keeps it out of the next turn",
   { timeout: 15_000 },
   async () => {
-  const screen = await render(
-    <ChatSessionHarness
-      apiUrl={apiUrl}
-      assistantId="streaming_text_graph"
-      inputs={[SLOW_INPUT, "Follow-up"]}
-    />
-  );
-
-  try {
-    await stopMidReply(screen);
-
-    await expect.poll(() => text(screen, "transcript")).toBe(SLOW_INPUT);
-
-    await screen.getByTestId("submit-1").click();
-    await expect
-      .poll(() => text(screen, "transcript"), { timeout: 5_000 })
-      .toBe(`${SLOW_INPUT} | Follow-up | ${QUICK_REPLY}`);
-    await expect
-      .element(screen.getByTestId("loading"))
-      .toHaveTextContent("Not loading");
-    expect(text(screen, "transcript")).toBe(
-      `${SLOW_INPUT} | Follow-up | ${QUICK_REPLY}`
+    const screen = await render(
+      <ChatSessionHarness
+        apiUrl={apiUrl}
+        assistantId="streaming_text_graph"
+        inputs={[SLOW_INPUT, "Follow-up"]}
+      />
     );
-  } finally {
-    await cleanupRender(screen);
-  }
+
+    try {
+      await stopMidReply(screen);
+
+      await expect.poll(() => text(screen, "transcript")).toBe(SLOW_INPUT);
+
+      await screen.getByTestId("submit-1").click();
+      await expect
+        .poll(() => text(screen, "transcript"), { timeout: 5_000 })
+        .toBe(`${SLOW_INPUT} | Follow-up | ${QUICK_REPLY}`);
+      await expect
+        .element(screen.getByTestId("loading"))
+        .toHaveTextContent("Not loading");
+      expect(text(screen, "transcript")).toBe(
+        `${SLOW_INPUT} | Follow-up | ${QUICK_REPLY}`
+      );
+    } finally {
+      await cleanupRender(screen);
+    }
   }
 );
 
