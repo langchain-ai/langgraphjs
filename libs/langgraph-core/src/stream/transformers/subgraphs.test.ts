@@ -48,7 +48,7 @@ describe("SubgraphDiscoveryTransformer", () => {
     const mux = new StreamMux();
     installTransformer(mux);
 
-    mux.push(["agent"], makeEvent("messages", ["agent"]));
+    mux.push(["agent"], makeEvent("checkpoints", ["agent"]));
     mux._discoveries.close();
 
     const items = await collect(mux._discoveries.iterate());
@@ -57,17 +57,33 @@ describe("SubgraphDiscoveryTransformer", () => {
     expect(items[0].stream).toBeInstanceOf(MockSubgraphStream);
   });
 
-  it("announces each unseen namespace prefix when a deep event arrives first", async () => {
+  it("discovers a graph from values when there is no checkpoint event", async () => {
+    const mux = new StreamMux();
+    installTransformer(mux);
+
+    mux.push(["agent"], makeEvent("values", ["agent"]));
+    mux._discoveries.close();
+
+    const items = await collect(mux._discoveries.iterate());
+    expect(items.map(({ ns }) => ns)).toEqual([["agent"]]);
+  });
+
+  it("announces graph prefixes parent-first after unrelated task events", async () => {
     const mux = new StreamMux();
     installTransformer(mux);
 
     mux.push(
+      ["parent", "task"],
+      makeEvent("tools", ["parent", "task"])
+    );
+    expect(mux._discoveries.size).toBe(0);
+    mux.push(
       ["parent", "child"],
-      makeEvent("messages", ["parent", "child"])
+      makeEvent("checkpoints", ["parent", "child"])
     );
     mux.push(
       ["parent", "child"],
-      makeEvent("messages", ["parent", "child"], 1)
+      makeEvent("checkpoints", ["parent", "child"], 1)
     );
     mux._discoveries.close();
 
@@ -82,8 +98,8 @@ describe("SubgraphDiscoveryTransformer", () => {
     const mux = new StreamMux();
     installTransformer(mux);
 
-    mux.push(["agent"], makeEvent("messages", ["agent"], 0));
-    mux.push(["agent"], makeEvent("messages", ["agent"], 1));
+    mux.push(["agent"], makeEvent("checkpoints", ["agent"], 0));
+    mux.push(["agent"], makeEvent("checkpoints", ["agent"], 1));
     mux._discoveries.close();
 
     const items = await collect(mux._discoveries.iterate());
@@ -128,7 +144,7 @@ describe("SubgraphDiscoveryTransformer", () => {
     });
     mux.addTransformer(transformer);
 
-    mux.push(["agent"], makeEvent("messages", ["agent"]));
+    mux.push(["agent"], makeEvent("checkpoints", ["agent"]));
     mux.push(["agent"], {
       type: "event",
       seq: 0,
@@ -161,9 +177,9 @@ describe("SubgraphDiscoveryTransformer", () => {
     // Deep namespace — root projection still yields only top-level streams
     mux.push(
       ["parent", "child", "grandchild"],
-      makeEvent("messages", ["parent", "child", "grandchild"])
+      makeEvent("checkpoints", ["parent", "child", "grandchild"])
     );
-    mux.push(["sibling"], makeEvent("messages", ["sibling"]));
+    mux.push(["sibling"], makeEvent("checkpoints", ["sibling"]));
     mux._discoveries.close();
 
     const rootChildren: MockSubgraphStream[] = [];
@@ -179,8 +195,8 @@ describe("SubgraphDiscoveryTransformer", () => {
     const mux = new StreamMux();
     installTransformer(mux);
 
-    mux.push(["a"], makeEvent("messages", ["a"]));
-    mux.push(["b"], makeEvent("messages", ["b"]));
+    mux.push(["a"], makeEvent("checkpoints", ["a"]));
+    mux.push(["b"], makeEvent("checkpoints", ["b"]));
     mux._discoveries.close();
 
     const only = filterSubgraphHandles<MockSubgraphStream>(
@@ -201,7 +217,7 @@ describe("SubgraphDiscoveryTransformer", () => {
 
     mux.push([], makeEvent("values", [], 0));
     mux.push([], makeEvent("values", [], 1));
-    mux.push(["late"], makeEvent("messages", ["late"]));
+    mux.push(["late"], makeEvent("checkpoints", ["late"]));
     mux._discoveries.close();
 
     const items = await collect(mux._discoveries.iterate());

@@ -177,7 +177,12 @@ export function createSubgraphDiscoveryTransformer<
 
     process(event: ProtocolEvent): boolean {
       const ns = event.params.namespace;
-      if (ns.length === 0) return true;
+      if (
+        ns.length === 0 ||
+        (event.method !== "checkpoints" && event.method !== "values")
+      ) {
+        return true;
+      }
 
       for (let depth = 1; depth <= ns.length; depth += 1) {
         const path = ns.slice(0, depth);
