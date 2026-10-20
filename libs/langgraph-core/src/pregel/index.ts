@@ -61,6 +61,7 @@ import {
   COPY,
   END,
   ERROR,
+  ERROR_SOURCE_NODE,
   INPUT,
   INTERRUPT,
   Interrupt,
@@ -1089,7 +1090,9 @@ export class Pregel<
       // Apply pending writes to the appropriate tasks
       for (const [taskId, channel, value] of saved.pendingWrites) {
         // Skip special channels and tasks not in nextTasks
-        if ([ERROR, INTERRUPT, SCHEDULED].includes(channel)) {
+        if (
+          [ERROR, ERROR_SOURCE_NODE, INTERRUPT, SCHEDULED].includes(channel)
+        ) {
           continue;
         }
         if (!(taskId in nextTaskById)) {
@@ -1126,7 +1129,21 @@ export class Pregel<
     // Filter next tasks - only include tasks without writes
     const nextList = nextTasks
       .filter((task) => task.writes.length === 0)
-      .map((task) => task.name as string);
+      .map((task) => {
+        const hasPendingHandler =
+          applyPendingWrites &&
+          saved.pendingWrites?.some(
+            ([id, channel]) => id === task.id && channel === ERROR_SOURCE_NODE
+          ) &&
+          saved.pendingWrites?.some(
+            ([id, channel]) => id === task.id && channel === ERROR
+          );
+        return (
+          (hasPendingHandler
+            ? this.nodes[String(task.name)]?.errorHandlerNode
+            : undefined) ?? String(task.name)
+        );
+      });
 
     // assemble the state snapshot
     return {

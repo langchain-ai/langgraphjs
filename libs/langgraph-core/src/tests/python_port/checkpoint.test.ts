@@ -5,9 +5,11 @@ import {
   AIMessage,
   HumanMessage,
   isAIMessage,
+  isToolMessage,
   SystemMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
-import { StructuredTool } from "@langchain/core/tools";
+import { StructuredTool, tool } from "@langchain/core/tools";
 import { z } from "zod";
 import {
   BaseCheckpointSaver,
@@ -1259,6 +1261,103 @@ describe("Checkpoint Tests (Python port)", () => {
     expect(checkpoints[0]?.pendingWrites).toEqual([]);
     expect(checkpoints[1]?.pendingWrites).toBeDefined();
     expect(checkpoints[2]?.pendingWrites).toBeDefined();
+  });
+
+  it("reports a pending error handler after parallel tool retries and handler failure", async () => {
+    const checkpointer = new MemorySaver();
+    let successfulCalls = 0;
+    let failedCalls = 0;
+    let handlerCalls = 0;
+    const successfulTool = tool(
+      () => {
+        successfulCalls += 1;
+        return "ok";
+      },
+      { name: "successful", description: "Succeeds", schema: z.object({}) }
+    );
+    const failedTool = tool(
+      () => {
+        failedCalls += 1;
+        throw new Error("tool failure");
+      },
+      { name: "failed", description: "Fails", schema: z.object({}) }
+    );
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("dispatch", () => ({}))
+      .addNode(
+        "tools",
+        new ToolNode([successfulTool, failedTool], { handleToolErrors: false }),
+        {
+          retryPolicy: {
+            maxAttempts: 2,
+            initialInterval: 1,
+            jitter: false,
+            logWarning: false,
+          },
+          errorHandler: () => {
+            handlerCalls += 1;
+            if (handlerCalls === 1) throw new Error("handler transient");
+            return {
+              messages: [
+                new ToolMessage({ content: "recovered", tool_call_id: "failed" }),
+              ],
+            };
+          },
+        }
+      )
+      .addEdge(START, "dispatch")
+      .addConditionalEdges(
+        "dispatch",
+        (state: typeof MessagesAnnotation.State) => {
+          const message = state.messages[0];
+          return isAIMessage(message)
+            ? (message.tool_calls ?? []).map(
+                (call) => new Send("tools", { ...state, lg_tool_call: call })
+              )
+            : [];
+        },
+        ["tools"]
+      )
+      .compile({ checkpointer });
+    const config = { configurable: { thread_id: "parallel-tool-handler" } };
+
+    await expect(
+      graph.invoke(
+        {
+          messages: [
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { name: "successful", args: {}, id: "successful" },
+                { name: "failed", args: {}, id: "failed" },
+              ],
+            }),
+          ],
+        },
+        config
+      )
+    ).rejects.toThrow("handler transient");
+
+    const state = await graph.getState(config);
+    expect(state.next).toEqual(["__error_handler__tools"]);
+    const messages: typeof MessagesAnnotation.State.messages = state.values.messages;
+    expect(messages.filter(isToolMessage).map((m) => m.tool_call_id)).toEqual([
+      "successful",
+    ]);
+    expect(state.tasks.filter((task) => task.error)).toHaveLength(1);
+    expect([successfulCalls, failedCalls, handlerCalls]).toEqual([1, 2, 1]);
+
+    const rawState = await graph.getState(state.config);
+    expect(rawState.next).toEqual(["tools", "tools"]);
+    expect(rawState.values.messages.filter(isToolMessage)).toHaveLength(0);
+
+    const result = await graph.invoke(null, config);
+    expect(result.messages.filter(isToolMessage).map((m) => m.tool_call_id).sort()).toEqual([
+      "failed",
+      "successful",
+    ]);
+    expect([successfulCalls, failedCalls, handlerCalls]).toEqual([1, 2, 2]);
+    expect((await graph.getState(config)).next).toEqual([]);
   });
 
   /**
