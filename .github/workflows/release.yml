@@ -49,7 +49,7 @@ jobs:
         id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1
         with:
-          publish: pnpm changeset publish --tag v0.3
+          publish: pnpm changeset publish --tag lts
           version: pnpm changeset version
           commit: "chore: version packages"
           title: "chore: version packages"
