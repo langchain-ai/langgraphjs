@@ -542,6 +542,45 @@ describe("DeltaChannel end-to-end with PostgresSaver", () => {
     ]);
   });
 
+  it("reads and continues a DeltaChannel thread after the field changes to a plain reducer", async () => {
+    const config = { configurable: { thread_id: "to-plain" } };
+    const turns = ["a", "b", "c", "d"];
+    for (const turn of turns) {
+      await deltaChatGraph(checkpointer, 3).invoke(
+        { messages: [human(turn)] },
+        config
+      );
+    }
+    const stored: unknown[] = [];
+    for await (const t of checkpointer.list(config)) {
+      stored.push(t.checkpoint.channel_values.messages);
+    }
+    expect(stored.some((v) => isDeltaSnapshot(v))).toBe(true);
+    const history = async (
+      graph: ReturnType<typeof legacyChatGraph | typeof deltaChatGraph>
+    ) => {
+      const values: unknown[] = [];
+      for await (const s of graph.getStateHistory(config)) {
+        values.push(s.values);
+      }
+      return values;
+    };
+
+    expect(await history(legacyChatGraph(checkpointer))).toEqual(
+      await history(deltaChatGraph(checkpointer, 3))
+    );
+
+    await legacyChatGraph(checkpointer).invoke(
+      { messages: [human("e")] },
+      config
+    );
+    const expected = [...turns, "e"].flatMap((t) => [t, `reply:${t}`]);
+    const plain = await legacyChatGraph(checkpointer).getState(config);
+    expect(contents(messagesOf(plain.values))).toEqual(expected);
+    const delta = await deltaChatGraph(checkpointer, 3).getState(config);
+    expect(contents(messagesOf(delta.values))).toEqual(expected);
+  });
+
   it("reconstructs a DeltaChannel alongside reducer and LastValue channels", async () => {
     const config = { configurable: { thread_id: "mixed" } };
     for (let i = 0; i < 3; i += 1) {

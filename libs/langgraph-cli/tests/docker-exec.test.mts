@@ -2,7 +2,10 @@ import { afterEach, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getDockerCapabilities } from "../src/docker/compose.mjs";
+import {
+  activeDockerHost,
+  getDockerCapabilities,
+} from "../src/docker/compose.mjs";
 import { isBinaryNotFound } from "../src/docker/errors.mjs";
 
 const DOCKER_INFO = JSON.stringify({
@@ -16,10 +19,13 @@ const DOCKER_INFO = JSON.stringify({
 });
 
 const originalPath = process.env.PATH;
+const originalDockerHost = process.env.DOCKER_HOST;
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   process.env.PATH = originalPath;
+  if (originalDockerHost === undefined) delete process.env.DOCKER_HOST;
+  else process.env.DOCKER_HOST = originalDockerHost;
   await Promise.all(
     tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true }))
   );
@@ -34,6 +40,13 @@ async function stubDockerOnPath(stdout: string) {
   await fs.chmod(bin, 0o755);
   process.env.PATH = `${dir}${path.delimiter}${process.env.PATH}`;
   return dir;
+}
+
+/** Point PATH at an empty directory, so no `docker` can be found. */
+async function emptyPath() {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
+  tempDirs.push(dir);
+  process.env.PATH = dir;
 }
 
 it("classifies a missing binary separately from a non-zero exit", () => {
@@ -67,12 +80,69 @@ it.skipIf(process.platform === "win32")(
 it.skipIf(process.platform === "win32")(
   "reports docker as not installed when it is absent from PATH",
   async () => {
-    const empty = await fs.mkdtemp(path.join(os.tmpdir(), "lg-empty-"));
-    tempDirs.push(empty);
-    process.env.PATH = empty;
+    await emptyPath();
 
     await expect(getDockerCapabilities()).rejects.toThrow(
       /Docker is required but not installed/
     );
+  }
+);
+
+/** Put a stub `docker` on PATH that answers only the context-endpoint query. */
+async function stubDockerContext(endpoint: string) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lg-docker-"));
+  tempDirs.push(dir);
+  const bin = path.join(dir, "docker");
+  await fs.writeFile(
+    bin,
+    [
+      "#!/bin/sh",
+      'if [ "$*" = "context inspect --format {{.Endpoints.docker.Host}}" ]; then',
+      `  echo '${endpoint}'`,
+      "else",
+      "  exit 1",
+      "fi",
+      "",
+    ].join("\n")
+  );
+  await fs.chmod(bin, 0o755);
+  process.env.PATH = `${dir}${path.delimiter}${process.env.PATH}`;
+}
+
+it.skipIf(process.platform === "win32")(
+  "reads the daemon endpoint of the active docker context",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    await stubDockerContext("unix:///Users/dev/.docker/run/docker.sock");
+
+    await expect(activeDockerHost()).resolves.toBe(
+      "unix:///Users/dev/.docker/run/docker.sock"
+    );
+  }
+);
+
+it.skipIf(process.platform === "win32")(
+  "ignores a context without a docker endpoint",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    await stubDockerContext("<no value>");
+
+    await expect(activeDockerHost()).resolves.toBeUndefined();
+  }
+);
+
+it("leaves an explicit DOCKER_HOST to docker", async () => {
+  process.env.DOCKER_HOST = "tcp://127.0.0.1:2375";
+
+  await expect(activeDockerHost()).resolves.toBeUndefined();
+});
+
+it.skipIf(process.platform === "win32")(
+  "keeps docker's default when the context lookup fails",
+  async () => {
+    delete process.env.DOCKER_HOST;
+    await emptyPath();
+
+    await expect(activeDockerHost()).resolves.toBeUndefined();
   }
 );

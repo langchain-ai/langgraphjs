@@ -30,6 +30,7 @@ import {
   isGraphBubbleUp,
   isGraphDrained,
   isGraphInterrupt,
+  isInvalidResume,
 } from "../errors.js";
 import { _runWithRetry, SettledPregelTask } from "./retry.js";
 import { PregelLoop } from "./loop.js";
@@ -177,8 +178,12 @@ export class PregelRunner {
          * because they don't tell the user anything about what caused the graph execution to
          * terminate early, so we ignore them (and any other errors that occur after the node sees
          * an abort signal).
+         *
+         * An invalid resume value doesn't abort the other tasks. It's thrown once they finish, so
+         * a task answered in the same resume isn't cut off after its side effects and then run
+         * again with its saved answer.
          */
-        exceptionSignalController.abort();
+        if (!isInvalidResume(error)) exceptionSignalController.abort();
         nodeErrors.add(error);
       }
     }

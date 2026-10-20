@@ -1409,7 +1409,7 @@ describe("RootMessageProjection", () => {
     });
   });
 
-  describe("dropOptimisticMessages", () => {
+  describe("dropMessages", () => {
     it("removes the given ids and preserves the rest", async () => {
       const { store, projection } = makeProjection();
 
@@ -1419,7 +1419,7 @@ describe("RootMessageProjection", () => {
       projection.appendOptimistic([h]);
       await drainFlush();
 
-      projection.dropOptimisticMessages(new Set(["h1"]));
+      projection.dropMessages(new Set(["h1"]));
       await drainFlush();
 
       expect(store.getSnapshot().messages.map((m) => m.id)).toEqual(["a1"]);
