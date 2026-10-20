@@ -1430,6 +1430,266 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  describe("when a command reports applied_through_seq 0", () => {
+    // The agent server answers HTTP commands from a fresh per-request
+    // manager, so `meta.applied_through_seq` is 0 while the thread stream
+    // replays the whole history with positive seqs. The barrier is found on
+    // the stream instead: the `running` event of the command's run, whose
+    // `synth:<run_id>:` id names it. The tape below follows a real reload:
+    // rounds 1 and 2 resolved five interrupts, then round 3 starts.
+    const input = (runId: string, id: string, seq: number): Event =>
+      ({
+        type: "event",
+        event_id: `synth:${runId}:input||${id}`,
+        seq,
+        method: "input.requested",
+        params: {
+          namespace: [],
+          timestamp: 0,
+          data: { interrupt_id: id, payload: { prompt: id } },
+        },
+      }) as Event;
+    const lifecycle = (runId: string, status: string, seq: number): Event =>
+      ({
+        type: "event",
+        event_id: `synth:${runId}:lc||${status}`,
+        seq,
+        method: "lifecycle",
+        params: { namespace: [], timestamp: 0, data: { event: status } },
+      }) as Event;
+    const historyBeforeReload = [
+      lifecycle("run-1", "running", 1),
+      input("run-1", "r1-a", 4),
+      lifecycle("run-1", "interrupted", 5),
+      input("run-1", "r1-b", 7),
+      lifecycle("run-1-resume", "running", 9),
+      lifecycle("run-1-resume", "completed", 11),
+      lifecycle("run-2", "running", 12),
+      input("run-2", "r2-a", 15),
+      lifecycle("run-2", "interrupted", 16),
+      input("run-2", "r2-b", 18),
+      input("run-2", "r2-c", 20),
+      // Resolving r2-a re-raises the two still-open ones under the resumed run.
+      lifecycle("run-2-resume", "running", 21),
+      input("run-2-resume", "r2-b", 24),
+      lifecycle("run-2-resume", "interrupted", 25),
+      input("run-2-resume", "r2-c", 27),
+      lifecycle("run-2-final", "running", 29),
+      lifecycle("run-2-final", "completed", 31),
+    ];
+    const round3 = [
+      lifecycle("run-3", "running", 32),
+      input("run-3", "r3-a", 35),
+      lifecycle("run-3", "interrupted", 36),
+      input("run-3", "r3-b", 38),
+    ];
+
+    function zeroBarrierFixture(options: {
+      states: Array<Record<string, unknown>>;
+      threadInterrupts?: unknown[];
+      /** Hold `run.start`'s response until the test releases it. */
+      holdRunStart?: boolean;
+    }) {
+      let releaseRunStart: (() => void) | undefined;
+      const eventListeners = new Set<(event: Event) => void>();
+      const emit = (...events: Event[]) => {
+        for (const event of events) {
+          for (const listener of eventListeners) listener(event);
+        }
+      };
+      const ordering: ThreadStream["ordering"] = {};
+      const thread = {
+        subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+        onError: vi.fn(() => vi.fn()),
+        onEvent: vi.fn((listener: (event: Event) => void) => {
+          eventListeners.add(listener);
+          return vi.fn(() => {
+            eventListeners.delete(listener);
+          });
+        }),
+        close: vi.fn(async () => undefined),
+        interrupts: options.threadInterrupts ?? [],
+        ordering,
+        submitRun: vi.fn(async () => {
+          if (options.holdRunStart) {
+            await new Promise<void>((resolve) => {
+              releaseRunStart = resolve;
+            });
+          }
+          ordering.lastAppliedThroughSeq = 0;
+          return { run_id: "run-3" };
+        }),
+        respondInput: vi.fn(async () => {
+          ordering.lastAppliedThroughSeq = 0;
+        }),
+        startLifecycleWatcher: vi.fn(() => undefined),
+      } as unknown as ThreadStream;
+      let calls = 0;
+      const getState = vi.fn(
+        async () =>
+          options.states[Math.min(calls++, options.states.length - 1)]
+      );
+      const client = { threads: { getState, stream: vi.fn(() => thread) } };
+      const onCreated = vi.fn();
+      const controller = new StreamController<State, unknown>({
+        assistantId: "interrupt_test",
+        client: client as never,
+        threadId: "thread-reloaded",
+        onCreated,
+      });
+      const ids = () =>
+        controller.rootStore.getSnapshot().interrupts.map((i) => i.id);
+      // Every id the store ever showed, so a brief flash fails the test too.
+      const shown = new Set<string>();
+      controller.rootStore.subscribe(() => {
+        for (const id of ids()) if (id != null) shown.add(id);
+      });
+      return {
+        controller,
+        thread,
+        onCreated,
+        emit,
+        ids,
+        shown,
+        releaseRunStart: () => releaseRunStart?.(),
+        runStartHeld: () => releaseRunStart != null,
+      };
+    }
+
+    const idle = { values: {}, next: [], tasks: [] };
+    const pendingOn = (...ids: string[]) => ({
+      values: {},
+      next: ids.map(() => "ask"),
+      tasks: ids.map((id) => ({ interrupts: [{ id, value: {} }] })),
+    });
+    const stale = ["r1-a", "r1-b", "r2-a", "r2-b", "r2-c"];
+
+    it("drops interrupts replayed from earlier runs after submit", async () => {
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: [idle],
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // The reloaded page subscribes after run.start returns, so the whole
+      // history replays ahead of the new run's events.
+      emit(...historyBeforeReload, ...round3);
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("finds the barrier when the run pauses before run.start returns", async () => {
+      // A thread the server may still be running (no `next`) keeps the
+      // stream open across submit, so events can beat run.start's response.
+      const fixture = zeroBarrierFixture({
+        states: [{ values: {}, tasks: [] }],
+        holdRunStart: true,
+      });
+      const { controller, onCreated, emit, ids, shown } = fixture;
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(fixture.runStartHeld()).toBe(true));
+
+      // The whole replay and the new run's pause arrive while run.start is
+      // still in flight; nothing can be classified until it names the run.
+      emit(...historyBeforeReload, ...round3);
+      expect(ids()).toEqual([]);
+
+      fixture.releaseRunStart();
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("drops interrupts replayed from earlier runs after respond", async () => {
+      const { controller, thread, emit, ids, shown } = zeroBarrierFixture({
+        // The server lists `w` once the resumed run pauses.
+        states: [pendingOn("x"), pendingOn("w")],
+        threadInterrupts: [{ interruptId: "x", payload: {}, namespace: [] }],
+      });
+      await controller.hydrationPromise;
+      expect(ids()).toEqual(["x"]);
+
+      await controller.respondAll({ x: "yes" });
+      expect(thread.respondInput).toHaveBeenCalled();
+      expect(ids()).toEqual([]);
+      shown.clear();
+
+      emit(
+        ...historyBeforeReload,
+        lifecycle("run-x", "running", 32),
+        input("run-x", "x", 34),
+        lifecycle("run-x", "interrupted", 35),
+        lifecycle("run-x-resume", "running", 37),
+        input("run-x-resume", "w", 40),
+        lifecycle("run-x-resume", "interrupted", 41)
+      );
+      expect(ids()).toEqual(["w"]);
+      for (const id of [...stale, "x"]) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+    });
+
+    it("ignores a lagging duplicate stream replaying older runs", async () => {
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: [idle],
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // The content pump and the lifecycle watcher replay the same tape;
+      // one can still be in round 2 after the other reached round 3.
+      emit(...historyBeforeReload, ...round3, ...historyBeforeReload);
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("keeps interrupts the resumed run re-raises", async () => {
+      const { controller, emit, ids } = zeroBarrierFixture({
+        states: [pendingOn("a", "b", "c"), pendingOn("b", "c")],
+        threadInterrupts: ["a", "b", "c"].map((id) => ({
+          interruptId: id,
+          payload: {},
+          namespace: [],
+        })),
+      });
+      await controller.hydrationPromise;
+      emit(
+        lifecycle("run-p", "running", 1),
+        input("run-p", "a", 2),
+        input("run-p", "b", 3),
+        input("run-p", "c", 4),
+        lifecycle("run-p", "interrupted", 5)
+      );
+      expect(ids()).toEqual(["a", "b", "c"]);
+
+      await controller.respondAll({ a: "yes" });
+      emit(
+        lifecycle("run-p-resume", "running", 6),
+        input("run-p-resume", "b", 8),
+        lifecycle("run-p-resume", "interrupted", 9),
+        input("run-p-resume", "c", 10)
+      );
+      expect(ids()).toEqual(["b", "c"]);
+
+      await controller.dispose();
+    });
+  });
+
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
