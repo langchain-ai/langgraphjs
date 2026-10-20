@@ -1,3 +1,4 @@
+import { isDeltaSnapshot } from "@langchain/langgraph-checkpoint";
 import {
   _getOverwriteValue,
   _isOverwriteValue,
@@ -57,7 +58,10 @@ export class BinaryOperatorAggregate<
       this.initialValueFactory
     );
     if (typeof checkpoint !== "undefined") {
-      empty.value = checkpoint;
+      // A thread written while this field was a DeltaChannel stores snapshots.
+      empty.value = isDeltaSnapshot(checkpoint)
+        ? (checkpoint.value as ValueType)
+        : checkpoint;
     }
     return empty as this;
   }

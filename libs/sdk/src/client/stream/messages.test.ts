@@ -746,3 +746,58 @@ describe("StreamingMessageAssembler", () => {
     expect((await stream!).content).toEqual([{ type: "text", text: "Hello" }]);
   });
 });
+
+describe("abandonActive", () => {
+  const msg = (data: Record<string, unknown>, namespace: string[] = []) =>
+    eventOf("messages", data, { namespace, node: "agent" }) as Extract<
+      Event,
+      { method: "messages" }
+    >;
+
+  it("drops unfinished messages and keeps finished ones out", () => {
+    const assembler = new MessageAssembler();
+    assembler.consume(msg({ event: "message-start", id: "done" }));
+    assembler.consume(msg({ event: "message-finish", reason: "stop" }));
+    assembler.consume(msg({ event: "message-start", id: "cut" }));
+    assembler.consume(
+      msg({
+        event: "content-block-delta",
+        index: 0,
+        content: { type: "text", text: "partial" },
+      })
+    );
+
+    expect(assembler.abandonActive().map((m) => m.id)).toEqual(["cut"]);
+    expect(assembler.abandonActive()).toEqual([]);
+  });
+
+  it("only abandons messages at or below the given namespace", () => {
+    const assembler = new MessageAssembler();
+    assembler.consume(msg({ event: "message-start", id: "root" }));
+    assembler.consume(msg({ event: "message-start", id: "sub" }, ["task:1"]));
+
+    expect(assembler.abandonActive(["task:1"]).map((m) => m.id)).toEqual([
+      "sub",
+    ]);
+    expect(assembler.abandonActive().map((m) => m.id)).toEqual(["root"]);
+  });
+
+  it("settles abandoned streaming messages with an aborted error", async () => {
+    const assembler = new StreamingMessageAssembler();
+    const streaming = assembler.consume(
+      msg({ event: "message-start", id: "cut" })
+    );
+    assembler.consume(
+      msg({
+        event: "content-block-delta",
+        index: 0,
+        content: { type: "text", text: "partial" },
+      })
+    );
+
+    const abandoned = assembler.abandonActive();
+    expect(abandoned).toEqual([streaming]);
+    await expect(streaming!.text).resolves.toBe("partial");
+    expect(streaming!.assembled.error?.code).toBe("aborted");
+  });
+});

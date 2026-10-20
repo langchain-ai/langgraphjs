@@ -60,14 +60,14 @@ class FakeWebSocket {
     // no-op for tests
   }
 
-  close(): void {
+  close(code = 1000, reason = ""): void {
     if (this.readyState === FakeWebSocket.CLOSED) return;
     this.readyState = FakeWebSocket.CLOSED;
-    this.dispatch("close", new Event("close"));
+    this.dispatch("close", Object.assign(new Event("close"), { code, reason }));
   }
 
-  simulateUnexpectedClose(): void {
-    this.close();
+  simulateUnexpectedClose(code = 1006, reason = ""): void {
+    this.close(code, reason);
   }
 
   simulateMessage(payload: unknown): void {
@@ -298,6 +298,120 @@ describe("ProtocolWebSocketTransportAdapter reconnection", () => {
     await expect(
       transport.events()[Symbol.asyncIterator]().next()
     ).rejects.toThrow(/closed unexpectedly/);
+
+    await transport.close();
+  });
+
+  it.each([4401, 4403, 4404, 4422])(
+    "ends the event stream without reconnecting when the server closes with %i",
+    async (code) => {
+      let connections = 0;
+      const onReconnect = vi.fn();
+      const transport = new ProtocolWebSocketTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: "thread-1",
+        maxReconnectAttempts: 3,
+        reconnectDelayMs: () => 0,
+        onReconnect,
+        webSocketFactory: (url) => {
+          connections += 1;
+          const socket = new FakeWebSocket(url);
+          queueMicrotask(() => socket.simulateUnexpectedClose(code, "denied"));
+          return socket as unknown as WebSocket;
+        },
+      });
+
+      await transport.open();
+      await Promise.resolve();
+
+      await expect(
+        transport.events()[Symbol.asyncIterator]().next()
+      ).rejects.toMatchObject({
+        status: code - 4000,
+        message: `Protocol WebSocket closed by the server: ${code} denied`,
+      });
+      await vi.runAllTimersAsync();
+      expect(connections).toBe(1);
+      expect(onReconnect).not.toHaveBeenCalled();
+
+      await transport.close();
+    }
+  );
+
+  it.each([4408, 4429, 4503])(
+    "reconnects when the server closes with %i, with the status on the cause",
+    async (code) => {
+      let connections = 0;
+      const onReconnect = vi.fn();
+      const transport = new ProtocolWebSocketTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: "thread-1",
+        maxReconnectAttempts: 3,
+        reconnectDelayMs: () => 0,
+        onReconnect,
+        webSocketFactory: (url) => {
+          connections += 1;
+          const socket = new FakeWebSocket(url);
+          if (connections === 1) {
+            queueMicrotask(() => socket.simulateUnexpectedClose(code));
+          }
+          return socket as unknown as WebSocket;
+        },
+      });
+
+      await transport.open();
+      await vi.runAllTimersAsync();
+
+      expect(connections).toBe(2);
+      expect(onReconnect).toHaveBeenCalledTimes(1);
+      expect(onReconnect.mock.calls[0][0].cause).toMatchObject({
+        status: code - 4000,
+      });
+
+      await transport.close();
+    }
+  );
+
+  it("stops reconnecting when the reconnected socket is closed with 4404 before the resubscribe is sent", async () => {
+    let connections = 0;
+    let resubscribeError: unknown;
+    const onReconnect = vi.fn();
+    const transport = new ProtocolWebSocketTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: "thread-1",
+      maxReconnectAttempts: 3,
+      reconnectDelayMs: () => 0,
+      onReconnect,
+      webSocketFactory: (url) => {
+        connections += 1;
+        const socket = new FakeWebSocket(url);
+        const code = connections === 1 ? 1006 : 4404;
+        queueMicrotask(() => socket.simulateUnexpectedClose(code));
+        return socket as unknown as WebSocket;
+      },
+      onReconnected: async () => {
+        await transport
+          .send({
+            id: 7,
+            method: "subscription.subscribe",
+            params: { channels: ["values"] },
+          })
+          .catch((error: unknown) => {
+            resubscribeError = error;
+            throw error;
+          });
+      },
+    });
+
+    await transport.open();
+    await vi.runAllTimersAsync();
+
+    expect(connections).toBe(2);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+    expect(resubscribeError).toBeInstanceOf(Error);
+    await expect(
+      transport.events()[Symbol.asyncIterator]().next()
+    ).rejects.toMatchObject({ status: 404 });
 
     await transport.close();
   });

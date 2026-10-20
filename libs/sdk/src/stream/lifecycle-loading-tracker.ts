@@ -88,21 +88,27 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   /** Notified once `isLoading` actually settles to `false` on a terminal event. */
   readonly #onSettled: (() => void) | undefined;
 
+  readonly #ignore: ((event: Event) => boolean) | undefined;
+
   /**
    * @param params.store      - Store whose `isLoading` slot we drive.
    * @param params.isDisposed - Disposal probe consulted from deferred callbacks.
    * @param params.onSettled  - Called once `isLoading` flips to `false`,
    *   including for a run this client only observed and never
    *   dispatched itself.
+   * @param params.ignore     - Lifecycle events to skip, e.g. another run's
+   *   replayed terminal while this client's own run is in flight.
    */
   constructor(params: {
     store: StreamStore<T>;
     isDisposed: () => boolean;
     onSettled?: () => void;
+    ignore?: (event: Event) => boolean;
   }) {
     this.#store = params.store;
     this.#isDisposed = params.isDisposed;
     this.#onSettled = params.onSettled;
+    this.#ignore = params.ignore;
   }
 
   /**
@@ -136,6 +142,7 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   handle(event: Event): void {
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
+    if (this.#ignore?.(event)) return;
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
     };

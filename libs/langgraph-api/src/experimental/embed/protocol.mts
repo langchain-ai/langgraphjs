@@ -13,6 +13,7 @@ import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
 import {
+  isKeyedByInterruptId,
   matchesSinkFilter,
   normalizeMultitaskStrategy,
   DEFAULT_MULTITASK_STRATEGY,
@@ -149,23 +150,22 @@ export function registerProtocolRoutes(
     return protocolSession;
   }
 
-  async function hasPendingInterruptsForThread(
-    thread: EmbedThread
-  ): Promise<boolean> {
+  async function pendingInterruptCount(thread: EmbedThread): Promise<number> {
     const assistantId = thread.assistantId;
-    if (assistantId == null) return false;
+    if (assistantId == null) return 0;
     try {
       const graph = await context.getGraph(assistantId);
       const snapshot = await graph.getState(
         { configurable: { thread_id: thread.threadId } },
         { subgraphs: true }
       );
-      return (snapshot.tasks ?? []).some(
-        (task: { interrupts?: unknown[] }) =>
-          Array.isArray(task.interrupts) && task.interrupts.length > 0
+      return (snapshot.tasks ?? []).reduce(
+        (count: number, task: { interrupts?: unknown[] }) =>
+          count + (Array.isArray(task.interrupts) ? task.interrupts.length : 0),
+        0
       );
     } catch {
-      return false;
+      return 0;
     }
   }
 
@@ -190,6 +190,27 @@ export function registerProtocolRoutes(
         id: command.id,
         error: "invalid_argument",
         message: `Thread ${thread.threadId} is bound to assistant ${thread.assistantId}; cannot run ${assistantId}.`,
+      });
+    }
+    const pendingInterrupts =
+      params.input != null ? await pendingInterruptCount(thread) : 0;
+    // One answer can't say which of several pending interrupts it is for:
+    // LangGraph fails the run, or picks one when they share a subgraph task.
+    // While a run is in flight the count can still change, so it keeps
+    // resuming as before.
+    const runInFlight =
+      thread.currentRun?.status === "pending" ||
+      thread.currentRun?.status === "running";
+    if (
+      pendingInterrupts > 1 &&
+      !isKeyedByInterruptId(params.input) &&
+      !runInFlight
+    ) {
+      return jsonResponse({
+        type: "error",
+        id: command.id,
+        error: "invalid_argument",
+        message: `run.start input can't say which of the ${pendingInterrupts} pending interrupts it answers; answer them with input.respond.`,
       });
     }
     thread.assistantId = assistantId;
@@ -243,17 +264,13 @@ export function registerProtocolRoutes(
         : undefined;
     })();
 
-    const hasPendingInterrupts =
-      params.input != null
-        ? await hasPendingInterruptsForThread(thread)
-        : false;
     // Resume only when the thread actually has a pending `interrupt()`.
     // A cancelled run also ends with status "interrupted" but has no
     // pending interrupt to consume the resume value, so folding the
     // input into `Command(resume)` there would silently drop the user's
     // message; a cancelled thread must get plain input (a fresh run from
     // the checkpoint that applies the input to state).
-    const isResume = params.input != null && hasPendingInterrupts;
+    const isResume = pendingInterrupts > 0;
 
     if (isResume) {
       // Drop stale lifecycle events from the paused run so late-attaching
