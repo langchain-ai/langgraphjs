@@ -1,14 +1,16 @@
-import type { Message } from "@langchain/langgraph-sdk";
+import type { Client, Message } from "@langchain/langgraph-sdk";
 import { useStream } from "../../index.js";
 
 interface Props {
   apiUrl: string;
+  client?: Client;
 }
 
-export function QueueStream({ apiUrl }: Props) {
+export function QueueStream({ apiUrl, client }: Props) {
   const stream = useStream<{ messages: Message[] }>({
     assistantId: "agent",
     apiUrl,
+    client,
     fetchStateHistory: false,
   });
 
