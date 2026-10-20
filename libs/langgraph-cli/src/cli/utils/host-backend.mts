@@ -275,11 +275,17 @@ export class HostBackendClient {
    * Request a short-lived registry push token for a local-build deployment
    * (`POST /v2/deployments/{id}/push-token`).
    *
+   * Tells the control plane this client logs in with the returned `username`
+   * and pushes to `repository_url`. LangSmith AWS requires it.
+   *
    * @param deploymentId - Deployment ID.
-   * @returns A response containing the push `token` and `registry_url`.
+   * @returns A response containing the push `token` and `registry_url`, plus
+   * `username` and `repository_url` when the registry needs them.
    */
   requestPushToken(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v2/deployments/${deploymentId}/push-token`);
+    return this.request("POST", `/v2/deployments/${deploymentId}/push-token`, {
+      payload: { supports_registry_username: true },
+    });
   }
 
   /**

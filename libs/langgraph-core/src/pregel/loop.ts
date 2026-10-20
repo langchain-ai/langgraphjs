@@ -282,7 +282,7 @@ type PregelLoopParams = {
   streamKeys: string | string[];
   nodes: Record<string, PregelNode>;
   checkpointNamespace: string[];
-  skipDoneTasks: boolean;
+  addressed: boolean;
   isNested: boolean;
   resumeAtHead: boolean;
   addressedCheckpointSuperseded: boolean;
@@ -475,9 +475,12 @@ export class PregelLoop {
   /** Tasks a resume handed loaded writes back to. */
   protected _reappliedTaskIds: Set<string> = new Set();
 
+  /** Tasks that wrote during this run, the only ones exit mode saves at exit. */
+  protected _writtenTaskIds: Set<string> = new Set();
+
   /**
-   * An update or fork checkpoint addressed by `checkpoint_id` that the thread
-   * has moved past, so it may already have children.
+   * A checkpoint addressed by `checkpoint_id` that the thread has moved past,
+   * so it may already have children.
    */
   protected addressedCheckpointSuperseded: boolean;
 
@@ -522,7 +525,10 @@ export class PregelLoop {
 
   protected nodes: Record<string, PregelNode>;
 
-  protected skipDoneTasks: boolean;
+  /** Whether the run points this loop at a checkpoint. */
+  protected addressed: boolean;
+
+  protected skipDoneTasks = true;
 
   protected prevCheckpointConfig: RunnableConfig | undefined;
 
@@ -717,7 +723,7 @@ export class PregelLoop {
     this.outputKeys = params.outputKeys;
     this.streamKeys = params.streamKeys;
     this.nodes = params.nodes;
-    this.skipDoneTasks = params.skipDoneTasks;
+    this.addressed = params.addressed;
     this.store = params.store;
     this.cache = params.cache ? new AsyncBatchedCache(params.cache) : undefined;
     this.stream = params.stream;
@@ -753,10 +759,6 @@ export class PregelLoop {
         config.configurable[CONFIG_KEY_STREAM]
       );
     }
-    const skipDoneTasks = config.configurable
-      ? !("checkpoint_id" in config.configurable)
-      : true;
-
     const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as
       | PregelScratchpad
       | undefined;
@@ -800,6 +802,14 @@ export class PregelLoop {
           ],
       });
     }
+    // Whether the run points this loop at a checkpoint: a truthy
+    // `checkpoint_id`, this graph's `checkpoint_map` entry, or a replaying
+    // parent. Every task config carries a `checkpoint_id` key, so a key check
+    // would count every subgraph.
+    const addressed = Boolean(
+      checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID] ||
+      config.configurable?.[CONFIG_KEY_REPLAY_STATE]
+    );
     const checkpointNamespace = checkpointNamespaceFromNs(
       config.configurable?.checkpoint_ns
     );
@@ -883,7 +893,7 @@ export class PregelLoop {
         addressedConfig.configurable?.checkpoint_id !== undefined &&
         !superseded &&
         !isUpdateOrFork;
-      addressedCheckpointSuperseded = superseded && isUpdateOrFork;
+      addressedCheckpointSuperseded = superseded;
     }
 
     const deltaWritesVersioned =
@@ -926,7 +936,7 @@ export class PregelLoop {
       addressedCheckpointSuperseded,
       manager: params.manager,
       hasGraphCallbacks: params.hasGraphCallbacks,
-      skipDoneTasks,
+      addressed,
       step,
       stop,
       checkpointPreviousVersions,
@@ -979,6 +989,7 @@ export class PregelLoop {
   putWrites(taskId: string, writes: PendingWrite<string>[], cached = false) {
     let writesCopy = writes;
     if (writesCopy.length === 0) return;
+    this._writtenTaskIds.add(taskId);
     // Before the writes are saved, kept in `checkpointPendingWrites` or
     // applied, so all of them hold the same message ids.
     const deltaWrites = ensureDeltaMessageIds(this.channels, writes);
@@ -1795,7 +1806,7 @@ export class PregelLoop {
     const inputIsCommand = isCommand(this.input);
 
     const isTimeTraveling =
-      this.isReplaying &&
+      this.addressed &&
       // Time-travel to a subgraph checkpoint: the parent sets RESUMING=True
       // (it can't distinguish time-travel from resume), so we check if this
       // subgraph's own ns is in checkpoint_map.
@@ -1810,6 +1821,12 @@ export class PregelLoop {
           configurable?.[CONFIG_KEY_RESUMING] === true ||
           this.resumeAtHead
         ));
+    // Finished tasks rerun only on time travel, or on a resume at a checkpoint
+    // the thread has moved past. A resume addressed at the thread's latest
+    // checkpoint hands their writes back, as without an id.
+    this.skipDoneTasks = !(
+      isTimeTraveling || this.addressedCheckpointSuperseded
+    );
     const isUpdateOrFork =
       this.checkpointMetadata.source === "update" ||
       this.checkpointMetadata.source === "fork";
@@ -2470,9 +2487,11 @@ export class PregelLoop {
       [CONFIG_KEY_CHECKPOINT_ID]: this.checkpoint.id,
     });
 
-    // group writes by task id
+    // Writes loaded with the checkpoint are stored on it already. Saving them
+    // again can file them under new indexes, and then they apply twice.
     const byTask: Record<string, PendingWrite<string>[]> = {};
     for (const [tid, key, value] of this.checkpointPendingWrites) {
+      if (!this._writtenTaskIds.has(tid)) continue;
       byTask[tid] ??= [];
       byTask[tid].push([key, value]);
     }

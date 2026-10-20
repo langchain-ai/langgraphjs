@@ -5,6 +5,18 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 /**
+ * True for a 4xx HTTP error other than 408 (Request Timeout) and 429
+ * (Too Many Requests): retrying the same request cannot succeed. Errors
+ * with no `status` (network errors, idle timeouts, server closes) stay
+ * retryable.
+ */
+export function isNonRetryableHttpError(error: unknown): boolean {
+  if (!isRecord(error) || typeof error.status !== "number") return false;
+  const { status } = error;
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+/**
  * Resolve a {@link ProtocolPath} against the transport's currently-bound
  * thread.
  *

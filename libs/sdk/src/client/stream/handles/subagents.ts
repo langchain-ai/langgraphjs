@@ -33,6 +33,7 @@ import {
   type Subscribable,
   type SubgraphHandle,
   SubgraphDiscoveryHandle,
+  isTerminalLifecycleAt,
 } from "./subgraphs.js";
 
 /**
@@ -86,13 +87,20 @@ export class SubagentHandle {
     this.#messagesIterable = buffer;
     const assembler = new StreamingMessageAssembler();
     void this.#startProjection(
-      ["messages"],
+      ["messages", "lifecycle"],
       (event) => {
+        if (isTerminalLifecycleAt(event, this.namespace)) {
+          assembler.abandonActive(this.namespace);
+          return;
+        }
         if (event.method !== "messages") return;
         const msg = assembler.consume(event as MessagesEvent);
         if (msg) buffer.push(msg);
       },
-      () => buffer.close()
+      () => {
+        assembler.abandonActive();
+        buffer.close();
+      }
     );
     return buffer;
   }

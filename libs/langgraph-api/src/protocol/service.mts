@@ -50,6 +50,18 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+// LangGraph resumes interrupts by id only when every key of the resume map
+// has this shape; any other key makes the whole map one answer.
+const INTERRUPT_ID_RE = /^[0-9a-f]{32}$/;
+
+/**
+ * Whether LangGraph resumes `value` per interrupt rather than as one answer.
+ */
+export const isKeyedByInterruptId = (value: unknown): boolean =>
+  isRecord(value) &&
+  Object.keys(value).length > 0 &&
+  Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
+
 // Concurrency strategies accepted on `run.start`, matching the four values
 // the SDK's `multitaskStrategy` option can take.
 const VALID_MULTITASK_STRATEGIES: readonly MultitaskStrategy[] = [
@@ -315,9 +327,36 @@ export class ProtocolService {
         `Thread ${record.threadId} is bound to assistant ${record.assistantId}; cannot run ${params.assistant_id}.`
       );
     }
+    const pendingInterrupts =
+      params.input != null ? await this.pendingInterruptCount(record) : 0;
+    // One answer can't say which of several pending interrupts it is for:
+    // LangGraph fails the run, or picks one when they share a subgraph task.
+    // While a run is in flight the count can still change, so it keeps
+    // resuming as before.
+    if (
+      pendingInterrupts > 1 &&
+      !isKeyedByInterruptId(params.input) &&
+      !(await this.hasRunInFlight(record))
+    ) {
+      return this.error(
+        command.id,
+        "invalid_argument",
+        `run.start input can't say which of the ${pendingInterrupts} pending interrupts it answers; answer them with input.respond.`
+      );
+    }
     record.assistantId = params.assistant_id;
 
-    const run = await this.createOrResumeRun(record, params);
+    // Resume only when the thread actually has a pending `interrupt()`.
+    // A cancelled run also ends with status "interrupted" but has no
+    // pending interrupt to consume the resume value, so folding the
+    // input into `Command(resume)` there would silently drop the user's
+    // message; a cancelled thread must get plain input (a fresh run from
+    // the checkpoint that applies the input to state).
+    const run = await this.createOrResumeRun(
+      record,
+      params,
+      pendingInterrupts > 0
+    );
     return {
       type: "success",
       id: command.id,
@@ -386,7 +425,7 @@ export class ProtocolService {
             record.auth
           )
         : null;
-    const hasPendingInterrupts = await this.hasPendingInterrupts(record);
+    const hasPendingInterrupts = (await this.pendingInterruptCount(record)) > 0;
     if (currentRun == null && !hasPendingInterrupts) {
       return this.error(
         command.id,
@@ -427,14 +466,18 @@ export class ProtocolService {
         ? (rawParams.goto as RunCommand["goto"])
         : undefined;
 
-    await this.createOrResumeRun(record, {
-      assistant_id: record.assistantId,
-      input: resumeInput,
-      update,
-      goto,
-      config: isRecord(rawParams.config) ? rawParams.config : undefined,
-      metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
-    });
+    await this.createOrResumeRun(
+      record,
+      {
+        assistant_id: record.assistantId,
+        input: resumeInput,
+        update,
+        goto,
+        config: isRecord(rawParams.config) ? rawParams.config : undefined,
+        metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
+      },
+      true
+    );
 
     return {
       type: "success",
@@ -449,20 +492,10 @@ export class ProtocolService {
 
   private async createOrResumeRun(
     record: ThreadRecord,
-    params: NormalizedRunStart
+    params: NormalizedRunStart,
+    isResume: boolean
   ) {
     const assistantId = getAssistantId(params.assistant_id);
-    const hasPendingInterrupts =
-      params.input != null
-        ? await this.hasPendingInterruptsForThread(record.threadId, record.auth)
-        : false;
-    // Resume only when the thread actually has a pending `interrupt()`.
-    // A cancelled run also ends with status "interrupted" but has no
-    // pending interrupt to consume the resume value, so folding the
-    // input into `Command(resume)` there would silently drop the user's
-    // message; a cancelled thread must get plain input (a fresh run from
-    // the checkpoint that applies the input to state).
-    const isResume = params.input != null && hasPendingInterrupts;
 
     /**
      * Fork/time-travel replays from `config.configurable.checkpoint_id`
@@ -576,25 +609,33 @@ export class ProtocolService {
     return run;
   }
 
-  private async hasPendingInterrupts(record: ThreadRecord) {
-    return this.hasPendingInterruptsForThread(record.threadId, record.auth);
+  private async hasRunInFlight(record: ThreadRecord) {
+    try {
+      const thread = await this.bindings.threads.get(
+        record.threadId,
+        record.auth
+      );
+      return thread.status === "busy";
+    } catch {
+      // Unknown, so don't refuse on a guess.
+      return true;
+    }
   }
 
-  private async hasPendingInterruptsForThread(
-    threadId: string,
-    auth: ThreadRecord["auth"]
-  ) {
+  private async pendingInterruptCount(record: ThreadRecord) {
     try {
       const state = await this.bindings.threads.state.get(
-        { configurable: { thread_id: threadId } },
+        { configurable: { thread_id: record.threadId } },
         { subgraphs: true },
-        auth
+        record.auth
       );
-      return (state.tasks ?? []).some(
-        (task) => Array.isArray(task.interrupts) && task.interrupts.length > 0
+      return (state.tasks ?? []).reduce(
+        (count, task) =>
+          count + (Array.isArray(task.interrupts) ? task.interrupts.length : 0),
+        0
       );
     } catch {
-      return false;
+      return 0;
     }
   }
 

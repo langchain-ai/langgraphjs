@@ -11,6 +11,7 @@ import {
   toAbsoluteUrl,
   toWebSocketUrl,
   isRecord,
+  isNonRetryableHttpError,
   hasHeaders,
   toError,
   resolveProtocolPath,
@@ -35,6 +36,25 @@ const WEB_SOCKET_OPEN = 1;
 const WEB_SOCKET_CLOSED = 3;
 
 /**
+ * A server that rejects a connection after accepting it closes with 4000
+ * plus the HTTP status the SSE endpoint would return (4403, 4404, 4422).
+ * Keeping that `status` on the error lets a 4xx end the stream the same
+ * way it does on the SSE transport.
+ */
+function closeError(event: CloseEvent): Error {
+  const { code, reason } = event;
+  if (typeof code !== "number" || code < 4000 || code >= 5000) {
+    return new Error("Protocol WebSocket closed unexpectedly.");
+  }
+  return Object.assign(
+    new Error(
+      `Protocol WebSocket closed by the server: ${code}${reason ? ` ${reason}` : ""}`
+    ),
+    { status: code - 4000 }
+  );
+}
+
+/**
  * Reconnect tuning for {@link ProtocolWebSocketTransportAdapter}. A subset
  * of {@link ProtocolWebSocketTransportOptions}.
  */
@@ -56,7 +76,10 @@ export interface WebSocketReconnectOptions {
  * `ws://.../threads/:thread_id/stream/events`.
  *
  * On unexpected disconnect the adapter reconnects with exponential
- * backoff (see {@link ProtocolWebSocketTransportOptions.maxReconnectAttempts}).
+ * backoff (see {@link ProtocolWebSocketTransportOptions.maxReconnectAttempts}),
+ * except when the server closes with a code for a 4xx status other than
+ * 408 or 429 (4403, 4404, 4422), which ends the event stream with an error
+ * carrying that `status`.
  * The server replays buffered events on the new socket; the SDK
  * deduplicates by `event_id`. {@link ProtocolWebSocketTransportOptions.onReconnected}
  * runs after each successful reconnect so `ThreadStream` can re-issue
@@ -272,6 +295,9 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
   private async sendCommand(
     command: Command
   ): Promise<CommandResponse | ErrorResponse> {
+    if (this.closed) {
+      throw new Error("Protocol WebSocket transport is closed.");
+    }
     // Wait for an in-flight reconnect only when the socket is not usable.
     // After `open()` succeeds, `#runReconnectLoop` may still be awaiting
     // `onReconnected` (e.g. ThreadStream resubscribe). Those callbacks call
@@ -341,7 +367,7 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
     }
   };
 
-  private readonly handleClose = (): void => {
+  private readonly handleClose = (event: CloseEvent): void => {
     const socket = this.socket;
     if (socket != null) {
       this.#detachSocket(socket);
@@ -353,9 +379,13 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       return;
     }
 
-    this.#handleUnexpectedDisconnect(
-      new Error("Protocol WebSocket closed unexpectedly.")
-    );
+    const error = closeError(event);
+    if (isNonRetryableHttpError(error)) {
+      this.#closeWithError(error);
+      return;
+    }
+
+    this.#handleUnexpectedDisconnect(error);
   };
 
   private readonly handleSocketError = (): void => {
@@ -367,6 +397,19 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
       new Error("Protocol WebSocket encountered an error.")
     );
   };
+
+  /**
+   * End the transport for good: a reconnect would be rejected the same way.
+   * Marking it closed also stops a reconnect loop that is in flight.
+   */
+  #closeWithError(error: Error): void {
+    this.closed = true;
+    for (const { reject } of this.pending.values()) {
+      reject(error);
+    }
+    this.pending.clear();
+    this.queue.close(error);
+  }
 
   #handleUnexpectedDisconnect(cause: unknown): void {
     const error = toError(cause);

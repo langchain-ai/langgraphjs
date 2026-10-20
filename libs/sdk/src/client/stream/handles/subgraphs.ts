@@ -30,6 +30,27 @@ import type {
 } from "../types.js";
 import type { SubagentHandle } from "./subagents.js";
 
+const TERMINAL_LIFECYCLE_EVENTS = new Set([
+  "completed",
+  "failed",
+  "interrupted",
+]);
+
+/** Whether `event` is a terminal lifecycle event for exactly `namespace`. */
+export function isTerminalLifecycleAt(
+  event: Event,
+  namespace: readonly string[]
+): boolean {
+  if (event.method !== "lifecycle") return false;
+  const eventNamespace = event.params.namespace;
+  if (eventNamespace.length !== namespace.length) return false;
+  if (!namespace.every((segment, i) => eventNamespace[i] === segment)) {
+    return false;
+  }
+  const data = event.params.data as { event?: string } | undefined;
+  return data?.event != null && TERMINAL_LIFECYCLE_EVENTS.has(data.event);
+}
+
 /**
  * Minimal subscription surface that {@link SubgraphHandle} and
  * {@link SubagentHandle} delegate to. Typed to match the
@@ -129,13 +150,20 @@ export class SubgraphHandle {
     this.#messagesIterable = buffer;
     const assembler = new StreamingMessageAssembler();
     void this.#startProjection(
-      ["messages"],
+      ["messages", "lifecycle"],
       (event) => {
+        if (isTerminalLifecycleAt(event, this.namespace)) {
+          assembler.abandonActive(this.namespace);
+          return;
+        }
         if (event.method !== "messages") return;
         const msg = assembler.consume(event as MessagesEvent);
         if (msg) buffer.push(msg);
       },
-      () => buffer.close()
+      () => {
+        assembler.abandonActive();
+        buffer.close();
+      }
     );
     return buffer;
   }

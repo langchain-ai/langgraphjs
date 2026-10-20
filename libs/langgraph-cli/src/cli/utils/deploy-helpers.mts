@@ -169,6 +169,59 @@ export function normalizeImageTag(value: string): string {
   return tag;
 }
 
+// Artifact Registry's username for access tokens. Control planes whose registry
+// needs another one return it as `username`.
+const DEFAULT_REGISTRY_USERNAME = "oauth2accesstoken";
+
+function stripUrlScheme(url: string): string {
+  const reference = url.replace(/\/+$/, "");
+  return reference.includes("://")
+    ? reference.slice(reference.indexOf("//") + 2)
+    : reference;
+}
+
+/** Where a local build logs in and pushes. */
+export interface PushTarget {
+  /** Image reference to tag and push, `<repository>:<tag>`. */
+  image: string;
+  /** Registry host to `docker login` to. */
+  registryHost: string;
+  /** Registry username for the push token. */
+  username: string;
+}
+
+/**
+ * Resolve the push target from a push-token response.
+ *
+ * When the control plane returns `repository_url`, the image goes to exactly
+ * that repository: an ECR repository is a single image name, so nothing may be
+ * appended to it. Otherwise the image goes under `registry_url`.
+ *
+ * @param pushData - The push-token response; `registry_url` must be a string.
+ * @param repoName - Normalized image name used under `registry_url`.
+ * @param tag - Validated image tag.
+ * @returns The image reference, login host, and username.
+ */
+export function resolvePushTarget(
+  pushData: Record<string, unknown>,
+  repoName: string,
+  tag: string
+): PushTarget {
+  const repository =
+    typeof pushData.repository_url === "string" && pushData.repository_url
+      ? stripUrlScheme(pushData.repository_url)
+      : `${stripUrlScheme(String(pushData.registry_url))}/${repoName}`;
+  const username =
+    typeof pushData.username === "string" && pushData.username
+      ? pushData.username
+      : DEFAULT_REGISTRY_USERNAME;
+  return {
+    image: `${repository}:${tag}`,
+    registryHost: repository.split("/")[0],
+    username,
+  };
+}
+
 /**
  * Convert an env dict to a deployment secrets list, dropping reserved and
  * empty-valued variables.

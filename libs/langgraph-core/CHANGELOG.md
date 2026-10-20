@@ -1,5 +1,21 @@
 # @langchain/langgraph
 
+## 1.5.1
+
+### Patch Changes
+
+- [#3017](https://github.com/langchain-ai/langgraphjs/pull/3017) [`61b0049`](https://github.com/langchain-ai/langgraphjs/commit/61b00495dd13da035d6c92a68f3294f60ca54bd7) Thanks [@eliornl](https://github.com/eliornl)! - A field that changes from a DeltaChannel to a plain reducer, for example to `MessagesAnnotation`, keeps its value on threads written under the DeltaChannel: reads rebuild it from the stored writes instead of returning the empty default, and the next run adds to it instead of replacing it.
+
+- [#3027](https://github.com/langchain-ai/langgraphjs/pull/3027) [`af7e421`](https://github.com/langchain-ai/langgraphjs/commit/af7e421cd35766296cef05d9cdc50b12a794fbeb) Thanks [@eliornl](https://github.com/eliornl)! - With `durability: "exit"`, resuming parallel interrupts one at a time no longer applies a finished task's output twice: the save at exit keeps only the writes made during that run, instead of storing the ones loaded with the checkpoint again under new indexes.
+
+- [#2986](https://github.com/langchain-ai/langgraphjs/pull/2986) [`53cc627`](https://github.com/langchain-ai/langgraphjs/commit/53cc6274ee6cdb0ad7cfbbc3cc53e6f6b1af4410) Thanks [@byhow](https://github.com/byhow)! - When one answer in a multi-answer resume fails its interrupt's `responseSchema`, the other tasks in the step now finish before the `ZodError` is thrown, instead of being aborted. A task aborted after its side effects kept its answer and ran again on the next resume. The error is unchanged, and the new `isInvalidResume(error)` tells it apart from other errors, as `is_invalid_resume` does in langgraph (Python).
+
+- [#3038](https://github.com/langchain-ai/langgraphjs/pull/3038) [`bc01023`](https://github.com/langchain-ai/langgraphjs/commit/bc010237d9904bedf411c965d14343222e300d74) Thanks [@eliornl](https://github.com/eliornl)! - `messagesStateReducer` and `messagesDeltaReducer` store message chunks as their non-chunk class, as Python's `add_messages` does. A graph run with `streamMode: "messages"` or `streamEvents` now checkpoints the same `AIMessage` as `invoke`, without a duplicate `tool_call_chunks` copy of every tool call, and an in-place edit to `tool_calls` (for example a rejected call in `humanInTheLoopMiddleware`) is no longer undone when the thread is reloaded.
+
+- [#3028](https://github.com/langchain-ai/langgraphjs/pull/3028) [`ec1854a`](https://github.com/langchain-ai/langgraphjs/commit/ec1854a53bc5c6d88f3922a80085ca05678d4532) Thanks [@eliornl](https://github.com/eliornl)! - Resuming after some parallel interrupts were answered no longer reruns the nodes and `task()` calls that already finished, in a subgraph or when the resume is sent with the id of the thread's latest checkpoint. Finished tasks now rerun only on time travel, or on a resume at a checkpoint the thread has moved past.
+- Updated dependencies [[`2e1fe5b`](https://github.com/langchain-ai/langgraphjs/commit/2e1fe5b3fffd87b2f7ba260da3726a2c03c2f72f), [`0acf88d`](https://github.com/langchain-ai/langgraphjs/commit/0acf88db9fdc6441c8b3a162b7a328b9b91e115e), [`9cc54cc`](https://github.com/langchain-ai/langgraphjs/commit/9cc54cce575ae00deb0bb5946aa457f44f485427), [`4690a5b`](https://github.com/langchain-ai/langgraphjs/commit/4690a5b9a59f4f96790fdce45160f744272ca054)]:
+  - @langchain/langgraph-sdk@1.12.5
+
 ## 1.5.0
 
 ### Minor Changes

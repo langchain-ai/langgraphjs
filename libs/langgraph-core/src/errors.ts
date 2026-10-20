@@ -186,6 +186,36 @@ export function isGraphBubbleUp(e?: unknown): e is GraphBubbleUp {
   return e !== undefined && (e as GraphBubbleUp).is_bubble_up === true;
 }
 
+// Set by `interrupt()` on the error from a resume value that fails its
+// `responseSchema`. `Symbol.for`, so another copy of this package recognizes it.
+const INVALID_RESUME = Symbol.for("langgraph.invalid_resume");
+
+/** @internal */
+export function _markInvalidResume(error: unknown): void {
+  if (typeof error === "object" && error !== null) {
+    Object.defineProperty(error, INVALID_RESUME, { value: true });
+  }
+}
+
+/**
+ * Whether `error` was thrown because a resume value didn't match the interrupt's
+ * `responseSchema`, directly or as the `cause` of a wrapping error (such as one
+ * from agent middleware). The resume fails once the step's other tasks finish,
+ * and the interrupt can be answered again.
+ */
+export function isInvalidResume(error: unknown): boolean {
+  let current = error;
+  // Bounded, in case a `cause` chain loops.
+  for (let depth = 0; depth < 10; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+    if ((current as Record<symbol, unknown>)[INVALID_RESUME] === true) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export function isGraphInterrupt(e?: unknown): e is GraphInterrupt {
   return (
     e !== undefined &&
