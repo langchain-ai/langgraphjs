@@ -287,6 +287,15 @@ export function useStreamLGP<
   const [trackStreamModeRef, trackStreamMode] = useTrackStreamMode();
   const callbackStreamMode = useCallbackStreamMode(options);
 
+  const getRunStreamMode = (
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+  ) =>
+    unique([
+      ...(submitOptions?.streamMode ?? []),
+      ...trackStreamModeRef.current,
+      ...callbackStreamMode,
+    ]);
+
   const getMessages = (value: StateType): Message[] => {
     const messagesKey = options.messagesKey ?? "messages";
     return Array.isArray(value[messagesKey]) ? value[messagesKey] : [];
@@ -564,11 +573,7 @@ export function useStreamLGP<
 
         threadIdStreamingRef.current = usableThreadId;
 
-        const streamMode = unique([
-          ...(submitOptions?.streamMode ?? []),
-          ...trackStreamModeRef.current,
-          ...callbackStreamMode,
-        ]);
+        const streamMode = getRunStreamMode(submitOptions);
 
         let checkpoint =
           submitOptions?.checkpoint ??
@@ -717,6 +722,7 @@ export function useStreamLGP<
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
               multitaskStrategy: "enqueue",
+              streamMode: getRunStreamMode(submitOptions),
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
               durability: submitOptions?.durability,

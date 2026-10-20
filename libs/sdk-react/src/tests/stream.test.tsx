@@ -971,7 +971,20 @@ it("useStreamCustom forwards streamSubgraphs to custom transport", async () => {
 });
 
 it("server-side queue: submitting three times rapidly queues the latter two", async () => {
-  const screen = await render(<QueueStream apiUrl={serverUrl} />);
+  const onRequestCallback = vi.fn();
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      onRequestCallback(url.toString(), {
+        ...init,
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      return init;
+    },
+  });
+  const screen = await render(
+    <QueueStream apiUrl={serverUrl} client={client} />,
+  );
 
   await screen.getByTestId("submit").click();
   await expect
@@ -1004,6 +1017,17 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
     "Msg3",
     "Hey",
   ]);
+
+  const queuedRunBodies = onRequestCallback.mock.calls
+    .filter(([url]) => /\/threads\/[^/]+\/runs$/.test(url))
+    .map(([, init]) => init.body);
+  expect(queuedRunBodies).toHaveLength(2);
+  for (const body of queuedRunBodies) {
+    expect(body).toMatchObject({ multitask_strategy: "enqueue" });
+    expect(body.stream_mode).toEqual(
+      expect.arrayContaining(["values", "messages-tuple"]),
+    );
+  }
 });
 
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
