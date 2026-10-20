@@ -13,7 +13,11 @@ import {
   BaseCheckpointSaver,
   type PendingWrite,
 } from "@langchain/langgraph-checkpoint";
-import { GraphInterrupt, GraphValueError } from "./errors.js";
+import {
+  GraphInterrupt,
+  GraphValueError,
+  _markInvalidResume,
+} from "./errors.js";
 import {
   CONFIG_KEY_CHECKPOINT_NS,
   CONFIG_KEY_SCRATCHPAD,
@@ -108,10 +112,15 @@ export function interrupt<I = unknown, R = any>(
   }
 
   const schema = options?.responseSchema;
-  const parseResume = (resume: unknown): R =>
-    (schema !== undefined && isInteropZodSchema(schema)
-      ? interopParse(schema, resume)
-      : resume) as R;
+  const parseResume = (resume: unknown): R => {
+    if (schema === undefined || !isInteropZodSchema(schema)) return resume as R;
+    try {
+      return interopParse(schema, resume) as R;
+    } catch (error) {
+      _markInvalidResume(error);
+      throw error;
+    }
+  };
 
   // Track interrupt index
   const scratchpad: PregelScratchpad = conf[CONFIG_KEY_SCRATCHPAD];

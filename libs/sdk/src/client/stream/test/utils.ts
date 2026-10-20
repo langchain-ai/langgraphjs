@@ -12,8 +12,11 @@ import type { TransportAdapter, EventStreamHandle } from "../transport.js";
 export class MockTransport implements TransportAdapter {
   readonly threadId: string;
   private readonly eventQueue: Message[] = [];
-  private readonly waiters: Array<(result: IteratorResult<Message>) => void> =
-    [];
+  private readonly waiters: Array<{
+    resolve: (result: IteratorResult<Message>) => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  private failure: unknown;
   readonly sentCommands: Command[] = [];
   closed = false;
 
@@ -59,16 +62,24 @@ export class MockTransport implements TransportAdapter {
 
   pushEvent(event: Event): void {
     if (this.waiters.length > 0) {
-      this.waiters.shift()?.({ done: false, value: event });
+      this.waiters.shift()?.resolve({ done: false, value: event });
       return;
     }
     this.eventQueue.push(event);
   }
 
+  /** Fail the event stream, like a transport that gives up for good. */
+  failEvents(error: unknown): void {
+    this.failure = error;
+    while (this.waiters.length > 0) {
+      this.waiters.shift()?.reject(error);
+    }
+  }
+
   async close(): Promise<void> {
     this.closed = true;
     while (this.waiters.length > 0) {
-      this.waiters.shift()?.({ done: true, value: undefined });
+      this.waiters.shift()?.resolve({ done: true, value: undefined });
     }
   }
 
@@ -76,15 +87,20 @@ export class MockTransport implements TransportAdapter {
     return {
       [Symbol.asyncIterator]: () => ({
         next: async (): Promise<IteratorResult<Message>> => {
+          if (this.failure !== undefined) {
+            throw this.failure;
+          }
           if (this.eventQueue.length > 0) {
             return { done: false, value: this.eventQueue.shift()! };
           }
           if (this.closed) {
             return { done: true, value: undefined };
           }
-          return await new Promise<IteratorResult<Message>>((resolve) => {
-            this.waiters.push(resolve);
-          });
+          return await new Promise<IteratorResult<Message>>(
+            (resolve, reject) => {
+              this.waiters.push({ resolve, reject });
+            }
+          );
         },
         return: async () => {
           await this.close();

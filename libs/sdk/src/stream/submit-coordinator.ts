@@ -179,6 +179,8 @@ export class SubmitCoordinator<
   readonly #onRunStart: () => void;
   /** Records a server-accepted local run id and fires `onCreated`. */
   readonly #onRunCreated: (runId: string) => void;
+  /** `run.start` answered for the current submit, with or without a run id. */
+  readonly #onRunStartReturned: (runId: string | undefined) => void;
   /** Fires `onCompleted` for the local run lifecycle. */
   readonly #onRunCompleted: (
     reason: RunExecutionReason,
@@ -230,6 +232,7 @@ export class SubmitCoordinator<
     onSubmitStart?: () => void;
     onRunStart?: () => void;
     onRunCreated?: (runId: string) => void;
+    onRunStartReturned?: (runId: string | undefined) => void;
     onRunCompleted?: (reason: RunExecutionReason, runId?: string) => void;
     onRunEnd?: () => void;
     beginOptimistic?: (
@@ -279,6 +282,7 @@ export class SubmitCoordinator<
     this.#onSubmitStart = params.onSubmitStart ?? (() => undefined);
     this.#onRunStart = params.onRunStart ?? (() => undefined);
     this.#onRunCreated = params.onRunCreated ?? (() => undefined);
+    this.#onRunStartReturned = params.onRunStartReturned ?? (() => undefined);
     this.#onRunCompleted = params.onRunCompleted ?? (() => undefined);
     this.#onRunEnd = params.onRunEnd ?? (() => undefined);
     this.#beginOptimistic = params.beginOptimistic ?? (() => undefined);
@@ -521,8 +525,11 @@ export class SubmitCoordinator<
         }
       );
       const notifyCreated = (result: { run_id?: unknown }) => {
-        if (typeof result.run_id !== "string") return;
-        createdRunId = result.run_id;
+        const runId =
+          typeof result.run_id === "string" ? result.run_id : undefined;
+        if (!abort.signal.aborted) this.#onRunStartReturned(runId);
+        if (runId == null) return;
+        createdRunId = runId;
         this.#onRunCreated(createdRunId);
         if (pendingCompletionReason != null) {
           notifyCompletion(pendingCompletionReason);

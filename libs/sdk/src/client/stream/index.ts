@@ -911,11 +911,18 @@ export class ThreadStream<
     void this.#startProjection(
       ["messages", ...this.#lifecycleChannels()],
       (event) => {
+        if (isRootTerminalLifecycle(event)) {
+          assembler.abandonActive();
+          return;
+        }
         if (event.method !== "messages") return;
         const msg = assembler.consume(event as MessagesEvent);
         if (msg) buffer.push(toStreamingMessageHandle(msg));
       },
-      () => buffer.close()
+      () => {
+        assembler.abandonActive();
+        buffer.close();
+      }
     );
     return buffer;
   }
@@ -2266,16 +2273,7 @@ export class ThreadStream<
         subscription.close();
       }
     } catch (error) {
-      const normalized =
-        // oxlint-disable-next-line no-instanceof/no-instanceof
-        error instanceof Error ? error : new Error(String(error));
-      for (const pending of this.#pending.values()) {
-        pending.reject(normalized);
-      }
-      for (const subscription of this.#subscriptions.values()) {
-        subscription.close();
-      }
-      this.#pending.clear();
+      this.#failThreadWithError(error);
     }
   }
 
@@ -2374,15 +2372,9 @@ export class ThreadStream<
       // but reconnect/replay can still deliver same-run trailing state
       // afterward (for example the final `values` snapshot). Drain that
       // event, briefly resume any paused consumers, then re-arm the
-      // terminal pause so idle subscriptions still settle.
-      if (
-        fannedToAny &&
-        this.#terminalPauseSeq !== undefined &&
-        !(
-          message.method === "lifecycle" &&
-          message.params.namespace.length === 0
-        )
-      ) {
+      // terminal pause so idle subscriptions still settle. This includes
+      // root lifecycle events from a later run in the same replay.
+      if (fannedToAny && this.#terminalPauseSeq !== undefined) {
         const eventSeq =
           typeof message.seq === "number" ? message.seq : undefined;
         const terminalSeq = this.#terminalPauseSeq;
@@ -2469,7 +2461,13 @@ export class ThreadStream<
     const responsePromise = new Promise<CommandResponse>((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
     });
-    const immediate = await this.#transportAdapter.send(command);
+    let immediate: Awaited<ReturnType<TransportAdapter["send"]>>;
+    try {
+      immediate = await this.#transportAdapter.send(command);
+    } catch (error) {
+      this.#pending.delete(id);
+      throw error;
+    }
     if (immediate) {
       this.#pending.delete(id);
       if (immediate.type === "error") {

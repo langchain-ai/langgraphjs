@@ -879,6 +879,31 @@ export class MessageAssembler {
     }
   }
 
+  /**
+   * Drop every message that started but never got `message-finish` or
+   * `error`, e.g. because the run was cancelled mid-stream.
+   *
+   * @param namespace - Only abandon messages at or below this namespace.
+   * @returns The abandoned messages.
+   */
+  abandonActive(namespace?: readonly string[]): AssembledMessage[] {
+    const abandoned: AssembledMessage[] = [];
+    for (const [key, message] of this.activeMessages) {
+      if (
+        namespace != null &&
+        !hasNamespacePrefix(message.namespace, namespace)
+      )
+        continue;
+      abandoned.push(message);
+      this.activeMessages.delete(key);
+      this.clearBlockIndexAliases(key);
+      for (const [nsNode, activeKey] of this.activeByNamespaceNode) {
+        if (activeKey === key) this.activeByNamespaceNode.delete(nsNode);
+      }
+    }
+    return abandoned;
+  }
+
   private clearActiveMessage(
     activeKey: string,
     namespaceNodeKey: string
@@ -937,6 +962,13 @@ export class MessageAssembler {
         this.blockIndexByProtocolIndexAndType.delete(key);
     }
   }
+}
+
+function hasNamespacePrefix(
+  namespace: readonly string[],
+  prefix: readonly string[]
+): boolean {
+  return prefix.every((segment, i) => namespace[i] === segment);
 }
 
 function blockIndexKey(
@@ -1068,5 +1100,32 @@ export class StreamingMessageAssembler {
         return undefined;
       }
     }
+  }
+
+  /**
+   * Settle every message that never finished, marking it with an
+   * `aborted` error so awaiting consumers don't hang.
+   *
+   * @param namespace - Only abandon messages at or below this namespace.
+   * @returns The abandoned messages.
+   */
+  abandonActive(namespace?: readonly string[]): StreamingMessage[] {
+    this.#assembler.abandonActive(namespace);
+    const abandoned: StreamingMessage[] = [];
+    for (const [key, streaming] of this.#activeStreaming) {
+      if (
+        namespace != null &&
+        !hasNamespacePrefix(streaming.namespace, namespace)
+      )
+        continue;
+      streaming.assembled.error = {
+        message: "Message stream ended before message-finish",
+        code: "aborted",
+      };
+      streaming[ERROR]();
+      this.#activeStreaming.delete(key);
+      abandoned.push(streaming);
+    }
+    return abandoned;
   }
 }
