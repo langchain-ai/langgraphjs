@@ -1,5 +1,14 @@
 # @langchain/react
 
+## 0.3.6
+
+### Patch Changes
+
+- [#3062](https://github.com/langchain-ai/langgraphjs/pull/3062) [`4774e7b`](https://github.com/langchain-ai/langgraphjs/commit/4774e7bba1349c27031961bb10fd92e095bfd9fb) Thanks [@sera-wi](https://github.com/sera-wi)! - Runs queued by `submit()` while another run is streaming now request the same stream modes as a direct submit. Previously the queued run was created without `streamMode`, so the server only produced `values` events for it: queued replies arrived in one piece instead of token by token, and `updates`, `custom`, tool and message-tuple consumers received nothing.
+
+- Updated dependencies [[`4774e7b`](https://github.com/langchain-ai/langgraphjs/commit/4774e7bba1349c27031961bb10fd92e095bfd9fb)]:
+  - @langchain/langgraph-sdk@1.8.11
+
 ## 0.3.5
 
 ### Patch Changes

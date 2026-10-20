@@ -1,5 +1,14 @@
 # @langchain/svelte
 
+## 0.4.8
+
+### Patch Changes
+
+- [#3065](https://github.com/langchain-ai/langgraphjs/pull/3065) [`13042a5`](https://github.com/langchain-ai/langgraphjs/commit/13042a541190ffd1043d104d87b8a5298724446b) Thanks [@sera-wi](https://github.com/sera-wi)! - Runs queued by `submit()` while another run is streaming now request the same stream modes as a direct submit, so queued replies stream token by token instead of arriving in one piece.
+
+- Updated dependencies [[`4774e7b`](https://github.com/langchain-ai/langgraphjs/commit/4774e7bba1349c27031961bb10fd92e095bfd9fb)]:
+  - @langchain/langgraph-sdk@1.8.11
+
 ## 0.4.7
 
 ### Patch Changes
