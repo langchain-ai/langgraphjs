@@ -51,6 +51,11 @@ function validateNamespace(namespace: string[]): void {
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
       );
     }
+    if (label.includes("/")) {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain slashes ('/').`
+      );
+    }
     if (label === "") {
       throw new InvalidNamespaceError(
         `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
@@ -559,29 +564,7 @@ export class MongoDBStore extends BaseStore {
       query,
     } = op as SearchOperation & { query?: string };
 
-    if (query) {
-      if (!this.indexConfig) {
-        throw new Error(
-          "Vector search (query parameter) requires indexConfig to be configured."
-        );
-      }
-      return this.vectorSearch(query, namespacePrefix, limit, offset);
-    }
-
-    // Perform structured field-based search
-    // Build MongoDB query for namespace and field filtering
     const mongoQuery: Record<string, any> = {};
-
-    // Filter by namespace prefix using dot-notation array indexing.
-    // E.g. namespacePrefix ["users", "profiles"] becomes:
-    //   { "namespace.0": "users", "namespace.1": "profiles" }
-    // This matches ["users", "profiles"] and any nested namespaces like
-    // ["users", "profiles", "settings"], but not ["users"] alone.
-    if (namespacePrefix && namespacePrefix.length > 0) {
-      for (let idx = 0; idx < namespacePrefix.length; idx++) {
-        mongoQuery[`namespace.${idx}`] = namespacePrefix[idx];
-      }
-    }
 
     // Build filter conditions against the stored value document
     if (filter && Object.keys(filter).length > 0) {
@@ -612,12 +595,35 @@ export class MongoDBStore extends BaseStore {
               case "$lte":
                 mongoQuery[`value.${field}`] = { $lte: operatorValue };
                 break;
+              default:
+                throw new Error(`Unsupported filter operator: ${operator}`);
             }
           }
         } else {
           // Exact match
           mongoQuery[`value.${field}`] = condition;
         }
+      }
+    }
+
+    if (query) {
+      if (!this.indexConfig) {
+        throw new Error(
+          "Vector search (query parameter) requires indexConfig to be configured."
+        );
+      }
+      return this.vectorSearch(
+        query,
+        namespacePrefix,
+        limit,
+        offset,
+        mongoQuery
+      );
+    }
+
+    if (namespacePrefix && namespacePrefix.length > 0) {
+      for (let idx = 0; idx < namespacePrefix.length; idx++) {
+        mongoQuery[`namespace.${idx}`] = namespacePrefix[idx];
       }
     }
 
@@ -657,7 +663,8 @@ export class MongoDBStore extends BaseStore {
     query: string,
     namespacePrefix: string[],
     limit: number,
-    offset: number
+    offset: number,
+    filter: Record<string, any>
   ): Promise<SearchItem[]> {
     const path = this.indexConfig!.path ?? "embedding";
     const vectorSearchStage: Record<string, any> = {
@@ -680,11 +687,11 @@ export class MongoDBStore extends BaseStore {
       vectorSearchStage.$vectorSearch.query = { text: query };
     }
 
-    // Namespace prefix filter for $vectorSearch
     if (namespacePrefix.length > 0) {
-      vectorSearchStage.$vectorSearch.filter = {
-        namespacePath: namespacePrefix.join("/"),
-      };
+      filter.namespacePath = namespacePrefix.join("/");
+    }
+    if (Object.keys(filter).length > 0) {
+      vectorSearchStage.$vectorSearch.filter = filter;
     }
 
     const pipeline: Record<string, any>[] = [
