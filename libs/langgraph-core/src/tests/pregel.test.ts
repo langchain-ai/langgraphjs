@@ -11841,8 +11841,8 @@ graph TD;
     it("should raise error if duplicate step names", () => {
       expect(() => {
         new StateGraph(State).addSequence([
-          ["foo", step1],
-          ["foo", step1],
+          ["step1", step1],
+          ["step1", step1],
         ]);
       }).toThrow();
     });
