@@ -1368,6 +1368,8 @@ export interface SubmitOptions<
   /**
    * The ID to use when creating a new thread. When provided, this ID will be used
    * for thread creation when threadId is `null` or `undefined`.
+   * Creation uses `ifExists: "do_nothing"`, so a pre-provisioned thread with the
+   * same ID is reused instead of failing or minting a different thread.
    * This enables optimistic UI updates where you know the thread ID
    * before the thread is actually created.
    */
