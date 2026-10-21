@@ -21,7 +21,9 @@ overrides:
   fast-uri: '>=3.1.6 <4'
   postcss-selector-parser: '>=7.1.3 <8'
   dompurify: '>=3.4.13 <4'
-  follow-redirects: '>=1.16.0'
+  follow-redirects: '>=1.16.1 <2'
+  hono: '>=4.13.11 <5'
+  '@modelcontextprotocol/server': '>=2.3.0 <3'
   form-data: '>=4.0.6 <5'
   langsmith@<0.5.19: '>=0.5.19 <1'
   minimatch@<4: '>=3.1.4 <4'
@@ -1264,7 +1266,7 @@ importers:
         version: 0.3.13(@bufbuild/protobuf@2.15.0)(@grpc/grpc-js@1.14.6)(express@5.2.1)
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -1281,8 +1283,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk-react
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -1822,13 +1824,13 @@ importers:
         version: 7.29.0
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)
+        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)
       '@hono/zod-validator':
         specifier: ^0.7.6
-        version: 0.7.6(hono@4.13.7)(zod@4.6.5)
+        version: 0.7.6(hono@4.13.13)(zod@4.6.5)
       '@langchain/langgraph-ui':
         specifier: workspace:*
         version: link:../langgraph-ui
@@ -1851,8 +1853,8 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       langsmith:
         specifier: '>=0.5.19 <1.0.0'
         version: 0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2362,10 +2364,10 @@ importers:
         version: 22.2.1(@angular/common@22.2.0(@angular/core@22.2.0(@angular/compiler@22.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.2.0(@angular/compiler@22.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@22.2.0(@angular/common@22.2.0(@angular/core@22.2.0(@angular/compiler@22.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.2.0(@angular/compiler@22.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(rxjs@7.8.2)
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)
+        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2391,8 +2393,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.5))
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       langchain:
         specifier: ^1.5.14
         version: 1.5.14(@langchain/core@1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2429,10 +2431,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)
+        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2464,8 +2466,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.5))
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       langchain:
         specifier: ^1.5.14
         version: 1.5.14(@langchain/core@1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2496,10 +2498,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)
+        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2528,8 +2530,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.5))
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       langchain:
         specifier: ^1.5.14
         version: 1.5.14(@langchain/core@1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2560,10 +2562,10 @@ importers:
     devDependencies:
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.7)
+        version: 2.1.0(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)
+        version: 1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.2.9
         version: 1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -2598,8 +2600,8 @@ importers:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.5))
       hono:
-        specifier: ^4.13.5
-        version: 4.13.7
+        specifier: '>=4.13.11 <5'
+        version: 4.13.13
       langchain:
         specifier: ^1.5.14
         version: 1.5.14(@langchain/core@1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)
@@ -3624,19 +3626,19 @@ packages:
     resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: ^4
+      hono: '>=4.13.11 <5'
 
   '@hono/node-ws@1.3.1':
     resolution: {integrity: sha512-vo/MwCnpJAVHBkGzWjCJ28wF45fYHAfbPZcH2rodZODHtch2GHA94KtMfusmVycTUtsLAsaNsHhtY6P8X3RQsA==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       '@hono/node-server': ^1.19.11
-      hono: ^4.6.0
+      hono: '>=4.13.11 <5'
 
   '@hono/zod-validator@0.7.6':
     resolution: {integrity: sha512-Io1B6d011Gj1KknV4rXYz4le5+5EubcWEU/speUjuw9XMMIaP3n78yXLhjd2A3PXaXaUwEAluOiAyLqhBEJgsw==}
     peerDependencies:
-      hono: '>=3.9.0'
+      hono: '>=4.13.11 <5'
       zod: ^4.3.5
 
   '@huggingface/jinja@0.2.2':
@@ -4218,12 +4220,12 @@ packages:
   '@mistralai/mistralai@2.2.1':
     resolution: {integrity: sha512-uKU8CZmL2RzYKmplsU01hii4p3pe4HqJefpWNRWXm1Tcm0Sm4xXfwSLIy4k7ZCPlbETCGcp69E7hZs+WOJ5itQ==}
 
-  '@modelcontextprotocol/core@2.0.0':
-    resolution: {integrity: sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==}
+  '@modelcontextprotocol/core@2.3.1':
+    resolution: {integrity: sha512-laVmIhPGpWi7rG9q+0UigblRN0Hws/Yjlb6qLFtVqryXVLkc4h+yN8z731POD2LnAGQlFe7/tXhUm7Bi0YB91g==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/server@2.0.0':
-    resolution: {integrity: sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==}
+  '@modelcontextprotocol/server@2.3.1':
+    resolution: {integrity: sha512-e59MfWuSssj6DoQ96JCTqdW1AXT5/XtnTl0WWd6MU1Ka434fFUGGosCLJbGNySDhHGvxQWoRWK137FXYFkYNWw==}
     engines: {node: '>=20'}
 
   '@mongodb-js/saslprep@1.4.6':
@@ -9005,8 +9007,8 @@ packages:
   fn.name@1.1.0:
     resolution: {integrity: sha512-GRnmB5gPyJpAhTQdSZTSp9uaPSvl09KoYcMQtsB9rQoOmzs9dH6ffeccH+Z+cv6P68Hu5bC6JjRh4Ah/mHSNRw==}
 
-  follow-redirects@1.16.0:
-    resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
+  follow-redirects@1.16.1:
+    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -9275,8 +9277,8 @@ packages:
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
 
-  hono@4.13.7:
-    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.0.1:
@@ -13022,7 +13024,7 @@ snapshots:
       '@angular-devkit/schematics': 22.2.0(chokidar@5.0.0)
       '@inquirer/prompts': 8.7.2(@types/node@25.6.0)
       '@listr2/prompt-adapter-inquirer': 4.2.7(@inquirer/prompts@8.7.2(@types/node@25.6.0))(@types/node@25.6.0)(listr2@11.1.0)
-      '@modelcontextprotocol/server': 2.0.0
+      '@modelcontextprotocol/server': 2.3.1
       '@schematics/angular': 22.2.0(chokidar@5.0.0)
       jsonc-parser: 3.3.1
       listr2: 11.1.0
@@ -13868,22 +13870,22 @@ snapshots:
   '@harperfast/extended-iterable@1.0.3':
     optional: true
 
-  '@hono/node-server@2.1.0(hono@4.13.7)':
+  '@hono/node-server@2.1.0(hono@4.13.13)':
     dependencies:
-      hono: 4.13.7
+      hono: 4.13.13
 
-  '@hono/node-ws@1.3.1(@hono/node-server@2.1.0(hono@4.13.7))(hono@4.13.7)':
+  '@hono/node-ws@1.3.1(@hono/node-server@2.1.0(hono@4.13.13))(hono@4.13.13)':
     dependencies:
-      '@hono/node-server': 2.1.0(hono@4.13.7)
-      hono: 4.13.7
+      '@hono/node-server': 2.1.0(hono@4.13.13)
+      hono: 4.13.13
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@hono/zod-validator@0.7.6(hono@4.13.7)(zod@4.6.5)':
+  '@hono/zod-validator@0.7.6(hono@4.13.13)(zod@4.6.5)':
     dependencies:
-      hono: 4.13.7
+      hono: 4.13.13
       zod: 4.6.5
 
   '@huggingface/jinja@0.2.2': {}
@@ -14636,13 +14638,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@modelcontextprotocol/core@2.0.0':
+  '@modelcontextprotocol/core@2.3.1':
     dependencies:
       zod: 4.6.5
 
-  '@modelcontextprotocol/server@2.0.0':
+  '@modelcontextprotocol/server@2.3.1':
     dependencies:
-      '@modelcontextprotocol/core': 2.0.0
+      '@modelcontextprotocol/core': 2.3.1
       zod: 4.6.5
 
   '@mongodb-js/saslprep@1.4.6':
@@ -18054,7 +18056,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.0
+      follow-redirects: 1.16.1
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -19523,7 +19525,7 @@ snapshots:
 
   fn.name@1.1.0: {}
 
-  follow-redirects@1.16.0: {}
+  follow-redirects@1.16.1: {}
 
   for-each@0.3.5:
     dependencies:
@@ -19876,7 +19878,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  hono@4.13.7: {}
+  hono@4.13.13: {}
 
   hookable@6.0.1: {}
 
