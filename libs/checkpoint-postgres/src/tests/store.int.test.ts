@@ -731,6 +731,67 @@ describe("PostgresStore Namespace Listing", () => {
     await store.setup();
   });
 
+  it.each(["a:b", "a\0b"])(
+    "should reject ambiguous namespace label %j before accessing another namespace",
+    async (label) => {
+      const error = label.includes(":") ? /colons/ : /NUL/;
+      await store.put(["a", "b"], "secret", { text: "original" });
+      await expect(store.get([label], "secret")).rejects.toThrow(error);
+      await expect(
+        store.put([label], "secret", { text: "changed" })
+      ).rejects.toThrow(error);
+      await expect(store.delete([label], "secret")).rejects.toThrow(error);
+      await expect(
+        store.batch([{ namespace: [label], key: "secret" }])
+      ).rejects.toThrow(error);
+      for (const value of [null, { text: "changed" }]) {
+        await expect(
+          store.batch([{ namespace: [label], key: "secret", value }])
+        ).rejects.toThrow(error);
+      }
+      expect((await store.get(["a", "b"], "secret"))?.value).toEqual({
+        text: "original",
+      });
+    }
+  );
+
+  it.each(["a", "a%", "a_", "a\\"])(
+    "should scope searches and listings to literal namespace segments %j",
+    async (label) => {
+      const namespaces = [
+        [label],
+        [label, "b"],
+        [`${label}b`],
+        [`${label}b`, "b"],
+        ["axb", "b"],
+        ["x", label],
+        ["x", `${label}b`],
+      ];
+      for (const namespace of namespaces) {
+        await store.put(namespace, "key", { text: "needle" });
+      }
+      const expected = [[label], [label, "b"]];
+      const searches = [
+        await store.search([label]),
+        await store.search([label], { query: "needle" }),
+        await store.textSearch([label], { query: "needle" }),
+      ];
+      for (const results of searches) {
+        expect(results.map((item) => item.namespace).sort()).toEqual(
+          expected.slice().sort()
+        );
+      }
+      expect(await store.listNamespaces({ prefix: [label] })).toEqual(expected);
+      expect(await store.listNamespaces({ suffix: [label] })).toEqual([
+        [label],
+        ["x", label],
+      ]);
+      expect(await store.listNamespaces({ prefix: [label, "*"] })).toEqual([
+        [label, "b"],
+      ]);
+    }
+  );
+
   it("should list all namespaces", async () => {
     // Given
     await store.put(["docs", "v1"], "item1", { data: "test" });
@@ -1131,6 +1192,28 @@ describe("PostgresStore Vector Search", () => {
     testStores.push(store);
     await store.setup();
   });
+
+  it.each(["a", "a%", "a_", "a\\"])(
+    "should scope vector and hybrid searches to literal namespace segments %j",
+    async (label) => {
+      for (const namespace of [[label], [label, "b"], [`${label}b`], ["axb"]]) {
+        await store.put(namespace, "key", { content: "needle" });
+      }
+      const [batchResults] = await store.batch([
+        { namespacePrefix: [label], query: "needle" },
+      ]);
+      const results = [
+        batchResults,
+        await store.vectorSearch([label], "needle"),
+        await store.hybridSearch([label], "needle"),
+      ];
+      for (const items of results) {
+        expect(items.map((item) => item.namespace).sort()).toEqual(
+          [[label], [label, "b"]].sort()
+        );
+      }
+    }
+  );
 
   it("should support vector search", async () => {
     // Given

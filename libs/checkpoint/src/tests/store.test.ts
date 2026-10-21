@@ -554,6 +554,8 @@ describe("Namespace validation", () => {
     // label check.
     ["a non-string label", ["tenant", 1.5 as unknown as string]],
     ["a dotted label", ["tenant", "alice.files"]],
+    ["a colon-separated label", ["a:b"]],
+    ["a NUL-containing label", ["tenant", "alice\0files"]],
   ];
 
   describe.each([false, true])(
