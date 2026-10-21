@@ -37,12 +37,16 @@ describe("validateNamespace", () => {
       validateNamespace(["langgraph"], { isRoot: false })
     ).not.toThrow();
 
-    for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
+    for (const label of ["tenant:a", "", "a.b", "a\0b"]) {
       expect(() => validateNamespace([label], { isRoot: false })).toThrow();
     }
   });
 
-  describe("LIKE wildcard / escape character rejection", () => {
+  it("rejects NUL bytes", () => {
+    expect(() => validateNamespace(["a\0b"])).toThrow(/NUL bytes/);
+  });
+
+  describe("literal LIKE metacharacters", () => {
     it.each([
       ["%"],
       ["_"],
@@ -51,10 +55,8 @@ describe("validateNamespace", () => {
       ["acme_users"],
       ["acme\\users"],
       ["users", "%"],
-    ])("rejects namespace with LIKE-special label %j", (...labels) => {
-      expect(() => validateNamespace(labels)).toThrow(
-        /SQL LIKE wildcards.*backslash/
-      );
+    ])("accepts namespace with LIKE-special label %j", (...labels) => {
+      expect(() => validateNamespace(labels)).not.toThrow();
     });
 
     it("does not reject benign characters that look similar", () => {

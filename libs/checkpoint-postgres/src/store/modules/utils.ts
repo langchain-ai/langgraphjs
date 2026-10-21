@@ -1,10 +1,4 @@
 /**
- * Reject LIKE metacharacters consistently across reads, writes and list filters.
- * Pattern construction also escapes them as a defense in depth.
- */
-const LIKE_RESERVED_PATTERN = /[%_\\]/;
-
-/**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
  * @param options Whether the path starts at the namespace root (false for suffixes).
@@ -40,11 +34,8 @@ export function validateNamespace(
         `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
       );
     }
-    if (LIKE_RESERVED_PATTERN.test(label)) {
-      throw new Error(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace ` +
-          `labels cannot contain SQL LIKE wildcards ('%', '_') or backslashes.`
-      );
+    if (label.includes("\0")) {
+      throw new Error("Namespace labels cannot contain NUL bytes.");
     }
   }
 
@@ -75,7 +66,7 @@ export function namespaceListingCondition(
       matchType === "prefix" ? `${escapedPath}:%` : `%:${escapedPath}`
     );
 
-    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1})`;
+    return `(namespace_path = $${paramIndex} OR namespace_path LIKE $${paramIndex + 1} ESCAPE '\\')`;
   }
 
   const body = namespace
