@@ -1688,6 +1688,70 @@ describe("StreamController", () => {
 
       await controller.dispose();
     });
+
+    it("stops holding interrupts when the submitted run never starts", async () => {
+      // One-element list: `server[0]` is what getState returns right now.
+      const server: Array<Record<string, unknown>> = [idle];
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: server,
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // run-3 was cancelled while queued, so its `running` never arrives.
+      // The run it queued behind pauses on `q` instead.
+      emit(
+        ...historyBeforeReload,
+        lifecycle("run-other", "running", 32),
+        input("run-other", "q", 34),
+        lifecycle("run-other", "interrupted", 35)
+      );
+      expect(ids()).toEqual([]);
+
+      server[0] = pendingOn("q");
+      await controller.stop({ cancel: false });
+      await submitPromise;
+      await waitForExpectation(() => expect(ids()).toEqual(["q"]));
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+    });
+
+    it("stops holding interrupts when the answered one is not on the tape", async () => {
+      const server: Array<Record<string, unknown>> = [pendingOn("x")];
+      const { controller, emit, ids, shown } = zeroBarrierFixture({
+        states: server,
+        threadInterrupts: [{ interruptId: "x", payload: {}, namespace: [] }],
+      });
+      await controller.hydrationPromise;
+
+      await controller.respondAll({ x: "yes" });
+      shown.clear();
+
+      // The tape was trimmed: `x` was never requested on it, so the
+      // resumed run cannot be told apart from any other.
+      server[0] = pendingOn("w");
+      emit(
+        lifecycle("run-x-resume", "running", 37),
+        input("run-x-resume", "w", 40),
+        lifecycle("run-x-resume", "interrupted", 41)
+      );
+      await waitForExpectation(() => expect(ids()).toEqual(["w"]));
+
+      // Interrupts after the resumed run are no longer held either.
+      server[0] = pendingOn("w", "y");
+      emit(
+        lifecycle("run-y", "running", 42),
+        input("run-y", "y", 44),
+        lifecycle("run-y", "interrupted", 45)
+      );
+      await waitForExpectation(() => expect(ids()).toEqual(["w", "y"]));
+      expect(shown.has("x")).toBe(false);
+
+      await controller.dispose();
+    });
   });
 
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {

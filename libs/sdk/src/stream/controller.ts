@@ -520,11 +520,9 @@ export class StreamController<
         // `input.requested` frames. A fast run can emit its interrupt
         // and terminal before `run.start` returns; `onRunCreated` still
         // has to classify those frames against `applied_through_seq`.
-        // While the barrier is still being looked for on the stream, keep
-        // buffering: frames before it are history.
-        if (this.#awaitingRunBoundary == null) {
-          this.#interruptCommandPending = false;
-        }
+        // A barrier still unplaced once the run is over never will be.
+        this.#abandonRunBoundary();
+        this.#interruptCommandPending = false;
         this.#markLocalRunEnd();
       },
       beginOptimistic: (input) => this.#beginOptimistic(input),
@@ -2233,6 +2231,23 @@ export class StreamController<
   }
 
   /**
+   * Give up on a barrier whose run never showed up on the stream: a run
+   * cancelled before it started, or a resume whose answered interrupts
+   * were trimmed from the tape. Stop buffering and let the parked
+   * interrupt state check decide what was held.
+   */
+  #abandonRunBoundary(): void {
+    if (this.#awaitingRunBoundary == null) return;
+    this.#awaitingRunBoundary = undefined;
+    this.#interruptCommandPending = false;
+    // With no barrier, held unknown interrupts are parked for the check.
+    this.#flushPendingInterruptEvents();
+    // Their run's terminal may already have passed, so do not wait for
+    // the next one.
+    void this.#settleParkedInterrupts();
+  }
+
+  /**
    * Process one root-pump event and update all root projections.
    *
    * @param event - Event yielded by the root subscription.
@@ -2936,9 +2951,12 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
+    const generation = this.#submitGeneration;
     const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
+    // A resume never reaches `onRunEnd`. Skip it if a newer command took over.
+    if (this.#submitGeneration === generation) this.#abandonRunBoundary();
     if (
       !signal.aborted &&
       !this.#disposed &&
