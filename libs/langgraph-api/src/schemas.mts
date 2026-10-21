@@ -1,4 +1,5 @@
 import { z } from "zod/v3";
+import { MULTITASK_STRATEGIES } from "./storage/types.mjs";
 
 export const AssistantConfigurable = z
   .object({
@@ -106,9 +107,7 @@ export const CronCreate = z
     webhook: z.string().optional(),
     interrupt_before: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
     interrupt_after: z.union([z.enum(["*"]), z.array(z.string())]).optional(),
-    multitask_strategy: z
-      .enum(["reject", "rollback", "interrupt", "enqueue"])
-      .optional(),
+    multitask_strategy: z.enum(MULTITASK_STRATEGIES).optional(),
   })
   .describe("Payload for creating a cron.");
 
@@ -156,7 +155,7 @@ export const Run = z.object({
   ]),
   metadata: z.object({}).catchall(z.any()),
   kwargs: z.object({}).catchall(z.any()),
-  multitask_strategy: z.enum(["reject", "rollback", "interrupt", "enqueue"]),
+  multitask_strategy: z.enum(MULTITASK_STRATEGIES),
 });
 
 export const CommandSchema = z.object({
@@ -206,9 +205,7 @@ export const RunCreate = z
       .enum(["cancel", "continue"])
       .optional()
       .default("continue"),
-    multitask_strategy: z
-      .enum(["reject", "rollback", "interrupt", "enqueue"])
-      .optional(),
+    multitask_strategy: z.enum(MULTITASK_STRATEGIES).optional(),
     stream_mode: z
       .union([
         z.array(

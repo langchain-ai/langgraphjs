@@ -62,7 +62,23 @@ export type StreamMode =
   | "checkpoints"
   | "tools";
 
-export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
+/**
+ * Strategies for handling a new run on a thread that already has one in
+ * flight. Single source of truth for both the type and runtime validation.
+ */
+export const MULTITASK_STRATEGIES = [
+  "reject",
+  "rollback",
+  "interrupt",
+  "enqueue",
+] as const;
+
+export type MultitaskStrategy = (typeof MULTITASK_STRATEGIES)[number];
+
+/** Actions accepted when cancelling an in-flight run. */
+export const CANCEL_ACTIONS = ["interrupt", "rollback"] as const;
+
+export type CancelAction = (typeof CANCEL_ACTIONS)[number];
 
 export type OnConflictBehavior = "raise" | "do_nothing";
 
@@ -274,7 +290,7 @@ export interface RunsRepo {
     threadId: string | undefined,
     runIds: string[],
     options: {
-      action?: "interrupt" | "rollback";
+      action?: CancelAction;
     },
     auth: AuthContext | undefined
   ): Promise<void>;

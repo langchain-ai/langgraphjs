@@ -1,12 +1,13 @@
 import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { getAssistantId } from "../graph/load.mjs";
-import type {
-  Run,
-  RunsRepo,
-  ThreadsRepo,
-  StreamMode,
-  MultitaskStrategy,
+import {
+  MULTITASK_STRATEGIES,
+  type Run,
+  type RunsRepo,
+  type ThreadsRepo,
+  type StreamMode,
+  type MultitaskStrategy,
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
 import type {
@@ -62,15 +63,6 @@ export const isKeyedByInterruptId = (value: unknown): boolean =>
   Object.keys(value).length > 0 &&
   Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
 
-// Concurrency strategies accepted on `run.start`, matching the four values
-// the SDK's `multitaskStrategy` option can take.
-const VALID_MULTITASK_STRATEGIES: readonly MultitaskStrategy[] = [
-  "reject",
-  "rollback",
-  "interrupt",
-  "enqueue",
-];
-
 // Legacy stream-endpoint default: queue new runs behind active ones instead
 // of interrupting. Used when the caller omits `multitaskStrategy`.
 export const DEFAULT_MULTITASK_STRATEGY: MultitaskStrategy = "enqueue";
@@ -85,7 +77,7 @@ export const normalizeMultitaskStrategy = (
   value: unknown
 ): MultitaskStrategy | undefined => {
   return typeof value === "string" &&
-    (VALID_MULTITASK_STRATEGIES as readonly string[]).includes(value)
+    (MULTITASK_STRATEGIES as readonly string[]).includes(value)
     ? (value as MultitaskStrategy)
     : undefined;
 };

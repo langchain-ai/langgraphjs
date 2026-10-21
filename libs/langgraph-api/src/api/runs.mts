@@ -9,7 +9,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import type { Run, RunKwargs } from "../storage/types.mjs";
+import { CANCEL_ACTIONS, type Run, type RunKwargs } from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -490,7 +490,7 @@ api.post(
     "query",
     z.object({
       wait: z.coerce.boolean().optional().default(false),
-      action: z.enum(["interrupt", "rollback"]).optional().default("interrupt"),
+      action: z.enum(CANCEL_ACTIONS).optional().default("interrupt"),
     })
   ),
   async (c) => {
