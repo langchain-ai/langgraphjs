@@ -27,6 +27,34 @@ const INFER_TEMPLATE_PATH = path.resolve(
   "./schema/types.template.mts"
 );
 
+// langchain v1 parameterized the message classes, so they reach the schema as
+// `AIMessage<TStructure>` rather than `AIMessage`. Consumers (Studio's chat
+// detection) match these definitions by name, so restore the bare names.
+// Deliberately limited to this hierarchy: other generic definitions collide
+// once erased (`Record<string,any>` and `Record<string,string>` both become
+// `Record`), and they carried their type arguments before v1 too.
+const MESSAGE_CLASS_NAMES = new Set([
+  // The only message class with no chunk counterpart.
+  "RemoveMessage",
+  ...[
+    "BaseMessage",
+    "AIMessage",
+    "ChatMessage",
+    "FunctionMessage",
+    "HumanMessage",
+    "SystemMessage",
+    "ToolMessage",
+  ].flatMap((name) => [name, `${name}Chunk`]),
+]);
+
+function stripMessageGenericArgs(name: string): string {
+  const index = name.indexOf("<");
+  if (index === -1) return name;
+
+  const bareName = name.slice(0, index);
+  return MESSAGE_CLASS_NAMES.has(bareName) ? bareName : name;
+}
+
 export class SubgraphExtractor {
   protected program: ts.Program;
   protected checker: ts.TypeChecker;
@@ -618,9 +646,10 @@ export class SubgraphExtractor {
       if (definitions == null) return schema;
 
       const toReplace = Object.keys(definitions).flatMap((key) => {
-        const replacedKey = key.includes("import(")
+        const importStripped = key.includes("import(")
           ? key.replace(/import\(.+@langchain[\\/]core.+\)\./, "")
           : key;
+        const replacedKey = stripMessageGenericArgs(importStripped);
 
         if (key !== replacedKey && definitions[replacedKey] == null) {
           return [
