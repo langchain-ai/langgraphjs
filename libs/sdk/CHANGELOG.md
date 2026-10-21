@@ -1,5 +1,15 @@
 # @langchain/langgraph-sdk
 
+## 1.12.6
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Tool-call args streamed as `tool-call-delta` slices are appended to the tool call, so `useStream`, scoped `useMessages`, `thread.messages`, `subgraph.messages` and `subagent.messages` show live args whether the server sends slices or the older `block-delta` snapshots. `block-delta` still replaces the args.
+  
+  Delta variants the SDK doesn't recognise are now ignored. Before, one froze a scoped `useMessages` view until the run ended, left the in-flight `thread.messages` message unsettled, and crashed Node with an unhandled rejection from `subgraph.messages` or `subagent.messages`. `MessageAssembler.consume` returns `undefined` for such events.
+  
+  Upgrade the SDK and its bindings before your server emits `tool-call-delta`.
+
 ## 1.12.5
 
 ### Patch Changes
