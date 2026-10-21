@@ -10,10 +10,15 @@
 				"ms-vscode.vscode-typescript-next"
 			]
 		}
-	}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
+	// Pin Node explicitly; the base image can lag behind Node security releases.
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "22.23.4"
+		}
+	}
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
