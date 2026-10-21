@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.1.1
+
+### Patch Changes
+
+- [#3071](https://github.com/langchain-ai/langgraphjs/pull/3071) [`6e84570`](https://github.com/langchain-ai/langgraphjs/commit/6e845706b9a7d12f85e9477722908cc9f7003521) Thanks [@jkennedyvz](https://github.com/jkennedyvz)! - Reject colons and NUL bytes in shared store namespace labels, and reject NUL bytes in PostgreSQL store namespace labels before CRUD queries.
+
 ## 1.1.0
 
 ### Minor Changes
