@@ -1034,8 +1034,8 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk
       '@langchain/protocol':
-        specifier: ^0.0.19
-        version: 0.0.19
+        specifier: ^0.0.20
+        version: 0.0.20
       deepagents:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.10.5(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.5))
@@ -1271,8 +1271,8 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.2.13(@opentelemetry/api@1.9.0)(openai@7.25.0(undici@6.29.0)(ws@8.21.1)(zod@4.6.5))(ws@8.21.1))(undici@6.29.0)(ws@8.21.1)
       '@langchain/protocol':
-        specifier: ^0.0.19
-        version: 0.0.19
+        specifier: ^0.0.20
+        version: 0.0.20
       '@langchain/react':
         specifier: workspace:*
         version: link:../../libs/sdk-react
@@ -1829,8 +1829,8 @@ importers:
         specifier: workspace:*
         version: link:../langgraph-ui
       '@langchain/protocol':
-        specifier: ^0.0.19
-        version: 0.0.19
+        specifier: ^0.0.20
+        version: 0.0.20
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2020,8 +2020,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       '@langchain/protocol':
-        specifier: ^0.0.19
-        version: 0.0.19
+        specifier: ^0.0.20
+        version: 0.0.20
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0
