@@ -1724,6 +1724,7 @@ export class StreamController<
       interrupts: [],
       interrupt: undefined,
       isLoading: false,
+      isRunning: false,
       isThreadLoading: willHydrate,
       error: undefined,
       threadId: this.#currentThreadId,

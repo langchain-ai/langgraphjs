@@ -60,6 +60,7 @@ shape (`assistantId` + `apiUrl`/`client`) or the **custom-adapter** shape
 | `interrupts`                 | `Interrupt[]`               | All active interrupts.                                     |
 | `interrupt`                  | `Interrupt \| undefined`    | Convenience accessor for the first active interrupt.       |
 | `isLoading`                  | `boolean`                   | Whether a run is in flight.                                |
+| `status`                     | `"idle" \| "submitting" \| "streaming" \| "error"` | High-level run phase: dispatched (`submitting`), running (`streaming`), errored, or idle. |
 | `isThreadLoading`            | `boolean`                   | Whether the thread is still hydrating.                     |
 | `hydrationPromise`           | `Promise<void>`             | Resolves when initial hydration completes.                 |
 | `error`                      | `unknown`                   | Last error, if any.                                        |

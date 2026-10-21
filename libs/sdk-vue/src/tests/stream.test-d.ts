@@ -221,6 +221,16 @@ describe("Vue reactive wrappers are correct", () => {
     expectTypeOf(stream.isLoading.value).toEqualTypeOf<boolean>();
   });
 
+  test("status is Ref<StreamStatus>", () => {
+    const stream = useStream<BasicState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(stream.status.value).toEqualTypeOf<
+      "idle" | "submitting" | "streaming" | "error"
+    >();
+  });
+
   test("error is Ref<unknown>", () => {
     const stream = useStream<BasicState>({
       assistantId: "agent",
