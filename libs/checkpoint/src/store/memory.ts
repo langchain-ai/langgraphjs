@@ -341,7 +341,11 @@ export class InMemoryStore extends BaseStore {
     }
 
     if (scoreless.length && kept.length < limit) {
-      for (const item of scoreless.slice(0, limit - kept.length)) {
+      const scorelessOffset = Math.max(0, offset - seen.size);
+      for (const item of scoreless.slice(
+        scorelessOffset,
+        scorelessOffset + limit - kept.length
+      )) {
         const key = `${item.namespace.join(":")}:${item.key}`;
         if (!seen.has(key)) {
           seen.add(key);
