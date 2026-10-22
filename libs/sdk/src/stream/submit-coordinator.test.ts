@@ -6,6 +6,7 @@ import {
   type SubmissionQueueSnapshot,
 } from "./submit-coordinator.js";
 import { StreamStore } from "./store.js";
+import { ProtocolError } from "../client/stream/error.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type {
   RootSnapshot,
@@ -57,6 +58,8 @@ interface Harness {
   onRunCreated: ReturnType<typeof vi.fn>;
   onRunCompleted: ReturnType<typeof vi.fn>;
   onRunEnd: ReturnType<typeof vi.fn>;
+  onRunRefused: ReturnType<typeof vi.fn>;
+  setQueueHeld: (value: boolean) => void;
   rememberSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   isSelfCreatedThreadId: ReturnType<typeof vi.fn>;
   selfCreatedThreadIds: Set<string>;
@@ -180,6 +183,8 @@ function makeHarness(
     (_reason: RunExecutionReason, _runId?: string) => undefined
   );
   const onRunEnd = vi.fn(() => undefined);
+  const onRunRefused = vi.fn(() => undefined);
+  let queueHeld = false;
 
   const onCreated = vi.fn();
   const onThreadId = vi.fn();
@@ -214,6 +219,8 @@ function makeHarness(
     onRunCreated,
     onRunCompleted,
     onRunEnd,
+    onRunRefused,
+    holdQueue: () => queueHeld,
     beginOptimistic: optimistic.beginOptimistic,
     settleOptimistic: optimistic.settleOptimistic,
   });
@@ -256,6 +263,10 @@ function makeHarness(
     onRunCreated,
     onRunCompleted,
     onRunEnd,
+    onRunRefused,
+    setQueueHeld: (value) => {
+      queueHeld = value;
+    },
     rememberSelfCreatedThreadId,
     isSelfCreatedThreadId,
     selfCreatedThreadIds,
@@ -709,6 +720,143 @@ describe("SubmitCoordinator", () => {
 
       expect(h.submitRun).not.toHaveBeenCalled();
       expect(h.queueStore.getSnapshot()).toHaveLength(1);
+    });
+
+    it("holds a queued submission until the interrupt it would hit is answered", async () => {
+      const h = makeHarness();
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      await h.coordinator.submit(
+        { count: 2 },
+        { multitaskStrategy: "enqueue" }
+      );
+
+      h.rootStore.setState((s) => ({
+        ...s,
+        interrupts: [{ id: "interrupt-1", value: "approve?" }],
+      }));
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "interrupted" });
+      await vi.runAllTimersAsync();
+      await first;
+
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+
+      await h.coordinator.dispatchResume(async () => {
+        h.rootStore.setState((s) => ({ ...s, interrupts: [] }));
+      });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+
+      expect(h.submitRun).toHaveBeenCalledTimes(2);
+      expect(h.submitRun.mock.calls[1]?.[0]?.input).toEqual({ count: 2 });
+      expect(h.queueStore.getSnapshot()).toHaveLength(0);
+
+      h.resolveSubmit({ run_id: "run-2" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+    });
+
+    const refusal = () =>
+      new ProtocolError({
+        type: "error",
+        id: 1,
+        error: "invalid_argument",
+        message: "The thread is waiting on an interrupt",
+      });
+    const queued = () => [
+      {
+        id: "queued-1",
+        values: { count: 2 },
+        options: undefined,
+        createdAt: new Date(),
+      },
+    ];
+
+    it("keeps the interrupts and the queue when the server refuses a submission", async () => {
+      const h = makeHarness();
+      const interrupt = { id: "interrupt-1", value: "approve?" };
+      h.rootStore.setState((s) => ({ ...s, interrupts: [interrupt], interrupt }));
+      h.queueStore.setState(queued);
+
+      const submitted = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.rejectSubmit(refusal());
+      await vi.runAllTimersAsync();
+      await submitted;
+
+      expect(h.rootStore.getSnapshot().interrupts).toEqual([interrupt]);
+      expect(h.rootStore.getSnapshot().interrupt).toEqual(interrupt);
+      expect(h.onRunRefused).toHaveBeenCalledTimes(1);
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+      expect(h.queueStore.getSnapshot()).toHaveLength(1);
+    });
+
+    it("queues an enqueue submission behind a held queue", async () => {
+      const h = makeHarness();
+      h.queueStore.setState(queued);
+      h.rootStore.setState((s) => ({
+        ...s,
+        interrupts: [{ id: "interrupt-1", value: "approve?" }],
+      }));
+
+      await h.coordinator.submit(
+        { count: 3 },
+        { multitaskStrategy: "enqueue" }
+      );
+
+      expect(h.submitRun).not.toHaveBeenCalled();
+      expect(h.queueStore.getSnapshot().map((entry) => entry.values)).toEqual([
+        { count: 2 },
+        { count: 3 },
+      ]);
+    });
+
+    it("leaves the interrupts cleared when run.start fails without a server answer", async () => {
+      const h = makeHarness();
+      const interrupt = { id: "interrupt-1", value: "approve?" };
+      h.rootStore.setState((s) => ({ ...s, interrupts: [interrupt], interrupt }));
+
+      const submitted = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.rejectSubmit(new TypeError("fetch failed"));
+      await vi.runAllTimersAsync();
+      await submitted;
+
+      expect(h.rootStore.getSnapshot().interrupts).toEqual([]);
+      expect(h.onRunRefused).not.toHaveBeenCalled();
+    });
+
+    it("holds the queue while interrupts wait to be confirmed", async () => {
+      const h = makeHarness();
+      h.queueStore.setState(queued);
+      h.setQueueHeld(true);
+
+      h.coordinator.scheduleQueueDrainOnObservedIdle();
+      await vi.runAllTimersAsync();
+      expect(h.submitRun).not.toHaveBeenCalled();
+
+      h.setQueueHeld(false);
+      h.coordinator.scheduleQueueDrainOnObservedIdle();
+      await vi.runAllTimersAsync();
+      expect(h.submitRun).toHaveBeenCalledTimes(1);
+
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-drained" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+    });
+
+    it("stops watching for the resumed run when input.respond fails", async () => {
+      const h = makeHarness();
+      await expect(
+        h.coordinator.dispatchResume(async () => {
+          throw refusal();
+        })
+      ).rejects.toThrow(/waiting on an interrupt/);
+
+      expect(h.currentTerminal()?.signal.aborted).toBe(true);
     });
 
     it("enqueues a follow-up fired in the same tick as dispatch", async () => {

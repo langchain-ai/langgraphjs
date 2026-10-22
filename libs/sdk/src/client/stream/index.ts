@@ -688,7 +688,7 @@ export class ThreadStream<
     this.#fetchOption = options.fetch;
     this.run = {
       start: async (params) => {
-        this.#prepareForNextRun();
+        const restoreInterrupts = this.#prepareForNextRun();
         // Kick off the lifecycle watcher and the values projection
         // SYNCHRONOUSLY so the React layer (and any other consumer that
         // races subagent discovery) sees them registered immediately.
@@ -717,6 +717,10 @@ export class ThreadStream<
             ...foldForkFromIntoConfig(params),
             assistant_id: this.assistantId,
           });
+        }).catch((error: unknown) => {
+          // oxlint-disable-next-line no-instanceof/no-instanceof
+          if (error instanceof ProtocolError) restoreInterrupts();
+          throw error;
         });
       },
     };
@@ -867,8 +871,14 @@ export class ThreadStream<
    *   pending interrupts, only that entry is removed. Clearing the
    *   full list here would drop other headless-tool interrupts that
    *   are still awaiting client execution.
+   * @returns Restores the cleared interrupts, for a command the server
+   *   refuses: no run started, so they are still pending.
    */
-  #prepareForNextRun(respondedInterruptId?: string | readonly string[]): void {
+  #prepareForNextRun(
+    respondedInterruptId?: string | readonly string[]
+  ): () => void {
+    const interrupts = [...this.interrupts];
+    const { interrupted } = this;
     this.interrupted = false;
     if (respondedInterruptId != null) {
       const respondedIds = new Set(
@@ -894,6 +904,11 @@ export class ThreadStream<
         subscription.resume();
       }
     }
+    return () => {
+      if (this.interrupts.length > 0) return;
+      this.interrupts.push(...interrupts);
+      this.interrupted = interrupted;
+    };
   }
 
   // ---------- Lazy getters mirroring in-process GraphRunStream ----------
@@ -1365,7 +1380,7 @@ export class ThreadStream<
      */
     multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
   }): Promise<RunResult> {
-    this.#prepareForNextRun();
+    const restoreInterrupts = this.#prepareForNextRun();
     // See `this.run.start` for the gating rationale — the lifecycle
     // watcher must register synchronously (so subagent discovery and
     // its downstream `useToolCalls` / `useMessages` subscriptions
@@ -1377,6 +1392,10 @@ export class ThreadStream<
         ...(foldForkFromIntoConfig(params) as Record<string, unknown>),
         assistant_id: this.assistantId,
       });
+    }).catch((error: unknown) => {
+      // oxlint-disable-next-line no-instanceof/no-instanceof
+      if (error instanceof ProtocolError) restoreInterrupts();
+      throw error;
     });
   }
 
