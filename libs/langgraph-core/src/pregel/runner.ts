@@ -37,6 +37,29 @@ import { PregelLoop } from "./loop.js";
 
 const PROMISE_ADDED_SYMBOL = Symbol.for("promiseAdded");
 
+// Identity distinguishes framework cancellation from a node's own AbortError.
+const siblingCancellationErrors = new WeakSet<object>();
+
+function siblingCancellationError(): Error {
+  const error = new Error("This operation was aborted");
+  error.name = "AbortError";
+  siblingCancellationErrors.add(error);
+  return error;
+}
+
+function isSiblingCancellation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    siblingCancellationErrors.has(error)
+  );
+}
+
+function abortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason;
+  return isSiblingCancellation(reason) ? reason : new Error("Abort");
+}
+
 function createPromiseBarrier() {
   const barrier: {
     next: () => void;
@@ -150,6 +173,9 @@ export class PregelRunner {
 
     for await (const { task, error, signalAborted } of taskStream) {
       this._commit(task, error);
+      if (isSiblingCancellation(error)) {
+        continue;
+      }
       if (error !== undefined && this.handledExceptions.has(error)) {
         // Routed to a node-level error handler in this tick; provenance is
         // checkpointed and the error must not abort the run.
@@ -183,7 +209,9 @@ export class PregelRunner {
          * a task answered in the same resume isn't cut off after its side effects and then run
          * again with its saved answer.
          */
-        if (!isInvalidResume(error)) exceptionSignalController.abort();
+        if (!isInvalidResume(error)) {
+          exceptionSignalController.abort(siblingCancellationError());
+        }
         nodeErrors.add(error);
       }
     }
@@ -310,7 +338,7 @@ export class PregelRunner {
     if (signals?.composedAbortSignal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
-      throw new Error("Abort");
+      throw abortError(signals.composedAbortSignal);
     }
 
     let startedTasksCount = 0;
@@ -323,7 +351,7 @@ export class PregelRunner {
 
     const abortPromise = timeoutOrCancelSignal.signal
       ? new Promise<never>((_resolve, reject) => {
-          listener = () => reject(new Error("Abort"));
+          listener = () => reject(abortError(timeoutOrCancelSignal.signal));
           timeoutOrCancelSignal.signal?.addEventListener("abort", listener, {
             once: true,
           });
@@ -375,6 +403,7 @@ export class PregelRunner {
       // interrupts / parent commands) are never routed to error handlers.
       if (
         settledError !== undefined &&
+        !isSiblingCancellation(settledError) &&
         !isGraphBubbleUp(settledError) &&
         !this.loop.isErrorHandlerNode(String(settledPregelTask.name)) &&
         this.loop.getErrorHandlerNode(String(settledPregelTask.name)) !==
@@ -455,6 +484,11 @@ export class PregelRunner {
         }
       } else if (isGraphBubbleUp(error) && task.writes.length) {
         this.loop.putWrites(task.id, task.writes);
+      } else if (isSiblingCancellation(error)) {
+        // Preserve partial writes without treating sibling cancellation as a node failure.
+        if (task.writes.length) {
+          this.loop.putWrites(task.id, task.writes);
+        }
       } else {
         task.writes.push([ERROR, { message: error.message, name: error.name }]);
         if (this._shouldRouteToErrorHandler(task)) {

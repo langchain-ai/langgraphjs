@@ -103,6 +103,7 @@ export async function _runWithRetry<
     if (signal?.aborted) {
       // no need to throw here - we'll throw from the runner, instead.
       // there's just no point in retrying if the user has requested an abort.
+      error ??= signal.reason;
       break;
     }
     // Clear any writes from previous attempts
