@@ -721,7 +721,7 @@ export function useStreamLGP<
               interruptBefore: submitOptions?.interruptBefore,
               interruptAfter: submitOptions?.interruptAfter,
               metadata: submitOptions?.metadata,
-              multitaskStrategy: "enqueue",
+              multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
               streamMode: getRunStreamMode(submitOptions),
               streamResumable: true,
               streamSubgraphs: submitOptions?.streamSubgraphs,
