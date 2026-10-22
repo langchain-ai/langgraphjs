@@ -31,21 +31,51 @@ function computeNamespacePath(namespace: string[]): string[] {
 }
 
 /**
+ * Validates that a namespace or namespace prefix is an array of strings
+ * before its labels are placed in a query filter. `batch()` can receive
+ * operations that never went through `BaseStore`'s checks, so the check
+ * lives here.
+ * @param namespace The namespace or prefix to validate.
+ * @throws {InvalidNamespaceError} If it is not an array of strings.
+ */
+function validateNamespaceLabels(namespace: unknown): void {
+  if (!Array.isArray(namespace)) {
+    throw new InvalidNamespaceError(
+      `Namespace must be an array of strings, but got ${typeof namespace}.`
+    );
+  }
+  for (const label of namespace) {
+    if (typeof label !== "string") {
+      throw new InvalidNamespaceError(
+        `Namespace labels must be strings, but got ${typeof label}.`
+      );
+    }
+  }
+}
+
+/**
+ * Validates that an item key is a string before it is placed in a query
+ * filter. `BaseStore` does not check keys.
+ * @param key The key to validate.
+ * @throws {Error} If the key is not a string.
+ */
+function validateKey(key: unknown): void {
+  if (typeof key !== "string") {
+    throw new Error(`Key must be a string, but got ${typeof key}.`);
+  }
+}
+
+/**
  * Validates the provided namespace.
  * @param namespace The namespace to validate.
  * @throws {InvalidNamespaceError} If the namespace is invalid.
  */
 function validateNamespace(namespace: string[]): void {
+  validateNamespaceLabels(namespace);
   if (namespace.length === 0) {
     throw new InvalidNamespaceError("Namespace cannot be empty.");
   }
   for (const label of namespace) {
-    if (typeof label !== "string") {
-      throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels ` +
-          `must be strings, but got ${typeof label}.`
-      );
-    }
     if (label.includes(".")) {
       throw new InvalidNamespaceError(
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
@@ -321,8 +351,9 @@ export class MongoDBStore extends BaseStore {
         const { op } = opsList[i];
         const { namespace, key, value } = op;
 
-        // Validate namespace
+        // Validate namespace and key
         validateNamespace(namespace);
+        validateKey(key);
 
         // Handle delete
         if (value === null) {
@@ -394,6 +425,8 @@ export class MongoDBStore extends BaseStore {
    * If refreshOnRead is enabled, resets the TTL timer.
    */
   private async getOp(op: GetOperation): Promise<Item | null> {
+    validateNamespaceLabels(op.namespace);
+    validateKey(op.key);
     const { namespace, key } = op;
 
     let doc;
@@ -551,6 +584,7 @@ export class MongoDBStore extends BaseStore {
    * Supports field-based filtering (structured search) on value fields.
    */
   private async searchOp(op: SearchOperation): Promise<SearchItem[]> {
+    validateNamespaceLabels(op.namespacePrefix);
     const {
       namespacePrefix,
       filter,

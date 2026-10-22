@@ -2,6 +2,7 @@ import { MongoClient } from "mongodb";
 import { MongoDBStore } from "../store";
 import type { IndexConfig } from "../store";
 import {
+  InvalidNamespaceError,
   type PutOperation,
   type GetOperation,
   type SearchOperation,
@@ -86,6 +87,39 @@ describe("MongoDBStore Integration Tests", () => {
 
       expect(results[0]).toBeNull();
     });
+
+    it("should reject a delete whose namespace is not an array", async () => {
+      await store.batch([
+        { namespace: ["put_test", "kept"], key: "kept_item", value: { data: "kept" } } as PutOperation,
+      ]);
+
+      // A string namespace would match any stored namespace containing that label.
+      await expect(
+        store.batch([{ namespace: "put_test", key: "kept_item", value: null } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+
+      const results = await store.batch([
+        { namespace: ["put_test", "kept"], key: "kept_item" } as GetOperation,
+      ]);
+      expect(results[0]?.value).toEqual({ data: "kept" });
+    });
+
+    it("should reject a delete whose key is not a string", async () => {
+      await store.batch([
+        { namespace: ["put_test", "kept"], key: "kept_key", value: { data: "kept" } } as PutOperation,
+      ]);
+
+      await expect(
+        store.batch([
+          { namespace: ["put_test", "kept"], key: { $literal: "kept_key" }, value: null } as any,
+        ])
+      ).rejects.toThrow("Key must be a string");
+
+      const results = await store.batch([
+        { namespace: ["put_test", "kept"], key: "kept_key" } as GetOperation,
+      ]);
+      expect(results[0]?.value).toEqual({ data: "kept" });
+    });
   });
 
   describe("get", () => {
@@ -95,6 +129,29 @@ describe("MongoDBStore Integration Tests", () => {
       ]);
 
       expect(results[0]).toBeNull();
+    });
+
+    it("should reject a key that is not a string", async () => {
+      await expect(
+        store.batch([{ namespace: ["put_test"], key: { $literal: "doc1" } } as any])
+      ).rejects.toThrow("Key must be a string");
+    });
+
+    it("should reject a namespace with a non-string label", async () => {
+      await expect(
+        store.batch([{ namespace: [{ $literal: "put_test" }], key: "doc1" } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+    });
+
+    it("should read labels and keys that start with '$' as strings", async () => {
+      await store.batch([
+        { namespace: ["$get_ns", "a"], key: "$item", value: { v: 1 } } as PutOperation,
+      ]);
+
+      const results = await store.batch([
+        { namespace: ["$get_ns", "a"], key: "$item" } as GetOperation,
+      ]);
+      expect(results[0]?.value).toEqual({ v: 1 });
     });
   });
 
@@ -222,6 +279,33 @@ describe("MongoDBStore Integration Tests", () => {
       } as SearchOperation]);
 
       expect(results[0]).toEqual([]);
+    });
+
+    it("should reject a namespace prefix with a non-string label", async () => {
+      await expect(
+        store.batch([{
+          namespacePrefix: [{ $literal: "products" }],
+          filter: {},
+          limit: 100,
+          offset: 0,
+        } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+    });
+
+    it("should match prefix labels that start with '$' as strings", async () => {
+      await store.batch([
+        { namespace: ["$search_ns", "a"], key: "$item", value: { v: 1 } } as PutOperation,
+      ]);
+
+      const results = await store.batch([{
+        namespacePrefix: ["$search_ns"],
+        filter: {},
+        limit: 100,
+        offset: 0,
+      } as SearchOperation]);
+      const items = results[0] as any[];
+
+      expect(items.map((item: any) => item.namespace)).toEqual([["$search_ns", "a"]]);
     });
   });
 

@@ -1,5 +1,8 @@
 import { MongoDBStore } from "../store";
-import type { PutOperation } from "@langchain/langgraph-checkpoint";
+import {
+  InvalidNamespaceError,
+  type PutOperation,
+} from "@langchain/langgraph-checkpoint";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 describe("MongoDBStore", () => {
@@ -103,6 +106,33 @@ describe("MongoDBStore", () => {
         store.batch([{ namespace: ["langgraph", "data"], key: "doc1", value: { title: "Test" } } as PutOperation])
       ).rejects.toThrow('Root label for namespace cannot be "langgraph"');
     });
+
+    it.each([
+      ["an upsert", { value: { title: "Test" } }],
+      ["a delete", { value: null }],
+    ])("should reject a key that is not a string in %s", async (_name, op) => {
+      await expect(
+        store.batch([{ namespace: ["documents"], key: { $literal: "doc1" }, ...op } as any])
+      ).rejects.toThrow("Key must be a string");
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an upsert", { value: { title: "Test" } }],
+      ["a delete", { value: null }],
+    ])("should reject a namespace that is not an array in %s", async (_name, op) => {
+      await expect(
+        store.batch([{ namespace: "documents", key: "doc1", ...op } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+    });
+
+    it("should reject a key that is not a string passed to delete", async () => {
+      await expect(
+        store.delete(["documents"], { $literal: "doc1" } as any)
+      ).rejects.toThrow("Key must be a string");
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+    });
   });
 
   describe("get", () => {
@@ -124,6 +154,56 @@ describe("MongoDBStore", () => {
         namespace: ["documents"], key: "doc1", value: { title: "Test" },
         createdAt: now, updatedAt: now,
       });
+    });
+
+    it("should pass labels and keys that start with '$' as strings", async () => {
+      await store.batch([{ namespace: ["$documents"], key: "$doc1" }]);
+
+      expect(mockCollection.findOne).toHaveBeenCalledWith({
+        namespace: ["$documents"],
+        key: "$doc1",
+      });
+    });
+
+    it.each([
+      ["a non-string label", { namespace: [{ $literal: "documents" }], key: "doc1" }],
+      ["a numeric label", { namespace: ["documents", 1], key: "doc1" }],
+      ["a namespace that is not an array", { namespace: "documents", key: "doc1" }],
+    ])("should reject %s in a batched operation", async (_name, op) => {
+      await expect(store.batch([op as any])).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an object", { $literal: "doc1" }],
+      ["a number", 1],
+    ])("should reject a key that is %s in a batched operation", async (_name, key) => {
+      await expect(
+        store.batch([{ namespace: ["documents"], key } as any])
+      ).rejects.toThrow("Key must be a string");
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should reject a key that is not a string passed to get", async () => {
+      await expect(
+        store.get(["documents"], { $literal: "doc1" } as any)
+      ).rejects.toThrow("Key must be a string");
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should validate before refreshing the TTL on read", async () => {
+      mockCollection.findOneAndUpdate = vi.fn().mockResolvedValue(null);
+      const storeWithTtl = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        ttl: { defaultTtl: 60, refreshOnRead: true },
+      });
+
+      await expect(
+        storeWithTtl.batch([{ namespace: ["documents"], key: { $literal: "doc1" } } as any])
+      ).rejects.toThrow("Key must be a string");
+      expect(mockCollection.findOneAndUpdate).not.toHaveBeenCalled();
     });
   });
 
@@ -152,6 +232,37 @@ describe("MongoDBStore", () => {
       await expect(
         store.batch([{ namespacePrefix: ["docs"], query: "find something", limit: 10, offset: 0 }])
       ).rejects.toThrow(/indexConfig/i);
+    });
+
+    it.each([
+      ["a non-string label", { namespacePrefix: [{ $literal: "users" }] }],
+      ["a numeric label", { namespacePrefix: ["users", 1] }],
+      ["a prefix that is not an array", { namespacePrefix: "users" }],
+      ["a missing prefix", { namespacePrefix: undefined }],
+    ])("should reject %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ filter: {}, limit: 10, offset: 0, ...op } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.find).not.toHaveBeenCalled();
+    });
+
+    it("should reject a non-string label before a vector search", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      await expect(
+        storeAuto.batch([{
+          namespacePrefix: [{ $literal: "memories" }],
+          query: "find something",
+          limit: 10,
+          offset: 0,
+        } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.aggregate).not.toHaveBeenCalled();
     });
   });
 
