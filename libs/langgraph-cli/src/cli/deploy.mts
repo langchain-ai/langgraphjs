@@ -741,7 +741,8 @@ const UPLOAD_CHUNK_SIZE = 1024 * 1024;
 async function uploadToGcs(
   signedUrl: string,
   filePath: string,
-  fileSize: number
+  fileSize: number,
+  uploadHeaders: Record<string, string>
 ): Promise<void> {
   const sizeMb = fileSize / BYTES_PER_MIB;
   const handle = await fs.open(filePath, "r");
@@ -785,15 +786,22 @@ async function uploadToGcs(
     },
   });
 
+  // Control planes that return no `upload_headers` sign for these defaults.
+  const headers = new Headers(
+    Object.keys(uploadHeaders).length
+      ? uploadHeaders
+      : {
+          "Content-Type": "application/gzip",
+          "X-Goog-Content-Length-Range": "0,209715200",
+        }
+  );
+  headers.set("Content-Length", String(fileSize));
+
   try {
     // `duplex: "half"` is required by undici when sending a streaming body.
     const response = await fetch(signedUrl, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/gzip",
-        "Content-Length": String(fileSize),
-        "X-Goog-Content-Length-Range": "0,209715200",
-      },
+      headers,
       body,
       duplex: "half",
     } as RequestInit & { duplex: "half" });
@@ -1074,7 +1082,12 @@ async function runRemoteBuild(args: RemoteBuildArgs): Promise<BuildResult> {
     step += 1;
 
     emitter.step(step, "Uploading source");
-    await uploadToGcs(signedUrl, archive.archivePath, archive.fileSize);
+    await uploadToGcs(
+      signedUrl,
+      archive.archivePath,
+      archive.fileSize,
+      rec(uploadData.upload_headers) as Record<string, string>
+    );
     step += 1;
 
     emitter.step(step, "Triggering remote build");

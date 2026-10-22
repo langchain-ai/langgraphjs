@@ -67,7 +67,29 @@ async function run(...args: string[]) {
   });
 }
 
-it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
+// `sent` is the upload's headers apart from Content-Length.
+const AGENT_DEPLOYS = [
+  {
+    existing: false,
+    uploadHeaders: {
+      "Content-Type": "application/gzip",
+      "x-ms-blob-type": "BlockBlob",
+      "content-length": "1",
+    },
+    sent: { "content-type": "application/gzip", "x-ms-blob-type": "BlockBlob" },
+  },
+  {
+    existing: true,
+    uploadHeaders: undefined,
+    sent: {
+      "content-type": "application/gzip",
+      "x-goog-content-length-range": "0,209715200",
+    },
+  },
+];
+
+it.each(AGENT_DEPLOYS)("deploys by agent (existing: $existing)", async (c) => {
+  const { existing, uploadHeaders, sent } = c;
   fetchMock.mockResolvedValueOnce(
     json({
       resources: existing
@@ -80,7 +102,11 @@ it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
       json({ id: "dep-1", name: "generated-name" })
     );
   fetchMock.mockResolvedValueOnce(
-    json({ upload_url: "https://upload.example/source", object_path: "source" })
+    json({
+      upload_url: "https://upload.example/source",
+      object_path: "source",
+      upload_headers: uploadHeaders,
+    })
   );
   fetchMock.mockImplementationOnce(async (_url, init) => {
     await new Response(init.body).arrayBuffer();
@@ -110,6 +136,13 @@ it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
       secrets: [],
     });
   }
+  const [, upload] = fetchMock.mock.calls.find(
+    ([url]) => url === "https://upload.example/source"
+  )!;
+  expect(Object.fromEntries(new Headers(upload.headers))).toEqual({
+    ...sent,
+    "content-length": "0",
+  });
   const [updateUrl, update] = fetchMock.mock.calls.at(-1)!;
   expect(new URL(updateUrl).pathname).toBe("/v2/deployments/dep-1");
   expect(update.method).toBe("PATCH");
