@@ -65,6 +65,50 @@ function validateNamespace(namespace: string[]): void {
 }
 
 /**
+ * Validates a list namespaces operation before its labels and `maxDepth` are
+ * placed in an aggregation `$expr`. `batch()` can receive operations that
+ * never went through `BaseStore.listNamespaces`, so the check lives here.
+ * @param op The operation to validate.
+ * @throws {InvalidNamespaceError} If a match condition or `maxDepth` is invalid.
+ */
+function validateListNamespacesOperation(op: ListNamespacesOperation): void {
+  const { matchConditions, maxDepth } = op;
+  if (matchConditions !== undefined && !Array.isArray(matchConditions)) {
+    throw new InvalidNamespaceError("matchConditions must be an array.");
+  }
+  for (const condition of matchConditions ?? []) {
+    if (
+      condition?.matchType !== "prefix" &&
+      condition?.matchType !== "suffix"
+    ) {
+      throw new InvalidNamespaceError(
+        `Invalid match type '${String(condition?.matchType)}'. Expected "prefix" or "suffix".`
+      );
+    }
+    if (!Array.isArray(condition.path)) {
+      throw new InvalidNamespaceError(
+        "Match condition path must be an array of strings."
+      );
+    }
+    for (const label of condition.path) {
+      if (typeof label !== "string") {
+        throw new InvalidNamespaceError(
+          `Match condition labels must be strings, but got ${typeof label}.`
+        );
+      }
+    }
+  }
+  if (
+    maxDepth !== undefined &&
+    !(Number.isInteger(maxDepth) && maxDepth >= 0)
+  ) {
+    throw new InvalidNamespaceError(
+      `maxDepth must be a non-negative integer, but got ${String(maxDepth)}.`
+    );
+  }
+}
+
+/**
  * Configuration for MongoDB vector search index.
  *
  * Two modes depending on whether `embeddings` is provided on the store:
@@ -449,6 +493,7 @@ export class MongoDBStore extends BaseStore {
   private async listNamespacesOp(
     op: ListNamespacesOperation
   ): Promise<string[][]> {
+    validateListNamespacesOperation(op);
     const { matchConditions, maxDepth, limit, offset } = op;
 
     const pipeline: Record<string, any>[] = [];
@@ -466,11 +511,16 @@ export class MongoDBStore extends BaseStore {
           //   namespace[0] == "users" AND namespace[2] == "settings"
           //   AND namespace.length >= 3
           // (index 1 is skipped because it's a wildcard)
+          // Labels are wrapped in $literal so a leading "$" is compared as
+          // text instead of being read as a field path.
           const elemConditions: Record<string, any>[] = [];
           for (let i = 0; i < path.length; i++) {
             if (path[i] !== "*") {
               elemConditions.push({
-                $eq: [{ $arrayElemAt: ["$namespace", i] }, path[i]],
+                $eq: [
+                  { $arrayElemAt: ["$namespace", i] },
+                  { $literal: path[i] },
+                ],
               });
             }
           }
@@ -489,7 +539,7 @@ export class MongoDBStore extends BaseStore {
               elemConditions.push({
                 $eq: [
                   { $arrayElemAt: ["$namespace", -(path.length - i)] },
-                  path[i],
+                  { $literal: path[i] },
                 ],
               });
             }
