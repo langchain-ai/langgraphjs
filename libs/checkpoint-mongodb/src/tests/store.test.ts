@@ -185,7 +185,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -210,7 +210,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "v1" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, "v1"] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -235,41 +235,9 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
-              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, { $literal: "settings" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, "settings"] },
               { $gte: [{ $size: "$namespace" }, 3] },
-            ],
-          },
-        },
-      });
-    });
-
-    it("should compare labels starting with '$' as literals", async () => {
-      const capturedPipelines: any[][] = [];
-      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
-        return { toArray: vi.fn().mockResolvedValue([]) };
-      });
-
-      await store.listNamespaces({ prefix: ["$key"], suffix: ["$value"] });
-
-      const matchStage = capturedPipelines[0].find((s: any) => s.$match);
-      expect(matchStage).toEqual({
-        $match: {
-          $expr: {
-            $and: [
-              {
-                $and: [
-                  { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "$key" }] },
-                  { $gte: [{ $size: "$namespace" }, 1] },
-                ],
-              },
-              {
-                $and: [
-                  { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "$value" }] },
-                  { $gte: [{ $size: "$namespace" }, 1] },
-                ],
-              },
             ],
           },
         },

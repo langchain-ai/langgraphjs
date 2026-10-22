@@ -510,16 +510,11 @@ export class MongoDBStore extends BaseStore {
           //   namespace[0] == "users" AND namespace[2] == "settings"
           //   AND namespace.length >= 3
           // (index 1 is skipped because it's a wildcard)
-          // Labels are wrapped in $literal so a leading "$" is compared as
-          // text instead of being read as a field path.
           const elemConditions: Record<string, any>[] = [];
           for (let i = 0; i < path.length; i++) {
             if (path[i] !== "*") {
               elemConditions.push({
-                $eq: [
-                  { $arrayElemAt: ["$namespace", i] },
-                  { $literal: path[i] },
-                ],
+                $eq: [{ $arrayElemAt: ["$namespace", i] }, path[i]],
               });
             }
           }
@@ -538,7 +533,7 @@ export class MongoDBStore extends BaseStore {
               elemConditions.push({
                 $eq: [
                   { $arrayElemAt: ["$namespace", -(path.length - i)] },
-                  { $literal: path[i] },
+                  path[i],
                 ],
               });
             }

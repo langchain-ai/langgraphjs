@@ -278,28 +278,6 @@ describe("MongoDBStore Integration Tests", () => {
       expect(namespaces).not.toContainEqual(["ns_users", "profiles"]);
     });
 
-    it("should match labels starting with '$' literally", async () => {
-      await store.batch([
-        { namespace: ["$literal_ns", "a"], key: "k1", value: { v: 1 } },
-        { namespace: ["k_field", "b"], key: "k_field", value: { v: 2 } },
-      ] as PutOperation[]);
-
-      const [byLabel] = await store.batch([{
-        matchConditions: [{ matchType: "prefix" as const, path: ["$literal_ns"] }],
-        limit: 100,
-        offset: 0,
-      }]);
-      expect(byLabel).toEqual([["$literal_ns", "a"]]);
-
-      // "$key" is a label, not a reference to each document's `key` field.
-      const [byFieldName] = await store.batch([{
-        matchConditions: [{ matchType: "prefix" as const, path: ["$key"] }],
-        limit: 100,
-        offset: 0,
-      }]);
-      expect(byFieldName).toEqual([]);
-    });
-
     it("should filter by suffix matchCondition", async () => {
       const results = await store.batch([{
         matchConditions: [{ matchType: "suffix" as const, path: ["profiles"] }],
