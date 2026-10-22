@@ -106,6 +106,16 @@ describe("MongoDBStore", () => {
         store.batch([{ namespace: ["langgraph", "data"], key: "doc1", value: { title: "Test" } } as PutOperation])
       ).rejects.toThrow('Root label for namespace cannot be "langgraph"');
     });
+
+    it.each([
+      ["a colon", ["docs:invalid"]],
+      ["a NUL byte", ["docs\x00invalid"]],
+    ])("should throw InvalidNamespaceError for a label with %s", async (_name, namespace) => {
+      await expect(
+        store.batch([{ namespace, key: "doc1", value: { title: "Test" } } as PutOperation])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
+    });
   });
 
   describe("get", () => {

@@ -11,7 +11,7 @@ import {
   type SearchOperation,
   type SearchItem,
   InvalidNamespaceError,
-  validateNamespace as validateStoreNamespace,
+  validateNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 /**
@@ -29,40 +29,6 @@ function computeNamespacePath(namespace: string[]): string[] {
     paths.push(namespace.slice(0, i).join("/"));
   }
   return paths;
-}
-
-/**
- * Validates the provided namespace.
- * @param namespace The namespace to validate.
- * @throws {InvalidNamespaceError} If the namespace is invalid.
- */
-function validateNamespace(namespace: string[]): void {
-  if (namespace.length === 0) {
-    throw new InvalidNamespaceError("Namespace cannot be empty.");
-  }
-  for (const label of namespace) {
-    if (typeof label !== "string") {
-      throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels ` +
-          `must be strings, but got ${typeof label}.`
-      );
-    }
-    if (label.includes(".")) {
-      throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
-      );
-    }
-    if (label === "") {
-      throw new InvalidNamespaceError(
-        `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
-      );
-    }
-  }
-  if (namespace[0] === "langgraph") {
-    throw new InvalidNamespaceError(
-      `Root label for namespace cannot be "langgraph". Got: ${namespace}`
-    );
-  }
 }
 
 /**
@@ -92,7 +58,7 @@ function validateListNamespacesOperation(op: ListNamespacesOperation): void {
       );
     }
     // The same check BaseStore.listNamespaces applies to its prefix and suffix.
-    validateStoreNamespace(condition.path, {
+    validateNamespace(condition.path, {
       allowEmpty: true,
       allowReservedRoot: true,
     });
