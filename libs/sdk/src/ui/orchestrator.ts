@@ -157,6 +157,8 @@ export class StreamOrchestrator<
 
   #submitting = false;
 
+  #liveRuns = new Map<string, Promise<void>>();
+
   #listeners = new Set<() => void>();
 
   #version = 0;
@@ -840,6 +842,9 @@ export class StreamOrchestrator<
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
+    const live = this.#liveRuns.get(runId);
+    if (live) return live;
+
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     const tid = this.#threadId;
@@ -859,7 +864,7 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
 
-    await this.stream.start(
+    const started = this.stream.start(
       async (signal: AbortSignal) => {
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
@@ -905,6 +910,13 @@ export class StreamOrchestrator<
         },
       }
     );
+
+    this.#liveRuns.set(runId, started);
+    try {
+      await started;
+    } finally {
+      this.#liveRuns.delete(runId);
+    }
   }
 
   /**
@@ -954,11 +966,12 @@ export class StreamOrchestrator<
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
+    let runId: string | undefined;
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
 
-    return this.stream.start(
+    const started = this.stream.start(
       async (signal) => {
         usableThreadId = this.#threadId;
         if (usableThreadId) {
@@ -1025,6 +1038,8 @@ export class StreamOrchestrator<
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
             };
+            runId = params.run_id;
+            this.#liveRuns.set(runId, started);
 
             if (this.#runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -1074,6 +1089,10 @@ export class StreamOrchestrator<
         },
       }
     );
+
+    return started.finally(() => {
+      if (runId) this.#liveRuns.delete(runId);
+    });
   }
 
   #getRunStreamModes(

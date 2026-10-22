@@ -27,6 +27,7 @@ import { SuspenseErrorStream } from "./components/SuspenseErrorStream.js";
 import { SuspenseWithThreadId } from "./components/SuspenseWithThreadId.js";
 import { ContextProvider } from "./components/ContextProvider.js";
 import { HeadlessToolStream } from "./components/HeadlessToolStream.js";
+import { JoinRunStream } from "./components/JoinRunStream.js";
 
 const serverUrl = inject("serverUrl");
 
@@ -1500,4 +1501,110 @@ it("headless tools - propagates execute error back to agent as error payload", a
   await expect
     .element(screen.getByTestId("message-last"))
     .toHaveTextContent("Location received!");
+});
+
+function createRequestRecordingClient() {
+  const requests: { method: string; url: string }[] = [];
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      requests.push({ method: init.method ?? "GET", url: url.toString() });
+      return init;
+    },
+  });
+  const joinRequests = (threadId: string, runId: string) =>
+    requests.filter(
+      ({ method, url }) =>
+        method === "GET" &&
+        new URL(url).pathname === `/threads/${threadId}/runs/${runId}/stream`,
+    );
+  return { client, joinRequests };
+}
+
+it("joinStream does not rejoin a run already joined by reconnectOnMount", async () => {
+  const { client, joinRequests } = createRequestRecordingClient();
+  const thread = await client.threads.create();
+  const run = await client.runs.create(thread.thread_id, "agent", {
+    input: { messages: [{ type: "human", content: "Hi" }] },
+    streamResumable: true,
+  });
+  window.sessionStorage.setItem(`lg:stream:${thread.thread_id}`, run.run_id);
+
+  try {
+    const screen = await render(
+      <JoinRunStream
+        apiUrl={serverUrl}
+        client={client}
+        threadId={thread.thread_id}
+        runId={run.run_id}
+        reconnectOnMount
+      />,
+    );
+
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Loading...");
+    await screen.getByTestId("join").click();
+
+    await expect
+      .element(screen.getByTestId("message-count"), { timeout: 5000 })
+      .toHaveTextContent("2");
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Not loading");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(joinRequests(thread.thread_id, run.run_id)).toHaveLength(1);
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Not loading");
+    await expect
+      .element(screen.getByTestId("loading-starts"))
+      .toHaveTextContent("1");
+  } finally {
+    window.sessionStorage.removeItem(`lg:stream:${thread.thread_id}`);
+  }
+});
+
+it("joinStream does not join the run the hook is streaming from its own submit", async () => {
+  const { client, joinRequests } = createRequestRecordingClient();
+  const thread = await client.threads.create();
+
+  const screen = await render(
+    <JoinRunStream
+      apiUrl={serverUrl}
+      client={client}
+      threadId={thread.thread_id}
+    />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("created-run-id"))
+    .not.toHaveTextContent(/^$/);
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Loading...");
+  const runId = screen
+    .getByTestId("created-run-id")
+    .element()
+    .textContent!.trim();
+
+  await screen.getByTestId("join").click();
+
+  await expect
+    .element(screen.getByTestId("message-count"), { timeout: 5000 })
+    .toHaveTextContent("2");
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  expect(joinRequests(thread.thread_id, runId)).toHaveLength(0);
+  await expect
+    .element(screen.getByTestId("loading"))
+    .toHaveTextContent("Not loading");
+  await expect
+    .element(screen.getByTestId("loading-starts"))
+    .toHaveTextContent("1");
 });
