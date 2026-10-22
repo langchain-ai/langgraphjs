@@ -176,9 +176,11 @@ export function* mapDebugTaskResults<
 ) {
   for (const [{ id, name, config }, writes] of tasks) {
     if (config?.tags?.includes(TAG_HIDDEN)) continue;
+    const error = writes.find(([channel]) => channel === ERROR);
     yield {
       id,
       name,
+      ...(error ? { error: error[1] } : {}),
       result: mapTaskResultWrites(
         writes.filter(([channel]) => {
           return Array.isArray(streamChannels)

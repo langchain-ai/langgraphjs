@@ -5,6 +5,7 @@ import { RunnableLambda } from "@langchain/core/runnables";
 import { MemorySaver } from "@langchain/langgraph-checkpoint";
 
 import { StateGraph } from "../graph/index.js";
+import { Annotation } from "../graph/annotation.js";
 import { Command, END, START } from "../constants.js";
 import { interrupt } from "../interrupt.js";
 import { gatherIterator } from "../utils.js";
@@ -858,5 +859,90 @@ describe("stream() chunk shape", () => {
     const values = byMethod(events, "values");
     expect(values.length).toBeGreaterThan(0);
     expect(checkpoints.length).toBe(values.length);
+  });
+});
+
+describe('streamMode "tasks"', () => {
+  it("includes failed task errors and resumes the same task successfully", async () => {
+    const State = Annotation.Root({ x: Annotation<number>() });
+    let failures = 1;
+    const graph = new StateGraph(State)
+      .addNode("work", () => {
+        if (failures-- > 0) throw new Error("transient failure");
+        return { x: 1 };
+      })
+      .addEdge(START, "work")
+      .addEdge("work", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const config = {
+      configurable: { thread_id: "task-error-resume" },
+      streamMode: "tasks" as const,
+    };
+    const failedStream = await graph.stream({ x: 0 }, config);
+    const iterator = failedStream[Symbol.asyncIterator]();
+    const failedStart = (await iterator.next()).value;
+    const failedResult = (await iterator.next()).value;
+    await expect(iterator.next()).rejects.toThrow("transient failure");
+
+    const resumedEvents = await gatherIterator(
+      await graph.stream(null, config)
+    );
+    expect(resumedEvents).toHaveLength(2);
+    const resumedResult = resumedEvents[1];
+    expect(failedResult).toEqual({
+      id: failedStart.id,
+      name: "work",
+      result: {},
+      error: { message: "transient failure", name: "Error" },
+      interrupts: [],
+    });
+    expect(resumedResult).toEqual({
+      id: failedResult.id,
+      name: "work",
+      result: { x: 1 },
+      interrupts: [],
+    });
+    expect(resumedResult).not.toHaveProperty("error");
+  });
+
+  it("preserves successful task results without writes", async () => {
+    const graph = new StateGraph(Annotation.Root({ x: Annotation<number>() }))
+      .addNode("work", () => ({}))
+      .addEdge(START, "work")
+      .addEdge("work", END)
+      .compile();
+    const events = await gatherIterator(
+      await graph.stream({ x: 0 }, { streamMode: "tasks" })
+    );
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      id: events[0].id,
+      name: "work",
+      result: {},
+      interrupts: [],
+    });
+    expect(events[1]).not.toHaveProperty("error");
+  });
+
+  it("preserves task interrupts without reporting them as errors", async () => {
+    const graph = new StateGraph(Annotation.Root({ x: Annotation<number>() }))
+      .addNode("work", () => ({ x: interrupt<string, number>("continue?") }))
+      .addEdge(START, "work")
+      .addEdge("work", END)
+      .compile({ checkpointer: new MemorySaver() });
+    const events = await gatherIterator(
+      await graph.stream(
+        { x: 0 },
+        { configurable: { thread_id: "task-interrupt" }, streamMode: "tasks" }
+      )
+    );
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      id: events[0].id,
+      name: "work",
+      result: {},
+      interrupts: [{ id: expect.any(String), value: "continue?" }],
+    });
+    expect(events[1]).not.toHaveProperty("error");
   });
 });
