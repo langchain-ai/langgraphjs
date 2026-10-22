@@ -11,6 +11,7 @@ import {
   type SearchOperation,
   type SearchItem,
   InvalidNamespaceError,
+  validateNamespace as validateStoreNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 /**
@@ -90,13 +91,11 @@ function validateListNamespacesOperation(op: ListNamespacesOperation): void {
         "Match condition path must be an array of strings."
       );
     }
-    for (const label of condition.path) {
-      if (typeof label !== "string") {
-        throw new InvalidNamespaceError(
-          `Match condition labels must be strings, but got ${typeof label}.`
-        );
-      }
-    }
+    // The same check BaseStore.listNamespaces applies to its prefix and suffix.
+    validateStoreNamespace(condition.path, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
   }
   if (
     maxDepth !== undefined &&

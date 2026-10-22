@@ -280,6 +280,9 @@ describe("MongoDBStore", () => {
       ["a non-string label", { matchConditions: [{ matchType: "prefix", path: [{ $literal: "a" }] }] }],
       ["a numeric label", { matchConditions: [{ matchType: "suffix", path: [1] }] }],
       ["a path that is not an array", { matchConditions: [{ matchType: "prefix", path: "users" }] }],
+      // Same rules as listNamespaces(): labels can't contain "." or be empty.
+      ["a label with a period", { matchConditions: [{ matchType: "prefix", path: ["a.b"] }] }],
+      ["an empty label", { matchConditions: [{ matchType: "suffix", path: [""] }] }],
       ["an unknown match type", { matchConditions: [{ matchType: "contains", path: ["users"] }] }],
       ["a non-numeric maxDepth", { maxDepth: { $literal: 1 } }],
       ["a negative maxDepth", { maxDepth: -1 }],
