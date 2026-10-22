@@ -5,6 +5,7 @@ import type {
 } from "@langchain/langgraph";
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
+import type { CANCEL_ACTIONS, MULTITASK_STRATEGIES } from "./constants.mjs";
 
 export type { RunCommand } from "../command.mjs";
 
@@ -62,21 +63,7 @@ export type StreamMode =
   | "checkpoints"
   | "tools";
 
-/**
- * Strategies for handling a new run on a thread that already has one in
- * flight. Single source of truth for both the type and runtime validation.
- */
-export const MULTITASK_STRATEGIES = [
-  "reject",
-  "rollback",
-  "interrupt",
-  "enqueue",
-] as const;
-
 export type MultitaskStrategy = (typeof MULTITASK_STRATEGIES)[number];
-
-/** Actions accepted when cancelling an in-flight run. */
-export const CANCEL_ACTIONS = ["interrupt", "rollback"] as const;
 
 export type CancelAction = (typeof CANCEL_ACTIONS)[number];
 

@@ -13,7 +13,7 @@ export type RunStatus =
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
 
-export type CancelAction = Extract<MultitaskStrategy, "interrupt" | "rollback">;
+export type CancelAction = "interrupt" | "rollback";
 
 export type Config = {
   /**

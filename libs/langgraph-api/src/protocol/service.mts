@@ -1,13 +1,13 @@
 import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { getAssistantId } from "../graph/load.mjs";
-import {
-  MULTITASK_STRATEGIES,
-  type Run,
-  type RunsRepo,
-  type ThreadsRepo,
-  type StreamMode,
-  type MultitaskStrategy,
+import { MULTITASK_STRATEGIES } from "../storage/constants.mjs";
+import type {
+  Run,
+  RunsRepo,
+  ThreadsRepo,
+  StreamMode,
+  MultitaskStrategy,
 } from "../storage/types.mjs";
 import type { RunCommand } from "../command.mjs";
 import type {

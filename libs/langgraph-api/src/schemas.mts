@@ -1,5 +1,5 @@
 import { z } from "zod/v3";
-import { MULTITASK_STRATEGIES } from "./storage/types.mjs";
+import { MULTITASK_STRATEGIES } from "./storage/constants.mjs";
 
 export const AssistantConfigurable = z
   .object({

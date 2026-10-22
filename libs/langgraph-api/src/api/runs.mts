@@ -9,7 +9,8 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import { CANCEL_ACTIONS, type Run, type RunKwargs } from "../storage/types.mjs";
+import { CANCEL_ACTIONS } from "../storage/constants.mjs";
+import type { Run, RunKwargs } from "../storage/types.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
