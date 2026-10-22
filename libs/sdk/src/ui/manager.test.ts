@@ -4,6 +4,7 @@ import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
+import type { Message } from "../types.messages.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -1071,6 +1072,60 @@ describe("StreamManager", () => {
       expect(onError).not.toHaveBeenCalled();
       expect(onSuccess).toHaveBeenCalled();
       expect(streamManager.values).toEqual({ messages: [], count: 42 });
+    });
+  });
+
+  describe("abandoned run after clear()/stop()", () => {
+    type State = { messages: Message[] };
+
+    // The interrupt aborts this run's controller mid-stream; the stream then
+    // returns normally instead of throwing AbortError, like streamWithRetry
+    // does when the abort lands during its reconnect backoff.
+    const runAbandoned = async (
+      interrupt: (manager: StreamManager<State>) => void | Promise<void>
+    ) => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+      const onSuccess = vi.fn();
+      const onFinish = vi.fn();
+
+      await manager.start(
+        async () => {
+          async function* gen() {
+            yield { event: "values" as const, data: { messages: [] } };
+            await interrupt(manager);
+          }
+          return gen();
+        },
+        {
+          getMessages: (values) => values.messages,
+          setMessages: (current, messages) => ({ ...current, messages }),
+          initialValues: { messages: [] },
+          callbacks: {},
+          onSuccess,
+          onError: vi.fn(),
+          onFinish,
+        }
+      );
+
+      return { onSuccess, onFinish };
+    };
+
+    it("should skip onSuccess when the stream ends normally after clear()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) => m.clear());
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("should skip onSuccess when the stream ends normally after stop()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) =>
+        m.stop({ messages: [] }, {})
+      );
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
     });
   });
 
