@@ -255,7 +255,7 @@ export class ChatComponent {
 
 ## Server-Side Queuing
 
-When `submit()` is called while a stream is already active, the SDK automatically creates the run on the server with `multitaskStrategy: "enqueue"`. The pending runs are tracked in `queue` and processed in order as each finishes:
+When `submit()` is called while a stream is already active and no `multitaskStrategy` is set, the SDK automatically creates the run on the server with `multitaskStrategy: "enqueue"`. An explicit `"reject"` is passed through, so the server rejects the run and the error is reported via `onError`. The pending runs are tracked in `queue` and processed in order as each finishes:
 
 ```typescript
 import { Component } from "@angular/core";

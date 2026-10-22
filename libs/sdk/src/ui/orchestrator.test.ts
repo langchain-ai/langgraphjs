@@ -679,6 +679,66 @@ describe("StreamOrchestrator", () => {
       await firstSubmit;
       orch.dispose();
     });
+
+    it("forwards multitaskStrategy 'reject' while streaming and reports the server error", async () => {
+      let submitSignal: AbortSignal | undefined;
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { signal: AbortSignal }
+        ) => {
+          submitSignal = payload.signal;
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield { event: "values" as const, data: { messages: [] } };
+              await new Promise<never>((_resolve, reject) => {
+                submitSignal?.addEventListener("abort", () => {
+                  const err = new Error("The operation was aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                });
+              });
+            },
+          };
+        }
+      );
+      const conflict = new Error("HTTP 409: Thread is busy");
+      (client.runs.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+        conflict
+      );
+
+      const onError = vi.fn();
+      const submitOnError = vi.fn();
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ onError }),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      const firstSubmit = orch.submit({ messages: [] });
+      await vi.waitFor(() => {
+        expect(orch.isLoading).toBe(true);
+      });
+
+      await orch.submit(
+        { messages: [] },
+        { multitaskStrategy: "reject", onError: submitOnError }
+      );
+
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({ multitaskStrategy: "reject" })
+      );
+      expect(onError).toHaveBeenCalledWith(conflict, undefined);
+      expect(submitOnError).toHaveBeenCalledWith(conflict, undefined);
+      expect(orch.queueSize).toBe(0);
+
+      await orch.stop();
+      await firstSubmit;
+      orch.dispose();
+    });
   });
 
   describe("switchThread", () => {

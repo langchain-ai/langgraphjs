@@ -1030,6 +1030,47 @@ it("server-side queue: submitting three times rapidly queues the latter two", as
   }
 });
 
+it("server-side queue: multitaskStrategy 'reject' is forwarded instead of enqueued", async () => {
+  const client = new Client({ apiUrl: serverUrl });
+  // The embedded test server does not enforce "reject", so mimic its 409.
+  const conflict = new Error("HTTP 409: Thread is busy");
+  const createRun = client.runs.create.bind(client.runs);
+  const createSpy = vi
+    .spyOn(client.runs, "create")
+    .mockImplementation((threadId, assistantId, payload) =>
+      payload?.multitaskStrategy === "reject"
+        ? Promise.reject(conflict)
+        : createRun(threadId, assistantId, payload),
+    );
+  const onError = vi.fn();
+  const screen = await render(
+    <QueueStream apiUrl={serverUrl} client={client} onError={onError} />,
+  );
+
+  await screen.getByTestId("submit").click();
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
+    .toHaveTextContent("Not loading");
+  await expectMessageContents(screen, ["Hi", "Hey"]);
+
+  await screen.getByTestId("submit-then-reject").click();
+
+  await expect.poll(() => onError.mock.calls.length).toBe(1);
+  expect(onError).toHaveBeenCalledWith(conflict, undefined);
+  expect(createSpy).toHaveBeenCalledWith(
+    expect.any(String),
+    "agent",
+    expect.objectContaining({ multitaskStrategy: "reject" }),
+  );
+  await expect
+    .element(screen.getByTestId("queue-size"))
+    .toHaveTextContent("0");
+  await expect
+    .element(screen.getByTestId("loading"), { timeout: 5000 })
+    .toHaveTextContent("Not loading");
+  await expectMessageContents(screen, ["Hi", "Hey", "Msg1", "Hey"]);
+});
+
 it("server-side queue: queued inputs are displayed in queue.entries", async () => {
   const screen = await render(<QueueStream apiUrl={serverUrl} />);
 
