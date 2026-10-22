@@ -99,6 +99,25 @@ function mixedPositionalState(
   } as unknown as ThreadState<Record<string, unknown>>;
 }
 
+/** A completed delegation followed by a later model turn and its push task. */
+function staleDelegationState(
+  latestMessage: Record<string, unknown> = {
+    type: "ai",
+    tool_calls: [{ id: "ls-1", name: "ls" }],
+  }
+): ThreadState<Record<string, unknown>> {
+  const state = mixedPositionalState(
+    [{ id: "ls-1", name: "ls" }],
+    [{ taskId: "ls-uuid", index: 0 }]
+  );
+  state.values.messages = [
+    { type: "ai", tool_calls: [{ id: "task-old", name: "task" }] },
+    { type: "tool", tool_call_id: "task-old", content: "Completed report" },
+    latestMessage,
+  ];
+  return state;
+}
+
 describe("mapSubagentNamespaces", () => {
   it("maps directly from task result tool_call_id", () => {
     const history = [directMappingState("task-1", "tools", "uuid-1")];
@@ -277,6 +296,21 @@ describe("mapSubagentNamespaces", () => {
     const map = mapSubagentNamespaces(history, ["task-1"]);
     expect(map.get("task-1")).toBe("tools:correct-uuid");
   });
+
+  it.each([
+    {
+      name: "a different tool call",
+      message: { type: "ai", tool_calls: [{ id: "ls-1", name: "ls" }] },
+    },
+    {
+      name: "no tool calls",
+      message: { type: "ai", content: "Done" },
+    },
+  ])("does not reuse an older delegation after $name", ({ message }) => {
+    const history = [staleDelegationState(message)];
+
+    expect(mapSubagentNamespaces(history, ["task-old"]).size).toBe(0);
+  });
 });
 
 describe("resolveSubagentNamespaces", () => {
@@ -317,6 +351,36 @@ describe("resolveSubagentNamespaces", () => {
     const client = { threads: { getHistory } } as unknown as Client;
 
     await resolveSubagentNamespaces(client, "t1", ["never-resolves"]);
+    expect(getHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it("finds the direct mapping on page two instead of using a stale delegation", async () => {
+    const getHistory = vi
+      .fn()
+      .mockResolvedValueOnce([staleDelegationState()])
+      .mockResolvedValueOnce([
+        directMappingState("task-old", "tools", "subagent-uuid"),
+      ]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    const map = await resolveSubagentNamespaces(client, "t1", ["task-old"]);
+
+    expect(map.get("task-old")).toBe("tools:subagent-uuid");
+    expect(getHistory).toHaveBeenCalledTimes(2);
+    expect(getHistory).toHaveBeenNthCalledWith(2, "t1", {
+      limit: 20,
+      before: { configurable: { checkpoint_id: "cp-mixed" } },
+      signal: undefined,
+    });
+  });
+
+  it("leaves an off-page delegation unresolved within the two-page limit", async () => {
+    const getHistory = vi.fn().mockResolvedValue([staleDelegationState()]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    const map = await resolveSubagentNamespaces(client, "t1", ["task-old"]);
+
+    expect(map.size).toBe(0);
     expect(getHistory).toHaveBeenCalledTimes(2);
   });
 
