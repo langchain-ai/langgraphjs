@@ -269,6 +269,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       }
 
       reader = stream.getReader();
+      let streamDone = false;
 
       try {
         while (true) {
@@ -282,6 +283,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
 
           if (done) {
             // Stream completed successfully
+            streamDone = true;
             break;
           }
 
@@ -304,6 +306,13 @@ export async function* streamWithRetry<T extends { id?: string }>(
         }
       } finally {
         if (reader) {
+          if (!streamDone) {
+            // The consumer stopped early (`break`/`return`/`throw` out of the
+            // iterator) or the read failed. Cancel so the response body, and
+            // with it the HTTP connection, is closed instead of staying open
+            // until the server ends the stream.
+            await reader.cancel().catch(() => {});
+          }
           try {
             reader.releaseLock();
           } catch {
