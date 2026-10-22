@@ -70,6 +70,8 @@ interface StreamTasksResultOutput<
   Keys,
   StreamUpdates,
 > extends StreamTasksOutputBase {
+  /** The task's error write, if execution failed. */
+  error?: unknown;
   result: [Keys, StreamUpdates][];
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { wrap, tasksWithWrites, _readChannels, mapDebugTasks } from "./debug.js";
+import {
+  wrap,
+  tasksWithWrites,
+  _readChannels,
+  mapDebugTasks,
+  mapDebugTaskResults,
+} from "./debug.js";
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError } from "../errors.js";
@@ -404,4 +410,23 @@ describe("mapDebugTasks", () => {
     const [payload] = Array.from(mapDebugTasks([task]));
     expect(payload.metadata).toEqual({ tags: ["user-tag"] });
   });
+});
+
+describe("mapDebugTaskResults", () => {
+  it.each([null, false, 0, ""])(
+    "preserves an ERROR write with value %j",
+    (error) => {
+      const task = makeTask({});
+      const [payload] = Array.from(
+        mapDebugTaskResults([[task, [[ERROR, error]]]], ["output"])
+      );
+      expect(payload).toEqual({
+        id: task.id,
+        name: task.name,
+        error,
+        result: {},
+        interrupts: [],
+      });
+    }
+  );
 });
