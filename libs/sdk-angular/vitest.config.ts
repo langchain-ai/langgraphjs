@@ -11,6 +11,10 @@ const nonAngularFiles = [
   /multi-interrupt-graph\.ts/,
   /nested-interrupt-graph\.ts/,
   /deep-agent-interrupt\.ts/,
+  /streaming-constants\.ts/,
+  /streaming-models\.ts/,
+  /streaming-text-graph\.ts/,
+  /reply-then-interrupt-graph\.ts/,
   /vitest-browser-shim\.ts/,
   /\.test-d\.ts$/,
 ];

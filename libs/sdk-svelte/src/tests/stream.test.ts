@@ -86,7 +86,11 @@ it("onStop does not clear stream values", async () => {
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
+  // The submitted message stays. The reply cut off by stop() was never
+  // checkpointed and is dropped (#2962; see stream.stop-partial).
+  await expect
+    .element(screen.getByTestId("message-0"))
+    .toHaveTextContent("Hello");
 });
 
 it("make sure to pass metadata to the thread", async () => {

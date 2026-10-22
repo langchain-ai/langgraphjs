@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { createNodeWebSocket } from "@hono/node-ws";
+import { createNodeWebSocket, type NodeWebSocket } from "@hono/node-ws";
 import { FakeStreamingChatModel } from "@langchain/core/utils/testing";
 import {
   AIMessage,
@@ -49,6 +49,8 @@ import { graph as multiInterruptGraph } from "./multi-interrupt-graph.js";
 import { graph as nestedInterruptGraph } from "./nested-interrupt-graph.js";
 import { graph as deepAgentInterruptGraph } from "./deep-agent-interrupt.js";
 import { graph as interruptOnceGraph } from "./interrupt-once-graph.js";
+import { graph as streamingTextGraph } from "./streaming-text-graph.js";
+import { graph as replyThenInterruptGraph } from "./reply-then-interrupt-graph.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -708,20 +710,64 @@ const graphs: Record<string, AnyPregel> = {
   deepAgent: deepAgentGraph as unknown as AnyPregel,
   parallel_fanout: parallelFanoutGraph as unknown as AnyPregel,
   parallel_subgraph: parallelSubgraphGraph as unknown as AnyPregel,
+  streaming_text_graph: streamingTextGraph as unknown as AnyPregel,
+  reply_then_interrupt_graph: replyThenInterruptGraph as unknown as AnyPregel,
 };
 
 let httpServer: Server | null = null;
+let webSocketServer: NodeWebSocket["wss"] | null = null;
+
+/** Live protocol WebSockets per thread. */
+const threadSockets = new Map<
+  string,
+  Set<{ close(code: number, reason: string): void }>
+>();
+/** Protocol WebSockets each thread has opened, reconnects included. */
+const threadSocketOpens = new Map<string, number>();
+
+/**
+ * Test controls for a thread's protocol WebSockets. `POST
+ * /test-ws/:threadId/close/:code` closes the open ones with `:code`, as
+ * LangGraph Platform rejects a socket it accepted with 4000 + the HTTP
+ * status; `GET /test-ws/:threadId` returns how many the thread has opened.
+ */
+function mountWebSocketTestRoutes(app: Hono, wss: NodeWebSocket["wss"]) {
+  wss.on("connection", (ws, request) => {
+    const threadId = /\/threads\/([^/]+)\/stream\/events/.exec(
+      request.url ?? "",
+    )?.[1];
+    if (threadId == null) return;
+    threadSocketOpens.set(threadId, (threadSocketOpens.get(threadId) ?? 0) + 1);
+    const sockets = threadSockets.get(threadId) ?? new Set();
+    threadSockets.set(threadId, sockets);
+    sockets.add(ws);
+    ws.on("close", () => sockets.delete(ws));
+  });
+  app.get("/test-ws/:threadId", (c) =>
+    c.json({ opens: threadSocketOpens.get(c.req.param("threadId")) ?? 0 }),
+  );
+  app.post("/test-ws/:threadId/close/:code", (c) => {
+    const sockets = threadSockets.get(c.req.param("threadId")) ?? new Set();
+    const code = Number(c.req.param("code"));
+    for (const ws of sockets) ws.close(code, "rejected by test server");
+    return c.json({ closed: sockets.size });
+  });
+}
 
 export async function setup({ provide }: TestProject) {
   const app = new Hono();
   app.use("*", cors({ origin: "*", exposeHeaders: ["Content-Location"] }));
-  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+  const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
+    app,
+  });
+  webSocketServer = wss;
   const embedApp = createEmbedServer({
     graph: graphs,
     checkpointer,
     threads,
     upgradeWebSocket,
   });
+  mountWebSocketTestRoutes(app, wss);
   app.route("/", embedApp);
 
   await new Promise<void>((resolve) => {
@@ -736,6 +782,17 @@ export async function setup({ provide }: TestProject) {
 }
 
 export async function teardown() {
+  for (const client of webSocketServer?.clients ?? []) {
+    client.terminate();
+  }
+  await new Promise<void>((resolve) => {
+    if (webSocketServer == null) {
+      resolve();
+      return;
+    }
+    webSocketServer.close(() => resolve());
+  });
+  webSocketServer = null;
   httpServer?.closeAllConnections();
   httpServer?.close();
   httpServer = null;

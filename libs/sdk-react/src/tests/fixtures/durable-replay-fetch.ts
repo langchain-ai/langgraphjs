@@ -35,6 +35,66 @@ function eventStreamThreadId(href: string): string | null {
   return match?.[1] ?? null;
 }
 
+function commandsThreadId(href: string): string | null {
+  let pathname: string;
+  try {
+    pathname = new URL(href, "http://localhost").pathname;
+  } catch {
+    pathname = href;
+  }
+  const match = /\/threads\/([^/]+)\/commands$/.exec(pathname);
+  return match?.[1] ?? null;
+}
+
+/** `run_id` of a `run.start` command response, if the body is one. */
+async function runIdFromCommandResponse(
+  response: Response
+): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as {
+      result?: { run_id?: unknown };
+    };
+    return typeof body.result?.run_id === "string"
+      ? body.result.run_id
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRootLifecycle(frame: RecordedFrame): boolean {
+  if (frame.method !== "lifecycle") return false;
+  for (const line of frame.raw.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    try {
+      const namespace = (
+        JSON.parse(line.slice(5).trim()) as {
+          params?: { namespace?: unknown[] };
+        }
+      ).params?.namespace;
+      return Array.isArray(namespace) && namespace.length === 0;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Give a frame the `synth:<run_id>:<seq>` event id LangGraph Platform uses. */
+function withSynthesizedId(frame: RecordedFrame, runId: string): string {
+  const eventId = `synth:${runId}:${frame.seq}`;
+  return frame.raw
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("id:")) return `id: ${eventId}`;
+      if (!line.startsWith("data:")) return line;
+      // The SDK reads the id from the payload, not the SSE `id:` field.
+      const data = JSON.parse(line.slice(5).trim()) as Record<string, unknown>;
+      return `data: ${JSON.stringify({ ...data, event_id: eventId })}`;
+    })
+    .join("\n");
+}
+
 function parseFrame(raw: string): RecordedFrame | null {
   let eventId: string | undefined;
   let method: string | undefined;
@@ -68,6 +128,30 @@ export interface DurableReplayFetchOptions {
    * delivers correctly.
    */
   methods?: string[];
+  /**
+   * Deliver root `lifecycle` frames under `synth:<run_id>:<seq>` event ids,
+   * the only run identity LangGraph Platform puts on them. The embedded dev
+   * server numbers events instead, so a terminal of an earlier run that it
+   * replays to a new stream can't be told apart from the current run's.
+   *
+   * A frame keeps the run it was first seen under: the run whose
+   * `run.start` (or `input.respond`) this fetch saw answered last. Frames
+   * that arrive while such a command is in flight keep their numeric id.
+   */
+  synthesizeRunIds?: boolean;
+  /**
+   * Drop `checkpoints` frames for events a new stream replays, so replayed
+   * `values` arrive without their checkpoint envelope, as they do on
+   * LangGraph Platform. A frame counts as replayed when an earlier stream
+   * on the thread already delivered its `seq`.
+   */
+  stripReplayedCheckpoints?: boolean;
+  /**
+   * Wait this long before each replayed frame. The dev server writes its
+   * whole replay at once, so the client applies it in a single tick; over a
+   * real network it arrives spread out and every step of it renders.
+   */
+  replayFrameDelayMs?: number;
 }
 
 export interface DurableReplayFetch {
@@ -85,14 +169,78 @@ export function createDurableReplayFetch(
   const baseFetch = options.baseFetch ?? globalThis.fetch.bind(globalThis);
   const methods = new Set(options.methods ?? ["input.requested"]);
   const history = new Map<string, RecordedFrame[]>();
+  /** Per thread: the run started last, unset while a start is in flight. */
+  const latestRunId = new Map<string, string>();
+  /** Per thread: the run each root lifecycle frame was first seen under. */
+  const runIdBySeq = new Map<string, Map<number, string>>();
+
+  const runIdForFrame = (
+    threadId: string,
+    frame: RecordedFrame
+  ): string | undefined => {
+    let bySeq = runIdBySeq.get(threadId);
+    if (bySeq == null) {
+      bySeq = new Map();
+      runIdBySeq.set(threadId, bySeq);
+    }
+    const runId = bySeq.get(frame.seq) ?? latestRunId.get(threadId);
+    if (runId != null) bySeq.set(frame.seq, runId);
+    return runId;
+  };
+
+  /** Per thread: the highest `seq` any stream has delivered. */
+  const deliveredThrough = new Map<string, number>();
+  const rewritesFrames =
+    options.synthesizeRunIds === true ||
+    options.stripReplayedCheckpoints === true ||
+    (options.replayFrameDelayMs ?? 0) > 0;
+
+  /** The frame as this stream delivers it, or `null` to drop it. */
+  const deliver = (
+    threadId: string,
+    raw: string,
+    replayedThrough: number
+  ): string | null => {
+    const frame = parseFrame(raw);
+    if (frame == null) return raw;
+    deliveredThrough.set(
+      threadId,
+      Math.max(deliveredThrough.get(threadId) ?? 0, frame.seq)
+    );
+    if (
+      options.stripReplayedCheckpoints &&
+      frame.method === "checkpoints" &&
+      frame.seq <= replayedThrough
+    ) {
+      return null;
+    }
+    if (!options.synthesizeRunIds || !isRootLifecycle(frame)) return raw;
+    const runId = runIdForFrame(threadId, frame);
+    return runId == null ? raw : withSynthesizedId(frame, runId);
+  };
   let eventStreamOpens = 0;
   let replayedFrames = 0;
 
   const fetchImpl: typeof fetch = async (input, init) => {
-    const threadId = eventStreamThreadId(requestHref(input));
+    const href = requestHref(input);
+    const commandsThread = commandsThreadId(href);
+    if (
+      commandsThread != null &&
+      options.synthesizeRunIds &&
+      /"method":"(run\.start|input\.respond)"/.test(String(init?.body ?? ""))
+    ) {
+      latestRunId.delete(commandsThread);
+      const response = await baseFetch(input, init);
+      const runId = await runIdFromCommandResponse(response);
+      if (runId != null) latestRunId.set(commandsThread, runId);
+      return response;
+    }
+
+    const threadId = eventStreamThreadId(href);
     if (threadId == null) return baseFetch(input, init);
 
     eventStreamOpens += 1;
+    const replayedThrough = deliveredThrough.get(threadId) ?? 0;
     const response = await baseFetch(input, init);
     if (response.body == null) return response;
 
@@ -126,20 +274,37 @@ export function createDurableReplayFetch(
       async start(controller) {
         for (const frame of replay) {
           replayedFrames += 1;
-          controller.enqueue(encoder.encode(`${frame.raw}\n\n`));
+          const raw = rewritesFrames
+            ? deliver(threadId, frame.raw, replayedThrough)
+            : frame.raw;
+          if (raw != null) controller.enqueue(encoder.encode(`${raw}\n\n`));
         }
       },
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
+          if (rewritesFrames && pending !== "") {
+            controller.enqueue(encoder.encode(pending));
+          }
           controller.close();
           return;
         }
-        controller.enqueue(value);
+        // Rewriting needs whole frames; otherwise pass bytes through.
+        if (!rewritesFrames) controller.enqueue(value);
         pending += decoder.decode(value, { stream: true });
         const parts = pending.split("\n\n");
         pending = parts.pop() ?? "";
         for (const part of parts) {
+          if (rewritesFrames) {
+            const seq = parseFrame(part)?.seq ?? Number.POSITIVE_INFINITY;
+            if (options.replayFrameDelayMs && seq <= replayedThrough) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, options.replayFrameDelayMs)
+              );
+            }
+            const raw = deliver(threadId, part, replayedThrough);
+            if (raw != null) controller.enqueue(encoder.encode(`${raw}\n\n`));
+          }
           const frame = parseFrame(part);
           if (frame == null || !methods.has(frame.method)) continue;
           if (recorded.some((seen) => seen.eventId === frame.eventId)) continue;
