@@ -19,6 +19,7 @@ import {
   DEFAULT_IDLE_RECONNECT,
   type IdleReconnectMode,
 } from "../../utils/stream.js";
+import type { MultitaskStrategy } from "../../types.js";
 import type { AssembledMessage } from "./messages.js";
 import type { AgentServerAdapter } from "./transport.js";
 import {
@@ -36,7 +37,7 @@ export {
 
 export interface ExtendedRunStartParams extends RunStartParams {
   forkFrom?: string;
-  multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
+  multitaskStrategy?: MultitaskStrategy;
 }
 
 export type SubscribeOptions = Omit<SubscribeParams, "channels">;

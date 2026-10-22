@@ -15,6 +15,7 @@ import type {
   ThreadStatus,
   RunStatus,
   MultitaskStrategy,
+  CancelAction,
   OnConflictBehavior,
   IfNotExists,
   RunnableConfig,
@@ -157,7 +158,7 @@ class Queue {
 }
 
 class CancellationAbortController extends AbortController {
-  abort(reason: "rollback" | "interrupt") {
+  abort(reason: CancelAction) {
     super.abort(reason);
   }
 }
@@ -1630,7 +1631,7 @@ export class FileSystemRuns implements RunsRepo {
     threadId: string | undefined,
     runIds: string[],
     options: {
-      action?: "interrupt" | "rollback";
+      action?: CancelAction;
     },
     auth: AuthContext | undefined
   ) {
