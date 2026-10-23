@@ -4,6 +4,7 @@ import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
+import type { Message } from "../types.messages.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -1074,6 +1075,127 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("abandoned run after clear()/stop()", () => {
+    type State = { messages: Message[] };
+
+    // The interrupt aborts this run's controller mid-stream; the stream then
+    // returns normally instead of throwing AbortError, like streamWithRetry
+    // does when the abort lands during its reconnect backoff.
+    const runAbandoned = async (
+      interrupt: (manager: StreamManager<State>) => void | Promise<void>
+    ) => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+      const onSuccess = vi.fn();
+      const onFinish = vi.fn();
+
+      await manager.start(
+        async () => {
+          async function* gen() {
+            yield { event: "values" as const, data: { messages: [] } };
+            await interrupt(manager);
+          }
+          return gen();
+        },
+        {
+          getMessages: (values) => values.messages,
+          setMessages: (current, messages) => ({ ...current, messages }),
+          initialValues: { messages: [] },
+          callbacks: {},
+          onSuccess,
+          onError: vi.fn(),
+          onFinish,
+        }
+      );
+
+      return { onSuccess, onFinish };
+    };
+
+    it("should skip onSuccess when the stream ends normally after clear()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) => m.clear());
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("should skip onSuccess when the stream ends normally after stop()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) =>
+        m.stop({ messages: [] }, {})
+      );
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stream values", () => {
+    type State = { messages: Message[]; count?: number };
+
+    const startStream = (
+      manager: StreamManager<State>,
+      events: Array<{ event: string; data: unknown }>
+    ) =>
+      manager.start(async () => createMockStream(events) as never, {
+        getMessages: (values) => values.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+      });
+    let manager: StreamManager<State>;
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    it("ignores values from a non-subagent subgraph namespace", async () => {
+      await startStream(manager, [
+        {
+          event: "values",
+          data: {
+            messages: [{ id: "h1", type: "human", content: "hi" }],
+            count: 1,
+          },
+        },
+        {
+          event: "values|research:1",
+          data: { messages: [{ id: "s1", type: "ai", content: "notes" }] },
+        },
+      ]);
+
+      expect(manager.values).toEqual({
+        messages: [{ id: "h1", type: "human", content: "hi" }],
+        count: 1,
+      });
+    });
+  });
+
+  describe("throttle", () => {
+    it("notifies at most once per interval while values keep changing", () => {
+      vi.useFakeTimers();
+      try {
+        const manager = new StreamManager<TestState>(messageManager, {
+          throttle: 100,
+        });
+        const listener = vi.fn();
+        manager.subscribe(listener);
+
+        for (let i = 0; i < 10; i += 1) {
+          manager.setStreamValues({ messages: [], count: i });
+          vi.advanceTimersByTime(20);
+        }
+
+        expect(listener).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe("onError callback", () => {
     it("should keep prior interrupts visible when the next stream fails before values", async () => {
       const onError = vi.fn();
@@ -1497,6 +1619,75 @@ describe("StreamManager", () => {
   });
 
   describe("fetchSubagentHistory namespace resolution", () => {
+    it("does not bind a delegation to a newer turn's push tasks", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      // An older turn delegated "call-old", whose task result is outside the
+      // fetched history; the newest turn only calls a regular tool.
+      const delegation = {
+        type: "ai",
+        id: "ai-old",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-old",
+            name: "task",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      const regularToolCall = {
+        type: "ai",
+        id: "ai-new",
+        content: "",
+        tool_calls: [{ id: "call-ls", name: "ls", args: {} }],
+      };
+      sm.reconstructSubagents(
+        [delegation] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+
+      const getHistory = vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          if (opts?.checkpoint?.checkpoint_ns) {
+            return [
+              {
+                values: {
+                  messages: [{ type: "ai", id: "ai-ls", content: "ls output" }],
+                },
+              },
+            ];
+          }
+          return [
+            {
+              values: { messages: [delegation, regularToolCall] },
+              tasks: [
+                {
+                  id: "uuid-ls",
+                  name: "tools",
+                  path: ["__pregel_push", 0],
+                  checkpoint: null,
+                },
+              ],
+            },
+          ];
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as Parameters<
+          typeof sm.fetchSubagentHistory
+        >[0],
+        "thread-1"
+      );
+
+      expect(sm.getSubagent("call-old")?.messages).toEqual([]);
+    });
+
     it("prefers a completed task's direct mapping over a newer pending checkpoint's positional guess", async () => {
       /**
        * Regression test: the most recent checkpoint is a still-pending (e.g.

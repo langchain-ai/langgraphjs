@@ -502,16 +502,15 @@ export class StreamManager<
           const msgs = checkpoint.values[messagesKey];
           if (!Array.isArray(msgs)) continue;
 
+          // The newest AI message with tool calls made this checkpoint's push
+          // tasks; an older delegation must not be matched against them.
           let aiMessage: Record<string, unknown> | undefined;
           for (let i = msgs.length - 1; i >= 0; i -= 1) {
             const m = msgs[i] as Record<string, unknown>;
             if (
               m.type === "ai" &&
               Array.isArray(m.tool_calls) &&
-              m.tool_calls.length > 0 &&
-              (m.tool_calls as Array<{ name: string }>).some((tc) =>
-                this.subagentManager.isSubagentToolCall(tc.name)
-              )
+              m.tool_calls.length > 0
             ) {
               aiMessage = m;
               break;
@@ -669,9 +668,9 @@ export class StreamManager<
     let timeoutId: NodeJS.Timeout | number | undefined;
 
     const throttledListener = () => {
-      clearTimeout(timeoutId);
+      if (timeoutId !== undefined) return;
       timeoutId = setTimeout(() => {
-        clearTimeout(timeoutId);
+        timeoutId = undefined;
         listener();
       }, timeoutMs);
     };
@@ -789,9 +788,11 @@ export class StreamManager<
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
-      this.abortRef = new AbortController();
+      // clear() and stop() replace abortRef, so the run keeps its own.
+      const abort = new AbortController();
+      this.abortRef = abort;
 
-      const run = await action(this.abortRef.signal);
+      const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
 
       let streamError: StreamError | undefined;
@@ -936,7 +937,7 @@ export class StreamManager<
                 valuesData
               );
             }
-          } else {
+          } else if (namespace == null) {
             if (!clearedPreviousInterrupts) {
               // Clear stale __interrupt__ from the previous run once the new
               // stream starts delivering main values. This avoids carrying
@@ -1121,7 +1122,7 @@ export class StreamManager<
       // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
       // This avoids unnecessary HTTP calls (like history fetching) that would
       // delay the next queued stream from starting.
-      if (!this.abortRef.signal.aborted) {
+      if (!abort.signal.aborted) {
         const values = await options.onSuccess?.();
         if (typeof values !== "undefined" && this.queueSize === 0) {
           this.setStreamValues(values);
