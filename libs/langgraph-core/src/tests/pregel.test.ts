@@ -12780,6 +12780,46 @@ graph TD;
     }
   });
 
+  it("streamMode tools does not report an interrupted tool as failed", async () => {
+    const approveTool = tool(
+      async ({ action }: { action: string }) =>
+        `${action}: ${interrupt("approve?")}`,
+      { name: "approve", schema: z3.object({ action: z3.string() }) }
+    );
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<BaseMessage[]>({
+          reducer: messagesStateReducer,
+          default: () => [],
+        }),
+      })
+    )
+      .addNode("tools", new ToolNode([approveTool]))
+      .addEdge("__start__", "tools")
+      .compile({ checkpointer: await createCheckpointer() });
+    const config = { configurable: { thread_id: "1" } };
+    const toolEvents = async (input: Parameters<typeof graph.stream>[0]) =>
+      (
+        await gatherIterator(
+          graph.stream(input, { ...config, streamMode: ["tools"] })
+        )
+      ).map(([, payload]) => (payload as StreamToolsOutput).event);
+
+    const toolCall = new AIMessage({
+      content: "",
+      tool_calls: [
+        { id: "call_1", name: "approve", args: { action: "deploy" } },
+      ],
+    });
+    expect(await toolEvents({ messages: [toolCall] })).toEqual([
+      "on_tool_start",
+    ]);
+    expect(await toolEvents(new Command({ resume: "yes" }))).toEqual([
+      "on_tool_start",
+      "on_tool_end",
+    ]);
+  });
+
   it("streamMode without tools does not emit tools chunks", async () => {
     const AgentAnnotation = Annotation.Root({
       messages: Annotation<BaseMessage[]>({

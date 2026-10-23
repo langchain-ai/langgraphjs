@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Serialized } from "@langchain/core/load/serializable";
 import { StreamToolsHandler } from "../../pregel/stream.js";
 import { TAG_HIDDEN } from "../../constants.js";
+import { GraphInterrupt } from "../../errors.js";
 
 describe("StreamToolsHandler", () => {
   it("emits on_tool_start with namespace and toolCallId", () => {
@@ -155,5 +156,26 @@ describe("StreamToolsHandler", () => {
         error: err,
       },
     ]);
+  });
+
+  it("does not emit on_tool_error for an interrupted tool", () => {
+    const chunks: unknown[] = [];
+    const handler = new StreamToolsHandler((chunk) => chunks.push(chunk));
+
+    handler.handleToolStart(
+      {} as Serialized,
+      "{}",
+      "run-1",
+      undefined,
+      [],
+      {},
+      "my_tool",
+      "call_1"
+    );
+    const interrupt = new GraphInterrupt([{ value: "approve?" }]);
+    handler.handleToolError(interrupt, "run-1");
+
+    expect(chunks).toHaveLength(1);
+    expect(handler.runs["run-1"]).toBeUndefined();
   });
 });
