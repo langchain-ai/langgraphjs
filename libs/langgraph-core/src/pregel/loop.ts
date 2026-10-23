@@ -132,6 +132,63 @@ const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
 
+/** Trace only the saver I/O, without making callbacks part of persistence. */
+function traceCheckpointOperation<T>(
+  manager: CallbackManagerForChainRun | undefined,
+  operation: "getTuple" | "put" | "putWrites",
+  invoke: () => Promise<T>
+): Promise<T> {
+  if (!manager?.handlers.length) return invoke();
+
+  let started: Promise<CallbackManagerForChainRun | undefined>;
+  try {
+    started = manager
+      .getChild()
+      .handleChainStart(
+        {
+          lc: 1,
+          type: "not_implemented",
+          id: ["langgraph", "checkpoint", operation],
+        },
+        {},
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        `checkpoint.${operation}`
+      )
+      .catch(() => undefined);
+  } catch {
+    return invoke();
+  }
+
+  const finish = (failed: boolean) => {
+    // Keep both callback failures and callback latency out of saver promises.
+    // Never attach the saver error: it can contain checkpoint data.
+    void started
+      .then((run) =>
+        failed
+          ? run?.handleChainError(new Error("Checkpoint operation failed"))
+          : run?.handleChainEnd({})
+      )
+      .catch(() => {});
+  };
+
+  let saved: Promise<T>;
+  try {
+    // In particular, putWrites must still start synchronously and may throw.
+    saved = invoke();
+  } catch (error) {
+    finish(true);
+    throw error;
+  }
+  void saved.then(
+    () => finish(false),
+    () => finish(true)
+  );
+  return saved;
+}
+
 /**
  * Give the messages written to DeltaChannels stable ids, and return the writes
  * in `writes` that go to a DeltaChannel.
@@ -808,7 +865,9 @@ export class PregelLoop {
     if (!params.checkpointer) {
       saved = undefined;
     } else if (checkpointConfig.configurable?.[CONFIG_KEY_CHECKPOINT_ID]) {
-      saved = await params.checkpointer.getTuple(checkpointConfig);
+      saved = await traceCheckpointOperation(params.manager, "getTuple", () =>
+        params.checkpointer!.getTuple(checkpointConfig)
+      );
     } else if (config.configurable?.[CONFIG_KEY_REPLAY_STATE]) {
       const replayState = config.configurable[
         CONFIG_KEY_REPLAY_STATE
@@ -816,13 +875,19 @@ export class PregelLoop {
       saved = await replayState.getCheckpoint(
         config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] ?? "",
         params.checkpointer,
-        checkpointConfig
+        checkpointConfig,
+        (lookupConfig) =>
+          traceCheckpointOperation(params.manager, "getTuple", () =>
+            params.checkpointer!.getTuple(lookupConfig)
+          )
       );
       if (config.configurable) {
         delete config.configurable[CONFIG_KEY_RESUMING];
       }
     } else {
-      saved = await params.checkpointer.getTuple(checkpointConfig);
+      saved = await traceCheckpointOperation(params.manager, "getTuple", () =>
+        params.checkpointer!.getTuple(checkpointConfig)
+      );
       loadedLatest = true;
     }
     const hasPersistedParent = saved !== undefined;
@@ -873,7 +938,11 @@ export class PregelLoop {
       const superseded = await checkpointSuperseded(
         params.checkpointer,
         addressedConfig,
-        saved
+        saved,
+        (lookupConfig) =>
+          traceCheckpointOperation(params.manager, "getTuple", () =>
+            params.checkpointer!.getTuple(lookupConfig)
+          )
       );
       const isUpdateOrFork =
         checkpointMetadata.source === "update" ||
@@ -958,11 +1027,14 @@ export class PregelLoop {
     this._checkpointerChainedPromise = this._checkpointerChainedPromise
       .then(() => Promise.all(pendingDeltaWrites))
       .then(() => {
-        return this.checkpointer?.put(
-          input.config,
-          input.checkpoint,
-          input.metadata,
-          input.newVersions
+        if (this.checkpointer == null) return undefined;
+        return traceCheckpointOperation(this.manager, "put", () =>
+          this.checkpointer!.put(
+            input.config,
+            input.checkpoint,
+            input.metadata,
+            input.newVersions
+          )
         );
       });
     this._trackCheckpointerPromise(this._checkpointerChainedPromise);
@@ -1044,11 +1116,13 @@ export class PregelLoop {
       // orders its writes on replay (`writesSortKey`), `""` when the task
       // is unknown (e.g. `NULL_TASK_ID`), matching Python's
       // `task_path_str(task.path) if task else ""`.
-      const saved = this.checkpointer.putWrites(
-        config,
-        writesToSave,
-        taskId,
-        task != null ? taskPathStr(task.path) : ""
+      const saved = traceCheckpointOperation(this.manager, "putWrites", () =>
+        this.checkpointer!.putWrites(
+          config,
+          writesToSave,
+          taskId,
+          task != null ? taskPathStr(task.path) : ""
+        )
       );
       this._trackCheckpointerPromise(saved);
       if (deltaWrites.length > 0) this._pendingDeltaWrites.push(saved);
@@ -2308,11 +2382,13 @@ export class PregelLoop {
       group.push([ch, v]);
     }
     for (const { key, tid, path } of order) {
-      const saved = this.checkpointer.putWrites(
-        anchorWriteConfig,
-        grouped.get(key)!,
-        tid,
-        path
+      const saved = traceCheckpointOperation(this.manager, "putWrites", () =>
+        this.checkpointer!.putWrites(
+          anchorWriteConfig,
+          grouped.get(key)!,
+          tid,
+          path
+        )
       );
       this._trackCheckpointerPromise(saved);
       this._pendingDeltaWrites.push(saved);
@@ -2342,11 +2418,13 @@ export class PregelLoop {
     for (const [tid, ws] of Object.entries(byTask)) {
       const task = this.tasks[tid];
       this._trackCheckpointerPromise(
-        this.checkpointer.putWrites(
-          config,
-          ws,
-          tid,
-          task != null ? taskPathStr(task.path) : ""
+        traceCheckpointOperation(this.manager, "putWrites", () =>
+          this.checkpointer!.putWrites(
+            config,
+            ws,
+            tid,
+            task != null ? taskPathStr(task.path) : ""
+          )
         )
       );
     }
