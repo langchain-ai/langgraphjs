@@ -8,6 +8,7 @@ import { StateGraph } from "./state.js";
 import { ensureLangGraphConfig } from "../pregel/utils/config.js";
 import type { StreamMessagesHandler } from "../pregel/messages.js";
 import type { StreamProtocolMessagesHandler } from "../pregel/messages-v2.js";
+import { eventNamespace, isOutsideStream } from "../pregel/stream.js";
 import { messagesStateReducer, type Messages } from "./messages_reducer.js";
 
 /** @ignore */
@@ -83,17 +84,20 @@ export function pushMessage(
 
   if (messagesHandler || protocolMessagesHandler) {
     const metadata = config.metadata ?? {};
-    const namespace = (
-      (metadata.langgraph_checkpoint_ns ?? "") as string
-    ).split("|");
+    const checkpointNs = (metadata.langgraph_checkpoint_ns ?? "") as string;
+    const namespace = checkpointNs.split("|");
 
     if (messagesHandler) {
-      messagesHandler._emit(
-        [namespace, metadata],
-        validMessage,
-        undefined,
-        false
-      );
+      const options = messagesHandler.namespaceOptions;
+      const eventNs = eventNamespace(checkpointNs, metadata, options);
+      if (!isOutsideStream(eventNs, options)) {
+        messagesHandler._emit(
+          [eventNs, metadata],
+          validMessage,
+          undefined,
+          false
+        );
+      }
     } else if (protocolMessagesHandler) {
       // streamEvents v3 registers StreamProtocolMessagesHandler instead of
       // StreamMessagesHandler; without this branch, pushed messages are

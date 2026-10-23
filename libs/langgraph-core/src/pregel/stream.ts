@@ -5,7 +5,7 @@ import { Serialized } from "@langchain/core/load/serializable";
 import { isCheckpointEnvelope } from "../stream/convert.js";
 import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
-import { TAG_HIDDEN } from "../constants.js";
+import { PUSH, TAG_HIDDEN } from "../constants.js";
 
 /**
  * Optional chunk-level metadata carried alongside the payload. Used by
@@ -51,6 +51,54 @@ type AnyStreamOutput = StreamOutputMap<
   unknown,
   undefined
 >;
+
+/** Which `messages` and `tools` events a handler streams. */
+export type StreamNamespaceOptions = {
+  /** Also stream events from inside subgraphs. */
+  subgraphs: boolean;
+  /**
+   * Namespace of the graph the handler streams. Without `subgraphs`, events
+   * from that namespace still stream, so a node that streams its own subgraph
+   * receives the subgraph's events.
+   */
+  parentNs?: string;
+};
+
+/**
+ * The namespace an event streams under. With namespace options, that is the
+ * graph it ran in: its checkpoint namespace without the segment of the task
+ * that ran it, nor those of the tasks it was called from through `task()`,
+ * since tasks are not graphs. Without options, it is the full checkpoint
+ * namespace, which `streamEvents` v3 reads.
+ */
+export function eventNamespace(
+  checkpointNs: string,
+  metadata: Record<string, unknown>,
+  options: StreamNamespaceOptions | undefined
+): string[] {
+  const ns = checkpointNs.split("|");
+  if (options === undefined) return ns;
+  let path = metadata.langgraph_path;
+  let taskSegments = 1;
+  while (
+    Array.isArray(path) &&
+    path[0] === PUSH &&
+    path[path.length - 1] === true
+  ) {
+    taskSegments += 1;
+    path = path[1];
+  }
+  return ns.slice(0, Math.max(ns.length - taskSegments, 0));
+}
+
+/** Whether a handler with these options skips an event from namespace `ns`. */
+export function isOutsideStream(
+  ns: string[],
+  options: StreamNamespaceOptions | undefined
+): boolean {
+  if (options === undefined || options.subgraphs) return false;
+  return ns.length > 0 && ns.join("|") !== options.parentNs;
+}
 
 type ToolRunInfo = {
   ns: string[];
@@ -211,9 +259,15 @@ export class StreamToolsHandler extends BaseCallbackHandler {
 
   runs: Record<string, ToolRunInfo | undefined> = {};
 
-  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+  namespaceOptions?: StreamNamespaceOptions;
+
+  constructor(
+    streamFn: (streamChunk: StreamChunk) => void,
+    namespaceOptions?: StreamNamespaceOptions
+  ) {
     super();
     this.streamFn = streamFn;
+    this.namespaceOptions = namespaceOptions;
   }
 
   handleToolStart(
@@ -228,7 +282,12 @@ export class StreamToolsHandler extends BaseCallbackHandler {
   ) {
     if (!metadata || (tags && tags.includes(TAG_HIDDEN))) return;
 
-    const ns = (metadata.langgraph_checkpoint_ns as string)?.split("|") ?? [];
+    const checkpointNs = metadata.langgraph_checkpoint_ns as string | undefined;
+    const ns =
+      checkpointNs == null
+        ? []
+        : eventNamespace(checkpointNs, metadata, this.namespaceOptions);
+    if (isOutsideStream(ns, this.namespaceOptions)) return;
     const info: ToolRunInfo = {
       ns,
       toolCallId,
