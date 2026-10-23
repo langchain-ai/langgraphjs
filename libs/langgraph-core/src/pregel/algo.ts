@@ -1540,7 +1540,7 @@ function _scratchpad({
     subgraphCounter: 0,
     currentTaskInput,
     consumeNullResume: () => {
-      if (scratchpad.nullResume) {
+      if (scratchpad.nullResume != null) {
         delete scratchpad.nullResume;
         pendingWrites.splice(
           pendingWrites.findIndex(
