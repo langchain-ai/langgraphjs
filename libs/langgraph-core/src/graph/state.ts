@@ -35,6 +35,7 @@ import {
 } from "../pregel/write.js";
 import { ChannelRead, PregelNode } from "../pregel/read.js";
 import {
+  InclusiveNamedBarrierValue,
   NamedBarrierValue,
   NamedBarrierValueAfterFinish,
 } from "../channels/named_barrier_value.js";
@@ -58,6 +59,7 @@ import {
   CONFIG_KEY_NODE_ERROR,
   _getOverwriteValue,
   OVERWRITE,
+  WAITING_EDGE_CHANNEL_PREFIX,
 } from "../constants.js";
 import {
   InvalidUpdateError,
@@ -416,7 +418,7 @@ export class StateGraph<
   channels: Record<string, BaseChannel> = {};
 
   // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
-  waitingEdges: Set<[N[], N]> = new Set();
+  waitingEdges: Set<[N[], N, boolean?]> = new Set();
 
   /** @internal */
   _schemaDefinition: StateDefinition;
@@ -1238,11 +1240,102 @@ export class StateGraph<
     return this as StateGraph<SD, S, U, N | K, I, O, C>;
   }
 
+  /**
+   * Add an edge between nodes.
+   *
+   * With a single `startKey`, `endKey` is triggered whenever `startKey`
+   * completes.
+   *
+   * An array of `startKey` nodes creates a waiting edge: `endKey` is triggered
+   * once all of the listed nodes have completed, and once for the whole set
+   * rather than once per node. Same contract as Python's `add_edge`, which
+   * documents that the graph will wait for all of the start nodes to complete.
+   *
+   * A waiting edge releases only once every listed node has written to it, so
+   * if one of them never runs — a conditional edge did not select it, a
+   * {@link Command} routed past it, a node-level error handler ended that
+   * branch — then `endKey` is not triggered and no error is raised. Nodes
+   * further downstream are skipped with it, unless they have
+   * another live path into them. Listing a node in a router's `ends` does not
+   * change this: `ends` declares which nodes a branch *may* select, not which
+   * ones will run.
+   *
+   * The edge re-arms after it releases, so a loop that runs every listed node
+   * again triggers it again. A loop that re-enters only some of them leaves it
+   * waiting for the rest — and the rest may arrive on a later pass, which
+   * triggers `endKey` with writes made in different passes. A router that
+   * alternates between listed nodes releases the edge that way rather than
+   * never.
+   *
+   * Separate edges into the same target are not equivalent to a waiting edge.
+   * They trigger `endKey` on every arrival rather than once for all of them, so
+   * when the branches have different lengths `endKey` runs once per superstep
+   * in which any of them completes.
+   *
+   * Between those two lies a third semantics: run `endKey` **once**, with
+   * whatever arrived, whether that is every listed node or one of them.
+   * `{ inclusive: true }` spells it directly: the edge waits as long as
+   * anything in the graph is running or scheduled, and once the run quiesces it
+   * releases with the listed nodes that did complete. A `Send` in flight is a
+   * scheduled task, so it holds the release rather than being missed; the edge
+   * re-arms after it releases, the same as the default; and an edge that
+   * received nothing stays silent. Inside `endKey`, `waitingEdgeRelease()`
+   * tells a settled-run release from an ordinary one, naming the nodes that
+   * arrived and the ones that never ran. An interrupted run keeps the edge holding its writes and
+   * reports its target in `next`, so a paused run does not read as a finished
+   * one — the release happens once the resumed run settles. Because the edge
+   * re-arms, a listed node that completes again after a release runs `endKey`
+   * again: one run per release cycle, the same accumulation rule the default barrier
+   * has. Two inclusive edges that list each other's targets never settle —
+   * each release re-arms the other — and such a run ends only at the recursion
+   * limit. A `Send` addressed to `endKey` itself still runs it separately —
+   * the single-run property is about edges, not sends. Several inclusive
+   * edges into one `endKey` that release together produce a single run whose
+   * release record is their union. Removing the option later is safe for
+   * existing threads: an edge holding writes restores the names it has seen and
+   * follows the default wait-for-all rule from there. Not compatible with
+   * `defer: true` on `endKey`, which already postpones the node to the end of
+   * the run.
+   *
+   * Without the option, separate edges plus `defer: true` on `endKey`
+   * approximate the same semantics — every arrival is a trigger and deferring
+   * collapses them into one run — at two costs: `endKey` waits for unrelated
+   * work elsewhere in the graph, since `defer` means "last", not "after my
+   * predecessors", and a `Send` addressed to `endKey` still runs it separately.
+   *
+   * An edge that never released is reported as `waitingEdges` on the snapshot
+   * returned by `getState()`, naming the nodes that completed and the ones that
+   * never ran. That requires a checkpointer: `getState()` throws without one.
+   *
+   * @example Waiting edge — `d` is triggered once `b` and `c` have completed
+   * ```ts
+   * graph.addEdge(["b", "c"], "d");
+   * ```
+   *
+   * @example Separate edges — `d` runs when `b` completes, and again for `c`
+   * ```ts
+   * graph.addEdge("b", "d");
+   * graph.addEdge("c", "d");
+   * ```
+   *
+   * @example Inclusive waiting edge — `d` runs once, with whichever of `b` and
+   * `c` a conditional edge selected
+   * ```ts
+   * graph.addEdge(["b", "c"], "d", { inclusive: true });
+   * ```
+   */
   override addEdge(
     startKey: typeof START | N | N[],
-    endKey: N | typeof END
+    endKey: N | typeof END,
+    options?: { inclusive?: boolean }
   ): this {
     if (typeof startKey === "string") {
+      if (options?.inclusive) {
+        throw new Error(
+          "options.inclusive requires an array of start nodes: a single-start " +
+            "edge has nothing to wait for."
+        );
+      }
       return super.addEdge(startKey, endKey);
     }
 
@@ -1268,7 +1361,7 @@ export class StateGraph<
       throw new Error(`Need to add a node named "${endKey}" first`);
     }
 
-    this.waitingEdges.add([startKey, endKey]);
+    this.waitingEdges.add([startKey, endKey, options?.inclusive ?? false]);
 
     return this;
   }
@@ -1618,8 +1711,8 @@ export class StateGraph<
     for (const [start, end] of this.edges) {
       compiled.attachEdge(start, end);
     }
-    for (const [starts, end] of this.waitingEdges) {
-      compiled.attachEdge(starts, end);
+    for (const [starts, end, inclusive] of this.waitingEdges) {
+      compiled.attachEdge(starts, end, inclusive);
     }
     for (const [start, branches] of Object.entries(this.branches)) {
       for (const [name, branch] of Object.entries(branches)) {
@@ -1965,7 +2058,11 @@ export class CompiledStateGraph<
     }
   }
 
-  attachEdge(starts: N | N[] | "__start__", end: N | "__end__"): void {
+  attachEdge(
+    starts: N | N[] | "__start__",
+    end: N | "__end__",
+    inclusive?: boolean
+  ): void {
     if (end === END) return;
     if (typeof starts === "string") {
       this.nodes[starts].writers.push(
@@ -1975,11 +2072,22 @@ export class CompiledStateGraph<
         )
       );
     } else if (Array.isArray(starts)) {
-      const channelName = `join:${starts.join("+")}:${end}`;
+      const channelName = `${WAITING_EDGE_CHANNEL_PREFIX}${starts.join(
+        "+"
+      )}:${end}`;
+      if (inclusive && this.builder.nodes[end].defer) {
+        throw new Error(
+          `addEdge options.inclusive is not supported together with ` +
+            `defer: true on "${end}": defer already postpones the node to ` +
+            `the end of the run.`
+        );
+      }
       // register channel
       this.channels[channelName as string | N] = this.builder.nodes[end].defer
         ? new NamedBarrierValueAfterFinish(new Set(starts))
-        : new NamedBarrierValue(new Set(starts));
+        : inclusive
+          ? new InclusiveNamedBarrierValue(new Set(starts))
+          : new NamedBarrierValue(new Set(starts));
       // subscribe to channel
       this.nodes[end].triggers.push(channelName);
       // publish to channel

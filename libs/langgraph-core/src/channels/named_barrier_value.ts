@@ -27,10 +27,18 @@ export class NamedBarrierValue<Value> extends BaseChannel<
     this.seen = new Set<Value>();
   }
 
-  fromCheckpoint(checkpoint?: Value[]) {
+  fromCheckpoint(checkpoint?: Value[] | [Value[], boolean]) {
     const empty = new NamedBarrierValue<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      empty.seen = new Set(checkpoint);
+      // Restore tolerance: the inclusive and defer variants checkpoint
+      // `[seen, flag]`. A thread resumed after the option was removed hands
+      // that tuple here; take the seen list rather than corrupting the set —
+      // the edge then follows this class's wait-for-all rule.
+      empty.seen = new Set(
+        Array.isArray(checkpoint[0])
+          ? (checkpoint[0] as Value[])
+          : (checkpoint as Value[])
+      );
     }
     return empty as this;
   }
@@ -81,6 +89,131 @@ export class NamedBarrierValue<Value> extends BaseChannel<
 }
 
 /**
+ * The barrier behind `addEdge([...], target, { inclusive: true })`. Between
+ * supersteps it behaves like {@link NamedBarrierValue}; additionally the
+ * Pregel loop may release it once the run settles — no task running, none scheduled,
+ * so no further write can arrive — while only some of its names were seen.
+ *
+ * The release is a flag rather than fabricated writes: `seen` keeps only the
+ * nodes that actually wrote, so a checkpoint never claims a node arrived when
+ * it did not, and the released target can be told exactly which nodes came.
+ * `consume()` clears the flag with the writes, so the edge stays single-shot
+ * and re-arms like the default barrier.
+ * @internal
+ */
+/**
+ * Narrow a channel to the inclusive barrier without `instanceof`, matching how
+ * the rest of the codebase tells channels apart.
+ * @internal
+ */
+export const isInclusiveNamedBarrierValue = <Value = string>(
+  channel: unknown
+): channel is InclusiveNamedBarrierValue<Value> =>
+  (channel as { lc_graph_name?: string } | undefined)?.lc_graph_name ===
+  "InclusiveNamedBarrierValue";
+
+export class InclusiveNamedBarrierValue<Value> extends BaseChannel<
+  void,
+  Value,
+  [Value[], boolean]
+> {
+  lc_graph_name = "InclusiveNamedBarrierValue";
+
+  names: Set<Value>; // Names of nodes that we want to wait for.
+
+  seen: Set<Value>;
+
+  released: boolean;
+
+  constructor(names: Set<Value>) {
+    super();
+    this.names = names;
+    this.seen = new Set<Value>();
+    this.released = false;
+  }
+
+  fromCheckpoint(checkpoint?: [Value[], boolean] | Value[]) {
+    const empty = new InclusiveNamedBarrierValue<Value>(this.names);
+    if (typeof checkpoint !== "undefined") {
+      if (Array.isArray(checkpoint[0])) {
+        const [seen, released] = checkpoint as [Value[], boolean];
+        empty.seen = new Set(seen);
+        empty.released = released;
+      } else {
+        // Restore compatibility: an earlier shape stored the bare seen list.
+        empty.seen = new Set(checkpoint as Value[]);
+      }
+    }
+    return empty as this;
+  }
+
+  update(values: Value[]): boolean {
+    let updated = false;
+    for (const nodeName of values) {
+      if (this.names.has(nodeName)) {
+        if (!this.seen.has(nodeName)) {
+          this.seen.add(nodeName);
+          updated = true;
+        }
+      } else {
+        throw new InvalidUpdateError(
+          `Value ${JSON.stringify(nodeName)} not in names ${JSON.stringify(
+            this.names
+          )}`
+        );
+      }
+    }
+    return updated;
+  }
+
+  /**
+   * Release the barrier with the names seen so far. Returns those names, or
+   * `undefined` when there is nothing to release: an empty barrier stays
+   * silent, and a complete one releases through completeness on its own.
+   */
+  releaseArrived(): Value[] | undefined {
+    if (
+      this.released ||
+      this.seen.size === 0 ||
+      areSetsEqual(this.names, this.seen)
+    ) {
+      return undefined;
+    }
+    this.released = true;
+    return [...this.seen];
+  }
+
+  get(): void {
+    if (!this.released && !areSetsEqual(this.names, this.seen)) {
+      throw new EmptyChannelError();
+    }
+    return undefined;
+  }
+
+  checkpoint(): [Value[], boolean] {
+    return [[...this.seen], this.released];
+  }
+
+  consume(): boolean {
+    if (
+      this.released ||
+      (this.seen && this.names && areSetsEqual(this.seen, this.names))
+    ) {
+      this.seen = new Set<Value>();
+      this.released = false;
+      return true;
+    }
+    return false;
+  }
+
+  isAvailable(): boolean {
+    return (
+      this.released || (!!this.names && areSetsEqual(this.names, this.seen))
+    );
+  }
+}
+
+/**
  * A channel that waits until all named values are received before making the value ready to be made available.
  * It is only made available after finish() is called.
  * @internal
@@ -105,12 +238,19 @@ export class NamedBarrierValueAfterFinish<Value> extends BaseChannel<
     this.finished = false;
   }
 
-  fromCheckpoint(checkpoint?: [Value[], boolean]) {
+  fromCheckpoint(checkpoint?: [Value[], boolean] | Value[]) {
     const empty = new NamedBarrierValueAfterFinish<Value>(this.names);
     if (typeof checkpoint !== "undefined") {
-      const [seen, finished] = checkpoint;
-      empty.seen = new Set(seen);
-      empty.finished = finished;
+      if (Array.isArray(checkpoint[0])) {
+        const [seen, finished] = checkpoint as [Value[], boolean];
+        empty.seen = new Set(seen);
+        empty.finished = finished;
+      } else {
+        // Restore tolerance: a thread checkpointed before `defer: true` was
+        // added stored the bare seen list; destructuring it would have made
+        // `seen` the characters of the first node name.
+        empty.seen = new Set(checkpoint as Value[]);
+      }
     }
     return empty as this;
   }
