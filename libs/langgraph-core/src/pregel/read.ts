@@ -228,8 +228,23 @@ export class PregelNode<
     } else if (writers.length > 0) {
       return new RunnableSequence({
         first: this.bound,
-        middle: writers.slice(0, writers.length - 1),
-        last: writers[writers.length - 1],
+        // Finish publication after the node returns, despite sibling cancellation.
+        // Otherwise state updates can be checkpointed without their routing writes.
+        last: new RunnableCallable({
+          trace: false,
+          recurse: false,
+          func: async (input: RunOutput, config: RunnableConfig) => {
+            const writeConfig = {
+              ...config,
+              signal: new AbortController().signal,
+            };
+            let output = input;
+            for (const writer of writers) {
+              output = await writer.invoke(output, writeConfig);
+            }
+            return output;
+          },
+        }),
         omitSequenceTags: true,
       });
     } else {
