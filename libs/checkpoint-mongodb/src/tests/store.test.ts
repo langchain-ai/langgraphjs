@@ -278,6 +278,19 @@ describe("MongoDBStore", () => {
       ).rejects.toThrow(InvalidNamespaceError);
       expect(mockCollection.aggregate).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ["an empty prefix", { matchConditions: [{ matchType: "prefix", path: [] }] }],
+      ["a 'langgraph' root label", { matchConditions: [{ matchType: "prefix", path: ["langgraph"] }] }],
+      ["a wildcard label", { matchConditions: [{ matchType: "suffix", path: ["*"] }] }],
+      ["a maxDepth", { maxDepth: 2 }],
+      ["a maxDepth of 0", { maxDepth: 0 }],
+    ])("should accept %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ limit: 100, offset: 0, ...op } as any])
+      ).resolves.toEqual([[]]);
+      expect(mockCollection.aggregate).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("batch", () => {
