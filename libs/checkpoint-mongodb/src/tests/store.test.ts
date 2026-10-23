@@ -1,5 +1,8 @@
 import { MongoDBStore } from "../store";
-import type { PutOperation } from "@langchain/langgraph-checkpoint";
+import {
+  InvalidNamespaceError,
+  type PutOperation,
+} from "@langchain/langgraph-checkpoint";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 describe("MongoDBStore", () => {
@@ -102,6 +105,16 @@ describe("MongoDBStore", () => {
       await expect(
         store.batch([{ namespace: ["langgraph", "data"], key: "doc1", value: { title: "Test" } } as PutOperation])
       ).rejects.toThrow('Root label for namespace cannot be "langgraph"');
+    });
+
+    it.each([
+      ["a colon", ["docs:invalid"]],
+      ["a NUL byte", ["docs\x00invalid"]],
+    ])("should throw InvalidNamespaceError for a label with %s", async (_name, namespace) => {
+      await expect(
+        store.batch([{ namespace, key: "doc1", value: { title: "Test" } } as PutOperation])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
     });
   });
 
@@ -239,6 +252,44 @@ describe("MongoDBStore", () => {
           },
         },
       });
+    });
+
+    it.each([
+      ["a non-string label", { matchConditions: [{ matchType: "prefix", path: [{ $literal: "a" }] }] }],
+      ["a numeric label", { matchConditions: [{ matchType: "suffix", path: [1] }] }],
+      ["a path that is not an array", { matchConditions: [{ matchType: "prefix", path: "users" }] }],
+      // Same rules as listNamespaces(): labels can't contain "." or be empty.
+      ["a label with a period", { matchConditions: [{ matchType: "prefix", path: ["a.b"] }] }],
+      ["an empty label", { matchConditions: [{ matchType: "suffix", path: [""] }] }],
+      ["an unknown match type", { matchConditions: [{ matchType: "contains", path: ["users"] }] }],
+      ["a non-numeric maxDepth", { maxDepth: { $literal: 1 } }],
+      ["a negative maxDepth", { maxDepth: -1 }],
+      ["a fractional maxDepth", { maxDepth: 1.5 }],
+    ])("should reject %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ limit: 100, offset: 0, ...op } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it("should reject a non-numeric maxDepth passed to listNamespaces", async () => {
+      await expect(
+        store.listNamespaces({ maxDepth: { $literal: 1 } as any })
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an empty prefix", { matchConditions: [{ matchType: "prefix", path: [] }] }],
+      ["a 'langgraph' root label", { matchConditions: [{ matchType: "prefix", path: ["langgraph"] }] }],
+      ["a wildcard label", { matchConditions: [{ matchType: "suffix", path: ["*"] }] }],
+      ["a maxDepth", { maxDepth: 2 }],
+      ["a maxDepth of 0", { maxDepth: 0 }],
+    ])("should accept %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ limit: 100, offset: 0, ...op } as any])
+      ).resolves.toEqual([[]]);
+      expect(mockCollection.aggregate).toHaveBeenCalledTimes(1);
     });
   });
 

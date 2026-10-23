@@ -11,6 +11,7 @@ import {
   type SearchOperation,
   type SearchItem,
   InvalidNamespaceError,
+  validateNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 /**
@@ -31,35 +32,43 @@ function computeNamespacePath(namespace: string[]): string[] {
 }
 
 /**
- * Validates the provided namespace.
- * @param namespace The namespace to validate.
- * @throws {InvalidNamespaceError} If the namespace is invalid.
+ * Validates a list namespaces operation before its labels and `maxDepth` are
+ * placed in an aggregation `$expr`. `batch()` can receive operations that
+ * never went through `BaseStore.listNamespaces`, so the check lives here.
+ * @param op The operation to validate.
+ * @throws {InvalidNamespaceError} If a match condition or `maxDepth` is invalid.
  */
-function validateNamespace(namespace: string[]): void {
-  if (namespace.length === 0) {
-    throw new InvalidNamespaceError("Namespace cannot be empty.");
+function validateListNamespacesOperation(op: ListNamespacesOperation): void {
+  const { matchConditions, maxDepth } = op;
+  if (matchConditions !== undefined && !Array.isArray(matchConditions)) {
+    throw new InvalidNamespaceError("matchConditions must be an array.");
   }
-  for (const label of namespace) {
-    if (typeof label !== "string") {
+  for (const condition of matchConditions ?? []) {
+    if (
+      condition?.matchType !== "prefix" &&
+      condition?.matchType !== "suffix"
+    ) {
       throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels ` +
-          `must be strings, but got ${typeof label}.`
+        `Invalid match type '${String(condition?.matchType)}'. Expected "prefix" or "suffix".`
       );
     }
-    if (label.includes(".")) {
+    if (!Array.isArray(condition.path)) {
       throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
+        "Match condition path must be an array of strings."
       );
     }
-    if (label === "") {
-      throw new InvalidNamespaceError(
-        `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
-      );
-    }
+    // The same check BaseStore.listNamespaces applies to its prefix and suffix.
+    validateNamespace(condition.path, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
   }
-  if (namespace[0] === "langgraph") {
+  if (
+    maxDepth !== undefined &&
+    !(Number.isInteger(maxDepth) && maxDepth >= 0)
+  ) {
     throw new InvalidNamespaceError(
-      `Root label for namespace cannot be "langgraph". Got: ${namespace}`
+      `maxDepth must be a non-negative integer, but got ${String(maxDepth)}.`
     );
   }
 }
@@ -449,6 +458,7 @@ export class MongoDBStore extends BaseStore {
   private async listNamespacesOp(
     op: ListNamespacesOperation
   ): Promise<string[][]> {
+    validateListNamespacesOperation(op);
     const { matchConditions, maxDepth, limit, offset } = op;
 
     const pipeline: Record<string, any>[] = [];
