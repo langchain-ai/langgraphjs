@@ -313,6 +313,11 @@ export class PregelRunner {
       throw new Error("Abort");
     }
 
+    // A step with no task to run, such as one whose tasks were all served from
+    // the cache, has nothing to abort. Return before adding an abort listener
+    // that would never be removed.
+    if (tasks.length === 0) return;
+
     let startedTasksCount = 0;
 
     let listener: (() => void) | undefined;
