@@ -164,4 +164,4 @@ export async function createArchive(
   }
 }
 
-export { BYTES_PER_MIB };
+export { BYTES_PER_MIB, MAX_SIZE };

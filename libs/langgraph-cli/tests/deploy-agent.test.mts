@@ -11,6 +11,7 @@ vi.mock("../src/cli/utils/analytics.mjs", () => ({
 }));
 vi.mock("../src/cli/utils/archive.mjs", () => ({
   BYTES_PER_MIB: 1024 * 1024,
+  MAX_SIZE: 200 * 1024 * 1024,
   createArchive: async (configPath: string) => ({
     archivePath: configPath,
     fileSize: 0,
@@ -68,27 +69,42 @@ async function run(...args: string[]) {
 }
 
 // `sent` is the upload's headers apart from Content-Length.
+const GCS_DEFAULTS = {
+  "content-type": "application/gzip",
+  "x-goog-content-length-range": "0,209715200",
+};
 const AGENT_DEPLOYS = [
   {
+    label: "new deployment, returned headers",
     existing: false,
     uploadHeaders: {
-      "Content-Type": "application/gzip",
+      "Content-Type": "application/x-gzip",
       "x-ms-blob-type": "BlockBlob",
       "content-length": "1",
-    },
+    } as unknown,
+    sent: { "content-type": "application/x-gzip", "x-ms-blob-type": "BlockBlob" },
+  },
+  {
+    label: "existing deployment, no returned headers",
+    existing: true,
+    uploadHeaders: undefined as unknown,
+    sent: GCS_DEFAULTS,
+  },
+  {
+    label: "returned headers without a Content-Type",
+    existing: true,
+    uploadHeaders: { "x-ms-blob-type": "BlockBlob" } as unknown,
     sent: { "content-type": "application/gzip", "x-ms-blob-type": "BlockBlob" },
   },
   {
+    label: "malformed returned headers",
     existing: true,
-    uploadHeaders: undefined,
-    sent: {
-      "content-type": "application/gzip",
-      "x-goog-content-length-range": "0,209715200",
-    },
+    uploadHeaders: ["x-ms-blob-type", "BlockBlob"] as unknown,
+    sent: GCS_DEFAULTS,
   },
 ];
 
-it.each(AGENT_DEPLOYS)("deploys by agent (existing: $existing)", async (c) => {
+it.each(AGENT_DEPLOYS)("deploys by agent ($label)", async (c) => {
   const { existing, uploadHeaders, sent } = c;
   fetchMock.mockResolvedValueOnce(
     json({
