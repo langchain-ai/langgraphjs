@@ -4,82 +4,46 @@ const NULL = "\0".charCodeAt(0);
 const COLON = ":".charCodeAt(0);
 const SPACE = " ".charCodeAt(0);
 
-const TRAILING_NEWLINE = [CR, LF];
-
 export function BytesLineDecoder() {
   let buffer: Uint8Array[] = [];
-  let trailingCr = false;
+  let discardLeadingLf = false;
 
   return new TransformStream<Uint8Array, Uint8Array>({
     start() {
       buffer = [];
-      trailingCr = false;
+      discardLeadingLf = false;
     },
 
     transform(chunk, controller) {
-      // See https://docs.python.org/3/glossary.html#term-universal-newlines
-      let text = chunk;
-
-      // Handle trailing CR from previous chunk
-      if (trailingCr) {
-        text = joinArrays([[CR], text]);
-        trailingCr = false;
+      if (!chunk.length) return;
+      let start = 0;
+      if (discardLeadingLf) {
+        if (chunk[0] === LF) start = 1;
+        discardLeadingLf = false;
       }
 
-      // Check for trailing CR in current chunk
-      if (text.length > 0 && text.at(-1) === CR) {
-        trailingCr = true;
-        text = text.subarray(0, -1);
+      for (let i = start; i < chunk.length; i += 1) {
+        if (chunk[i] !== CR && chunk[i] !== LF) continue;
+
+        const line = chunk.subarray(start, i);
+        if (buffer.length) {
+          buffer.push(line);
+          controller.enqueue(joinArrays(buffer));
+          buffer = [];
+        } else {
+          controller.enqueue(line);
+        }
+
+        // A CR terminates the line immediately. Only a following LF needs
+        // to be skipped, even when it arrives in a later chunk.
+        if (chunk[i] === CR) {
+          if (chunk[i + 1] === LF) i += 1;
+          else discardLeadingLf = i === chunk.length - 1;
+        }
+        start = i + 1;
       }
 
-      if (!text.length) return;
-      const trailingNewline = TRAILING_NEWLINE.includes(text.at(-1)!);
-
-      const lastIdx = text.length - 1;
-      const { lines } = text.reduce<{ lines: Uint8Array[]; from: number }>(
-        (acc, cur, idx) => {
-          if (acc.from > idx) return acc;
-
-          if (cur === CR || cur === LF) {
-            acc.lines.push(text.subarray(acc.from, idx));
-            if (cur === CR && text[idx + 1] === LF) {
-              acc.from = idx + 2;
-            } else {
-              acc.from = idx + 1;
-            }
-          }
-
-          if (idx === lastIdx && acc.from <= lastIdx) {
-            acc.lines.push(text.subarray(acc.from));
-          }
-
-          return acc;
-        },
-        { lines: [], from: 0 }
-      );
-
-      if (lines.length === 1 && !trailingNewline) {
-        buffer.push(lines[0]);
-        return;
-      }
-
-      if (buffer.length) {
-        // Include existing buffer in first line
-        buffer.push(lines[0]);
-        lines[0] = joinArrays(buffer);
-        buffer = [];
-      }
-
-      if (!trailingNewline) {
-        // If the last segment is not newline terminated,
-        // buffer it for the next chunk
-        if (lines.length) buffer = [lines.pop()!];
-      }
-
-      // Enqueue complete lines
-      for (const line of lines) {
-        controller.enqueue(line);
-      }
+      if (start < chunk.length) buffer.push(chunk.subarray(start));
     },
 
     flush(controller) {
