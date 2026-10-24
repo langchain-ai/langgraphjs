@@ -62,7 +62,7 @@ describe("MongoDBStore", () => {
       expect(calls).toHaveLength(1);
       const { updateOne } = calls[0];
       expect(updateOne.filter).toEqual({
-        namespace: { $eq: ["documents", "user123"] },
+        namespace: ["documents", "user123"],
         key: { $eq: "doc1" },
       });
       expect(updateOne.update.$set.value).toEqual({ title: "Test", content: "Hello" });
@@ -80,11 +80,18 @@ describe("MongoDBStore", () => {
         expect.arrayContaining([
           expect.objectContaining({
             deleteOne: expect.objectContaining({
-              filter: { namespace: { $eq: ["documents", "user123"] }, key: { $eq: "doc1" } },
+              filter: { namespace: ["documents", "user123"], key: { $eq: "doc1" } },
             }),
           }),
         ])
       );
+    });
+
+    it("should reject a string namespace on delete", async () => {
+      await expect(store.delete("documents" as any, "doc1")).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
     });
 
     it("should throw InvalidNamespaceError for empty namespace", async () => {
@@ -130,17 +137,19 @@ describe("MongoDBStore", () => {
     it("should compare an object key as a value", async () => {
       await store.get(["profiles"], { $ne: "alice" } as any);
       expect(mockCollection.findOne).toHaveBeenCalledWith({
-        namespace: { $eq: ["profiles"] },
+        namespace: ["profiles"],
         key: { $eq: { $ne: "alice" } },
       });
     });
 
-    it("should compare an object namespace passed to batch() as a value", async () => {
-      await store.batch([{ namespace: { $exists: true }, key: "alice" } as any]);
-      expect(mockCollection.findOne).toHaveBeenCalledWith({
-        namespace: { $eq: { $exists: true } },
-        key: { $eq: "alice" },
-      });
+    it.each([
+      ["a string", "profiles"],
+      ["an object", { $exists: true }],
+    ])("should reject %s as a namespace passed to batch()", async (_name, namespace) => {
+      await expect(store.batch([{ namespace, key: "alice" } as any])).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
     });
 
     it("should compare an object key as a value when refreshing the TTL on read", async () => {
@@ -153,7 +162,7 @@ describe("MongoDBStore", () => {
 
       await ttlStore.get(["profiles"], { $ne: "alice" } as any);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { namespace: { $eq: ["profiles"] }, key: { $eq: { $ne: "alice" } } },
+        { namespace: ["profiles"], key: { $eq: { $ne: "alice" } } },
         expect.anything(),
         expect.anything()
       );

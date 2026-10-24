@@ -142,11 +142,17 @@ export type MongoDBStoreParams = {
 };
 
 /**
- * `$eq` matches an object key or namespace as a value, where a bare
- * `{ namespace, key }` filter would run it as a query operator.
+ * MongoDB matches a string namespace against any stored namespace containing
+ * it, and an object can be a query operator, so only an array is accepted.
+ * `$eq` compares the key as a plain value even when it is an object.
  */
 function itemFilter(namespace: string[], key: string) {
-  return { namespace: { $eq: namespace }, key: { $eq: key } };
+  if (!Array.isArray(namespace)) {
+    throw new InvalidNamespaceError(
+      `Namespace must be an array of strings, but got ${typeof namespace}.`
+    );
+  }
+  return { namespace, key: { $eq: key } };
 }
 
 /**

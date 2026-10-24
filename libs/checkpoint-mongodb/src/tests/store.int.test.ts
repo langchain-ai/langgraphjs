@@ -366,12 +366,17 @@ describe("MongoDBStore Integration Tests", () => {
       expect(await ttlStore.get(namespace, objectKey)).toBeNull();
     });
 
-    it("should compare an object namespace passed to batch() as a value", async () => {
-      const [item] = await store.batch([
-        { namespace: { $exists: true }, key: "alice" } as any,
-      ]);
+    it("should reject a string namespace on get and delete", async () => {
+      await expect(store.get("profiles" as any, "alice")).rejects.toThrow("Namespace must be an array");
+      await expect(store.delete("profiles" as any, "bob")).rejects.toThrow("Namespace must be an array");
 
-      expect(item).toBeNull();
+      expect(await valueOf("bob")).toEqual({ name: "Bob" });
+    });
+
+    it("should reject an object namespace passed to batch()", async () => {
+      await expect(
+        store.batch([{ namespace: { $exists: true }, key: "alice" } as any])
+      ).rejects.toThrow("Namespace must be an array");
     });
 
     it("should compare an object prefix label passed to batch() as a value", async () => {
