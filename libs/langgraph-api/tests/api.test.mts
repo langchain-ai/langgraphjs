@@ -25,6 +25,8 @@ import {
 import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { connect } from "node:net";
 import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
@@ -1347,6 +1349,135 @@ describe("runs", () => {
         client.runs.stream(thread.thread_id, "non-existent", { input })
       )
     ).rejects.toThrow(/No assistant found for/);
+  });
+
+  const postAndDropBeforeTheResponse = async (
+    path: string,
+    body: Record<string, unknown>
+  ) => {
+    const url = new URL(path, API_URL);
+    const payload = JSON.stringify(body);
+    const socket = connect({ host: url.hostname, port: Number(url.port) });
+    socket.write(
+      [
+        `POST ${url.pathname} HTTP/1.1`,
+        `Host: ${url.host}`,
+        "Content-Type: application/json",
+        `Content-Length: ${Buffer.byteLength(payload)}`,
+        "",
+        payload,
+      ].join("\r\n"),
+      () => socket.destroy()
+    );
+    await once(socket, "close");
+  };
+
+  it.concurrent.for([
+    { stateless: false, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: false, onDisconnect: "continue", status: "success" },
+    { stateless: true, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: true, onDisconnect: "continue", status: "success" },
+  ] as const)(
+    "stream request dropped before the response (stateless: $stateless, on_disconnect: $onDisconnect) leaves the run $status",
+    async ({ stateless, onDisconnect, status }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+      const thread = stateless ? undefined : await client.threads.create();
+
+      await postAndDropBeforeTheResponse(
+        stateless
+          ? "/runs/stream"
+          : `/threads/${thread!.thread_id}/runs/stream`,
+        {
+          assistant_id: assistant.assistant_id,
+          input: { messages: [{ type: "human", content: "foo" }], sleep: 1 },
+          config: globalConfig,
+          metadata: { marker },
+          on_completion: "keep",
+          on_disconnect: onDisconnect,
+          stream_resumable: true,
+        }
+      );
+
+      const findRun = async () => {
+        const [owner] = stateless
+          ? await client.threads.search({ metadata: { marker } })
+          : [thread!];
+        if (owner == null) return undefined;
+        const [run] = await client.runs.list(owner.thread_id);
+        return run;
+      };
+      let run = await findRun();
+      for (let attempt = 0; run == null && attempt < 50; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        run = await findRun();
+      }
+      expect(run).toBeDefined();
+
+      await client.runs.join(run!.thread_id, run!.run_id);
+      expect((await client.runs.get(run!.thread_id, run!.run_id)).status).toBe(
+        status
+      );
+    }
+  );
+
+  it.concurrent.for([
+    { onDisconnect: "cancel", threadLeft: false },
+    { onDisconnect: "continue", threadLeft: true },
+  ] as const)(
+    "stateless stream request deleted on completion and dropped before the response (on_disconnect: $onDisconnect) leaves its thread: $threadLeft",
+    async ({ onDisconnect, threadLeft }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+
+      await postAndDropBeforeTheResponse("/runs/stream", {
+        assistant_id: assistant.assistant_id,
+        input: { messages: [{ type: "human", content: "foo" }], sleep: 3 },
+        config: globalConfig,
+        metadata: { marker },
+        on_disconnect: onDisconnect,
+        stream_resumable: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const threads = await client.threads.search({ metadata: { marker } });
+      expect(threads.length > 0).toBe(threadLeft);
+    }
+  );
+
+  it.concurrent("cancelling a pending stateless run with wait deletes it and its thread", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const run = await client.runs.create(null, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+
+    await client.runs.cancel(run.thread_id, run.run_id, true);
+
+    await expect(client.threads.get(run.thread_id)).rejects.toThrow(/HTTP 404/);
+  });
+
+  it.concurrent("cancelling a pending stateless run keeps its thread and the other runs on it", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const input = { messages: [{ type: "human", content: "foo" }] };
+    const pending = await client.runs.create(null, assistant.assistant_id, {
+      input,
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+    const other = await client.runs.create(
+      pending.thread_id,
+      assistant.assistant_id,
+      { input, config: globalConfig, multitaskStrategy: "enqueue" }
+    );
+
+    await client.runs.cancel(pending.thread_id, pending.run_id);
+    await client.runs.join(pending.thread_id, other.run_id);
+
+    expect(
+      (await client.runs.get(pending.thread_id, other.run_id)).status
+    ).toBe("success");
   });
 });
 

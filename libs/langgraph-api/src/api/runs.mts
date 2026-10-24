@@ -499,7 +499,10 @@ api.post(
     const { wait, action } = c.req.valid("query");
 
     await runs().cancel(thread_id, [run_id], { action }, c.var.auth);
-    if (wait) await runs().join(run_id, thread_id, c.var.auth);
+    // A cancelled pending stateless run is deleted, so there is nothing to wait for.
+    if (wait && (await runs().get(run_id, thread_id, c.var.auth)) != null) {
+      await runs().join(run_id, thread_id, c.var.auth);
+    }
     return c.body(null, wait ? 204 : 202);
   }
 );

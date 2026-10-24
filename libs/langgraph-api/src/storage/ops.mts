@@ -1662,7 +1662,17 @@ export class FileSystemRuns implements RunsRepo {
         control?.abort(options.action ?? "interrupt");
 
         if (run.status === "pending") {
-          if (control || action !== "rollback") {
+          if (control == null && run.kwargs.temporary) {
+            // No worker will run it now, so nothing else deletes it, or its
+            // temporary thread once no other run is left on it.
+            delete STORE.runs[runId];
+            const threadHasOtherRuns = Object.values(STORE.runs).some(
+              (other) => other.thread_id === run.thread_id
+            );
+            if (!threadHasOtherRuns) {
+              promises.push(this.threads.delete(run.thread_id, undefined));
+            }
+          } else if (control || action !== "rollback") {
             run.status = "interrupted";
             run.updated_at = new Date();
 
@@ -1844,12 +1854,11 @@ export class FileSystemRuns implements RunsRepo {
           }
         }
 
-        if (
-          signal?.aborted &&
-          options?.cancelOnDisconnect &&
-          threadId != null
-        ) {
-          await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
+        if (signal?.aborted && options?.cancelOnDisconnect) {
+          const run = await runs.get(runId, threadId, auth);
+          if (run?.status === "pending" || run?.status === "running") {
+            await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
+          }
         }
       });
     }
