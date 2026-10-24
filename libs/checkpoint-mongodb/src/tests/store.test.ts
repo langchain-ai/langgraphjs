@@ -21,6 +21,7 @@ describe("MongoDBStore", () => {
     const collectionMock = {
       updateOne: vi.fn().mockResolvedValue({ ok: 1 }),
       findOne: vi.fn().mockResolvedValue(null),
+      findOneAndUpdate: vi.fn().mockResolvedValue(null),
       find: vi.fn(() => createFindCursor()),
       deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
       createIndex: vi.fn().mockResolvedValue("namespace_1_key_1"),
@@ -62,7 +63,7 @@ describe("MongoDBStore", () => {
       const { updateOne } = calls[0];
       expect(updateOne.filter).toEqual({
         namespace: ["documents", "user123"],
-        key: "doc1",
+        key: { $eq: "doc1" },
       });
       expect(updateOne.update.$set.value).toEqual({ title: "Test", content: "Hello" });
       expect(updateOne.upsert).toBe(true);
@@ -79,11 +80,18 @@ describe("MongoDBStore", () => {
         expect.arrayContaining([
           expect.objectContaining({
             deleteOne: expect.objectContaining({
-              filter: { namespace: ["documents", "user123"], key: "doc1" },
+              filter: { namespace: ["documents", "user123"], key: { $eq: "doc1" } },
             }),
           }),
         ])
       );
+    });
+
+    it("should reject a string namespace on delete", async () => {
+      await expect(store.delete("documents" as any, "doc1")).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
     });
 
     it("should throw InvalidNamespaceError for empty namespace", async () => {
@@ -125,6 +133,40 @@ describe("MongoDBStore", () => {
         createdAt: now, updatedAt: now,
       });
     });
+
+    it("should compare an object key as a value", async () => {
+      await store.get(["profiles"], { $ne: "alice" } as any);
+      expect(mockCollection.findOne).toHaveBeenCalledWith({
+        namespace: ["profiles"],
+        key: { $eq: { $ne: "alice" } },
+      });
+    });
+
+    it.each([
+      ["a string", "profiles"],
+      ["an object", { $exists: true }],
+    ])("should reject %s as a namespace passed to batch()", async (_name, namespace) => {
+      await expect(store.batch([{ namespace, key: "alice" } as any])).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should compare an object key as a value when refreshing the TTL on read", async () => {
+      const ttlStore = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        ttl: { defaultTtl: 60, refreshOnRead: true },
+      });
+
+      await ttlStore.get(["profiles"], { $ne: "alice" } as any);
+      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
+        { namespace: ["profiles"], key: { $eq: { $ne: "alice" } } },
+        expect.anything(),
+        expect.anything()
+      );
+    });
   });
 
   describe("search", () => {
@@ -143,8 +185,16 @@ describe("MongoDBStore", () => {
       ]);
 
       expect(findMock.mock.calls[0][0]).toEqual({
-        "namespace.0": "users",
-        "namespace.1": "profiles",
+        "namespace.0": { $eq: "users" },
+        "namespace.1": { $eq: "profiles" },
+      });
+    });
+
+    it("should compare a filter $eq operand as a value", async () => {
+      await store.search(["products"], { filter: { name: { $eq: { $regex: "" } } } });
+      expect(mockCollection.find).toHaveBeenCalledWith({
+        "namespace.0": { $eq: "products" },
+        "value.name": { $eq: { $regex: "" } },
       });
     });
 
@@ -440,8 +490,8 @@ describe("MongoDBStore", () => {
       ]);
 
       for (const [pipeline, expectedMatch] of [
-        [capturedPipelines[0], { "namespace.0": "team/alice" }],
-        [capturedPipelines[1], { "namespace.0": "team", "namespace.1": "alice" }],
+        [capturedPipelines[0], { "namespace.0": { $eq: "team/alice" } }],
+        [capturedPipelines[1], { "namespace.0": { $eq: "team" }, "namespace.1": { $eq: "alice" } }],
       ] as const) {
         const stages = pipeline.map((stage: any) => Object.keys(stage)[0]);
         const matchIdx = stages.indexOf("$match");
