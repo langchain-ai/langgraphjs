@@ -1282,6 +1282,7 @@ export class FileSystemThreads implements ThreadsRepo {
 export class FileSystemRuns implements RunsRepo {
   private readonly conn: FileSystemPersistence<Store>;
   private readonly threads: FileSystemThreads;
+  private requeuedPreviousProcessRuns = false;
 
   public readonly stream: RunsStreamRepo;
 
@@ -1296,6 +1297,27 @@ export class FileSystemRuns implements RunsRepo {
     attempt: number;
     signal: AbortSignal;
   }> {
+    if (!this.requeuedPreviousProcessRuns) {
+      this.requeuedPreviousProcessRuns = true;
+      // No run is running in this process before the first claim, so a
+      // `running` run was cut off by a restart (a hot reload) and would
+      // otherwise block its thread for good.
+      await this.conn.with((STORE) => {
+        const cutOff = Object.values(STORE.runs).filter(
+          (run) => run.status === "running"
+        );
+        for (const run of cutOff) {
+          run.status = "pending";
+          run.updated_at = new Date();
+        }
+        if (cutOff.length) {
+          logger.warn("Retrying runs cut off by a server restart", {
+            run_ids: cutOff.map((run) => run.run_id),
+          });
+        }
+      });
+    }
+
     yield* this.conn.withGenerator(async function* (STORE, options) {
       const now = new Date();
       const pendingRunIds = Object.values(STORE.runs)
@@ -1577,6 +1599,12 @@ export class FileSystemRuns implements RunsRepo {
         }
       }
 
+      // Ends the run's open streams, which would otherwise wait out their
+      // timeout and report the run as not found.
+      StreamManager.readers[run_id]?.push({
+        topic: `run:${run_id}:control`,
+        data: "done",
+      });
       if (thread_id != null) checkpointer.delete(thread_id, run_id);
       delete STORE.runs[run_id];
       return run.run_id;
@@ -1682,7 +1710,7 @@ export class FileSystemRuns implements RunsRepo {
 
             promises.push(this.delete(runId, threadId, auth));
           }
-        } else {
+        } else if (run.status !== "running") {
           logger.warn("Attempted to cancel non-pending run.", {
             run_id: runId,
             status: run.status,
