@@ -195,7 +195,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -220,7 +220,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, "v1"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "v1" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -245,8 +245,8 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
-              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, "settings"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, { $literal: "settings" }] },
               { $gte: [{ $size: "$namespace" }, 3] },
             ],
           },
