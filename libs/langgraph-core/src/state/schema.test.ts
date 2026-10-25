@@ -939,6 +939,25 @@ describe("StateSchema", () => {
         const state = await graph.getState(config);
         expect(state.values.cache).toBeUndefined();
       });
+
+      it("should allow the same UntrackedValue in state and input schemas", async () => {
+        const scratch = new UntrackedValue(z.array(z.string()).default([]));
+
+        const graph = new StateGraph({
+          state: new StateSchema({ count: z.number().default(0), scratch }),
+          input: new StateSchema({ scratch }),
+        })
+          .addNode("process", (state) => ({
+            count: state.count + 1,
+            scratch: ["a"],
+          }))
+          .addEdge(START, "process")
+          .addEdge("process", END)
+          .compile();
+
+        const result = await graph.invoke({});
+        expect(result).toEqual({ count: 1, scratch: ["a"] });
+      });
     });
 
     describe("DeltaValue", () => {

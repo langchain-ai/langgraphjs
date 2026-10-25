@@ -672,4 +672,22 @@ describe("UntrackedValueChannel", () => {
       expect(channel.lc_graph_name).toBe("UntrackedValue");
     });
   });
+
+  describe("equals", () => {
+    it("should compare guard and ignore initialValueFactory", () => {
+      const a = new UntrackedValueChannel<string>({
+        initialValueFactory: () => "x",
+      });
+      const b = new UntrackedValueChannel<string>({
+        initialValueFactory: () => "x",
+      });
+      const c = new UntrackedValueChannel<string>({
+        guard: false,
+        initialValueFactory: () => "x",
+      });
+      expect(a.equals(b)).toBe(true);
+      expect(a.equals(c)).toBe(false);
+      expect(a.equals(new EphemeralValue<string>())).toBe(false);
+    });
+  });
 });

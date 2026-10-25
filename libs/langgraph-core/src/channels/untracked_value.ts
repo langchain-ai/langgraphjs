@@ -4,6 +4,12 @@ import { BaseChannel } from "./base.js";
 // Sentinel value for missing/unset
 const MISSING = Symbol.for("langgraph.channel.missing");
 
+const isUntrackedValueChannel = (
+  value: BaseChannel
+): value is UntrackedValueChannel<unknown> => {
+  return value != null && value.lc_graph_name === "UntrackedValue";
+};
+
 /**
  * Stores the last value received, never checkpointed.
  *
@@ -109,5 +115,17 @@ export class UntrackedValueChannel<Value> extends BaseChannel<
    */
   isAvailable(): boolean {
     return this._value !== MISSING;
+  }
+
+  /**
+   * Compare this channel with another channel for equality.
+   * Two UntrackedValueChannel channels are equal if they have the same guard.
+   * This follows the Python implementation. The initial value factory is not
+   * compared since StateSchema creates a new one each time it builds channels.
+   */
+  equals(other: BaseChannel): boolean {
+    if (this === other) return true;
+    if (!isUntrackedValueChannel(other)) return false;
+    return this.guard === other.guard;
   }
 }
