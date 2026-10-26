@@ -916,6 +916,10 @@ export class CompiledGraph<
       } else if (this.interruptAfter?.includes(key)) {
         metadata.__interrupt = "after";
       }
+      const toolNames = _getToolNames(node);
+      if (toolNames !== undefined) {
+        metadata.__tools = toolNames;
+      }
       if (xray) {
         const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
         const drawableSubgraph =
@@ -1124,6 +1128,10 @@ export class CompiledGraph<
       } else if (this.interruptAfter?.includes(key)) {
         metadata.__interrupt = "after";
       }
+      const toolNames = _getToolNames(node);
+      if (toolNames !== undefined) {
+        metadata.__tools = toolNames;
+      }
       if (xray) {
         const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
         const drawableSubgraph =
@@ -1273,6 +1281,19 @@ function _escapeMermaidKeywords(key: string) {
     return `"${key}"`;
   }
   return key;
+}
+
+// Duck-typed so tool nodes from other packages are covered too.
+function _getToolNames(node: unknown): string[] | undefined {
+  const tools = (node as { tools?: unknown })?.tools;
+  if (
+    !Array.isArray(tools) ||
+    tools.length === 0 ||
+    !tools.every((tool) => typeof tool?.name === "string")
+  ) {
+    return undefined;
+  }
+  return tools.map((tool) => tool.name);
 }
 
 /**
