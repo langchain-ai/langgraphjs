@@ -278,6 +278,18 @@ describe("MongoDBStore Integration Tests", () => {
       expect(namespaces).not.toContainEqual(["ns_users", "profiles"]);
     });
 
+    it("should match labels that start with '$'", async () => {
+      await store.batch([
+        { namespace: ["$team", "members"], key: "k1", value: { v: 1 } },
+        { namespace: ["$"], key: "k2", value: { v: 2 } },
+      ] as PutOperation[]);
+
+      expect(await store.listNamespaces({ prefix: ["$team"] })).toEqual([
+        ["$team", "members"],
+      ]);
+      expect(await store.listNamespaces({ suffix: ["$"] })).toEqual([["$"]]);
+    });
+
     it("should filter by suffix matchCondition", async () => {
       const results = await store.batch([{
         matchConditions: [{ matchType: "suffix" as const, path: ["profiles"] }],
