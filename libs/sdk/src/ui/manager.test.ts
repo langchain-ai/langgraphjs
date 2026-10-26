@@ -1814,6 +1814,84 @@ describe("StreamManager", () => {
       expect(contents).not.toContain("Stale pending result");
     });
 
+    it("matches a subagent call to its own Send when a regular tool call comes first", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      const aiMessage = {
+        type: "ai",
+        id: "ai-mixed",
+        content: "",
+        tool_calls: [
+          { id: "call-search", name: "web_search", args: {} },
+          {
+            id: "call-task",
+            name: "task",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+
+      const pushTask = (id: string, index: number) => ({
+        id,
+        name: "tools",
+        path: ["__pregel_push", index, false],
+        checkpoint: null,
+      });
+      const byNamespace: Record<string, Array<{ values: unknown }>> = {
+        "tools:uuid-task": [
+          {
+            values: {
+              messages: [
+                { type: "ai", id: "ai-sub", content: "Subagent progress" },
+              ],
+            },
+          },
+        ],
+        "tools:uuid-search": [
+          {
+            values: {
+              messages: [
+                { type: "ai", id: "ai-search", content: "Search state" },
+              ],
+            },
+          },
+        ],
+      };
+      const getHistory = vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          const ns = opts?.checkpoint?.checkpoint_ns;
+          if (ns) return byNamespace[ns] ?? [];
+          return [
+            {
+              values: { messages: [aiMessage] },
+              tasks: [pushTask("uuid-search", 0), pushTask("uuid-task", 1)],
+            },
+          ];
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as Parameters<
+          typeof sm.fetchSubagentHistory
+        >[0],
+        "thread-1"
+      );
+
+      const contents = (sm.getSubagent("call-task")?.messages ?? []).map(
+        (m) => (m as { content?: unknown }).content
+      );
+      expect(contents).toContain("Subagent progress");
+      expect(contents).not.toContain("Search state");
+    });
+
     it.each([
       {
         label: "legacy Send path [PUSH, i]",

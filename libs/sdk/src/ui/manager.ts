@@ -521,38 +521,20 @@ export class StreamManager<
           }
 
           /**
-           * Only consider subagent tool calls from the AI message — not all tool
-           * calls. This ensures regular tool calls (searchWeb, queryDatabase, etc.)
-           * are never mistaken for subagents even when they appear in the same step.
+           * Every tool call gets a Send, so a push task's Send index is its
+           * tool call's position in the AI message. Regular tool calls
+           * (searchWeb, queryDatabase, etc.) keep their own tasks and are never
+           * mistaken for subagents.
            */
-          const subagentToolCalls = (
-            aiMessage.tool_calls as Array<{ id?: string; name: string }>
-          ).filter((tc) => this.subagentManager.isSubagentToolCall(tc.name));
-
-          if (subagentToolCalls.length === 0) {
-            continue;
-          }
-
-          /**
-           * Sort push tasks by Send index (path[1]) to align with tool_calls order
-           */
-          const sorted = [...pushTasks].sort((a, b) => {
-            const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
-            const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
-            return ai - bi;
-          });
-
-          for (
-            let i = 0;
-            i < sorted.length && i < subagentToolCalls.length;
-            i += 1
-          ) {
-            const tc = subagentToolCalls[i];
-            const task = sorted[i];
+          const toolCalls = aiMessage.tool_calls as Array<{
+            id?: string;
+            name: string;
+          }>;
+          for (const task of pushTasks) {
+            const tc = toolCalls[task.path![1] as number];
             if (
               tc?.id &&
-              task.id &&
-              task.name &&
+              this.subagentManager.isSubagentToolCall(tc.name) &&
               toFetch.some(([id]) => id === tc.id) &&
               !toolCallIdToNamespace.has(tc.id)
             ) {
