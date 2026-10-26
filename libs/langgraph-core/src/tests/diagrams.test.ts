@@ -1,13 +1,14 @@
 import { test, expect } from "vitest";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
-import { createReactAgent } from "../prebuilt/index.js";
+import { createReactAgent, ToolNode } from "../prebuilt/index.js";
 import { FakeSearchTool } from "./utils.js";
 import { FakeToolCallingChatModel } from "./utils.models.js";
 import {
   Annotation,
   Command,
   END,
+  MessagesAnnotation,
   NodeError,
   START,
   StateGraph,
@@ -51,6 +52,24 @@ graph TD;
 \tclassDef first fill-opacity:0;
 \tclassDef last fill:#bfb6fc;
 `);
+});
+
+test("drawing leaves node metadata unchanged", async () => {
+  const app = new StateGraph(MessagesAnnotation)
+    .addNode("tools", new ToolNode([new FakeSearchTool()]), {
+      metadata: { owner: "search" },
+    })
+    .addEdge(START, "tools")
+    .compile({ interruptBefore: ["tools"] });
+
+  for (const drawable of [app.getGraph(), await app.getGraphAsync()]) {
+    expect(drawable.nodes.tools.metadata).toEqual({
+      owner: "search",
+      __interrupt: "before",
+      __tools: ["search_api"],
+    });
+  }
+  expect(app.nodes.tools.metadata).toEqual({ owner: "search" });
 });
 
 test("implicit end edge for terminal nodes", async () => {

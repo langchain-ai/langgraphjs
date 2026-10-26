@@ -905,7 +905,7 @@ export class CompiledGraph<
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
-      const metadata = nodeSpec.metadata ?? {};
+      const metadata = { ...nodeSpec.metadata };
       if (
         this.interruptBefore?.includes(key) &&
         this.interruptAfter?.includes(key)
@@ -1117,7 +1117,7 @@ export class CompiledGraph<
     ][]) {
       const displayKey = _escapeMermaidKeywords(key);
       const node = nodeSpec.runnable;
-      const metadata = nodeSpec.metadata ?? {};
+      const metadata = { ...nodeSpec.metadata };
       if (
         this.interruptBefore?.includes(key) &&
         this.interruptAfter?.includes(key)
