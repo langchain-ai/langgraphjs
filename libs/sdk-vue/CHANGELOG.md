@@ -1,5 +1,12 @@
 # @langchain/vue
 
+## 1.2.8
+
+### Patch Changes
+
+- Updated dependencies [[`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde)]:
+  - @langchain/langgraph-sdk@1.12.8
+
 ## 1.2.7
 
 ### Patch Changes
