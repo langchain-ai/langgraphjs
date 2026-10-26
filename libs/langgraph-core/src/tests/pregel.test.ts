@@ -10780,6 +10780,85 @@ graph TD;
     ]);
   });
 
+  it("streamMode messages keeps every message a node returns", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("reply", () => ({
+        messages: [new AIMessage("first"), new AIMessage("second")],
+      }))
+      .addNode("handoff", () => {
+        return new Command({
+          update: {
+            messages: [new AIMessage({ id: "from-command", content: "third" })],
+          },
+        });
+      })
+      .addEdge("__start__", "reply")
+      .addEdge("reply", "handoff")
+      .compile({ checkpointer: await createCheckpointer() });
+    const config = { configurable: { thread_id: "1" } };
+
+    const chunks = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, streamMode: ["messages"] })
+    );
+
+    const streamed = chunks.map(
+      ([, [message]]) => (message as BaseMessage).content
+    );
+    expect.soft(streamed).toEqual(["first", "second", "third"]);
+    const { values } = await graph.getState(config);
+    expect(values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+  });
+
+  it("streamMode messages streams the results of tools that return a Command", async () => {
+    const handoff = tool(
+      async (_input, config) =>
+        new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "handed off",
+                tool_call_id: config.toolCall?.id ?? "",
+              }),
+            ],
+          },
+        }),
+      { name: "handoff", schema: z3.object({}) }
+    );
+    const search = tool(async () => "found", {
+      name: "search",
+      schema: z3.object({}),
+    });
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("tools", new ToolNode([handoff, search]))
+      .addEdge(START, "tools")
+      .compile();
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        {
+          messages: [
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { id: "call_1", name: "handoff", args: {} },
+                { id: "call_2", name: "search", args: {} },
+              ],
+            }),
+          ],
+        },
+        { streamMode: "messages" }
+      )
+    );
+
+    expect(
+      chunks.map(([message]) => (message as BaseMessage).content).sort()
+    ).toEqual(["found", "handed off"]);
+  });
+
   it("should not stream input messages in streamMode: messages", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
       .addNode("callModel", async () => {
