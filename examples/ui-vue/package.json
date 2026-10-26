@@ -16,7 +16,7 @@
     "@langchain/openai": "^1.6.0",
     "@langchain/vue": "workspace:*",
     "vue": "^3.5.43",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",
