@@ -108,7 +108,7 @@ export class DeltaChannel<
     }
   ) {
     super();
-    const snapshotFrequency = options?.snapshotFrequency ?? 1000;
+    const snapshotFrequency = options?.snapshotFrequency ?? 100;
     if (!Number.isInteger(snapshotFrequency) || snapshotFrequency <= 0) {
       throw new Error(
         `snapshotFrequency must be a positive integer, got ${snapshotFrequency}`
