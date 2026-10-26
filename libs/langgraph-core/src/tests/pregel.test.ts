@@ -12881,6 +12881,13 @@ graph TD;
         }),
       ],
     };
+    const pushingGraph = new StateGraph(MessagesAnnotation)
+      .addNode("push", async () => {
+        pushMessage(new AIMessage({ id: "pushed", content: "x" }));
+        return {};
+      })
+      .addEdge(START, "push")
+      .compile();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const withSubgraph = (subgraph: any) =>
       new StateGraph(MessagesAnnotation)
@@ -12979,16 +12986,8 @@ graph TD;
     });
 
     it("streams pushed messages under the namespace of their graph", async () => {
-      const pushing = new StateGraph(MessagesAnnotation)
-        .addNode("push", async () => {
-          pushMessage(new AIMessage({ id: "pushed", content: "x" }));
-          return {};
-        })
-        .addEdge(START, "push")
-        .compile();
-
       const root = await gatherIterator(
-        pushing.stream(
+        pushingGraph.stream(
           { messages: "hi" },
           { streamMode: "messages", subgraphs: true }
         )
@@ -12998,7 +12997,7 @@ graph TD;
       ).toEqual([[[], "pushed"]]);
 
       const flat = await gatherIterator(
-        withSubgraph(pushing).stream(
+        withSubgraph(pushingGraph).stream(
           { messages: "hi" },
           { streamMode: "messages" }
         )
@@ -13006,6 +13005,19 @@ graph TD;
       expect(
         flat.map(([message, meta]) => [message.id, meta.langgraph_node])
       ).toEqual([["pushed", "sub"]]);
+    });
+
+    it("streams a subgraph's pushed messages to the node that streams it", async () => {
+      const { graph, received } = callerOf(pushingGraph, "messages");
+
+      const outer = await gatherIterator(
+        graph.stream({ messages: "hi" }, { streamMode: "messages" })
+      );
+
+      expect(received).toEqual([
+        [expect.objectContaining({ id: "pushed" }), expect.anything()],
+      ]);
+      expect(outer).toEqual([]);
     });
 
     it("gives root tool events no namespace", async () => {
