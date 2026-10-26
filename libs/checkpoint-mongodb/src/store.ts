@@ -142,6 +142,20 @@ export type MongoDBStoreParams = {
 };
 
 /**
+ * MongoDB matches a string namespace against any stored namespace containing
+ * it, and an object can be a query operator, so only an array is accepted.
+ * `$eq` compares the key as a plain value even when it is an object.
+ */
+function itemFilter(namespace: string[], key: string) {
+  if (!Array.isArray(namespace)) {
+    throw new InvalidNamespaceError(
+      `Namespace must be an array of strings, but got ${typeof namespace}.`
+    );
+  }
+  return { namespace, key: { $eq: key } };
+}
+
+/**
  * A long-term persistent key-value store backed by MongoDB.
  * Supports hierarchical namespace organization with Put, Get, ListNamespaces, and Search operations.
  */
@@ -328,7 +342,7 @@ export class MongoDBStore extends BaseStore {
         if (value === null) {
           bulkOps.push({
             deleteOne: {
-              filter: { namespace, key },
+              filter: itemFilter(namespace, key),
             },
           });
           continue;
@@ -366,7 +380,7 @@ export class MongoDBStore extends BaseStore {
 
         bulkOps.push({
           updateOne: {
-            filter: { namespace, key },
+            filter: itemFilter(namespace, key),
             update: {
               $set: doc,
               $setOnInsert: { createdAt: now },
@@ -409,14 +423,14 @@ export class MongoDBStore extends BaseStore {
       doc = await this.db
         .collection(this.collectionName)
         .findOneAndUpdate(
-          { namespace, key },
+          itemFilter(namespace, key),
           { $set: updateDoc },
           { returnDocument: "after" }
         );
     } else {
       doc = await this.db
         .collection(this.collectionName)
-        .findOne({ namespace, key });
+        .findOne(itemFilter(namespace, key));
     }
 
     if (!doc) {
@@ -574,12 +588,12 @@ export class MongoDBStore extends BaseStore {
 
     // Filter by namespace prefix using dot-notation array indexing.
     // E.g. namespacePrefix ["users", "profiles"] becomes:
-    //   { "namespace.0": "users", "namespace.1": "profiles" }
+    //   { "namespace.0": { $eq: "users" }, "namespace.1": { $eq: "profiles" } }
     // This matches ["users", "profiles"] and any nested namespaces like
     // ["users", "profiles", "settings"], but not ["users"] alone.
     if (namespacePrefix && namespacePrefix.length > 0) {
       for (let idx = 0; idx < namespacePrefix.length; idx++) {
-        mongoQuery[`namespace.${idx}`] = namespacePrefix[idx];
+        mongoQuery[`namespace.${idx}`] = { $eq: namespacePrefix[idx] };
       }
     }
 
@@ -595,7 +609,7 @@ export class MongoDBStore extends BaseStore {
           for (const [operator, operatorValue] of Object.entries(condition)) {
             switch (operator) {
               case "$eq":
-                mongoQuery[`value.${field}`] = operatorValue;
+                mongoQuery[`value.${field}`] = { $eq: operatorValue };
                 break;
               case "$ne":
                 mongoQuery[`value.${field}`] = { $ne: operatorValue };
@@ -696,9 +710,9 @@ export class MongoDBStore extends BaseStore {
     // ["team/alice"] and ["team", "alice"] both store "team/alice".
     // Match on the real namespace array to drop them before paging.
     if (namespacePrefix.length > 0) {
-      const namespaceMatch: Record<string, string> = {};
+      const namespaceMatch: Record<string, { $eq: string }> = {};
       namespacePrefix.forEach((label, idx) => {
-        namespaceMatch[`namespace.${idx}`] = label;
+        namespaceMatch[`namespace.${idx}`] = { $eq: label };
       });
       pipeline.push({ $match: namespaceMatch });
     }
