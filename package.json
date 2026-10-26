@@ -55,7 +55,7 @@
       "@langchain/langgraph-checkpoint": "workspace:*",
       "cheerio": "^1.0.0-rc.12",
       "semver": "^7.0.0",
-      "zod": "^4.3.5",
+      "zod": "4.6.6",
       "@vitest/browser": ">=4.1.12 <5",
       "@vitest/mocker@>=4 <4.1.12": ">=4.1.12 <5",
       "@ai-sdk/provider-utils@>=4 <4.0.33": ">=4.0.33 <5",
