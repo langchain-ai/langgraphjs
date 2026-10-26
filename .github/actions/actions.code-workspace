@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../images"
+		},
+		{
+			"path": "../ISSUE_TEMPLATE"
+		},
+		{
+			"path": "../workflows"
+		}
+	]
+}
