@@ -50,7 +50,7 @@
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
     "yaml": "^2.8.3",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/babel__code-frame": "^7.0.6",
