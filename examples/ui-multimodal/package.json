@@ -20,7 +20,7 @@
     "langchain": "1.5.14",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
