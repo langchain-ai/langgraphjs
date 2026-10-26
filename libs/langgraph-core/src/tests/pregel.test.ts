@@ -94,10 +94,12 @@ import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
 import {
+  GraphDrained,
   GraphRecursionError,
   InvalidUpdateError,
   NodeInterrupt,
 } from "../errors.js";
+import { RunControl } from "../pregel/runtime.js";
 import {
   isCommand,
   Command,
@@ -12818,6 +12820,45 @@ graph TD;
       "on_tool_start",
       "on_tool_end",
     ]);
+  });
+
+  it("streamMode tools does not report a drained tool as failed", async () => {
+    const control = new RunControl();
+    const inner = new StateGraph(MessagesAnnotation)
+      .addNode("requestDrain", () => {
+        control.requestDrain();
+        return {};
+      })
+      .addNode("after", () => ({}))
+      .addEdge("__start__", "requestDrain")
+      .addEdge("requestDrain", "after")
+      .compile();
+    const drainedTool = tool(
+      async () => {
+        await inner.invoke({ messages: [] }, { control });
+        return "unreachable";
+      },
+      { name: "drained", schema: z3.object({}) }
+    );
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("tools", new ToolNode([drainedTool]))
+      .addEdge("__start__", "tools")
+      .compile();
+    const toolCall = new AIMessage({
+      content: "",
+      tool_calls: [{ id: "call_1", name: "drained", args: {} }],
+    });
+
+    const events: string[] = [];
+    await expect(async () => {
+      for await (const [, payload] of await graph.stream(
+        { messages: [toolCall] },
+        { streamMode: ["tools"] }
+      )) {
+        events.push((payload as StreamToolsOutput).event);
+      }
+    }).rejects.toThrow(GraphDrained);
+    expect(events).toEqual(["on_tool_start"]);
   });
 
   it("streamMode without tools does not emit tools chunks", async () => {

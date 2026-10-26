@@ -6,7 +6,7 @@ import { isCheckpointEnvelope } from "../stream/convert.js";
 import type { Checkpoint } from "../stream/types.js";
 import type { StreamMode, StreamOutputMap } from "./types.js";
 import { TAG_HIDDEN } from "../constants.js";
-import { isGraphInterrupt } from "../errors.js";
+import { isGraphDrained, isGraphInterrupt } from "../errors.js";
 
 /**
  * Optional chunk-level metadata carried alongside the payload. Used by
@@ -287,9 +287,9 @@ export class StreamToolsHandler extends BaseCallbackHandler {
     const info = this.runs[runId];
     delete this.runs[runId];
     if (!info) return;
-    // An interrupted tool is paused, not failed: it runs again on resume and
-    // reports its start and end then.
-    if (isGraphInterrupt(err)) return;
+    // An interrupted or drained tool is paused, not failed: it runs again on
+    // resume and reports its start and end then.
+    if (isGraphInterrupt(err) || isGraphDrained(err)) return;
 
     this.streamFn([
       info.ns,
