@@ -15,7 +15,7 @@ const createSSEResponseBody = (
 ): ReadableStream<Uint8Array> => {
   const sseLines = chunks.flatMap((chunk) => {
     const lines: string[] = [];
-    if (chunk.id) lines.push(`id: ${chunk.id}\n`);
+    if (chunk.id !== undefined) lines.push(`id: ${chunk.id}\n`);
     if (chunk.event) lines.push(`event: ${chunk.event}\n`);
     lines.push(`data: ${JSON.stringify(chunk.data)}\n`);
     lines.push("\n");
@@ -47,7 +47,7 @@ const createErroringSSEResponseBody = (
 ): ReadableStream<Uint8Array> => {
   const sseLines = chunks.flatMap((chunk) => {
     const lines: string[] = [];
-    if (chunk.id) lines.push(`id: ${chunk.id}\n`);
+    if (chunk.id !== undefined) lines.push(`id: ${chunk.id}\n`);
     if (chunk.event) lines.push(`event: ${chunk.event}\n`);
     lines.push(`data: ${JSON.stringify(chunk.data)}\n`);
     lines.push("\n");
@@ -440,6 +440,54 @@ describe("Client streaming with retry", () => {
 
       expect(headers["last-event-id"]).toBe("4");
     });
+
+    test.each(["request", "default"])(
+      "clears %s cursor headers after an empty ID and delivers unnamed null",
+      async (source) => {
+        client = new Client({
+          apiUrl: "http://localhost:8000",
+          defaultHeaders: source === "default" ? { "lAsT-eVeNt-Id": "stale" } : {},
+          callerOptions: { fetch: mockFetch },
+        });
+        const chunks = [
+          { id: "cursor", event: "", data: null },
+          { id: "", event: "", data: null },
+        ];
+        mockFetch.mockResolvedValueOnce(
+          new Response(
+            createErroringSSEResponseBody(chunks, new TypeError("disconnected")),
+            {
+              headers: {
+                "content-type": "text/event-stream",
+                location: "/threads/thread-1/runs/run-1/stream",
+              },
+            }
+          )
+        );
+        mockFetch.mockResolvedValueOnce(
+          new Response(createSSEResponseBody([{ event: "values", data: {} }]))
+        );
+
+        const consume = gatherStream(
+          client.runs.joinStream("thread-1", "run-1", {
+            lastEventId: source === "request" ? "stale" : undefined,
+          })
+        );
+        await vi.runAllTimersAsync();
+        expect(await consume).toEqual([
+          { id: "cursor", event: "", data: null },
+          { id: "", event: "", data: null },
+          { id: undefined, event: "values", data: {} },
+        ]);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(
+          new Headers(mockFetch.mock.calls[0][1].headers).get("last-event-id")
+        ).toBe("stale");
+        expect(
+          new Headers(mockFetch.mock.calls[1][1].headers).has("last-event-id")
+        ).toBe(false);
+      }
+    );
 
     test("respects cancelOnDisconnect parameter", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];

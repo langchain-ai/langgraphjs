@@ -448,8 +448,11 @@ export class BaseClient {
       const method = isReconnect ? "GET" : config.method || "GET";
 
       const requestHeaders =
-        isReconnect && reconnectParams?.lastEventId
-          ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
+        isReconnect && reconnectParams?.lastEventId !== undefined
+          ? {
+              ...config.headers,
+              "Last-Event-ID": reconnectParams.lastEventId || null,
+            }
           : config.headers;
 
       // oxlint-disable-next-line prefer-const -- init is reassigned by onRequest hook
