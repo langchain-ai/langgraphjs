@@ -3,12 +3,10 @@ import {
   type ContentBlock as CoreContentBlock,
   type UsageMetadata,
 } from "@langchain/core/messages";
-import type {
-  ChatModelStreamEvent,
-  ContentBlockDelta as CoreContentBlockDelta,
-} from "@langchain/core/language_models/event";
+import type { ChatModelStreamEvent } from "@langchain/core/language_models/event";
 import type {
   ContentBlock,
+  ContentBlockDelta,
   FinalizedContentBlock,
   MessageMetadata,
   MessagesEvent,
@@ -27,6 +25,26 @@ type ToolCallsStream = AsyncIterable<CoreContentBlock.Tools.ToolCall> &
   PromiseLike<Array<CoreContentBlock.Tools.ToolCall>> & {
     full: AsyncIterable<Array<CoreContentBlock.Tools.ToolCall>>;
   };
+
+// Deltas are typed by the protocol, not `@langchain/core`, whose union
+// doesn't include `tool-call-delta` yet.
+type ContentBlockDeltaEvent = Omit<
+  Extract<ChatModelStreamEvent, { event: "content-block-delta" }>,
+  "delta"
+> & { delta: ContentBlockDelta; content?: CoreContentBlock };
+
+type ToolCallChunkBlock =
+  | CoreContentBlock.Tools.ToolCallChunk
+  | CoreContentBlock.Tools.ServerToolCallChunk;
+
+function isToolCallChunk(
+  block: CoreContentBlock | undefined
+): block is ToolCallChunkBlock {
+  return (
+    block?.type === "tool_call_chunk" ||
+    block?.type === "server_tool_call_chunk"
+  );
+}
 
 function applyCoreContentDelta(
   target: CoreContentBlock,
@@ -67,9 +85,9 @@ function applyCoreContentDelta(
 }
 
 function coreContentBlockFromDelta(
-  delta: CoreContentBlockDelta,
+  delta: ContentBlockDelta,
   current?: CoreContentBlock
-): CoreContentBlock {
+): CoreContentBlock | undefined {
   switch (delta.type) {
     case "text-delta":
       return { type: "text", text: delta.text } as CoreContentBlock;
@@ -88,15 +106,22 @@ function coreContentBlockFromDelta(
     }
     case "block-delta":
       return delta.fields as CoreContentBlock;
+    case "tool-call-delta":
+      // Without the block's start there's no id or name to attach the
+      // slice to; `content-block-finish` delivers the complete call.
+      return isToolCallChunk(current)
+        ? { type: current.type, args: delta.args }
+        : undefined;
+    default:
+      // Unknown variants are ignored.
+      return undefined;
   }
 }
 
 function applyCoreEventDelta(
   current: CoreContentBlock | undefined,
-  event: Extract<ChatModelStreamEvent, { event: "content-block-delta" }> & {
-    content?: CoreContentBlock;
-  }
-): CoreContentBlock {
+  event: ContentBlockDeltaEvent
+): CoreContentBlock | undefined {
   if (event.content) {
     return current
       ? applyCoreContentDelta(current, event.content)
@@ -131,6 +156,14 @@ function applyCoreEventDelta(
         ...(current ?? {}),
         ...event.delta.fields,
       } as CoreContentBlock;
+    case "tool-call-delta":
+      if (!isToolCallChunk(current)) return current;
+      return {
+        ...current,
+        args: `${current.args ?? ""}${event.delta.args}`,
+      };
+    default:
+      return current;
   }
 }
 
@@ -624,13 +657,13 @@ function cloneBlock<T extends ContentBlock>(block: T): T {
 }
 
 function blockFromDelta(
-  delta: CoreContentBlockDelta,
+  delta: ContentBlockDelta,
   current?: ContentBlock
-): ContentBlock {
+): ContentBlock | undefined {
   return coreContentBlockFromDelta(
     delta,
     current as unknown as CoreContentBlock | undefined
-  ) as unknown as ContentBlock;
+  ) as unknown as ContentBlock | undefined;
 }
 
 function applyContentDelta(
@@ -710,9 +743,14 @@ export class MessageAssembler {
   /**
    * Applies a single message event and returns the resulting assembly update.
    *
+   * Returns `undefined` when the event changes nothing, such as a delta
+   * variant this version doesn't recognise. Those are ignored so that a
+   * newer producer can't break the stream; `content-block-finish` still
+   * carries the complete block.
+   *
    * @param event - Incoming `messages` event to fold into the assembler state.
    */
-  consume(event: MessagesEvent): MessageAssemblyUpdate {
+  consume(event: MessagesEvent): MessageAssemblyUpdate | undefined {
     const data = event.params.data;
     const namespaceNodeKey = `${event.params.namespace.join("/")}::${event.params.node ?? ""}`;
     const runId = readRunId(data);
@@ -798,16 +836,15 @@ export class MessageAssembler {
       case "content-block-delta": {
         const deltaEvent = data as typeof data & {
           content?: ContentBlock;
-          delta?: CoreContentBlockDelta;
+          delta?: ContentBlockDelta;
         };
-        const deltaBlock =
-          deltaEvent.content ??
-          (deltaEvent.delta != null
-            ? blockFromDelta(deltaEvent.delta, message.blocks[data.index])
-            : undefined);
-        if (deltaBlock == null) {
+        if (deltaEvent.content == null && deltaEvent.delta == null) {
           throw new Error("Received content-block-delta without content");
         }
+        const deltaBlock =
+          deltaEvent.content ??
+          blockFromDelta(deltaEvent.delta!, message.blocks[data.index]);
+        if (deltaBlock == null) return undefined;
         const targetIndex = this.resolveBlockIndex(
           activeKey,
           message.blocks,
@@ -822,10 +859,7 @@ export class MessageAssembler {
               : applyContentDelta(current, deltaEvent.content)
             : (applyCoreEventDelta(
                 current as CoreContentBlock | undefined,
-                data as unknown as Extract<
-                  ChatModelStreamEvent,
-                  { event: "content-block-delta" }
-                >
+                data as unknown as ContentBlockDeltaEvent
               ) as unknown as ContentBlock);
         return {
           kind: "content-block-delta",

@@ -23,7 +23,7 @@ interface DeltaValueInitBase<Value = unknown> {
   /**
    * How often (in per-channel updates) to persist a full `DeltaSnapshot` blob
    * instead of relying purely on replayed deltas. Defaults to the channel's
-   * own default (1000) when omitted.
+   * own default (100) when omitted.
    */
   snapshotFrequency?: number;
 
@@ -54,7 +54,7 @@ interface DeltaValueInitWithSchema<Value = unknown, Input = Value> {
 
   /**
    * How often (in per-channel updates) to persist a full `DeltaSnapshot` blob.
-   * Defaults to the channel's own default (1000) when omitted.
+   * Defaults to the channel's own default (100) when omitted.
    */
   snapshotFrequency?: number;
 
