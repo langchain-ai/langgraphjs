@@ -4,7 +4,12 @@ import { Client } from "@langchain/langgraph-sdk";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { RemoteGraph } from "../pregel/remote.js";
 import { gatherIterator } from "../utils.js";
-import { Command, INTERRUPT, Send } from "../constants.js";
+import {
+  Command,
+  CONFIG_KEY_STREAM,
+  INTERRUPT,
+  Send,
+} from "../constants.js";
 import { GraphInterrupt } from "../errors.js";
 
 describe("RemoteGraph", () => {
@@ -518,6 +523,60 @@ describe("RemoteGraph", () => {
       [["my", "subgraph"], { chunk: "data3" }],
       [["hello", "subgraph"], { chunk: "data4" }],
     ]);
+  });
+
+  test("stream without subgraphs skips subgraph events requested for the parent stream", async () => {
+    const client = new Client({});
+    let streamArgs: unknown[] | undefined;
+    vi.spyOn((client as any).runs, "stream").mockImplementation(
+      async function* (...args) {
+        streamArgs = args;
+        yield { event: "updates|sub:abc", data: { inner: { chunk: "inner" } } };
+        yield { event: "messages|sub:abc", data: [{ content: "token" }, {}] };
+        yield { event: "updates", data: { sub: { chunk: "root" } } };
+      },
+    );
+
+    const remotePregel = new RemoteGraph({
+      client,
+      graphId: "test_graph_id",
+    });
+
+    for (const subgraphs of [undefined, false]) {
+      for (const [streamMode, expected] of [
+        ["updates", [{ sub: { chunk: "root" } }]],
+        // messages are not filtered: the server dedupes them across namespaces
+        ["messages", [[{ content: "token" }, {}]]],
+      ] as const) {
+        const parentParts: unknown[] = [];
+        const parts = await gatherIterator(
+          remotePregel.stream(
+            { input: "data" },
+            {
+              configurable: {
+                thread_id: "thread_1",
+                checkpoint_ns: "outer:123",
+                [CONFIG_KEY_STREAM]: {
+                  modes: new Set(["updates", "messages"]),
+                  push: (part: unknown) => parentParts.push(part),
+                },
+              },
+              streamMode,
+              subgraphs,
+            },
+          ),
+        );
+
+        expect(parts).toEqual(expected);
+        // subgraph events are still requested and forwarded to the parent
+        expect(streamArgs?.[2]).toMatchObject({ streamSubgraphs: true });
+        expect(parentParts).toEqual([
+          [["outer:123", "sub:abc"], "updates", { inner: { chunk: "inner" } }],
+          [["outer:123", "sub:abc"], "messages", [{ content: "token" }, {}]],
+          [["outer:123"], "updates", { sub: { chunk: "root" } }],
+        ]);
+      }
+    }
   });
 
   test("invoke", async () => {
