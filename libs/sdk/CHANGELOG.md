@@ -1,5 +1,33 @@
 # @langchain/langgraph-sdk
 
+## 1.12.8
+
+### Patch Changes
+
+- [#3096](https://github.com/langchain-ai/langgraphjs/pull/3096) [`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): stop retrying cancelled requests, release abort listeners and emit CR-terminated SSE lines at once
+  
+  - A request cancelled with an `AbortSignal` or `timeoutMs` is no longer retried. Native `AbortError` and `TimeoutError` exceptions were retried with backoff, so calling `stop()` before the server answered kept `isLoading` on for 15 to 30 seconds.
+  - A request with a timeout no longer leaves an abort listener on the caller's signal, so reusing one signal for many requests stops piling up listeners. Runtimes without `AbortSignal.any` (Safari before 17.4, Node before 20.3) still hold one listener per request until its timeout fires or it is cancelled.
+  - The SSE decoder emits a line ending in a bare CR as soon as it arrives instead of holding it until the next chunk, and no longer drops the blank line of a stream that ends with CR.
+
+## 1.12.7
+
+### Patch Changes
+
+- [#3060](https://github.com/langchain-ai/langgraphjs/pull/3060) [`2b982b6`](https://github.com/langchain-ai/langgraphjs/commit/2b982b6cb4fbdf1493a40994660b1c7df97963aa) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): stop resolved interrupts from coming back after a reload
+  
+  After a reload, the first submit or respond on the Agent Server brought back every interrupt the thread had already resolved, and accepting them failed with `no_such_interrupt`. Its HTTP commands report `applied_through_seq: 0`, so the SDK treated the whole replayed history as new. When a command reports 0, the SDK now finds where the command's run starts on the thread stream and treats everything before it as history.
+
+## 1.12.6
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Tool-call args streamed as `tool-call-delta` slices are appended to the tool call, so `useStream`, scoped `useMessages`, `thread.messages`, `subgraph.messages` and `subagent.messages` show live args whether the server sends slices or the older `block-delta` snapshots. `block-delta` still replaces the args.
+  
+  Delta variants the SDK doesn't recognise are now ignored. Before, one froze a scoped `useMessages` view until the run ended, left the in-flight `thread.messages` message unsettled, and crashed Node with an unhandled rejection from `subgraph.messages` or `subagent.messages`. `MessageAssembler.consume` returns `undefined` for such events.
+  
+  Upgrade the SDK and its bindings before your server emits `tool-call-delta`.
+
 ## 1.12.5
 
 ### Patch Changes

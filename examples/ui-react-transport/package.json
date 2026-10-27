@@ -15,12 +15,12 @@
     "@langchain/core": "^1.2.13",
     "@langchain/langgraph": "workspace:*",
     "@langchain/openai": "^1.6.0",
-    "@langchain/protocol": "^0.0.19",
+    "@langchain/protocol": "^0.0.20",
     "@langchain/react": "workspace:*",
     "hono": "^4.13.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -28,6 +28,6 @@
     "@vitejs/plugin-react": "^6.1.1",
     "tsx": "^4.19.3",
     "typescript": "^5.4.5",
-    "vite": "^8.2.0"
+    "vite": "^8.3.3"
   }
 }

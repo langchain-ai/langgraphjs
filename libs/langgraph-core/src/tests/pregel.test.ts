@@ -94,10 +94,12 @@ import { MessageGraph } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
 import {
+  GraphDrained,
   GraphRecursionError,
   InvalidUpdateError,
   NodeInterrupt,
 } from "../errors.js";
+import { RunControl } from "../pregel/runtime.js";
 import {
   isCommand,
   Command,
@@ -10780,6 +10782,85 @@ graph TD;
     ]);
   });
 
+  it("streamMode messages keeps every message a node returns", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("reply", () => ({
+        messages: [new AIMessage("first"), new AIMessage("second")],
+      }))
+      .addNode("handoff", () => {
+        return new Command({
+          update: {
+            messages: [new AIMessage({ id: "from-command", content: "third" })],
+          },
+        });
+      })
+      .addEdge("__start__", "reply")
+      .addEdge("reply", "handoff")
+      .compile({ checkpointer: await createCheckpointer() });
+    const config = { configurable: { thread_id: "1" } };
+
+    const chunks = await gatherIterator(
+      graph.stream({ messages: [] }, { ...config, streamMode: ["messages"] })
+    );
+
+    const streamed = chunks.map(
+      ([, [message]]) => (message as BaseMessage).content
+    );
+    expect.soft(streamed).toEqual(["first", "second", "third"]);
+    const { values } = await graph.getState(config);
+    expect(values.messages.map((m: BaseMessage) => m.content)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+  });
+
+  it("streamMode messages streams the results of tools that return a Command", async () => {
+    const handoff = tool(
+      async (_input, config) =>
+        new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "handed off",
+                tool_call_id: config.toolCall?.id ?? "",
+              }),
+            ],
+          },
+        }),
+      { name: "handoff", schema: z3.object({}) }
+    );
+    const search = tool(async () => "found", {
+      name: "search",
+      schema: z3.object({}),
+    });
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("tools", new ToolNode([handoff, search]))
+      .addEdge(START, "tools")
+      .compile();
+
+    const chunks = await gatherIterator(
+      graph.stream(
+        {
+          messages: [
+            new AIMessage({
+              content: "",
+              tool_calls: [
+                { id: "call_1", name: "handoff", args: {} },
+                { id: "call_2", name: "search", args: {} },
+              ],
+            }),
+          ],
+        },
+        { streamMode: "messages" }
+      )
+    );
+
+    expect(
+      chunks.map(([message]) => (message as BaseMessage).content).sort()
+    ).toEqual(["found", "handed off"]);
+  });
+
   it("should not stream input messages in streamMode: messages", async () => {
     const subgraph = new StateGraph(MessagesAnnotation)
       .addNode("callModel", async () => {
@@ -12778,6 +12859,85 @@ graph TD;
         expect(endPayload.output).toBeDefined();
       }
     }
+  });
+
+  it("streamMode tools does not report an interrupted tool as failed", async () => {
+    const approveTool = tool(
+      async ({ action }: { action: string }) =>
+        `${action}: ${interrupt("approve?")}`,
+      { name: "approve", schema: z3.object({ action: z3.string() }) }
+    );
+    const graph = new StateGraph(
+      Annotation.Root({
+        messages: Annotation<BaseMessage[]>({
+          reducer: messagesStateReducer,
+          default: () => [],
+        }),
+      })
+    )
+      .addNode("tools", new ToolNode([approveTool]))
+      .addEdge("__start__", "tools")
+      .compile({ checkpointer: await createCheckpointer() });
+    const config = { configurable: { thread_id: "1" } };
+    const toolEvents = async (input: Parameters<typeof graph.stream>[0]) =>
+      (
+        await gatherIterator(
+          graph.stream(input, { ...config, streamMode: ["tools"] })
+        )
+      ).map(([, payload]) => (payload as StreamToolsOutput).event);
+
+    const toolCall = new AIMessage({
+      content: "",
+      tool_calls: [
+        { id: "call_1", name: "approve", args: { action: "deploy" } },
+      ],
+    });
+    expect(await toolEvents({ messages: [toolCall] })).toEqual([
+      "on_tool_start",
+    ]);
+    expect(await toolEvents(new Command({ resume: "yes" }))).toEqual([
+      "on_tool_start",
+      "on_tool_end",
+    ]);
+  });
+
+  it("streamMode tools does not report a drained tool as failed", async () => {
+    const control = new RunControl();
+    const inner = new StateGraph(MessagesAnnotation)
+      .addNode("requestDrain", () => {
+        control.requestDrain();
+        return {};
+      })
+      .addNode("after", () => ({}))
+      .addEdge("__start__", "requestDrain")
+      .addEdge("requestDrain", "after")
+      .compile();
+    const drainedTool = tool(
+      async () => {
+        await inner.invoke({ messages: [] }, { control });
+        return "unreachable";
+      },
+      { name: "drained", schema: z3.object({}) }
+    );
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("tools", new ToolNode([drainedTool]))
+      .addEdge("__start__", "tools")
+      .compile();
+    const toolCall = new AIMessage({
+      content: "",
+      tool_calls: [{ id: "call_1", name: "drained", args: {} }],
+    });
+
+    const events: string[] = [];
+    await expect(async () => {
+      for await (const [, payload] of await graph.stream(
+        { messages: [toolCall] },
+        { streamMode: ["tools"] }
+      )) {
+        events.push((payload as StreamToolsOutput).event);
+      }
+    }).rejects.toThrow(GraphDrained);
+    expect(events).toEqual(["on_tool_start"]);
   });
 
   it("streamMode without tools does not emit tools chunks", async () => {

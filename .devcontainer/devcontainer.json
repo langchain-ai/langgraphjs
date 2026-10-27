@@ -3,17 +3,22 @@
 {
 	"name": "Node.js & TypeScript",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/typescript-node:0-20",
+	"image": "mcr.microsoft.com/devcontainers/typescript-node:22",
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"ms-vscode.vscode-typescript-next"
 			]
 		}
-	}
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
+	// Pin Node explicitly; the base image can lag behind Node security releases.
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "22.23.4"
+		}
+	}
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
