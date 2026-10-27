@@ -33,7 +33,7 @@ import { gatherIterator } from "../../utils.js";
 import { interrupt } from "../../interrupt.js";
 import { LastValue } from "../../channels/last_value.js";
 import { BinaryOperatorAggregate } from "../../channels/binop.js";
-import { Channel, Pregel } from "../../pregel/index.js";
+import { Channel, RawPregel } from "../raw_pregel.js";
 import { MessagesAnnotation } from "../../graph/messages_annotation.js";
 import { ToolNode } from "../../prebuilt/index.js";
 import { FakeToolCallingChatModel } from "../utils.models.js";
@@ -1025,7 +1025,7 @@ describe("Checkpoint Tests (Python port)", () => {
       .pipe(raiseIfAbove10);
 
     // Create the Pregel graph
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
       },
@@ -1438,7 +1438,7 @@ describe("Checkpoint Tests (Python port)", () => {
       .pipe(raiseIfAbove10);
 
     // Create the Pregel graph with appropriate channels
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
       },
