@@ -180,6 +180,15 @@ describe("SSEDecoder", () => {
     }
   );
 
+  test.each(["data: 1", "data: null\n", "data:\n"])(
+    "flushes unnamed data at EOF: %j",
+    async (input) => {
+      expect(await decode(input)).toEqual([
+        { id: undefined, event: "", data: input === "data: 1" ? 1 : null },
+      ]);
+    }
+  );
+
   test("retains retry-only and named EOF compatibility", async () => {
     expect(await decode("retry: 001\n\n")).toEqual([
       { id: undefined, event: "", data: null },

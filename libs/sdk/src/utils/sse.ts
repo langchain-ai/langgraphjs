@@ -133,7 +133,7 @@ export function SSEDecoder(initialLastEventId?: string) {
     },
 
     flush(controller) {
-      if (event) {
+      if (event || data.length) {
         controller.enqueue({
           id: lastEventId,
           event,
