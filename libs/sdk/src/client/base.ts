@@ -233,7 +233,8 @@ export class BaseClient {
 
   protected prepareFetchOptions(
     path: string,
-    options?: RequestInit & {
+    options?: Omit<RequestInit, "headers"> & {
+      headers?: HeadersInit | Record<string, HeaderValue>;
       json?: unknown;
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
