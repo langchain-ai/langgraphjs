@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { PROTOCOL_STREAM_RUN_KEY } from "../src/protocol/constants.mjs";
+import { AIMessageChunk } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
+import {
+  BaseChatModel,
+  type BaseChatModelParams,
+} from "@langchain/core/language_models/chat_models";
+import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
+import type { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs";
+import { ChatGenerationChunk as GenChunk } from "@langchain/core/outputs";
+import { StateGraph, START, END } from "@langchain/langgraph";
+
 import { streamState } from "../src/stream.mjs";
 import type { Run } from "../src/storage/types.mjs";
 import { omitUndefined } from "../src/utils/runnableConfig.mjs";
@@ -407,5 +418,210 @@ describe("streamState", () => {
         normalized: true,
       },
     ]);
+  });
+});
+
+describe("cumulative tool_call args recovery (#2570)", () => {
+  const argsEvents = (id: string, parts: string[], final: string) => {
+    const events = parts.map((args, i) => ({
+      event: "on_chat_model_stream",
+      data: {
+        chunk: new AIMessageChunk({
+          id,
+          content: "",
+          tool_call_chunks: [
+            i === 0
+              ? { name: "t", id: "call_1", args, index: 0, type: "tool_call_chunk" as const }
+              : { args, index: 0, type: "tool_call_chunk" as const },
+          ],
+        }),
+      },
+    }));
+    return [
+      ...events,
+      {
+        event: "on_chat_model_end",
+        data: { output: new AIMessageChunk({ id, content: "" }) },
+      },
+    ];
+  };
+
+  const collectArgs = async (parts: string[]) => {
+    const run = createRun({
+      kwargs: {
+        config: { configurable: { graph_id: "deep-agent" } },
+        stream_mode: ["messages"],
+      },
+    });
+    const partials: string[] = [];
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents() {
+            yield* argsEvents("msg_1", parts, parts.join(""));
+          },
+        }) as never,
+    })) {
+      if (chunk.event === "messages/partial") {
+        const [message] = chunk.data as [AIMessageChunk];
+        partials.push(message.tool_call_chunks?.[0]?.args ?? "");
+      }
+    }
+    return partials;
+  };
+
+  it("replaces the concatenation of cumulative snapshots once the run ends", async () => {
+    const partials = await collectArgs(['{"a', '{"a":1', '{"a":1}']);
+    // mid-stream frames keep today's behavior; the final frame is recovered
+    expect(partials[partials.length - 2]).toBe('{"a{"a":1{"a":1}');
+    expect(partials[partials.length - 1]).toBe('{"a":1}');
+  });
+
+  it("does not touch a compliant delta stream", async () => {
+    const parts = ['{"a', '":1}'];
+    const partials = await collectArgs(parts);
+    expect(partials).toEqual(['{"a', '{"a":1}']);
+  });
+
+  it("does not touch a compliant stream whose chunks happen to chain", async () => {
+    // {"x":{"x":1}} split at the self-similar seam: the chain holds, but the
+    // concatenation parses, so recovery is never consulted
+    const partials = await collectArgs(['{"x":', '{"x":1}}']);
+    expect(partials[partials.length - 1]).toBe('{"x":{"x":1}}');
+  });
+
+  it("preserves broken output whose chunks do not chain", async () => {
+    const partials = await collectArgs(['{"a":', 'oops}']);
+    expect(partials[partials.length - 1]).toBe('{"a":oops}');
+  });
+
+  it("reads chained broken output as its only parsing interpretation", async () => {
+    // the documented trade: {{"a":1} split as { + {"a":1} chains and parses
+    // as {"a":1} instead of surfacing as Malformed args
+    const partials = await collectArgs(["{", '{"a":1}']);
+    expect(partials[partials.length - 1]).toBe('{"a":1}');
+  });
+});
+
+describe("cumulative recovery, per tool_call", () => {
+  it("recovers only the cumulative call when another call is compliant", async () => {
+    const run = createRun({
+      kwargs: {
+        config: { configurable: { graph_id: "deep-agent" } },
+        stream_mode: ["messages"],
+      },
+    });
+    const mk = (chunks: Array<Record<string, unknown>>) =>
+      new AIMessageChunk({
+        id: "msg_2",
+        content: "",
+        tool_call_chunks: chunks as never,
+      });
+    const events = [
+      {
+        event: "on_chat_model_stream",
+        data: {
+          chunk: mk([
+            { name: "cum", id: "call_a", args: '{"a', index: 0, type: "tool_call_chunk" },
+            { name: "ok", id: "call_b", args: '{"b', index: 1, type: "tool_call_chunk" },
+          ]),
+        },
+      },
+      {
+        event: "on_chat_model_stream",
+        data: {
+          chunk: mk([
+            { args: '{"a":1}', index: 0, type: "tool_call_chunk" },
+            { args: '":2}', index: 1, type: "tool_call_chunk" },
+          ]),
+        },
+      },
+      {
+        event: "on_chat_model_end",
+        data: { output: new AIMessageChunk({ id: "msg_2", content: "" }) },
+      },
+    ];
+    let last: AIMessageChunk | undefined;
+    for await (const chunk of streamState(run, {
+      attempt: 1,
+      getGraph: async () =>
+        ({
+          async *streamEvents() {
+            yield* events;
+          },
+        }) as never,
+    })) {
+      if (chunk.event === "messages/partial")
+        [last] = chunk.data as [AIMessageChunk];
+    }
+    expect(last?.tool_call_chunks?.map((c) => c.args)).toEqual([
+      '{"a":1}',
+      '{"b":2}',
+    ]);
+    expect(last?.tool_calls?.map((c) => c.args)).toEqual([{ a: 1 }, { b: 2 }]);
+    expect(last?.invalid_tool_calls ?? []).toHaveLength(0);
+  });
+});
+
+class CumulativeModel extends BaseChatModel {
+  constructor(fields: BaseChatModelParams = {}) { super(fields); }
+  _llmType() { return "cumulative-fake"; }
+  async _generate(): Promise<ChatResult> {
+    return { generations: [{ text: "", message: new AIMessageChunk({ id: "m1", content: "" }) }] };
+  }
+  async *_streamResponseChunks(
+    _m: BaseMessage[], _o: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): AsyncGenerator<ChatGenerationChunk> {
+    const snapshots = ['{"a', '{"a":1', '{"a":1}'];
+    for (let i = 0; i < snapshots.length; i += 1) {
+      const gc = new GenChunk({
+        text: "",
+        message: new AIMessageChunk({
+          id: "m1", content: "",
+          tool_call_chunks: [
+            i === 0
+              ? { name: "t", id: "call_1", args: snapshots[i], index: 0, type: "tool_call_chunk" }
+              : { args: snapshots[i], index: 0, type: "tool_call_chunk" },
+          ],
+        }),
+      });
+      yield gc;
+      await runManager?.handleLLMNewToken("", undefined, undefined, undefined, undefined, { chunk: gc });
+    }
+  }
+}
+
+const realRun = createRun({
+  kwargs: {
+    input: { messages: [] },
+    config: { configurable: { graph_id: "deep-agent" } },
+    stream_mode: ["messages"],
+  },
+});
+
+describe("cumulative recovery against a real graph stream", () => {
+  it("fires on real on_chat_model_end and carries parsed tool_calls", async () => {
+    const graph = new StateGraph<{ messages: BaseMessage[] }>({ channels: { messages: null } })
+      .addNode("agent", async () => {
+        const r = await new CumulativeModel().invoke("hi");
+        return { messages: [r] };
+      })
+      .addEdge(START, "agent")
+      .addEdge("agent", END)
+      .compile();
+
+    const partials: AIMessageChunk[] = [];
+    for await (const chunk of streamState(realRun, {
+      attempt: 1,
+      getGraph: async () => graph as never,
+    })) {
+      if (chunk.event === "messages/partial") partials.push((chunk.data as [AIMessageChunk])[0]);
+    }
+    const last = partials[partials.length - 1];
+    expect(last?.tool_call_chunks?.[0]?.args).toBe('{"a":1}');
+    expect(last?.tool_calls?.[0]?.args).toEqual({ a: 1 });
+    expect(last?.invalid_tool_calls ?? []).toHaveLength(0);
   });
 });
