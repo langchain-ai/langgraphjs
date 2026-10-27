@@ -463,8 +463,8 @@ export class StreamManager<
        * could not resolve.
        *
        * This covers checkpoints whose task results are not yet populated (tasks
-       * still pending — the live or just-interrupted case). We align push tasks
-       * to the subagent tool calls of the triggering AI message by Send index
+       * still pending — the live or just-interrupted case). We map each push
+       * task to the triggering AI message's tool call at its Send index
        * (task.path[1]). Restricting this to still-unmapped tool calls guarantees
        * a correct direct mapping from Phase 1 is never overwritten by a guess.
        */
@@ -496,9 +496,6 @@ export class StreamManager<
           );
           if (pushTasks.length === 0) continue;
 
-          /**
-           * Find the AI message with subagent tool calls to align by Send index.
-           */
           const msgs = checkpoint.values[messagesKey];
           if (!Array.isArray(msgs)) continue;
 
@@ -521,15 +518,20 @@ export class StreamManager<
           }
 
           /**
-           * Every tool call gets a Send, so a push task's Send index is its
-           * tool call's position in the AI message. Regular tool calls
-           * (searchWeb, queryDatabase, etc.) keep their own tasks and are never
-           * mistaken for subagents.
+           * Agents send only the tool calls that have no ToolMessage yet (a
+           * call a human rejected has one), so a push task's Send index is its
+           * tool call's position among those. Regular tool calls (searchWeb,
+           * queryDatabase, etc.) keep their own tasks and are never mistaken
+           * for subagents.
            */
-          const toolCalls = aiMessage.tool_calls as Array<{
-            id?: string;
-            name: string;
-          }>;
+          const answered = new Set(
+            msgs
+              .filter((m) => (m as Record<string, unknown>)?.type === "tool")
+              .map((m) => (m as Record<string, unknown>).tool_call_id)
+          );
+          const toolCalls = (
+            aiMessage.tool_calls as Array<{ id?: string; name: string }>
+          ).filter((tc) => !answered.has(tc.id));
           for (const task of pushTasks) {
             const tc = toolCalls[task.path![1] as number];
             if (
