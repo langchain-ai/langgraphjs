@@ -1089,7 +1089,10 @@ export function runFuncTests(
     });
   });
 
-  describe("messages and tools events from tasks", () => {
+  describe.each([
+    { label: "called from the entrypoint", nested: false },
+    { label: "called from a task inside a task", nested: true },
+  ])("messages and tools events from tasks $label", ({ nested }) => {
     const buildWorkflow = async () => {
       const callModel = task("callModel", async () =>
         new FakeChatModel({
@@ -1103,16 +1106,31 @@ export function runFuncTests(
       const callTool = task("callTool", async () =>
         echo.invoke({ id: "call_1", name: "echo", args: {}, type: "tool_call" })
       );
+      const callBoth = async () => {
+        await callModel();
+        await callTool();
+      };
+      const outer = task("outer", callBoth);
       return entrypoint(
         { name: "workflow", checkpointer: await createCheckpointer() },
         async () => {
-          await callModel();
-          await callTool();
+          await (nested ? outer() : callBoth());
           return "ok";
         }
       );
     };
     const config = { configurable: { thread_id: "1" } };
+    const eventOf = (mode: unknown, payload: unknown) =>
+      mode === "messages"
+        ? (payload as [{ content: unknown }])[0].content
+        : (payload as { event: string }).event;
+    const events = [
+      ["messages", "h"],
+      ["messages", "i"],
+      ["tools", "on_tool_start"],
+      ["tools", "on_tool_end"],
+      ["messages", "done"],
+    ];
 
     it("stream without subgraphs, as the graph's own", async () => {
       const workflow = await buildWorkflow();
@@ -1121,8 +1139,9 @@ export function runFuncTests(
         workflow.stream({}, { ...config, streamMode: ["messages", "tools"] })
       );
 
-      expect(chunks.some(([mode]) => mode === "messages")).toBe(true);
-      expect(chunks.some(([mode]) => mode === "tools")).toBe(true);
+      expect(
+        chunks.map(([mode, payload]) => [mode, eventOf(mode, payload)])
+      ).toEqual(events);
     });
 
     it("carry the graph's own namespace with subgraphs", async () => {
@@ -1135,10 +1154,13 @@ export function runFuncTests(
         )
       );
 
-      expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks.map(([namespace]) => namespace)).toEqual(
-        chunks.map(() => [])
-      );
+      expect(
+        chunks.map(([namespace, mode, payload]) => [
+          namespace,
+          mode,
+          eventOf(mode, payload),
+        ])
+      ).toEqual(events.map((event) => [[], ...event]));
     });
   });
 }
