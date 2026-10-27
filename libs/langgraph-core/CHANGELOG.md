@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.5.3
+
+### Patch Changes
+
+- [#3125](https://github.com/langchain-ai/langgraphjs/pull/3125) [`e24ec8c`](https://github.com/langchain-ai/langgraphjs/commit/e24ec8c3ff3cf4191c4988e84a26c405816976cd) Thanks [@eliornl](https://github.com/eliornl)! - Change the default `DeltaChannel` snapshot frequency from 1000 to 100 updates, matching Python. Channels now persist full snapshots more frequently to reduce replay latency at the cost of increased storage. Set `snapshotFrequency: 1000` explicitly to retain the previous cadence.
+- Updated dependencies [[`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde)]:
+  - @langchain/langgraph-sdk@1.12.8
+
 ## 1.5.2
 
 ### Patch Changes

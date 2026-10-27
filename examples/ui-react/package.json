@@ -23,7 +23,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "streamdown": "^2.5.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "workspace:*",

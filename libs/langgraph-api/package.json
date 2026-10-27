@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph-api",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "type": "module",
   "engines": {
     "node": "^18.19.0 || >=20.16.0"
@@ -81,7 +81,7 @@
     "tsx": "^4.19.3",
     "winston": "^3.17.0",
     "winston-console-format": "^1.0.8",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.48",

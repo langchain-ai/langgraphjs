@@ -29,7 +29,7 @@
   "license": "MIT",
   "dependencies": {
     "scrapybara": "^2.4.4",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44",
