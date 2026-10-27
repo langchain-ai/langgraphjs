@@ -203,6 +203,23 @@ export class StreamManager<
 
   private queueSize: number = 0;
 
+  /**
+   * Messages changed by messages events since the last flush, with whether
+   * each came from a subagent namespace. Converting a message parses all of
+   * its tool-call arguments, so converting on every event makes a long tool
+   * call quadratic; {@link flushMessages} converts each one once.
+   */
+  private pendingMessages: {
+    ids: Map<string, boolean>;
+    options: {
+      getMessages: (values: StateType) => Message[];
+      setMessages: (current: StateType, messages: Message[]) => StateType;
+      initialValues: StateType;
+    };
+  } | null = null;
+
+  private flushingMessages = false;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -234,6 +251,9 @@ export class StreamManager<
    * Called when subagent state changes.
    */
   private bumpVersion = () => {
+    // A flush runs while state is being read, and the events it applies have
+    // already notified listeners.
+    if (this.flushingMessages) return;
     this.state = { ...this.state, version: this.state.version + 1 };
     this.notifyListeners();
   };
@@ -242,6 +262,7 @@ export class StreamManager<
    * Get all subagents as a Map.
    */
   getSubagents(): Map<string, SubagentStreamInterface> {
+    this.flushMessages();
     return this.subagentManager.getSubagents();
   }
 
@@ -249,6 +270,7 @@ export class StreamManager<
    * Get all currently running subagents.
    */
   getActiveSubagents(): SubagentStreamInterface[] {
+    this.flushMessages();
     return this.subagentManager.getActiveSubagents();
   }
 
@@ -256,6 +278,7 @@ export class StreamManager<
    * Get a specific subagent by tool call ID.
    */
   getSubagent(toolCallId: string): SubagentStreamInterface | undefined {
+    this.flushMessages();
     return this.subagentManager.getSubagent(toolCallId);
   }
 
@@ -263,6 +286,7 @@ export class StreamManager<
    * Get all subagents of a specific type.
    */
   getSubagentsByType(type: string): SubagentStreamInterface[] {
+    this.flushMessages();
     return this.subagentManager.getSubagentsByType(type);
   }
 
@@ -270,6 +294,7 @@ export class StreamManager<
    * Get all subagents triggered by a specific AI message.
    */
   getSubagentsByMessage(messageId: string): SubagentStreamInterface[] {
+    this.flushMessages();
     return this.subagentManager.getSubagentsByMessage(messageId);
   }
 
@@ -290,6 +315,7 @@ export class StreamManager<
     messages: Message[],
     options?: { skipIfPopulated?: boolean }
   ): void {
+    this.flushMessages();
     this.subagentManager.reconstructFromMessages(messages, options);
   }
 
@@ -647,12 +673,87 @@ export class StreamManager<
    * Check if any subagents are currently tracked.
    */
   hasSubagents(): boolean {
+    this.flushMessages();
     return this.subagentManager.hasSubagents();
   }
 
   private setState = (newState: Partial<typeof this.state>) => {
     this.state = { ...this.state, ...newState };
     this.notifyListeners();
+  };
+
+  /**
+   * Converts the messages changed since the last flush, once each, into the
+   * stream values. Runs whenever state is read, so it updates the state in
+   * place and does not notify listeners: the events it applies already did.
+   */
+  private flushMessages = () => {
+    const pending = this.pendingMessages;
+    if (pending == null) return;
+    this.pendingMessages = null;
+    this.flushingMessages = true;
+
+    try {
+      const { getMessages, setMessages, initialValues } = pending.options;
+      const values = { ...initialValues, ...this.state.values?.[0] };
+
+      // Assumption: we're concatenating the message
+      let messages = getMessages(values).slice();
+      for (const [messageId, isFromSubagent] of pending.ids) {
+        const { chunk, index } =
+          this.messages.get(messageId, messages.length) ?? {};
+
+        if (!chunk || index == null) continue;
+        if (chunk.getType() === "remove") {
+          // Check for special REMOVE_ALL_MESSAGES sentinel
+          if (chunk.id === REMOVE_ALL_MESSAGES) {
+            // Clear all messages when __remove_all__ is received
+            messages = [];
+          } else {
+            messages.splice(index, 1);
+          }
+          continue;
+        }
+
+        const msgDict = this.toMessage(chunk) as Message;
+        messages[index] = msgDict;
+
+        // Track subagents from AI messages with tool calls (main agent only)
+        if (
+          !isFromSubagent &&
+          msgDict.type === "ai" &&
+          "tool_calls" in msgDict &&
+          Array.isArray(msgDict.tool_calls)
+        ) {
+          this.subagentManager.registerFromToolCalls(
+            msgDict.tool_calls,
+            msgDict.id as string | undefined
+          );
+        }
+
+        // Complete subagents when tool messages arrive (main agent only)
+        if (
+          !isFromSubagent &&
+          msgDict.type === "tool" &&
+          "tool_call_id" in msgDict
+        ) {
+          const tcId = msgDict.tool_call_id as string;
+          const content =
+            typeof msgDict.content === "string"
+              ? msgDict.content
+              : JSON.stringify(msgDict.content);
+          const status =
+            "status" in msgDict && msgDict.status === "error"
+              ? "error"
+              : "success";
+          this.subagentManager.processToolMessage(tcId, content, status);
+        }
+      }
+
+      this.state.values = [setMessages(values, messages), "stream"];
+    } finally {
+      this.flushingMessages = false;
+    }
   };
 
   private notifyListeners = () => {
@@ -690,6 +791,7 @@ export class StreamManager<
   }
 
   get values() {
+    this.flushMessages();
     return this.state.values?.[0] ?? null;
   }
 
@@ -703,6 +805,7 @@ export class StreamManager<
       | ((prev: StateType | null, kind: "stream" | "stop") => StateType | null),
     kind: "stream" | "stop" = "stream"
   ) => {
+    this.flushMessages();
     if (typeof values === "function") {
       const [prevValues, prevKind] = this.state.values ?? [null, "stream"];
       const nextValues = values(prevValues, prevKind);
@@ -717,6 +820,7 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      this.flushMessages();
       const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
@@ -804,6 +908,12 @@ export class StreamManager<
         const namespace = event.includes("|")
           ? event.split("|").slice(1)
           : undefined;
+
+        // Apply the messages batched so far before any other event acts on
+        // state or subagents, so events take effect in order.
+        if (!this.matchEventType("messages", event, data)) {
+          this.flushMessages();
+        }
 
         const mutate = this.getMutateFn("stream", options.initialValues);
 
@@ -1038,6 +1148,8 @@ export class StreamManager<
           // If filtering is enabled and this is a subagent message,
           // add it to the subagent's messages instead of the main stream
           if (this.filterSubagentMessages && isFromSubagent && toolCallId) {
+            // The subagent may be registered by a message still pending.
+            this.flushMessages();
             // Add to subagent's message list
             this.subagentManager.addMessageToSubagent(
               toolCallId,
@@ -1055,64 +1167,11 @@ export class StreamManager<
             continue;
           }
 
-          this.setStreamValues((streamValues) => {
-            const values = {
-              ...options.initialValues,
-              ...streamValues,
-            };
-
-            // Assumption: we're concatenating the message
-            let messages = options.getMessages(values).slice();
-            const { chunk, index } =
-              this.messages.get(messageId, messages.length) ?? {};
-
-            if (!chunk || index == null) return values;
-            if (chunk.getType() === "remove") {
-              // Check for special REMOVE_ALL_MESSAGES sentinel
-              if (chunk.id === REMOVE_ALL_MESSAGES) {
-                // Clear all messages when __remove_all__ is received
-                messages = [];
-              } else {
-                messages.splice(index, 1);
-              }
-            } else {
-              const msgDict = this.toMessage(chunk) as Message;
-              messages[index] = msgDict;
-
-              // Track subagents from AI messages with tool calls (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "ai" &&
-                "tool_calls" in msgDict &&
-                Array.isArray(msgDict.tool_calls)
-              ) {
-                this.subagentManager.registerFromToolCalls(
-                  msgDict.tool_calls,
-                  msgDict.id as string | undefined
-                );
-              }
-
-              // Complete subagents when tool messages arrive (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "tool" &&
-                "tool_call_id" in msgDict
-              ) {
-                const tcId = msgDict.tool_call_id as string;
-                const content =
-                  typeof msgDict.content === "string"
-                    ? msgDict.content
-                    : JSON.stringify(msgDict.content);
-                const status =
-                  "status" in msgDict && msgDict.status === "error"
-                    ? "error"
-                    : "success";
-                this.subagentManager.processToolMessage(tcId, content, status);
-              }
-            }
-
-            return options.setMessages(values, messages);
-          });
+          this.pendingMessages ??= { ids: new Map(), options };
+          this.pendingMessages.ids.set(messageId, isFromSubagent);
+          // A new snapshot tells subscribers to read the state, which
+          // flushes the pending messages.
+          this.setState({});
         }
       }
 
@@ -1139,6 +1198,7 @@ export class StreamManager<
         await options.onError?.(error);
       }
     } finally {
+      this.flushMessages();
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
       options.onFinish?.();
@@ -1215,6 +1275,9 @@ export class StreamManager<
     // Cancel any running streams
     this.abortRef.abort();
     this.abortRef = new AbortController();
+
+    // Drop messages not yet applied, before listeners read the cleared state
+    this.pendingMessages = null;
 
     // Set the stream state to null
     this.setState({ error: undefined, values: null, isLoading: false });

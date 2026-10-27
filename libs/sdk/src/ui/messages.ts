@@ -71,18 +71,64 @@ function tryCoerceMessageLikeToChunk(
   return tryCoerceMessageLikeToMessage(message);
 }
 
-export class MessageTupleManager {
-  chunks: Record<
-    string,
-    {
-      chunk?: BaseMessageChunk | BaseMessage;
-      metadata?: Record<string, unknown>;
-      index?: number;
+/**
+ * Concatenates chunks pairwise. Before @langchain/core 1.2.18,
+ * `AIMessageChunk.concat` re-parses the arguments of every tool call
+ * received so far, so concatenating deltas one by one onto a long tool call
+ * is quadratic. Merging the deltas with each other first keeps the parse of
+ * the whole tool call to once per merge.
+ */
+function concatChunks(chunks: BaseMessageChunk[]): BaseMessageChunk {
+  let level = chunks;
+  while (level.length > 1) {
+    const next: BaseMessageChunk[] = [];
+    for (let i = 0; i < level.length; i += 2) {
+      next.push(
+        i + 1 < level.length ? level[i].concat(level[i + 1]) : level[i]
+      );
     }
-  > = {};
+    level = next;
+  }
+  return level[0];
+}
+
+type MessageTupleEntry = {
+  chunk?: BaseMessageChunk | BaseMessage;
+  metadata?: Record<string, unknown>;
+  index?: number;
+};
+
+export class MessageTupleManager {
+  private entries: Record<string, MessageTupleEntry> = {};
+
+  /** Chunks added since the entry was last read, by message ID. */
+  private pending: Record<string, BaseMessageChunk[]> = {};
 
   constructor() {
     this.chunks = {};
+  }
+
+  get chunks(): Record<string, MessageTupleEntry> {
+    for (const id of Object.keys(this.pending)) this.merge(id);
+    return this.entries;
+  }
+
+  set chunks(chunks: Record<string, MessageTupleEntry>) {
+    this.entries = chunks;
+    this.pending = {};
+  }
+
+  private merge(id: string) {
+    const pending = this.pending[id];
+    if (pending == null) return;
+    delete this.pending[id];
+
+    const entry = this.entries[id];
+    const merged = concatChunks(pending);
+    entry.chunk =
+      (BaseMessageChunk.isInstance(entry.chunk) ? entry.chunk : null)?.concat(
+        merged
+      ) ?? merged;
   }
 
   add(
@@ -110,15 +156,15 @@ export class MessageTupleManager {
       return null;
     }
 
-    this.chunks[id] ??= {};
-    this.chunks[id].metadata = metadata ?? this.chunks[id].metadata;
+    this.entries[id] ??= {};
+    this.entries[id].metadata = metadata ?? this.entries[id].metadata;
     if (chunk) {
-      const prev = this.chunks[id].chunk;
-      this.chunks[id].chunk =
-        (BaseMessageChunk.isInstance(prev) ? prev : null)?.concat(chunk) ??
-        chunk;
+      // Concatenated when the entry is read, so a burst of chunks between
+      // reads is merged once.
+      (this.pending[id] ??= []).push(chunk);
     } else {
-      this.chunks[id].chunk = message;
+      delete this.pending[id];
+      this.entries[id].chunk = message;
     }
 
     return id;
@@ -130,9 +176,10 @@ export class MessageTupleManager {
 
   get(id: string | null | undefined, defaultIndex?: number) {
     if (id == null) return null;
-    if (this.chunks[id] == null) return null;
-    if (defaultIndex != null) this.chunks[id].index ??= defaultIndex;
-    return this.chunks[id];
+    if (this.entries[id] == null) return null;
+    this.merge(id);
+    if (defaultIndex != null) this.entries[id].index ??= defaultIndex;
+    return this.entries[id];
   }
 }
 

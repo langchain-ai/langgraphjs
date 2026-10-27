@@ -225,3 +225,36 @@ it("tool call streaming is preserved", () => {
     ],
   ]);
 });
+
+it("merges the chunks added since the last read", () => {
+  const manager = new MessageTupleManager();
+  const argChunks = ['{"path": "a.txt", ', '"content": "hello', " world", '"}'];
+  argChunks.forEach((args, index) =>
+    manager.add(
+      {
+        type: "ai",
+        id: "ai-1",
+        content: "",
+        tool_call_chunks: [
+          {
+            index: 0,
+            id: index === 0 ? "call-1" : undefined,
+            name: index === 0 ? "write_file" : undefined,
+            args,
+          },
+        ],
+      } as unknown as Message,
+      {}
+    )
+  );
+
+  const message = manager.chunks["ai-1"]?.chunk;
+  expect(message && (toMessageDict(message) as AIMessage).tool_calls).toEqual([
+    {
+      name: "write_file",
+      args: { path: "a.txt", content: "hello world" },
+      id: "call-1",
+      type: "tool_call",
+    },
+  ]);
+});

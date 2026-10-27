@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 
 import { StreamManager } from "./manager.js";
-import { MessageTupleManager } from "./messages.js";
+import { MessageTupleManager, toMessageDict } from "./messages.js";
+import type { AIMessage } from "../types.messages.js";
 import { SubagentManager } from "./subagents.js";
 
 type TestState = {
@@ -1727,5 +1728,157 @@ describe("StreamManager", () => {
         }
       }
     );
+  });
+
+  describe("long tool calls", () => {
+    const enqueueOptions = {
+      getMessages: (values: TestState) => values.messages ?? [],
+      setMessages: (current: TestState, messages: TestState["messages"]) => ({
+        ...current,
+        messages,
+      }),
+      initialValues: { messages: [] },
+      callbacks: {},
+      onSuccess: () => undefined,
+      onError: vi.fn(),
+    };
+
+    function toolCallChunk(id: string, index: number, args: string) {
+      return {
+        event: "messages" as const,
+        data: [
+          {
+            id,
+            type: "AIMessageChunk",
+            content: "",
+            tool_call_chunks: [
+              {
+                index: 0,
+                id: index === 0 ? `call-${id}` : undefined,
+                name: index === 0 ? "task" : undefined,
+                args,
+              },
+            ],
+          },
+          {},
+        ],
+      };
+    }
+
+    function writeFileChunks(id: string, count: number) {
+      return [
+        toolCallChunk(id, 0, '{"subagent_type": "writer", "description": "'),
+        ...Array.from({ length: count }, (_, i) =>
+          toolCallChunk(id, i + 1, "x")
+        ),
+        toolCallChunk(id, count + 1, '"}'),
+      ];
+    }
+
+    it("converts a streamed message once per read, not once per chunk", async () => {
+      const toMessage = vi.fn(toMessageDict);
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        toMessage,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(
+        async () => createMockStream(writeFileChunks("ai-1", 100)),
+        enqueueOptions
+      );
+
+      expect(toMessage).toHaveBeenCalledTimes(1);
+      const [message] = manager.values?.messages ?? [];
+      expect(message).toMatchObject({
+        id: "ai-1",
+        tool_calls: [
+          { args: { subagent_type: "writer", description: "x".repeat(100) } },
+        ],
+      });
+    });
+
+    it("shows the latest chunks on every read", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+      });
+      const seen: unknown[] = [];
+      manager.subscribe(() => {
+        const [message] = manager.values?.messages ?? [];
+        if (message) {
+          seen.push((message as AIMessage).tool_calls?.[0]?.args.description);
+        }
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(
+        async () => createMockStream(writeFileChunks("ai-1", 2)),
+        enqueueOptions
+      );
+
+      expect([...new Set(seen)]).toEqual(["", "x", "xx"]);
+    });
+
+    it("applies messages in order around other events", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+      });
+      const events = [
+        ...writeFileChunks("ai-1", 3),
+        {
+          event: "values" as const,
+          data: {
+            messages: [
+              { id: "human-1", type: "human", content: "hi" },
+              {
+                id: "ai-1",
+                type: "ai",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "call-ai-1",
+                    name: "task",
+                    args: { subagent_type: "writer", description: "xxx" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        ...writeFileChunks("ai-2", 3),
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(
+        async () => createMockStream(events),
+        enqueueOptions
+      );
+
+      expect(manager.values?.messages.map((m) => m.id)).toEqual([
+        "human-1",
+        "ai-1",
+        "ai-2",
+      ]);
+    });
+
+    it("registers a subagent from a tool call still being streamed", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      let subagentsSeen = 0;
+      manager.subscribe(() => {
+        subagentsSeen = Math.max(subagentsSeen, manager.getSubagents().size);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(
+        async () => createMockStream(writeFileChunks("ai-1", 3)),
+        enqueueOptions
+      );
+
+      expect(subagentsSeen).toBe(1);
+      expect(manager.getSubagent("call-ai-1")).toBeDefined();
+    });
   });
 });
