@@ -58,6 +58,12 @@ test("drawing leaves node metadata unchanged", async () => {
   const subagents = [
     { name: "researcher", description: "Researches a topic" },
     { name: "general-purpose", description: "Handles any task", forked: true },
+    {
+      name: "coder",
+      description: { text: "Writes code" },
+      systemPrompt: "You write code.",
+      tools: [new FakeSearchTool()],
+    },
   ];
   const taskTool = Object.assign(
     tool(() => "done", {
@@ -79,7 +85,17 @@ test("drawing leaves node metadata unchanged", async () => {
       owner: "search",
       __interrupt: "before",
       __tools: ["search_api", "task"],
-      __subagents: { task: subagents },
+      __subagents: {
+        task: [
+          { name: "researcher", description: "Researches a topic" },
+          {
+            name: "general-purpose",
+            description: "Handles any task",
+            forked: true,
+          },
+          { name: "coder" },
+        ],
+      },
     });
   }
   expect(app.nodes.tools.metadata).toEqual({ owner: "search" });

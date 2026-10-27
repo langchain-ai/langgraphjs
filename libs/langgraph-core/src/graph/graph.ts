@@ -1299,13 +1299,28 @@ function _getToolsMetadata(node: unknown): Record<string, unknown> {
         (subagent: { name?: unknown }) => typeof subagent?.name === "string"
       )
     ) {
-      subagents[tool.name] = [...tool.subagents];
+      subagents[tool.name] = tool.subagents.map(_getSubagentEntry);
     }
   }
   if (Object.keys(subagents).length > 0) {
     metadata.__subagents = subagents;
   }
   return metadata;
+}
+
+function _getSubagentEntry(subagent: {
+  name: string;
+  description?: unknown;
+  forked?: unknown;
+}): Record<string, unknown> {
+  const entry: Record<string, unknown> = { name: subagent.name };
+  if (typeof subagent.description === "string") {
+    entry.description = subagent.description;
+  }
+  if (subagent.forked === true) {
+    entry.forked = true;
+  }
+  return entry;
 }
 
 /**
