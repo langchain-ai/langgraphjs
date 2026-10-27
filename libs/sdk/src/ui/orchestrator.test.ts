@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import {
   StreamOrchestrator,
   type OrchestratorAccessors,
@@ -798,6 +798,45 @@ describe("StreamOrchestrator", () => {
       expect(client.threads.getState).toHaveBeenCalledWith("t1");
 
       await submitPromise;
+      orch.dispose();
+    });
+  });
+
+  describe("joinStream", () => {
+    const message = (id: string, type = "human") => ({ id, content: id, type });
+    const serve = (values: TestState) => {
+      const state = createThreadState(values);
+      (client.threads.getState as Mock).mockResolvedValue(state);
+      (client.threads.getHistory as Mock).mockResolvedValue([state]);
+    };
+
+    it("shows the head read after the run when history is enabled", async () => {
+      serve({ messages: [message("h0")] });
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      const final = { id: "a0", content: "Hello world", type: "ai" };
+      serve({ messages: [message("h0"), final] });
+
+      (client.runs.joinStream as Mock).mockImplementationOnce(() =>
+        (async function* () {
+          yield {
+            event: "values",
+            data: {
+              messages: [
+                message("h0"),
+                { id: "a0", content: "Hello", type: "ai" },
+              ],
+            },
+          };
+        })()
+      );
+      await orch.joinStream("run-1");
+
+      expect(orch.messages).toEqual([message("h0"), final]);
       orch.dispose();
     });
   });
