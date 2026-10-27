@@ -916,10 +916,7 @@ export class CompiledGraph<
       } else if (this.interruptAfter?.includes(key)) {
         metadata.__interrupt = "after";
       }
-      const toolNames = _getToolNames(node);
-      if (toolNames !== undefined) {
-        metadata.__tools = toolNames;
-      }
+      Object.assign(metadata, _getToolsMetadata(node));
       if (xray) {
         const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
         const drawableSubgraph =
@@ -1128,10 +1125,7 @@ export class CompiledGraph<
       } else if (this.interruptAfter?.includes(key)) {
         metadata.__interrupt = "after";
       }
-      const toolNames = _getToolNames(node);
-      if (toolNames !== undefined) {
-        metadata.__tools = toolNames;
-      }
+      Object.assign(metadata, _getToolsMetadata(node));
       if (xray) {
         const newXrayValue = typeof xray === "number" ? xray - 1 : xray;
         const drawableSubgraph =
@@ -1284,16 +1278,34 @@ function _escapeMermaidKeywords(key: string) {
 }
 
 // Duck-typed so tool nodes from other packages are covered too.
-function _getToolNames(node: unknown): string[] | undefined {
+function _getToolsMetadata(node: unknown): Record<string, unknown> {
   const tools = (node as { tools?: unknown })?.tools;
   if (
     !Array.isArray(tools) ||
     tools.length === 0 ||
     !tools.every((tool) => typeof tool?.name === "string")
   ) {
-    return undefined;
+    return {};
   }
-  return tools.map((tool) => tool.name);
+  const metadata: Record<string, unknown> = {
+    __tools: tools.map((tool) => tool.name),
+  };
+  const subagents: Record<string, unknown[]> = {};
+  for (const tool of tools) {
+    if (
+      Array.isArray(tool.subagents) &&
+      tool.subagents.length > 0 &&
+      tool.subagents.every(
+        (subagent: { name?: unknown }) => typeof subagent?.name === "string"
+      )
+    ) {
+      subagents[tool.name] = [...tool.subagents];
+    }
+  }
+  if (Object.keys(subagents).length > 0) {
+    metadata.__subagents = subagents;
+  }
+  return metadata;
 }
 
 /**

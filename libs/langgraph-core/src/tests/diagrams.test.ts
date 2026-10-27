@@ -55,8 +55,20 @@ graph TD;
 });
 
 test("drawing leaves node metadata unchanged", async () => {
+  const subagents = [
+    { name: "researcher", description: "Researches a topic" },
+    { name: "general-purpose", description: "Handles any task", forked: true },
+  ];
+  const taskTool = Object.assign(
+    tool(() => "done", {
+      name: "task",
+      description: "Run a subagent",
+      schema: z.object({}),
+    }),
+    { subagents }
+  );
   const app = new StateGraph(MessagesAnnotation)
-    .addNode("tools", new ToolNode([new FakeSearchTool()]), {
+    .addNode("tools", new ToolNode([new FakeSearchTool(), taskTool]), {
       metadata: { owner: "search" },
     })
     .addEdge(START, "tools")
@@ -66,7 +78,8 @@ test("drawing leaves node metadata unchanged", async () => {
     expect(drawable.nodes.tools.metadata).toEqual({
       owner: "search",
       __interrupt: "before",
-      __tools: ["search_api"],
+      __tools: ["search_api", "task"],
+      __subagents: { task: subagents },
     });
   }
   expect(app.nodes.tools.metadata).toEqual({ owner: "search" });
