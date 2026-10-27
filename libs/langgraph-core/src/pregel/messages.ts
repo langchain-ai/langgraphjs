@@ -19,7 +19,12 @@ import {
 import { ChainValues } from "@langchain/core/utils/types";
 
 import { isCommand, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
-import { StreamChunk } from "./stream.js";
+import {
+  isOutsideStream,
+  StreamChunk,
+  eventNamespace,
+  type StreamNamespaceOptions,
+} from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Meta = [string[], Record<string, any>];
@@ -29,6 +34,7 @@ function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
 }
 
 function normalizeStreamMetadata(
+  options: StreamNamespaceOptions | undefined,
   metadata?: Record<string, unknown>,
   tags?: string[],
   name?: string
@@ -44,7 +50,10 @@ function normalizeStreamMetadata(
   if (!namespace) {
     return undefined;
   }
-  return [namespace.split("|"), { tags, name, ...metadata }];
+  return [
+    eventNamespace(namespace, metadata, options),
+    { tags, name, ...metadata },
+  ];
 }
 
 /**
@@ -68,9 +77,15 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   lc_prefer_streaming = true;
 
-  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+  namespaceOptions?: StreamNamespaceOptions;
+
+  constructor(
+    streamFn: (streamChunk: StreamChunk) => void,
+    namespaceOptions?: StreamNamespaceOptions
+  ) {
     super();
     this.streamFn = streamFn;
+    this.namespaceOptions = namespaceOptions;
   }
 
   _emit(
@@ -139,7 +154,14 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       // Include legacy LangGraph SDK tag
       (!tags || (!tags.includes(TAG_NOSTREAM) && !tags.includes("nostream")))
     ) {
-      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
+      const meta = normalizeStreamMetadata(
+        this.namespaceOptions,
+        metadata,
+        tags,
+        name
+      );
+      if (meta && isOutsideStream(meta[0], this.namespaceOptions)) return;
+      this.metadatas[runId] = meta;
     }
   }
 
@@ -202,7 +224,14 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       name === metadata.langgraph_node &&
       (tags === undefined || !tags.includes(TAG_HIDDEN))
     ) {
-      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
+      const meta = normalizeStreamMetadata(
+        this.namespaceOptions,
+        metadata,
+        tags,
+        name
+      );
+      if (meta && isOutsideStream(meta[0], this.namespaceOptions)) return;
+      this.metadatas[runId] = meta;
 
       if (typeof inputs === "object") {
         for (const value of Object.values(inputs)) {

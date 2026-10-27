@@ -105,6 +105,7 @@ import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  type StreamNamespaceOptions,
   StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
@@ -2557,11 +2558,18 @@ export class Pregel<
 
     config.configurable = this._ownCheckpointConfig(config).configurable;
 
+    const namespaceOptions: StreamNamespaceOptions = {
+      subgraphs: streamSubgraphs ?? false,
+    };
+
     // set up messages stream mode
     if (streamMode.includes("messages")) {
       const messageStreamer = isV3
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
-        : new StreamMessagesHandler((chunk) => stream.push(chunk));
+        : new StreamMessagesHandler(
+            (chunk) => stream.push(chunk),
+            namespaceOptions
+          );
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];
@@ -2576,8 +2584,10 @@ export class Pregel<
 
     // set up tools stream mode
     if (streamMode.includes("tools")) {
-      const toolStreamer = new StreamToolsHandler((chunk) =>
-        stream.push(chunk)
+      const toolStreamer = new StreamToolsHandler(
+        (chunk) => stream.push(chunk),
+        // streamEvents v3 reads tool events under their full namespace.
+        isV3 ? undefined : namespaceOptions
       );
       const { callbacks } = config;
       if (callbacks === undefined) {
@@ -2678,6 +2688,10 @@ export class Pregel<
           triggerToNodes: this.triggerToNodes,
           durability,
         });
+        // Only known now: initialize() numbers the namespace of every subgraph
+        // a task runs after its first.
+        namespaceOptions.parentNs =
+          loop.config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] || undefined;
 
         const runner = new PregelRunner({
           loop,
