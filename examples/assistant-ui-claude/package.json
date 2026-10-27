@@ -23,7 +23,7 @@
     "lucide-react": "^0.577.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "^4.3.6",
+    "zod": "^4.6.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -36,6 +36,6 @@
     "tailwindcss": "^4.2.1",
     "tw-shimmer": "^0.4.8",
     "typescript": "^5",
-    "vite": "^8.2.0"
+    "vite": "^8.3.3"
   }
 }

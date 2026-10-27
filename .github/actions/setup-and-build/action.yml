@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: "Node.js version to use"
     required: false
-    default: "22.14.0"
+    default: "22.23.4"
   artifact-name:
     description: "Name of the build artifact to download (skips build if provided)"
     required: false

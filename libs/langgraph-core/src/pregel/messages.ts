@@ -18,7 +18,7 @@ import {
 } from "@langchain/core/outputs";
 import { ChainValues } from "@langchain/core/utils/types";
 
-import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import { isCommand, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
 import { StreamChunk } from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,7 +77,8 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
     meta: Meta,
     message: BaseMessage,
     runId: string | undefined,
-    dedupe = false
+    dedupe = false,
+    outputIdx?: number
   ) {
     if (
       dedupe &&
@@ -93,6 +94,10 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       if (isToolMessage(message)) {
         // Distinguish tool messages by tool call ID.
         messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
+      } else if (outputIdx !== undefined) {
+        // A node's outputs are separate messages, not chunks of one, and the
+        // messages reducer keeps one message per id.
+        messageId ??= `run-${runId}-out-${outputIdx}`;
       } else {
         // For instance in ChatAnthropic, the first chunk has an message ID
         // but the subsequent chunks do not. To avoid clients seeing two messages
@@ -224,29 +229,36 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   handleChainEnd(outputs: ChainValues, runId: string) {
     const metadata = this.metadatas[runId];
     delete this.metadatas[runId];
-    if (metadata !== undefined) {
-      if (isBaseMessage(outputs)) {
-        this._emit(metadata, outputs, runId, true);
-      } else if (Array.isArray(outputs)) {
-        for (const value of outputs) {
-          if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
-          }
+    if (metadata === undefined) return;
+
+    let outputIdx = 0;
+    const emit = (value: unknown) => {
+      if (isBaseMessage(value)) {
+        this._emit(metadata, value, runId, true, outputIdx);
+        outputIdx += 1;
+      }
+    };
+    const emitOutput = (output: unknown): void => {
+      if (isCommand(output)) {
+        emitOutput(output.update);
+      } else if (isBaseMessage(output)) {
+        emit(output);
+      } else if (Array.isArray(output)) {
+        // As in Python, a list holding a Command is a node's list of updates,
+        // each searched like a whole output; any other list holds messages.
+        const updates = output.some(isCommand);
+        for (const value of output) {
+          if (updates) emitOutput(value);
+          else emit(value);
         }
-      } else if (outputs != null && typeof outputs === "object") {
-        for (const value of Object.values(outputs)) {
-          if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
-          } else if (Array.isArray(value)) {
-            for (const item of value) {
-              if (isBaseMessage(item)) {
-                this._emit(metadata, item, runId, true);
-              }
-            }
-          }
+      } else if (output != null && typeof output === "object") {
+        for (const value of Object.values(output)) {
+          if (Array.isArray(value)) emitOutput(value);
+          else emit(value);
         }
       }
-    }
+    };
+    emitOutput(outputs);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

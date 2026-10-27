@@ -1,6 +1,6 @@
 {
   "name": "@langchain/vue",
-  "version": "1.2.5",
+  "version": "1.2.8",
   "description": "Vue integration for LangGraph & LangChain",
   "type": "module",
   "scripts": {
@@ -27,21 +27,21 @@
     "@langchain/langgraph": "workspace:*",
     "@langchain/langgraph-api": "workspace:*",
     "@langchain/langgraph-checkpoint": "workspace:*",
-    "@langchain/protocol": "^0.0.19",
+    "@langchain/protocol": "^0.0.20",
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vitejs/plugin-vue-jsx": "^5.1.6",
-    "@vitest/browser": "^4.1.11",
+    "@vitest/browser": "^4.1.12",
     "@vitest/browser-webdriverio": "^4.1.11",
     "deepagents": "^1.10.5",
     "hono": "^4.13.5",
     "langchain": "^1.5.14",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "vitest-browser-vue": "^3.1.0",
     "vue": "^3.5.43",
     "webdriverio": "^9.25.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.48",

@@ -75,6 +75,30 @@ describe("BytesLineDecoder", () => {
     expect(textDecoder.decode(results[1])).toBe("line2");
   });
 
+  test("emits a CR-terminated line before the next chunk arrives", async () => {
+    const decoder = BytesLineDecoder();
+    const writer = decoder.writable.getWriter();
+    const nextLine = decoder.readable.getReader().read();
+
+    await writer.write(textEncoder.encode("line1\r"));
+    const result = await Promise.race([
+      nextLine.then(({ value }) => textDecoder.decode(value)),
+      new Promise((resolve) => setTimeout(() => resolve("<still held>"), 50)),
+    ]);
+
+    expect(result).toBe("line1");
+  });
+
+  test("keeps the empty line ended by a final CR", async () => {
+    const input = createStream([textEncoder.encode("line1\r\r")]);
+    const results = await gather(input.pipeThrough(BytesLineDecoder()));
+
+    expect(results.map((line) => textDecoder.decode(line))).toEqual([
+      "line1",
+      "",
+    ]);
+  });
+
   test("handles stale line", async () => {
     const input = createStream([textEncoder.encode("hello")]);
     const decoded = input.pipeThrough(BytesLineDecoder());
