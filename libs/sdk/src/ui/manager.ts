@@ -1063,10 +1063,20 @@ export class StreamManager<
 
             // Assumption: we're concatenating the message
             let messages = options.getMessages(values).slice();
-            const { chunk, index } =
-              this.messages.get(messageId, messages.length) ?? {};
+            const entry = this.messages.get(messageId, messages.length);
+            if (!entry?.chunk) return values;
+            const { chunk } = entry;
 
-            if (!chunk || index == null) return values;
+            // `values` events can replace and reorder the messages array, so
+            // the index pinned when this id was first seen may now point at a
+            // different message. Resolve it against the current array before
+            // writing or removing.
+            const current = messages.findIndex(
+              (message) => message?.id === messageId
+            );
+            const index = current >= 0 ? current : messages.length;
+            entry.index = index;
+
             if (chunk.getType() === "remove") {
               // Check for special REMOVE_ALL_MESSAGES sentinel
               if (chunk.id === REMOVE_ALL_MESSAGES) {

@@ -4,6 +4,7 @@ import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
+import type { Message } from "../types.messages.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -1727,5 +1728,103 @@ describe("StreamManager", () => {
         }
       }
     );
+  });
+
+  describe("messages chunk index reconciliation", () => {
+    type State = {
+      messages: Message[];
+    };
+
+    const run = (
+      manager: StreamManager<State>,
+      events: Array<{ event: string; data: unknown }>,
+      initialValues: State = { messages: [] }
+    ) =>
+      manager.start(
+        async () => createMockStream(events) as never,
+        {
+          getMessages: (values) => values.messages ?? [],
+          setMessages: (current, messages) => ({ ...current, messages }),
+          initialValues,
+          callbacks: {},
+          onSuccess: () => undefined,
+          onError: vi.fn(),
+        }
+      );
+
+    const human: Message = { id: "a", type: "human", content: "A" };
+    const ai: Message = { id: "c", type: "ai", content: "C" };
+    const reordered: Message[] = [
+      human,
+      ai,
+      { id: "b", type: "ai", content: "Hello" },
+    ];
+
+    it("writes a chunk at the message's current index after values reorders it", async () => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+
+      await run(manager, [
+        { event: "values", data: { messages: [human] } },
+        {
+          event: "messages",
+          data: [{ id: "b", type: "ai", content: "Hello" }, {}],
+        },
+        { event: "values", data: { messages: reordered } },
+        {
+          event: "messages",
+          data: [{ id: "b", type: "ai", content: " world" }, {}],
+        },
+      ]);
+
+      const messages = manager.values?.messages ?? [];
+      expect(messages.map((message) => message.id)).toEqual(["a", "c", "b"]);
+      expect(messages[2]?.content).toBe("Hello world");
+    });
+
+    it("removes the message at its current index after values reorders it", async () => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+
+      await run(manager, [
+        { event: "values", data: { messages: [human] } },
+        {
+          event: "messages",
+          data: [{ id: "b", type: "ai", content: "Hello" }, {}],
+        },
+        { event: "values", data: { messages: reordered } },
+        {
+          event: "messages",
+          data: [{ id: "b", type: "remove", content: "" }, {}],
+        },
+      ]);
+
+      expect(
+        (manager.values?.messages ?? []).map((message) => message.id)
+      ).toEqual(["a", "c"]);
+    });
+
+    it("updates a message already in initialValues instead of appending it", async () => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+
+      await run(
+        manager,
+        [
+          {
+            event: "messages",
+            data: [{ id: "b", type: "ai", content: "new" }, {}],
+          },
+        ],
+        { messages: [human, { id: "b", type: "ai", content: "old" }] }
+      );
+
+      const messages = manager.values?.messages ?? [];
+      expect(messages.map((message) => message.id)).toEqual(["a", "b"]);
+      expect(messages[1]?.content).toBe("new");
+    });
   });
 });
