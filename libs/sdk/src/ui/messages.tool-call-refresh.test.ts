@@ -131,6 +131,16 @@ describe("tool call args refresh", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("publishes complete args when the stream is aborted before a refresh", async () => {
+    const published = await streamToolCall(async function* (event) {
+      for (let i = 0; i < 10; i += 1) yield event(i);
+      throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    });
+
+    expect(argsContent(published.at(-1))).toBe(DELTA.repeat(9));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("parses every chunk when nothing listens for refreshes", () => {
     const messages = new MessageTupleManager();
 

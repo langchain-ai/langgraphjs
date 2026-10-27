@@ -1153,9 +1153,10 @@ export class StreamManager<
         await options.onError?.(error);
       }
     } finally {
-      // Don't let a pending refresh publish into a later run's state
-      this.messages.onRefresh = undefined;
+      // Publish any pending refresh for this run (e.g. after an abort), then
+      // detach so it can't publish into a later run's state
       this.messages.flush();
+      this.messages.onRefresh = undefined;
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
       options.onFinish?.();
