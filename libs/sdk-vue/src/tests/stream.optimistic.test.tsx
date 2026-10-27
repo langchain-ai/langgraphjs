@@ -68,9 +68,12 @@ it("reconciles the server echo by id without duplicating the message", async () 
   }
 });
 
-it("keeps the optimistic message and marks it failed when the run errors", async () => {
+it("keeps the optimistic message and marks it failed when dispatch is rejected", async () => {
+  // A graph that throws may already have echoed the input, making the
+  // message server-authoritative (`sent`) before the run fails. Reject
+  // dispatch instead so no values snapshot can race the failure.
   const screen = await render(OptimisticStream, {
-    props: { apiUrl, assistantId: "errorAgent" },
+    props: { apiUrl, assistantId: "missing_graph" },
   });
 
   try {

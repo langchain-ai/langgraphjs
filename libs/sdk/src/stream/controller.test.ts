@@ -2518,6 +2518,74 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it.each([
+    { echoBeforeFailure: false, expectedStatus: "failed" },
+    { echoBeforeFailure: true, expectedStatus: "sent" },
+  ])(
+    "marks an optimistic message $expectedStatus when a run fails (echo before failure: $echoBeforeFailure)",
+    async ({ echoBeforeFailure, expectedStatus }) => {
+      const rootSubscription = makePushableSubscription();
+      const thread = {
+        subscribe: vi.fn(async () => rootSubscription),
+        onError: vi.fn(() => vi.fn()),
+        onEvent: vi.fn(() => vi.fn()),
+        close: vi.fn(async () => undefined),
+        interrupts: [],
+        submitRun: vi.fn(async () => ({ run_id: "run-1" })),
+        startLifecycleWatcher: vi.fn(() => undefined),
+      } as unknown as ThreadStream;
+      const client = {
+        threads: {
+          getState: vi.fn(async () => ({
+            values: { messages: [] },
+            next: ["agent"],
+            tasks: [],
+          })),
+          getHistory: vi.fn(async () => []),
+          stream: vi.fn(() => thread),
+        },
+      };
+      const controller = new StreamController<State>({
+        assistantId: "agent",
+        client: client as never,
+        threadId: "thread-1",
+      });
+
+      try {
+        await controller.hydrationPromise;
+        await rootSubscription.started;
+        const message = { type: "human", id: "optimistic-1", content: "Hello" };
+        const submitted = controller.submit({ messages: [message] });
+        await waitForExpectation(() => {
+          expect(thread.submitRun).toHaveBeenCalled();
+        });
+        const status = () =>
+          controller.messageMetadataStore.getSnapshot().get(message.id)
+            ?.optimisticStatus;
+        expect(status()).toBe("pending");
+
+        if (echoBeforeFailure) {
+          rootSubscription.push(valuesEvent([message], 1));
+          await waitForExpectation(() => {
+            expect(status()).toBe("sent");
+          });
+        }
+
+        rootSubscription.push(runLifecycleEvent("run-1", "failed", 2));
+        await submitted;
+
+        expect(status()).toBe(expectedStatus);
+        expect(controller.rootStore.getSnapshot().messages).toEqual([
+          expect.objectContaining({ id: message.id, content: "Hello" }),
+        ]);
+        expect(controller.rootStore.getSnapshot().isLoading).toBe(false);
+        expect(controller.rootStore.getSnapshot().error).toBeDefined();
+      } finally {
+        await controller.dispose();
+      }
+    }
+  );
+
   it("opens SSE pumps eagerly when getState omits `next` (unknown shape)", async () => {
     const startLifecycleWatcher = vi.fn(() => undefined);
     const subscribe = vi.fn(async () => makeNeverEndingSubscription());
