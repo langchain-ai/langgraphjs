@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22.14.0"
+  NODE_VERSION: "22.23.4"
 
 jobs:
   # ============================================
@@ -132,6 +132,7 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: ${{ matrix.node-version }}
+          check-latest: true
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

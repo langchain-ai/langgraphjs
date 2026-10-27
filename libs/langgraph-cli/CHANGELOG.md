@@ -1,5 +1,20 @@
 # @langchain/langgraph-cli
 
+## 1.5.6
+
+### Patch Changes
+
+- [#3095](https://github.com/langchain-ai/langgraphjs/pull/3095) [`75d179c`](https://github.com/langchain-ai/langgraphjs/commit/75d179cf63baa5f197b7f03b6f4928c05724fb16) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy --remote` sends the headers the control plane returns with its source upload, so uploads work with storage that needs extra headers, such as Azure Blob Storage. Control planes that return none keep the previous behavior.
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.5.6
+
+## 1.5.5
+
+### Patch Changes
+
+- Updated dependencies [[`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083)]:
+  - @langchain/langgraph-api@1.5.5
+
 ## 1.5.4
 
 ### Patch Changes
