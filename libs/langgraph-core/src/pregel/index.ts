@@ -61,6 +61,8 @@ import {
   COPY,
   END,
   ERROR,
+  ERROR_SOURCE_NODE,
+  RESUME,
   INPUT,
   INTERRUPT,
   Interrupt,
@@ -1089,7 +1091,11 @@ export class Pregel<
       // Apply pending writes to the appropriate tasks
       for (const [taskId, channel, value] of saved.pendingWrites) {
         // Skip special channels and tasks not in nextTasks
-        if ([ERROR, INTERRUPT, SCHEDULED].includes(channel)) {
+        if (
+          [ERROR, ERROR_SOURCE_NODE, INTERRUPT, RESUME, SCHEDULED].includes(
+            channel
+          )
+        ) {
           continue;
         }
         if (!(taskId in nextTaskById)) {
@@ -1139,7 +1145,14 @@ export class Pregel<
         nextTasks,
         saved?.pendingWrites ?? [],
         taskStates,
-        this.streamChannelsAsIs
+        this.streamChannelsAsIs,
+        applyPendingWrites
+          ? new Set(
+              nextTasks
+                .filter((task) => task.writes.length > 0)
+                .map((task) => task.id)
+            )
+          : undefined
       ),
       metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
