@@ -154,6 +154,10 @@ export interface StreamManagerOptions {
    * This is useful for deep agent architectures where you want to display
    * the main conversation separately from subagent activity.
    *
+   * Subagent messages stream as they are generated only when the run streams
+   * subgraphs, so submit with `streamSubgraphs: true`. Without it, a subagent
+   * shows only its final result.
+   *
    * @default false
    *
    * @example
@@ -162,6 +166,8 @@ export interface StreamManagerOptions {
    *   assistantId: "my-agent",
    *   filterSubagentMessages: true,
    * });
+   *
+   * stream.submit(input, { streamSubgraphs: true });
    *
    * // Main thread messages only (no subagent messages)
    * stream.messages

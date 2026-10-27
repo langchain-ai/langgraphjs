@@ -90,7 +90,7 @@ import {
   ToolNode,
   createAgentExecutor,
 } from "../prebuilt/index.js";
-import { MessageGraph } from "../graph/message.js";
+import { MessageGraph, pushMessage } from "../graph/message.js";
 import { PASSTHROUGH } from "../pregel/write.js";
 import { StateSnapshot } from "../pregel/types.js";
 import {
@@ -9237,10 +9237,22 @@ graph TD;
       const config = {};
 
       const streamedEvents = await gatherIterator(
-        graph.stream({ messages: [] }, { ...config, streamMode: "messages" })
+        graph.stream(
+          { messages: [] },
+          { ...config, streamMode: "messages", subgraphs: true }
+        )
       );
 
-      expect(streamedEvents).toMatchObject([
+      const childNamespace = [expect.stringMatching(/^p_two:/)];
+      expect(streamedEvents.map(([namespace]) => namespace)).toEqual([
+        [],
+        childNamespace,
+        childNamespace,
+        childNamespace,
+        childNamespace,
+        [],
+      ]);
+      expect(streamedEvents.map(([, event]) => event)).toMatchObject([
         [
           new _AnyIdToolMessage({
             tool_call_id: "test",
@@ -9365,12 +9377,14 @@ graph TD;
         [[expect.stringMatching(/^p_two:/)], { content: "1", from: "subgraph" }],
       ]);
 
-      const streamedCombinedEvents = await gatherIterator(
-        graph.stream(
-          { messages: [] },
-          { ...config, streamMode: ["custom", "messages"] }
+      const streamedCombinedEvents = (
+        await gatherIterator(
+          graph.stream(
+            { messages: [] },
+            { ...config, streamMode: ["custom", "messages"], subgraphs: true }
+          )
         )
-      );
+      ).map(([, mode, payload]) => [mode, payload]);
 
       // The relative ordering of "custom" and "messages" events for the same
       // chunk is non-deterministic across Node.js versions, so sort by mode
@@ -10897,7 +10911,6 @@ graph TD;
     expect(chunks.length).toBe(1);
     expect(chunks[0][0]).toEqual([
       expect.stringMatching(/^node1:.*$/),
-      expect.stringMatching(/^callModel:.*$/),
     ]);
     expect(chunks[0][1][0]).toEqual(
       new AIMessage({ content: "Hi", id: "123" })
@@ -10954,7 +10967,6 @@ graph TD;
     expect(chunks.length).toBe(1);
     expect(chunks[0][0]).toEqual([
       expect.stringMatching(/^node1:.*$/),
-      expect.stringMatching(/^callModel:.*$/),
     ]);
     expect(chunks[0][1][0]).toEqual(new AIMessage({ content: "bye", id: "1" }));
     expect(chunks[0][1][1].langgraph_node).toEqual("callModel");
@@ -10973,7 +10985,6 @@ graph TD;
     expect(chunks2.length).toBe(1);
     expect(chunks2[0][0]).toEqual([
       expect.stringMatching(/^node1:.*$/),
-      expect.stringMatching(/^callModel:.*$/),
     ]);
     expect(chunks2[0][1][0]).toEqual(
       new AIMessage({ content: "bye again", id: "2" })
@@ -12999,6 +13010,214 @@ graph TD;
         Array.isArray(chunk) && (chunk as [string, unknown])[0] === "tools"
     );
     expect(toolsChunks.length).toBe(0);
+  });
+
+  describe("namespaces of messages and tools events", () => {
+    const modelGraph = (node: string) =>
+      new StateGraph(MessagesAnnotation)
+        .addNode(node, async () => {
+          const model = new FakeChatModel({
+            responses: [new AIMessage({ id: "ai1", content: "hi" })],
+          });
+          return { messages: [await model.invoke("q")] };
+        })
+        .addEdge(START, node)
+        .compile();
+    const toolGraph = (node: string) =>
+      new StateGraph(MessagesAnnotation)
+        .addNode(
+          node,
+          new ToolNode([
+            tool(async () => "done", { name: "echo", schema: z3.object({}) }),
+          ])
+        )
+        .addEdge(START, node)
+        .compile();
+    const toolCallInput = {
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ id: "call_1", name: "echo", args: {} }],
+        }),
+      ],
+    };
+    const pushingGraph = new StateGraph(MessagesAnnotation)
+      .addNode("push", async () => {
+        pushMessage(new AIMessage({ id: "pushed", content: "x" }));
+        return {};
+      })
+      .addEdge(START, "push")
+      .compile();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withSubgraph = (subgraph: any) =>
+      new StateGraph(MessagesAnnotation)
+        .addNode("sub", subgraph)
+        .addEdge(START, "sub")
+        .compile();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const callerOf = (subgraph: any, streamMode: "messages" | "tools") => {
+      const received: unknown[] = [];
+      const graph = new StateGraph(MessagesAnnotation)
+        .addNode("caller", async (state) => {
+          received.push(
+            ...(await gatherIterator(subgraph.stream(state, { streamMode })))
+          );
+          return {};
+        })
+        .addEdge(START, "caller")
+        .compile();
+      return { graph, received };
+    };
+
+    it("gives root tokens no namespace", async () => {
+      const chunks = await gatherIterator(
+        modelGraph("model").stream(
+          { messages: "hi" },
+          { streamMode: "messages", subgraphs: true }
+        )
+      );
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks.map(([namespace]) => namespace)).toEqual(
+        chunks.map(() => [])
+      );
+    });
+
+    it("streams subgraph tokens only with subgraphs", async () => {
+      const graph = withSubgraph(modelGraph("inner_model"));
+
+      const flat = await gatherIterator(
+        graph.stream({ messages: "hi" }, { streamMode: "messages" })
+      );
+      expect(flat.map(([, meta]) => meta.langgraph_node)).not.toContain(
+        "inner_model"
+      );
+
+      const nested = await gatherIterator(
+        graph.stream(
+          { messages: "hi" },
+          { streamMode: "messages", subgraphs: true }
+        )
+      );
+      const inner = nested.filter(
+        ([, [, meta]]) => meta.langgraph_node === "inner_model"
+      );
+      expect(inner.length).toBeGreaterThan(0);
+      expect(inner.map(([namespace]) => namespace)).toEqual(
+        inner.map(() => [expect.stringMatching(/^sub:/)])
+      );
+    });
+
+    it("streams a subgraph's tokens to the node that streams it", async () => {
+      const { graph, received } = callerOf(
+        modelGraph("inner_model"),
+        "messages"
+      );
+
+      const outer = await gatherIterator(
+        graph.stream({ messages: "hi" }, { streamMode: "messages" })
+      );
+
+      expect(received.length).toBeGreaterThan(0);
+      expect(outer.map(([, meta]) => meta.langgraph_node)).not.toContain(
+        "inner_model"
+      );
+    });
+
+    it("streams every subgraph a node streams, not only its first", async () => {
+      const subgraph = modelGraph("inner_model");
+      const received: number[] = [];
+      const graph = new StateGraph(MessagesAnnotation)
+        .addNode("caller", async (state) => {
+          for (let call = 0; call < 2; call += 1) {
+            const chunks = await gatherIterator(
+              subgraph.stream(state, { streamMode: "messages" })
+            );
+            received.push(chunks.length);
+          }
+          return {};
+        })
+        .addEdge(START, "caller")
+        .compile();
+
+      await gatherIterator(graph.stream({ messages: "hi" }));
+
+      expect(received[0]).toBeGreaterThan(0);
+      expect(received[1]).toBe(received[0]);
+    });
+
+    it("streams pushed messages under the namespace of their graph", async () => {
+      const root = await gatherIterator(
+        pushingGraph.stream(
+          { messages: "hi" },
+          { streamMode: "messages", subgraphs: true }
+        )
+      );
+      expect(
+        root.map(([namespace, [message]]) => [namespace, message.id])
+      ).toEqual([[[], "pushed"]]);
+
+      const flat = await gatherIterator(
+        withSubgraph(pushingGraph).stream(
+          { messages: "hi" },
+          { streamMode: "messages" }
+        )
+      );
+      expect(
+        flat.map(([message, meta]) => [message.id, meta.langgraph_node])
+      ).toEqual([["pushed", "sub"]]);
+    });
+
+    it("streams a subgraph's pushed messages to the node that streams it", async () => {
+      const { graph, received } = callerOf(pushingGraph, "messages");
+
+      const outer = await gatherIterator(
+        graph.stream({ messages: "hi" }, { streamMode: "messages" })
+      );
+
+      expect(received).toEqual([
+        [expect.objectContaining({ id: "pushed" }), expect.anything()],
+      ]);
+      expect(outer).toEqual([]);
+    });
+
+    it("gives root tool events no namespace", async () => {
+      const chunks = await gatherIterator(
+        toolGraph("tools").stream(toolCallInput, {
+          streamMode: "tools",
+          subgraphs: true,
+        })
+      );
+      expect(chunks.map(([namespace]) => namespace)).toEqual([[], []]);
+    });
+
+    it("streams subgraph tool events only with subgraphs", async () => {
+      const graph = withSubgraph(toolGraph("inner_tools"));
+
+      expect(
+        await gatherIterator(
+          graph.stream(toolCallInput, { streamMode: "tools" })
+        )
+      ).toEqual([]);
+
+      const nested = await gatherIterator(
+        graph.stream(toolCallInput, { streamMode: "tools", subgraphs: true })
+      );
+      expect(nested.map(([namespace]) => namespace)).toEqual([
+        [expect.stringMatching(/^sub:/)],
+        [expect.stringMatching(/^sub:/)],
+      ]);
+    });
+
+    it("streams a subgraph's tool events to the node that streams it", async () => {
+      const { graph, received } = callerOf(toolGraph("inner_tools"), "tools");
+
+      const outer = await gatherIterator(
+        graph.stream(toolCallInput, { streamMode: "tools" })
+      );
+
+      expect(received.length).toBe(2);
+      expect(outer).toEqual([]);
+    });
   });
 }
 
