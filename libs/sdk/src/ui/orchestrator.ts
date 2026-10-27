@@ -22,6 +22,7 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import { type HistoryReadOptions, planReadAfterRun } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -338,7 +339,8 @@ export class StreamOrchestrator<
   }
 
   async #mutate(
-    mutateId?: string
+    mutateId?: string,
+    readOptions: HistoryReadOptions = {}
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
@@ -348,6 +350,8 @@ export class StreamOrchestrator<
         tid,
         { limit: this.historyLimit }
       );
+      // The thread switched during the read; its own fetch fills the history.
+      if (tid !== this.#threadId) return data;
       this.#history = {
         data,
         error: undefined,
@@ -360,6 +364,7 @@ export class StreamOrchestrator<
       this.#notify();
       return data;
     } catch (err) {
+      if (tid !== this.#threadId || readOptions.quiet) return undefined;
       this.#history = {
         ...this.#history,
         error: err,
@@ -369,6 +374,35 @@ export class StreamOrchestrator<
       this.#options.onError?.(err, undefined);
       return undefined;
     }
+  }
+
+  /**
+   * Called when a run succeeds. Returns null when the head was read, which
+   * clears the run's streamed values so the head shows.
+   */
+  async #finishRun(
+    threadId: string | undefined,
+    refetch: boolean,
+    callbackMeta: RunCallbackMeta | undefined
+  ): Promise<null | undefined> {
+    const read = planReadAfterRun(this.branchContext.threadHead, refetch);
+    if (read && threadId) {
+      const lastHead = (await this.#mutate(threadId, read))?.at(0);
+      if (lastHead) {
+        this.#options.onFinish?.(lastHead, callbackMeta);
+        return null;
+      }
+    }
+    if (
+      this.#options.onFinish != null &&
+      !onFinishRequiresThreadState(this.#options.onFinish)
+    ) {
+      this.#options.onFinish(
+        undefined as unknown as ThreadState<StateType>,
+        callbackMeta
+      );
+    }
+    return undefined;
   }
 
   /**
@@ -909,27 +943,7 @@ export class StreamOrchestrator<
         callbacks: this.#options,
         onSuccess: async () => {
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          if (!shouldRefetchJoin) {
-            if (
-              this.#options.onFinish != null &&
-              !onFinishRequiresThreadState(this.#options.onFinish)
-            ) {
-              this.#options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
-          const newHistory = await this.#mutate(tid);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) {
-            this.#options.onFinish?.(lastHead, callbackMeta);
-            // Clears the joined stream's values so the head shows, as after
-            // `submit`.
-            return null;
-          }
-          return undefined;
+          return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
@@ -1086,24 +1100,7 @@ export class StreamOrchestrator<
 
         onSuccess: async () => {
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch && usableThreadId) {
-            const newHistory = await this.#mutate(usableThreadId);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              this.#options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            this.#options.onFinish != null &&
-            !onFinishRequiresThreadState(this.#options.onFinish)
-          ) {
-            this.#options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
-          }
-          return undefined;
+          return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);

@@ -17,6 +17,10 @@ import {
   onFinishRequiresThreadState,
   unique,
 } from "../ui/utils.js";
+import {
+  type HistoryReadOptions,
+  planReadAfterRun,
+} from "../ui/thread-reads.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
@@ -86,7 +90,12 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-): UseStreamThread<StateType> {
+): UseStreamThread<StateType> & {
+  read: (
+    threadId: string,
+    readOptions: HistoryReadOptions
+  ) => Promise<ThreadState<StateType>[]>;
+} {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
     key: string | undefined;
@@ -109,7 +118,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
-      limit: boolean | number
+      limit: boolean | number,
+      readOptions: HistoryReadOptions = {}
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
       if (options.passthrough) return Promise.resolve([]);
@@ -133,9 +143,14 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
           (error) => {
             setState((state) => {
               if (state.key !== key) return state;
-              return { key, data: state.data, error, isLoading: false };
+              return {
+                key,
+                data: state.data,
+                error: readOptions.quiet ? state.error : error,
+                isLoading: false,
+              };
             });
-            onErrorRef.current?.(error);
+            if (!readOptions.quiet) onErrorRef.current?.(error);
             return Promise.reject(error);
           }
         );
@@ -167,6 +182,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     error: state.error,
     isLoading: state.isLoading,
     mutate: (mutateId?: string) => fetcher(mutateId ?? threadId, limit),
+    read: (readId, readOptions) => fetcher(readId, limit, readOptions),
   };
 }
 
@@ -377,6 +393,11 @@ export function useStreamLGP<
     options.initialValues ??
     ({} as StateType);
 
+  // A run's callbacks close over the render it started in; this is the head
+  // shown when it ends.
+  const latestThreadHeadRef = useRef(branchContext.threadHead);
+  latestThreadHeadRef.current = branchContext.threadHead;
+
   // Reconstruct subagents from history when:
   // 1. History is loaded (not loading, has data)
   // 2. No active stream is running
@@ -505,6 +526,42 @@ export function useStreamLGP<
         stream.setStreamValues(historyValues);
       }
     }
+  };
+
+  // Called when a run succeeds. Returns null when the head was read, which
+  // clears the run's streamed values so the head shows.
+  const finishRun = async (
+    id: string,
+    refetch: boolean,
+    callbackMeta: RunCallbackMeta | undefined
+  ) => {
+    const read = planReadAfterRun(latestThreadHeadRef.current, refetch);
+    if (read) {
+      let newHistory: ThreadState<StateType>[] | null | undefined;
+      try {
+        newHistory =
+          read.quiet && options.thread == null
+            ? await builtInHistory.read(id, read)
+            : await history.mutate(id);
+      } catch {
+        // The run still succeeded; the screen keeps what it shows.
+      }
+      const lastHead = newHistory?.at(0);
+      if (lastHead) {
+        options.onFinish?.(lastHead, callbackMeta);
+        return null;
+      }
+    }
+    if (
+      options.onFinish != null &&
+      !onFinishRequiresThreadState(options.onFinish)
+    ) {
+      options.onFinish(
+        undefined as unknown as ThreadState<StateType>,
+        callbackMeta
+      );
+    }
+    return undefined;
   };
 
   // --- TRANSPORT ---
@@ -655,27 +712,7 @@ export function useStreamLGP<
 
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch) {
-            const newHistory = await history.mutate(usableThreadId!);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              // We now have the latest update from /history
-              // Thus we can clear the local stream state
-              options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            options.onFinish != null &&
-            !onFinishRequiresThreadState(options.onFinish)
-          ) {
-            options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
-          }
-
-          return undefined;
+          return finishRun(usableThreadId!, shouldRefetch, callbackMeta);
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
@@ -746,27 +783,7 @@ export function useStreamLGP<
         },
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
-          if (!shouldRefetchJoin) {
-            if (
-              options.onFinish != null &&
-              !onFinishRequiresThreadState(options.onFinish)
-            ) {
-              options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
-          const newHistory = await history.mutate(threadId);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) {
-            options.onFinish?.(lastHead, callbackMeta);
-            // Clears the joined stream's values so the head shows, as after
-            // `submit`.
-            return null;
-          }
-          return undefined;
+          return finishRun(threadId, shouldRefetchJoin, callbackMeta);
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
