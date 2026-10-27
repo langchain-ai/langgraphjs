@@ -15,6 +15,7 @@ import {
   maxChannelVersion,
 } from "@langchain/langgraph-checkpoint";
 import pg from "pg";
+import { parse as parseArray } from "postgres-array";
 
 import { getMigrations } from "./migrations.js";
 import {
@@ -28,6 +29,23 @@ import {
 interface PostgresSaverOptions {
   schema: string;
 }
+
+const BYTEA_ARRAY_OID = 1001;
+const parseBytea = pg.types.getTypeParser(pg.types.builtins.BYTEA, "text");
+
+/**
+ * Type parsers for the checkpoint reads, which return blobs as `bytea[]`.
+ * pg@8 pins `pg-types@2.2.0`, whose `postgres-array@2` parser collects each
+ * element one character at a time: a blob over ~61 MB exceeds V8's array
+ * length limit and aborts the process. postgres-array@3 slices the source
+ * instead. Other types fall through to `pg.types`.
+ */
+const READ_TYPES = {
+  getTypeParser: (oid: number, format?: "text" | "binary") =>
+    oid === BYTEA_ARRAY_OID && format !== "binary"
+      ? (value: string) => parseArray(value, parseBytea)
+      : pg.types.getTypeParser(oid, format),
+};
 
 const _defaultOptions: PostgresSaverOptions = {
   schema: "public",
@@ -433,10 +451,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
       args = [thread_id, checkpoint_ns];
     }
 
-    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(
-      this.SQL_STATEMENTS.SELECT_SQL + where,
-      args
-    );
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>({
+      text: this.SQL_STATEMENTS.SELECT_SQL + where,
+      values: args,
+      types: READ_TYPES,
+    });
 
     const [row] = result.rows;
     if (row === undefined) return undefined;
@@ -444,10 +463,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
     if (row.checkpoint.v < 4 && row.parent_checkpoint_id != null) {
       const sendsResult = await this.pool.query<
         SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
-      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
-        thread_id,
-        [row.parent_checkpoint_id],
-      ]);
+      >({
+        text: this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL,
+        values: [thread_id, [row.parent_checkpoint_id]],
+        types: READ_TYPES,
+      });
 
       const [sendsRow] = sendsResult.rows;
       if (sendsRow != null) {
@@ -505,7 +525,11 @@ export class PostgresSaver extends BaseCheckpointSaver {
       query += ` LIMIT ${Number.parseInt(limit.toString(), 10)}`; // sanitize via parseInt, as limit could be an externally provided value
     }
 
-    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>(query, args);
+    const result = await this.pool.query<SQL_TYPES["SELECT_SQL"]>({
+      text: query,
+      values: args,
+      types: READ_TYPES,
+    });
     const toMigrate = result.rows.filter(
       (row) => row.checkpoint.v < 4 && row.parent_checkpoint_id != null
     );
@@ -513,10 +537,14 @@ export class PostgresSaver extends BaseCheckpointSaver {
     if (toMigrate.length > 0) {
       const sendsResult = await this.pool.query<
         SQL_TYPES["SELECT_PENDING_SENDS_SQL"]
-      >(this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL, [
-        toMigrate[0].thread_id,
-        toMigrate.map((row) => row.parent_checkpoint_id),
-      ]);
+      >({
+        text: this.SQL_STATEMENTS.SELECT_PENDING_SENDS_SQL,
+        values: [
+          toMigrate[0].thread_id,
+          toMigrate.map((row) => row.parent_checkpoint_id),
+        ],
+        types: READ_TYPES,
+      });
 
       const parentMap = toMigrate.reduce<
         Record<string, SQL_TYPES["SELECT_SQL"][]>

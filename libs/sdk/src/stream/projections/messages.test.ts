@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Channel, Event } from "@langchain/protocol";
-import type { BaseMessage } from "@langchain/core/messages";
+import type { AIMessageChunk, BaseMessage } from "@langchain/core/messages";
 
 import { ChannelRegistry } from "../channel-registry.js";
 import { StreamStore } from "../store.js";
@@ -260,5 +260,72 @@ describe("messagesProjection", () => {
     });
 
     release();
+  });
+
+  it("streams tool-call-delta args and keeps updating past unknown delta variants", async () => {
+    const { push, store, runtime } = open();
+
+    push(
+      messages({ event: "message-start", id: "msg_tool", role: "ai" }),
+      messages({
+        event: "content-block-start",
+        index: 0,
+        content: { type: "tool_call_chunk", id: "call_1", name: "search", args: "" },
+      }),
+      messages({
+        event: "content-block-delta",
+        index: 0,
+        delta: { type: "tool-call-delta", args: '{"query":' },
+      }),
+      messages({
+        event: "content-block-delta",
+        index: 0,
+        delta: { type: "future-delta", args: "!!" },
+      }),
+      messages({
+        event: "content-block-delta",
+        index: 0,
+        delta: { type: "tool-call-delta", args: '"weather' },
+      })
+    );
+
+    await vi.waitFor(() => {
+      const [message] = store.getSnapshot() as AIMessageChunk[];
+      expect(message?.tool_call_chunks).toEqual([
+        {
+          type: "tool_call_chunk",
+          id: "call_1",
+          name: "search",
+          args: '{"query":"weather',
+        },
+      ]);
+    });
+
+    push(
+      messages({
+        event: "content-block-finish",
+        index: 0,
+        content: {
+          type: "tool_call",
+          id: "call_1",
+          name: "search",
+          args: { query: "weather" },
+        },
+      }),
+      messages({ event: "message-finish", reason: "tool_use" }),
+      messages({ event: "message-start", id: "msg_text", role: "ai" }),
+      messages({ event: "content-block-start", index: 0, content: { type: "text", text: "Done" } }),
+      messages({ event: "message-finish", reason: "stop" })
+    );
+
+    await vi.waitFor(() => {
+      const [toolMessage, textMessage] = store.getSnapshot() as AIMessageChunk[];
+      expect(toolMessage?.tool_calls).toEqual([
+        { type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } },
+      ]);
+      expect(textMessage?.text).toBe("Done");
+    });
+
+    await runtime.dispose();
   });
 });

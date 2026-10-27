@@ -1,5 +1,20 @@
 # @langchain/langgraph-api
 
+## 1.5.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.6
+
+## 1.5.5
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Depend on `@langchain/protocol` 0.0.20, the version `@langchain/langgraph-sdk` uses, so installs resolve a single copy and the protocol event types stay compatible.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.5
+
 ## 1.5.4
 
 ### Patch Changes
