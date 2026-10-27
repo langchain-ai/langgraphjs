@@ -208,6 +208,16 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     let manager = this.messageManagers.get(toolCallId);
     if (!manager) {
       manager = new MessageTupleManager();
+      // Re-publish messages whose tool calls were re-parsed on the timer
+      manager.onRefresh = () => {
+        const existing = this.subagents.get(toolCallId);
+        if (!existing) return;
+        this.subagents.set(toolCallId, {
+          ...existing,
+          messages: this.getMessagesForSubagent(toolCallId),
+        });
+        this.onSubagentChange?.();
+      };
       this.messageManagers.set(toolCallId, manager);
     }
     return manager;
@@ -861,6 +871,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   clear(): void {
     this.subagents.clear();
     this.namespaceToToolCallId.clear();
+    this.messageManagers.forEach((manager) => manager.clear());
     this.messageManagers.clear();
     this.pendingMatches.clear();
     this.pendingMessages.clear();

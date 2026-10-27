@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@langchain/build": "workspace:*",
-    "@langchain/core": "^1.2.13",
+    "@langchain/core": "^1.3.0",
     "@langchain/scripts": "^0.1.4",
     "@tsconfig/recommended": "^1.0.2",
     "@types/node": "^18.15.11",
