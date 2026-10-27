@@ -1,7 +1,11 @@
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
 import { mergeSignals } from "../utils/signals.js";
-import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
+import {
+  BytesLineDecoder,
+  SSEDecoder,
+  isSSEControlPart,
+} from "../utils/sse.js";
 import {
   streamWithRetry,
   idleReconnectStream,
@@ -491,17 +495,21 @@ export class BaseClient {
         ? lines.pipeThrough(idleReconnectStream({ mode: idleMode }))
         : lines;
       const stream: ReadableStream<T> = watched.pipeThrough(
-        SSEDecoder()
+        SSEDecoder(reconnectParams?.lastEventId)
       ) as ReadableStream<T>;
 
       return { response, stream };
     };
 
-    yield* streamWithRetry(makeRequest, {
+    for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
       signal: config.signal,
       onReconnect: config.onReconnect,
-    });
+    })) {
+      if (!isSSEControlPart(part)) {
+        yield part.id === "" ? { ...part, id: undefined } : part;
+      }
+    }
   }
 }
 

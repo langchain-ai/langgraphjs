@@ -476,7 +476,7 @@ describe("Client streaming with retry", () => {
         await vi.runAllTimersAsync();
         expect(await consume).toEqual([
           { id: "cursor", event: "", data: null },
-          { id: "", event: "", data: null },
+          { id: undefined, event: "", data: null },
           { id: undefined, event: "values", data: {} },
         ]);
         expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -486,6 +486,37 @@ describe("Client streaming with retry", () => {
         expect(
           new Headers(mockFetch.mock.calls[1][1].headers).has("last-event-id")
         ).toBe(false);
+      }
+    );
+
+    test.each(["cursor", ""])(
+      "consumes control blocks and inherits reconnect cursor %j",
+      async (cursor) => {
+        const encoder = new TextEncoder();
+        const lines = `id: old\ndata: null\n\nid: ${cursor}\n\nretry: 100\n\n`.split(/(?<=\n)/);
+        mockFetch.mockResolvedValueOnce(
+          new Response(
+            new ReadableStream({
+              pull(controller) {
+                const line = lines.shift();
+                if (line !== undefined) controller.enqueue(encoder.encode(line));
+                else controller.error(new TypeError("disconnected"));
+              },
+            }),
+            { headers: { location: "/threads/thread-1/runs/run-1/stream" } }
+          )
+        );
+        mockFetch.mockResolvedValueOnce(
+          new Response(encoder.encode("data:\n\ndata: null\n\n"))
+        );
+        const consume = gatherStream(client.runs.joinStream("thread-1", "run-1"));
+        await vi.runAllTimersAsync();
+        expect(await consume).toEqual([
+          { id: "old", event: "", data: null },
+          { id: cursor || undefined, event: "", data: null },
+          { id: cursor || undefined, event: "", data: null },
+        ]);
+        expect(new Headers(mockFetch.mock.calls[1][1].headers).get("last-event-id")).toBe(cursor || null);
       }
     );
 

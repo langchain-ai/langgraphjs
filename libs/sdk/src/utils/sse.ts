@@ -59,10 +59,16 @@ export interface StreamPart {
   data: unknown;
 }
 
-export function SSEDecoder() {
+const controlParts = new WeakSet<object>();
+
+export function isSSEControlPart(part: object) {
+  return controlParts.has(part);
+}
+
+export function SSEDecoder(initialLastEventId?: string) {
   let event = "";
   let data: Uint8Array[] = [];
-  let lastEventId: string | undefined;
+  let lastEventId = initialLastEventId;
   let idChanged = false;
   let retry: number | null = null;
   let firstLine = true;
@@ -87,6 +93,8 @@ export function SSEDecoder() {
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         };
+
+        if (!event && !data.length) controlParts.add(sse);
 
         // NOTE: as per the SSE spec, do not reset lastEventId
         event = "";
@@ -148,5 +156,6 @@ function joinArrays(data: ArrayLike<number>[]) {
 }
 
 function decodeArraysToJson(decoder: TextDecoder, data: Uint8Array[]) {
-  return JSON.parse(data.map((line) => decoder.decode(line)).join("\n"));
+  const body = data.map((line) => decoder.decode(line)).join("\n");
+  return /^[\x09-\x0d\x20]*$/.test(body) ? null : JSON.parse(body);
 }

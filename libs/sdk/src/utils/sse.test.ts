@@ -128,7 +128,12 @@ describe("SSEDecoder", () => {
       await decode('data: {\ndata\ndata: "value":\ndata:\ndata: 1\ndata: }\n\n')
     ).toEqual([{ id: undefined, event: "", data: { value: 1 } }]);
     await expect(decode("data: 1\ndata: 2\n\n")).rejects.toThrow(SyntaxError);
-    await expect(decode("data\n\n")).rejects.toThrow(SyntaxError);
+    expect(await decode("data\n\n")).toEqual([
+      { id: undefined, event: "", data: null },
+    ]);
+    expect(await decode("data:\ndata:\n\n")).toEqual([
+      { id: undefined, event: "", data: null },
+    ]);
   });
 
   test("handles colonless event clearing and ID reset without phantom events", async () => {
