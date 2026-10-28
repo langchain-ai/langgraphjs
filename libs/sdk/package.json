@@ -43,7 +43,7 @@
     "zod": "^4.6.6"
   },
   "peerDependencies": {
-    "@langchain/core": "^1.1.48",
+    "@langchain/core": "^1.2.18",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },
