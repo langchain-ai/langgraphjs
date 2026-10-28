@@ -1,0 +1,6 @@
+---
+"@langchain/langgraph-checkpoint-postgres": patch
+"@langchain/langgraph-checkpoint-validation": patch
+---
+
+`PostgresSaver.getDeltaChannelHistory` reads a `DeltaChannel`'s history in two stages, ported from langgraph (Python)'s `PostgresSaver`. It loaded every ancestor back to the last snapshot with its own `getTuple` before, all of that checkpoint's other channels included, so loading a thread took one more query for each step since the snapshot. Now one query per 1,024 checkpoints, newest first, finds the target's ancestors and stored values, and one more reads their writes and the stored value. It returns the same writes, in the same order, and the same seed. A loop of parent links that reaches no stored value, which a graph run never writes, now throws an error instead of walking forever. `deltaChannelHistoryTests` now checks every saver's result against the base implementation, and adds cases for several snapshots, channels walked to different depths, a version stored without a value, a value stored further back under an unchanged version, the same versions in two namespaces of one thread, a target on an older branch, a parent whose id sorts above its child's or the target's, many writes from one task to one channel, a parent that was never stored, and a missing target.
