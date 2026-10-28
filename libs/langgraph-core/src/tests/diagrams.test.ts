@@ -55,8 +55,26 @@ graph TD;
 });
 
 test("drawing leaves node metadata unchanged", async () => {
+  const subagents = [
+    { name: "researcher", description: "Researches a topic" },
+    { name: "general-purpose", description: "Handles any task", forked: true },
+    {
+      name: "coder",
+      description: { text: "Writes code" },
+      systemPrompt: "You write code.",
+      tools: [new FakeSearchTool()],
+    },
+  ];
+  const taskTool = Object.assign(
+    tool(() => "done", {
+      name: "task",
+      description: "Run a subagent",
+      schema: z.object({}),
+    }),
+    { subagents }
+  );
   const app = new StateGraph(MessagesAnnotation)
-    .addNode("tools", new ToolNode([new FakeSearchTool()]), {
+    .addNode("tools", new ToolNode([new FakeSearchTool(), taskTool]), {
       metadata: { owner: "search" },
     })
     .addEdge(START, "tools")
@@ -66,10 +84,50 @@ test("drawing leaves node metadata unchanged", async () => {
     expect(drawable.nodes.tools.metadata).toEqual({
       owner: "search",
       __interrupt: "before",
-      __tools: ["search_api"],
+      __tools: ["search_api", "task"],
+      __subagents: {
+        task: [
+          { name: "researcher", description: "Researches a topic" },
+          {
+            name: "general-purpose",
+            description: "Handles any task",
+            forked: true,
+          },
+          { name: "coder" },
+        ],
+      },
     });
   }
   expect(app.nodes.tools.metadata).toEqual({ owner: "search" });
+});
+
+test("mermaid leaves tool subagents out of node labels", async () => {
+  const taskTool = Object.assign(
+    tool(() => "done", {
+      name: "task",
+      description: "Run a subagent",
+      schema: z.object({}),
+    }),
+    { subagents: [{ name: "researcher", description: "Researches a topic" }] }
+  );
+  const app = new StateGraph(MessagesAnnotation)
+    .addNode("tools", new ToolNode([taskTool]))
+    .addEdge(START, "tools")
+    .compile();
+
+  const graph = app.getGraph();
+  expect(graph.nodes.tools.metadata).toHaveProperty("__subagents");
+  expect(graph.drawMermaid()).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
+graph TD;
+\t__start__([<p>__start__</p>]):::first
+\ttools(tools<hr/><small><em>__tools = task</em></small>)
+\t__end__([<p>__end__</p>]):::last
+\t__start__ --> tools;
+\ttools --> __end__;
+\tclassDef default fill:#f2f0ff,line-height:1.2;
+\tclassDef first fill-opacity:0;
+\tclassDef last fill:#bfb6fc;
+`);
 });
 
 test("implicit end edge for terminal nodes", async () => {

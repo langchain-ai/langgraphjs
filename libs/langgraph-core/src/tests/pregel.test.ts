@@ -5162,6 +5162,7 @@ graph TD;
           {
             id: "agent",
             type: "runnable",
+            metadata: {},
             data: {
               id: ["langchain", "chat_models", "fake", "FakeChatModel"],
               name: "FakeChatModel",
@@ -5170,6 +5171,7 @@ graph TD;
           {
             id: "action",
             type: "runnable",
+            metadata: {},
             data: {
               id: ["langgraph", "RunnableCallable"],
               name: "action",
@@ -5319,6 +5321,7 @@ graph TD;
           {
             id: "agent",
             type: "runnable",
+            metadata: {},
             data: {
               id: ["langchain", "chat_models", "fake", "FakeChatModel"],
               name: "FakeChatModel",
@@ -5327,6 +5330,7 @@ graph TD;
           {
             id: "action",
             type: "runnable",
+            metadata: {},
             data: {
               id: ["langgraph", "RunnableCallable"],
               name: "action",
@@ -6024,6 +6028,7 @@ graph TD;
         {
           id: "prepare",
           type: "runnable",
+          metadata: {},
           data: {
             id: ["langgraph", "RunnableCallable"],
             name: "prepare",
@@ -6032,6 +6037,7 @@ graph TD;
         {
           id: "tool_two_slow",
           type: "runnable",
+          metadata: {},
           data: {
             id: ["langgraph", "RunnableCallable"],
             name: "tool_two_slow",
@@ -6040,6 +6046,7 @@ graph TD;
         {
           id: "tool_two_fast",
           type: "runnable",
+          metadata: {},
           data: {
             id: ["langgraph", "RunnableCallable"],
             name: "tool_two_fast",
@@ -6048,6 +6055,7 @@ graph TD;
         {
           id: "finish",
           type: "runnable",
+          metadata: {},
           data: {
             id: ["langgraph", "RunnableCallable"],
             name: "finish",
