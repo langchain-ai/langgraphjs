@@ -1184,20 +1184,17 @@ describe("StreamManager", () => {
     });
     const stream = (
       events: Array<{ event: string; data: unknown }>,
-      startOptions?: { replay?: boolean }
+      options?: { isReplaying?: boolean }
     ) =>
-      manager.start(
-        async () => createMockStream(events) as never,
-        {
-          getMessages: (state) => state.messages ?? [],
-          setMessages: (current, messages) => ({ ...current, messages }),
-          initialValues: { messages: [] },
-          callbacks: {},
-          onSuccess: () => undefined,
-          onError: vi.fn(),
-        },
-        startOptions
-      );
+      manager.start(async () => createMockStream(events) as never, {
+        getMessages: (state) => state.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+        ...options,
+      });
     const contents = (messages: Message[] | undefined) =>
       messages?.map((message) => message.content);
     let manager: StreamManager<State>;
@@ -1214,7 +1211,7 @@ describe("StreamManager", () => {
       const run = [values, chunk("Hel"), chunk("lo")];
 
       await stream(run);
-      await stream(run, { replay: true });
+      await stream(run, { isReplaying: true });
 
       expect(contents(manager.values?.messages)).toEqual(["hi", "Hello"]);
     });
@@ -1261,7 +1258,7 @@ describe("StreamManager", () => {
       ];
 
       await stream(run);
-      await stream(run, { replay: true });
+      await stream(run, { isReplaying: true });
 
       const [subagent] = manager.getSubagentsByMessage("ai-1");
       expect(contents(subagent?.messages)).toEqual(["Hello"]);

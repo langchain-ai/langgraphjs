@@ -773,8 +773,10 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
-    },
-    replay = false
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
+    }
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
@@ -782,7 +784,7 @@ export class StreamManager<
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
       this.abortRef = abort;
-      if (replay) {
+      if (options.isReplaying) {
         this.messages.startReplay();
         this.subagentManager.startReplay();
       }
@@ -1172,6 +1174,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     },
     startOptions?: {
       /**
@@ -1180,17 +1185,13 @@ export class StreamManager<
        * the queue so the new run request can proceed immediately.
        */
       abortPrevious?: boolean;
-      /** The stream replays the run from its first event. */
-      replay?: boolean;
     }
   ): Promise<void> => {
     if (startOptions?.abortPrevious) {
       this.abortRef.abort();
     }
     this.queueSize += 1;
-    const queued = this.queue.then(() =>
-      this.enqueue(action, options, startOptions?.replay)
-    );
+    const queued = this.queue.then(() => this.enqueue(action, options));
     this.queue = queued;
     await queued;
   };

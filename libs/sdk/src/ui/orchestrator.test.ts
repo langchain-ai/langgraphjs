@@ -1019,9 +1019,9 @@ describe("StreamOrchestrator.joinStream", () => {
     await orch.joinStream("run-1");
     await orch.joinStream("run-1", "5");
 
-    expect(start.mock.calls.map((call) => call[2])).toEqual([
-      { replay: true },
-      { replay: false },
+    expect(start.mock.calls.map((call) => call[1].isReplaying)).toEqual([
+      true,
+      false,
     ]);
     orch.dispose();
   });
