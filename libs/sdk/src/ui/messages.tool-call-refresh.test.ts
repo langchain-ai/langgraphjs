@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { StreamManager } from "./manager.js";
+import { REMOVE_ALL_MESSAGES, StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
 import type { Message } from "../types.messages.js";
@@ -39,13 +39,16 @@ type State = { messages: Message[] };
 
 type MessagesEvent = { event: "messages"; data: [Message, object] };
 
+type StreamEvent = MessagesEvent | { event: "values"; data: State };
+
 // Runs `events` through a StreamManager and returns the AI message as
 // published to state after each update.
 async function streamToolCall(
   events: (
     event: (i: number) => MessagesEvent,
-    published: Message[]
-  ) => AsyncGenerator<MessagesEvent>
+    published: Message[],
+    currentMessages: () => Message[] | undefined
+  ) => AsyncGenerator<StreamEvent>
 ) {
   const manager = new StreamManager<State>(new MessageTupleManager(), {
     throttle: false,
@@ -57,7 +60,8 @@ async function streamToolCall(
     async () =>
       events(
         (i) => ({ event: "messages", data: [toolCallChunk(i), {}] }),
-        published
+        published,
+        () => manager.values?.messages
       ),
     {
       getMessages: (values: State) => values.messages ?? [],
@@ -139,6 +143,39 @@ describe("tool call args refresh", () => {
 
     expect(argsContent(published.at(-1))).toBe(DELTA.repeat(9));
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("doesn't undo a values event that lands before the refresh", async () => {
+    const human = { id: "human-1", type: "human", content: "hi" } as Message;
+    let afterRefresh: Message[] | undefined;
+
+    await streamToolCall(async function* (event, _published, currentMessages) {
+      for (let i = 0; i < 10; i += 1) yield event(i);
+      // The server's state no longer has the streamed message
+      yield { event: "values", data: { messages: [human] } };
+      await vi.advanceTimersByTimeAsync(50);
+      afterRefresh = currentMessages();
+    });
+
+    expect(afterRefresh).toEqual([human]);
+  });
+
+  it("doesn't undo a remove-all that lands before the refresh", async () => {
+    const removeAll = {
+      id: REMOVE_ALL_MESSAGES,
+      type: "remove",
+      content: "",
+    } as unknown as Message;
+    let afterRefresh: Message[] | undefined;
+
+    await streamToolCall(async function* (event, _published, currentMessages) {
+      for (let i = 0; i < 10; i += 1) yield event(i);
+      yield { event: "messages", data: [removeAll, {}] };
+      await vi.advanceTimersByTimeAsync(50);
+      afterRefresh = currentMessages();
+    });
+
+    expect(afterRefresh).toEqual([]);
   });
 
   it("parses every chunk when nothing listens for refreshes", () => {

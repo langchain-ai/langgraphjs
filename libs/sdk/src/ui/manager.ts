@@ -797,7 +797,7 @@ export class StreamManager<
       // Subagent messages kept in the main stream (`filterSubagentMessages` off)
       const subagentMessageIds = new Set<string>();
 
-      const applyMessage = (messageId: string) => {
+      const applyMessage = (messageId: string, { updateOnly = false } = {}) => {
         const isFromSubagent = subagentMessageIds.has(messageId);
 
         this.setStreamValues((streamValues) => {
@@ -812,17 +812,25 @@ export class StreamManager<
             this.messages.get(messageId, messages.length) ?? {};
 
           if (!chunk || index == null) return values;
+
+          // Later events may have moved or removed the message since it was
+          // first seen, so update it where it is now, or not at all
+          const targetIndex = updateOnly
+            ? messages.findIndex((message) => message.id === messageId)
+            : index;
+          if (targetIndex === -1) return values;
+
           if (chunk.getType() === "remove") {
             // Check for special REMOVE_ALL_MESSAGES sentinel
             if (chunk.id === REMOVE_ALL_MESSAGES) {
               // Clear all messages when __remove_all__ is received
               messages = [];
             } else {
-              messages.splice(index, 1);
+              messages.splice(targetIndex, 1);
             }
           } else {
             const msgDict = this.toMessage(chunk) as Message;
-            messages[index] = msgDict;
+            messages[targetIndex] = msgDict;
 
             // Track subagents from AI messages with tool calls (main agent only)
             if (
@@ -861,7 +869,8 @@ export class StreamManager<
       };
 
       // Re-publish messages whose tool calls were re-parsed on the timer
-      this.messages.onRefresh = (ids) => ids.forEach(applyMessage);
+      this.messages.onRefresh = (ids) =>
+        ids.forEach((id) => applyMessage(id, { updateOnly: true }));
 
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
