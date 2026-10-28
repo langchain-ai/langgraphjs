@@ -42,7 +42,7 @@ const createValidRun = async (
       : [];
   if (streamMode.length === 0) streamMode.push("values");
 
-  const multitaskStrategy = payload.multitask_strategy ?? "reject";
+  const multitaskStrategy = payload.multitask_strategy ?? "enqueue";
   const preventInsertInInflight = multitaskStrategy === "reject";
 
   const config: RunKwargs["config"] = { ...run.config };
