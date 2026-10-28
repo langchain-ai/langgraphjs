@@ -2397,11 +2397,10 @@ describe("multitasking", () => {
     }
   });
 
-  it("multitasking rollback", { timeout: 8_000, retry: 3 }, async () => {
+  it("multitasking rollback", { timeout: 8_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
 
-    // Start first run
     const input1 = {
       messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
       sleep: 4,
@@ -2412,7 +2411,23 @@ describe("multitasking", () => {
       { input: input1, config: globalConfig }
     );
 
-    // Start second run that should rollback first
+    await expect
+      .poll(
+        async () => {
+          const state = await client.threads.getState<AgentState>(
+            thread.thread_id
+          );
+          return state.values.messages?.map((message) => message.content);
+        },
+        { timeout: 5_000 }
+      )
+      .toEqual(["foo"]);
+    const run1Events = gatherIterator(
+      client.runs.joinStream(thread.thread_id, run1.run_id, {
+        lastEventId: "-1",
+      })
+    );
+
     const input2 = {
       messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
     };
@@ -2422,17 +2437,28 @@ describe("multitasking", () => {
       { input: input2, multitaskStrategy: "rollback", config: globalConfig }
     );
 
-    // First run should be deleted
-    await expect(() =>
-      pollRun(thread.thread_id, run1.run_id)
-    ).rejects.toThrow();
+    expect(await pollRun(thread.thread_id, run2.run_id)).toBe("success");
+    await expect(
+      client.runs.get(thread.thread_id, run1.run_id)
+    ).rejects.toThrow("HTTP 404: Run not found");
+    expect((await run1Events).map((event) => event.event)).toEqual([
+      "metadata",
+      "values",
+    ]);
 
-    const run2Status = await pollRun(thread.thread_id, run2.run_id);
-    expect(run2Status).toBe("success");
+    const history = await client.threads.getHistory(thread.thread_id);
+    expect(new Set(history.map((state) => state.metadata?.run_id))).toEqual(
+      new Set([run2.run_id])
+    );
 
     const state = await client.threads.getState<AgentState>(thread.thread_id);
-    expect(state.values.messages.length).toBe(4);
-    expect(state.values.messages.at(0)?.content).toBe("bar");
+    expect(state.values.messages.map((message) => message.content)).toEqual([
+      "bar",
+      "begin",
+      "tool_call__begin",
+      "end",
+    ]);
+    expect((await client.threads.get(thread.thread_id)).status).toBe("idle");
   });
 
   it("multitasking enqueue", { timeout: 8_000, retry: 3 }, async () => {
