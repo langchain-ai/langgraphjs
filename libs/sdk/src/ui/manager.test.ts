@@ -1129,6 +1129,141 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("stop() with a read", () => {
+    type State = { messages: Message[]; count?: number };
+
+    const history: State = { messages: [], count: 0 };
+    const streamed: State = { messages: [], count: 1 };
+    const kept: State = { messages: [], count: 2 };
+    const options = {
+      getMessages: (values: State) => values.messages ?? [],
+      setMessages: (current: State, messages: Message[]) => ({
+        ...current,
+        messages,
+      }),
+      initialValues: { messages: [] } as State,
+      callbacks: {},
+      onSuccess: () => undefined,
+      onError: vi.fn(),
+    };
+    const addTen = ({
+      mutate,
+    }: {
+      mutate: (update: (prev: State) => Partial<State>) => void;
+    }) => mutate((prev) => ({ count: (prev.count ?? 0) + 10 }));
+    let manager: StreamManager<State>;
+
+    const startRunningStream = async () => {
+      let shown!: () => void;
+      const started = new Promise<void>((resolve) => {
+        shown = resolve;
+      });
+      void manager.start(async (signal) => {
+        async function* gen() {
+          yield { event: "values" as const, data: streamed };
+          shown();
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        }
+        return gen() as never;
+      }, options);
+      await started;
+    };
+    const deferredRead = () => {
+      let resolve!: (values: State) => void;
+      const read = () =>
+        new Promise<State>((r) => {
+          resolve = r;
+        });
+      return { read, resolve: (values: State) => resolve(values) };
+    };
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    it.each([
+      [
+        "shows the read head with the onStop update on top",
+        async () => kept,
+        12,
+      ],
+      [
+        "shows the history values with the onStop update on top",
+        async () => null,
+        10,
+      ],
+      [
+        "keeps the stopped stream's values when the read returns undefined",
+        async () => undefined,
+        11,
+      ],
+      [
+        "keeps the stopped stream's values when the read fails",
+        async () => {
+          throw new Error("offline");
+        },
+        11,
+      ],
+    ])("%s", async (_, read, count) => {
+      await startRunningStream();
+
+      await manager.stop(history, { onStop: addTen, read });
+
+      expect(manager.values).toEqual({ messages: [], count });
+    });
+
+    it("clears the stream values when the read finds no head and onStop changed nothing", async () => {
+      await startRunningStream();
+
+      await manager.stop(history, { read: async () => null });
+
+      expect(manager.values).toBeNull();
+    });
+
+    it("drops a read that resolves after a run queued before the stop begins", async () => {
+      await startRunningStream();
+      const queued = manager.start(
+        async () =>
+          createMockStream([
+            { event: "values" as const, data: { messages: [], count: 3 } },
+          ]) as never,
+        options
+      );
+      const { read, resolve } = deferredRead();
+
+      const stopping = manager.stop(history, { read });
+      await queued;
+      resolve(kept);
+      await stopping;
+
+      expect(manager.values).toEqual({ messages: [], count: 3 });
+    });
+
+    it("drops a read that resolves after clear()", async () => {
+      await startRunningStream();
+      const { read, resolve } = deferredRead();
+
+      const stopping = manager.stop(history, { read });
+      manager.clear();
+      resolve(kept);
+      await stopping;
+
+      expect(manager.values).toBeNull();
+    });
+
+    it("does not read when no stream is running", async () => {
+      const read = vi.fn(async () => kept);
+
+      await manager.stop(history, { read });
+
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
   describe("stream values", () => {
     type State = { messages: Message[]; count?: number };
 

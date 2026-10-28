@@ -173,12 +173,6 @@ export class StreamOrchestrator<
 
   #disposed = false;
 
-  /**
-   * Bumped when a stream begins, not when a run is queued behind one, so a
-   * run queued before a stop that begins after it still counts.
-   */
-  #streamStarts = 0;
-
   #handledHeadlessToolInterruptIds = new Set<string>();
 
   /**
@@ -846,16 +840,15 @@ export class StreamOrchestrator<
    * run metadata.
    */
   async stop(): Promise<void> {
-    const wasLoading = this.stream.isLoading;
     const threadId = this.#threadId;
-    const streamStarts = this.#streamStarts;
     const shownHead = this.branchContext.threadHead;
+    const read = planStopRead({
+      history:
+        this.historyLimit === true || typeof this.historyLimit === "number",
+    });
 
-    const stopUpdates: Array<
-      Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-    > = [];
     await this.stream.stop(this.historyValues, {
-      onStop: ({ mutate }) => {
+      onStop: (args) => {
         if (this.#runMetadataStorage && this.#threadId) {
           const runId = this.#runMetadataStorage.getItem(
             `lg:stream:${this.#threadId}`
@@ -865,48 +858,22 @@ export class StreamOrchestrator<
           }
           this.#runMetadataStorage.removeItem(`lg:stream:${this.#threadId}`);
         }
-        this.#options.onStop?.({
-          mutate: (update) => {
-            stopUpdates.push(update);
-            mutate(update);
-          },
-        });
+        this.#options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null || this.#disposed
+          ? undefined
+          : async () => {
+              const newHistory = await this.#mutate(threadId, {
+                ...read,
+                map: (states) => applyStopRead(states, shownHead),
+              });
+              if (newHistory == null) return undefined;
+              return newHistory.at(0)?.values ?? null;
+            },
     });
-
-    // A cancelled run skips `onSuccess`, so the buffer still holds what it
-    // streamed, including a message chunk the server never saved. The read
-    // replaces it with what the server kept, with the `onStop` edits on top.
-    if (!wasLoading || threadId == null || this.#disposed) return;
-    const read = planStopRead({
-      history:
-        this.historyLimit === true || typeof this.historyLimit === "number",
-    });
-    const newHistory = await this.#mutate(threadId, {
-      ...read,
-      map: (states) => applyStopRead(states, shownHead),
-    });
-    if (
-      newHistory == null ||
-      this.#threadId !== threadId ||
-      this.#streamStarts !== streamStarts
-    ) {
-      return;
-    }
-    // Without a head the history takes over. Null keeps it live; only onStop
-    // edits need a copy of it to sit on.
-    const head = newHistory.at(0)?.values;
-    this.stream.setStreamValues(
-      head == null && stopUpdates.length === 0
-        ? null
-        : stopUpdates.reduce<StateType>(
-            (prev, update) => ({
-              ...prev,
-              ...(typeof update === "function" ? update(prev) : update),
-            }),
-            head ?? this.historyValues
-          )
-    );
   }
 
   /**
@@ -954,7 +921,6 @@ export class StreamOrchestrator<
 
     await this.stream.start(
       async (signal: AbortSignal) => {
-        this.#streamStarts += 1;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -1040,7 +1006,6 @@ export class StreamOrchestrator<
 
     return this.stream.start(
       async (signal) => {
-        this.#streamStarts += 1;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;

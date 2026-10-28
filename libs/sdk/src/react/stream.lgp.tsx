@@ -400,9 +400,6 @@ export function useStreamLGP<
   // shown when it ends.
   const latestThreadHeadRef = useRef(branchContext.threadHead);
   latestThreadHeadRef.current = branchContext.threadHead;
-  // Bumped when a stream begins, not when a run is queued behind one, so a
-  // run queued before a stop that begins after it still counts.
-  const streamStartsRef = useRef(0);
 
   // Reconstruct subagents from history when:
   // 1. History is loaded (not loading, has data)
@@ -495,71 +492,39 @@ export function useStreamLGP<
   })();
 
   const stop = async () => {
-    const wasLoading = stream.isLoading;
-    const streamStarts = streamStartsRef.current;
     const shownHead = latestThreadHeadRef.current;
+    const read = planStopRead({
+      history: historyLimit === true || typeof historyLimit === "number",
+      userThread: options.thread != null,
+    });
 
-    const stopUpdates: Array<
-      Partial<StateType> | ((prev: StateType) => Partial<StateType>)
-    > = [];
     await stream.stop(historyValues, {
-      onStop: ({ mutate }) => {
+      onStop: (args) => {
         if (runMetadataStorage && threadId) {
           const runId = runMetadataStorage.getItem(`lg:stream:${threadId}`);
           if (runId) void client.runs.cancel(threadId, runId);
           runMetadataStorage.removeItem(`lg:stream:${threadId}`);
         }
 
-        options.onStop?.({
-          mutate: (update) => {
-            stopUpdates.push(update);
-            mutate(update);
-          },
-        });
+        options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null
+          ? undefined
+          : async () => {
+              if (read == null) return null;
+              const newHistory =
+                options.thread != null
+                  ? await history.mutate(threadId)
+                  : await builtInHistory.read(threadId, {
+                      ...read,
+                      map: (states) => applyStopRead(states, shownHead),
+                    });
+              return newHistory?.at(0)?.values ?? null;
+            },
     });
-
-    // A cancelled run skips `onSuccess`, so the buffer still holds what it
-    // streamed, including a message chunk the server never saved. The read
-    // replaces it with what the server kept, with the `onStop` edits on top.
-    if (!wasLoading || threadId == null) return;
-    const read = planStopRead({
-      history: historyLimit === true || typeof historyLimit === "number",
-      userThread: options.thread != null,
-    });
-    let newHistory: ThreadState<StateType>[] | null | undefined;
-    try {
-      if (read && options.thread != null) {
-        newHistory = await history.mutate(threadId);
-      } else if (read) {
-        newHistory = await builtInHistory.read(threadId, {
-          ...read,
-          map: (states) => applyStopRead(states, shownHead),
-        });
-      }
-    } catch {
-      return;
-    }
-    if (
-      threadIdRef.current !== threadId ||
-      streamStartsRef.current !== streamStarts
-    ) {
-      return;
-    }
-    // Without a head the history takes over. Null keeps it live; only onStop
-    // edits need a copy of it to sit on.
-    const head = newHistory?.at(0)?.values;
-    stream.setStreamValues(
-      head == null && stopUpdates.length === 0
-        ? null
-        : stopUpdates.reduce<StateType>(
-            (prev, update) => ({
-              ...prev,
-              ...(typeof update === "function" ? update(prev) : update),
-            }),
-            head ?? historyValues
-          )
-    );
   };
 
   // Called when a run succeeds. Returns null when the head was read, which
@@ -632,7 +597,6 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
-        streamStartsRef.current += 1;
         stream.setStreamValues((values) => {
           const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
@@ -791,7 +755,6 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
-        streamStartsRef.current += 1;
         threadIdStreamingRef.current = threadId;
         const stream = client.runs.joinStream(threadId, runId, {
           signal,
