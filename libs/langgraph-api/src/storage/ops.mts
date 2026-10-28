@@ -1855,10 +1855,13 @@ export class FileSystemRuns implements RunsRepo {
         }
 
         if (signal?.aborted && options?.cancelOnDisconnect) {
-          const run = await runs.get(runId, threadId, auth);
-          if (run?.status === "pending" || run?.status === "running") {
-            await runs.cancel(threadId, [runId], { action: "interrupt" }, auth);
-          }
+          // A stateless run is deleted with its thread as soon as it ends.
+          await runs
+            .cancel(threadId, [runId], { action: "interrupt" }, auth)
+            .catch((error) => {
+              if (!(error instanceof HTTPException) || error.status !== 404)
+                throw error;
+            });
         }
       });
     }
