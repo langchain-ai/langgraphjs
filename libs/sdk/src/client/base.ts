@@ -1,7 +1,11 @@
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
 import { mergeSignals } from "../utils/signals.js";
-import { BytesLineDecoder, SSEDecoder } from "../utils/sse.js";
+import {
+  BytesLineDecoder,
+  SSEDecoder,
+  isSSEControlPart,
+} from "../utils/sse.js";
 import {
   streamWithRetry,
   idleReconnectStream,
@@ -233,7 +237,8 @@ export class BaseClient {
 
   protected prepareFetchOptions(
     path: string,
-    options?: RequestInit & {
+    options?: Omit<RequestInit, "headers"> & {
+      headers?: HeadersInit | Record<string, HeaderValue>;
       json?: unknown;
       params?: Record<string, unknown>;
       timeoutMs?: number | null;
@@ -448,8 +453,11 @@ export class BaseClient {
       const method = isReconnect ? "GET" : config.method || "GET";
 
       const requestHeaders =
-        isReconnect && reconnectParams?.lastEventId
-          ? { ...config.headers, "Last-Event-ID": reconnectParams.lastEventId }
+        isReconnect && reconnectParams?.lastEventId !== undefined
+          ? {
+              ...config.headers,
+              "Last-Event-ID": reconnectParams.lastEventId || null,
+            }
           : config.headers;
 
       // oxlint-disable-next-line prefer-const -- init is reassigned by onRequest hook
@@ -487,17 +495,21 @@ export class BaseClient {
         ? lines.pipeThrough(idleReconnectStream({ mode: idleMode }))
         : lines;
       const stream: ReadableStream<T> = watched.pipeThrough(
-        SSEDecoder()
+        SSEDecoder(reconnectParams?.lastEventId)
       ) as ReadableStream<T>;
 
       return { response, stream };
     };
 
-    yield* streamWithRetry(makeRequest, {
+    for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
       signal: config.signal,
       onReconnect: config.onReconnect,
-    });
+    })) {
+      if (!isSSEControlPart(part)) {
+        yield part.id === "" ? { ...part, id: undefined } : part;
+      }
+    }
   }
 }
 

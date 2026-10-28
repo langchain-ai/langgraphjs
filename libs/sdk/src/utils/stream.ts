@@ -286,7 +286,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
           }
 
           // Track last event ID for reconnection
-          if (value.id) {
+          if (value.id !== undefined) {
             lastEventId = value.id;
           }
 
