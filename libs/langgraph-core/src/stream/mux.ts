@@ -279,7 +279,11 @@ export class StreamMux {
    * @param event - The protocol event to process and store.
    */
   push(ns: Namespace, event: ProtocolEvent): void {
-    if (event.method === "values") {
+    // An interrupt arrives as a `values` event whose payload is only
+    // `{ __interrupt__: [...] }`, not a state snapshot. Keep the last real
+    // snapshot so the run resolves to the state at the pause, as `invoke()`
+    // does. The interrupts are recorded by `pump()` via `markInterrupted()`.
+    if (event.method === "values" && !isInterrupted(event.params.data)) {
       this.#latestValues.set(
         nsKey(ns),
         event.params.data as Record<string, unknown>

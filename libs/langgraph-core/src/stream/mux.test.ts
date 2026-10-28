@@ -449,6 +449,26 @@ describe("StreamMux", () => {
     expect(resolveSpy).toHaveBeenCalledWith({ count: 42 });
   });
 
+  it("close resolves values with the last state, not an interrupt payload", () => {
+    const mux = new StreamMux();
+    const mockStream = new MockSubgraphStream([], mux, 0, 0);
+    const resolveSpy = vi.spyOn(mockStream, RESOLVE_VALUES);
+    mux.register([], mockStream);
+
+    const valuesEvent = (data: unknown): ProtocolEvent => ({
+      type: "event",
+      seq: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      method: "values" as any,
+      params: { namespace: [], timestamp: Date.now(), data },
+    });
+    mux.push([], valuesEvent({ count: 42 }));
+    mux.push([], valuesEvent({ __interrupt__: [{ id: "int-1", value: "?" }] }));
+    mux.close();
+
+    expect(resolveSpy).toHaveBeenCalledWith({ count: 42 });
+  });
+
   it("fail calls fail on all transformers, events, discoveries, and streams", () => {
     const mux = new StreamMux();
     const failSpy = vi.fn();
