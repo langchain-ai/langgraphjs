@@ -5164,6 +5164,7 @@ graph TD;
               id: ["langchain", "chat_models", "fake", "FakeChatModel"],
               name: "FakeChatModel",
             },
+            metadata: {},
           },
           {
             id: "action",
@@ -5172,6 +5173,7 @@ graph TD;
               id: ["langgraph", "RunnableCallable"],
               name: "action",
             },
+            metadata: {},
           },
           {
             id: "__end__",
@@ -5321,6 +5323,7 @@ graph TD;
               id: ["langchain", "chat_models", "fake", "FakeChatModel"],
               name: "FakeChatModel",
             },
+            metadata: {},
           },
           {
             id: "action",
@@ -5329,6 +5332,7 @@ graph TD;
               id: ["langgraph", "RunnableCallable"],
               name: "action",
             },
+            metadata: {},
           },
         ]),
         edges: expect.arrayContaining([
@@ -6026,6 +6030,7 @@ graph TD;
             id: ["langgraph", "RunnableCallable"],
             name: "prepare",
           },
+          metadata: {},
         },
         {
           id: "tool_two_slow",
@@ -6034,6 +6039,7 @@ graph TD;
             id: ["langgraph", "RunnableCallable"],
             name: "tool_two_slow",
           },
+          metadata: {},
         },
         {
           id: "tool_two_fast",
@@ -6042,6 +6048,7 @@ graph TD;
             id: ["langgraph", "RunnableCallable"],
             name: "tool_two_fast",
           },
+          metadata: {},
         },
         {
           id: "finish",
@@ -6050,6 +6057,7 @@ graph TD;
             id: ["langgraph", "RunnableCallable"],
             name: "finish",
           },
+          metadata: {},
         },
         expect.objectContaining({ id: "__end__", type: "schema" }),
       ]),
