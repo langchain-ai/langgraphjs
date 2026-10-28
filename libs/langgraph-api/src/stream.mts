@@ -272,15 +272,19 @@ export async function* streamState(
   );
 
   const messages: Record<string, BaseMessageChunk> = {};
+  const messageIdByRun: Record<string, string | undefined> = {};
   const completedIds = new Set<string>();
 
   for await (const event of events) {
     if (event.tags?.includes("langsmith:hidden")) continue;
 
-    if (
+    // A runnable streamed inside a node emits on_chain_stream with a plain chunk.
+    const isGraphChunk =
       event.event === "on_chain_stream" &&
-      (kwargs.subgraphs || event.run_id === run.run_id)
-    ) {
+      ((kwargs.subgraphs && Array.isArray(event.data.chunk)) ||
+        event.run_id === run.run_id);
+
+    if (isGraphChunk) {
       // Pregel stream chunks are `[ns, mode, payload]`. Lightweight checkpoint
       // envelopes arrive as a separate `checkpoints` chunk before `values`.
       const rawTuple = (
@@ -356,12 +360,13 @@ export async function* streamState(
     // - handleLLMEnd should not dedupe the message
     // - Don't think there's an utility that would convert a BaseMessageChunk to a BaseMessage?
     if (userStreamMode.includes("messages")) {
-      if (
-        event.event === "on_chain_stream" &&
-        (kwargs.subgraphs || event.run_id === run.run_id)
-      ) {
+      if (isGraphChunk) {
         const newMessages: Array<BaseMessageChunk> = [];
-        const [_, chunk]: [string, any] = event.data.chunk;
+        const tuple: unknown[] = event.data.chunk;
+        // With subgraphs on, chunks are [ns, mode, chunk]; a subgraph's
+        // values are not the root graph's messages.
+        if (tuple.length === 3 && (tuple[0] as string[]).length > 0) continue;
+        const chunk: any = tuple.at(-1);
 
         let chunkMessages: Array<BaseMessageChunk> = [];
         if (
@@ -391,20 +396,22 @@ export async function* streamState(
         !event.tags?.includes("nostream")
       ) {
         const message: BaseMessageChunk = event.data.chunk;
+        // Anthropic sets the id on the first chunk only; the rest get run-<runId>.
+        const id = (messageIdByRun[event.run_id] ??= message.id);
 
-        if (!message.id) continue;
+        if (!id) continue;
 
-        if (messages[message.id] == null) {
-          messages[message.id] = message;
+        if (messages[id] == null) {
+          messages[id] = message;
           yield {
             event: "messages/metadata",
-            data: { [message.id]: { metadata: event.metadata } },
+            data: { [id]: { metadata: event.metadata } },
           };
         } else {
-          messages[message.id] = messages[message.id].concat(message);
+          messages[id] = messages[id].concat(message);
         }
 
-        yield { event: "messages/partial", data: [messages[message.id]] };
+        yield { event: "messages/partial", data: [messages[id]] };
       }
     }
   }
