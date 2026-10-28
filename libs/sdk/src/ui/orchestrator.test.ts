@@ -1006,3 +1006,23 @@ describe("StreamOrchestrator", () => {
     });
   });
 });
+
+describe("StreamOrchestrator.joinStream", () => {
+  it("replays the run only when it joins from the first event", async () => {
+    const orch = new StreamOrchestrator<TestState>(
+      createOptions(),
+      createAccessors(createMockClient())
+    );
+    orch.setThreadId("t1");
+    const start = vi.spyOn(orch.stream, "start").mockResolvedValue();
+
+    await orch.joinStream("run-1");
+    await orch.joinStream("run-1", "5");
+
+    expect(start.mock.calls.map((call) => call[2])).toEqual([
+      { replay: true },
+      { replay: false },
+    ]);
+    orch.dispose();
+  });
+});

@@ -773,7 +773,8 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
-    }
+    },
+    replay = false
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
@@ -781,6 +782,10 @@ export class StreamManager<
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
       this.abortRef = abort;
+      if (replay) {
+        this.messages.startReplay();
+        this.subagentManager.startReplay();
+      }
 
       const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
@@ -1175,13 +1180,17 @@ export class StreamManager<
        * the queue so the new run request can proceed immediately.
        */
       abortPrevious?: boolean;
+      /** The stream replays the run from its first event. */
+      replay?: boolean;
     }
   ): Promise<void> => {
     if (startOptions?.abortPrevious) {
       this.abortRef.abort();
     }
     this.queueSize += 1;
-    const queued = this.queue.then(() => this.enqueue(action, options));
+    const queued = this.queue.then(() =>
+      this.enqueue(action, options, startOptions?.replay)
+    );
     this.queue = queued;
     await queued;
   };
