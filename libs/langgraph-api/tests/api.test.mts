@@ -2435,6 +2435,30 @@ describe("multitasking", () => {
     expect(state.values.messages.at(0)?.content).toBe("bar");
   });
 
+  it("multitasking defaults to enqueue", { timeout: 8_000 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const first = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "foo" }], sleep: 2 },
+        config: globalConfig,
+      }
+    );
+    const second = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "bar" }], sleep: 0 },
+        config: globalConfig,
+      }
+    );
+
+    expect(await pollRun(thread.thread_id, first.run_id)).toBe("success");
+    expect(await pollRun(thread.thread_id, second.run_id)).toBe("success");
+  });
+
   it("multitasking enqueue", { timeout: 8_000, retry: 3 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
