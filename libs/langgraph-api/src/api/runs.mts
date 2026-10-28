@@ -499,7 +499,15 @@ api.post(
     const { wait, action } = c.req.valid("query");
 
     await runs().cancel(thread_id, [run_id], { action }, c.var.auth);
-    if (wait) await runs().join(run_id, thread_id, c.var.auth);
+    if (wait) {
+      // A cancelled pending stateless run is deleted with its thread.
+      await runs()
+        .join(run_id, thread_id, c.var.auth)
+        .catch((error) => {
+          if (!(error instanceof HTTPException) || error.status !== 404)
+            throw error;
+        });
+    }
     return c.body(null, wait ? 204 : 202);
   }
 );
