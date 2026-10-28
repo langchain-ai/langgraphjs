@@ -763,6 +763,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -1157,6 +1163,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
