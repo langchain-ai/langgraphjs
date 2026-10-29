@@ -209,6 +209,8 @@ export class StreamManager<
 
   private queueSize: number = 0;
 
+  #epoch = 0;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -686,6 +688,14 @@ export class StreamManager<
     return this.state.error;
   }
 
+  /**
+   * Bumped when a stream begins (not when it is queued) and on `clear()`, so
+   * a read that resolves after either is stale.
+   */
+  get epoch() {
+    return this.#epoch;
+  }
+
   setStreamValues = (
     values:
       | (StateType | null)
@@ -786,6 +796,7 @@ export class StreamManager<
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
+      this.#epoch += 1;
       this.setState({ isLoading: true, error: undefined });
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
@@ -1216,15 +1227,59 @@ export class StreamManager<
           update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
         ) => void;
       }) => void;
+      /**
+       * Reads what the server kept after the stop cut a stream off. Resolve
+       * to its head's values to show them, `null` to clear the stream values
+       * so the history values show, or `undefined` to keep the stopped
+       * stream's values, as a rejection does. `onStop`'s updates are applied
+       * again on top, and the result is dropped if a stream began or
+       * `clear()` ran in the meantime.
+       */
+      read?: () => Promise<StateType | null | undefined>;
     }
   ): Promise<void> => {
+    const wasLoading = this.isLoading;
+    const epoch = this.#epoch;
     this.abortRef.abort();
     this.abortRef = new AbortController();
 
-    options.onStop?.({ mutate: this.getMutateFn("stop", historyValues) });
+    const updates: Array<
+      Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+    > = [];
+    const mutate = this.getMutateFn("stop", historyValues);
+    options.onStop?.({
+      mutate: (update) => {
+        updates.push(update);
+        mutate(update);
+      },
+    });
+
+    if (!wasLoading || options.read == null) return;
+    let head: StateType | null | undefined;
+    try {
+      head = await options.read();
+    } catch {
+      return;
+    }
+    if (head === undefined || this.#epoch !== epoch) return;
+    // Without a head the history takes over. Null keeps it live; only
+    // onStop's updates need a copy of it to sit on.
+    this.setStreamValues(
+      head == null && updates.length === 0
+        ? null
+        : updates.reduce<StateType>(
+            (prev, update) => ({
+              ...prev,
+              ...(typeof update === "function" ? update(prev) : update),
+            }),
+            head ?? historyValues
+          )
+    );
   };
 
   clear = () => {
+    this.#epoch += 1;
+
     // Cancel any running streams
     this.abortRef.abort();
     this.abortRef = new AbortController();

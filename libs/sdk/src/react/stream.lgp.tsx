@@ -18,8 +18,10 @@ import {
   unique,
 } from "../ui/utils.js";
 import {
+  applyStopRead,
   type HistoryReadOptions,
   planReadAfterRun,
+  planStopRead,
 } from "../ui/thread-reads.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
@@ -93,7 +95,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
 ): UseStreamThread<StateType> & {
   read: (
     threadId: string,
-    readOptions: HistoryReadOptions
+    readOptions: HistoryReadOptions<StateType>
   ) => Promise<ThreadState<StateType>[]>;
 } {
   const key = getFetchHistoryKey(client, threadId, limit);
@@ -124,7 +126,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     (
       threadId: string | undefined | null,
       limit: boolean | number,
-      readOptions: HistoryReadOptions = {}
+      readOptions: HistoryReadOptions<StateType> = {}
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
       if (options.passthrough) return Promise.resolve([]);
@@ -139,7 +141,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
           return { key, data: undefined, error: undefined, isLoading: true };
         });
         return fetchHistory<StateType>(client, threadId, { limit }).then(
-          (data) => {
+          (fetched) => {
+            const data = readOptions.map?.(fetched) ?? fetched;
             setState((state) => {
               if (state.key !== key || readId !== latestReadRef.current) {
                 return state;
@@ -497,12 +500,11 @@ export function useStreamLGP<
   })();
 
   const stop = async () => {
-    const wasLoading = stream.isLoading;
-
-    const includeImplicitBranch =
-      historyLimit === true || typeof historyLimit === "number";
-    const shouldRefetch =
-      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+    const shownHead = latestThreadHeadRef.current;
+    const read = planStopRead({
+      history: historyLimit === true || typeof historyLimit === "number",
+      userThread: options.thread != null,
+    });
 
     await stream.stop(historyValues, {
       onStop: (args) => {
@@ -514,26 +516,23 @@ export function useStreamLGP<
 
         options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null
+          ? undefined
+          : async () => {
+              if (read == null) return null;
+              const newHistory =
+                options.thread != null
+                  ? await history.mutate(threadId)
+                  : await builtInHistory.read(threadId, {
+                      ...read,
+                      map: (states) => applyStopRead(states, shownHead),
+                    });
+              return newHistory?.at(0)?.values ?? null;
+            },
     });
-
-    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
-    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
-    // alone, the locally-buffered stream values — including any message
-    // chunk still being assembled when `stop()` was called — stay stuck in
-    // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync so the buffer only
-    // reflects what was actually persisted: refetch when the caller needs
-    // authoritative thread state (branching / `onFinish`), otherwise fall
-    // back to the already-cached `historyValues` to avoid an extra round
-    // trip on every cancel.
-    if (wasLoading && threadId) {
-      if (shouldRefetch) {
-        const newHistory = await history.mutate(threadId);
-        stream.setStreamValues(newHistory?.at(0)?.values ?? null);
-      } else {
-        stream.setStreamValues(historyValues);
-      }
-    }
   };
 
   // Called when a run succeeds. Returns null when the head was read, which

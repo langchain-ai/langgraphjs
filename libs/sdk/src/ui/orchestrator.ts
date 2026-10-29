@@ -22,7 +22,12 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
-import { type HistoryReadOptions, planReadAfterRun } from "./thread-reads.js";
+import {
+  applyStopRead,
+  type HistoryReadOptions,
+  planReadAfterRun,
+  planStopRead,
+} from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -169,8 +174,6 @@ export class StreamOrchestrator<
   #disposed = false;
 
   #handledHeadlessToolInterruptIds = new Set<string>();
-
-  #streamStarts = 0;
 
   /**
    * Create a new StreamOrchestrator.
@@ -342,18 +345,19 @@ export class StreamOrchestrator<
 
   async #mutate(
     mutateId?: string,
-    readOptions: HistoryReadOptions = {}
+    readOptions: HistoryReadOptions<StateType> = {}
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
     const idle = !this.stream.isLoading;
-    const streamStarts = this.#streamStarts;
+    const epoch = this.stream.epoch;
     try {
-      const data = await fetchHistory<StateType>(
+      const fetched = await fetchHistory<StateType>(
         this.#accessors.getClient(),
         tid,
         { limit: this.historyLimit }
       );
+      const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
       if (tid !== this.#threadId) return data;
       this.#history = {
@@ -365,7 +369,7 @@ export class StreamOrchestrator<
       // A read issued while a run streamed, or before one began, can show a
       // call that run answered; `#finishRun` runs the calls in the head read
       // after a run.
-      if (idle && streamStarts === this.#streamStarts) {
+      if (idle && epoch === this.stream.epoch) {
         this.#flushHeadToolCalls(data?.at(0));
       }
       this.#notify();
@@ -844,14 +848,12 @@ export class StreamOrchestrator<
    * run metadata.
    */
   async stop(): Promise<void> {
-    const wasLoading = this.stream.isLoading;
     const threadId = this.#threadId;
-
-    const includeImplicitBranch =
-      this.historyLimit === true || typeof this.historyLimit === "number";
-    const shouldRefetch =
-      includeImplicitBranch ||
-      onFinishRequiresThreadState(this.#options.onFinish);
+    const shownHead = this.branchContext.threadHead;
+    const read = planStopRead({
+      history:
+        this.historyLimit === true || typeof this.historyLimit === "number",
+    });
 
     await this.stream.stop(this.historyValues, {
       onStop: (args) => {
@@ -866,26 +868,20 @@ export class StreamOrchestrator<
         }
         this.#options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null || this.#disposed
+          ? undefined
+          : async () => {
+              const newHistory = await this.#mutate(threadId, {
+                ...read,
+                map: (states) => applyStopRead(states, shownHead),
+              });
+              if (newHistory == null) return undefined;
+              return newHistory.at(0)?.values ?? null;
+            },
     });
-
-    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
-    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
-    // alone, the locally-buffered stream values — including any message
-    // chunk still being assembled when `stop()` was called — stay stuck in
-    // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync so the buffer only
-    // reflects what was actually persisted: refetch when the caller needs
-    // authoritative thread state (branching / `onFinish`), otherwise fall
-    // back to the already-cached `historyValues` to avoid an extra round
-    // trip on every cancel.
-    if (wasLoading && threadId) {
-      if (shouldRefetch) {
-        const newHistory = await this.#mutate(threadId);
-        this.stream.setStreamValues(newHistory?.at(0)?.values ?? null);
-      } else {
-        this.stream.setStreamValues(this.historyValues);
-      }
-    }
   }
 
   /**
@@ -933,7 +929,6 @@ export class StreamOrchestrator<
 
     await this.stream.start(
       async (signal: AbortSignal) => {
-        this.#streamStarts += 1;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -1026,7 +1021,6 @@ export class StreamOrchestrator<
 
     return this.stream.start(
       async (signal) => {
-        this.#streamStarts += 1;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
