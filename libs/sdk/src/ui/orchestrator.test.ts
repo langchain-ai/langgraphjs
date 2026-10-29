@@ -459,6 +459,95 @@ describe("StreamOrchestrator", () => {
     });
   });
 
+  describe("implicit checkpoint", () => {
+    const checkpoint = (checkpoint_id: string) => ({
+      thread_id: "t1",
+      checkpoint_id,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    });
+    const state = (id: string, parent?: string) => ({
+      ...createThreadState({ messages: [] }),
+      checkpoint: checkpoint(id),
+      parent_checkpoint: parent ? checkpoint(parent) : null,
+    });
+
+    const sentCheckpoint = async (history: unknown[], branch = "") => {
+      (client.threads.getHistory as Mock).mockResolvedValue(history);
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      orch.setBranch(branch);
+
+      await orch.submit({ messages: [] });
+
+      orch.dispose();
+      return (client.runs.stream as Mock).mock.calls[0][2].checkpoint;
+    };
+
+    it("does not pin the cached head when the latest branch is shown", async () => {
+      const history = [state("cp-b", "cp-a"), state("cp-a")];
+      expect(await sentCheckpoint(history)).toBeUndefined();
+    });
+
+    it("does not pin the head for a submit with interrupt during a run", async () => {
+      (client.threads.getHistory as Mock).mockResolvedValue([state("cp-1")]);
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        state("cp-2", "cp-1"),
+        state("cp-1"),
+      ]);
+
+      const first = orch.submit({ messages: [] });
+      await orch.submit({ messages: [] }, { multitaskStrategy: "interrupt" });
+      await first;
+
+      orch.dispose();
+      const second = (client.runs.stream as Mock).mock.calls[1][2];
+      expect(second.checkpoint).toBeUndefined();
+    });
+
+    it.each([
+      {
+        view: "an older branch picked with setBranch",
+        history: [state("cp-b", "cp-r"), state("cp-a", "cp-r"), state("cp-r")],
+        branch: "cp-a",
+        shownHead: "cp-a",
+      },
+      {
+        view: "the default branch, not the newest",
+        history: [
+          state("cp-a2", "cp-a"),
+          state("cp-b", "cp-r"),
+          state("cp-a", "cp-r"),
+          state("cp-r"),
+        ],
+        branch: "",
+        shownHead: "cp-b",
+      },
+    ])(
+      "still forks from the shown head on $view",
+      async ({ history, branch, shownHead }) => {
+        const sent = await sentCheckpoint(history, branch);
+        expect(sent?.checkpoint_id).toBe(shownHead);
+      }
+    );
+  });
+
   describe("computed values", () => {
     it("error falls through history error chain", () => {
       const orch = new StreamOrchestrator<TestState>(

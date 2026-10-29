@@ -176,6 +176,93 @@ describe("useStream (old engine) joinStream", () => {
   });
 });
 
+describe("useStream (old engine) implicit checkpoint", () => {
+  const checkpoint = (checkpoint_id: string) => ({
+    thread_id: "t1",
+    checkpoint_id,
+    checkpoint_ns: "",
+    checkpoint_map: null,
+  });
+  const state = (id: string, parent?: string) =>
+    threadState(
+      { messages: [] },
+      {
+        checkpoint: checkpoint(id),
+        parent_checkpoint: parent ? checkpoint(parent) : null,
+      }
+    );
+
+  async function sentCheckpoint(history: unknown[], branch = "") {
+    const client = createClient();
+    client.threads.getHistory.mockResolvedValue(history);
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+    });
+    await act(async () => view.current.setBranch(branch));
+
+    mockRun(client, []);
+    await submit(view);
+
+    return client.runs.stream.mock.calls[0][2].checkpoint;
+  }
+
+  it("does not pin the cached head when the latest branch is shown", async () => {
+    const history = [state("cp-b", "cp-a"), state("cp-a")];
+    expect(await sentCheckpoint(history)).toBeUndefined();
+  });
+
+  it("does not pin the head when a second submit is queued behind the first", async () => {
+    const client = createClient();
+    client.threads.getHistory.mockResolvedValue([state("cp-1")]);
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+    });
+    client.threads.getHistory.mockResolvedValue([
+      state("cp-2", "cp-1"),
+      state("cp-1"),
+    ]);
+
+    mockRun(client, []);
+    mockRun(client, []);
+    await act(async () => {
+      await Promise.all([
+        view.current.submit({ messages: [] }),
+        view.current.submit({ messages: [] }),
+      ]);
+    });
+
+    expect(client.runs.stream.mock.calls[1][2].checkpoint).toBeUndefined();
+  });
+
+  it.each([
+    {
+      view: "an older branch picked with setBranch",
+      history: [state("cp-b", "cp-r"), state("cp-a", "cp-r"), state("cp-r")],
+      branch: "cp-a",
+      shownHead: "cp-a",
+    },
+    {
+      view: "the default branch, not the newest",
+      history: [
+        state("cp-a2", "cp-a"),
+        state("cp-b", "cp-r"),
+        state("cp-a", "cp-r"),
+        state("cp-r"),
+      ],
+      branch: "",
+      shownHead: "cp-b",
+    },
+  ])(
+    "still forks from the shown head on $view",
+    async ({ history, branch, shownHead }) => {
+      const sent = await sentCheckpoint(history, branch);
+      expect(sent?.checkpoint_id).toBe(shownHead);
+    }
+  );
+});
+
 describe("useStream (old engine) thread state after a run", () => {
   const answeringRuns = [
     {

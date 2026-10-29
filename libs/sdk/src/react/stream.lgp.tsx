@@ -642,9 +642,15 @@ export function useStreamLGP<
           ...callbackStreamMode,
         ]);
 
+        // On the latest branch the cached head may be behind the server's
+        // (the thread moved on since history was read); pinning it would
+        // fork the thread.
+        const viewingLatest =
+          branchContext.threadHead?.checkpoint?.checkpoint_id ===
+          history.data?.[0]?.checkpoint?.checkpoint_id;
         let checkpoint =
           submitOptions?.checkpoint ??
-          (includeImplicitBranch
+          (includeImplicitBranch && !viewingLatest
             ? branchContext.threadHead?.checkpoint
             : undefined) ??
           undefined;
