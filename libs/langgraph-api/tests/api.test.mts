@@ -6,6 +6,7 @@ import type {
 import {
   Client,
   type MessagesTupleStreamEvent,
+  type StreamMode,
 } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
@@ -1180,6 +1181,88 @@ describe("runs", () => {
   });
 
   it.concurrent(
+    "join stream returns only the requested stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const thread = await client.threads.create();
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          streamMode: ["values", "updates", "messages", "messages-tuple"],
+          streamResumable: true,
+          config: globalConfig,
+        }
+      );
+
+      const join = (streamMode?: StreamMode | StreamMode[]) =>
+        gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, {
+            lastEventId: "-1",
+            streamMode,
+          })
+        );
+
+      const all = await join();
+      expect(new Set(all.map((i) => i.event))).toEqual(
+        new Set([
+          "metadata",
+          "values",
+          "updates",
+          "messages/metadata",
+          "messages/partial",
+          "messages/complete",
+          "messages",
+        ])
+      );
+
+      const messages = all.filter((i) => i.event.startsWith("messages"));
+      const valuesAndMessages = all.filter(
+        (i) => i.event === "values" || i.event.startsWith("messages")
+      );
+      expect(await join("messages")).toEqual(messages);
+      expect(await join(["values", "messages-tuple"])).toEqual(
+        valuesAndMessages
+      );
+      expect(
+        await join(JSON.stringify(["values", "messages-tuple"]) as StreamMode),
+        "one JSON array, as SDKs before 1.12 send"
+      ).toEqual(valuesAndMessages);
+      expect(await join("" as StreamMode), "empty stream_mode").toEqual(all);
+      expect(
+        await join("[values" as StreamMode),
+        "malformed JSON array"
+      ).toEqual([]);
+    }
+  );
+
+  it.concurrent(
+    "stateless join stream keeps subgraph events of the requested stream mode",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "nested" });
+      const run = await client.runs.create(null, assistant.assistant_id, {
+        input: { messages: [] },
+        streamMode: ["values", "updates"],
+        streamSubgraphs: true,
+      });
+
+      const chunks = await gatherIterator(
+        client.runs.joinStream(null, run.run_id, { streamMode: "updates" })
+      );
+
+      expect(chunks.map((i) => i.event.replace(/:[^|]+/g, ""))).toEqual([
+        "updates",
+        "updates|gp_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two",
+        "updates",
+      ]);
+    }
+  );
+
+  it.concurrent(
     "human in the loop - no modification",
     { retry: 0 },
     async () => {
@@ -2219,6 +2302,30 @@ describe("errors", () => {
     const runState = await client.runs.get(thread.thread_id, run.run_id);
     expect(runState.status).toEqual("error");
   });
+
+  it.concurrent(
+    "create + stream join keeps the error when filtering stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "error" });
+      const thread = await client.threads.create();
+
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        { input: { messages: [] } }
+      );
+
+      const stream = await gatherIterator(
+        client.runs.joinStream(thread.thread_id, run.run_id, {
+          streamMode: "updates",
+        })
+      );
+
+      expect(stream).toMatchObject([
+        { event: "error", data: { error: "CustomError", message: "Boo!" } },
+      ]);
+    }
+  );
 });
 
 describe("long running tasks", () => {
