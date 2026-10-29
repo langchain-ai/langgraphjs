@@ -275,22 +275,34 @@ export class HostBackendClient {
    * Request a short-lived registry push token for a local-build deployment
    * (`POST /v2/deployments/{id}/push-token`).
    *
+   * Tells the control plane this client logs in with the returned `username`
+   * and pushes to `repository_url`. LangSmith AWS requires it.
+   *
    * @param deploymentId - Deployment ID.
-   * @returns A response containing the push `token` and `registry_url`.
+   * @returns A response containing the push `token` and `registry_url`, plus
+   * `username` and `repository_url` when the registry needs them.
    */
   requestPushToken(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v2/deployments/${deploymentId}/push-token`);
+    return this.request("POST", `/v2/deployments/${deploymentId}/push-token`, {
+      payload: { supports_registry_username: true },
+    });
   }
 
   /**
-   * Request a signed GCS upload URL for the source tarball used by remote
-   * builds (`POST /v2/deployments/{id}/upload-url`).
+   * Request a signed upload URL for the source tarball used by remote builds
+   * (`POST /v2/deployments/{id}/upload-url`).
+   *
+   * Tells the control plane this client sends the returned `upload_headers`
+   * with its upload, which some storage requires.
    *
    * @param deploymentId - Deployment ID.
-   * @returns A response containing the `upload_url` and `object_path`.
+   * @returns A response containing the `upload_url` and `object_path`, plus
+   * `upload_headers` when the signed URL requires them.
    */
   requestUploadUrl(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v2/deployments/${deploymentId}/upload-url`);
+    return this.request("POST", `/v2/deployments/${deploymentId}/upload-url`, {
+      payload: { supports_upload_headers: true },
+    });
   }
 
   /**

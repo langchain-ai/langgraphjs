@@ -22,6 +22,7 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import { type HistoryReadOptions, planReadAfterRun } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -168,6 +169,8 @@ export class StreamOrchestrator<
   #disposed = false;
 
   #handledHeadlessToolInterruptIds = new Set<string>();
+
+  #streamStarts = 0;
 
   /**
    * Create a new StreamOrchestrator.
@@ -338,28 +341,37 @@ export class StreamOrchestrator<
   }
 
   async #mutate(
-    mutateId?: string
+    mutateId?: string,
+    readOptions: HistoryReadOptions = {}
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
+    const idle = !this.stream.isLoading;
+    const streamStarts = this.#streamStarts;
     try {
       const data = await fetchHistory<StateType>(
         this.#accessors.getClient(),
         tid,
         { limit: this.historyLimit }
       );
+      // The thread switched during the read; its own fetch fills the history.
+      if (tid !== this.#threadId) return data;
       this.#history = {
         data,
         error: undefined,
         isLoading: false,
         mutate: this.#mutate,
       };
-      this.#flushPendingHeadlessToolInterrupts(
-        data?.at(0)?.values as Record<string, unknown> | null | undefined
-      );
+      // A read issued while a run streamed, or before one began, can show a
+      // call that run answered; `#finishRun` runs the calls in the head read
+      // after a run.
+      if (idle && streamStarts === this.#streamStarts) {
+        this.#flushHeadToolCalls(data?.at(0));
+      }
       this.#notify();
       return data;
     } catch (err) {
+      if (tid !== this.#threadId || readOptions.quiet) return undefined;
       this.#history = {
         ...this.#history,
         error: err,
@@ -369,6 +381,38 @@ export class StreamOrchestrator<
       this.#options.onError?.(err, undefined);
       return undefined;
     }
+  }
+
+  /**
+   * Called when a run succeeds. Returns null when the head was read, which
+   * clears the run's streamed values so the head shows.
+   */
+  async #finishRun(
+    threadId: string | undefined,
+    refetch: boolean,
+    callbackMeta: RunCallbackMeta | undefined
+  ): Promise<null | undefined> {
+    const read = planReadAfterRun(this.branchContext.threadHead, refetch);
+    if (read && threadId) {
+      const lastHead = (await this.#mutate(threadId, read))?.at(0);
+      if (lastHead) {
+        // The read can land after a thread switch, and a resume goes to the
+        // current thread.
+        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
+        this.#options.onFinish?.(lastHead, callbackMeta);
+        return null;
+      }
+    }
+    if (
+      this.#options.onFinish != null &&
+      !onFinishRequiresThreadState(this.#options.onFinish)
+    ) {
+      this.#options.onFinish(
+        undefined as unknown as ThreadState<StateType>,
+        callbackMeta
+      );
+    }
+    return undefined;
   }
 
   /**
@@ -889,6 +933,7 @@ export class StreamOrchestrator<
 
     await this.stream.start(
       async (signal: AbortSignal) => {
+        this.#streamStarts += 1;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -909,21 +954,7 @@ export class StreamOrchestrator<
         callbacks: this.#options,
         onSuccess: async () => {
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          if (!shouldRefetchJoin) {
-            if (
-              this.#options.onFinish != null &&
-              !onFinishRequiresThreadState(this.#options.onFinish)
-            ) {
-              this.#options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
-          const newHistory = await this.#mutate(tid);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) this.#options.onFinish?.(lastHead, callbackMeta);
+          return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
@@ -931,6 +962,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
         },
+        isReplaying: lastEventId === "-1",
       }
     );
   }
@@ -967,9 +999,15 @@ export class StreamOrchestrator<
       includeImplicitBranch ||
       onFinishRequiresThreadState(this.#options.onFinish);
 
+    // On the latest branch the cached head may be behind the server's
+    // (the thread moved on since history was read); pinning it would
+    // fork the thread.
+    const viewingLatest =
+      currentBranchContext.threadHead?.checkpoint?.checkpoint_id ===
+      this.#history.data?.[0]?.checkpoint?.checkpoint_id;
     let checkpoint =
       submitOptions?.checkpoint ??
-      (includeImplicitBranch
+      (includeImplicitBranch && !viewingLatest
         ? currentBranchContext.threadHead?.checkpoint
         : undefined) ??
       undefined;
@@ -988,6 +1026,7 @@ export class StreamOrchestrator<
 
     return this.stream.start(
       async (signal) => {
+        this.#streamStarts += 1;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
@@ -1080,24 +1119,7 @@ export class StreamOrchestrator<
 
         onSuccess: async () => {
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch && usableThreadId) {
-            const newHistory = await this.#mutate(usableThreadId);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              this.#options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            this.#options.onFinish != null &&
-            !onFinishRequiresThreadState(this.#options.onFinish)
-          ) {
-            this.#options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
-          }
-          return undefined;
+          return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
@@ -1277,6 +1299,14 @@ export class StreamOrchestrator<
     this.#streamUnsub = null;
     this.#queueUnsub = null;
     void this.stop().catch(() => undefined);
+  }
+
+  #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
+    // Thread state values never carry `__interrupt__`; a pending call is in
+    // the head's tasks.
+    this.#flushPendingHeadlessToolInterrupts({
+      __interrupt__: head?.tasks?.flatMap((task) => task.interrupts ?? []),
+    });
   }
 
   #flushPendingHeadlessToolInterrupts(

@@ -1,9 +1,171 @@
-import type { Event } from "@langchain/protocol";
+import type { Event, MessagesEvent } from "@langchain/protocol";
 import { describe, expect, it } from "vitest";
 
 import { MessageAssembler, StreamingMessageAssembler } from "./messages.js";
 import { eventOf } from "./test/utils.js";
 import { assembledMessageToBaseMessage } from "../../stream/assembled-to-message.js";
+
+type ToolCallChunkType = "tool_call_chunk" | "server_tool_call_chunk";
+
+function messagesEvent(data: unknown): MessagesEvent {
+  return eventOf("messages", data as MessagesEvent["params"]["data"], {
+    node: "model",
+  }) as MessagesEvent;
+}
+
+/**
+ * `search({"query":"weather in Paris"})` streamed in three chunks, either as
+ * `block-delta` snapshots of the args so far (older `langchain-core`) or as
+ * `tool-call-delta` slices of only the new args.
+ */
+function toolCallDeltas(
+  form: "snapshots" | "slices",
+  type: ToolCallChunkType = "tool_call_chunk"
+): unknown[] {
+  if (form === "slices") {
+    return [
+      { type: "tool-call-delta", args: '{"query":' },
+      { type: "tool-call-delta", args: '"weather' },
+      { type: "tool-call-delta", args: ' in Paris"}' },
+    ];
+  }
+  const fields = { type, id: "call_1", name: "search" };
+  return [
+    { type: "block-delta", fields: { ...fields, args: '{"query":' } },
+    { type: "block-delta", fields: { ...fields, args: '{"query":"weather' } },
+    {
+      type: "block-delta",
+      fields: { ...fields, args: '{"query":"weather in Paris"}' },
+    },
+  ];
+}
+
+function toolCallMessage(
+  deltas: unknown[],
+  type: ToolCallChunkType = "tool_call_chunk"
+): MessagesEvent[] {
+  return [
+    messagesEvent({ event: "message-start", id: "msg_tool" }),
+    messagesEvent({
+      event: "content-block-start",
+      index: 0,
+      content: { type, id: "call_1", name: "search", args: "" },
+    }),
+    ...deltas.map((delta) =>
+      messagesEvent({ event: "content-block-delta", index: 0, delta })
+    ),
+    messagesEvent({
+      event: "content-block-finish",
+      index: 0,
+      content: {
+        type: type === "tool_call_chunk" ? "tool_call" : "server_tool_call",
+        id: "call_1",
+        name: "search",
+        args: { query: "weather in Paris" },
+      },
+    }),
+    messagesEvent({ event: "message-finish", reason: "tool_use" }),
+  ];
+}
+
+describe("MessageAssembler tool-call args", () => {
+  it.each([
+    ["snapshots", "tool_call_chunk"],
+    ["slices", "tool_call_chunk"],
+    ["snapshots", "server_tool_call_chunk"],
+    ["slices", "server_tool_call_chunk"],
+  ] as const)("assembles %s of %s args", (form, type) => {
+    const assembler = new MessageAssembler();
+    const live: unknown[] = [];
+    let finished: unknown;
+
+    for (const event of toolCallMessage(toolCallDeltas(form, type), type)) {
+      const update = assembler.consume(event);
+      if (update?.kind === "content-block-delta") {
+        live.push(structuredClone(update.message.blocks[0]));
+      }
+      if (update?.kind === "message-finish") {
+        finished = update.message.blocks;
+      }
+    }
+
+    const chunk = { type, id: "call_1", name: "search" };
+    expect(live).toEqual([
+      { ...chunk, args: '{"query":' },
+      { ...chunk, args: '{"query":"weather' },
+      { ...chunk, args: '{"query":"weather in Paris"}' },
+    ]);
+    expect(finished).toEqual([
+      {
+        type: type === "tool_call_chunk" ? "tool_call" : "server_tool_call",
+        id: "call_1",
+        name: "search",
+        args: { query: "weather in Paris" },
+      },
+    ]);
+  });
+
+  it("ignores a delta variant it doesn't recognise", () => {
+    const assembler = new MessageAssembler();
+    const [start, blockStart, first, second, ...rest] = toolCallMessage(
+      toolCallDeltas("slices")
+    );
+    for (const event of [start, blockStart, first]) assembler.consume(event);
+
+    const unknown = assembler.consume(
+      messagesEvent({
+        event: "content-block-delta",
+        index: 0,
+        delta: { type: "future-delta", args: "!!" },
+      })
+    );
+    const next = assembler.consume(second);
+
+    expect(unknown).toBeUndefined();
+    expect(next?.message.blocks[0]).toEqual({
+      type: "tool_call_chunk",
+      id: "call_1",
+      name: "search",
+      args: '{"query":"weather',
+    });
+    const finished = rest.map((event) => assembler.consume(event)).at(-1);
+    expect(finished?.kind).toBe("message-finish");
+  });
+
+  it("hides slices for a block whose start it never saw until the block finishes", () => {
+    // A client that joins after the replay window trimmed the block's start
+    // has no id or name for the slices, so it waits for content-block-finish.
+    const assembler = new MessageAssembler();
+    const [start, , ...joined] = toolCallMessage(toolCallDeltas("slices"));
+    assembler.consume(start);
+
+    const blocks = joined.map((event) =>
+      structuredClone(assembler.consume(event)?.message.blocks)
+    );
+
+    expect(blocks).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      [
+        {
+          type: "tool_call",
+          id: "call_1",
+          name: "search",
+          args: { query: "weather in Paris" },
+        },
+      ],
+      [
+        {
+          type: "tool_call",
+          id: "call_1",
+          name: "search",
+          args: { query: "weather in Paris" },
+        },
+      ],
+    ]);
+  });
+});
 
 describe("MessageAssembler", () => {
   it("merges text and tool chunk deltas into final message state", () => {
@@ -744,5 +906,60 @@ describe("StreamingMessageAssembler", () => {
       output_version: "v1",
     });
     expect((await stream!).content).toEqual([{ type: "text", text: "Hello" }]);
+  });
+});
+
+describe("abandonActive", () => {
+  const msg = (data: Record<string, unknown>, namespace: string[] = []) =>
+    eventOf("messages", data, { namespace, node: "agent" }) as Extract<
+      Event,
+      { method: "messages" }
+    >;
+
+  it("drops unfinished messages and keeps finished ones out", () => {
+    const assembler = new MessageAssembler();
+    assembler.consume(msg({ event: "message-start", id: "done" }));
+    assembler.consume(msg({ event: "message-finish", reason: "stop" }));
+    assembler.consume(msg({ event: "message-start", id: "cut" }));
+    assembler.consume(
+      msg({
+        event: "content-block-delta",
+        index: 0,
+        content: { type: "text", text: "partial" },
+      })
+    );
+
+    expect(assembler.abandonActive().map((m) => m.id)).toEqual(["cut"]);
+    expect(assembler.abandonActive()).toEqual([]);
+  });
+
+  it("only abandons messages at or below the given namespace", () => {
+    const assembler = new MessageAssembler();
+    assembler.consume(msg({ event: "message-start", id: "root" }));
+    assembler.consume(msg({ event: "message-start", id: "sub" }, ["task:1"]));
+
+    expect(assembler.abandonActive(["task:1"]).map((m) => m.id)).toEqual([
+      "sub",
+    ]);
+    expect(assembler.abandonActive().map((m) => m.id)).toEqual(["root"]);
+  });
+
+  it("settles abandoned streaming messages with an aborted error", async () => {
+    const assembler = new StreamingMessageAssembler();
+    const streaming = assembler.consume(
+      msg({ event: "message-start", id: "cut" })
+    );
+    assembler.consume(
+      msg({
+        event: "content-block-delta",
+        index: 0,
+        content: { type: "text", text: "partial" },
+      })
+    );
+
+    const abandoned = assembler.abandonActive();
+    expect(abandoned).toEqual([streaming]);
+    await expect(streaming!.text).resolves.toBe("partial");
+    expect(streaming!.assembled.error?.code).toBe("aborted");
   });
 });

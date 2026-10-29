@@ -23,6 +23,37 @@ import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
 
+// JS SDKs before 1.12 send several stream modes as one JSON array.
+const parseStreamMode = (value: string): string[] => {
+  if (!value.startsWith("[")) return value ? [value] : [];
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [value];
+  }
+};
+
+const JoinStreamQuery = z.object({
+  cancel_on_disconnect: schemas.coercedBoolean.optional(),
+  stream_mode: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value) => [value ?? []].flat().flatMap(parseStreamMode)),
+});
+
+const matchesStreamMode = (event: string, streamMode: string[]) => {
+  // A run's error is its outcome, not a mode, so no filter drops it.
+  if (streamMode.length === 0 || event === "error") return true;
+  const mode = event.split("|")[0];
+  if (streamMode.includes(mode)) return true;
+  // The messages modes stream `messages` (messages-tuple) and `messages/*`
+  // (messages) events; as on the Agent Server, either mode keeps both.
+  return (
+    mode.startsWith("messages") &&
+    (streamMode.includes("messages") || streamMode.includes("messages-tuple"))
+  );
+};
+
 const createValidRun = async (
   threadId: string | undefined,
   payload: z.infer<typeof schemas.RunCreate>,
@@ -42,7 +73,7 @@ const createValidRun = async (
       : [];
   if (streamMode.length === 0) streamMode.push("values");
 
-  const multitaskStrategy = payload.multitask_strategy ?? "reject";
+  const multitaskStrategy = payload.multitask_strategy ?? "enqueue";
   const preventInsertInInflight = multitaskStrategy === "reject";
 
   const config: RunKwargs["config"] = { ...run.config };
@@ -218,10 +249,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
 api.get(
   "/runs/:run_id/stream",
   zValidator("param", z.object({ run_id: z.string().uuid() })),
-  zValidator(
-    "query",
-    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() })
-  ),
+  zValidator("query", JoinStreamQuery),
   async (c) => {
     const { run_id } = c.req.valid("param");
     const query = c.req.valid("query");
@@ -245,6 +273,7 @@ api.get(
           },
           c.var.auth
         )) {
+          if (!matchesStreamMode(event, query.stream_mode)) continue;
           await stream.writeSSE({ id, data: serialiseAsDict(data), event });
         }
       } catch (error) {
@@ -449,14 +478,11 @@ api.get(
     "param",
     z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
   ),
-  zValidator(
-    "query",
-    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() })
-  ),
+  zValidator("query", JoinStreamQuery),
   async (c) => {
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");
-    const { cancel_on_disconnect } = c.req.valid("query");
+    const { cancel_on_disconnect, stream_mode } = c.req.valid("query");
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
     return streamSSE(c, async (stream) => {
@@ -474,6 +500,7 @@ api.get(
         },
         c.var.auth
       )) {
+        if (!matchesStreamMode(event, stream_mode)) continue;
         await stream.writeSSE({ id, data: serialiseAsDict(data), event });
       }
     });
@@ -499,7 +526,15 @@ api.post(
     const { wait, action } = c.req.valid("query");
 
     await runs().cancel(thread_id, [run_id], { action }, c.var.auth);
-    if (wait) await runs().join(run_id, thread_id, c.var.auth);
+    if (wait) {
+      // A cancelled pending stateless run is deleted with its thread.
+      await runs()
+        .join(run_id, thread_id, c.var.auth)
+        .catch((error) => {
+          if (!(error instanceof HTTPException) || error.status !== 404)
+            throw error;
+        });
+    }
     return c.body(null, wait ? 204 : 202);
   }
 );

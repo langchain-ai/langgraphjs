@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
   HumanMessage,
   RemoveMessage,
@@ -124,6 +125,25 @@ const deltaCounters = async (saver: MemorySaver, config: RunnableConfig) =>
   {};
 
 describe("DeltaChannel (unit)", () => {
+  it.each([undefined, 50, 1000])(
+    "snapshots at the configured frequency (%s)",
+    (snapshotFrequency) => {
+      const ch = new DeltaChannel(listReducer, { snapshotFrequency });
+      const expected = snapshotFrequency ?? 100;
+      ch.update([[1]]);
+      expect(ch.fromCheckpoint().snapshotFrequency).toBe(expected);
+      for (const updates of [expected - 1, expected]) {
+        expect(
+          deltaChannelsToSnapshot(
+            { messages: ch },
+            { messages: [updates, updates] },
+            { messages: 1 }
+          )
+        ).toEqual(new Set(updates === expected ? ["messages"] : []));
+      }
+    }
+  );
+
   it("rejects a non-positive snapshotFrequency", () => {
     expect(() => new DeltaChannel(listReducer, { snapshotFrequency: 0 })).toThrow();
     expect(
@@ -238,6 +258,34 @@ describe("DeltaChannel (unit)", () => {
 });
 
 describe("messagesDeltaReducer", () => {
+  it("stores message chunks as their non-chunk class", () => {
+    const [ai] = messagesDeltaReducer(
+      [],
+      [
+        [
+          new AIMessageChunk({
+            id: "ai",
+            content: "",
+            tool_call_chunks: [
+              {
+                index: 0,
+                id: "call",
+                name: "search",
+                args: "{}",
+                type: "tool_call_chunk",
+              },
+            ],
+          }),
+        ],
+      ]
+    );
+    expect(AIMessageChunk.isInstance(ai)).toBe(false);
+    expect((ai as AIMessage).tool_calls).toEqual([
+      { id: "call", name: "search", args: {}, type: "tool_call" },
+    ]);
+    expect(JSON.stringify(ai)).not.toContain("tool_call_chunks");
+  });
+
   it("appends, dedups by id and is batching-invariant", () => {
     const m1 = new HumanMessage({ id: "1", content: "a" });
     const m2 = new AIMessage({ id: "2", content: "b" });

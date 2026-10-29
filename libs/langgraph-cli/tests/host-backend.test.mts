@@ -68,6 +68,32 @@ describe("HostBackendClient", () => {
     });
   });
 
+  it("requests a push token that may use the registry's own username", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ token: "t" }));
+    const client = new HostBackendClient(BASE, "secret");
+    await client.requestPushToken("dep-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(
+      "https://api.host.langchain.com/v2/deployments/dep-1/push-token"
+    );
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ supports_registry_username: true });
+  });
+
+  it("requests an upload URL whose required headers it sends", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ upload_url: "u" }));
+    const client = new HostBackendClient(BASE, "secret");
+    await client.requestUploadUrl("dep-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(
+      "https://api.host.langchain.com/v2/deployments/dep-1/upload-url"
+    );
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ supports_upload_headers: true });
+  });
+
   it("throws HostBackendError with status on non-2xx", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response("nope", { status: 403 })

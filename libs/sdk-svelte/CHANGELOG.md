@@ -1,5 +1,33 @@
 # @langchain/svelte
 
+## 1.2.8
+
+### Patch Changes
+
+- Updated dependencies [[`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde)]:
+  - @langchain/langgraph-sdk@1.12.8
+
+## 1.2.7
+
+### Patch Changes
+
+- Updated dependencies [[`2b982b6`](https://github.com/langchain-ai/langgraphjs/commit/2b982b6cb4fbdf1493a40994660b1c7df97963aa)]:
+  - @langchain/langgraph-sdk@1.12.7
+
+## 1.2.6
+
+### Patch Changes
+
+- Updated dependencies [[`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083)]:
+  - @langchain/langgraph-sdk@1.12.6
+
+## 1.2.5
+
+### Patch Changes
+
+- Updated dependencies [[`2e1fe5b`](https://github.com/langchain-ai/langgraphjs/commit/2e1fe5b3fffd87b2f7ba260da3726a2c03c2f72f), [`0acf88d`](https://github.com/langchain-ai/langgraphjs/commit/0acf88db9fdc6441c8b3a162b7a328b9b91e115e), [`9cc54cc`](https://github.com/langchain-ai/langgraphjs/commit/9cc54cce575ae00deb0bb5946aa457f44f485427), [`4690a5b`](https://github.com/langchain-ai/langgraphjs/commit/4690a5b9a59f4f96790fdce45160f744272ca054)]:
+  - @langchain/langgraph-sdk@1.12.5
+
 ## 1.2.4
 
 ### Patch Changes

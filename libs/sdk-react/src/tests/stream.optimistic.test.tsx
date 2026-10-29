@@ -73,11 +73,7 @@ it("reconciles the server echo by id without duplicating the message", async () 
   }
 });
 
-it("keeps the optimistic message and marks it failed when the run errors before echoing it", async () => {
-  // Fail before the server can echo the optimistic message. A graph that
-  // starts running (e.g. `error_graph`) emits its input as a values
-  // snapshot first, correctly resolving the message to "sent" even if a
-  // later node errors.
+it("keeps the optimistic message and marks it failed when dispatch rejects", async () => {
   const screen = await render(
     <OptimisticStream apiUrl={apiUrl} assistantId="missing_graph" />,
   );

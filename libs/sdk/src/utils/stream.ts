@@ -1,4 +1,5 @@
 import { isNetworkError } from "./error.js";
+import { isSSEControlPart } from "./sse.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   reconnectDelayMs,
@@ -12,8 +13,8 @@ type IterableReadableStreamInterface<T> = ReadableStream<T> & AsyncIterable<T>;
  */
 export interface StreamWithRetryOptions {
   /**
-   * Maximum number of reconnection attempts. Default is
-   * {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Maximum number of reconnection attempts in a row without an event. Default
+   * is {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
    */
   maxRetries?: number;
 
@@ -286,9 +287,11 @@ export async function* streamWithRetry<T extends { id?: string }>(
           }
 
           // Track last event ID for reconnection
-          if (value.id) {
+          if (value.id !== undefined) {
             lastEventId = value.id;
           }
+          // Progress since the last drop earns a fresh set of reconnect attempts.
+          if (!isSSEControlPart(value)) attempt = 0;
 
           yield value;
         }

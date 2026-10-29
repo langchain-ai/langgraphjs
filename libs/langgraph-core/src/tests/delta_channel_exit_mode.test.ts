@@ -128,14 +128,15 @@ describe("exit durability: resumed runs replay delta writes in live order", () =
       .compile({ checkpointer: new MemorySaver() });
     const config = exitConfig("new-channel");
     await graph.invoke(both("in"), config);
-    const head = (await graph.getState(config)).config;
+    const paused = (await graph.getState(config)).config;
+    await graph.updateState(config, undefined);
 
     // The rerun `done` task already wrote `log` before the interrupt, so its
     // `log` write is skipped on replay — but its write to `extra`, a channel
     // it did not write before, must be kept.
     const live = await graph.invoke(
       new Command({ resume: "yes", update: { flag: true } }),
-      { ...head, durability: "exit" as const }
+      { ...paused, durability: "exit" as const }
     );
 
     const state = await graph.getState(config);

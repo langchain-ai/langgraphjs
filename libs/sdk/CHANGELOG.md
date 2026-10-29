@@ -1,5 +1,47 @@
 # @langchain/langgraph-sdk
 
+## 1.12.8
+
+### Patch Changes
+
+- [#3096](https://github.com/langchain-ai/langgraphjs/pull/3096) [`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): stop retrying cancelled requests, release abort listeners and emit CR-terminated SSE lines at once
+  
+  - A request cancelled with an `AbortSignal` or `timeoutMs` is no longer retried. Native `AbortError` and `TimeoutError` exceptions were retried with backoff, so calling `stop()` before the server answered kept `isLoading` on for 15 to 30 seconds.
+  - A request with a timeout no longer leaves an abort listener on the caller's signal, so reusing one signal for many requests stops piling up listeners. Runtimes without `AbortSignal.any` (Safari before 17.4, Node before 20.3) still hold one listener per request until its timeout fires or it is cancelled.
+  - The SSE decoder emits a line ending in a bare CR as soon as it arrives instead of holding it until the next chunk, and no longer drops the blank line of a stream that ends with CR.
+
+## 1.12.7
+
+### Patch Changes
+
+- [#3060](https://github.com/langchain-ai/langgraphjs/pull/3060) [`2b982b6`](https://github.com/langchain-ai/langgraphjs/commit/2b982b6cb4fbdf1493a40994660b1c7df97963aa) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): stop resolved interrupts from coming back after a reload
+  
+  After a reload, the first submit or respond on the Agent Server brought back every interrupt the thread had already resolved, and accepting them failed with `no_such_interrupt`. Its HTTP commands report `applied_through_seq: 0`, so the SDK treated the whole replayed history as new. When a command reports 0, the SDK now finds where the command's run starts on the thread stream and treats everything before it as history.
+
+## 1.12.6
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Tool-call args streamed as `tool-call-delta` slices are appended to the tool call, so `useStream`, scoped `useMessages`, `thread.messages`, `subgraph.messages` and `subagent.messages` show live args whether the server sends slices or the older `block-delta` snapshots. `block-delta` still replaces the args.
+  
+  Delta variants the SDK doesn't recognise are now ignored. Before, one froze a scoped `useMessages` view until the run ended, left the in-flight `thread.messages` message unsettled, and crashed Node with an unhandled rejection from `subgraph.messages` or `subagent.messages`. `MessageAssembler.consume` returns `undefined` for such events.
+  
+  Upgrade the SDK and its bindings before your server emits `tool-call-delta`.
+
+## 1.12.5
+
+### Patch Changes
+
+- [#2962](https://github.com/langchain-ai/langgraphjs/pull/2962) [`2e1fe5b`](https://github.com/langchain-ai/langgraphjs/commit/2e1fe5b3fffd87b2f7ba260da3726a2c03c2f72f) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): a reply cut off mid-stream, for example by `stop()`, no longer lingers in `useStream` messages after its run ends: it is dropped as soon as the run ends, stays gone after a page refresh, and is dropped in other tabs watching the thread too. A reply that finished streaming before the run paused for input stays visible while paused and is replaced, not duplicated, when the run resumes. Streaming message handles for a cut-off message now settle with an `aborted` error instead of never resolving.
+
+- [#3024](https://github.com/langchain-ai/langgraphjs/pull/3024) [`0acf88d`](https://github.com/langchain-ai/langgraphjs/commit/0acf88db9fdc6441c8b3a162b7a328b9b91e115e) Thanks [@eliornl](https://github.com/eliornl)! - Opening a thread with recent activity no longer replays it in `useStream`. Every new stream subscription receives the thread's recent events again, and the controller applied them on top of the state it had just loaded, so `messages`, `values` and `toolCalls` rewound to earlier turns and rebuilt themselves while old tool calls flashed through running and finished. The controller now skips events produced before the checkpoint it loaded. Scoped views, such as `useMessages` on a subagent, still receive the full history.
+  
+  A `submit()` sent right after opening a thread also no longer ends early. A replayed completion from an earlier run used to settle it, clear `isLoading` and fire `onCompleted` while the new run was still going.
+
+- [#3023](https://github.com/langchain-ai/langgraphjs/pull/3023) [`9cc54cc`](https://github.com/langchain-ai/langgraphjs/commit/9cc54cce575ae00deb0bb5946aa457f44f485427) Thanks [@eliornl](https://github.com/eliornl)! - `messagesProjection([])`, the root-namespace messages projection acquired through `StreamController.registry`, now fills from the root event stream. It threw a `ReferenceError` on every event and stayed empty. The framework hooks were not affected: `useMessages` returns `stream.messages` for the root.
+
+- [#3031](https://github.com/langchain-ai/langgraphjs/pull/3031) [`4690a5b`](https://github.com/langchain-ai/langgraphjs/commit/4690a5b9a59f4f96790fdce45160f744272ca054) Thanks [@eliornl](https://github.com/eliornl)! - Stop the protocol WebSocket transport from reconnecting when the server closes the socket with 4000 plus a 4xx status (4403, 4404, 4422 and the like; 4408 and 4429 still reconnect): the event stream now ends at once with an error that carries the `status`. Other 4xxx closes still reconnect, with the `status` on the `onReconnect` cause. A WebSocket thread stream that fails for good now reaches `ThreadStream.onError`, so `useStream` sets `error` and clears `isLoading`, as it already did for SSE. A command whose send fails no longer leaves a response promise behind to be rejected later as an unhandled rejection.
+
 ## 1.12.4
 
 ### Patch Changes

@@ -154,6 +154,10 @@ export interface StreamManagerOptions {
    * This is useful for deep agent architectures where you want to display
    * the main conversation separately from subagent activity.
    *
+   * Subagent messages stream as they are generated only when the run streams
+   * subgraphs, so submit with `streamSubgraphs: true`. Without it, a subagent
+   * shows only its final result.
+   *
    * @default false
    *
    * @example
@@ -162,6 +166,8 @@ export interface StreamManagerOptions {
    *   assistantId: "my-agent",
    *   filterSubagentMessages: true,
    * });
+   *
+   * stream.submit(input, { streamSubgraphs: true });
    *
    * // Main thread messages only (no subagent messages)
    * stream.messages
@@ -463,8 +469,8 @@ export class StreamManager<
        * could not resolve.
        *
        * This covers checkpoints whose task results are not yet populated (tasks
-       * still pending — the live or just-interrupted case). We align push tasks
-       * to the subagent tool calls of the triggering AI message by Send index
+       * still pending — the live or just-interrupted case). We map each push
+       * task to the triggering AI message's tool call at its Send index
        * (task.path[1]). Restricting this to still-unmapped tool calls guarantees
        * a correct direct mapping from Phase 1 is never overwritten by a guess.
        */
@@ -496,22 +502,18 @@ export class StreamManager<
           );
           if (pushTasks.length === 0) continue;
 
-          /**
-           * Find the AI message with subagent tool calls to align by Send index.
-           */
           const msgs = checkpoint.values[messagesKey];
           if (!Array.isArray(msgs)) continue;
 
+          // The newest AI message with tool calls made this checkpoint's push
+          // tasks; an older delegation must not be matched against them.
           let aiMessage: Record<string, unknown> | undefined;
           for (let i = msgs.length - 1; i >= 0; i -= 1) {
             const m = msgs[i] as Record<string, unknown>;
             if (
               m.type === "ai" &&
               Array.isArray(m.tool_calls) &&
-              m.tool_calls.length > 0 &&
-              (m.tool_calls as Array<{ name: string }>).some((tc) =>
-                this.subagentManager.isSubagentToolCall(tc.name)
-              )
+              m.tool_calls.length > 0
             ) {
               aiMessage = m;
               break;
@@ -522,38 +524,25 @@ export class StreamManager<
           }
 
           /**
-           * Only consider subagent tool calls from the AI message — not all tool
-           * calls. This ensures regular tool calls (searchWeb, queryDatabase, etc.)
-           * are never mistaken for subagents even when they appear in the same step.
+           * Agents send only the tool calls that have no ToolMessage yet (a
+           * call a human rejected has one), so a push task's Send index is its
+           * tool call's position among those. Regular tool calls (searchWeb,
+           * queryDatabase, etc.) keep their own tasks and are never mistaken
+           * for subagents.
            */
-          const subagentToolCalls = (
+          const answered = new Set(
+            msgs
+              .filter((m) => (m as Record<string, unknown>)?.type === "tool")
+              .map((m) => (m as Record<string, unknown>).tool_call_id)
+          );
+          const toolCalls = (
             aiMessage.tool_calls as Array<{ id?: string; name: string }>
-          ).filter((tc) => this.subagentManager.isSubagentToolCall(tc.name));
-
-          if (subagentToolCalls.length === 0) {
-            continue;
-          }
-
-          /**
-           * Sort push tasks by Send index (path[1]) to align with tool_calls order
-           */
-          const sorted = [...pushTasks].sort((a, b) => {
-            const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
-            const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
-            return ai - bi;
-          });
-
-          for (
-            let i = 0;
-            i < sorted.length && i < subagentToolCalls.length;
-            i += 1
-          ) {
-            const tc = subagentToolCalls[i];
-            const task = sorted[i];
+          ).filter((tc) => !answered.has(tc.id));
+          for (const task of pushTasks) {
+            const tc = toolCalls[task.path![1] as number];
             if (
               tc?.id &&
-              task.id &&
-              task.name &&
+              this.subagentManager.isSubagentToolCall(tc.name) &&
               toFetch.some(([id]) => id === tc.id) &&
               !toolCallIdToNamespace.has(tc.id)
             ) {
@@ -669,9 +658,9 @@ export class StreamManager<
     let timeoutId: NodeJS.Timeout | number | undefined;
 
     const throttledListener = () => {
-      clearTimeout(timeoutId);
+      if (timeoutId !== undefined) return;
       timeoutId = setTimeout(() => {
-        clearTimeout(timeoutId);
+        timeoutId = undefined;
         listener();
       }, timeoutMs);
     };
@@ -774,6 +763,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -784,14 +779,23 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     }
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
       this.setState({ isLoading: true, error: undefined });
-      this.abortRef = new AbortController();
+      // clear() and stop() replace abortRef, so the run keeps its own.
+      const abort = new AbortController();
+      this.abortRef = abort;
+      if (options.isReplaying) {
+        this.messages.startReplay();
+        this.subagentManager.startReplay();
+      }
 
-      const run = await action(this.abortRef.signal);
+      const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
 
       let streamError: StreamError | undefined;
@@ -936,7 +940,7 @@ export class StreamManager<
                 valuesData
               );
             }
-          } else {
+          } else if (namespace == null) {
             if (!clearedPreviousInterrupts) {
               // Clear stale __interrupt__ from the previous run once the new
               // stream starts delivering main values. This avoids carrying
@@ -1121,7 +1125,7 @@ export class StreamManager<
       // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
       // This avoids unnecessary HTTP calls (like history fetching) that would
       // delay the next queued stream from starting.
-      if (!this.abortRef.signal.aborted) {
+      if (!abort.signal.aborted) {
         const values = await options.onSuccess?.();
         if (typeof values !== "undefined" && this.queueSize === 0) {
           this.setStreamValues(values);
@@ -1166,6 +1170,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -1176,6 +1186,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     },
     startOptions?: {
       /**

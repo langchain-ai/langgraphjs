@@ -23,7 +23,10 @@ const interruptedRun = {
   kwargs: {},
 } as unknown as Run;
 
-const createService = (options: { pendingInterrupts: boolean }) => {
+const createService = (options: {
+  pendingInterrupts: number;
+  threadStatus?: string;
+}) => {
   const puts: RunKwargs[] = [];
   const bindings = {
     runs: {
@@ -45,15 +48,15 @@ const createService = (options: { pendingInterrupts: boolean }) => {
       },
     },
     threads: {
+      get: async () => ({
+        thread_id: THREAD_ID,
+        status: options.threadStatus ?? "interrupted",
+      }),
       state: {
         get: async () => ({
-          tasks: [
-            {
-              interrupts: options.pendingInterrupts
-                ? [{ id: "interrupt-1", value: { question: "proceed?" } }]
-                : [],
-            },
-          ],
+          tasks: Array.from({ length: options.pendingInterrupts }, (_, i) => ({
+            interrupts: [{ id: `interrupt-${i}`, value: { question: "proceed?" } }],
+          })),
         }),
       },
     },
@@ -75,7 +78,7 @@ const input = {
 
 describe("run.start on a thread whose current run is interrupted", () => {
   it("submits the input as input when the interruption was a cancel (no pending interrupt)", async () => {
-    const { service, puts } = createService({ pendingInterrupts: false });
+    const { service, puts } = createService({ pendingInterrupts: 0 });
 
     const response = await service.handleCommand(THREAD_ID, {
       id: 1,
@@ -90,7 +93,7 @@ describe("run.start on a thread whose current run is interrupted", () => {
   });
 
   it("still folds the input into Command(resume) when an interrupt is pending", async () => {
-    const { service, puts } = createService({ pendingInterrupts: true });
+    const { service, puts } = createService({ pendingInterrupts: 1 });
 
     const response = await service.handleCommand(THREAD_ID, {
       id: 1,
@@ -103,4 +106,44 @@ describe("run.start on a thread whose current run is interrupted", () => {
     expect(puts[0].input).toBeNull();
     expect(puts[0].command).toEqual({ resume: input });
   });
+
+  it("refuses the input while several interrupts are pending", async () => {
+    const { service, puts } = createService({ pendingInterrupts: 2 });
+
+    const response = await service.handleCommand(THREAD_ID, {
+      id: 1,
+      method: "run.start",
+      params: { assistant_id: "agent", input },
+    });
+
+    expect(response).toMatchObject({ type: "error", error: "invalid_argument" });
+    expect(puts).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "input keyed by interrupt id",
+      threadStatus: "interrupted",
+      resume: { ["a".repeat(32)]: "yes", ["b".repeat(32)]: "no" },
+    },
+    { name: "a run in flight", threadStatus: "busy", resume: input },
+  ])(
+    "still resumes several pending interrupts for $name",
+    async ({ threadStatus, resume }) => {
+      const { service, puts } = createService({
+        pendingInterrupts: 2,
+        threadStatus,
+      });
+
+      const response = await service.handleCommand(THREAD_ID, {
+        id: 1,
+        method: "run.start",
+        params: { assistant_id: "agent", input: resume },
+      });
+
+      expect(response).toMatchObject({ type: "success" });
+      expect(puts).toHaveLength(1);
+      expect(puts[0].command).toEqual({ resume });
+    }
+  );
 });

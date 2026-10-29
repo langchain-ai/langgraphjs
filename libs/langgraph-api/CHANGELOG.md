@@ -1,5 +1,28 @@
 # @langchain/langgraph-api
 
+## 1.5.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.6
+
+## 1.5.5
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Depend on `@langchain/protocol` 0.0.20, the version `@langchain/langgraph-sdk` uses, so installs resolve a single copy and the protocol event types stay compatible.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.5
+
+## 1.5.4
+
+### Patch Changes
+
+- [#3025](https://github.com/langchain-ai/langgraphjs/pull/3025) [`06f9fdb`](https://github.com/langchain-ai/langgraphjs/commit/06f9fdbb76facef0d4f2100e14baa99ef8f0bd2b) Thanks [@eliornl](https://github.com/eliornl)! - `run.start` input sent while a thread is paused on several interrupts now returns `invalid_argument` and leaves the thread paused, instead of starting a run that fails because one input can't say which interrupt it answers. Answer each interrupt with `input.respond`.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.4
+
 ## 1.5.3
 
 ### Patch Changes

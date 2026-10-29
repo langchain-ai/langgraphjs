@@ -72,7 +72,7 @@ function startEvent(
 
 function blockStartEvent(
   index: number,
-  block: { type: string; text?: string },
+  block: { type: string; text?: string; [key: string]: unknown },
   namespace: string[] = []
 ): MessagesEvent {
   return {
@@ -104,7 +104,7 @@ function blockDeltaEvent(
 
 function coreBlockDeltaEvent(
   index: number,
-  delta: { type: "text-delta"; text: string },
+  delta: { type: string; [key: string]: unknown },
   namespace: string[] = []
 ): MessagesEvent {
   return {
@@ -114,6 +114,34 @@ function coreBlockDeltaEvent(
       namespace,
       timestamp: Date.now(),
       data: { event: "content-block-delta", index, delta },
+    },
+  } as unknown as MessagesEvent;
+}
+
+function blockFinishEvent(
+  index: number,
+  block: { type: string; [key: string]: unknown },
+  namespace: string[] = []
+): MessagesEvent {
+  return {
+    type: "event",
+    method: "messages",
+    params: {
+      namespace,
+      timestamp: Date.now(),
+      data: { event: "content-block-finish", index, content: block },
+    },
+  } as unknown as MessagesEvent;
+}
+
+function finishEvent(namespace: string[] = []): MessagesEvent {
+  return {
+    type: "event",
+    method: "messages",
+    params: {
+      namespace,
+      timestamp: Date.now(),
+      data: { event: "message-finish", reason: "stop" },
     },
   } as unknown as MessagesEvent;
 }
@@ -291,6 +319,49 @@ describe("RootMessageProjection", () => {
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
       expect(snap.messages[0].text).toBe("Hi there");
+    });
+
+    it.each([
+      [
+        "block-delta snapshots",
+        [
+          { type: "block-delta", fields: { type: "tool_call_chunk", id: "call_1", name: "search", args: '{"query":' } },
+          { type: "block-delta", fields: { type: "tool_call_chunk", id: "call_1", name: "search", args: '{"query":"weather"}' } },
+        ],
+      ],
+      [
+        "tool-call-delta slices",
+        [
+          { type: "tool-call-delta", args: '{"query":' },
+          { type: "tool-call-delta", args: '"weather"}' },
+        ],
+      ],
+    ])("streams tool-call args from %s", async (_form, deltas) => {
+      const { store, projection } = makeProjection();
+
+      projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "tool_call_chunk", id: "call_1", name: "search", args: "" })
+      );
+      const live: unknown[] = [];
+      for (const delta of deltas) {
+        projection.handleMessage(coreBlockDeltaEvent(0, delta));
+        await drainFlush();
+        live.push((store.getSnapshot().messages[0] as AIMessage).tool_calls);
+      }
+      projection.handleMessage(
+        blockFinishEvent(0, { type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } })
+      );
+      projection.handleMessage(finishEvent());
+      await drainFlush();
+
+      expect(live).toEqual([
+        [{ type: "tool_call", id: "call_1", name: "search", args: {} }],
+        [{ type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } }],
+      ]);
+      expect((store.getSnapshot().messages[0] as AIMessage).tool_calls).toEqual([
+        { type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } },
+      ]);
     });
 
     it("mirrors messages into values[messagesKey]", async () => {
@@ -1409,7 +1480,7 @@ describe("RootMessageProjection", () => {
     });
   });
 
-  describe("dropOptimisticMessages", () => {
+  describe("dropMessages", () => {
     it("removes the given ids and preserves the rest", async () => {
       const { store, projection } = makeProjection();
 
@@ -1419,7 +1490,7 @@ describe("RootMessageProjection", () => {
       projection.appendOptimistic([h]);
       await drainFlush();
 
-      projection.dropOptimisticMessages(new Set(["h1"]));
+      projection.dropMessages(new Set(["h1"]));
       await drainFlush();
 
       expect(store.getSnapshot().messages.map((m) => m.id)).toEqual(["a1"]);

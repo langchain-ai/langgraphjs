@@ -186,6 +186,14 @@ export const ROOT_PUMP_CHANNELS: readonly Channel[] = [
 const PARKED_INTERRUPT_SETTLE_MS = 5_000;
 const PARKED_INTERRUPT_SETTLE_POLL_MS = 500;
 
+/**
+ * Identifies the run a command started, so its interrupt barrier can be
+ * found on the thread stream when the server reports none.
+ */
+type RunBoundaryCommand =
+  | { runId: string }
+  | { answeredInterruptIds: readonly string[] };
+
 interface ResolvedInterrupt {
   interruptId: string;
   namespace: string[];
@@ -268,12 +276,35 @@ export class StreamController<
    */
   #hydratedActiveInterruptIds: Set<string> | null = null;
   /**
+   * Creation time of the checkpoint the latest {@link hydrate} seeded
+   * from. A new stream subscription replays the thread's retained
+   * history, and events produced before this moment are already part of
+   * the seed: applying them again rewinds `messages`, `values` and
+   * `toolCalls` to older turns and then rebuilds them.
+   */
+  #hydratedCheckpointTime: number | undefined;
+  /**
    * Highest event sequence already applied when the latest run command
    * was accepted. Interrupts outside the hydrate-time allowlist remain
    * filtered through this sequence, while newer events are live output
    * from the newly-started run and must be accepted.
    */
   #interruptReplayThroughSeq: number | undefined;
+  /**
+   * Command whose barrier is still to be found on the thread stream. The
+   * agent server answers HTTP commands from a fresh per-request manager,
+   * so `applied_through_seq` is 0 while the stream replays the whole
+   * history with positive seqs. The barrier is then the event before the
+   * `running` event of the run the command started: `run.start` names that
+   * run, and a resume starts the first root run after the answered
+   * interrupts were last requested. Unknown interrupts stay buffered until
+   * it is found.
+   */
+  #awaitingRunBoundary: RunBoundaryCommand | undefined;
+  /** Seq of each root run's `running` event, keyed by run id. */
+  readonly #rootRunStartSeqs = new Map<string, number>();
+  /** Highest seq at which each interrupt was requested. */
+  readonly #interruptRequestSeqs = new Map<string, number>();
   /** Unknown inputs waiting to be classified as live or replayed history. */
   #pendingHydrationInterruptEvents: Event[] = [];
   #settleParkedInterruptsPromise: Promise<void> | undefined;
@@ -342,6 +373,16 @@ export class StreamController<
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
+  /**
+   * Run id `run.start` returned for the in-flight local `submit()`. Kept
+   * apart from {@link #activeRunId}, which a rolled-back submit's late
+   * response can still overwrite.
+   */
+  #submittedRunId: string | undefined;
+  /** `true` from a local run's dispatch until its `run.start` answers. */
+  #submittedRunIdPending = false;
+  /** One per armed terminal wait: re-runs the lifecycle events it held until `run.start` answered. */
+  readonly #heldLifecycleReleases = new Set<() => void>();
   #localRunDepth = 0;
   /**
    * `true` once a root `values` event has been applied for the current
@@ -415,6 +456,9 @@ export class StreamController<
       // `#submitter` is assigned just below; this callback only ever
       // fires later (async), by which point construction has finished.
       onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
+      // `submit()` settles `isLoading` itself, so skipping a pending
+      // event here can't leave the flag stuck.
+      ignore: (event) => this.#submittedRunMatch(event) != null,
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -454,14 +498,20 @@ export class StreamController<
         // dispatch is accepted: the root pump may still be replaying
         // historical events while the command is in flight.
         this.#submitGeneration += 1;
+        this.#awaitingRunBoundary = undefined;
         this.#interruptCommandPending =
           this.#hydratedActiveInterruptIds != null;
         this.#pendingInterruptEvents = this.#pendingHydrationInterruptEvents;
         this.#pendingHydrationInterruptEvents = [];
       },
       onRunStart: () => this.#markLocalRunStart(),
+      onRunStartReturned: (runId) => {
+        this.#submittedRunId = runId;
+        this.#submittedRunIdPending = false;
+        for (const release of [...this.#heldLifecycleReleases]) release();
+      },
       onRunCreated: (runId) => {
-        this.#advanceInterruptReplayBarrier();
+        this.#advanceInterruptReplayBarrier({ runId });
         this.#notifyCreated(runId);
       },
       onRunCompleted: (reason, runId) => this.#notifyCompleted(reason, runId),
@@ -470,6 +520,8 @@ export class StreamController<
         // `input.requested` frames. A fast run can emit its interrupt
         // and terminal before `run.start` returns; `onRunCreated` still
         // has to classify those frames against `applied_through_seq`.
+        // A barrier still unplaced once the run is over never will be.
+        this.#abandonRunBoundary();
         this.#interruptCommandPending = false;
         this.#markLocalRunEnd();
       },
@@ -657,6 +709,10 @@ export class StreamController<
       if (this.#disposed || this.#currentThreadId !== hydratedThreadId) return;
       threadExists = state != null;
       threadActive = isThreadStateActive(state);
+      const checkpointTime = Date.parse(state?.created_at ?? "");
+      this.#hydratedCheckpointTime = Number.isNaN(checkpointTime)
+        ? undefined
+        : checkpointTime;
       // A prior hydrate-404 may have marked this id missing; clear it
       // now that the server row exists (e.g. another client created it).
       this.#missingThreadIds.delete(hydratedThreadId);
@@ -708,6 +764,24 @@ export class StreamController<
         if (Array.isArray(seedMessages)) {
           this.#subagents.seedFromCheckpointMessages(seedMessages);
 
+          // Root `toolCalls` are otherwise only built from `tools` events,
+          // and the replayed ones predate the seed and are skipped. A call
+          // with no result yet is left to the live stream, as an open tab
+          // would only show it once it starts.
+          const finishedToolCalls = seedToolCallsFromMessages(
+            ROOT_NAMESPACE,
+            ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
+          ).filter((toolCall) => toolCall.status === "finished");
+          if (finishedToolCalls.length > 0) {
+            this.rootStore.setState((s) => ({
+              ...s,
+              toolCalls: finishedToolCalls.reduce(
+                (toolCalls, toolCall) => upsertToolCall(toolCalls, toolCall),
+                s.toolCalls
+              ),
+            }));
+          }
+
           /**
            * An idle (finished) thread defers its root SSE pump; the first
            * `submit()` brings it up and the transport replays the finished
@@ -739,7 +813,7 @@ export class StreamController<
        */
       const unpersisted = this.#messageMetadata.unpersistedOptimisticIds();
       if (unpersisted.size > 0) {
-        this.#rootMessages.dropOptimisticMessages(unpersisted);
+        this.#rootMessages.dropMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
       /**
@@ -1234,6 +1308,14 @@ export class StreamController<
     if (shouldCancel) {
       const threadId = this.#currentThreadId;
       const runId = this.#activeRunId;
+      if (runId != null && this.rootStore.getSnapshot().isLoading) {
+        // Drop the partial reply now rather than on the server's terminal.
+        const dropped = this.#rootMessages.closeRun({
+          sync: true,
+          unfinishedOnly: true,
+        });
+        if (dropped.size > 0) this.#messageMetadata.forget(dropped);
+      }
       if (threadId != null && runId != null) {
         try {
           await this.#options.client.runs.cancel(threadId, runId);
@@ -1255,10 +1337,13 @@ export class StreamController<
 
   #markLocalRunStart(): void {
     this.#localRunDepth += 1;
+    this.#submittedRunId = undefined;
+    this.#submittedRunIdPending = true;
   }
 
   #markLocalRunEnd(): void {
     this.#localRunDepth = Math.max(0, this.#localRunDepth - 1);
+    if (this.#localRunDepth === 0) this.#submittedRunIdPending = false;
   }
 
   #notifyCreated(runId: string): void {
@@ -1445,7 +1530,9 @@ export class StreamController<
           config: options?.config,
           metadata: options?.metadata,
         });
-        this.#advanceInterruptReplayBarrier();
+        this.#advanceInterruptReplayBarrier({
+          answeredInterruptIds: [resolved.interruptId],
+        });
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
       }, prepared?.handle);
     } catch (error) {
@@ -1544,7 +1631,9 @@ export class StreamController<
           config: options?.config,
           metadata: options?.metadata,
         });
-        this.#advanceInterruptReplayBarrier();
+        this.#advanceInterruptReplayBarrier({
+          answeredInterruptIds: responses.map((r) => r.interrupt_id),
+        });
         for (const { interrupt_id: interruptId } of responses) {
           this.#markInterruptResolvedInRootStore(interruptId);
         }
@@ -1814,7 +1903,11 @@ export class StreamController<
     // Drop the hydrate-window allowlist — the next thread's hydrate
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
+    this.#hydratedCheckpointTime = undefined;
     this.#interruptReplayThroughSeq = undefined;
+    this.#awaitingRunBoundary = undefined;
+    this.#rootRunStartSeqs.clear();
+    this.#interruptRequestSeqs.clear();
     this.#pendingHydrationInterruptEvents = [];
     this.#discardPendingInterruptEvents();
     this.queueStore.setState(
@@ -2070,8 +2163,88 @@ export class StreamController<
      * consumer. `ThreadStream.interrupts` is updated in parallel for
      * resume targeting.
      */
+    this.#observeRunBoundary(event);
     this.#recordInterrupt(event);
     this.#settleParkedInterruptsOnTerminal(event);
+  }
+
+  /**
+   * Remember where each root run starts and where each interrupt was last
+   * requested, then try to place a pending command barrier. Both the
+   * content pump and the lifecycle watcher replay the same tape with the
+   * same seqs, so recording either copy is enough.
+   */
+  #observeRunBoundary(event: Event): void {
+    const { seq } = event;
+    if (typeof seq !== "number") return;
+    if (event.method === "input.requested") {
+      const id = (event.params.data as { interrupt_id?: unknown })
+        ?.interrupt_id;
+      if (typeof id !== "string") return;
+      if (seq <= (this.#interruptRequestSeqs.get(id) ?? -1)) return;
+      this.#interruptRequestSeqs.set(id, seq);
+    } else if (
+      event.method === "lifecycle" &&
+      isRootNamespace(event.params.namespace) &&
+      (event as LifecycleEvent).params.data?.event === "running"
+    ) {
+      const runId = synthesizedEventRunId(event.event_id);
+      if (runId == null || this.#rootRunStartSeqs.has(runId)) return;
+      this.#rootRunStartSeqs.set(runId, seq);
+    } else {
+      return;
+    }
+    this.#resolveRunBoundary();
+  }
+
+  /**
+   * Place the barrier of a command that reported `applied_through_seq: 0`
+   * once its run's `running` event has been seen, then classify the
+   * interrupts buffered while it was unknown.
+   */
+  #resolveRunBoundary(): void {
+    const command = this.#awaitingRunBoundary;
+    if (command == null) return;
+    let runStartSeq: number | undefined;
+    if ("runId" in command) {
+      runStartSeq = this.#rootRunStartSeqs.get(command.runId);
+    } else {
+      // The resumed run is the first root run that starts after the
+      // answered interrupts were last requested.
+      let lastRequested = -1;
+      for (const id of command.answeredInterruptIds) {
+        const seq = this.#interruptRequestSeqs.get(id);
+        if (seq == null) return;
+        lastRequested = Math.max(lastRequested, seq);
+      }
+      for (const seq of this.#rootRunStartSeqs.values()) {
+        if (seq > lastRequested && (runStartSeq == null || seq < runStartSeq)) {
+          runStartSeq = seq;
+        }
+      }
+    }
+    if (runStartSeq == null) return;
+    this.#awaitingRunBoundary = undefined;
+    this.#interruptReplayThroughSeq = runStartSeq - 1;
+    this.#interruptCommandPending = false;
+    this.#flushPendingInterruptEvents();
+  }
+
+  /**
+   * Give up on a barrier whose run never showed up on the stream: a run
+   * cancelled before it started, or a resume whose answered interrupts
+   * were trimmed from the tape. Stop buffering and let the parked
+   * interrupt state check decide what was held.
+   */
+  #abandonRunBoundary(): void {
+    if (this.#awaitingRunBoundary == null) return;
+    this.#awaitingRunBoundary = undefined;
+    this.#interruptCommandPending = false;
+    // With no barrier, held unknown interrupts are parked for the check.
+    this.#flushPendingInterruptEvents();
+    // Their run's terminal may already have passed, so do not wait for
+    // the next one.
+    void this.#settleParkedInterrupts();
   }
 
   /**
@@ -2109,6 +2282,11 @@ export class StreamController<
         }
       }
     }
+
+    // After discovery and the root bus on purpose: root selector projections
+    // start empty and build from the replayed history.
+    const floor = this.#hydratedCheckpointTime;
+    if (floor != null && event.params.timestamp < floor) return;
 
     /**
      * `messages` and `tools` events are emitted under a node's
@@ -2230,13 +2408,34 @@ export class StreamController<
     if (event.method === "lifecycle") {
       /**
        * Root lifecycle transitions are observed elsewhere
-       * (#awaitTerminal) to unblock `submit`.
+       * (#awaitTerminal) to unblock `submit`. Here they drop a closed
+       * run's never-checkpointed messages.
        */
       const lifecycle = (event as LifecycleEvent).params.data as {
         event?: string;
       };
-      void lifecycle;
+      const dropped = this.#rootMessages.applyLifecycle(lifecycle?.event);
+      if (dropped.size > 0) this.#messageMetadata.forget(dropped);
     }
+  }
+
+  /**
+   * How a lifecycle event relates to the run a local `submit()` started.
+   * New subscriptions replay earlier runs' terminals, and accepting one
+   * would end the submitted run early: `"other"` marks those, `"pending"`
+   * an event that names a run before `run.start` has answered. `undefined`
+   * when it can't be told apart (no submit in flight, no run named, or no
+   * run id returned).
+   */
+  #submittedRunMatch(event: Event): "other" | "pending" | undefined {
+    if (event.method !== "lifecycle" || this.#localRunDepth === 0) {
+      return undefined;
+    }
+    const runId = synthesizedEventRunId(event.event_id);
+    if (runId == null) return undefined;
+    if (this.#submittedRunIdPending) return "pending";
+    if (this.#submittedRunId == null) return undefined;
+    return runId === this.#submittedRunId ? undefined : "other";
   }
 
   /**
@@ -2498,13 +2697,24 @@ export class StreamController<
    * Convert the hydrate-time allowlist into a replay barrier after a command
    * is accepted. Built-in transports update `lastAppliedThroughSeq` from the
    * command response before resolving `submitRun` / `respondInput`.
+   *
+   * @param command - The run the command started, used to find the barrier
+   *   on the thread stream when the response reports
+   *   `applied_through_seq: 0`.
    */
-  #advanceInterruptReplayBarrier(): void {
+  #advanceInterruptReplayBarrier(command?: RunBoundaryCommand): void {
     if (this.#hydratedActiveInterruptIds == null) {
       this.#discardPendingInterruptEvents();
       return;
     }
     const throughSeq = this.#thread?.ordering?.lastAppliedThroughSeq;
+    if (throughSeq === 0 && command != null) {
+      // Zero carries no position (see `#awaitingRunBoundary`); keep
+      // buffering until the stream shows where the command's run starts.
+      this.#awaitingRunBoundary = command;
+      this.#resolveRunBoundary();
+      return;
+    }
     if (typeof throughSeq === "number") {
       this.#interruptReplayThroughSeq = throughSeq;
     } else {
@@ -2514,6 +2724,11 @@ export class StreamController<
       this.#interruptReplayThroughSeq = undefined;
     }
     this.#interruptCommandPending = false;
+    this.#flushPendingInterruptEvents();
+  }
+
+  /** Classify the interrupts buffered while a command was in flight. */
+  #flushPendingInterruptEvents(): void {
     const pendingEvents = this.#pendingInterruptEvents;
     this.#pendingInterruptEvents = [];
     for (const event of pendingEvents) {
@@ -2522,6 +2737,7 @@ export class StreamController<
   }
 
   #discardPendingInterruptEvents(): void {
+    this.#awaitingRunBoundary = undefined;
     this.#interruptCommandPending = false;
     this.#pendingInterruptEvents = [];
   }
@@ -2735,9 +2951,12 @@ export class StreamController<
     event: "completed" | "failed" | "interrupted" | "aborted";
     error?: string;
   }> {
+    const generation = this.#submitGeneration;
     const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
+    // A resume never reaches `onRunEnd`. Skip it if a newer command took over.
+    if (this.#submitGeneration === generation) this.#abandonRunBoundary();
     if (
       !signal.aborted &&
       !this.#disposed &&
@@ -2758,12 +2977,15 @@ export class StreamController<
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
+      const held: Event[] = [];
+      const heldReleases = this.#heldLifecycleReleases;
       function finish(result: {
         event: "completed" | "failed" | "interrupted" | "aborted";
         error?: string;
       }) {
         if (settled) return;
         settled = true;
+        heldReleases.delete(releaseHeld);
         unsubscribeRoot?.();
         unsubscribeThread?.();
         unsubscribeError?.();
@@ -2775,6 +2997,12 @@ export class StreamController<
         if (settled) return;
         if (event.method !== "lifecycle") return;
         if (!isRootNamespace(event.params.namespace)) return;
+        const match = this.#submittedRunMatch(event);
+        if (match === "other") return;
+        if (match === "pending") {
+          held.push(event);
+          return;
+        }
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
           error?: string;
@@ -2797,6 +3025,10 @@ export class StreamController<
           setTimeout(() => finish({ event: "interrupted" }), 0);
         }
       };
+      const releaseHeld = () => {
+        for (const event of held.splice(0)) onEvent(event);
+      };
+      heldReleases.add(releaseHeld);
       const unsubscribeRoot = this.#rootBus.subscribe(onEvent);
       const unsubscribeThread = this.#thread?.onEvent(onEvent);
       const unsubscribeError = this.#thread?.onError((error) =>
@@ -2942,3 +3174,15 @@ function collectActiveInterruptsFromTasks<InterruptType>(tasks: unknown[]): {
 
 // Unused import guard — `AIMessage` is only referenced by type tests.
 void AIMessage;
+
+/**
+ * Run id from a `synth:<run_id>:...` event id, the form the agent server
+ * uses for events it synthesizes such as root `lifecycle`. Events carry no
+ * run id field.
+ */
+function synthesizedEventRunId(
+  eventId: string | undefined
+): string | undefined {
+  if (eventId == null || !eventId.startsWith("synth:")) return undefined;
+  return eventId.split(":")[1] || undefined;
+}

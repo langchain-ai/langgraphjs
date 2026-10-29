@@ -1,5 +1,30 @@
 # @langchain/langgraph-cli
 
+## 1.5.6
+
+### Patch Changes
+
+- [#3095](https://github.com/langchain-ai/langgraphjs/pull/3095) [`75d179c`](https://github.com/langchain-ai/langgraphjs/commit/75d179cf63baa5f197b7f03b6f4928c05724fb16) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy --remote` sends the headers the control plane returns with its source upload, so uploads work with storage that needs extra headers, such as Azure Blob Storage. Control planes that return none keep the previous behavior.
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.5.6
+
+## 1.5.5
+
+### Patch Changes
+
+- Updated dependencies [[`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083)]:
+  - @langchain/langgraph-api@1.5.5
+
+## 1.5.4
+
+### Patch Changes
+
+- [#3037](https://github.com/langchain-ai/langgraphjs/pull/3037) [`6180711`](https://github.com/langchain-ai/langgraphjs/commit/61807113665e4875c6ec8fd34c6f6c9f7becf497) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy` local builds push through your active Docker context. Before, the push used a temporary Docker config with no current context and failed with `failed to connect to the docker API at unix:///var/run/docker.sock` on setups like Docker Desktop without the default socket. An explicit `DOCKER_HOST` is still respected.
+
+- [#3021](https://github.com/langchain-ai/langgraphjs/pull/3021) [`23c8d09`](https://github.com/langchain-ai/langgraphjs/commit/23c8d0977773bef91bc2cab7d6eb3b5d6fb651dc) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy` local builds log in with the registry username the control plane returns and push to its `repository_url` when it sends one, so they work on LangSmith AWS. Control planes that return neither keep the previous behavior.
+- Updated dependencies [[`06f9fdb`](https://github.com/langchain-ai/langgraphjs/commit/06f9fdbb76facef0d4f2100e14baa99ef8f0bd2b)]:
+  - @langchain/langgraph-api@1.5.4
+
 ## 1.5.3
 
 ### Patch Changes
