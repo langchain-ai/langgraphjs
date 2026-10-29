@@ -6,6 +6,7 @@ import type {
 import {
   Client,
   type MessagesTupleStreamEvent,
+  type StreamMode,
 } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
@@ -25,6 +26,8 @@ import {
 import { findLast, gatherIterator, truncate } from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { connect } from "node:net";
 import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
@@ -1178,6 +1181,88 @@ describe("runs", () => {
   });
 
   it.concurrent(
+    "join stream returns only the requested stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const thread = await client.threads.create();
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          streamMode: ["values", "updates", "messages", "messages-tuple"],
+          streamResumable: true,
+          config: globalConfig,
+        }
+      );
+
+      const join = (streamMode?: StreamMode | StreamMode[]) =>
+        gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, {
+            lastEventId: "-1",
+            streamMode,
+          })
+        );
+
+      const all = await join();
+      expect(new Set(all.map((i) => i.event))).toEqual(
+        new Set([
+          "metadata",
+          "values",
+          "updates",
+          "messages/metadata",
+          "messages/partial",
+          "messages/complete",
+          "messages",
+        ])
+      );
+
+      const messages = all.filter((i) => i.event.startsWith("messages"));
+      const valuesAndMessages = all.filter(
+        (i) => i.event === "values" || i.event.startsWith("messages")
+      );
+      expect(await join("messages")).toEqual(messages);
+      expect(await join(["values", "messages-tuple"])).toEqual(
+        valuesAndMessages
+      );
+      expect(
+        await join(JSON.stringify(["values", "messages-tuple"]) as StreamMode),
+        "one JSON array, as SDKs before 1.12 send"
+      ).toEqual(valuesAndMessages);
+      expect(await join("" as StreamMode), "empty stream_mode").toEqual(all);
+      expect(
+        await join("[values" as StreamMode),
+        "malformed JSON array"
+      ).toEqual([]);
+    }
+  );
+
+  it.concurrent(
+    "stateless join stream keeps subgraph events of the requested stream mode",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "nested" });
+      const run = await client.runs.create(null, assistant.assistant_id, {
+        input: { messages: [] },
+        streamMode: ["values", "updates"],
+        streamSubgraphs: true,
+      });
+
+      const chunks = await gatherIterator(
+        client.runs.joinStream(null, run.run_id, { streamMode: "updates" })
+      );
+
+      expect(chunks.map((i) => i.event.replace(/:[^|]+/g, ""))).toEqual([
+        "updates",
+        "updates|gp_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two",
+        "updates",
+      ]);
+    }
+  );
+
+  it.concurrent(
     "human in the loop - no modification",
     { retry: 0 },
     async () => {
@@ -1347,6 +1432,135 @@ describe("runs", () => {
         client.runs.stream(thread.thread_id, "non-existent", { input })
       )
     ).rejects.toThrow(/No assistant found for/);
+  });
+
+  const postAndDropBeforeTheResponse = async (
+    path: string,
+    body: Record<string, unknown>
+  ) => {
+    const url = new URL(path, API_URL);
+    const payload = JSON.stringify(body);
+    const socket = connect({ host: url.hostname, port: Number(url.port) });
+    socket.write(
+      [
+        `POST ${url.pathname} HTTP/1.1`,
+        `Host: ${url.host}`,
+        "Content-Type: application/json",
+        `Content-Length: ${Buffer.byteLength(payload)}`,
+        "",
+        payload,
+      ].join("\r\n"),
+      () => socket.destroy()
+    );
+    await once(socket, "close");
+  };
+
+  it.concurrent.for([
+    { stateless: false, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: false, onDisconnect: "continue", status: "success" },
+    { stateless: true, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: true, onDisconnect: "continue", status: "success" },
+  ] as const)(
+    "stream request dropped before the response (stateless: $stateless, on_disconnect: $onDisconnect) leaves the run $status",
+    async ({ stateless, onDisconnect, status }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+      const thread = stateless ? undefined : await client.threads.create();
+
+      await postAndDropBeforeTheResponse(
+        stateless
+          ? "/runs/stream"
+          : `/threads/${thread!.thread_id}/runs/stream`,
+        {
+          assistant_id: assistant.assistant_id,
+          input: { messages: [{ type: "human", content: "foo" }], sleep: 1 },
+          config: globalConfig,
+          metadata: { marker },
+          on_completion: "keep",
+          on_disconnect: onDisconnect,
+          stream_resumable: true,
+        }
+      );
+
+      const findRun = async () => {
+        const [owner] = stateless
+          ? await client.threads.search({ metadata: { marker } })
+          : [thread!];
+        if (owner == null) return undefined;
+        const [run] = await client.runs.list(owner.thread_id);
+        return run;
+      };
+      let run = await findRun();
+      for (let attempt = 0; run == null && attempt < 50; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        run = await findRun();
+      }
+      expect(run).toBeDefined();
+
+      await client.runs.join(run!.thread_id, run!.run_id);
+      expect((await client.runs.get(run!.thread_id, run!.run_id)).status).toBe(
+        status
+      );
+    }
+  );
+
+  it.concurrent.for([
+    { onDisconnect: "cancel", threadLeft: false },
+    { onDisconnect: "continue", threadLeft: true },
+  ] as const)(
+    "stateless stream request deleted on completion and dropped before the response (on_disconnect: $onDisconnect) leaves its thread: $threadLeft",
+    async ({ onDisconnect, threadLeft }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+
+      await postAndDropBeforeTheResponse("/runs/stream", {
+        assistant_id: assistant.assistant_id,
+        input: { messages: [{ type: "human", content: "foo" }], sleep: 3 },
+        config: globalConfig,
+        metadata: { marker },
+        on_disconnect: onDisconnect,
+        stream_resumable: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const threads = await client.threads.search({ metadata: { marker } });
+      expect(threads.length > 0).toBe(threadLeft);
+    }
+  );
+
+  it.concurrent("cancelling a pending stateless run with wait deletes it and its thread", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const run = await client.runs.create(null, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+
+    await client.runs.cancel(run.thread_id, run.run_id, true);
+
+    await expect(client.threads.get(run.thread_id)).rejects.toThrow(/HTTP 404/);
+  });
+
+  it.concurrent("cancelling a pending stateless run keeps its thread and the other runs on it", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const input = { messages: [{ type: "human", content: "foo" }] };
+    const pending = await client.runs.create(null, assistant.assistant_id, {
+      input,
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+    const other = await client.runs.create(
+      pending.thread_id,
+      assistant.assistant_id,
+      { input, config: globalConfig, multitaskStrategy: "enqueue" }
+    );
+
+    await client.runs.cancel(pending.thread_id, pending.run_id);
+    await client.runs.join(pending.thread_id, other.run_id);
+
+    expect(
+      (await client.runs.get(pending.thread_id, other.run_id)).status
+    ).toBe("success");
   });
 });
 
@@ -2088,6 +2302,30 @@ describe("errors", () => {
     const runState = await client.runs.get(thread.thread_id, run.run_id);
     expect(runState.status).toEqual("error");
   });
+
+  it.concurrent(
+    "create + stream join keeps the error when filtering stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "error" });
+      const thread = await client.threads.create();
+
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        { input: { messages: [] } }
+      );
+
+      const stream = await gatherIterator(
+        client.runs.joinStream(thread.thread_id, run.run_id, {
+          streamMode: "updates",
+        })
+      );
+
+      expect(stream).toMatchObject([
+        { event: "error", data: { error: "CustomError", message: "Boo!" } },
+      ]);
+    }
+  );
 });
 
 describe("long running tasks", () => {
@@ -2397,11 +2635,10 @@ describe("multitasking", () => {
     }
   });
 
-  it("multitasking rollback", { timeout: 8_000, retry: 3 }, async () => {
+  it("multitasking rollback", { timeout: 8_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
 
-    // Start first run
     const input1 = {
       messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
       sleep: 4,
@@ -2412,7 +2649,23 @@ describe("multitasking", () => {
       { input: input1, config: globalConfig }
     );
 
-    // Start second run that should rollback first
+    await expect
+      .poll(
+        async () => {
+          const state = await client.threads.getState<AgentState>(
+            thread.thread_id
+          );
+          return state.values.messages?.map((message) => message.content);
+        },
+        { timeout: 5_000 }
+      )
+      .toEqual(["foo"]);
+    const run1Events = gatherIterator(
+      client.runs.joinStream(thread.thread_id, run1.run_id, {
+        lastEventId: "-1",
+      })
+    );
+
     const input2 = {
       messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
     };
@@ -2422,17 +2675,52 @@ describe("multitasking", () => {
       { input: input2, multitaskStrategy: "rollback", config: globalConfig }
     );
 
-    // First run should be deleted
-    await expect(() =>
-      pollRun(thread.thread_id, run1.run_id)
-    ).rejects.toThrow();
+    expect(await pollRun(thread.thread_id, run2.run_id)).toBe("success");
+    await expect(
+      client.runs.get(thread.thread_id, run1.run_id)
+    ).rejects.toThrow("HTTP 404: Run not found");
+    expect((await run1Events).map((event) => event.event)).toEqual([
+      "metadata",
+      "values",
+    ]);
 
-    const run2Status = await pollRun(thread.thread_id, run2.run_id);
-    expect(run2Status).toBe("success");
+    const history = await client.threads.getHistory(thread.thread_id);
+    expect(new Set(history.map((state) => state.metadata?.run_id))).toEqual(
+      new Set([run2.run_id])
+    );
 
     const state = await client.threads.getState<AgentState>(thread.thread_id);
-    expect(state.values.messages.length).toBe(4);
-    expect(state.values.messages.at(0)?.content).toBe("bar");
+    expect(state.values.messages.map((message) => message.content)).toEqual([
+      "bar",
+      "begin",
+      "tool_call__begin",
+      "end",
+    ]);
+    expect((await client.threads.get(thread.thread_id)).status).toBe("idle");
+  });
+
+  it("multitasking defaults to enqueue", { timeout: 8_000 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const first = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "foo" }], sleep: 2 },
+        config: globalConfig,
+      }
+    );
+    const second = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "bar" }], sleep: 0 },
+        config: globalConfig,
+      }
+    );
+
+    expect(await pollRun(thread.thread_id, first.run_id)).toBe("success");
+    expect(await pollRun(thread.thread_id, second.run_id)).toBe("success");
   });
 
   it("multitasking enqueue", { timeout: 8_000, retry: 3 }, async () => {

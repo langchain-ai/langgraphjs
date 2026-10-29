@@ -209,9 +209,7 @@ export class StreamManager<
 
   private queueSize: number = 0;
 
-  // Bumped when a stream begins (not when it is queued) and on `clear()`, so
-  // a stop's read that resolves after either is stale.
-  private epoch = 0;
+  #epoch = 0;
 
   private state: {
     isLoading: boolean;
@@ -690,6 +688,14 @@ export class StreamManager<
     return this.state.error;
   }
 
+  /**
+   * Bumped when a stream begins (not when it is queued) and on `clear()`, so
+   * a read that resolves after either is stale.
+   */
+  get epoch() {
+    return this.#epoch;
+  }
+
   setStreamValues = (
     values:
       | (StateType | null)
@@ -767,6 +773,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -777,15 +789,22 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     }
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
-      this.epoch += 1;
+      this.#epoch += 1;
       this.setState({ isLoading: true, error: undefined });
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
       this.abortRef = abort;
+      if (options.isReplaying) {
+        this.messages.startReplay();
+        this.subagentManager.startReplay();
+      }
 
       const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
@@ -1162,6 +1181,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -1172,6 +1197,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     },
     startOptions?: {
       /**
@@ -1211,7 +1239,7 @@ export class StreamManager<
     }
   ): Promise<void> => {
     const wasLoading = this.isLoading;
-    const epoch = this.epoch;
+    const epoch = this.#epoch;
     this.abortRef.abort();
     this.abortRef = new AbortController();
 
@@ -1233,7 +1261,7 @@ export class StreamManager<
     } catch {
       return;
     }
-    if (head === undefined || this.epoch !== epoch) return;
+    if (head === undefined || this.#epoch !== epoch) return;
     // Without a head the history takes over. Null keeps it live; only
     // onStop's updates need a copy of it to sit on.
     this.setStreamValues(
@@ -1250,7 +1278,7 @@ export class StreamManager<
   };
 
   clear = () => {
-    this.epoch += 1;
+    this.#epoch += 1;
 
     // Cancel any running streams
     this.abortRef.abort();

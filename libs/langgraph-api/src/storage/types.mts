@@ -154,7 +154,7 @@ export interface Store {
 }
 
 export interface Message {
-  topic: `run:${string}:stream:${string}`;
+  topic: `run:${string}:stream:${string}` | `run:${string}:control`;
   data: unknown;
   /**
    * Marks payloads that have already been converted to their protocol

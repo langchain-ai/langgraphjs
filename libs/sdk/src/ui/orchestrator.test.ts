@@ -326,6 +326,38 @@ describe("StreamOrchestrator", () => {
   });
 
   describe("history management", () => {
+    const pendingToolState = () => ({
+      ...createThreadState({ messages: [] }),
+      next: ["tools"],
+      tasks: [
+        {
+          id: "task-1",
+          name: "tools",
+          error: null,
+          interrupts: [
+            {
+              id: "int-1",
+              value: {
+                type: "tool",
+                toolCall: {
+                  id: "call-1",
+                  name: "get_weather",
+                  args: { city: "SF" },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const weatherTool = (): HeadlessToolImplementation<
+      { city: string },
+      string
+    > => ({
+      tool: { name: "get_weather" },
+      execute: vi.fn().mockResolvedValue("sunny"),
+    });
+
     it("fetches history and updates historyData on success", async () => {
       const historyEntries = [
         {
@@ -406,6 +438,219 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it("runs a pending headless tool found in the snapshot once and resumes", async () => {
+      const toolImpl = weatherTool();
+      (client.threads.getState as Mock).mockResolvedValue(pendingToolState());
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+      await flushMicrotasks(20);
+
+      expect(toolImpl.execute).toHaveBeenCalledTimes(1);
+      expect(toolImpl.execute).toHaveBeenCalledWith({ city: "SF" });
+      expect(client.runs.stream).toHaveBeenCalledTimes(1);
+      expect(client.runs.stream).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({
+          command: expect.objectContaining({
+            resume: { "int-1": { "call-1": "sunny" } },
+          }),
+        })
+      );
+
+      orch.dispose();
+    });
+
+    it("waits for a rejoined run to end before running a pending headless tool", async () => {
+      const toolImpl = weatherTool();
+      let serveHead!: (state: unknown) => void;
+      (client.threads.getState as Mock)
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            serveHead = resolve;
+          })
+        )
+        .mockResolvedValue(pendingToolState());
+      let endRun!: () => void;
+      (client.runs.joinStream as Mock).mockImplementationOnce(() =>
+        (async function* () {
+          await new Promise<void>((resolve) => {
+            endRun = resolve;
+          });
+          yield { event: "values", data: { messages: [] } };
+        })()
+      );
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      const join = orch.joinStream("run-1");
+      serveHead(pendingToolState());
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      await flushMicrotasks(20);
+      expect(toolImpl.execute).not.toHaveBeenCalled();
+
+      endRun();
+      await join;
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+      await flushMicrotasks(20);
+
+      expect(toolImpl.execute).toHaveBeenCalledTimes(1);
+      expect(client.runs.stream).toHaveBeenCalledTimes(1);
+
+      orch.dispose();
+    });
+
+    it.each([
+      {
+        via: "joinStream",
+        run: (orch: StreamOrchestrator<TestState>) => orch.joinStream("run-1"),
+      },
+      {
+        via: "submit",
+        run: (orch: StreamOrchestrator<TestState>) =>
+          orch.submit({ messages: [] }, { command: { resume: "yes" } }),
+      },
+    ])(
+      "does not run a pending tool from a read that resolves after a run ends ($via)",
+      async ({ run }) => {
+        const toolImpl = weatherTool();
+        let serveHead!: (state: unknown) => void;
+        (client.threads.getState as Mock).mockReturnValueOnce(
+          new Promise((resolve) => {
+            serveHead = resolve;
+          })
+        );
+        const answered = () =>
+          (async function* () {
+            yield { event: "values", data: { messages: [] } };
+          })();
+        (client.runs.joinStream as Mock).mockImplementationOnce(answered);
+        (client.runs.stream as Mock).mockImplementationOnce(answered);
+
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({ tools: [toolImpl] }),
+          accessors
+        );
+        orch.initThreadId("t1");
+        await run(orch);
+        serveHead(pendingToolState());
+        await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+        await flushMicrotasks(20);
+
+        expect(toolImpl.execute).not.toHaveBeenCalled();
+
+        orch.dispose();
+      }
+    );
+
+    it("does not run a pending tool from the read after stop()", async () => {
+      const toolImpl = weatherTool();
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        createThreadState({ messages: [] }),
+      ]);
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true, tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      (client.runs.joinStream as Mock).mockImplementationOnce(
+        (
+          _threadId: string,
+          _runId: string,
+          { signal }: { signal: AbortSignal }
+        ) =>
+          (async function* () {
+            await new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(signal.reason));
+            });
+            yield { event: "values", data: { messages: [] } };
+          })()
+      );
+      let serveHead!: (states: unknown) => void;
+      (client.threads.getHistory as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveHead = resolve;
+        })
+      );
+
+      const join = orch.joinStream("run-1");
+      await flushMicrotasks();
+      const stopping = orch.stop();
+      await join;
+      serveHead([pendingToolState()]);
+      await stopping;
+      await flushMicrotasks(20);
+
+      expect(toolImpl.execute).not.toHaveBeenCalled();
+
+      orch.dispose();
+    });
+
+    it("does not run a pending tool from a read that lands after a thread switch", async () => {
+      const toolImpl = weatherTool();
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        next: ["review"],
+        tasks: [
+          {
+            id: "task-0",
+            name: "review",
+            error: null,
+            interrupts: [{ id: "int-0", value: "approve?" }],
+          },
+        ],
+      });
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      let finishRead!: (state: unknown) => void;
+      (client.threads.getState as Mock)
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            finishRead = resolve;
+          })
+        )
+        .mockResolvedValue(createThreadState({ messages: [] }));
+      (client.runs.stream as Mock).mockImplementationOnce(() =>
+        (async function* () {
+          yield { event: "values", data: { messages: [] } };
+        })()
+      );
+
+      const run = orch.submit({ messages: [] }, { command: { resume: "yes" } });
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(2)
+      );
+      orch.switchThread("t2");
+      finishRead(pendingToolState());
+      await run;
+      await flushMicrotasks(20);
+
+      expect(orch.threadId).toBe("t2");
+      expect(toolImpl.execute).not.toHaveBeenCalled();
+
+      orch.dispose();
+    });
+
     it("isThreadLoading is true while loading with no data", () => {
       (client.threads.getHistory as ReturnType<typeof vi.fn>).mockReturnValue(
         new Promise(() => {})
@@ -457,6 +702,95 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+  });
+
+  describe("implicit checkpoint", () => {
+    const checkpoint = (checkpoint_id: string) => ({
+      thread_id: "t1",
+      checkpoint_id,
+      checkpoint_ns: "",
+      checkpoint_map: null,
+    });
+    const state = (id: string, parent?: string) => ({
+      ...createThreadState({ messages: [] }),
+      checkpoint: checkpoint(id),
+      parent_checkpoint: parent ? checkpoint(parent) : null,
+    });
+
+    const sentCheckpoint = async (history: unknown[], branch = "") => {
+      (client.threads.getHistory as Mock).mockResolvedValue(history);
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      orch.setBranch(branch);
+
+      await orch.submit({ messages: [] });
+
+      orch.dispose();
+      return (client.runs.stream as Mock).mock.calls[0][2].checkpoint;
+    };
+
+    it("does not pin the cached head when the latest branch is shown", async () => {
+      const history = [state("cp-b", "cp-a"), state("cp-a")];
+      expect(await sentCheckpoint(history)).toBeUndefined();
+    });
+
+    it("does not pin the head for a submit with interrupt during a run", async () => {
+      (client.threads.getHistory as Mock).mockResolvedValue([state("cp-1")]);
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        state("cp-2", "cp-1"),
+        state("cp-1"),
+      ]);
+
+      const first = orch.submit({ messages: [] });
+      await orch.submit({ messages: [] }, { multitaskStrategy: "interrupt" });
+      await first;
+
+      orch.dispose();
+      const second = (client.runs.stream as Mock).mock.calls[1][2];
+      expect(second.checkpoint).toBeUndefined();
+    });
+
+    it.each([
+      {
+        view: "an older branch picked with setBranch",
+        history: [state("cp-b", "cp-r"), state("cp-a", "cp-r"), state("cp-r")],
+        branch: "cp-a",
+        shownHead: "cp-a",
+      },
+      {
+        view: "the default branch, not the newest",
+        history: [
+          state("cp-a2", "cp-a"),
+          state("cp-b", "cp-r"),
+          state("cp-a", "cp-r"),
+          state("cp-r"),
+        ],
+        branch: "",
+        shownHead: "cp-b",
+      },
+    ])(
+      "still forks from the shown head on $view",
+      async ({ history, branch, shownHead }) => {
+        const sent = await sentCheckpoint(history, branch);
+        expect(sent?.checkpoint_id).toBe(shownHead);
+      }
+    );
   });
 
   describe("computed values", () => {
@@ -1560,5 +1894,25 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+  });
+});
+
+describe("StreamOrchestrator.joinStream", () => {
+  it("replays the run only when it joins from the first event", async () => {
+    const orch = new StreamOrchestrator<TestState>(
+      createOptions(),
+      createAccessors(createMockClient())
+    );
+    orch.setThreadId("t1");
+    const start = vi.spyOn(orch.stream, "start").mockResolvedValue();
+
+    await orch.joinStream("run-1");
+    await orch.joinStream("run-1", "5");
+
+    expect(start.mock.calls.map((call) => call[1].isReplaying)).toEqual([
+      true,
+      false,
+    ]);
+    orch.dispose();
   });
 });
