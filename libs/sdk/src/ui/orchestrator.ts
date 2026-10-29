@@ -358,9 +358,9 @@ export class StreamOrchestrator<
         isLoading: false,
         mutate: this.#mutate,
       };
-      this.#flushPendingHeadlessToolInterrupts(
-        data?.at(0)?.values as Record<string, unknown> | null | undefined
-      );
+      // A run being joined may already be answering a call the head shows;
+      // `#finishRun` runs the calls in the head read after a run.
+      if (!this.stream.isLoading) this.#flushHeadToolCalls(data?.at(0));
       this.#notify();
       return data;
     } catch (err) {
@@ -389,6 +389,7 @@ export class StreamOrchestrator<
     if (read && threadId) {
       const lastHead = (await this.#mutate(threadId, read))?.at(0);
       if (lastHead) {
+        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
         this.#options.onFinish?.(lastHead, callbackMeta);
         return null;
       }
@@ -1281,6 +1282,14 @@ export class StreamOrchestrator<
     this.#streamUnsub = null;
     this.#queueUnsub = null;
     void this.stop().catch(() => undefined);
+  }
+
+  #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
+    // Thread state values never carry `__interrupt__`; a pending call is in
+    // the head's tasks.
+    this.#flushPendingHeadlessToolInterrupts({
+      __interrupt__: head?.tasks?.flatMap((task) => task.interrupts ?? []),
+    });
   }
 
   #flushPendingHeadlessToolInterrupts(

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { Activity, StrictMode, act, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -55,6 +55,30 @@ const interrupted = () =>
       ],
     }
   );
+
+const weatherCall = {
+  id: "int-1",
+  value: {
+    type: "tool",
+    toolCall: { id: "call-1", name: "get_weather", args: { city: "SF" } },
+  },
+};
+
+const pendingTool = () =>
+  threadState(
+    { messages: [message("h0")] },
+    {
+      next: ["tools"],
+      tasks: [
+        { id: "task-1", name: "tools", error: null, interrupts: [weatherCall] },
+      ],
+    }
+  );
+
+const weatherTool = (execute = vi.fn().mockResolvedValue("sunny")) => ({
+  tool: { name: "get_weather" },
+  execute,
+});
 
 function createClient() {
   return {
@@ -122,7 +146,8 @@ afterEach(() => {
 
 async function renderStream(
   client: TestClient,
-  options: Record<string, unknown> = {}
+  options: Record<string, unknown> = {},
+  wrap = (probe: ReactElement) => probe
 ) {
   const view = {} as View;
   function Probe({ props }: { props: Record<string, unknown> }) {
@@ -135,7 +160,7 @@ async function renderStream(
   }
   const root = createRoot(document.createElement("div"));
   view.rerender = async (next) => {
-    await act(async () => root.render(<Probe props={next} />));
+    await act(async () => root.render(wrap(<Probe props={next} />)));
   };
   await view.rerender(options);
   await settle();
@@ -307,4 +332,170 @@ describe("useStream (old engine) thread state after a run", () => {
       expect(onError).not.toHaveBeenCalled();
     }
   );
+});
+
+describe("useStream (old engine) headless tools", () => {
+  it("runs a pending tool from the thread state once and resumes the run", async () => {
+    const client = createClient();
+    serve(client, pendingTool());
+    mockRun(client, []);
+    const tool = weatherTool();
+
+    await renderStream(client, { threadId: "t1", tools: [tool] });
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(tool.execute).toHaveBeenCalledWith({ city: "SF" });
+    expect(client.runs.stream).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream).toHaveBeenCalledWith(
+      "t1",
+      "agent",
+      expect.objectContaining({
+        command: expect.objectContaining({
+          resume: { "int-1": { "call-1": "sunny" } },
+        }),
+      })
+    );
+  });
+
+  it("runs a pending tool left in the values of a finished run once", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      throttle: true,
+      tools: [tool],
+    });
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+      },
+    ]);
+    mockRun(client, []);
+
+    await submit(view);
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs a pending tool once when the read after its run still shows it", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      tools: [tool],
+    });
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+      },
+    ]);
+    mockRun(client, []);
+    serve(client, pendingTool());
+
+    await submit(view);
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a pending tool once under StrictMode", async () => {
+    const client = createClient();
+    mockRun(client, []);
+    const tool = weatherTool();
+
+    await renderStream(
+      client,
+      {
+        threadId: "t1",
+        thread: { ...userThread(), data: [pendingTool()] },
+        tools: [tool],
+      },
+      (probe) => <StrictMode>{probe}</StrictMode>
+    );
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a pending tool once after a custom transport hook is hidden and shown", async () => {
+    const tool = weatherTool(vi.fn(() => new Promise(() => {})));
+    const transport = {
+      stream: vi.fn(async () =>
+        (async function* () {
+          yield {
+            event: "values",
+            data: { messages: [], __interrupt__: [weatherCall] },
+          };
+        })()
+      ),
+    };
+    const options = { transport, tools: [tool] };
+    let mode: "visible" | "hidden" = "visible";
+    const view = await renderStream(createClient(), options, (probe) => (
+      <Activity mode={mode}>{probe}</Activity>
+    ));
+    await submit(view);
+    await settle();
+
+    mode = "hidden";
+    await view.rerender(options);
+    mode = "visible";
+    await view.rerender(options);
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run the previous thread's pending tool after a thread switch", async () => {
+    const client = createClient();
+    serve(client, pendingTool());
+    const tool = weatherTool(vi.fn(() => new Promise(() => {})));
+    const view = await renderStream(client, { threadId: "t1", tools: [tool] });
+    client.threads.getState.mockReturnValue(new Promise(() => {}));
+
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for a rejoined run to end before running a pending tool", async () => {
+    const client = createClient();
+    serve(client, pendingTool());
+    let endRun!: () => void;
+    client.runs.joinStream.mockImplementationOnce(() =>
+      (async function* () {
+        await new Promise<void>((resolve) => {
+          endRun = resolve;
+        });
+        yield { event: "values", data: { messages: [message("h0")] } };
+      })()
+    );
+    mockRun(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const tool = weatherTool();
+
+    await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      tools: [tool],
+    });
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(tool.execute).not.toHaveBeenCalled();
+
+    await act(async () => endRun());
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream).toHaveBeenCalledTimes(1);
+  });
 });

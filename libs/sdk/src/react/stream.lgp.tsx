@@ -828,13 +828,32 @@ export function useStreamLGP<
   const values = stream.values ?? historyValues;
 
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledThreadIdRef = useRef(threadId);
   useEffect(() => {
+    if (handledThreadIdRef.current === threadId) return;
+    handledThreadIdRef.current = threadId;
     handledToolsRef.current.clear();
   }, [threadId]);
 
+  // Thread state values never carry `__interrupt__`; a pending call is in the
+  // head's tasks. A run still streaming, such as one rejoined after a reload,
+  // may be answering it, and on the render that switches threads the head can
+  // still be the previous thread's.
+  const threadHead = branchContext.threadHead;
+  const pendingToolValues =
+    stream.values == null &&
+    !stream.isLoading &&
+    threadHead?.checkpoint?.thread_id === threadId
+      ? {
+          __interrupt__: threadHead.tasks?.flatMap(
+            (task) => task.interrupts ?? []
+          ),
+        }
+      : values;
+
   useEffect(() => {
     flushPendingHeadlessToolInterrupts(
-      values as Record<string, unknown>,
+      pendingToolValues as Record<string, unknown>,
       options.tools,
       handledToolsRef.current,
       {
@@ -849,7 +868,7 @@ export function useStreamLGP<
           }),
       }
     );
-  }, [options.onTool, options.tools, submit, values]);
+  }, [options.onTool, options.tools, submit, pendingToolValues]);
 
   const streamHandle: UseStream<StateType, Bag> = {
     get values() {
