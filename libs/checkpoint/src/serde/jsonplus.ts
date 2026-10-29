@@ -247,8 +247,10 @@ export class JsonPlusSerializer implements SerializerProtocol {
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
     return encoder.encode(
-      stringify(obj, (_: string, value: any) => {
-        return _default(value);
+      stringify(obj, function (this: any, key: string, value: any) {
+        // A Buffer's own toJSON has already run; encode the raw bytes instead.
+        const raw = this[key];
+        return _default(raw instanceof Uint8Array ? raw : value);
       })
     );
   }

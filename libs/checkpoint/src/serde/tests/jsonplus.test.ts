@@ -397,3 +397,20 @@ it("resolves legacy LangChain ids through a given import map", async () => {
   expect(messages[0]).toBeInstanceOf(HumanMessage);
   expect(messages[0].content).toBe("from python");
 });
+
+it("stores a Uint8Array with its own toJSON, like a Buffer, as bytes", async () => {
+  // Node's Buffer is one; its toJSON runs before the replacer.
+  class BufferLike extends Uint8Array {
+    toJSON() {
+      return { type: "Buffer", data: Array.from(this) };
+    }
+  }
+  const serde = new JsonPlusSerializer();
+  const [type, data] = await serde.dumpsTyped({
+    content: BufferLike.from([137, 80, 0, 255]),
+  });
+
+  const { content } = await serde.loadsTyped(type, data);
+  expect(content).toBeInstanceOf(Uint8Array);
+  expect(Array.from(content)).toEqual([137, 80, 0, 255]);
+});
