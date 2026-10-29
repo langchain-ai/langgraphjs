@@ -34,6 +34,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.1",
     "deepagents": "^1.10.5",
+    "jsdom": "^26.1.0",
     "langchain": "^1.5.14",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

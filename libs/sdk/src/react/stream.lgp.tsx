@@ -760,7 +760,13 @@ export function useStreamLGP<
           }
           const newHistory = await history.mutate(threadId);
           const lastHead = newHistory?.at(0);
-          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+          if (lastHead) {
+            options.onFinish?.(lastHead, callbackMeta);
+            // Clears the joined stream's values so the head shows, as after
+            // `submit`.
+            return null;
+          }
+          return undefined;
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
