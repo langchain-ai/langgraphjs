@@ -140,17 +140,20 @@ function reviveConstructorRecord(
  * We therefore must start from the most nested elements in the input and
  * deserialize upwards rather than top-down.
  */
-async function _reviver(value: any): Promise<any> {
+async function _reviver(
+  value: any,
+  importMap?: Record<string, unknown>
+): Promise<any> {
   if (value && typeof value === "object") {
     if (Array.isArray(value)) {
       const revivedArray = await Promise.all(
-        value.map((item) => _reviver(item))
+        value.map((item) => _reviver(item, importMap))
       );
       return revivedArray;
     } else {
       const revivedObj: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value)) {
-        revivedObj[k] = await _reviver(v);
+        revivedObj[k] = await _reviver(v, importMap);
       }
 
       if (isUndefinedRecord(revivedObj)) {
@@ -161,7 +164,7 @@ async function _reviver(value: any): Promise<any> {
       } else if (isConstructorRecord(revivedObj)) {
         return reviveConstructorRecord(revivedObj) ?? revivedObj;
       } else if (isLangChainSerializedObject(revivedObj)) {
-        return load(JSON.stringify(revivedObj));
+        return load(JSON.stringify(revivedObj), { importMap });
       }
 
       return revivedObj;
@@ -224,7 +227,23 @@ function _default(obj: any): any {
   }
 }
 
+export interface JsonPlusSerializerOptions {
+  /**
+   * Extra classes for LangChain objects stored under the legacy `langchain`
+   * namespace, such as `["langchain", "schema", "messages", "HumanMessage"]`
+   * as Python's `langchain_core` writes them. Passed to `load` from
+   * `@langchain/core/load`, which resolves `langchain_core` ids on its own.
+   */
+  importMap?: Record<string, unknown>;
+}
+
 export class JsonPlusSerializer implements SerializerProtocol {
+  protected importMap?: Record<string, unknown>;
+
+  constructor(options?: JsonPlusSerializerOptions) {
+    this.importMap = options?.importMap;
+  }
+
   protected _dumps(obj: any): Uint8Array {
     const encoder = new TextEncoder();
     return encoder.encode(
@@ -244,7 +263,7 @@ export class JsonPlusSerializer implements SerializerProtocol {
 
   protected async _loads(data: string): Promise<any> {
     const parsed = JSON.parse(data);
-    return _reviver(parsed);
+    return _reviver(parsed, this.importMap);
   }
 
   async loadsTyped(type: string, data: Uint8Array | string): Promise<any> {

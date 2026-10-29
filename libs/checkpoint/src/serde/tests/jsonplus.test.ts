@@ -375,3 +375,25 @@ it("Should replace circular JSON inputs", async () => {
     `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`
   );
 });
+
+it("resolves legacy LangChain ids through a given import map", async () => {
+  // Python's langchain_core writes a message's id under the legacy namespace.
+  const legacy = {
+    lc: 1,
+    type: "constructor",
+    id: ["langchain", "schema", "messages", "HumanMessage"],
+    kwargs: { content: "from python" },
+  };
+  const data = JSON.stringify({ messages: [legacy] });
+
+  await expect(
+    new JsonPlusSerializer().loadsTyped("json", data)
+  ).rejects.toThrow(/Invalid namespace/);
+
+  const serde = new JsonPlusSerializer({
+    importMap: { schema__messages: { HumanMessage } },
+  });
+  const { messages } = await serde.loadsTyped("json", data);
+  expect(messages[0]).toBeInstanceOf(HumanMessage);
+  expect(messages[0].content).toBe("from python");
+});
