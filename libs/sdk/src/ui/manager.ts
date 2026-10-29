@@ -763,6 +763,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -773,6 +779,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     }
   ) => {
     try {
@@ -781,6 +790,10 @@ export class StreamManager<
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
       this.abortRef = abort;
+      if (options.isReplaying) {
+        this.messages.startReplay();
+        this.subagentManager.startReplay();
+      }
 
       const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
@@ -1157,6 +1170,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -1167,6 +1186,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     },
     startOptions?: {
       /**

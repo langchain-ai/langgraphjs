@@ -791,6 +791,7 @@ export function useStreamLGP<
         onFinish() {
           threadIdStreamingRef.current = null;
         },
+        isReplaying: lastEventId === "-1",
       }
     );
   };
