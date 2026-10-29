@@ -841,6 +841,205 @@ describe("StreamOrchestrator", () => {
     });
   });
 
+  describe("thread state after a run", () => {
+    type StreamEvents = Array<{ event: string; data: unknown }>;
+
+    const message = (id: string, type = "human") => ({ id, content: id, type });
+    const stateWith = (
+      values: TestState,
+      extra: Record<string, unknown> = {}
+    ) => ({ ...createThreadState(values), ...extra });
+    const interrupted = () =>
+      stateWith(
+        { messages: [message("h0")] },
+        {
+          next: ["review"],
+          tasks: [
+            {
+              id: "task-1",
+              name: "review",
+              error: null,
+              interrupts: [{ id: "int-1", value: "approve?" }],
+            },
+          ],
+        }
+      );
+
+    const getState = () => client.threads.getState as Mock;
+    const getHistory = () => client.threads.getHistory as Mock;
+    const reads = (fetchStateHistory: boolean) =>
+      fetchStateHistory ? getHistory() : getState();
+    const serve = (state: Record<string, unknown>) => {
+      getState().mockResolvedValue(state);
+      getHistory().mockResolvedValue([state]);
+    };
+
+    const eventsOf = (events: StreamEvents) =>
+      (async function* () {
+        yield* events;
+      })();
+    const mockRun = (events: StreamEvents) => {
+      (client.runs.stream as Mock).mockImplementationOnce(() =>
+        eventsOf(events)
+      );
+    };
+    const mockJoin = (events: StreamEvents) => {
+      (client.runs.joinStream as Mock).mockImplementationOnce(() =>
+        eventsOf(events)
+      );
+    };
+
+    const openThread = async (
+      options?: Partial<AnyStreamOptions<TestState>>
+    ) => {
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(options),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      return orch;
+    };
+
+    const answeringRuns = [
+      {
+        via: "submit",
+        run: async (
+          orch: StreamOrchestrator<TestState>,
+          events: StreamEvents
+        ) => {
+          mockRun(events);
+          await orch.submit({ messages: [] }, { command: { resume: "yes" } });
+        },
+      },
+      {
+        via: "joinStream",
+        run: async (
+          orch: StreamOrchestrator<TestState>,
+          events: StreamEvents
+        ) => {
+          mockJoin(events);
+          await orch.joinStream("run-1");
+        },
+      },
+    ];
+
+    it.each(answeringRuns)(
+      "a run that answers an interrupt removes it ($via)",
+      async ({ run }) => {
+        serve(interrupted());
+        const orch = await openThread();
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+        const answered = [message("h0"), message("a0", "ai")];
+        serve(stateWith({ messages: answered }));
+
+        await run(orch, [{ event: "values", data: { messages: answered } }]);
+
+        expect(orch.interrupts).toEqual([]);
+        expect(orch.messages).toEqual(answered);
+        orch.dispose();
+      }
+    );
+
+    it("a run on a thread with nothing pending reads no state", async () => {
+      serve(stateWith({ messages: [message("h0")] }));
+      const orch = await openThread();
+
+      mockRun([
+        {
+          event: "values",
+          data: { messages: [message("h0"), message("a0", "ai")] },
+        },
+      ]);
+      await orch.submit({ messages: [] });
+
+      expect(getState()).toHaveBeenCalledTimes(1);
+      orch.dispose();
+    });
+
+    it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+      "a failed read after a run puts no error on the thread opened since (fetchStateHistory: $fetchStateHistory)",
+      async ({ fetchStateHistory }) => {
+        serve(interrupted());
+        const orch = await openThread({ fetchStateHistory });
+        let failRead!: (error: Error) => void;
+        reads(fetchStateHistory).mockReturnValueOnce(
+          new Promise((_resolve, reject) => {
+            failRead = reject;
+          })
+        );
+        const answered = [message("h0"), message("a0", "ai")];
+
+        mockRun([{ event: "values", data: { messages: answered } }]);
+        const run = orch.submit(
+          { messages: [] },
+          { command: { resume: "yes" } }
+        );
+        await vi.waitFor(() =>
+          expect(reads(fetchStateHistory)).toHaveBeenCalledTimes(2)
+        );
+        serve(stateWith({ messages: [message("other")] }));
+        orch.switchThread("t2");
+        await vi.waitFor(() =>
+          expect(orch.messages).toEqual([message("other")])
+        );
+        failRead(new Error("offline"));
+        await run;
+        await flushMicrotasks();
+
+        expect(orch.threadId).toBe("t2");
+        expect(orch.historyData.error).toBeUndefined();
+        expect(orch.error).toBeUndefined();
+        orch.dispose();
+      }
+    );
+
+    it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+      "a failed read after a run still finishes the run (fetchStateHistory: $fetchStateHistory)",
+      async ({ fetchStateHistory }) => {
+        const onFinish = vi.fn(() => {});
+        serve(interrupted());
+        const orch = await openThread({
+          fetchStateHistory,
+          onFinish,
+          onError: vi.fn(),
+        });
+        getState().mockRejectedValue(new Error("offline"));
+        getHistory().mockRejectedValue(new Error("offline"));
+        const answered = [message("h0"), message("a0", "ai")];
+
+        mockRun([{ event: "values", data: { messages: answered } }]);
+        await orch.submit({ messages: [] }, { command: { resume: "yes" } });
+
+        expect(onFinish).toHaveBeenCalledTimes(1);
+        expect(orch.streamError).toBeUndefined();
+        expect(orch.messages).toEqual(answered);
+        orch.dispose();
+      }
+    );
+
+    it.each(answeringRuns)(
+      "a failed read after a run reports no error without history ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(interrupted());
+        const orch = await openThread({ onError });
+        getState().mockRejectedValue(new Error("offline"));
+
+        await run(orch, [
+          {
+            event: "values",
+            data: { messages: [message("h0"), message("a0", "ai")] },
+          },
+        ]);
+
+        expect(orch.error).toBeUndefined();
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+  });
+
   describe("auto-reconnect", () => {
     it("shouldReconnect is false without reconnectOnMount", () => {
       const orch = new StreamOrchestrator<TestState>(

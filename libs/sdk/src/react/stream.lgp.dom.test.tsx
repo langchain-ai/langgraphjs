@@ -24,7 +24,7 @@ const message = (id: string, type = "human"): Message => ({
   type,
 });
 
-const threadState = (values: State) => ({
+const threadState = (values: State, extra: Record<string, unknown> = {}) => ({
   values,
   checkpoint: {
     thread_id: "t1",
@@ -37,7 +37,24 @@ const threadState = (values: State) => ({
   metadata: undefined,
   created_at: null,
   parent_checkpoint: null,
+  ...extra,
 });
+
+const interrupted = () =>
+  threadState(
+    { messages: [message("h0")] },
+    {
+      next: ["review"],
+      tasks: [
+        {
+          id: "task-1",
+          name: "review",
+          error: null,
+          interrupts: [{ id: "int-1", value: "approve?" }],
+        },
+      ],
+    }
+  );
 
 function createClient() {
   return {
@@ -58,6 +75,30 @@ type TestClient = ReturnType<typeof createClient>;
 function serve(client: TestClient, state: Record<string, unknown>) {
   client.threads.getState.mockResolvedValue(state);
   client.threads.getHistory.mockResolvedValue([state]);
+}
+
+const userThread = () => ({
+  data: [threadState({ messages: [message("h0")] })],
+  error: undefined,
+  isLoading: false,
+  mutate: vi.fn().mockResolvedValue(undefined),
+});
+
+function mockRun(client: TestClient, events: StreamEvents) {
+  client.runs.stream.mockImplementationOnce(
+    (
+      threadId: string,
+      _assistantId: string,
+      payload: {
+        onRunCreated?: (params: { run_id: string; thread_id: string }) => void;
+      }
+    ) => {
+      payload.onRunCreated?.({ run_id: "run-1", thread_id: threadId });
+      return (async function* () {
+        yield* events;
+      })();
+    }
+  );
 }
 
 function mockJoin(client: TestClient, events: StreamEvents) {
@@ -102,6 +143,12 @@ async function renderStream(
   return view;
 }
 
+async function submit(view: View, submitOptions?: Record<string, unknown>) {
+  await act(async () => {
+    await view.current.submit({ messages: [] }, submitOptions);
+  });
+}
+
 describe("useStream (old engine) joinStream", () => {
   it("shows the head read after the run when history is enabled", async () => {
     const client = createClient();
@@ -127,4 +174,137 @@ describe("useStream (old engine) joinStream", () => {
 
     expect(view.current.messages).toEqual([message("h0"), final]);
   });
+});
+
+describe("useStream (old engine) thread state after a run", () => {
+  const answeringRuns = [
+    {
+      via: "submit",
+      run: async (client: TestClient, view: View, events: StreamEvents) => {
+        mockRun(client, events);
+        await submit(view, { command: { resume: "yes" } });
+      },
+    },
+    {
+      via: "joinStream",
+      run: async (client: TestClient, view: View, events: StreamEvents) => {
+        mockJoin(client, events);
+        await act(async () => {
+          await view.current.joinStream("run-1");
+        });
+      },
+    },
+  ];
+
+  it.each(answeringRuns)(
+    "a run that answers an interrupt removes it ($via)",
+    async ({ run }) => {
+      const client = createClient();
+      serve(client, interrupted());
+      const view = await renderStream(client, { threadId: "t1" });
+      expect(view.current.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+      const answered = [message("h0"), message("a0", "ai")];
+      serve(client, threadState({ messages: answered }));
+
+      await run(client, view, [
+        { event: "values", data: { messages: answered } },
+      ]);
+
+      expect(view.current.interrupts).toEqual([]);
+      expect(view.current.messages).toEqual(answered);
+    }
+  );
+
+  it("a run on a thread with nothing pending reads no state", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const view = await renderStream(client, { threadId: "t1" });
+
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0"), message("a0", "ai")] },
+      },
+    ]);
+    await submit(view);
+
+    expect(client.threads.getState).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+    "a failed read after a run still finishes the run (fetchStateHistory: $fetchStateHistory)",
+    async ({ fetchStateHistory }) => {
+      const onFinish = vi.fn(() => {});
+      const onError = vi.fn();
+      const client = createClient();
+      serve(client, interrupted());
+      const view = await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory,
+        onFinish,
+        onError,
+      });
+      client.threads.getState.mockRejectedValue(new Error("offline"));
+      client.threads.getHistory.mockRejectedValue(new Error("offline"));
+      const answered = [message("h0"), message("a0", "ai")];
+
+      mockRun(client, [{ event: "values", data: { messages: answered } }]);
+      await submit(view, { command: { resume: "yes" } });
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onError).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ run_id: "run-1" })
+      );
+      expect(view.current.messages).toEqual(answered);
+    }
+  );
+
+  it.each(answeringRuns)(
+    "a failed read after a run reports no error without history ($via)",
+    async ({ run }) => {
+      const onError = vi.fn();
+      const client = createClient();
+      serve(client, interrupted());
+      const view = await renderStream(client, { threadId: "t1", onError });
+      client.threads.getState.mockRejectedValue(new Error("offline"));
+
+      await run(client, view, [
+        {
+          event: "values",
+          data: { messages: [message("h0"), message("a0", "ai")] },
+        },
+      ]);
+
+      expect(view.current.error).toBeUndefined();
+      expect(onError).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(answeringRuns)(
+    "a run with a user thread whose mutate returns no promise still finishes ($via)",
+    async ({ run }) => {
+      const onFinish = vi.fn(() => {});
+      const onError = vi.fn();
+      const client = createClient();
+      const view = await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory: true,
+        thread: { ...userThread(), mutate: vi.fn() },
+        onFinish,
+        onError,
+      });
+
+      await run(client, view, [
+        {
+          event: "values",
+          data: { messages: [message("h0"), message("a0", "ai")] },
+        },
+      ]);
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(view.current.error).toBeUndefined();
+      expect(onError).not.toHaveBeenCalled();
+    }
+  );
 });
