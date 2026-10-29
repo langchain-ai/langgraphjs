@@ -988,9 +988,15 @@ export class StreamOrchestrator<
       includeImplicitBranch ||
       onFinishRequiresThreadState(this.#options.onFinish);
 
+    // On the latest branch the cached head may be behind the server's
+    // (the thread moved on since history was read); pinning it would
+    // fork the thread.
+    const viewingLatest =
+      currentBranchContext.threadHead?.checkpoint?.checkpoint_id ===
+      this.#history.data?.[0]?.checkpoint?.checkpoint_id;
     let checkpoint =
       submitOptions?.checkpoint ??
-      (includeImplicitBranch
+      (includeImplicitBranch && !viewingLatest
         ? currentBranchContext.threadHead?.checkpoint
         : undefined) ??
       undefined;
