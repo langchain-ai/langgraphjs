@@ -937,6 +937,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
         },
+        isReplaying: lastEventId === "-1",
       }
     );
   }

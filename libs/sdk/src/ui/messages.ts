@@ -81,8 +81,19 @@ export class MessageTupleManager {
     }
   > = {};
 
+  private replaying = new Set<string>();
+
   constructor() {
     this.chunks = {};
+  }
+
+  /**
+   * Call when a stream replays a run from its first event: a message it sends
+   * again starts over, instead of its chunks being appended to the copy kept
+   * from an earlier stream.
+   */
+  startReplay() {
+    this.replaying = new Set(Object.keys(this.chunks));
   }
 
   add(
@@ -111,6 +122,7 @@ export class MessageTupleManager {
     }
 
     this.chunks[id] ??= {};
+    if (this.replaying.delete(id)) delete this.chunks[id].chunk;
     this.chunks[id].metadata = metadata ?? this.chunks[id].metadata;
     if (chunk) {
       const prev = this.chunks[id].chunk;
@@ -126,6 +138,7 @@ export class MessageTupleManager {
 
   clear() {
     this.chunks = {};
+    this.replaying.clear();
   }
 
   get(id: string | null | undefined, defaultIndex?: number) {

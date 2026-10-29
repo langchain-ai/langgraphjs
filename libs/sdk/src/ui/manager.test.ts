@@ -1174,6 +1174,97 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("a message streamed again", () => {
+    type State = { messages: Message[] };
+    const human = { type: "human", id: "h1", content: "hi" } as Message;
+    const values = { event: "values", data: { messages: [human] } };
+    const chunk = (content: string) => ({
+      event: "messages",
+      data: [{ type: "ai", id: "a1", content }, {}],
+    });
+    const stream = (
+      events: Array<{ event: string; data: unknown }>,
+      options?: { isReplaying?: boolean }
+    ) =>
+      manager.start(async () => createMockStream(events) as never, {
+        getMessages: (state) => state.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+        ...options,
+      });
+    const contents = (messages: Message[] | undefined) =>
+      messages?.map((message) => message.content);
+    let manager: StreamManager<State>;
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+    });
+
+    it("starts over in a replay instead of extending the earlier copy", async () => {
+      const run = [values, chunk("Hel"), chunk("lo")];
+
+      await stream(run);
+      await stream(run, { isReplaying: true });
+
+      expect(contents(manager.values?.messages)).toEqual(["hi", "Hello"]);
+    });
+
+    it("extends the earlier copy when a stream resumes mid-message", async () => {
+      await stream([values, chunk("Hel")]);
+      await stream([chunk("lo")]);
+
+      expect(contents(manager.values?.messages)).toEqual(["hi", "Hello"]);
+    });
+
+    it("starts a subagent's message over in a replay too", async () => {
+      const subagentChunk = (content: string) => ({
+        event: "messages|tools:task-ns",
+        data: [{ type: "ai", id: "sub-ai-1", content }, {}],
+      });
+      const run = [
+        {
+          event: "messages",
+          data: [
+            {
+              type: "ai",
+              id: "ai-1",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: { subagent_type: "researcher", description: "Research" },
+                },
+              ],
+            },
+            {},
+          ],
+        },
+        {
+          event: "values|tools:task-ns",
+          data: {
+            messages: [{ type: "human", id: "sub-h1", content: "Research" }],
+          },
+        },
+        subagentChunk("Hel"),
+        subagentChunk("lo"),
+      ];
+
+      await stream(run);
+      await stream(run, { isReplaying: true });
+
+      const [subagent] = manager.getSubagentsByMessage("ai-1");
+      expect(contents(subagent?.messages)).toEqual(["Hello"]);
+    });
+  });
+
   describe("throttle", () => {
     it("notifies at most once per interval while values keep changing", () => {
       vi.useFakeTimers();
