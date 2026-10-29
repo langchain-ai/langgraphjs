@@ -170,6 +170,8 @@ export class StreamOrchestrator<
 
   #handledHeadlessToolInterruptIds = new Set<string>();
 
+  #streamStarts = 0;
+
   /**
    * Create a new StreamOrchestrator.
    *
@@ -344,6 +346,8 @@ export class StreamOrchestrator<
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
+    const idle = !this.stream.isLoading;
+    const streamStarts = this.#streamStarts;
     try {
       const data = await fetchHistory<StateType>(
         this.#accessors.getClient(),
@@ -358,9 +362,12 @@ export class StreamOrchestrator<
         isLoading: false,
         mutate: this.#mutate,
       };
-      this.#flushPendingHeadlessToolInterrupts(
-        data?.at(0)?.values as Record<string, unknown> | null | undefined
-      );
+      // A read issued while a run streamed, or before one began, can show a
+      // call that run answered; `#finishRun` runs the calls in the head read
+      // after a run.
+      if (idle && streamStarts === this.#streamStarts) {
+        this.#flushHeadToolCalls(data?.at(0));
+      }
       this.#notify();
       return data;
     } catch (err) {
@@ -389,6 +396,9 @@ export class StreamOrchestrator<
     if (read && threadId) {
       const lastHead = (await this.#mutate(threadId, read))?.at(0);
       if (lastHead) {
+        // The read can land after a thread switch, and a resume goes to the
+        // current thread.
+        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
         this.#options.onFinish?.(lastHead, callbackMeta);
         return null;
       }
@@ -923,6 +933,7 @@ export class StreamOrchestrator<
 
     await this.stream.start(
       async (signal: AbortSignal) => {
+        this.#streamStarts += 1;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -1015,6 +1026,7 @@ export class StreamOrchestrator<
 
     return this.stream.start(
       async (signal) => {
+        this.#streamStarts += 1;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
@@ -1287,6 +1299,14 @@ export class StreamOrchestrator<
     this.#streamUnsub = null;
     this.#queueUnsub = null;
     void this.stop().catch(() => undefined);
+  }
+
+  #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
+    // Thread state values never carry `__interrupt__`; a pending call is in
+    // the head's tasks.
+    this.#flushPendingHeadlessToolInterrupts({
+      __interrupt__: head?.tasks?.flatMap((task) => task.interrupts ?? []),
+    });
   }
 
   #flushPendingHeadlessToolInterrupts(

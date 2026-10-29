@@ -115,6 +115,11 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const onErrorRef = useRef(options?.onError);
   onErrorRef.current = options?.onError;
 
+  // A read that resolves after a newer one was issued is dropped: the newer
+  // one can show the state after a run, and the older one a call that run
+  // answered.
+  const latestReadRef = useRef(0);
+
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
@@ -128,6 +133,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       const key = getFetchHistoryKey(client, threadId, limit);
 
       if (threadId != null) {
+        const readId = ++latestReadRef.current;
         setState((state) => {
           if (state.key === key) return { ...state, isLoading: true };
           return { key, data: undefined, error: undefined, isLoading: true };
@@ -135,7 +141,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
         return fetchHistory<StateType>(client, threadId, { limit }).then(
           (data) => {
             setState((state) => {
-              if (state.key !== key) return state;
+              if (state.key !== key || readId !== latestReadRef.current) {
+                return state;
+              }
               return { key, data, error: undefined, isLoading: false };
             });
             return data;
@@ -834,13 +842,32 @@ export function useStreamLGP<
   const values = stream.values ?? historyValues;
 
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledThreadIdRef = useRef(threadId);
   useEffect(() => {
+    if (handledThreadIdRef.current === threadId) return;
+    handledThreadIdRef.current = threadId;
     handledToolsRef.current.clear();
   }, [threadId]);
 
+  // Thread state values never carry `__interrupt__`; a pending call is in the
+  // head's tasks. A run still streaming, such as one rejoined after a reload,
+  // may be answering it, and on the render that switches threads the head can
+  // still be the previous thread's.
+  const threadHead = branchContext.threadHead;
+  const pendingToolValues =
+    stream.values == null &&
+    !stream.isLoading &&
+    threadHead?.checkpoint?.thread_id === threadId
+      ? {
+          __interrupt__: threadHead.tasks?.flatMap(
+            (task) => task.interrupts ?? []
+          ),
+        }
+      : values;
+
   useEffect(() => {
     flushPendingHeadlessToolInterrupts(
-      values as Record<string, unknown>,
+      pendingToolValues as Record<string, unknown>,
       options.tools,
       handledToolsRef.current,
       {
@@ -855,7 +882,7 @@ export function useStreamLGP<
           }),
       }
     );
-  }, [options.onTool, options.tools, submit, values]);
+  }, [options.onTool, options.tools, submit, pendingToolValues]);
 
   const streamHandle: UseStream<StateType, Bag> = {
     get values() {
