@@ -651,6 +651,90 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it.each([
+      { shownWhenToolEnds: "t1", resumedThreads: ["t1"] },
+      { shownWhenToolEnds: "t2", resumedThreads: [] },
+    ])(
+      "resumes a pending tool's thread only if it is still shown when the tool ends ($shownWhenToolEnds)",
+      async ({ shownWhenToolEnds, resumedThreads }) => {
+        let finishTool!: (result: string) => void;
+        const toolImpl = {
+          tool: { name: "get_weather" },
+          execute: vi.fn(
+            () =>
+              new Promise<string>((resolve) => {
+                finishTool = resolve;
+              })
+          ),
+        };
+        (client.threads.getState as Mock).mockResolvedValue(pendingToolState());
+        (client.runs.stream as Mock).mockImplementation(() =>
+          (async function* () {})()
+        );
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({ tools: [toolImpl] }),
+          accessors
+        );
+        orch.initThreadId("t1");
+        await vi.waitFor(() => expect(toolImpl.execute).toHaveBeenCalled());
+        (client.threads.getState as Mock).mockResolvedValue(
+          createThreadState({ messages: [] })
+        );
+
+        orch.switchThread(shownWhenToolEnds);
+        finishTool("sunny");
+        await flushMicrotasks(20);
+
+        expect(
+          (client.runs.stream as Mock).mock.calls.map(([threadId]) => threadId)
+        ).toEqual(resumedThreads);
+        orch.dispose();
+      }
+    );
+
+    it("runs a pending tool again when its thread is reopened after a switch dropped its result", async () => {
+      let finishFirstRun!: (result: string) => void;
+      const toolImpl = {
+        tool: { name: "get_weather" },
+        execute: vi
+          .fn()
+          .mockReturnValueOnce(
+            new Promise<string>((resolve) => {
+              finishFirstRun = resolve;
+            })
+          )
+          .mockResolvedValue("sunny"),
+      };
+      (client.threads.getState as Mock).mockImplementation(
+        async (threadId: string) =>
+          threadId === "t1"
+            ? pendingToolState()
+            : createThreadState({ messages: [] })
+      );
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(toolImpl.execute).toHaveBeenCalled());
+      orch.switchThread("t2");
+      finishFirstRun("stale");
+      await flushMicrotasks(20);
+
+      orch.switchThread("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      await flushMicrotasks(20);
+
+      expect(toolImpl.execute).toHaveBeenCalledTimes(2);
+      expect(
+        (client.runs.stream as Mock).mock.calls.map(([threadId]) => threadId)
+      ).toEqual(["t1"]);
+      orch.dispose();
+    });
+
     it("isThreadLoading is true while loading with no data", () => {
       (client.threads.getHistory as ReturnType<typeof vi.fn>).mockReturnValue(
         new Promise(() => {})
