@@ -541,3 +541,21 @@ export const coercedBoolean = z.string().transform((val) => {
   const lower = val.toLowerCase();
   return lower === "true" || lower === "1" || lower === "yes";
 });
+
+// JS SDKs before 1.12 send several stream modes as one JSON array.
+const parseStreamMode = (value: string): string[] => {
+  if (!value.startsWith("[")) return value ? [value] : [];
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [value];
+  }
+};
+
+export const JoinStreamQuery = z.object({
+  cancel_on_disconnect: coercedBoolean.optional(),
+  stream_mode: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value) => [value ?? []].flat().flatMap(parseStreamMode)),
+});
