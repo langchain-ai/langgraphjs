@@ -717,6 +717,10 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      // Publish any pending re-parse first, so it can't later overwrite this
+      // update
+      this.messages.flush();
+
       const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
@@ -1015,6 +1019,10 @@ export class StreamManager<
               );
             }
           } else {
+            // Publish any pending re-parse first, so it can't later overwrite
+            // the messages in these values
+            this.messages.flush();
+
             if (!clearedPreviousInterrupts) {
               // Clear stale __interrupt__ from the previous run once the new
               // stream starts delivering main values. This avoids carrying

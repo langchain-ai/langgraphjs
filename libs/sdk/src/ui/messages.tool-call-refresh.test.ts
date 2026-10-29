@@ -39,7 +39,10 @@ type State = { messages: Message[] };
 
 type MessagesEvent = { event: "messages"; data: [Message, object] };
 
-type StreamEvent = MessagesEvent | { event: "values"; data: State };
+type StreamEvent =
+  | MessagesEvent
+  | { event: "values"; data: State }
+  | { event: "updates"; data: object };
 
 // Runs `events` through a StreamManager and returns the AI message as
 // published to state after each update.
@@ -48,7 +51,8 @@ async function streamToolCall(
     event: (i: number) => MessagesEvent,
     published: Message[],
     currentMessages: () => Message[] | undefined
-  ) => AsyncGenerator<StreamEvent>
+  ) => AsyncGenerator<StreamEvent>,
+  callbacks: object = {}
 ) {
   const manager = new StreamManager<State>(new MessageTupleManager(), {
     throttle: false,
@@ -70,7 +74,7 @@ async function streamToolCall(
         return { ...current, messages };
       },
       initialValues: { messages: [] },
-      callbacks: {},
+      callbacks,
       onSuccess: () => undefined,
       onError: (e: unknown) => {
         throw e;
@@ -158,6 +162,56 @@ describe("tool call args refresh", () => {
     });
 
     expect(afterRefresh).toEqual([human]);
+  });
+
+  it("doesn't overwrite the values event's version of the streamed message", async () => {
+    // The server's state has the streamed message, with its tool call edited
+    // after streaming (e.g. by middleware or a human-in-the-loop edit)
+    const committed = {
+      id: "ai-1",
+      type: "ai",
+      content: "",
+      tool_calls: [
+        {
+          id: "call-1",
+          name: "write_file",
+          args: { content: "edited" },
+          type: "tool_call",
+        },
+      ],
+    } as Message;
+    let afterRefresh: Message[] | undefined;
+
+    await streamToolCall(async function* (event, _published, currentMessages) {
+      for (let i = 0; i < 10; i += 1) yield event(i);
+      yield { event: "values", data: { messages: [committed] } };
+      await vi.advanceTimersByTimeAsync(50);
+      afterRefresh = currentMessages();
+    });
+
+    expect(afterRefresh).toEqual([committed]);
+  });
+
+  it("doesn't overwrite a mutate that lands before the refresh", async () => {
+    const edited = { id: "ai-1", type: "ai", content: "edited" } as Message;
+    let afterRefresh: Message[] | undefined;
+
+    await streamToolCall(
+      async function* (event, _published, currentMessages) {
+        for (let i = 0; i < 10; i += 1) yield event(i);
+        yield { event: "updates", data: {} };
+        await vi.advanceTimersByTimeAsync(50);
+        afterRefresh = currentMessages();
+      },
+      {
+        onUpdateEvent: (
+          _data: unknown,
+          { mutate }: { mutate: (update: Partial<State>) => void }
+        ) => mutate({ messages: [edited] }),
+      }
+    );
+
+    expect(afterRefresh).toEqual([edited]);
   });
 
   it("doesn't undo a remove-all that lands before the refresh", async () => {
