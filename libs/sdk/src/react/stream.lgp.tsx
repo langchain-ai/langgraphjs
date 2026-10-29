@@ -115,6 +115,11 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const onErrorRef = useRef(options?.onError);
   onErrorRef.current = options?.onError;
 
+  // A read that resolves after a newer one was issued is dropped: the newer
+  // one can show the state after a run, and the older one a call that run
+  // answered.
+  const latestReadRef = useRef(0);
+
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
@@ -128,6 +133,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       const key = getFetchHistoryKey(client, threadId, limit);
 
       if (threadId != null) {
+        const readId = ++latestReadRef.current;
         setState((state) => {
           if (state.key === key) return { ...state, isLoading: true };
           return { key, data: undefined, error: undefined, isLoading: true };
@@ -135,7 +141,9 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
         return fetchHistory<StateType>(client, threadId, { limit }).then(
           (data) => {
             setState((state) => {
-              if (state.key !== key) return state;
+              if (state.key !== key || readId !== latestReadRef.current) {
+                return state;
+              }
               return { key, data, error: undefined, isLoading: false };
             });
             return data;

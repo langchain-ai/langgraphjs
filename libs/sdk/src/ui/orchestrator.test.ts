@@ -515,6 +515,93 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it.each([
+      {
+        via: "joinStream",
+        run: (orch: StreamOrchestrator<TestState>) => orch.joinStream("run-1"),
+      },
+      {
+        via: "submit",
+        run: (orch: StreamOrchestrator<TestState>) =>
+          orch.submit({ messages: [] }, { command: { resume: "yes" } }),
+      },
+    ])(
+      "does not run a pending tool from a read that resolves after a run ends ($via)",
+      async ({ run }) => {
+        const toolImpl = weatherTool();
+        let serveHead!: (state: unknown) => void;
+        (client.threads.getState as Mock).mockReturnValueOnce(
+          new Promise((resolve) => {
+            serveHead = resolve;
+          })
+        );
+        const answered = () =>
+          (async function* () {
+            yield { event: "values", data: { messages: [] } };
+          })();
+        (client.runs.joinStream as Mock).mockImplementationOnce(answered);
+        (client.runs.stream as Mock).mockImplementationOnce(answered);
+
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({ tools: [toolImpl] }),
+          accessors
+        );
+        orch.initThreadId("t1");
+        await run(orch);
+        serveHead(pendingToolState());
+        await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+        await flushMicrotasks(20);
+
+        expect(toolImpl.execute).not.toHaveBeenCalled();
+
+        orch.dispose();
+      }
+    );
+
+    it("does not run a pending tool from the read after stop()", async () => {
+      const toolImpl = weatherTool();
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        createThreadState({ messages: [] }),
+      ]);
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ fetchStateHistory: true, tools: [toolImpl] }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+      (client.runs.joinStream as Mock).mockImplementationOnce(
+        (
+          _threadId: string,
+          _runId: string,
+          { signal }: { signal: AbortSignal }
+        ) =>
+          (async function* () {
+            await new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(signal.reason));
+            });
+            yield { event: "values", data: { messages: [] } };
+          })()
+      );
+      let serveHead!: (states: unknown) => void;
+      (client.threads.getHistory as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveHead = resolve;
+        })
+      );
+
+      const join = orch.joinStream("run-1");
+      await flushMicrotasks();
+      const stopping = orch.stop();
+      await join;
+      serveHead([pendingToolState()]);
+      await stopping;
+      await flushMicrotasks(20);
+
+      expect(toolImpl.execute).not.toHaveBeenCalled();
+
+      orch.dispose();
+    });
+
     it("does not run a pending tool from a read that lands after a thread switch", async () => {
       const toolImpl = weatherTool();
       (client.threads.getState as Mock).mockResolvedValue({

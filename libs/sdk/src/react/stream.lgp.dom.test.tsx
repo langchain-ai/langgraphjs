@@ -468,6 +468,35 @@ describe("useStream (old engine) headless tools", () => {
     expect(tool.execute).toHaveBeenCalledTimes(1);
   });
 
+  it("does not run a pending tool from a read that resolves after a rejoined run ends", async () => {
+    const client = createClient();
+    const answered = threadState({
+      messages: [message("h0"), message("a0", "ai")],
+    });
+    let serveStale!: (states: unknown) => void;
+    client.threads.getHistory
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveStale = resolve;
+        })
+      )
+      .mockResolvedValue([answered]);
+    mockJoin(client, [{ event: "values", data: answered.values }]);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const tool = weatherTool();
+
+    await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      reconnectOnMount: true,
+      tools: [tool],
+    });
+    await act(async () => serveStale([pendingTool()]));
+    await settle();
+
+    expect(tool.execute).not.toHaveBeenCalled();
+  });
+
   it("waits for a rejoined run to end before running a pending tool", async () => {
     const client = createClient();
     serve(client, pendingTool());
