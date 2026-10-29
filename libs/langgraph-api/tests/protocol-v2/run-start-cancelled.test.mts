@@ -80,11 +80,15 @@ describe("run.start on a thread whose current run is interrupted", () => {
   it("submits the input as input when the interruption was a cancel (no pending interrupt)", async () => {
     const { service, puts } = createService({ pendingInterrupts: 0 });
 
-    const response = await service.handleCommand(THREAD_ID, {
-      id: 1,
-      method: "run.start",
-      params: { assistant_id: "agent", input },
-    });
+    const response = await service.handleCommand(
+      THREAD_ID,
+      {
+        id: 1,
+        method: "run.start",
+        params: { assistant_id: "agent", input },
+      },
+      undefined
+    );
 
     expect(response).toMatchObject({ type: "success" });
     expect(puts).toHaveLength(1);
@@ -95,11 +99,15 @@ describe("run.start on a thread whose current run is interrupted", () => {
   it("still folds the input into Command(resume) when an interrupt is pending", async () => {
     const { service, puts } = createService({ pendingInterrupts: 1 });
 
-    const response = await service.handleCommand(THREAD_ID, {
-      id: 1,
-      method: "run.start",
-      params: { assistant_id: "agent", input },
-    });
+    const response = await service.handleCommand(
+      THREAD_ID,
+      {
+        id: 1,
+        method: "run.start",
+        params: { assistant_id: "agent", input },
+      },
+      undefined
+    );
 
     expect(response).toMatchObject({ type: "success" });
     expect(puts).toHaveLength(1);
@@ -110,11 +118,15 @@ describe("run.start on a thread whose current run is interrupted", () => {
   it("refuses the input while several interrupts are pending", async () => {
     const { service, puts } = createService({ pendingInterrupts: 2 });
 
-    const response = await service.handleCommand(THREAD_ID, {
-      id: 1,
-      method: "run.start",
-      params: { assistant_id: "agent", input },
-    });
+    const response = await service.handleCommand(
+      THREAD_ID,
+      {
+        id: 1,
+        method: "run.start",
+        params: { assistant_id: "agent", input },
+      },
+      undefined
+    );
 
     expect(response).toMatchObject({ type: "error", error: "invalid_argument" });
     expect(puts).toHaveLength(0);
@@ -135,11 +147,15 @@ describe("run.start on a thread whose current run is interrupted", () => {
         threadStatus,
       });
 
-      const response = await service.handleCommand(THREAD_ID, {
-        id: 1,
-        method: "run.start",
-        params: { assistant_id: "agent", input: resume },
-      });
+      const response = await service.handleCommand(
+        THREAD_ID,
+        {
+          id: 1,
+          method: "run.start",
+          params: { assistant_id: "agent", input: resume },
+        },
+        undefined
+      );
 
       expect(response).toMatchObject({ type: "success" });
       expect(puts).toHaveLength(1);
