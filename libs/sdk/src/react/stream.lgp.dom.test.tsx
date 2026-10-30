@@ -613,6 +613,71 @@ describe("useStream (old engine) headless tools", () => {
     expect(tool.execute).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { shownWhenToolEnds: "t1", resumedThreads: ["t1"] },
+    { shownWhenToolEnds: "t2", resumedThreads: [] },
+  ])(
+    "resumes a pending tool's thread only if it is still shown when the tool ends ($shownWhenToolEnds)",
+    async ({ shownWhenToolEnds, resumedThreads }) => {
+      const client = createClient();
+      serve(client, pendingTool());
+      mockRun(client, []);
+      let finishTool!: (result: string) => void;
+      const tool = weatherTool(
+        vi.fn(
+          () =>
+            new Promise<string>((resolve) => {
+              finishTool = resolve;
+            })
+        )
+      );
+      const view = await renderStream(client, {
+        threadId: "t1",
+        tools: [tool],
+      });
+      serve(client, threadState({ messages: [] }));
+
+      await view.rerender({ threadId: shownWhenToolEnds, tools: [tool] });
+      await act(async () => finishTool("sunny"));
+      await settle();
+
+      expect(
+        client.runs.stream.mock.calls.map(([threadId]) => threadId)
+      ).toEqual(resumedThreads);
+    }
+  );
+
+  it("runs a pending tool again when its thread is reopened after a switch dropped its result", async () => {
+    const client = createClient();
+    client.threads.getState.mockImplementation(async (threadId: string) =>
+      threadId === "t1" ? pendingTool() : threadState({ messages: [] })
+    );
+    mockRun(client, []);
+    let finishFirstRun!: (result: string) => void;
+    const tool = weatherTool(
+      vi
+        .fn()
+        .mockReturnValueOnce(
+          new Promise<string>((resolve) => {
+            finishFirstRun = resolve;
+          })
+        )
+        .mockResolvedValue("sunny")
+    );
+    const view = await renderStream(client, { threadId: "t1", tools: [tool] });
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await act(async () => finishFirstRun("stale"));
+    await settle();
+
+    await view.rerender({ threadId: "t1", tools: [tool] });
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(2);
+    expect(client.runs.stream.mock.calls.map(([threadId]) => threadId)).toEqual(
+      ["t1"]
+    );
+  });
+
   it("does not run a pending tool from a read that resolves after a rejoined run ends", async () => {
     const client = createClient();
     const answered = threadState({

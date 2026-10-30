@@ -874,14 +874,19 @@ export function useStreamLGP<
         defer: (run) => {
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
-          submit(null, {
+        resumeSubmit: (command) => {
+          // submit() resumes this call's thread but streams the run into the
+          // view, which now shows another thread. The call stays pending and
+          // runs again when its thread is shown.
+          if (threadIdRef.current !== threadId) return;
+          return submit(null, {
             multitaskStrategy: "interrupt",
             command,
-          }),
+          });
+        },
       }
     );
-  }, [options.onTool, options.tools, submit, pendingToolValues]);
+  }, [options.onTool, options.tools, submit, pendingToolValues, threadId]);
 
   const streamHandle: UseStream<StateType, Bag> = {
     get values() {
