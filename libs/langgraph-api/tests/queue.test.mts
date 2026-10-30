@@ -11,6 +11,7 @@ import { checkpointer } from "../src/storage/checkpoint.mjs";
 import { FileSystemOps } from "../src/storage/ops.mjs";
 import { FileSystemPersistence } from "../src/storage/persist.mjs";
 import type { Run, RunKwargs, Store } from "../src/storage/types.mjs";
+import { gatherIterator } from "./utils.mjs";
 
 let cleanup: (() => Promise<void>) | undefined;
 
@@ -47,7 +48,10 @@ async function startQueue() {
   );
   void queue(ops);
 
-  const createRun = async (kwargs: RunKwargs) => {
+  const createRun = async (
+    kwargs: RunKwargs,
+    options?: { afterSeconds?: number }
+  ) => {
     const thread = await ops.threads.put(
       uuid7(),
       { if_exists: "raise" },
@@ -57,7 +61,7 @@ async function startQueue() {
       uuid7(),
       getAssistantId("delay"),
       kwargs,
-      { threadId: thread.thread_id },
+      { threadId: thread.thread_id, ...options },
       undefined
     );
     return run;
@@ -116,4 +120,60 @@ it("picks up later runs after a run's webhook can't be reached", async () => {
     expect.stringContaining("Background worker failed"),
     { run_id: first.run_id }
   );
+});
+
+it("two joiners of a non-resumable run each get every event", async () => {
+  const { ops, createRun } = await startQueue();
+  const run = await createRun(
+    { input: { delay: 0 }, stream_mode: ["values"] },
+    { afterSeconds: 1 }
+  );
+  const join = (lastEventId?: string) =>
+    gatherIterator(
+      ops.runs.stream.join(
+        run.run_id,
+        run.thread_id,
+        { lastEventId },
+        undefined
+      )
+    );
+
+  const [first, second] = await Promise.all([join(), join()]);
+  expect(first.map((event) => event.event)).toEqual([
+    "metadata",
+    "values",
+    "values",
+  ]);
+  expect(second).toEqual(first);
+  expect(await join("-1"), "a replay after the run ended").toEqual(first);
+  expect(await join(), "a live join after the run ended").toEqual([]);
+});
+
+it("runs.join() does not empty an open stream", async () => {
+  const { ops, createRun } = await startQueue();
+  const run = await createRun(
+    { input: { delay: 0 }, stream_mode: ["values"] },
+    { afterSeconds: 1 }
+  );
+  const stream = ops.runs.stream.join(
+    run.run_id,
+    run.thread_id,
+    { lastEventId: undefined },
+    undefined
+  );
+
+  const first = await stream.next();
+  const joined = await ops.runs.join(run.run_id, run.thread_id, undefined);
+  const events = [first.value, ...(await gatherIterator(stream))];
+
+  expect(events.map((event) => event?.event)).toEqual([
+    "metadata",
+    "values",
+    "values",
+  ]);
+  expect(joined).toEqual(events.at(-1)?.data);
+  expect(
+    await ops.runs.wait(run.run_id, run.thread_id, undefined),
+    "a wait after the run ended"
+  ).toEqual(joined);
 });
