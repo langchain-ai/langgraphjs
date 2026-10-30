@@ -865,6 +865,11 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     this.onSubagentChange?.();
   }
 
+  /** See `MessageTupleManager.startReplay`. */
+  startReplay(): void {
+    for (const manager of this.messageManagers.values()) manager.startReplay();
+  }
+
   /**
    * Clear all subagent state.
    */

@@ -59,29 +59,47 @@ export interface StreamPart {
   data: unknown;
 }
 
-export function SSEDecoder() {
+const controlParts = new WeakSet<object>();
+
+export function isSSEControlPart(part: object) {
+  return controlParts.has(part);
+}
+
+export function SSEDecoder(initialLastEventId?: string) {
   let event = "";
   let data: Uint8Array[] = [];
-  let lastEventId = "";
+  let lastEventId = initialLastEventId;
+  let idChanged = false;
   let retry: number | null = null;
+  let firstLine = true;
 
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
   return new TransformStream<Uint8Array, StreamPart>({
     transform(chunk, controller) {
+      if (firstLine) {
+        firstLine = false;
+        if (chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf) {
+          chunk = chunk.subarray(3);
+        }
+      }
+
       // Handle empty line case
       if (!chunk.length) {
-        if (!event && !data.length && !lastEventId && retry == null) return;
+        if (!event && !data.length && !idChanged && retry == null) return;
 
         const sse = {
-          id: lastEventId || undefined,
+          id: lastEventId,
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         };
 
+        if (!event && !data.length) controlParts.add(sse);
+
         // NOTE: as per the SSE spec, do not reset lastEventId
         event = "";
         data = [];
+        idChanged = false;
         retry = null;
 
         controller.enqueue(sse);
@@ -92,10 +110,10 @@ export function SSEDecoder() {
       if (chunk[0] === COLON) return;
 
       const sepIdx = chunk.indexOf(COLON);
-      if (sepIdx === -1) return;
-
-      const fieldName = decoder.decode(chunk.subarray(0, sepIdx));
-      let value = chunk.subarray(sepIdx + 1);
+      const fieldName = decoder.decode(
+        sepIdx === -1 ? chunk : chunk.subarray(0, sepIdx)
+      );
+      let value = sepIdx === -1 ? new Uint8Array() : chunk.subarray(sepIdx + 1);
       if (value[0] === SPACE) value = value.subarray(1);
 
       if (fieldName === "event") {
@@ -103,17 +121,21 @@ export function SSEDecoder() {
       } else if (fieldName === "data") {
         data.push(value);
       } else if (fieldName === "id") {
-        if (value.indexOf(NULL) === -1) lastEventId = decoder.decode(value);
+        if (value.indexOf(NULL) === -1) {
+          lastEventId = decoder.decode(value);
+          idChanged = true;
+        }
       } else if (fieldName === "retry") {
-        const retryNum = Number.parseInt(decoder.decode(value), 10);
-        if (!Number.isNaN(retryNum)) retry = retryNum;
+        const retryValue = decoder.decode(value);
+        if (/^[0-9]+$/.test(retryValue))
+          retry = Number.parseInt(retryValue, 10);
       }
     },
 
     flush(controller) {
-      if (event) {
+      if (event || data.length) {
         controller.enqueue({
-          id: lastEventId || undefined,
+          id: lastEventId,
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         });
@@ -133,6 +155,7 @@ function joinArrays(data: ArrayLike<number>[]) {
   return merged;
 }
 
-function decodeArraysToJson(decoder: TextDecoder, data: ArrayLike<number>[]) {
-  return JSON.parse(decoder.decode(joinArrays(data)));
+function decodeArraysToJson(decoder: TextDecoder, data: Uint8Array[]) {
+  const body = data.map((line) => decoder.decode(line)).join("\n");
+  return /^[\x09-\x0d\x20]*$/.test(body) ? null : JSON.parse(body);
 }

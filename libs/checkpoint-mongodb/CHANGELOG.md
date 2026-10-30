@@ -1,5 +1,13 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.5.1
+
+### Patch Changes
+
+- [#3093](https://github.com/langchain-ai/langgraphjs/pull/3093) [`f306d9a`](https://github.com/langchain-ai/langgraphjs/commit/f306d9ab8bea95f84c2e5e2c7990fe363aee147a) Thanks [@byhow](https://github.com/byhow)! - `MongoDBStore` validates list namespaces operations, including ones passed straight to `batch()`: match conditions must be `prefix` or `suffix`, their labels follow the same rules as `listNamespaces()`, and `maxDepth` must be a non-negative integer. Labels are compared as literals, so a namespace stored under a label that starts with `$` can now be listed by it. Puts and deletes passed to `batch()` now use the same shared namespace validation as `put()`, so labels containing `:` or NUL bytes are rejected there too. Invalid input throws `InvalidNamespaceError` before any query runs.
+
+- [#3103](https://github.com/langchain-ai/langgraphjs/pull/3103) [`6506412`](https://github.com/langchain-ai/langgraphjs/commit/6506412197619a9714ef2c777da0fbb032f0468e) Thanks [@eliornl](https://github.com/eliornl)! - `MongoDBStore` now rejects a get or delete whose namespace is not an array, and wraps item keys, search namespace prefix labels and filter `$eq` operands in `$eq` when building queries, including for operations passed straight to `batch()`. An object value is matched as a plain value instead of being read as a query operator. String and number values match exactly as before.
+
 ## 1.5.0
 
 ### Minor Changes
