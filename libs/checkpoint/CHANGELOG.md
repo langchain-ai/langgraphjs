@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint
 
+## 1.2.2
+
+### Patch Changes
+
+- [#3154](https://github.com/langchain-ai/langgraphjs/pull/3154) [`2a97004`](https://github.com/langchain-ai/langgraphjs/commit/2a9700476810507d2b3a224d0383272f2d69f8f6) Thanks [@byhow](https://github.com/byhow)! - `JsonPlusSerializer`, the serializer every checkpointer uses by default, is now exported, as it is in Python, so a saver that sends checkpoints elsewhere can encode them the same way.
+
 ## 1.2.1
 
 ### Patch Changes
