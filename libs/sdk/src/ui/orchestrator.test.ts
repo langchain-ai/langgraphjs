@@ -1,10 +1,19 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  afterEach,
+  beforeEach,
+  type Mock,
+} from "vitest";
 import {
   StreamOrchestrator,
   type OrchestratorAccessors,
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
 import type { Client } from "../client.js";
+import type { RunsStreamPayload } from "../types.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
 
 type TestState = {
@@ -1690,6 +1699,82 @@ describe("StreamOrchestrator", () => {
 
       expect(getState()).toHaveBeenCalledTimes(1);
     });
+  });
+
+  describe("stop before the run id arrives", () => {
+    type Orchestrator = StreamOrchestrator<TestState>;
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it.each([
+      {
+        how: "stop()",
+        abort: (orch: Orchestrator) => orch.stop(),
+        cancelled: ["run-1"],
+      },
+      {
+        how: "dispose()",
+        abort: (orch: Orchestrator) => orch.dispose(),
+        cancelled: ["run-1"],
+      },
+      {
+        how: "a thread switch",
+        abort: (orch: Orchestrator) => orch.switchThread("t2"),
+        cancelled: [],
+      },
+    ])(
+      "$how before the run id arrives cancels $cancelled",
+      async ({ abort, cancelled }) => {
+        vi.stubGlobal("window", {});
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({
+            reconnectOnMount: () => ({
+              getItem: () => null,
+              setItem: () => undefined,
+              removeItem: () => undefined,
+            }),
+          }),
+          accessors
+        );
+        orch.initThreadId("t1");
+        let respond!: () => void;
+        const response = new Promise<void>((resolve) => {
+          respond = resolve;
+        });
+        (client.runs.stream as Mock).mockImplementationOnce(
+          (
+            threadId: string,
+            _assistantId: string,
+            payload: RunsStreamPayload & { signal: AbortSignal }
+          ) =>
+            (async function* () {
+              await new Promise<void>((resolve, reject) => {
+                void response.then(resolve);
+                payload.signal.addEventListener("abort", () =>
+                  reject(Object.assign(new Error(), { name: "AbortError" }))
+                );
+              });
+              payload.onRunCreated?.({ run_id: "run-1", thread_id: threadId });
+              yield { event: "metadata", data: {} };
+            })()
+        );
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+        const running = orch.submit({ messages: [] });
+        await tick();
+        await abort(orch);
+        await running;
+        respond();
+        await tick();
+
+        expect((client.runs.cancel as Mock).mock.calls).toEqual(
+          cancelled.map((runId) => ["t1", runId])
+        );
+        orch.dispose();
+      }
+    );
   });
 
   describe("auto-reconnect", () => {

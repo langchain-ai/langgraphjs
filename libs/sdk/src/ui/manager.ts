@@ -193,6 +193,12 @@ export class StreamManager<
 > {
   private abortRef = new AbortController();
 
+  /**
+   * Aborted by `stop()` alone, so a run can tell a stop from a thread switch
+   * or a run that replaces it.
+   */
+  private stopRef = new AbortController();
+
   private messages: MessageTupleManager;
 
   private subagentManager: SubagentManager;
@@ -758,7 +764,8 @@ export class StreamManager<
 
   protected enqueue = async (
     action: (
-      signal: AbortSignal
+      signal: AbortSignal,
+      stopSignal: AbortSignal
     ) => Promise<
       AsyncGenerator<
         EventStreamEvent<
@@ -804,13 +811,15 @@ export class StreamManager<
       this.setState({ isLoading: true, error: undefined });
       // clear() and stop() replace abortRef, so the run keeps its own.
       const abort = new AbortController();
+      const stop = new AbortController();
       this.abortRef = abort;
+      this.stopRef = stop;
       if (options.isReplaying) {
         this.messages.startReplay();
         this.subagentManager.startReplay();
       }
 
-      const run = await action(abort.signal);
+      const run = await action(abort.signal, stop.signal);
       let clearedPreviousInterrupts = false;
 
       // Subagent messages kept in the main stream (`filterSubagentMessages` off)
@@ -1197,7 +1206,8 @@ export class StreamManager<
 
   start = async (
     action: (
-      signal: AbortSignal
+      signal: AbortSignal,
+      stopSignal: AbortSignal
     ) => Promise<
       AsyncGenerator<
         EventStreamEvent<
@@ -1275,6 +1285,7 @@ export class StreamManager<
   ): Promise<void> => {
     const wasLoading = this.isLoading;
     const epoch = this.#epoch;
+    this.stopRef.abort();
     this.abortRef.abort();
     this.abortRef = new AbortController();
 

@@ -1,3 +1,7 @@
+import type { Client } from "../client.js";
+import type { RunsStreamPayload } from "../types.js";
+import type { StreamMode } from "../types.stream.js";
+
 /**
  * Returns true when `onFinish` declares at least one parameter and therefore
  * needs the server-fetched thread head. A zero-arity `onFinish` is treated as
@@ -33,4 +37,74 @@ export async function* filterStream<T, TReturn>(
     if (done) return value as TReturn;
     if (filter(value)) yield value as T;
   }
+}
+
+/**
+ * Streams a run as `client.runs.stream` does. When `stopSignal` aborts before
+ * the response, the run is cancelled on the server instead of reported
+ * through `onRunCreated`: a run created with `on_disconnect: "continue"`
+ * outlives its request, and only the response carries its id, so the request
+ * stays open until the id arrives. The stream itself still ends as soon as
+ * `signal` aborts.
+ */
+export async function* streamRun(
+  client: Client,
+  threadId: string,
+  assistantId: string,
+  {
+    stopSignal,
+    ...payload
+  }: RunsStreamPayload<StreamMode[], boolean> & {
+    signal: AbortSignal;
+    stopSignal?: AbortSignal;
+  }
+): AsyncGenerator<unknown> {
+  if (stopSignal == null) {
+    return yield* client.runs.stream(threadId, assistantId, payload);
+  }
+  const { signal } = payload;
+  if (signal.aborted) return;
+
+  const request = new AbortController();
+  let runId: string | undefined;
+  const run = client.runs.stream(threadId, assistantId, {
+    ...payload,
+    signal: request.signal,
+    onRunCreated(params) {
+      runId = params.run_id;
+      if (stopSignal.aborted) {
+        void client.runs.cancel(threadId, runId);
+        request.abort();
+      } else {
+        payload.onRunCreated?.(params);
+      }
+    },
+  });
+  const close = () => {
+    request.abort();
+    void run.return(undefined);
+  };
+
+  const firstEvent = run.next();
+  const first = await Promise.race([
+    firstEvent,
+    new Promise<undefined>((resolve) => {
+      signal.addEventListener("abort", () => resolve(undefined), {
+        once: true,
+      });
+    }),
+  ]);
+  if (first === undefined || signal.aborted) {
+    if (runId === undefined && stopSignal.aborted) {
+      void firstEvent.then(close, close);
+    } else {
+      close();
+    }
+    return;
+  }
+  if (first.done) return;
+
+  signal.addEventListener("abort", close, { once: true });
+  yield first.value;
+  yield* run;
 }

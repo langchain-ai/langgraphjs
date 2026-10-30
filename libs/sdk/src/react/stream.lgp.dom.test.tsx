@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
 import type { Client } from "../client.js";
+import type { RunsStreamPayload } from "../types.js";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -983,4 +984,72 @@ describe("useStream (old engine) thread state after stop", () => {
 
     expect(view.current.messages).toEqual(next);
   });
+});
+
+describe("useStream (old engine) stop before the run id arrives", () => {
+  it.each([
+    {
+      how: "stop()",
+      abort: (view: View) => view.current.stop(),
+      cancelled: ["run-1"],
+    },
+    {
+      how: "a submit that interrupts the run",
+      abort: (view: View, client: TestClient) => {
+        mockRun(client, []);
+        return view.current.submit(
+          { messages: [] },
+          { multitaskStrategy: "interrupt" }
+        );
+      },
+      cancelled: [],
+    },
+  ])(
+    "$how before the run id arrives cancels $cancelled",
+    async ({ abort, cancelled }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }));
+      const view = await renderStream(client, {
+        threadId: "t1",
+        reconnectOnMount: () => ({
+          getItem: () => null,
+          setItem: () => undefined,
+          removeItem: () => undefined,
+        }),
+      });
+      let respond!: () => void;
+      const response = new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      client.runs.stream.mockImplementationOnce(
+        (
+          threadId: string,
+          _assistantId: string,
+          payload: RunsStreamPayload & { signal: AbortSignal }
+        ) =>
+          (async function* () {
+            await new Promise<void>((resolve, reject) => {
+              void response.then(resolve);
+              payload.signal.addEventListener("abort", () =>
+                reject(Object.assign(new Error(), { name: "AbortError" }))
+              );
+            });
+            payload.onRunCreated?.({ run_id: "run-1", thread_id: threadId });
+            yield { event: "metadata", data: {} };
+          })()
+      );
+
+      const { running } = await startRun(view);
+      await act(async () => {
+        await abort(view, client);
+        await running;
+      });
+      await act(async () => respond());
+      await settle();
+
+      expect(client.runs.cancel.mock.calls).toEqual(
+        cancelled.map((runId) => ["t1", runId])
+      );
+    }
+  );
 });
