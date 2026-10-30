@@ -716,6 +716,10 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      // Publish any pending re-parse first, so it can't later overwrite this
+      // update
+      this.messages.flush();
+
       const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
@@ -808,6 +812,84 @@ export class StreamManager<
 
       const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
+
+      // Subagent messages kept in the main stream (`filterSubagentMessages` off)
+      const subagentMessageIds = new Set<string>();
+
+      const applyMessage = (messageId: string, { updateOnly = false } = {}) => {
+        const isFromSubagent = subagentMessageIds.has(messageId);
+
+        this.setStreamValues((streamValues) => {
+          const values = {
+            ...options.initialValues,
+            ...streamValues,
+          };
+
+          // Assumption: we're concatenating the message
+          let messages = options.getMessages(values).slice();
+          const { chunk, index } =
+            this.messages.get(messageId, messages.length) ?? {};
+
+          if (!chunk || index == null) return values;
+
+          // Later events may have moved or removed the message since it was
+          // first seen, so update it where it is now, or not at all
+          const targetIndex = updateOnly
+            ? messages.findIndex((message) => message.id === messageId)
+            : index;
+          if (targetIndex === -1) return values;
+
+          if (chunk.getType() === "remove") {
+            // Check for special REMOVE_ALL_MESSAGES sentinel
+            if (chunk.id === REMOVE_ALL_MESSAGES) {
+              // Clear all messages when __remove_all__ is received
+              messages = [];
+            } else {
+              messages.splice(targetIndex, 1);
+            }
+          } else {
+            const msgDict = this.toMessage(chunk) as Message;
+            messages[targetIndex] = msgDict;
+
+            // Track subagents from AI messages with tool calls (main agent only)
+            if (
+              !isFromSubagent &&
+              msgDict.type === "ai" &&
+              "tool_calls" in msgDict &&
+              Array.isArray(msgDict.tool_calls)
+            ) {
+              this.subagentManager.registerFromToolCalls(
+                msgDict.tool_calls,
+                msgDict.id as string | undefined
+              );
+            }
+
+            // Complete subagents when tool messages arrive (main agent only)
+            if (
+              !isFromSubagent &&
+              msgDict.type === "tool" &&
+              "tool_call_id" in msgDict
+            ) {
+              const tcId = msgDict.tool_call_id as string;
+              const content =
+                typeof msgDict.content === "string"
+                  ? msgDict.content
+                  : JSON.stringify(msgDict.content);
+              const status =
+                "status" in msgDict && msgDict.status === "error"
+                  ? "error"
+                  : "success";
+              this.subagentManager.processToolMessage(tcId, content, status);
+            }
+          }
+
+          return options.setMessages(values, messages);
+        });
+      };
+
+      // Re-publish messages whose tool calls were re-parsed on the timer
+      this.messages.onRefresh = (ids) =>
+        ids.forEach((id) => applyMessage(id, { updateOnly: true }));
 
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
@@ -952,6 +1034,10 @@ export class StreamManager<
               );
             }
           } else if (namespace == null) {
+            // Publish any pending re-parse first, so it can't later overwrite
+            // the messages in these values
+            this.messages.flush();
+
             if (!clearedPreviousInterrupts) {
               // Clear stale __interrupt__ from the previous run once the new
               // stream starts delivering main values. This avoids carrying
@@ -1070,67 +1156,12 @@ export class StreamManager<
             continue;
           }
 
-          this.setStreamValues((streamValues) => {
-            const values = {
-              ...options.initialValues,
-              ...streamValues,
-            };
-
-            // Assumption: we're concatenating the message
-            let messages = options.getMessages(values).slice();
-            const { chunk, index } =
-              this.messages.get(messageId, messages.length) ?? {};
-
-            if (!chunk || index == null) return values;
-            if (chunk.getType() === "remove") {
-              // Check for special REMOVE_ALL_MESSAGES sentinel
-              if (chunk.id === REMOVE_ALL_MESSAGES) {
-                // Clear all messages when __remove_all__ is received
-                messages = [];
-              } else {
-                messages.splice(index, 1);
-              }
-            } else {
-              const msgDict = this.toMessage(chunk) as Message;
-              messages[index] = msgDict;
-
-              // Track subagents from AI messages with tool calls (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "ai" &&
-                "tool_calls" in msgDict &&
-                Array.isArray(msgDict.tool_calls)
-              ) {
-                this.subagentManager.registerFromToolCalls(
-                  msgDict.tool_calls,
-                  msgDict.id as string | undefined
-                );
-              }
-
-              // Complete subagents when tool messages arrive (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "tool" &&
-                "tool_call_id" in msgDict
-              ) {
-                const tcId = msgDict.tool_call_id as string;
-                const content =
-                  typeof msgDict.content === "string"
-                    ? msgDict.content
-                    : JSON.stringify(msgDict.content);
-                const status =
-                  "status" in msgDict && msgDict.status === "error"
-                    ? "error"
-                    : "success";
-                this.subagentManager.processToolMessage(tcId, content, status);
-              }
-            }
-
-            return options.setMessages(values, messages);
-          });
+          if (isFromSubagent) subagentMessageIds.add(messageId);
+          applyMessage(messageId);
         }
       }
 
+      this.messages.flush();
       if (streamError != null) throw streamError;
 
       // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
@@ -1154,6 +1185,10 @@ export class StreamManager<
         await options.onError?.(error);
       }
     } finally {
+      // Publish any pending refresh for this run (e.g. after an abort), then
+      // detach so it can't publish into a later run's state
+      this.messages.flush();
+      this.messages.onRefresh = undefined;
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
       options.onFinish?.();

@@ -71,6 +71,11 @@ function tryCoerceMessageLikeToChunk(
   return tryCoerceMessageLikeToMessage(message);
 }
 
+/**
+ * How often streamed tool call args are re-parsed while `onRefresh` is set.
+ */
+const TOOL_CALL_REFRESH_MS = 50;
+
 export class MessageTupleManager {
   chunks: Record<
     string,
@@ -80,6 +85,17 @@ export class MessageTupleManager {
       index?: number;
     }
   > = {};
+
+  /**
+   * When set, streamed tool call args are re-parsed at most every
+   * {@link TOOL_CALL_REFRESH_MS} rather than on every chunk, and this is called
+   * with the IDs of the messages whose tool calls were re-parsed.
+   */
+  onRefresh?: (ids: string[]) => void;
+
+  private staleIds = new Set<string>();
+
+  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   private replaying = new Set<string>();
 
@@ -126,9 +142,29 @@ export class MessageTupleManager {
     this.chunks[id].metadata = metadata ?? this.chunks[id].metadata;
     if (chunk) {
       const prev = this.chunks[id].chunk;
-      this.chunks[id].chunk =
+      const next =
         (BaseMessageChunk.isInstance(prev) ? prev : null)?.concat(chunk) ??
         chunk;
+
+      // Parsing the accumulated tool call args on every chunk is quadratic in
+      // their length, so carry the previous parse forward and re-parse on a
+      // timer instead.
+      if (
+        this.onRefresh != null &&
+        AIMessageChunk.isInstance(prev) &&
+        AIMessageChunk.isInstance(next) &&
+        next.tool_call_chunks?.length
+      ) {
+        next.tool_calls = prev.tool_calls;
+        next.invalid_tool_calls = prev.invalid_tool_calls;
+        this.staleIds.add(id);
+        this.refreshTimer ??= setTimeout(
+          () => this.flush(),
+          TOOL_CALL_REFRESH_MS
+        );
+      }
+
+      this.chunks[id].chunk = next;
     } else {
       this.chunks[id].chunk = message;
     }
@@ -136,7 +172,33 @@ export class MessageTupleManager {
     return id;
   }
 
+  /**
+   * Re-parse any tool calls left stale by `add` and notify `onRefresh`.
+   */
+  flush() {
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = undefined;
+    if (this.staleIds.size === 0) return;
+
+    const ids = [...this.staleIds];
+    this.staleIds.clear();
+    for (const id of ids) {
+      const chunk = this.chunks[id]?.chunk;
+      if (AIMessageChunk.isInstance(chunk)) {
+        // `concat` returns a new chunk whose tool calls are re-derived from
+        // `tool_call_chunks`.
+        this.chunks[id].chunk = chunk.concat(
+          new AIMessageChunk({ content: "" })
+        );
+      }
+    }
+    this.onRefresh?.(ids);
+  }
+
   clear() {
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = undefined;
+    this.staleIds.clear();
     this.chunks = {};
     this.replaying.clear();
   }
