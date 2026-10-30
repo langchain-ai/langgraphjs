@@ -15,6 +15,7 @@ import {
   filterStream,
   findLast,
   onFinishRequiresThreadState,
+  streamRun,
   unique,
 } from "../ui/utils.js";
 import {
@@ -604,7 +605,7 @@ export function useStreamLGP<
       stream.isLoading;
 
     await stream.start(
-      async (signal: AbortSignal) => {
+      async (signal: AbortSignal, stopSignal: AbortSignal) => {
         stream.setStreamValues((values) => {
           const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
@@ -671,7 +672,7 @@ export function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
-        return client.runs.stream(usableThreadId, options.assistantId, {
+        return streamRun(client, usableThreadId, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
@@ -687,6 +688,7 @@ export function useStreamLGP<
             (streamResumable ? "continue" : "cancel"),
 
           signal,
+          stopSignal: runMetadataStorage ? stopSignal : undefined,
 
           checkpoint,
           streamMode,
