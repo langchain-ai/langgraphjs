@@ -967,6 +967,58 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("queues a submit made while streaming with the same stream modes", async () => {
+      let submitSignal: AbortSignal | undefined;
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { signal: AbortSignal }
+        ) => {
+          submitSignal = payload.signal;
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield { event: "values" as const, data: { messages: [] } };
+              await new Promise<never>((_resolve, reject) => {
+                submitSignal?.addEventListener("abort", () => {
+                  const err = new Error("The operation was aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                });
+              });
+            },
+          };
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+      orch.trackStreamMode("messages-tuple");
+
+      const firstSubmit = orch.submit({ messages: [] });
+      await flushMicrotasks();
+      expect(orch.isLoading).toBe(true);
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.queueSize).toBe(1);
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({
+          multitaskStrategy: "enqueue",
+          streamMode: expect.arrayContaining(["values", "messages-tuple"]),
+        })
+      );
+
+      await orch.stop();
+      await firstSubmit;
+      orch.dispose();
+    });
   });
 
   describe("switchThread", () => {

@@ -1039,13 +1039,7 @@ export class StreamOrchestrator<
           this.#setThreadIdFromSubmit(usableThreadId);
         }
 
-        const streamMode = unique([
-          "values" as StreamMode,
-          "updates" as StreamMode,
-          ...(submitOptions?.streamMode ?? []),
-          ...this.#trackedStreamModes,
-          ...this.#callbackStreamModes,
-        ]);
+        const streamMode = this.#getRunStreamModes(submitOptions);
 
         this.stream.setStreamValues(() => {
           const prev = { ...this.historyValues, ...this.stream.values };
@@ -1126,6 +1120,18 @@ export class StreamOrchestrator<
     );
   }
 
+  #getRunStreamModes(
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+  ): StreamMode[] {
+    return unique([
+      "values" as StreamMode,
+      "updates" as StreamMode,
+      ...(submitOptions?.streamMode ?? []),
+      ...this.#trackedStreamModes,
+      ...this.#callbackStreamModes,
+    ]);
+  }
+
   #drainQueue(): void {
     if (!this.isLoading && !this.#submitting && this.pendingRuns.size > 0) {
       const next = this.pendingRuns.shift();
@@ -1194,6 +1200,7 @@ export class StreamOrchestrator<
             interruptAfter: submitOptions?.interruptAfter,
             metadata: submitOptions?.metadata,
             multitaskStrategy: "enqueue",
+            streamMode: this.#getRunStreamModes(submitOptions),
             streamResumable: true,
             streamSubgraphs: submitOptions?.streamSubgraphs,
             durability: submitOptions?.durability,
