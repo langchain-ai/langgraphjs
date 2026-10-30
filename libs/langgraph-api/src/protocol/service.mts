@@ -62,6 +62,14 @@ export const isKeyedByInterruptId = (value: unknown): boolean =>
   Object.keys(value).length > 0 &&
   Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
 
+/**
+ * Refusal for `run.start` input sent while the thread waits on interrupts.
+ */
+export const openInterruptsMessage = (count: number): string =>
+  `The thread is waiting on ${
+    count === 1 ? "an interrupt; answer it" : `${count} interrupts; answer them`
+  } with input.respond before sending new input with run.start.`;
+
 // Concurrency strategies accepted on `run.start`, matching the four values
 // the SDK's `multitaskStrategy` option can take.
 const VALID_MULTITASK_STRATEGIES: readonly MultitaskStrategy[] = [
@@ -327,31 +335,29 @@ export class ProtocolService {
         `Thread ${record.threadId} is bound to assistant ${record.assistantId}; cannot run ${params.assistant_id}.`
       );
     }
+    // Only input keyed by interrupt id answers interrupts. Any other input
+    // can't say what it answers, and running it as new input would drop the
+    // interrupts, so it is refused while the thread waits on one. While a run
+    // is in flight its interrupts can still change, so such input is a new
+    // run for the multitask strategy, as is input that forks from a
+    // checkpoint, away from the interrupts on the head.
+    const keyed = isKeyedByInterruptId(params.input);
+    const checkpointId = params.config?.configurable?.checkpoint_id;
+    const forks = typeof checkpointId === "string" && checkpointId.length > 0;
     const pendingInterrupts =
-      params.input != null ? await this.pendingInterruptCount(record) : 0;
-    // One answer can't say which of several pending interrupts it is for:
-    // LangGraph fails the run, or picks one when they share a subgraph task.
-    // While a run is in flight the count can still change, so it keeps
-    // resuming as before.
-    if (
-      pendingInterrupts > 1 &&
-      !isKeyedByInterruptId(params.input) &&
-      !(await this.hasRunInFlight(record))
-    ) {
+      params.input != null &&
+      (keyed || (!forks && !(await this.hasRunInFlight(record))))
+        ? await this.pendingInterruptCount(record)
+        : 0;
+    if (pendingInterrupts > 0 && !keyed) {
       return this.error(
         command.id,
         "invalid_argument",
-        `run.start input can't say which of the ${pendingInterrupts} pending interrupts it answers; answer them with input.respond.`
+        openInterruptsMessage(pendingInterrupts)
       );
     }
     record.assistantId = params.assistant_id;
 
-    // Resume only when the thread actually has a pending `interrupt()`.
-    // A cancelled run also ends with status "interrupted" but has no
-    // pending interrupt to consume the resume value, so folding the
-    // input into `Command(resume)` there would silently drop the user's
-    // message; a cancelled thread must get plain input (a fresh run from
-    // the checkpoint that applies the input to state).
     const run = await this.createOrResumeRun(
       record,
       params,
@@ -409,7 +415,11 @@ export class ProtocolService {
         "input.respond requires an interrupt_id."
       );
     }
-    if (record.assistantId == null) {
+    // Not bound to the record: metadata holds the resolved id, while
+    // `run.start` compares the id the client sends.
+    const assistantId =
+      record.assistantId ?? (await this.persistedAssistantId(record));
+    if (assistantId == null) {
       return this.error(
         command.id,
         "no_such_run",
@@ -469,7 +479,7 @@ export class ProtocolService {
     await this.createOrResumeRun(
       record,
       {
-        assistant_id: record.assistantId,
+        assistant_id: assistantId,
         input: resumeInput,
         update,
         goto,
@@ -619,6 +629,24 @@ export class ProtocolService {
     } catch {
       // Unknown, so don't refuse on a guess.
       return true;
+    }
+  }
+
+  /**
+   * The assistant the thread last ran. A restart or a closed WebSocket
+   * leaves the record without one, and `run.start` can't bind it while the
+   * thread waits on an interrupt.
+   */
+  private async persistedAssistantId(record: ThreadRecord) {
+    try {
+      const thread = await this.bindings.threads.get(
+        record.threadId,
+        record.auth
+      );
+      const assistantId = thread.metadata?.assistant_id;
+      return typeof assistantId === "string" ? assistantId : undefined;
+    } catch {
+      return undefined;
     }
   }
 
