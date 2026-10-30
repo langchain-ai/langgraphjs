@@ -1248,7 +1248,10 @@ describe("runs", () => {
       });
 
       const chunks = await gatherIterator(
-        client.runs.joinStream(null, run.run_id, { streamMode: "updates" })
+        client.runs.joinStream(null, run.run_id, {
+          lastEventId: "-1",
+          streamMode: "updates",
+        })
       );
 
       expect(chunks.map((i) => i.event.replace(/:[^|]+/g, ""))).toEqual([
@@ -2288,7 +2291,9 @@ describe("errors", () => {
     );
 
     const stream = await gatherIterator(
-      client.runs.joinStream(thread.thread_id, run.run_id)
+      client.runs.joinStream(thread.thread_id, run.run_id, {
+        lastEventId: "-1",
+      })
     );
 
     expect(stream.at(-1)).toMatchObject({
@@ -2317,6 +2322,7 @@ describe("errors", () => {
 
       const stream = await gatherIterator(
         client.runs.joinStream(thread.thread_id, run.run_id, {
+          lastEventId: "-1",
           streamMode: "updates",
         })
       );

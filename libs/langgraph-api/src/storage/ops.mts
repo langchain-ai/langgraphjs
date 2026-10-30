@@ -77,20 +77,13 @@ class TimeoutError extends Error {}
 class AbortError extends Error {}
 
 class Queue {
+  // Never trimmed: each reader of a run reads it from its own cursor.
   private log: Message[] = [];
   private listeners: ((idx: number) => void)[] = [];
 
-  private nextId = 0;
-  private resumable = false;
-
-  constructor(options: { resumable: boolean }) {
-    this.resumable = options.resumable;
-  }
-
   push(item: Message) {
     this.log.push(item);
-    for (const listener of this.listeners) listener(this.nextId);
-    this.nextId += 1;
+    for (const listener of this.listeners) listener(this.log.length - 1);
   }
 
   async get(options: {
@@ -98,28 +91,19 @@ class Queue {
     lastEventId?: string;
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
-    if (this.resumable) {
-      const lastEventId = options.lastEventId;
+    const lastEventId = options.lastEventId;
 
-      // Generator stores internal state of the read head index,
-      let targetId = lastEventId != null ? +lastEventId + 1 : null;
-      if (
-        targetId == null ||
-        isNaN(targetId) ||
-        targetId < 0 ||
-        targetId >= this.log.length
-      ) {
-        targetId = null;
-      }
-
-      if (targetId != null) return [String(targetId), this.log[targetId]];
-    } else {
-      if (this.log.length) {
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem];
-      }
+    let targetId = lastEventId != null ? +lastEventId + 1 : null;
+    if (
+      targetId == null ||
+      isNaN(targetId) ||
+      targetId < 0 ||
+      targetId >= this.log.length
+    ) {
+      targetId = null;
     }
+
+    if (targetId != null) return [String(targetId), this.log[targetId]];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
     let resolver: ((idx: number) => void) | undefined = undefined;
@@ -139,15 +123,7 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then((idx) => {
-        if (this.resumable) {
-          return [String(idx), this.log[idx]] as [string, Message];
-        }
-
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem] as [string, Message];
-      })
+      .then((idx) => [String(idx), this.log[idx]] as [string, Message])
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -166,12 +142,9 @@ class StreamManagerImpl {
   readers: Record<string, Queue> = {};
   control: Record<string, CancellationAbortController> = {};
 
-  getQueue(
-    runId: string,
-    options: { ifNotFound: "create"; resumable: boolean }
-  ): Queue {
+  getQueue(runId: string): Queue {
     if (this.readers[runId] == null) {
-      this.readers[runId] = new Queue(options);
+      this.readers[runId] = new Queue();
     }
 
     return this.readers[runId];
@@ -1619,7 +1592,7 @@ export class FileSystemRuns implements RunsRepo {
     const runStream = this.stream.join(
       runId,
       threadId,
-      { ignore404: threadId == null, lastEventId: undefined },
+      { ignore404: threadId == null, lastEventId: "-1" },
       auth
     );
 
@@ -1820,10 +1793,7 @@ export class FileSystemRuns implements RunsRepo {
       yield* conn.withGenerator(async function* (STORE) {
         // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.signal;
-        const queue = StreamManager.getQueue(runId, {
-          ifNotFound: "create",
-          resumable: options.lastEventId != null,
-        });
+        const queue = StreamManager.getQueue(runId);
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1898,13 +1868,9 @@ export class FileSystemRuns implements RunsRepo {
       runId: string;
       event: string;
       data: unknown;
-      resumable: boolean;
       normalized?: boolean;
     }) {
-      const queue = StreamManager.getQueue(payload.runId, {
-        ifNotFound: "create",
-        resumable: payload.resumable,
-      });
+      const queue = StreamManager.getQueue(payload.runId);
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,

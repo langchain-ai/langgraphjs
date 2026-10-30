@@ -232,7 +232,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         {
           signal: cancelOnDisconnect,
           cancelOnDisconnect: cancelOnDisconnect != null,
-          lastEventId: run.kwargs.resumable ? "-1" : undefined,
+          lastEventId: "-1",
           ignore404: true,
         },
         c.var.auth
@@ -395,7 +395,7 @@ api.post(
           {
             signal: cancelOnDisconnect,
             cancelOnDisconnect: cancelOnDisconnect != null,
-            lastEventId: run.kwargs.resumable ? "-1" : undefined,
+            lastEventId: "-1",
           },
           c.var.auth
         )) {
