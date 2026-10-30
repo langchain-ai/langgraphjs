@@ -1,7 +1,6 @@
 import { inferChannel, isSupportedChannel } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 
-import type { AuthContext } from "../../auth/index.mjs";
 import type { Run } from "../../storage/types.mjs";
 import { serialiseAsDict, serializeError } from "../../utils/serde.mjs";
 import type {
@@ -103,7 +102,6 @@ export class RunProtocolSession {
   constructor(options: {
     runId: string;
     threadId?: string;
-    auth?: AuthContext;
     initialRun: Run;
     getRun: () => Promise<Run | null>;
     getThreadState?: () => Promise<{
