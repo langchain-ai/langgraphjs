@@ -892,6 +892,11 @@ export class RedisSaver extends BaseCheckpointSaver {
       }
     }
 
+    if (this.ttlConfig?.refreshOnRead && this.ttlConfig?.defaultTTL) {
+      const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+      await this.applyTTL(...writeKeys, zsetKey);
+    }
+
     // Order by `writesSortKey` — `(task_path, task_id, idx)` — the order live
     // execution applies a superstep's writes in (see the `getTuple` contract on
     // `BaseCheckpointSaver`). `global_idx`/`timestamp` remain insertion-time
