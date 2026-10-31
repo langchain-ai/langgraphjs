@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   RunnablePassthrough,
   RunnableSequence,
 } from "@langchain/core/runnables";
 import { PregelNode } from "../pregel/read.js";
 import { ChannelWrite } from "../pregel/write.js";
+import { CONFIG_KEY_SEND } from "../constants.js";
 
 describe("PregelNode", () => {
   describe("getWriters", () => {
@@ -85,27 +86,30 @@ describe("PregelNode", () => {
       ]);
     });
 
-    it("should return a RunnableSequence of writers if there are multiple writers (custom bound)", () => {
+    it("should run the bound and all writers if there are multiple writers", async () => {
       const channelWrite1 = new ChannelWrite([
         { channel: "channel1", value: 1, skipNone: false },
       ]);
       const channelWrite2 = new ChannelWrite([
         { channel: "channel2", value: 2, skipNone: false },
       ]);
-      const pregelNode = new PregelNode({
+      const pregelNode = new PregelNode<string, string>({
         channels: ["foo"],
         triggers: ["bar"],
-        writers: [channelWrite1, channelWrite2, new RunnablePassthrough()],
-        bound: new RunnablePassthrough(),
+        writers: [channelWrite1, channelWrite2, new RunnablePassthrough<string>()],
+        bound: new RunnablePassthrough<string>(),
       });
 
       // call method / assertions
-      const runnableSequence = pregelNode.getNode() as RunnableSequence;
-      expect(runnableSequence.steps).toEqual([
-        new RunnablePassthrough(),
-        channelWrite1,
-        channelWrite2,
-        new RunnablePassthrough(),
+      const send = vi.fn();
+      expect(
+        await pregelNode.getNode()!.invoke("input", {
+          configurable: { [CONFIG_KEY_SEND]: send },
+        })
+      ).toBe("input");
+      expect(send.mock.calls).toEqual([
+        [[["channel1", 1]]],
+        [[["channel2", 2]]],
       ]);
     });
 
