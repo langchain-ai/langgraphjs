@@ -695,6 +695,8 @@ export type PregelScratchpad<Resume = unknown> = {
   interruptCounter: number;
   /** List of resume values */
   resume: Resume[];
+  /** Failed retry attempts persisted before an interrupt. */
+  retryAttempts: number;
   /** Single resume value for null task ID */
   nullResume: Resume;
 

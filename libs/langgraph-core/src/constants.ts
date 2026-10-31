@@ -85,6 +85,8 @@ export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 export const INTERRUPT = "__interrupt__";
 /** Special channel reserved for graph resume */
 export const RESUME = "__resume__";
+/** Internal channel that persists failed retry attempts across interrupts. */
+export const RETRY = "__retry__";
 /** Special channel reserved for cases when a task exits without any writes */
 export const NO_WRITES = "__no_writes__";
 /**
@@ -121,6 +123,7 @@ export const RESERVED = [
   INPUT,
   INTERRUPT,
   RESUME,
+  RETRY,
   ERROR,
   ERROR_SOURCE_NODE,
   NO_WRITES,
