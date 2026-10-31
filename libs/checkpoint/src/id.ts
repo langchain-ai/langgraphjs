@@ -14,7 +14,11 @@ export function uuid6(clockseq: number): string {
   let msecs = Date.now();
   if (msecs <= lastMsecs) {
     // Clock did not advance; bump the 100ns-resolution counter so the
-    // generated time bits remain strictly monotonic.
+    // generated time bits remain strictly monotonic. `msecs` is pinned to the
+    // last value we used because the clock may have stepped backwards (NTP
+    // correction, a VM resuming, a container syncing its clock) — emitting the
+    // smaller reading would move the time bits backwards and break ordering.
+    msecs = lastMsecs;
     lastNsecs += 1;
     if (lastNsecs >= 10000) {
       lastNsecs = 0;
