@@ -2313,6 +2313,7 @@ export class Pregel<
       ...restOptions
     } = options;
 
+    const abortController = new AbortController();
     const streamOptions = {
       recursionLimit: this.config?.recursionLimit,
       ...restOptions,
@@ -2320,6 +2321,8 @@ export class Pregel<
         ...this.config?.configurable,
         ...restOptions?.configurable,
       },
+      signal: combineAbortSignals(restOptions.signal, abortController.signal)
+        .signal,
       version,
       streamMode: STREAM_EVENTS_V3_MODES,
       subgraphs: true as const,
@@ -2348,7 +2351,8 @@ export class Pregel<
 
     const graphRun = createGraphRunStream<OutputType, TMerged>(
       source,
-      mergedTransformers
+      mergedTransformers,
+      { abortController }
     );
 
     if (encoding === "text/event-stream") {
