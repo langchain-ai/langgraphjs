@@ -4,12 +4,14 @@ import {
   CheckpointPendingWrite,
   EXCLUDED_METADATA_KEYS,
   PendingWrite,
+  SCHEDULED,
 } from "@langchain/langgraph-checkpoint";
 import { BaseChannel } from "../channels/base.js";
 import {
   ERROR,
   Interrupt,
   INTERRUPT,
+  RESUME,
   RETURN,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -267,20 +269,50 @@ export function* mapDebugCheckpoint<
   };
 }
 
+/**
+ * IDs of the tasks in `pendingWrites` that have finished: they wrote output.
+ *
+ * Errors, interrupts and scheduling markers say nothing about completion, and
+ * neither does a resume value on its own, because a resumed task may pause
+ * again at its next `interrupt()`.
+ */
+export function finishedTaskIds(
+  pendingWrites: CheckpointPendingWrite[] | undefined
+): Set<string> {
+  const finished = new Set<string>();
+  for (const [taskId, channel] of pendingWrites ?? []) {
+    if (![ERROR, INTERRUPT, RESUME, SCHEDULED].includes(channel)) {
+      finished.add(taskId);
+    }
+  }
+  return finished;
+}
+
+/**
+ * Describe each task of a snapshot with its error, interrupts and result.
+ *
+ * @param finishedTasks - Tasks that already finished in the latest state. Their
+ *   answered interrupts are no longer pending, so they are not reported.
+ *   Leave unset for history and explicit checkpoint reads, which show the
+ *   interrupts as they were recorded.
+ */
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[],
   states: Record<string, RunnableConfig | StateSnapshot> | undefined,
-  outputKeys: ChannelKey[] | ChannelKey
+  outputKeys: ChannelKey[] | ChannelKey,
+  finishedTasks?: ReadonlySet<string>
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {
     const error = pendingWrites.find(
       ([id, n]) => id === task.id && n === ERROR
     )?.[2];
 
-    const interrupts = pendingWrites
-      .filter(([id, n]) => id === task.id && n === INTERRUPT)
-      .map(([, , v]) => v) as Interrupt[];
+    const interrupts = finishedTasks?.has(task.id)
+      ? []
+      : (pendingWrites
+          .filter(([id, n]) => id === task.id && n === INTERRUPT)
+          .map(([, , v]) => v) as Interrupt[]);
 
     const result = (() => {
       if (error || interrupts.length || !pendingWrites.length) return undefined;
