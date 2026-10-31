@@ -706,8 +706,7 @@ export class FileSystemThreads implements ThreadsRepo {
 
           if (
             options.values != null &&
-            typeof thread["values"] !== "undefined" &&
-            !isJsonbContained(thread["values"], options.values)
+            !isJsonbContained(thread["values"] ?? {}, options.values)
           )
             return false;
 
@@ -1006,8 +1005,7 @@ export class FileSystemThreads implements ThreadsRepo {
 
         if (
           options.values != null &&
-          typeof thread["values"] !== "undefined" &&
-          !isJsonbContained(thread["values"], options.values)
+          !isJsonbContained(thread["values"] ?? {}, options.values)
         ) {
           return false;
         }
