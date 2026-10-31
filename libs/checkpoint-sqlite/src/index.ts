@@ -317,6 +317,7 @@ CREATE TABLE IF NOT EXISTS writes (
     this.setup();
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns;
+    const checkpoint_id = config.configurable?.checkpoint_id;
     let sql = `
       SELECT
         thread_id,
@@ -370,6 +371,10 @@ CREATE TABLE IF NOT EXISTS writes (
       whereClause.push("checkpoint_ns = ?");
     }
 
+    if (checkpoint_id) {
+      whereClause.push("checkpoint_id = ?");
+    }
+
     if (before?.configurable?.checkpoint_id !== undefined) {
       whereClause.push("checkpoint_id < ?");
     }
@@ -398,6 +403,7 @@ CREATE TABLE IF NOT EXISTS writes (
     const args = [
       thread_id,
       checkpoint_ns,
+      checkpoint_id || undefined,
       before?.configurable?.checkpoint_id,
       ...Object.entries(sanitizedFilter).flatMap(([key, value]) => [
         `$.${key}`,
