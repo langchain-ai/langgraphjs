@@ -191,4 +191,30 @@ describe("messagesStateReducer", () => {
       )
     ).toEqual([new HumanMessage({ id: "1", content: "Updated hi there" })]);
   });
+
+  it("should merge duplicate IDs after removing all messages", () => {
+    expect(
+      messagesStateReducer(
+        [new HumanMessage({ id: "old", content: "Old" })],
+        [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage({ id: "1", content: "First" }),
+          new HumanMessage({ id: "1", content: "Latest" }),
+        ]
+      )
+    ).toEqual([new HumanMessage({ id: "1", content: "Latest" })]);
+  });
+
+  it("should remove a message added after removing all messages", () => {
+    expect(
+      messagesStateReducer(
+        [new HumanMessage({ id: "old", content: "Old" })],
+        [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage({ id: "1", content: "New" }),
+          new RemoveMessage({ id: "1" }),
+        ]
+      )
+    ).toEqual([]);
+  });
 });
