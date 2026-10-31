@@ -6,7 +6,11 @@ import { UntrackedValueChannel } from "../channels/untracked_value.js";
 import { EmptyChannelError, InvalidUpdateError } from "../errors.js";
 import { Topic } from "../channels/topic.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
-import { Overwrite, OVERWRITE as OVERWRITE_CONSTANT } from "../constants.js";
+import {
+  Overwrite,
+  OVERWRITE as OVERWRITE_CONSTANT,
+  type OverwriteValue,
+} from "../constants.js";
 
 describe("LastValue", () => {
   it("should handle last value correctly", () => {
@@ -408,13 +412,57 @@ describe("BinaryOperatorAggregate", () => {
 
     it("should handle Overwrite as the very first value (no prior state)", () => {
       const channel = new BinaryOperatorAggregate<number>(
-        (a, b) => a + b,
-        () => 0
+        (a, b) => a + b
       );
 
       const fresh = channel.fromCheckpoint(undefined);
+      expect(fresh.isAvailable()).toBe(false);
       fresh.update([new Overwrite(42)]);
       expect(fresh.get()).toBe(42);
+    });
+
+    describe.each([
+      {
+        name: "Overwrite class",
+        overwrite: (value: number) => new Overwrite(value),
+      },
+      {
+        name: "sentinel-keyed wire format",
+        overwrite: (value: number) => ({ [OVERWRITE_CONSTANT]: value }),
+      },
+      {
+        name: "type/value wire format",
+        overwrite: (value: number) =>
+          ({ type: OVERWRITE_CONSTANT, value }) as unknown as OverwriteValue<number>,
+      },
+    ])("without an initial value using $name", ({ overwrite }) => {
+      it.each([0, 42])(
+        "should ignore sibling updates after overwriting with %i",
+        (value) => {
+          const reducer = vi.fn((a: number, b: number) => a + b);
+          const channel = new BinaryOperatorAggregate<number>(reducer);
+
+          channel.update([overwrite(value), 7]);
+
+          expect(channel.get()).toBe(value);
+          expect(reducer).not.toHaveBeenCalled();
+
+          channel.update([2, 3]);
+          expect(channel.get()).toBe(value + 5);
+          expect(reducer).toHaveBeenCalledTimes(2);
+        }
+      );
+
+      it.each([{ between: [] }, { between: [7] }])(
+        "should reject multiple overwrites with sibling updates $between",
+        ({ between }) => {
+          const channel = new BinaryOperatorAggregate<number>((a, b) => a + b);
+
+          expect(() =>
+            channel.update([overwrite(42), ...between, overwrite(100)])
+          ).toThrow(InvalidUpdateError);
+        }
+      );
     });
 
     it("should allow Overwrite with different value and update types", () => {
