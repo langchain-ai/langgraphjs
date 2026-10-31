@@ -2513,6 +2513,16 @@ export class Pregel<
     ) {
       throw new Error(`Passed "recursionLimit" must be at least 1.`);
     }
+    // Only warn on the root graph: subgraphs inherit the same `configurable`.
+    if (
+      inputConfig.configurable?.recursionLimit !== undefined &&
+      inputConfig.configurable?.[CONFIG_KEY_READ] === undefined
+    ) {
+      console.warn(
+        `Ignoring "recursionLimit" in "configurable". Pass it as a top-level ` +
+          `config key instead: { recursionLimit: ${inputConfig.configurable.recursionLimit} }.`
+      );
+    }
     if (
       this.checkpointer !== undefined &&
       this.checkpointer !== false &&
