@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { RunnableConfig } from "@langchain/core/runnables";
-import { CONFIG_KEY_READ } from "../constants.js";
+import { CONFIG_KEY_READ, CONFIG_KEY_SEND } from "../constants.js";
 import { LastValue } from "../channels/last_value.js";
 import { ChannelRead, PregelNode } from "./read.js";
 import { ChannelWrite } from "./write.js";
+import { RunnableCallable } from "../utils.js";
+import { FakeTracer } from "../tests/utils.js";
+import { omitPayload } from "./utils/index.js";
 
 describe("ChannelRead", () => {
   it("should read a single channel value", async () => {
@@ -111,6 +114,69 @@ describe("ChannelRead", () => {
 });
 
 describe("PregelNode", () => {
+  it("preserves trace policies across join and every pipe branch", async () => {
+    const tracePolicy = {
+      processInputs: omitPayload,
+      processOutputs: omitPayload,
+    };
+    const base = new PregelNode({
+      channels: { input: "input" },
+      triggers: ["input"],
+      tracePolicy,
+    });
+    const action = new RunnableCallable({
+      func: (input: number) => input + 1,
+      trace: false,
+    });
+    const bound = base.pipe(action);
+    const twice = bound.pipe(action);
+    const writer = new ChannelWrite([{ channel: "output", value: "written" }]);
+    const withWriter = twice.pipe(writer);
+    const joined = withWriter.join(["extra"]);
+    for (const node of [base, bound, twice, withWriter, joined]) {
+      expect(node.tracePolicy).toBe(tracePolicy);
+    }
+    const tracer = new FakeTracer();
+    const send = vi.fn();
+    expect(
+      await joined
+        .getNode()
+        ?.invoke(1, {
+          callbacks: [tracer],
+          configurable: { [CONFIG_KEY_SEND]: send },
+        })
+    ).toBe(3);
+    expect(send).toHaveBeenCalledWith([["output", "written"]]);
+    expect(tracer.runs[0].inputs).toEqual({});
+    expect(tracer.runs[0].outputs).toEqual({});
+    expect(tracer.runs[0].child_runs[0].inputs).toEqual({ input: 1 });
+  });
+
+  it("applies policies to multiple writers and preserves single-step shortcuts", async () => {
+    const tracePolicy = {
+      processInputs: omitPayload,
+      processOutputs: omitPayload,
+    };
+    const base = { channels: ["input"], triggers: ["input"], tracePolicy };
+    const action = new RunnableCallable({
+      func: (input: number) => input + 1,
+      trace: false,
+    });
+    expect(new PregelNode(base).getNode()).toBeUndefined();
+    expect(new PregelNode({ ...base, writers: [action] }).getNode()).toBe(
+      action
+    );
+    expect(new PregelNode({ ...base, bound: action }).getNode()).toBe(action);
+    const tracer = new FakeTracer();
+    const node = new PregelNode({
+      ...base,
+      writers: [action, action],
+    }).getNode();
+    expect(await node?.invoke(1, { callbacks: [tracer] })).toBe(3);
+    expect(tracer.runs[0].inputs).toEqual({});
+    expect(tracer.runs[0].outputs).toEqual({});
+  });
+
   it("should create a node that subscribes to channels", () => {
     const node = new PregelNode({
       channels: ["input", "context"],
