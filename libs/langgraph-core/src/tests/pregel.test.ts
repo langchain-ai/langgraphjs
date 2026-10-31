@@ -4648,6 +4648,56 @@ graph TD;
       expect(nonRetryableErrorCount).toBe(1);
     });
 
+        it("honors maxAttempts across interrupt resumes", async () => {
+      const checkpointer = await createCheckpointer();
+      const attempts: number[] = [];
+
+      const State = Annotation.Root({
+        amount: Annotation<number>(),
+      });
+
+      const app = new StateGraph(State)
+        .addNode(
+          "work",
+          () => {
+            const amount = interrupt<string, number>("How much?");
+            attempts.push(amount);
+            throw new Error("service unavailable");
+          },
+          {
+            retryPolicy: {
+              maxAttempts: 2,
+              initialInterval: 0,
+              jitter: false,
+              logWarning: false,
+              retryOn: () => true,
+            },
+          }
+        )
+        .addEdge(START, "work")
+        .addEdge("work", END)
+        .compile({ checkpointer });
+
+      const config = {
+        configurable: { thread_id: "retry-interrupt-attempts" },
+      };
+
+      const initialResult = await app.invoke({}, config);
+      expect(isInterrupted(initialResult)).toBe(true);
+
+      const firstResumeResult = await app.invoke(
+        new Command({ resume: 1 }),
+        config
+      );
+      expect(isInterrupted(firstResumeResult)).toBe(true);
+
+      await expect(
+        app.invoke(new Command({ resume: 2 }), config)
+      ).rejects.toThrow("service unavailable");
+
+      expect(attempts).toEqual([1, 2]);
+    });
+
     it("should allow undefined values returned in a node update", async () => {
       interface GraphState {
         test?: string;

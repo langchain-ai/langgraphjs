@@ -67,6 +67,7 @@ import {
   INTERRUPT,
   NULL_TASK_ID,
   RESUME,
+  RETRY,
   TAG_HIDDEN,
   TASKS,
   PUSH,
@@ -2366,7 +2367,8 @@ export class PregelLoop {
         k === ERROR ||
         k === ERROR_SOURCE_NODE ||
         k === INTERRUPT ||
-        k === RESUME
+        k === RESUME ||
+        k === RETRY
       ) {
         continue;
       }

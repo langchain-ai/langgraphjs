@@ -49,6 +49,7 @@ import {
   PUSH,
   PULL,
   RESUME,
+  RETRY,
   NULL_TASK_ID,
   CONFIG_KEY_SCRATCHPAD,
   RETURN,
@@ -512,6 +513,7 @@ export type PendingWritesIndex = {
   nullResume: unknown | undefined;
   resumeByTaskId: Map<string, unknown[]>;
   successfulWriteTaskIds: Set<string>;
+  retryAttemptsByTaskId: Map<string, number>;
 };
 
 /**
@@ -524,9 +526,13 @@ export function _indexPendingWrites(
 ): PendingWritesIndex {
   let nullResume: unknown | undefined;
   const resumeByTaskId = new Map<string, unknown[]>();
+  const retryAttemptsByTaskId = new Map<string, number>();
   const successfulWriteTaskIds = new Set<string>();
   if (pendingWrites) {
     for (const [tid, chan, val] of pendingWrites) {
+      if (chan === RETRY && tid !== NULL_TASK_ID && typeof val === "number") {
+        retryAttemptsByTaskId.set(tid, val);
+      }
       if (tid === NULL_TASK_ID && chan === RESUME && nullResume === undefined) {
         nullResume = val;
       }
@@ -538,12 +544,17 @@ export function _indexPendingWrites(
         }
         arr.push(val);
       }
-      if (chan !== ERROR) {
+      if (chan !== ERROR && chan !== RETRY) {
         successfulWriteTaskIds.add(tid);
       }
     }
   }
-  return { nullResume, resumeByTaskId, successfulWriteTaskIds };
+  return {
+    nullResume,
+    resumeByTaskId,
+    retryAttemptsByTaskId,
+    successfulWriteTaskIds,
+  };
 }
 
 export type NextTaskExtraFields = {
@@ -1058,7 +1069,9 @@ export function _prepareSingleTask<
 
       const hasSuccessfulWrites = extra.pendingWritesIndex
         ? extra.pendingWritesIndex.successfulWriteTaskIds.has(taskId)
-        : pendingWrites.some((w) => w[0] === taskId && w[1] !== ERROR);
+        : pendingWrites.some(
+            (w) => w[0] === taskId && w[1] !== ERROR && w[1] !== RETRY
+          );
 
       if (hasSuccessfulWrites) {
         return undefined;
@@ -1532,6 +1545,12 @@ function _scratchpad({
     return result;
   })();
 
+  const persistedRetryAttempts =
+    pendingWritesIndex?.retryAttemptsByTaskId.get(taskId) ??
+    pendingWrites.find(
+      ([writeTaskId, channel]) => writeTaskId === taskId && channel === RETRY
+    )?.[2];
+
   const scratchpad = {
     callCounter: 0,
     interruptCounter: -1,
@@ -1539,6 +1558,8 @@ function _scratchpad({
     nullResume,
     subgraphCounter: 0,
     currentTaskInput,
+    retryAttempts:
+      typeof persistedRetryAttempts === "number" ? persistedRetryAttempts : 0,
     consumeNullResume: () => {
       if (scratchpad.nullResume) {
         delete scratchpad.nullResume;

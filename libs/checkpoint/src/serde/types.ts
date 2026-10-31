@@ -11,6 +11,7 @@ export const ERROR = "__error__";
 export const SCHEDULED = "__scheduled__";
 export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
+export const RETRY = "__retry__";
 
 /**
  * Snapshot blob for a `DeltaChannel` with finite snapshot frequency.
