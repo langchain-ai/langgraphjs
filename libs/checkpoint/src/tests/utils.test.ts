@@ -2,6 +2,52 @@ import { describe, it, expect } from "vitest";
 import { getTextAtPath } from "../store/utils.js";
 
 describe("Text Path Extraction", () => {
+  it("should resolve array paths inside multi-field selections", () => {
+    const data = {
+      title: "Book",
+      chapters: [{ text: "first" }, { text: "last" }],
+    };
+    expect(getTextAtPath(data, "{title,chapters[0].text}")).toEqual([
+      "Book",
+      "first",
+    ]);
+    expect(getTextAtPath(data, "{chapters[-1].text,title}")).toEqual([
+      "last",
+      "Book",
+    ]);
+    expect(getTextAtPath(data, "{title,chapters[*].text}")).toEqual([
+      "Book",
+      "first",
+      "last",
+    ]);
+  });
+
+  it("should preserve scalar and null multi-field selection output", () => {
+    expect(
+      getTextAtPath({ zero: 0, flag: false, empty: null }, "{zero,flag,empty}")
+    ).toEqual(["0", "false", "null"]);
+    expect(getTextAtPath({ empty: null }, "empty")).toEqual([]);
+  });
+
+  it("should treat dollar fields inside selections as literal keys", () => {
+    expect(getTextAtPath({ title: "Book" }, "{$,title}")).toEqual(["Book"]);
+    expect(getTextAtPath({ $: "literal", title: "Book" }, "{$,title}")).toEqual(
+      ["literal", "Book"]
+    );
+  });
+
+  it("should continue extracting after multi-field selections", () => {
+    const data = {
+      primary: { text: "first", other: "unselected" },
+      secondary: { text: "second", other: "unselected" },
+    };
+    expect(getTextAtPath(data, "{primary,secondary}.text")).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(getTextAtPath(data, "{missing,primary}.text")).toEqual(["first"]);
+  });
+
   it("should extract text from nested data", () => {
     const nestedData = {
       name: "test",
