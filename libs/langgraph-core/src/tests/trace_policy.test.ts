@@ -1,20 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { AIMessage } from "@langchain/core/messages";
 import { RunnableLambda } from "@langchain/core/runnables";
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
+import {
+  LangChainTracer,
+  type TracePolicy,
+} from "@langchain/core/tracers/tracer_langchain";
 import {
   Annotation,
   END,
   MemorySaver,
   MessagesAnnotation,
-  omitPayload,
   START,
   StateGraph,
-  type TracePolicy,
 } from "../web.js";
 import { gatherIterator } from "../utils.js";
 
 const State = Annotation.Root({ value: Annotation<number> });
+const omitPayload = () => ({});
 const increment = (state: typeof State.State) => ({ value: state.value + 1 });
 
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any

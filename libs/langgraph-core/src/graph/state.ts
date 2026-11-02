@@ -77,8 +77,8 @@ import type {
   CachePolicy,
   RetryPolicy,
   TimeoutPolicy,
-  TracePolicy,
 } from "../pregel/utils/index.js";
+import type { TracePolicy } from "@langchain/core/tracers/tracer_langchain";
 import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
@@ -224,7 +224,7 @@ export type StateGraphAddNodeOptions<
   Update = unknown,
 > = {
   input?: InputSchema;
-  /** Shape what LangSmith records for this node's run. See {@link TracePolicy}. */
+  /** Shape what `LangChainTracer` sends to LangSmith for this node's own run (see `@langchain/core`'s `TracePolicy`). */
   tracePolicy?: TracePolicy;
   /**
    * Optional node-level error handler. Runs only after this node's

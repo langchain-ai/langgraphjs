@@ -1,6 +1,5 @@
 import { Callbacks } from "@langchain/core/callbacks/manager";
 import { RunnableConfig } from "@langchain/core/runnables";
-import type { TracePolicy as CoreTracePolicy } from "@langchain/core/tracers/tracer_langchain";
 import type {
   ChannelVersions,
   CheckpointMetadata,
@@ -111,28 +110,6 @@ export type CachePolicy = {
    */
   ttl?: number;
 };
-
-/**
- * Shapes what `LangChainTracer` sends to LangSmith for a node's own run.
- * Execution, checkpoints, child runs, and other callback handlers (including
- * `streamEvents` and message streaming) still see the raw values.
- *
- * @example
- * ```ts
- * graph.addNode("before_model", beforeModel, {
- *   tracePolicy: { processInputs: omitPayload },
- * });
- * ```
- */
-export type TracePolicy = CoreTracePolicy;
-
-/**
- * Record an empty trace payload while retaining the node's span and timing.
- * Use as `processInputs` and/or `processOutputs` in a {@link TracePolicy}.
- */
-export function omitPayload(_value: unknown): Record<string, never> {
-  return {};
-}
 
 export function patchConfigurable(
   config: RunnableConfig | undefined,

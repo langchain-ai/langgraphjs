@@ -11,12 +11,8 @@ import {
 import { CONFIG_KEY_READ } from "../constants.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import type {
-  CachePolicy,
-  RetryPolicy,
-  TimeoutPolicy,
-  TracePolicy,
-} from "./utils/index.js";
+import type { CachePolicy, RetryPolicy, TimeoutPolicy } from "./utils/index.js";
+import type { TracePolicy } from "@langchain/core/tracers/tracer_langchain";
 
 export class ChannelRead<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
