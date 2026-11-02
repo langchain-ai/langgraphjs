@@ -92,6 +92,7 @@ function createMediaProjection<
       const runtime = openProjectionSubscription({
         thread,
         channels: ["messages"],
+        depth: 0,
         namespace: ns,
         onEvent(event: Event) {
           if (event.method !== "messages") return;

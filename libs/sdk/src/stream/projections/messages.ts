@@ -319,6 +319,7 @@ export function messagesProjection(
           // state snapshots). Consuming values lets late-mounted scoped
           // projections backfill history after the run has finished.
           channels: ["messages", "values"],
+          depth: 0,
           namespace: ns,
           onEvent(event) {
             if (event.method === "messages") {
