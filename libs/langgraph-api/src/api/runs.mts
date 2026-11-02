@@ -240,6 +240,7 @@ api.get(
             cancelOnDisconnect: cancelOnDisconnect != null,
             lastEventId,
             ignore404: true,
+            checkRunAccess: true,
           },
           c.var.auth
         )) {

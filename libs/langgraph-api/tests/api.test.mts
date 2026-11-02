@@ -1237,6 +1237,36 @@ describe("runs", () => {
     }
   );
 
+  it.concurrent("join stream does not read a run on another thread", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        streamResumable: true,
+        config: globalConfig,
+      }
+    );
+    const join = (threadId: string) =>
+      gatherIterator(
+        client.runs.joinStream(threadId, run.run_id, { lastEventId: "-1" })
+      );
+
+    const events = await join(thread.thread_id);
+    expect(events.map((i) => i.event)).toContain("values");
+    expect(await join(otherThread.thread_id)).toEqual([
+      { event: "error", data: "Run not found" },
+    ]);
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    expect(await join(thread.thread_id), "after delete").toEqual([
+      { event: "error", data: "Run not found" },
+    ]);
+  });
+
   it.concurrent(
     "stateless join stream keeps subgraph events of the requested stream mode",
     async () => {
@@ -2660,11 +2690,11 @@ describe("multitasking", () => {
         { timeout: 5_000 }
       )
       .toEqual(["foo"]);
-    const run1Events = gatherIterator(
-      client.runs.joinStream(thread.thread_id, run1.run_id, {
-        lastEventId: "-1",
-      })
-    );
+    const run1Stream = client.runs.joinStream(thread.thread_id, run1.run_id, {
+      lastEventId: "-1",
+    });
+    const first = await run1Stream.next();
+    const run1Events = gatherIterator(run1Stream);
 
     const input2 = {
       messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
@@ -2679,10 +2709,8 @@ describe("multitasking", () => {
     await expect(
       client.runs.get(thread.thread_id, run1.run_id)
     ).rejects.toThrow("HTTP 404: Run not found");
-    expect((await run1Events).map((event) => event.event)).toEqual([
-      "metadata",
-      "values",
-    ]);
+    expect(first.value?.event).toBe("metadata");
+    expect((await run1Events).map((event) => event.event)).toEqual(["values"]);
 
     const history = await client.threads.getHistory(thread.thread_id);
     expect(new Set(history.map((state) => state.metadata?.run_id))).toEqual(
