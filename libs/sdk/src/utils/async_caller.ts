@@ -249,4 +249,14 @@ export class AsyncCaller {
       fetchFn(...args).then((res) => (res.ok ? res : Promise.reject(res)))
     );
   }
+
+  /**
+   * Sends one request with no retries and resolves with the response
+   * whatever its status, for callers that run their own retry loop.
+   */
+  fetchOnce(...args: Parameters<typeof fetch>): ReturnType<typeof fetch> {
+    const fetchFn =
+      this.customFetch ?? (_getFetchImplementation() as typeof fetch);
+    return this.queue.add(() => fetchFn(...args), { throwOnTimeout: true });
+  }
 }

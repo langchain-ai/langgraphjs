@@ -15,7 +15,6 @@ import {
 } from "../utils/stream.js";
 import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../utils/reconnect.js";
 import type { StreamProtocol } from "../types.js";
-import type { Run } from "../schema.js";
 
 export type HeaderValue = string | undefined | null;
 
@@ -506,15 +505,25 @@ export class BaseClient {
     const isRunActive = async (reconnectPath: string) => {
       const runPath = RUN_STREAM_PATH.exec(reconnectPath)?.[1];
       if (runEnded || !runPath) return false;
+      const [url, prepared] = this.prepareFetchOptions(runPath, {
+        headers: {
+          ...config.headers,
+          "Last-Event-ID": null,
+          Accept: "application/json",
+        },
+        signal: config.signal,
+      });
+      const init = (await this.onRequest?.(url, prepared)) ?? prepared;
+      const response = await this.asyncCaller.fetchOnce(url.toString(), init);
+      // A 429 or a 5xx usually means the server is restarting or mid-deploy,
+      // so it is handled like a dropped connection instead of ending the stream.
+      if (response.status === 429 || response.status >= 500) {
+        throw new Error(`Run status check failed with HTTP ${response.status}`);
+      }
+      if (!response.ok) return false;
+      const body = await response.text();
       try {
-        const [url, init] = this.prepareFetchOptions(runPath, {
-          headers: { ...config.headers, "Last-Event-ID": null },
-          signal: config.signal,
-        });
-        const [{ status }] = await this.#performFetchWithResponse<Run>(
-          url,
-          init
-        );
+        const { status } = JSON.parse(body);
         return status === "pending" || status === "running";
       } catch {
         return false;
@@ -538,7 +547,8 @@ export class BaseClient {
 export const REGEX_RUN_METADATA =
   /(\/threads\/(?<thread_id>.+))?\/runs\/(?<run_id>.+)/;
 
-const RUN_STREAM_PATH = /^([^?]*\/threads\/[^/?]+\/runs\/[^/?]+)\/stream(\?|$)/;
+const RUN_STREAM_PATH =
+  /^((?:\/[^/?]+)*\/threads\/[^/?]+\/runs\/[^/?]+)\/stream(?:\?|$)/;
 
 export function getRunMetadataFromResponse(
   response: Response

@@ -35,8 +35,8 @@ export interface StreamWithRetryOptions {
   /**
    * Called when the stream ends without an error and a reconnect path is
    * known. A proxy timeout or a server restart can end the response cleanly
-   * while the run goes on, so resolving `true` reconnects as after a dropped
-   * connection.
+   * while the run goes on, so resolving `true` reconnects. A rejection is
+   * handled like a dropped connection.
    */
   isRunActive?: (reconnectPath: string) => Promise<boolean>;
 }
@@ -307,6 +307,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
         shouldRetry = true;
         lastError = new Error("Stream closed before the run finished");
       } catch (error) {
+        lastError = error;
         // Error during streaming - attempt reconnect if we have a location header
         if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;
