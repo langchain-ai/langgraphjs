@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { Activity, StrictMode, act, type ReactElement } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
 import type { Client } from "../client.js";
+import { StreamManager } from "../ui/manager.js";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -787,6 +789,34 @@ describe("useStream (old engine) headless tools", () => {
     await submit(view);
     await settle();
 
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends loading and runs a pending tool after a run when each store update renders synchronously", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const isLoadingReads = vi.spyOn(
+      StreamManager.prototype,
+      "isLoading",
+      "get"
+    );
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      tools: [tool],
+    });
+    const manager = isLoadingReads.mock.contexts[0] as StreamManager<State>;
+    isLoadingReads.mockRestore();
+    manager.subscribe(() => flushSync(() => {}));
+    mockRun(client, []);
+    mockRun(client, []);
+    serve(client, pendingTool());
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
     expect(tool.execute).toHaveBeenCalledTimes(1);
   });
 

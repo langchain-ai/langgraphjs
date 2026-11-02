@@ -295,6 +295,10 @@ export function useStreamLGP<
 
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
+  // State rather than a read of the ref above: a legacy root renders a run's
+  // last store update before its onFinish clears that ref, and a ref change
+  // renders nothing.
+  const [rejoinQueued, setRejoinQueued] = useState(false);
 
   // Cancel the stream if thread ID has changed
   useEffect(() => {
@@ -779,6 +783,7 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
+        setRejoinQueued(false);
         const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
@@ -868,11 +873,14 @@ export function useStreamLGP<
     if (reconnectKey?.loaded && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
       // The stream reports loading only once the queued join starts; until
-      // then this marks the rejoin as pending.
-      threadIdStreamingRef.current = reconnectKey.threadId;
-      void joinStreamRef.current?.(reconnectKey.runId, undefined, {
-        checkpointId: reconnectKey.checkpointId,
-      });
+      // then this marks the rejoin as pending. A join that ends without
+      // starting must not leave it set.
+      setRejoinQueued(true);
+      void joinStreamRef
+        .current?.(reconnectKey.runId, undefined, {
+          checkpointId: reconnectKey.checkpointId,
+        })
+        .finally(() => setRejoinQueued(false));
     }
   }, [reconnectKey]);
 
@@ -885,7 +893,7 @@ export function useStreamLGP<
     (reconnectKey != null &&
       reconnectRef.current.shouldReconnect &&
       (reconnectKey.loaded || history.isLoading)) ||
-    (threadId != null && threadIdStreamingRef.current === threadId);
+    rejoinQueued;
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
