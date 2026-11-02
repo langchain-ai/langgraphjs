@@ -1267,6 +1267,32 @@ describe("runs", () => {
     ]);
   });
 
+  it.concurrent("join of a run on another thread or of a deleted run gets a 404", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      }
+    );
+    await client.runs.join(thread.thread_id, run.run_id);
+
+    await expect(
+      client.runs.join(otherThread.thread_id, run.run_id),
+      "on another thread"
+    ).rejects.toThrow("HTTP 404");
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    await expect(
+      client.runs.join(thread.thread_id, run.run_id),
+      "deleted"
+    ).rejects.toThrow("HTTP 404");
+  });
+
   it.concurrent(
     "stateless join stream keeps subgraph events of the requested stream mode",
     async () => {

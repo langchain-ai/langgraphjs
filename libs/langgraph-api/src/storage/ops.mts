@@ -1644,8 +1644,8 @@ export class FileSystemRuns implements RunsRepo {
   }
 
   async join(runId: string, threadId: string, auth: AuthContext | undefined) {
-    // check if thread exists
-    await this.threads.get(threadId, auth);
+    const run = await this.get(runId, threadId, auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
 
     const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;

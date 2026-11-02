@@ -177,13 +177,9 @@ it.skipIf(process.version.startsWith("v18."))(
       config,
     });
 
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
   }
 );
 
@@ -522,13 +518,9 @@ it.skipIf(process.version.startsWith("v18."))(
     });
 
     // Other user tries to join_stream
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-    expect(chunks).toHaveLength(1);
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
   }
 );
 
