@@ -661,7 +661,8 @@ describe("Client streaming with retry", () => {
           new Response(body, {
             headers: {
               "content-type": "text/event-stream",
-              location: "/threads/thread-1/runs/run-1/stream",
+              location:
+                "/threads/thread-1/runs/run-1/stream?cancel_on_disconnect=0&checkpoint_id=cp-1",
             },
           })
         );

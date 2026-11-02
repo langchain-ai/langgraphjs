@@ -398,37 +398,78 @@ describe("useStream (old engine) rejoin on mount", () => {
     });
   });
 
-  it("rejoins a stored run only once the thread switched to loads", async () => {
+  it("stays loading while a stored run waits for the thread state", async () => {
     const client = createClient();
-    serve(
-      client,
-      threadState(
-        { messages: [message("h0")] },
-        { checkpoint: { ...parent.checkpoint, thread_id: "t0" } }
-      )
-    );
-    const view = await renderStream(client, {
-      threadId: "t0",
-      reconnectOnMount: true,
-    });
     serve(client, head);
     const serveRead = deferRead(client, false);
     mockJoin(client, []);
     window.sessionStorage.setItem("lg:stream:t1", "run-1");
 
-    await view.rerender({ threadId: "t1", reconnectOnMount: true });
-    await settle();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    expect(view.current.isLoading).toBe(true);
     expect(client.runs.joinStream).not.toHaveBeenCalled();
 
     await act(async () => serveRead(head));
     await settle();
 
     expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
-    expect(joinedWith(client)).toMatchObject({
-      threadId: "t1",
-      checkpointId: "cp2",
-    });
+    expect(joinedWith(client).checkpointId).toBe("cp2");
+    expect(view.current.isLoading).toBe(false);
   });
+
+  it("stays idle on a new thread before and after its first run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockRun(client, [{ event: "error", data: { message: "boom" } }]);
+    const view = await renderStream(client, { reconnectOnMount: true });
+    expect(view.current.isLoading).toBe(false);
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
+    expect(view.current.error).toBeDefined();
+  });
+
+  it.each([
+    {
+      from: "a thread with a checkpoint",
+      threadId: "t0",
+      checkpoint: { ...parent.checkpoint, thread_id: "t0" },
+    },
+    { from: "a thread without a checkpoint", threadId: "t0", checkpoint: null },
+    { from: "no thread", threadId: null, checkpoint: null },
+  ])(
+    "waits for the new thread's state before rejoining after a switch from $from",
+    async ({ threadId, checkpoint }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }, { checkpoint }));
+      const view = await renderStream(client, {
+        threadId,
+        reconnectOnMount: true,
+      });
+      serve(client, head);
+      const serveRead = deferRead(client, false);
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await view.rerender({ threadId: "t1", reconnectOnMount: true });
+      await settle();
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(head));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toMatchObject({
+        threadId: "t1",
+        checkpointId: "cp2",
+      });
+    }
+  );
 
   it("does not retry a failed rejoin when the thread state reloads", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});

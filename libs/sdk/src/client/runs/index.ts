@@ -436,9 +436,10 @@ export class RunsClient<
           lastEventId?: string;
           /**
            * The checkpoint whose state the caller already shows, such as the
-           * thread's head. Servers that support resuming from a checkpoint
-           * then send only the run's events after it; other servers ignore
-           * it. A `lastEventId` other than `"-1"` takes precedence.
+           * thread's head. Servers that support it send only the run's events
+           * after this checkpoint, or the whole run when it is not one of the
+           * run's; other servers ignore it. A `lastEventId` other than `"-1"`
+           * takes precedence.
            */
           checkpointId?: string;
           streamMode?: StreamMode | StreamMode[];
