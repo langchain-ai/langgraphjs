@@ -208,6 +208,9 @@ describe("messagesProjection (scoped) namespace isolation", () => {
     );
     await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3", "p4"]));
 
+    push(values(["p1", "p2", "p3", "p4", "p5"], ns));
+    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3", "p4", "p5"]));
+
     await runtime.dispose();
   });
 });

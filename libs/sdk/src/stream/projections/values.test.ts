@@ -16,13 +16,14 @@ function valuesEvent(namespace: string[], step: string): Event {
 
 describe("valuesProjection", () => {
   it.each([
-    ["a first level", ["tools:parent"]],
-    ["a second level", ["tools:parent", "tools:child"]],
-  ])("applies only events from %s namespace", async (_, ns) => {
+    ["a first level", ["tools:parent"], ["tools:parent"]],
+    ["a second level", ["tools:parent", "tools:child"], ["tools:parent", "tools:child"]],
+    ["a name only", ["fetcher"], ["fetcher:abc"]],
+  ])("applies only events from %s namespace", async (_, ns, own) => {
     const events = [
-      valuesEvent(ns, "parent-1"),
-      valuesEvent([...ns, "tools:grandchild"], "child"),
-      valuesEvent(ns, "parent-2"),
+      valuesEvent(own, "parent-1"),
+      valuesEvent([...own, "tools:grandchild"], "child"),
+      valuesEvent(own, "parent-2"),
     ];
     const thread = {
       subscribe: vi.fn(async (params: SubscribeParams) => ({
