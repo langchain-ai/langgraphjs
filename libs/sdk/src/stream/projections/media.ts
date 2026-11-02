@@ -27,11 +27,7 @@ import type {
   VideoMedia,
 } from "../../client/stream/media.js";
 import type { ProjectionRuntime, ProjectionSpec } from "../types.js";
-import {
-  isInternalWorkNamespace,
-  isRootNamespace,
-  namespaceKey,
-} from "../namespace.js";
+import { isRootNamespace, namespaceKey } from "../namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 interface MediaProjectionOptions {
@@ -98,10 +94,7 @@ function createMediaProjection<
         channels: ["messages"],
         namespace: ns,
         onEvent(event: Event) {
-          const below = event.params.namespace.slice(ns.length);
-          if (event.method !== "messages" || isInternalWorkNamespace(below)) {
-            return;
-          }
+          if (event.method !== "messages") return;
           assembler.consume(event as MessagesEvent);
         },
         onFinally() {

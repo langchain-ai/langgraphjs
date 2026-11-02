@@ -25,11 +25,7 @@ import {
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import { ensureMessageInstances } from "../message-coercion.js";
-import {
-  isInternalWorkNamespace,
-  isRootNamespace,
-  namespaceKey,
-} from "../namespace.js";
+import { isRootNamespace, namespaceKey } from "../namespace.js";
 import {
   buildMessageIndex,
   reconcileMessagesFromValues,
@@ -325,12 +321,10 @@ export function messagesProjection(
           channels: ["messages", "values"],
           namespace: ns,
           onEvent(event) {
-            const below = event.params.namespace.slice(ns.length);
             if (event.method === "messages") {
-              if (isInternalWorkNamespace(below)) return;
               applyEvent(event as MessagesEvent);
             } else if (event.method === "values") {
-              if (below.length > 0) return;
+              if (event.params.namespace.length > ns.length) return;
               applyValuesEvent(event as ValuesEvent);
             }
           },

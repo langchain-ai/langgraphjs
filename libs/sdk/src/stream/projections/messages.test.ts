@@ -195,17 +195,18 @@ describe("messagesProjection (scoped) namespace isolation", () => {
     const store = new StreamStore<BaseMessage[]>(projection.initial);
     const runtime = projection.open({ thread, store, rootBus: makeRootBus() });
     const ids = () => store.getSnapshot().map((m) => m.id);
-    const child = [...ns, "tools:grandchild"];
+    const tools = [...ns, "tools:call"];
 
     push(values(["p1", "p2"], ns));
     await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2"]));
 
     push(
-      values(["c1"], child),
-      messages({ event: "message-start", id: "c2" }, child),
-      messages({ event: "message-start", id: "p3" }, [...ns, "model_request:x"])
+      values(["c1"], tools),
+      messages({ event: "message-start", id: "c2" }, [...tools, "model_request:y"]),
+      messages({ event: "message-start", id: "p3" }, [...ns, "model_request:x"]),
+      messages({ event: "message-start", id: "p4", role: "tool" }, tools)
     );
-    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3"]));
+    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3", "p4"]));
 
     await runtime.dispose();
   });

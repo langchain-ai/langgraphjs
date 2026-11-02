@@ -2,4 +2,4 @@
 "@langchain/langgraph-sdk": patch
 ---
 
-Keep nested `messagesProjection`, `valuesProjection`, and media projections from picking up a child subagent's values, messages, or media.
+Keep nested `messagesProjection` and `valuesProjection` from applying a child subagent's `values` snapshots, which replaced the parent's messages and state while the child ran.

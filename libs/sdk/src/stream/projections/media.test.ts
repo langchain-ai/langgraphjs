@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Channel, Event, SubscribeParams } from "@langchain/protocol";
+import type { Channel, Event } from "@langchain/protocol";
 
-import { matchesSubscription } from "../../client/stream/subscription.js";
 import { StreamStore } from "../store.js";
 import type { RootEventBus, ThreadStream } from "../types.js";
 import { imagesProjection } from "./media.js";
@@ -108,49 +107,6 @@ describe("media projections", () => {
       size: "right".length,
       type: "image/png",
     });
-
-    await runtime.dispose();
-  });
-
-  it.each([
-    ["a first level", ["tools:parent"]],
-    ["a second level", ["tools:parent", "tools:child"]],
-  ])("scoped media projections keep only their own events at %s namespace", async (_, ns) => {
-    const { bus } = makeRootBus();
-    const projection = imagesProjection(ns);
-    const store = new StreamStore(projection.initial);
-    const image = (namespace: string[]) => [
-      messagesEvent(namespace, { event: "message-start", id: namespace.join("|") }),
-      messagesEvent(namespace, {
-        event: "content-block-start",
-        index: 0,
-        content: { type: "image", mimeType: "image/png", data: "" },
-      }),
-    ];
-    const events = [
-      ...image([...ns, "tools:grandchild"]),
-      ...image([...ns, "model_request:x"]),
-      ...image(ns),
-    ];
-    const thread = {
-      subscribe: vi.fn(async (params: SubscribeParams) => ({
-        isPaused: false,
-        async unsubscribe() {},
-        async waitForResume() {},
-        async *[Symbol.asyncIterator]() {
-          yield* events.filter((event) => matchesSubscription(event, params));
-        },
-      })),
-    } as unknown as ThreadStream;
-
-    const runtime = projection.open({ thread, store, rootBus: bus });
-
-    await vi.waitFor(() =>
-      expect(store.getSnapshot().map((media) => media.namespace)).toEqual([
-        [...ns, "model_request:x"],
-        ns,
-      ])
-    );
 
     await runtime.dispose();
   });
