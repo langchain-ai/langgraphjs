@@ -4,6 +4,7 @@ import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 import { StreamManager } from "./manager.js";
 import { MessageTupleManager } from "./messages.js";
 import { SubagentManager } from "./subagents.js";
+import type { Message } from "../types.messages.js";
 
 type TestState = {
   messages: Array<{ id: string; content: string; type: string }>;
@@ -1074,6 +1075,353 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("abandoned run after clear()/stop()", () => {
+    type State = { messages: Message[] };
+
+    // The interrupt aborts this run's controller mid-stream; the stream then
+    // returns normally instead of throwing AbortError, like streamWithRetry
+    // does when the abort lands during its reconnect backoff.
+    const runAbandoned = async (
+      interrupt: (manager: StreamManager<State>) => void | Promise<void>
+    ) => {
+      const manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+      const onSuccess = vi.fn();
+      const onFinish = vi.fn();
+
+      await manager.start(
+        async () => {
+          async function* gen() {
+            yield { event: "values" as const, data: { messages: [] } };
+            await interrupt(manager);
+          }
+          return gen();
+        },
+        {
+          getMessages: (values) => values.messages,
+          setMessages: (current, messages) => ({ ...current, messages }),
+          initialValues: { messages: [] },
+          callbacks: {},
+          onSuccess,
+          onError: vi.fn(),
+          onFinish,
+        }
+      );
+
+      return { onSuccess, onFinish };
+    };
+
+    it("should skip onSuccess when the stream ends normally after clear()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) => m.clear());
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("should skip onSuccess when the stream ends normally after stop()", async () => {
+      const { onSuccess, onFinish } = await runAbandoned((m) =>
+        m.stop({ messages: [] }, {})
+      );
+
+      expect(onFinish).toHaveBeenCalledTimes(1);
+      expect(onSuccess).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stop() with a read", () => {
+    type State = { messages: Message[]; count?: number };
+
+    const history: State = { messages: [], count: 0 };
+    const streamed: State = { messages: [], count: 1 };
+    const kept: State = { messages: [], count: 2 };
+    const options = {
+      getMessages: (values: State) => values.messages ?? [],
+      setMessages: (current: State, messages: Message[]) => ({
+        ...current,
+        messages,
+      }),
+      initialValues: { messages: [] } as State,
+      callbacks: {},
+      onSuccess: () => undefined,
+      onError: vi.fn(),
+    };
+    const addTen = ({
+      mutate,
+    }: {
+      mutate: (update: (prev: State) => Partial<State>) => void;
+    }) => mutate((prev) => ({ count: (prev.count ?? 0) + 10 }));
+    let manager: StreamManager<State>;
+
+    const startRunningStream = async () => {
+      let shown!: () => void;
+      const started = new Promise<void>((resolve) => {
+        shown = resolve;
+      });
+      void manager.start(async (signal) => {
+        async function* gen() {
+          yield { event: "values" as const, data: streamed };
+          shown();
+          await new Promise<void>((resolve) => {
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+        }
+        return gen() as never;
+      }, options);
+      await started;
+    };
+    const deferredRead = () => {
+      let resolve!: (values: State) => void;
+      const read = () =>
+        new Promise<State>((r) => {
+          resolve = r;
+        });
+      return { read, resolve: (values: State) => resolve(values) };
+    };
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    it.each([
+      [
+        "shows the read head with the onStop update on top",
+        async () => kept,
+        12,
+      ],
+      [
+        "shows the history values with the onStop update on top",
+        async () => null,
+        10,
+      ],
+      [
+        "keeps the stopped stream's values when the read returns undefined",
+        async () => undefined,
+        11,
+      ],
+      [
+        "keeps the stopped stream's values when the read fails",
+        async () => {
+          throw new Error("offline");
+        },
+        11,
+      ],
+    ])("%s", async (_, read, count) => {
+      await startRunningStream();
+
+      await manager.stop(history, { onStop: addTen, read });
+
+      expect(manager.values).toEqual({ messages: [], count });
+    });
+
+    it("clears the stream values when the read finds no head and onStop changed nothing", async () => {
+      await startRunningStream();
+
+      await manager.stop(history, { read: async () => null });
+
+      expect(manager.values).toBeNull();
+    });
+
+    it("drops a read that resolves after a run queued before the stop begins", async () => {
+      await startRunningStream();
+      const queued = manager.start(
+        async () =>
+          createMockStream([
+            { event: "values" as const, data: { messages: [], count: 3 } },
+          ]) as never,
+        options
+      );
+      const { read, resolve } = deferredRead();
+
+      const stopping = manager.stop(history, { read });
+      await queued;
+      resolve(kept);
+      await stopping;
+
+      expect(manager.values).toEqual({ messages: [], count: 3 });
+    });
+
+    it("drops a read that resolves after clear()", async () => {
+      await startRunningStream();
+      const { read, resolve } = deferredRead();
+
+      const stopping = manager.stop(history, { read });
+      manager.clear();
+      resolve(kept);
+      await stopping;
+
+      expect(manager.values).toBeNull();
+    });
+
+    it("does not read when no stream is running", async () => {
+      const read = vi.fn(async () => kept);
+
+      await manager.stop(history, { read });
+
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stream values", () => {
+    type State = { messages: Message[]; count?: number };
+
+    const startStream = (
+      manager: StreamManager<State>,
+      events: Array<{ event: string; data: unknown }>
+    ) =>
+      manager.start(async () => createMockStream(events) as never, {
+        getMessages: (values) => values.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+      });
+    let manager: StreamManager<State>;
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    it("ignores values from a non-subagent subgraph namespace", async () => {
+      await startStream(manager, [
+        {
+          event: "values",
+          data: {
+            messages: [{ id: "h1", type: "human", content: "hi" }],
+            count: 1,
+          },
+        },
+        {
+          event: "values|research:1",
+          data: { messages: [{ id: "s1", type: "ai", content: "notes" }] },
+        },
+      ]);
+
+      expect(manager.values).toEqual({
+        messages: [{ id: "h1", type: "human", content: "hi" }],
+        count: 1,
+      });
+    });
+  });
+
+  describe("a message streamed again", () => {
+    type State = { messages: Message[] };
+    const human = { type: "human", id: "h1", content: "hi" } as Message;
+    const values = { event: "values", data: { messages: [human] } };
+    const chunk = (content: string) => ({
+      event: "messages",
+      data: [{ type: "ai", id: "a1", content }, {}],
+    });
+    const stream = (
+      events: Array<{ event: string; data: unknown }>,
+      options?: { isReplaying?: boolean }
+    ) =>
+      manager.start(async () => createMockStream(events) as never, {
+        getMessages: (state) => state.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+        ...options,
+      });
+    const contents = (messages: Message[] | undefined) =>
+      messages?.map((message) => message.content);
+    let manager: StreamManager<State>;
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      });
+    });
+
+    it("starts over in a replay instead of extending the earlier copy", async () => {
+      const run = [values, chunk("Hel"), chunk("lo")];
+
+      await stream(run);
+      await stream(run, { isReplaying: true });
+
+      expect(contents(manager.values?.messages)).toEqual(["hi", "Hello"]);
+    });
+
+    it("extends the earlier copy when a stream resumes mid-message", async () => {
+      await stream([values, chunk("Hel")]);
+      await stream([chunk("lo")]);
+
+      expect(contents(manager.values?.messages)).toEqual(["hi", "Hello"]);
+    });
+
+    it("starts a subagent's message over in a replay too", async () => {
+      const subagentChunk = (content: string) => ({
+        event: "messages|tools:task-ns",
+        data: [{ type: "ai", id: "sub-ai-1", content }, {}],
+      });
+      const run = [
+        {
+          event: "messages",
+          data: [
+            {
+              type: "ai",
+              id: "ai-1",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call_1",
+                  name: "task",
+                  args: { subagent_type: "researcher", description: "Research" },
+                },
+              ],
+            },
+            {},
+          ],
+        },
+        {
+          event: "values|tools:task-ns",
+          data: {
+            messages: [{ type: "human", id: "sub-h1", content: "Research" }],
+          },
+        },
+        subagentChunk("Hel"),
+        subagentChunk("lo"),
+      ];
+
+      await stream(run);
+      await stream(run, { isReplaying: true });
+
+      const [subagent] = manager.getSubagentsByMessage("ai-1");
+      expect(contents(subagent?.messages)).toEqual(["Hello"]);
+    });
+  });
+
+  describe("throttle", () => {
+    it("notifies at most once per interval while values keep changing", () => {
+      vi.useFakeTimers();
+      try {
+        const manager = new StreamManager<TestState>(messageManager, {
+          throttle: 100,
+        });
+        const listener = vi.fn();
+        manager.subscribe(listener);
+
+        for (let i = 0; i < 10; i += 1) {
+          manager.setStreamValues({ messages: [], count: i });
+          vi.advanceTimersByTime(20);
+        }
+
+        expect(listener).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe("onError callback", () => {
     it("should keep prior interrupts visible when the next stream fails before values", async () => {
       const onError = vi.fn();
@@ -1497,6 +1845,75 @@ describe("StreamManager", () => {
   });
 
   describe("fetchSubagentHistory namespace resolution", () => {
+    it("does not bind a delegation to a newer turn's push tasks", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      // An older turn delegated "call-old", whose task result is outside the
+      // fetched history; the newest turn only calls a regular tool.
+      const delegation = {
+        type: "ai",
+        id: "ai-old",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-old",
+            name: "task",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      const regularToolCall = {
+        type: "ai",
+        id: "ai-new",
+        content: "",
+        tool_calls: [{ id: "call-ls", name: "ls", args: {} }],
+      };
+      sm.reconstructSubagents(
+        [delegation] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+
+      const getHistory = vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          if (opts?.checkpoint?.checkpoint_ns) {
+            return [
+              {
+                values: {
+                  messages: [{ type: "ai", id: "ai-ls", content: "ls output" }],
+                },
+              },
+            ];
+          }
+          return [
+            {
+              values: { messages: [delegation, regularToolCall] },
+              tasks: [
+                {
+                  id: "uuid-ls",
+                  name: "tools",
+                  path: ["__pregel_push", 0],
+                  checkpoint: null,
+                },
+              ],
+            },
+          ];
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as Parameters<
+          typeof sm.fetchSubagentHistory
+        >[0],
+        "thread-1"
+      );
+
+      expect(sm.getSubagent("call-old")?.messages).toEqual([]);
+    });
+
     it("prefers a completed task's direct mapping over a newer pending checkpoint's positional guess", async () => {
       /**
        * Regression test: the most recent checkpoint is a still-pending (e.g.
@@ -1622,6 +2039,107 @@ describe("StreamManager", () => {
       expect(contents).toContain("Correct research result");
       expect(contents).not.toContain("Stale pending result");
     });
+
+    it.each([
+      {
+        label: "a regular tool call comes first",
+        rejected: [] as string[],
+        sends: ["uuid-search", "uuid-task"],
+      },
+      {
+        label: "a human rejected the call before it",
+        rejected: ["call-search"],
+        sends: ["uuid-task"],
+      },
+    ])(
+      "matches a subagent call to its own Send when $label",
+      async ({ rejected, sends }) => {
+        const sm = new StreamManager<TestState>(messageManager, {
+          throttle: false,
+          subagentToolNames: ["task"],
+        });
+        const aiMessage = {
+          type: "ai",
+          id: "ai-mixed",
+          content: "",
+          tool_calls: [
+            { id: "call-search", name: "web_search", args: {} },
+            {
+              id: "call-task",
+              name: "task",
+              args: { subagent_type: "researcher", description: "Research" },
+            },
+          ],
+        };
+        const messages = [
+          aiMessage,
+          ...rejected.map((id) => ({
+            type: "tool",
+            id: `tool-${id}`,
+            tool_call_id: id,
+            status: "error",
+            content: "User rejected the tool call.",
+          })),
+        ];
+        sm.reconstructSubagents(
+          messages as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+        );
+
+        const byNamespace: Record<string, Array<{ values: unknown }>> = {
+          "tools:uuid-task": [
+            {
+              values: {
+                messages: [
+                  { type: "ai", id: "ai-sub", content: "Subagent progress" },
+                ],
+              },
+            },
+          ],
+          "tools:uuid-search": [
+            {
+              values: {
+                messages: [
+                  { type: "ai", id: "ai-search", content: "Search state" },
+                ],
+              },
+            },
+          ],
+        };
+        const getHistory = vi.fn(
+          async (
+            _threadId: string,
+            opts?: { checkpoint?: { checkpoint_ns?: string } }
+          ) => {
+            const ns = opts?.checkpoint?.checkpoint_ns;
+            if (ns) return byNamespace[ns] ?? [];
+            return [
+              {
+                values: { messages },
+                tasks: sends.map((id, index) => ({
+                  id,
+                  name: "tools",
+                  path: ["__pregel_push", index, false],
+                  checkpoint: null,
+                })),
+              },
+            ];
+          }
+        );
+
+        await sm.fetchSubagentHistory(
+          { getHistory } as unknown as Parameters<
+            typeof sm.fetchSubagentHistory
+          >[0],
+          "thread-1"
+        );
+
+        const contents = (sm.getSubagent("call-task")?.messages ?? []).map(
+          (m) => (m as { content?: unknown }).content
+        );
+        expect(contents).toContain("Subagent progress");
+        expect(contents).not.toContain("Search state");
+      }
+    );
 
     it.each([
       {

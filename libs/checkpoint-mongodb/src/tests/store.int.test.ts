@@ -8,7 +8,7 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { getEnvironmentVariable } from "@langchain/core/utils/env";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 
 describe("MongoDBStore Integration Tests", () => {
   let client: MongoClient;
@@ -278,6 +278,18 @@ describe("MongoDBStore Integration Tests", () => {
       expect(namespaces).not.toContainEqual(["ns_users", "profiles"]);
     });
 
+    it("should match labels that start with '$'", async () => {
+      await store.batch([
+        { namespace: ["$team", "members"], key: "k1", value: { v: 1 } },
+        { namespace: ["$"], key: "k2", value: { v: 2 } },
+      ] as PutOperation[]);
+
+      expect(await store.listNamespaces({ prefix: ["$team"] })).toEqual([
+        ["$team", "members"],
+      ]);
+      expect(await store.listNamespaces({ suffix: ["$"] })).toEqual([["$"]]);
+    });
+
     it("should filter by suffix matchCondition", async () => {
       const results = await store.batch([{
         matchConditions: [{ matchType: "suffix" as const, path: ["profiles"] }],
@@ -316,6 +328,120 @@ describe("MongoDBStore Integration Tests", () => {
       expect(results[0]).toBeUndefined();
       expect(results[1]).toBeUndefined();
       expect(results[2]?.value).toEqual({ num: 1 });
+    });
+  });
+
+  describe("literal matching", () => {
+    const namespace = ["literal_test", "profiles"];
+    const objectKey = { $ne: "alice" } as any;
+    let ttlStore: MongoDBStore;
+
+    const valueOf = async (key: string) =>
+      (await store.get(namespace, key))?.value;
+
+    beforeAll(() => {
+      ttlStore = new MongoDBStore({
+        client,
+        dbName,
+        collectionName: "test_store",
+        ttl: { defaultTtl: 60, refreshOnRead: true },
+      });
+    });
+
+    beforeEach(async () => {
+      await client.db(dbName).collection("test_store").deleteMany({ "namespace.0": "literal_test" });
+      await store.batch([
+        { namespace, key: "alice", value: { name: "Alice" } },
+        { namespace, key: "bob", value: { name: "Bob" } },
+      ] as PutOperation[]);
+    });
+
+    it("should compare an object key as a value on get", async () => {
+      expect(await store.get(namespace, objectKey)).toBeNull();
+    });
+
+    it("should compare an object key as a value on put", async () => {
+      await store.put(namespace, objectKey, { name: "Carol" });
+
+      expect(await valueOf("alice")).toEqual({ name: "Alice" });
+      expect(await valueOf("bob")).toEqual({ name: "Bob" });
+    });
+
+    it("should compare an object key as a value on delete", async () => {
+      await store.delete(namespace, objectKey);
+
+      expect(await valueOf("alice")).toEqual({ name: "Alice" });
+      expect(await valueOf("bob")).toEqual({ name: "Bob" });
+    });
+
+    it("should compare an object key as a value when refreshing the TTL on read", async () => {
+      expect(await ttlStore.get(namespace, objectKey)).toBeNull();
+    });
+
+    it("should reject a string namespace on get and delete", async () => {
+      await expect(store.get("profiles" as any, "alice")).rejects.toThrow("Namespace must be an array");
+      await expect(store.delete("profiles" as any, "bob")).rejects.toThrow("Namespace must be an array");
+
+      expect(await valueOf("bob")).toEqual({ name: "Bob" });
+    });
+
+    it("should reject an object namespace passed to batch()", async () => {
+      await expect(
+        store.batch([{ namespace: { $exists: true }, key: "alice" } as any])
+      ).rejects.toThrow("Namespace must be an array");
+    });
+
+    it("should compare an object prefix label passed to batch() as a value", async () => {
+      const [items] = await store.batch([
+        { namespacePrefix: ["literal_test", { $gt: "" }], filter: {}, limit: 100, offset: 0 } as any,
+      ]);
+
+      expect(items).toEqual([]);
+    });
+
+    it("should compare an object filter $eq operand as a value", async () => {
+      const items = await store.search(["literal_test"], {
+        filter: { name: { $eq: { $regex: "" } } },
+      });
+
+      expect(items).toEqual([]);
+    });
+
+    it("should still match number keys", async () => {
+      await store.put(namespace, 7 as any, { name: "Seven" });
+      expect((await store.get(namespace, 7 as any))?.value).toEqual({ name: "Seven" });
+
+      await store.delete(namespace, 7 as any);
+      expect(await store.get(namespace, 7 as any)).toBeNull();
+    });
+
+    it("should still match $-prefixed labels and keys", async () => {
+      await store.put(["literal_test", "$team"], "$id", { name: "Team" });
+
+      expect((await store.get(["literal_test", "$team"], "$id"))?.value).toEqual({ name: "Team" });
+      const items = await store.search(["literal_test", "$team"]);
+      expect(items.map((item) => item.key)).toEqual(["$id"]);
+    });
+
+    it("should still match filter $eq values, including objects", async () => {
+      await store.put(namespace, "carol", { name: "Carol", tier: { level: 2 } });
+
+      const byName = await store.search(["literal_test"], { filter: { name: { $eq: "Bob" } } });
+      expect(byName.map((item) => item.key)).toEqual(["bob"]);
+      const byObject = await store.search(["literal_test"], {
+        filter: { tier: { $eq: { level: 2 } } },
+      });
+      expect(byObject.map((item) => item.key)).toEqual(["carol"]);
+    });
+
+    it("should still refresh the TTL when reading a string key", async () => {
+      const collection = client.db(dbName).collection("test_store");
+      const soon = new Date(Date.now() + 1_000);
+      await collection.updateOne({ namespace, key: "bob" }, { $set: { expiresAt: soon } });
+
+      expect((await ttlStore.get(namespace, "bob"))?.value).toEqual({ name: "Bob" });
+      const doc = await collection.findOne({ namespace, key: "bob" });
+      expect(doc?.expiresAt.getTime()).toBeGreaterThan(soon.getTime());
     });
   });
 

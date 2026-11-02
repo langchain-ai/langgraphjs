@@ -10,6 +10,10 @@ import { MemorySaverAssertImmutable, SlowInMemoryCache } from "./utils.js";
 import { Annotation, StateGraph } from "../graph/index.js";
 import { gatherIterator } from "../utils.js";
 import { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
+import { AIMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
+import { z as z3 } from "zod/v3";
+import { FakeChatModel } from "./utils.models.js";
 
 /*
   Note: the following python tests weren't ported over, for the reasons listed:
@@ -1082,6 +1086,81 @@ export function runFuncTests(
           expect(counter).toBe(6);
         }
       );
+    });
+  });
+
+  describe.each([
+    { label: "called from the entrypoint", nested: false },
+    { label: "called from a task inside a task", nested: true },
+  ])("messages and tools events from tasks $label", ({ nested }) => {
+    const buildWorkflow = async () => {
+      const callModel = task("callModel", async () =>
+        new FakeChatModel({
+          responses: [new AIMessage({ id: "ai1", content: "hi" })],
+        }).invoke("q")
+      );
+      const echo = tool(async () => "done", {
+        name: "echo",
+        schema: z3.object({}),
+      });
+      const callTool = task("callTool", async () =>
+        echo.invoke({ id: "call_1", name: "echo", args: {}, type: "tool_call" })
+      );
+      const callBoth = async () => {
+        await callModel();
+        await callTool();
+      };
+      const outer = task("outer", callBoth);
+      return entrypoint(
+        { name: "workflow", checkpointer: await createCheckpointer() },
+        async () => {
+          await (nested ? outer() : callBoth());
+          return "ok";
+        }
+      );
+    };
+    const config = { configurable: { thread_id: "1" } };
+    const eventOf = (mode: unknown, payload: unknown) =>
+      mode === "messages"
+        ? (payload as [{ content: unknown }])[0].content
+        : (payload as { event: string }).event;
+    const events = [
+      ["messages", "h"],
+      ["messages", "i"],
+      ["tools", "on_tool_start"],
+      ["tools", "on_tool_end"],
+      ["messages", "done"],
+    ];
+
+    it("stream without subgraphs, as the graph's own", async () => {
+      const workflow = await buildWorkflow();
+
+      const chunks = await gatherIterator(
+        workflow.stream({}, { ...config, streamMode: ["messages", "tools"] })
+      );
+
+      expect(
+        chunks.map(([mode, payload]) => [mode, eventOf(mode, payload)])
+      ).toEqual(events);
+    });
+
+    it("carry the graph's own namespace with subgraphs", async () => {
+      const workflow = await buildWorkflow();
+
+      const chunks = await gatherIterator(
+        workflow.stream(
+          {},
+          { ...config, streamMode: ["messages", "tools"], subgraphs: true }
+        )
+      );
+
+      expect(
+        chunks.map(([namespace, mode, payload]) => [
+          namespace,
+          mode,
+          eventOf(mode, payload),
+        ])
+      ).toEqual(events.map((event) => [[], ...event]));
     });
   });
 }

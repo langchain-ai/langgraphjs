@@ -173,6 +173,8 @@ export class AsyncCaller {
             async onFailedAttempt({ error, retriesLeft }) {
               const errorMessage = error.message ?? "";
               if (
+                error.name === "AbortError" ||
+                error.name === "TimeoutError" ||
                 errorMessage.startsWith("Cancel") ||
                 errorMessage.startsWith("TimeoutError") ||
                 errorMessage.startsWith("AbortError")

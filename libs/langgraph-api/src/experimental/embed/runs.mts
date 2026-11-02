@@ -6,7 +6,7 @@ import { z } from "zod/v3";
 
 import type { Run } from "../../storage/types.mjs";
 import * as schemas from "../../schemas.mjs";
-import { streamState } from "../../stream.mjs";
+import { matchesStreamMode, streamState } from "../../stream.mjs";
 import { serialiseAsDict, serializeError } from "../../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../../utils/hono.mjs";
 
@@ -88,8 +88,10 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
         run_id: z.string().uuid(),
       })
     ),
+    zValidator("query", schemas.JoinStreamQuery),
     async (c) => {
       const { thread_id, run_id } = c.req.valid("param");
+      const { stream_mode } = c.req.valid("query");
 
       const thread = await context.threads.get(thread_id);
       if (thread == null) return c.json({ error: "Thread not found" }, 404);
@@ -120,6 +122,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
               getGraph: context.getGraph,
               signal,
             })) {
+              if (!matchesStreamMode(event, stream_mode)) continue;
               await stream.writeSSE({ data: serialiseAsDict(data), event });
             }
           } catch (error) {

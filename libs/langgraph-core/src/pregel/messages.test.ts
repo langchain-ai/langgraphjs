@@ -10,7 +10,7 @@ import { Serialized } from "@langchain/core/load/serializable";
 import { ChainValues } from "@langchain/core/utils/types";
 import { NewTokenIndices } from "@langchain/core/callbacks/base";
 import { StreamMessagesHandler } from "./messages.js";
-import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import { Command, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
 
 describe("StreamMessagesHandler", () => {
   describe("constructor", () => {
@@ -456,6 +456,7 @@ describe("StreamMessagesHandler", () => {
         expect.objectContaining({ content: "chain result" }),
         runId,
         true,
+        0,
       );
 
       // Should clean up
@@ -528,6 +529,71 @@ describe("StreamMessagesHandler", () => {
 
       // Should clean up
       expect(handler.metadatas[runId]).toBeUndefined();
+    });
+
+    it("should give each id-less message of one output its own id", () => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+
+      const first = new AIMessage({ content: "first" });
+      const second = new AIMessage({ content: "second" });
+      handler.handleChainEnd({ messages: [first, second] }, runId);
+
+      expect(first.id).toBeDefined();
+      expect(second.id).toBeDefined();
+      expect(first.id).not.toBe(second.id);
+      expect(
+        streamFn.mock.calls.map(([[, , [message]]]) => message.id),
+      ).toEqual([first.id, second.id]);
+    });
+
+    it("should keep the ids messages already have", () => {
+      const handler = new StreamMessagesHandler(vi.fn());
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+
+      const withId = new AIMessage({ id: "caller-chosen", content: "kept" });
+      const withoutId = new AIMessage({ content: "assigned" });
+      handler.handleChainEnd({ output: [withId, withoutId] }, runId);
+
+      expect(withId.id).toBe("caller-chosen");
+      expect(withoutId.id).toBeDefined();
+      expect(withoutId.id).not.toBe("caller-chosen");
+    });
+
+    it.each([
+      [
+        "a Command",
+        new Command({
+          update: { messages: [new AIMessage({ id: "m1", content: "a" })] },
+        }),
+      ],
+      [
+        "an array of Commands, as core wraps it",
+        {
+          output: [
+            new Command({
+              update: { messages: [new AIMessage({ id: "m1", content: "a" })] },
+            }),
+            new Command({ goto: "next" }),
+          ],
+        },
+      ],
+    ])("should emit the messages in the update of %s", (_, outputs) => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+      handler.handleChainEnd(outputs, runId);
+
+      expect(
+        streamFn.mock.calls.map(([[, , [message]]]) => message.id),
+      ).toEqual(["m1"]);
     });
 
     it("should do nothing when metadata is missing", () => {

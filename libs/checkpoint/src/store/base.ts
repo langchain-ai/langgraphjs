@@ -43,6 +43,16 @@ export function validateNamespace(
         `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
       );
     }
+    if (label.includes(":")) {
+      throw new InvalidNamespaceError(
+        `Invalid namespace label '${label}'. Namespace labels cannot contain colons (':').`
+      );
+    }
+    if (label.includes("\x00")) {
+      throw new InvalidNamespaceError(
+        "Namespace labels cannot contain NUL bytes."
+      );
+    }
     if (label === "") {
       throw new InvalidNamespaceError(
         `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`

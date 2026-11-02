@@ -122,6 +122,74 @@ describe.each([
     }
   });
 
+  it("loads large blobs in checkpoints, writes, and legacy sends", async () => {
+    const value = "\u0000" + "a".repeat(64_000_000) + "é";
+    const checkpoint = emptyCheckpoint();
+    checkpoint.v = 3;
+    checkpoint.channel_values = {
+      large: value,
+      bytes: new Uint8Array([0, 92, 255]),
+      nil: null,
+    };
+    checkpoint.channel_versions = { large: 1, bytes: 1, nil: 1, empty: 1 };
+    const config = { configurable: { thread_id: uuid6(0), checkpoint_ns: "" } };
+    const parent = await postgresSaver.put(
+      config,
+      checkpoint,
+      { source: "input", step: 0, parents: {} },
+      { large: 1, bytes: 1, nil: 1, empty: 1 }
+    );
+    await postgresSaver.putWrites(
+      parent,
+      [
+        ["large", value],
+        [TASKS, value],
+      ],
+      "task"
+    );
+    const child = emptyCheckpoint();
+    child.v = 3;
+    child.channel_versions = { large: 1 };
+    const childConfig = await postgresSaver.put(
+      parent,
+      child,
+      { source: "loop", step: 1, parents: {} },
+      {}
+    );
+    const assertValue = (actual: unknown) => {
+      expect(actual).toBe(value);
+    };
+    const loadedParent = await postgresSaver.getTuple(parent);
+    assertValue(loadedParent?.checkpoint.channel_values.large);
+    expect(
+      Array.from(loadedParent?.checkpoint.channel_values.bytes as Uint8Array)
+    ).toEqual([0, 92, 255]);
+    expect(loadedParent?.checkpoint.channel_values.nil).toBeNull();
+    expect(loadedParent?.checkpoint.channel_values).not.toHaveProperty("empty");
+    assertValue(
+      loadedParent?.pendingWrites?.find(
+        ([, channel]) => channel === "large"
+      )?.[2]
+    );
+    const loadedChild = await postgresSaver.getTuple(childConfig);
+    assertValue(loadedChild?.checkpoint.channel_values.large);
+    assertValue(
+      (
+        loadedChild?.checkpoint.channel_values[TASKS] as unknown[] | undefined
+      )?.[0]
+    );
+    for await (const tuple of postgresSaver.list(config)) {
+      assertValue(tuple.checkpoint.channel_values.large);
+      if (tuple.checkpoint.id === child.id) {
+        assertValue((tuple.checkpoint.channel_values[TASKS] as unknown[])[0]);
+      } else {
+        assertValue(
+          tuple.pendingWrites?.find(([, channel]) => channel === "large")?.[2]
+        );
+      }
+    }
+  }, 120_000);
+
   it("should properly initialize and setup the database", async () => {
     // Verify that the database is properly initialized
     const pool = new Pool({

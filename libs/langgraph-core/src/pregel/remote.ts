@@ -683,7 +683,7 @@ export class RemoteGraph<
     const streamProtocolInstance = options?.configurable?.[CONFIG_KEY_STREAM];
 
     const streamSubgraphs =
-      options?.subgraphs ?? streamProtocolInstance !== undefined;
+      options?.subgraphs || streamProtocolInstance !== undefined;
 
     const interruptBefore = options?.interruptBefore ?? this.interruptBefore;
     const interruptAfter = options?.interruptAfter ?? this.interruptAfter;
@@ -753,7 +753,7 @@ export class RemoteGraph<
       }
       if (
         streamProtocolInstance !== undefined &&
-        streamProtocolInstance.modes?.has(chunk.event)
+        streamProtocolInstance.modes?.has(mode)
       ) {
         streamProtocolInstance.push([namespace, mode, chunk.data]);
       }
@@ -778,6 +778,16 @@ export class RemoteGraph<
         !updatedStreamModes.includes(
           chunk.event.split(CHECKPOINT_NAMESPACE_SEPARATOR)[0] as StreamMode
         )
+      ) {
+        continue;
+      }
+      // subgraph events may have been requested only for the parent stream.
+      // messages are exempt: the server dedupes them across namespaces, so
+      // dropping them here would also drop the root-level message
+      if (
+        !options?.subgraphs &&
+        chunk.event.includes(CHECKPOINT_NAMESPACE_SEPARATOR) &&
+        mode !== "messages"
       ) {
         continue;
       }

@@ -64,6 +64,25 @@ const createErroringStream = (
 /**
  * Helper to gather all chunks from an async generator
  */
+/**
+ * Helper to create a stream that decodes one raw SSE frame, then errors
+ */
+const createFrameThenError = (frame: string, error: Error) => {
+  let sent = false;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) {
+        controller.error(error);
+      } else {
+        controller.enqueue(textEncoder.encode(frame));
+        sent = true;
+      }
+    },
+  })
+    .pipeThrough(BytesLineDecoder())
+    .pipeThrough(SSEDecoder());
+};
+
 const gatherGenerator = async <T>(
   generator: AsyncGenerator<T>
 ): Promise<T[]> => {
@@ -231,6 +250,53 @@ describe("streamWithRetry", () => {
         "Exceeded maximum SSE reconnection attempts (2)"
       );
     });
+
+    test("an event resets the reconnect attempts", async () => {
+      let calls = 0;
+      const makeRequest = vi.fn(async () => {
+        calls += 1;
+        const event = { id: String(calls), event: "msg", data: {} };
+        const stream =
+          calls <= 4
+            ? createErroringStream([event], new TypeError("network error"))
+            : createSSEStream([event]);
+        return { response: mockResponse, stream };
+      });
+
+      const resultPromise = gatherGenerator(
+        streamWithRetry(makeRequest, { maxRetries: 2 })
+      );
+      await vi.runAllTimersAsync();
+
+      expect((await resultPromise).map((part) => part.id)).toEqual([
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+      ]);
+    });
+
+    test.each(["retry: 10\n\n", "id: 7\n\n"])(
+      "a frame without an event (%j) does not reset the reconnect attempts",
+      async (frame) => {
+        const makeRequest = vi.fn(async () => {
+          const stream =
+            makeRequest.mock.calls.length <= 5
+              ? createFrameThenError(frame, new TypeError("network error"))
+              : createSSEStream([]);
+          return { response: mockResponse, stream };
+        });
+
+        const errorPromise = gatherGenerator(
+          streamWithRetry(makeRequest, { maxRetries: 2 })
+        ).catch((err) => err);
+        await vi.runAllTimersAsync();
+
+        expect(await errorPromise).toBeInstanceOf(MaxReconnectAttemptsError);
+        expect(makeRequest).toHaveBeenCalledTimes(3);
+      }
+    );
 
     test("passes lastEventId to reconnect request", async () => {
       const chunks1 = [

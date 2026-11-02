@@ -1,5 +1,8 @@
 import { MongoDBStore } from "../store";
-import type { PutOperation } from "@langchain/langgraph-checkpoint";
+import {
+  InvalidNamespaceError,
+  type PutOperation,
+} from "@langchain/langgraph-checkpoint";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 describe("MongoDBStore", () => {
@@ -21,6 +24,7 @@ describe("MongoDBStore", () => {
     const collectionMock = {
       updateOne: vi.fn().mockResolvedValue({ ok: 1 }),
       findOne: vi.fn().mockResolvedValue(null),
+      findOneAndUpdate: vi.fn().mockResolvedValue(null),
       find: vi.fn(() => createFindCursor()),
       deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
       createIndex: vi.fn().mockResolvedValue("namespace_1_key_1"),
@@ -62,7 +66,7 @@ describe("MongoDBStore", () => {
       const { updateOne } = calls[0];
       expect(updateOne.filter).toEqual({
         namespace: ["documents", "user123"],
-        key: "doc1",
+        key: { $eq: "doc1" },
       });
       expect(updateOne.update.$set.value).toEqual({ title: "Test", content: "Hello" });
       expect(updateOne.upsert).toBe(true);
@@ -79,11 +83,18 @@ describe("MongoDBStore", () => {
         expect.arrayContaining([
           expect.objectContaining({
             deleteOne: expect.objectContaining({
-              filter: { namespace: ["documents", "user123"], key: "doc1" },
+              filter: { namespace: ["documents", "user123"], key: { $eq: "doc1" } },
             }),
           }),
         ])
       );
+    });
+
+    it("should reject a string namespace on delete", async () => {
+      await expect(store.delete("documents" as any, "doc1")).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
     });
 
     it("should throw InvalidNamespaceError for empty namespace", async () => {
@@ -102,6 +113,16 @@ describe("MongoDBStore", () => {
       await expect(
         store.batch([{ namespace: ["langgraph", "data"], key: "doc1", value: { title: "Test" } } as PutOperation])
       ).rejects.toThrow('Root label for namespace cannot be "langgraph"');
+    });
+
+    it.each([
+      ["a colon", ["docs:invalid"]],
+      ["a NUL byte", ["docs\x00invalid"]],
+    ])("should throw InvalidNamespaceError for a label with %s", async (_name, namespace) => {
+      await expect(
+        store.batch([{ namespace, key: "doc1", value: { title: "Test" } } as PutOperation])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.bulkWrite).not.toHaveBeenCalled();
     });
   });
 
@@ -125,6 +146,40 @@ describe("MongoDBStore", () => {
         createdAt: now, updatedAt: now,
       });
     });
+
+    it("should compare an object key as a value", async () => {
+      await store.get(["profiles"], { $ne: "alice" } as any);
+      expect(mockCollection.findOne).toHaveBeenCalledWith({
+        namespace: ["profiles"],
+        key: { $eq: { $ne: "alice" } },
+      });
+    });
+
+    it.each([
+      ["a string", "profiles"],
+      ["an object", { $exists: true }],
+    ])("should reject %s as a namespace passed to batch()", async (_name, namespace) => {
+      await expect(store.batch([{ namespace, key: "alice" } as any])).rejects.toThrow(
+        "Namespace must be an array"
+      );
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should compare an object key as a value when refreshing the TTL on read", async () => {
+      const ttlStore = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        ttl: { defaultTtl: 60, refreshOnRead: true },
+      });
+
+      await ttlStore.get(["profiles"], { $ne: "alice" } as any);
+      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
+        { namespace: ["profiles"], key: { $eq: { $ne: "alice" } } },
+        expect.anything(),
+        expect.anything()
+      );
+    });
   });
 
   describe("search", () => {
@@ -143,8 +198,16 @@ describe("MongoDBStore", () => {
       ]);
 
       expect(findMock.mock.calls[0][0]).toEqual({
-        "namespace.0": "users",
-        "namespace.1": "profiles",
+        "namespace.0": { $eq: "users" },
+        "namespace.1": { $eq: "profiles" },
+      });
+    });
+
+    it("should compare a filter $eq operand as a value", async () => {
+      await store.search(["products"], { filter: { name: { $eq: { $regex: "" } } } });
+      expect(mockCollection.find).toHaveBeenCalledWith({
+        "namespace.0": { $eq: "products" },
+        "value.name": { $eq: { $regex: "" } },
       });
     });
 
@@ -182,7 +245,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -207,7 +270,7 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, "v1"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", -1] }, { $literal: "v1" }] },
               { $gte: [{ $size: "$namespace" }, 1] },
             ],
           },
@@ -232,13 +295,51 @@ describe("MongoDBStore", () => {
         $match: {
           $expr: {
             $and: [
-              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, "users"] },
-              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, "settings"] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 0] }, { $literal: "users" }] },
+              { $eq: [{ $arrayElemAt: ["$namespace", 2] }, { $literal: "settings" }] },
               { $gte: [{ $size: "$namespace" }, 3] },
             ],
           },
         },
       });
+    });
+
+    it.each([
+      ["a non-string label", { matchConditions: [{ matchType: "prefix", path: [{ $literal: "a" }] }] }],
+      ["a numeric label", { matchConditions: [{ matchType: "suffix", path: [1] }] }],
+      ["a path that is not an array", { matchConditions: [{ matchType: "prefix", path: "users" }] }],
+      // Same rules as listNamespaces(): labels can't contain "." or be empty.
+      ["a label with a period", { matchConditions: [{ matchType: "prefix", path: ["a.b"] }] }],
+      ["an empty label", { matchConditions: [{ matchType: "suffix", path: [""] }] }],
+      ["an unknown match type", { matchConditions: [{ matchType: "contains", path: ["users"] }] }],
+      ["a non-numeric maxDepth", { maxDepth: { $literal: 1 } }],
+      ["a negative maxDepth", { maxDepth: -1 }],
+      ["a fractional maxDepth", { maxDepth: 1.5 }],
+    ])("should reject %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ limit: 100, offset: 0, ...op } as any])
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it("should reject a non-numeric maxDepth passed to listNamespaces", async () => {
+      await expect(
+        store.listNamespaces({ maxDepth: { $literal: 1 } as any })
+      ).rejects.toThrow(InvalidNamespaceError);
+      expect(mockCollection.aggregate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an empty prefix", { matchConditions: [{ matchType: "prefix", path: [] }] }],
+      ["a 'langgraph' root label", { matchConditions: [{ matchType: "prefix", path: ["langgraph"] }] }],
+      ["a wildcard label", { matchConditions: [{ matchType: "suffix", path: ["*"] }] }],
+      ["a maxDepth", { maxDepth: 2 }],
+      ["a maxDepth of 0", { maxDepth: 0 }],
+    ])("should accept %s in a batched operation", async (_name, op) => {
+      await expect(
+        store.batch([{ limit: 100, offset: 0, ...op } as any])
+      ).resolves.toEqual([[]]);
+      expect(mockCollection.aggregate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -440,8 +541,8 @@ describe("MongoDBStore", () => {
       ]);
 
       for (const [pipeline, expectedMatch] of [
-        [capturedPipelines[0], { "namespace.0": "team/alice" }],
-        [capturedPipelines[1], { "namespace.0": "team", "namespace.1": "alice" }],
+        [capturedPipelines[0], { "namespace.0": { $eq: "team/alice" } }],
+        [capturedPipelines[1], { "namespace.0": { $eq: "team" }, "namespace.1": { $eq: "alice" } }],
       ] as const) {
         const stages = pipeline.map((stage: any) => Object.keys(stage)[0]);
         const matchIdx = stages.indexOf("$match");

@@ -404,6 +404,32 @@ describe("RedisSaver Integration Tests", () => {
     ).toEqual({ ch: "first", other: "x" });
   });
 
+  it("finds the blob of every version getNextVersion mints", async () => {
+    const saver = new RedisSaver(redisClient);
+    const channel_values: Record<string, string> = {};
+    const channel_versions: Record<string, number> = {};
+    for (let i = 0; i < 200; i++) {
+      channel_values[`ch${i}`] = `value ${i}`;
+      channel_versions[`ch${i}`] = saver.getNextVersion(i);
+    }
+    const parentConfig = await saver.put(
+      { configurable: { thread_id: "versions", checkpoint_ns: "" } },
+      { ...emptyCheckpoint(), id: uuid6(0), channel_values, channel_versions },
+      { source: "loop", step: 0, parents: {} },
+      channel_versions
+    );
+    const childConfig = await saver.put(
+      parentConfig,
+      { ...emptyCheckpoint(), id: uuid6(1), channel_values, channel_versions },
+      { source: "loop", step: 1, parents: {} },
+      {}
+    );
+
+    expect(
+      (await saver.getTuple(childConfig))?.checkpoint.channel_values
+    ).toEqual(channel_values);
+  });
+
   it("throws on a string version, as the base saver does", () => {
     const saver = new RedisSaver(redisClient);
     expect(() =>

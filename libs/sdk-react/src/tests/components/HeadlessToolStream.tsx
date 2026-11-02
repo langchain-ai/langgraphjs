@@ -9,9 +9,11 @@ interface Props {
   apiUrl: string;
   /** Override the default execute function for error-path testing. */
   execute?: Parameters<typeof getLocationTool.implement>[0];
+  initialValues?: { messages: BaseMessage[] };
+  threadId?: string;
 }
 
-export function HeadlessToolStream({ apiUrl, execute }: Props) {
+export function HeadlessToolStream({ apiUrl, execute, ...options }: Props) {
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
 
   const tool = getLocationTool.implement(
@@ -27,6 +29,7 @@ export function HeadlessToolStream({ apiUrl, execute }: Props) {
   }>({
     assistantId: "headless_tool_graph",
     apiUrl,
+    ...options,
     tools: [tool],
     onTool: (event) => {
       setToolEvents((prev) => [...prev, event]);

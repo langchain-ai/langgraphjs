@@ -10,6 +10,7 @@ import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
 import type { Run, RunKwargs } from "../storage/types.mjs";
+import { matchesStreamMode } from "../stream.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -42,7 +43,7 @@ const createValidRun = async (
       : [];
   if (streamMode.length === 0) streamMode.push("values");
 
-  const multitaskStrategy = payload.multitask_strategy ?? "reject";
+  const multitaskStrategy = payload.multitask_strategy ?? "enqueue";
   const preventInsertInInflight = multitaskStrategy === "reject";
 
   const config: RunKwargs["config"] = { ...run.config };
@@ -218,10 +219,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
 api.get(
   "/runs/:run_id/stream",
   zValidator("param", z.object({ run_id: z.string().uuid() })),
-  zValidator(
-    "query",
-    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() })
-  ),
+  zValidator("query", schemas.JoinStreamQuery),
   async (c) => {
     const { run_id } = c.req.valid("param");
     const query = c.req.valid("query");
@@ -245,6 +243,7 @@ api.get(
           },
           c.var.auth
         )) {
+          if (!matchesStreamMode(event, query.stream_mode)) continue;
           await stream.writeSSE({ id, data: serialiseAsDict(data), event });
         }
       } catch (error) {
@@ -449,14 +448,11 @@ api.get(
     "param",
     z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
   ),
-  zValidator(
-    "query",
-    z.object({ cancel_on_disconnect: schemas.coercedBoolean.optional() })
-  ),
+  zValidator("query", schemas.JoinStreamQuery),
   async (c) => {
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");
-    const { cancel_on_disconnect } = c.req.valid("query");
+    const { cancel_on_disconnect, stream_mode } = c.req.valid("query");
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
     return streamSSE(c, async (stream) => {
@@ -474,6 +470,7 @@ api.get(
         },
         c.var.auth
       )) {
+        if (!matchesStreamMode(event, stream_mode)) continue;
         await stream.writeSSE({ id, data: serialiseAsDict(data), event });
       }
     });
@@ -499,7 +496,15 @@ api.post(
     const { wait, action } = c.req.valid("query");
 
     await runs().cancel(thread_id, [run_id], { action }, c.var.auth);
-    if (wait) await runs().join(run_id, thread_id, c.var.auth);
+    if (wait) {
+      // A cancelled pending stateless run is deleted with its thread.
+      await runs()
+        .join(run_id, thread_id, c.var.auth)
+        .catch((error) => {
+          if (!(error instanceof HTTPException) || error.status !== 404)
+            throw error;
+        });
+    }
     return c.body(null, wait ? 204 : 202);
   }
 );

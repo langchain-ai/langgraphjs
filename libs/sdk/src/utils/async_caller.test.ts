@@ -4,7 +4,25 @@ import { AsyncCaller } from "./async_caller.js";
 describe("AsyncCaller", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
+
+  it.each(["AbortError", "TimeoutError"])(
+    "does not retry a native %s",
+    async (name) => {
+      vi.useFakeTimers();
+      const error = new DOMException("The operation was aborted", name);
+      const failingCallable = vi.fn(() => Promise.reject(error));
+      const result = new AsyncCaller({ maxRetries: 2 })
+        .call(failingCallable)
+        .catch((e) => e);
+
+      await vi.runAllTimersAsync();
+
+      expect(await result).toBe(error);
+      expect(failingCallable).toHaveBeenCalledTimes(1);
+    }
+  );
 
   describe("error handling with undefined/null message", () => {
     it("should handle errors with undefined message without crashing", async () => {

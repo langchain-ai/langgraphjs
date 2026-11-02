@@ -14,7 +14,7 @@ import {
 import type { ToolCall } from "@langchain/core/messages/tool";
 import { RunnableCallable } from "../utils.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
-import { isGraphInterrupt } from "../errors.js";
+import { isGraphDrained, isGraphInterrupt } from "../errors.js";
 import { END, isCommand, Command, _isSend, Send } from "../constants.js";
 import type { LangGraphRunnableConfig } from "../pregel/runnable_types.js";
 
@@ -263,10 +263,11 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     } catch (e: any) {
       if (!this.handleToolErrors) throw e;
 
-      if (isGraphInterrupt(e)) {
-        // `NodeInterrupt` errors are a breakpoint to bring a human into the loop.
-        // As such, they are not recoverable by the agent and shouldn't be fed
-        // back. Instead, re-throw these errors even when `handleToolErrors = true`.
+      if (isGraphInterrupt(e) || isGraphDrained(e)) {
+        // `NodeInterrupt` errors are a breakpoint to bring a human into the loop,
+        // and a drain stops the run to resume it later. Neither is recoverable
+        // by the agent, so neither is fed back: re-throw them even when
+        // `handleToolErrors = true`.
         throw e;
       }
 

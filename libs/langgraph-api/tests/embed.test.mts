@@ -6,6 +6,7 @@ import type {
 import {
   Client,
   type MessagesTupleStreamEvent,
+  type StreamMode,
 } from "@langchain/langgraph-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { findLast, gatherIterator } from "./utils.mjs";
@@ -430,6 +431,45 @@ describe("runs", () => {
       ])
     );
   });
+
+  it.concurrent(
+    "join stream returns only the requested stream modes",
+    async () => {
+      const joinNewRun = async (streamMode?: StreamMode | StreamMode[]) => {
+        const thread = await client.threads.create();
+        const run = await client.runs.create(thread.thread_id, "agent", {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          streamMode: ["values", "updates", "messages", "messages-tuple"],
+          config: globalConfig,
+        });
+        const chunks = await gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, { streamMode })
+        );
+        return chunks.map((i) => i.event);
+      };
+
+      const all = await joinNewRun();
+      expect(new Set(all)).toEqual(
+        new Set([
+          "metadata",
+          "values",
+          "updates",
+          "messages/metadata",
+          "messages/partial",
+          "messages/complete",
+          "messages",
+        ])
+      );
+      expect(await joinNewRun("updates")).toEqual(
+        all.filter((event) => event === "updates")
+      );
+      expect(await joinNewRun(["values", "messages-tuple"])).toEqual(
+        all.filter(
+          (event) => event === "values" || event.startsWith("messages")
+        )
+      );
+    }
+  );
 
   it.concurrent(
     "human in the loop - no modification",

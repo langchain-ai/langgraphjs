@@ -61,6 +61,9 @@ import type { UseAgentStream, UseAgentStreamOptions } from "./agent.js";
  *     filterSubagentMessages: true, // Only show main agent messages
  *   });
  *
+ *   // Subagent messages stream live only with subgraphs:
+ *   // stream.submit(input, { streamSubgraphs: true });
+ *
  *   // Subagent streams are typed!
  *   const researchers = stream.getSubagentsByType("researcher");
  *   researchers.forEach(subagent => {
@@ -311,6 +314,10 @@ export interface UseDeepAgentStreamOptions<
    * from the main conversation, or when subagent messages would be too
    * verbose in the main message list.
    *
+   * Subagent messages stream as they are generated only when the run streams
+   * subgraphs, so submit with `streamSubgraphs: true`. Without it, a subagent
+   * shows only its final result.
+   *
    * @default false
    *
    * @example
@@ -319,6 +326,8 @@ export interface UseDeepAgentStreamOptions<
    *   assistantId: "deep-agent",
    *   filterSubagentMessages: true,
    * });
+   *
+   * stream.submit(input, { streamSubgraphs: true });
    *
    * // stream.messages only contains main agent messages
    * // Subagent messages are in stream.getSubagentsByType("researcher")[0].messages

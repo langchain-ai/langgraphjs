@@ -723,6 +723,43 @@ describe("streamEvents version v3", () => {
     });
   });
 
+  describe("tools namespace", () => {
+    it("keeps the tool node's segment", async () => {
+      const echo = new DynamicStructuredTool({
+        name: "echo",
+        description: "Echoes",
+        schema: z.object({}),
+        func: async () => "done",
+      });
+      const graph = new StateGraph(MessagesAnnotation)
+        .addNode("tools", new ToolNode([echo]))
+        .addEdge(START, "tools")
+        .addEdge("tools", END)
+        .compile();
+
+      const run = await graph.streamEvents(
+        {
+          messages: [
+            new AIMessage({
+              tool_calls: [{ id: "call_1", name: "echo", args: {} }],
+            }),
+          ],
+        },
+        { version: "v3" }
+      );
+      const namespaces: string[][] = [];
+      for await (const event of run) {
+        if (event.method === "tools") namespaces.push(event.params.namespace);
+      }
+      await run.output;
+
+      expect(namespaces.length).toBeGreaterThan(0);
+      expect(namespaces).toEqual(
+        namespaces.map(() => [expect.stringMatching(/^tools:/)])
+      );
+    });
+  });
+
   describe("tool errors", () => {
     const errorTool = new DynamicStructuredTool({
       name: "error_tool",

@@ -17,6 +17,12 @@ import {
   onFinishRequiresThreadState,
   unique,
 } from "../ui/utils.js";
+import {
+  applyStopRead,
+  type HistoryReadOptions,
+  planReadAfterRun,
+  planStopRead,
+} from "../ui/thread-reads.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
@@ -86,7 +92,12 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-): UseStreamThread<StateType> {
+): UseStreamThread<StateType> & {
+  read: (
+    threadId: string,
+    readOptions: HistoryReadOptions<StateType>
+  ) => Promise<ThreadState<StateType>[]>;
+} {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
     key: string | undefined;
@@ -106,10 +117,16 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const onErrorRef = useRef(options?.onError);
   onErrorRef.current = options?.onError;
 
+  // A read that resolves after a newer one was issued is dropped: the newer
+  // one can show the state after a run, and the older one a call that run
+  // answered.
+  const latestReadRef = useRef(0);
+
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
-      limit: boolean | number
+      limit: boolean | number,
+      readOptions: HistoryReadOptions<StateType> = {}
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
       if (options.passthrough) return Promise.resolve([]);
@@ -118,14 +135,18 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       const key = getFetchHistoryKey(client, threadId, limit);
 
       if (threadId != null) {
+        const readId = ++latestReadRef.current;
         setState((state) => {
           if (state.key === key) return { ...state, isLoading: true };
           return { key, data: undefined, error: undefined, isLoading: true };
         });
         return fetchHistory<StateType>(client, threadId, { limit }).then(
-          (data) => {
+          (fetched) => {
+            const data = readOptions.map?.(fetched) ?? fetched;
             setState((state) => {
-              if (state.key !== key) return state;
+              if (state.key !== key || readId !== latestReadRef.current) {
+                return state;
+              }
               return { key, data, error: undefined, isLoading: false };
             });
             return data;
@@ -133,9 +154,14 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
           (error) => {
             setState((state) => {
               if (state.key !== key) return state;
-              return { key, data: state.data, error, isLoading: false };
+              return {
+                key,
+                data: state.data,
+                error: readOptions.quiet ? state.error : error,
+                isLoading: false,
+              };
             });
-            onErrorRef.current?.(error);
+            if (!readOptions.quiet) onErrorRef.current?.(error);
             return Promise.reject(error);
           }
         );
@@ -167,6 +193,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     error: state.error,
     isLoading: state.isLoading,
     mutate: (mutateId?: string) => fetcher(mutateId ?? threadId, limit),
+    read: (readId, readOptions) => fetcher(readId, limit, readOptions),
   };
 }
 
@@ -377,6 +404,11 @@ export function useStreamLGP<
     options.initialValues ??
     ({} as StateType);
 
+  // A run's callbacks close over the render it started in; this is the head
+  // shown when it ends.
+  const latestThreadHeadRef = useRef(branchContext.threadHead);
+  latestThreadHeadRef.current = branchContext.threadHead;
+
   // Reconstruct subagents from history when:
   // 1. History is loaded (not loading, has data)
   // 2. No active stream is running
@@ -468,12 +500,11 @@ export function useStreamLGP<
   })();
 
   const stop = async () => {
-    const wasLoading = stream.isLoading;
-
-    const includeImplicitBranch =
-      historyLimit === true || typeof historyLimit === "number";
-    const shouldRefetch =
-      includeImplicitBranch || onFinishRequiresThreadState(options.onFinish);
+    const shownHead = latestThreadHeadRef.current;
+    const read = planStopRead({
+      history: historyLimit === true || typeof historyLimit === "number",
+      userThread: options.thread != null,
+    });
 
     await stream.stop(historyValues, {
       onStop: (args) => {
@@ -485,30 +516,64 @@ export function useStreamLGP<
 
         options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null
+          ? undefined
+          : async () => {
+              if (read == null) return null;
+              const newHistory =
+                options.thread != null
+                  ? await history.mutate(threadId)
+                  : await builtInHistory.read(threadId, {
+                      ...read,
+                      map: (states) => applyStopRead(states, shownHead),
+                    });
+              return newHistory?.at(0)?.values ?? null;
+            },
     });
+  };
 
-    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
-    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
-    // alone, the locally-buffered stream values — including any message
-    // chunk still being assembled when `stop()` was called — stay stuck in
-    // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync so the buffer only
-    // reflects what was actually persisted: refetch when the caller needs
-    // authoritative thread state (branching / `onFinish`), otherwise fall
-    // back to the already-cached `historyValues` to avoid an extra round
-    // trip on every cancel.
-    if (wasLoading && threadId) {
-      if (shouldRefetch) {
-        const newHistory = await history.mutate(threadId);
-        stream.setStreamValues(newHistory?.at(0)?.values ?? null);
-      } else {
-        stream.setStreamValues(historyValues);
+  // Called when a run succeeds. Returns null when the head was read, which
+  // clears the run's streamed values so the head shows.
+  const finishRun = async (
+    id: string,
+    refetch: boolean,
+    callbackMeta: RunCallbackMeta | undefined
+  ) => {
+    const read = planReadAfterRun(latestThreadHeadRef.current, refetch);
+    if (read) {
+      let newHistory: ThreadState<StateType>[] | null | undefined;
+      try {
+        newHistory =
+          read.quiet && options.thread == null
+            ? await builtInHistory.read(id, read)
+            : await history.mutate(id);
+      } catch {
+        // The run still succeeded; the screen keeps what it shows.
+      }
+      const lastHead = newHistory?.at(0);
+      if (lastHead) {
+        options.onFinish?.(lastHead, callbackMeta);
+        return null;
       }
     }
+    if (
+      options.onFinish != null &&
+      !onFinishRequiresThreadState(options.onFinish)
+    ) {
+      options.onFinish(
+        undefined as unknown as ThreadState<StateType>,
+        callbackMeta
+      );
+    }
+    return undefined;
   };
 
   // --- TRANSPORT ---
-  const submit = async (
+  const submitToThread = async (
+    targetThreadId: string | null,
     values: UpdateType | null | undefined,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) => {
@@ -532,7 +597,7 @@ export function useStreamLGP<
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId = threadId;
+    let usableThreadId = targetThreadId;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -585,9 +650,15 @@ export function useStreamLGP<
           ...callbackStreamMode,
         ]);
 
+        // On the latest branch the cached head may be behind the server's
+        // (the thread moved on since history was read); pinning it would
+        // fork the thread.
+        const viewingLatest =
+          branchContext.threadHead?.checkpoint?.checkpoint_id ===
+          history.data?.[0]?.checkpoint?.checkpoint_id;
         let checkpoint =
           submitOptions?.checkpoint ??
-          (includeImplicitBranch
+          (includeImplicitBranch && !viewingLatest
             ? branchContext.threadHead?.checkpoint
             : undefined) ??
           undefined;
@@ -655,27 +726,7 @@ export function useStreamLGP<
 
         async onSuccess() {
           if (rejoinKey) runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch) {
-            const newHistory = await history.mutate(usableThreadId!);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              // We now have the latest update from /history
-              // Thus we can clear the local stream state
-              options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            options.onFinish != null &&
-            !onFinishRequiresThreadState(options.onFinish)
-          ) {
-            options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
-          }
-
-          return undefined;
+          return finishRun(usableThreadId!, shouldRefetch, callbackMeta);
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
@@ -687,6 +738,11 @@ export function useStreamLGP<
       { abortPrevious: shouldAbortPrevious }
     );
   };
+
+  const submit = (
+    values: UpdateType | null | undefined,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+  ) => submitToThread(threadId, values, submitOptions);
 
   const joinStream = async (
     runId: string,
@@ -746,21 +802,7 @@ export function useStreamLGP<
         },
         async onSuccess() {
           runMetadataStorage?.removeItem(`lg:stream:${threadId}`);
-          if (!shouldRefetchJoin) {
-            if (
-              options.onFinish != null &&
-              !onFinishRequiresThreadState(options.onFinish)
-            ) {
-              options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
-          const newHistory = await history.mutate(threadId);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) options.onFinish?.(lastHead, callbackMeta);
+          return finishRun(threadId, shouldRefetchJoin, callbackMeta);
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
@@ -768,6 +810,7 @@ export function useStreamLGP<
         onFinish() {
           threadIdStreamingRef.current = null;
         },
+        isReplaying: lastEventId === "-1",
       }
     );
   };
@@ -804,13 +847,37 @@ export function useStreamLGP<
   const values = stream.values ?? historyValues;
 
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledThreadIdRef = useRef(threadId);
   useEffect(() => {
+    if (handledThreadIdRef.current === threadId) return;
+    handledThreadIdRef.current = threadId;
     handledToolsRef.current.clear();
   }, [threadId]);
 
+  // Thread state values never carry `__interrupt__`; a pending call is in the
+  // head's tasks. A run still streaming, such as one rejoined after a reload,
+  // may be answering it, and on the render that switches threads the head can
+  // still be the previous thread's.
+  const threadHead = branchContext.threadHead;
+  const pendingToolValues =
+    stream.values == null &&
+    !stream.isLoading &&
+    threadHead?.checkpoint?.thread_id === threadId
+      ? {
+          __interrupt__: threadHead.tasks?.flatMap(
+            (task) => task.interrupts ?? []
+          ),
+        }
+      : values;
+
   useEffect(() => {
+    // These values belong to the render's `threadId`; on a switch the ref
+    // moves first. After submit() creates a thread, though, a controlled
+    // `threadId` stays null until the parent passes it back, and only the
+    // ref has the thread.
+    const callThreadId = threadId ?? threadIdRef.current;
     flushPendingHeadlessToolInterrupts(
-      values as Record<string, unknown>,
+      pendingToolValues as Record<string, unknown>,
       options.tools,
       handledToolsRef.current,
       {
@@ -818,14 +885,25 @@ export function useStreamLGP<
         defer: (run) => {
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
-          submit(null, {
+        resumeSubmit: (command) => {
+          // Resuming would stream this call's thread into the view of the one
+          // shown now. The call stays pending and runs again when its thread
+          // is shown.
+          if (threadIdRef.current !== callThreadId) return;
+          return submitToThread(callThreadId, null, {
             multitaskStrategy: "interrupt",
             command,
-          }),
+          });
+        },
       }
     );
-  }, [options.onTool, options.tools, submit, values]);
+  }, [
+    options.onTool,
+    options.tools,
+    submitToThread,
+    pendingToolValues,
+    threadId,
+  ]);
 
   const streamHandle: UseStream<StateType, Bag> = {
     get values() {

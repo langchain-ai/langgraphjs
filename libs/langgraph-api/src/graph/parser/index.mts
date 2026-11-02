@@ -70,7 +70,10 @@ export async function getStaticGraphSchema(
           resolve(result);
         });
 
-        worker.on("error", reject);
+        worker.on("error", (error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
         worker.postMessage(specs);
       }
     );
