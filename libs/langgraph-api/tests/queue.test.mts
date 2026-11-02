@@ -8,7 +8,11 @@ import { getAssistantId, registerFromEnv } from "../src/graph/load.mjs";
 import { logger } from "../src/logging.mjs";
 import { queue } from "../src/queue.mjs";
 import { checkpointer } from "../src/storage/checkpoint.mjs";
-import { FileSystemOps } from "../src/storage/ops.mjs";
+import {
+  FileSystemOps,
+  RUN_LOG_GRACE_MS,
+  StreamManager,
+} from "../src/storage/ops.mjs";
 import { FileSystemPersistence } from "../src/storage/persist.mjs";
 import type { Run, RunKwargs, Store } from "../src/storage/types.mjs";
 import { gatherIterator } from "./utils.mjs";
@@ -17,11 +21,12 @@ let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   await cleanup?.();
   cleanup = undefined;
 });
 
-async function startQueue() {
+async function openOps() {
   const cwd = mkdtempSync(join(tmpdir(), "lg-api-queue-"));
   const conn = await new FileSystemPersistence<Store>(
     ".langgraphjs_ops.json",
@@ -46,7 +51,6 @@ async function startQueue() {
     { delay: "./delay.mts:graph" },
     { cwd: fileURLToPath(new URL("./graphs", import.meta.url)) }
   );
-  void queue(ops);
 
   const createRun = async (
     kwargs: RunKwargs,
@@ -70,6 +74,33 @@ async function startQueue() {
     (await ops.runs.get(run.run_id, run.thread_id, undefined))?.status;
 
   return { ops, createRun, statusOf };
+}
+
+async function startQueue() {
+  const opened = await openOps();
+  void queue(opened.ops);
+  return opened;
+}
+
+async function runOnce(
+  ops: FileSystemOps,
+  run: Run,
+  whileHeld?: () => Promise<unknown>
+) {
+  vi.advanceTimersByTime(1);
+  const worker = ops.runs.next();
+  expect((await worker.next()).value?.run.run_id, "the claimed run").toBe(
+    run.run_id
+  );
+  await ops.runs.stream.publish({
+    runId: run.run_id,
+    resumable: false,
+    event: "values",
+    data: { delay: 0 },
+  });
+  await ops.runs.setStatus(run.run_id, "success");
+  await whileHeld?.();
+  await worker.next();
 }
 
 it("picks up later runs after a thread is deleted under its running run", async () => {
@@ -176,4 +207,92 @@ it("runs.join() does not empty an open stream", async () => {
     await ops.runs.wait(run.run_id, run.thread_id, undefined),
     "a wait after the run ended"
   ).toEqual(joined);
+});
+
+it("replays a finished run's log for a grace period, then frees it", async () => {
+  vi.useFakeTimers();
+  const { ops, createRun } = await openOps();
+  const run = await createRun({ input: { delay: 0 } });
+  await runOnce(ops, run);
+
+  vi.advanceTimersByTime(RUN_LOG_GRACE_MS - 1);
+  const replay = ops.runs.stream.join(
+    run.run_id,
+    run.thread_id,
+    { lastEventId: "-1" },
+    undefined
+  );
+  expect(
+    (await replay.next()).value,
+    "a replay inside the grace period"
+  ).toMatchObject({ event: "values", data: { delay: 0 } });
+  await replay.return(undefined);
+
+  vi.advanceTimersByTime(1);
+  expect(
+    StreamManager.readers[run.run_id],
+    "the log after the grace period"
+  ).toBeUndefined();
+});
+
+it.each([
+  [
+    "run",
+    (ops: FileSystemOps, run: Run) =>
+      ops.runs.delete(run.run_id, run.thread_id, undefined),
+  ],
+  [
+    "run's thread",
+    (ops: FileSystemOps, run: Run) =>
+      ops.threads.delete(run.thread_id, undefined),
+  ],
+])(
+  "frees a finished run's log as soon as the %s is deleted",
+  async (_, remove) => {
+    vi.useFakeTimers();
+    const { ops, createRun } = await openOps();
+    const run = await createRun({ input: { delay: 0 } });
+    await runOnce(ops, run);
+
+    await remove(ops, run);
+    expect(StreamManager.readers[run.run_id]).toBeUndefined();
+  }
+);
+
+it("keeps a stateless run's log for the grace period after its thread is deleted with it", async () => {
+  vi.useFakeTimers();
+  const { ops, createRun } = await openOps();
+  const run = await createRun({ input: { delay: 0 }, temporary: true });
+  await runOnce(ops, run, () => ops.threads.delete(run.thread_id, undefined));
+
+  expect(
+    StreamManager.readers[run.run_id],
+    "the log right after the run"
+  ).toBeDefined();
+  vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
+  expect(
+    StreamManager.readers[run.run_id],
+    "the log after the grace period"
+  ).toBeUndefined();
+});
+
+it("keeps a re-queued run's log until a grace period after its last attempt", async () => {
+  vi.useFakeTimers();
+  const { ops, createRun } = await openOps();
+  const run = await createRun({ input: { delay: 0 } });
+  await runOnce(ops, run);
+  await ops.runs.setStatus(run.run_id, "pending");
+
+  await runOnce(ops, run, async () =>
+    vi.advanceTimersByTime(RUN_LOG_GRACE_MS)
+  );
+  expect(
+    StreamManager.readers[run.run_id],
+    "the log right after the second attempt"
+  ).toBeDefined();
+  vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
+  expect(
+    StreamManager.readers[run.run_id],
+    "the log after the grace period"
+  ).toBeUndefined();
 });

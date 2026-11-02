@@ -138,9 +138,14 @@ class CancellationAbortController extends AbortController {
   }
 }
 
+// Long enough for a client that lost a finished run's stream, or reloaded its
+// page, to rejoin with Last-Event-ID and replay the rest.
+export const RUN_LOG_GRACE_MS = 120_000;
+
 class StreamManagerImpl {
   readers: Record<string, Queue> = {};
   control: Record<string, CancellationAbortController> = {};
+  private expiry: Record<string, NodeJS.Timeout> = {};
 
   getQueue(runId: string): Queue {
     if (this.readers[runId] == null) {
@@ -148,6 +153,23 @@ class StreamManagerImpl {
     }
 
     return this.readers[runId];
+  }
+
+  freeLater(runId: string) {
+    clearTimeout(this.expiry[runId]);
+    this.expiry[runId] = setTimeout(
+      () => this.free(runId),
+      RUN_LOG_GRACE_MS
+    ).unref();
+  }
+
+  free(runId: string) {
+    // A worker that still holds the run keeps publishing to its log, which is
+    // freed a grace period after the worker lets the run go.
+    if (this.isLocked(runId)) return;
+    clearTimeout(this.expiry[runId]);
+    delete this.expiry[runId];
+    delete this.readers[runId];
   }
 
   getControl(runId: string) {
@@ -902,6 +924,7 @@ export class FileSystemThreads implements ThreadsRepo {
       for (const run of Object.values(STORE.runs)) {
         if (run["thread_id"] === thread_id) {
           delete STORE.runs[run["run_id"]];
+          StreamManager.free(run["run_id"]);
         }
       }
       checkpointer.delete(thread_id, null);
@@ -1335,6 +1358,8 @@ export class FileSystemRuns implements RunsRepo {
           STORE.runs[runId].status = "running";
 
           yield { run, attempt: STORE.retry_counter[runId], signal };
+          // The worker is done with the run when it asks for the next one.
+          StreamManager.freeLater(runId);
         } finally {
           StreamManager.unlock(runId);
         }
@@ -1578,6 +1603,7 @@ export class FileSystemRuns implements RunsRepo {
         topic: `run:${run_id}:control`,
         data: "done",
       });
+      StreamManager.free(run_id);
       if (thread_id != null) checkpointer.delete(thread_id, run_id);
       delete STORE.runs[run_id];
       return run.run_id;
