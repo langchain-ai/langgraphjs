@@ -143,7 +143,10 @@ describe("RemoteGraph with streamResumable", () => {
     let callCount = 0;
     const locationPath = "/threads/test_thread/runs/run-1/stream";
 
-    mockFetch.mockImplementation(() => {
+    mockFetch.mockImplementation((url) => {
+      if (String(url).endsWith("/runs/run-1")) {
+        return Promise.resolve(Response.json({ status: "success" }));
+      }
       callCount += 1;
 
       if (callCount === 1) {
@@ -210,7 +213,7 @@ describe("RemoteGraph with streamResumable", () => {
     await vi.runAllTimersAsync();
 
     const results = await generator;
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(results.length).toBe(3);
 
     const init = mockFetch.mock.calls[0]![1]!;

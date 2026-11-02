@@ -15,6 +15,7 @@ import {
 } from "../utils/stream.js";
 import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "../utils/reconnect.js";
 import type { StreamProtocol } from "../types.js";
+import type { Run } from "../schema.js";
 
 export type HeaderValue = string | undefined | null;
 
@@ -501,11 +502,32 @@ export class BaseClient {
       return { response, stream };
     };
 
+    let runEnded = false;
+    const isRunActive = async (reconnectPath: string) => {
+      const runPath = RUN_STREAM_PATH.exec(reconnectPath)?.[1];
+      if (runEnded || !runPath) return false;
+      try {
+        const [url, init] = this.prepareFetchOptions(runPath, {
+          headers: { ...config.headers, "Last-Event-ID": null },
+          signal: config.signal,
+        });
+        const [{ status }] = await this.#performFetchWithResponse<Run>(
+          url,
+          init
+        );
+        return status === "pending" || status === "running";
+      } catch {
+        return false;
+      }
+    };
+
     for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
       signal: config.signal,
       onReconnect: config.onReconnect,
+      isRunActive,
     })) {
+      if (part.event === "end" || part.event === "error") runEnded = true;
       if (!isSSEControlPart(part)) {
         yield part.id === "" ? { ...part, id: undefined } : part;
       }
@@ -515,6 +537,8 @@ export class BaseClient {
 
 export const REGEX_RUN_METADATA =
   /(\/threads\/(?<thread_id>.+))?\/runs\/(?<run_id>.+)/;
+
+const RUN_STREAM_PATH = /^([^?]*\/threads\/[^/?]+\/runs\/[^/?]+)\/stream(\?|$)/;
 
 export function getRunMetadataFromResponse(
   response: Response

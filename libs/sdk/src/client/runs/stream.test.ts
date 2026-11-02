@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Client } from "../../client.js";
+import { MaxReconnectAttemptsError } from "../../utils/stream.js";
 
 type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
 
@@ -278,7 +279,10 @@ describe("Client streaming with retry", () => {
       let callCount = 0;
       const locationPath = "/threads/thread-1/runs/run-1/stream";
 
-      mockFetch.mockImplementation(() => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith("/runs/run-1")) {
+          return Promise.resolve(Response.json({ status: "success" }));
+        }
         callCount += 1;
 
         if (callCount === 1) {
@@ -333,7 +337,10 @@ describe("Client streaming with retry", () => {
       let callCount = 0;
       const locationPath = "/threads/thread-1/runs/run-1/stream";
 
-      mockFetch.mockImplementation(() => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith("/runs/run-1")) {
+          return Promise.resolve(Response.json({ status: "success" }));
+        }
         callCount += 1;
 
         if (callCount === 1) {
@@ -467,6 +474,7 @@ describe("Client streaming with retry", () => {
         mockFetch.mockResolvedValueOnce(
           new Response(createSSEResponseBody([{ event: "values", data: {} }]))
         );
+        mockFetch.mockResolvedValueOnce(Response.json({ status: "success" }));
 
         const consume = gatherStream(
           client.runs.joinStream("thread-1", "run-1", {
@@ -479,7 +487,7 @@ describe("Client streaming with retry", () => {
           { id: undefined, event: "", data: null },
           { id: undefined, event: "values", data: {} },
         ]);
-        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch).toHaveBeenCalledTimes(3);
         expect(
           new Headers(mockFetch.mock.calls[0][1].headers).get("last-event-id")
         ).toBe("stale");
@@ -509,6 +517,7 @@ describe("Client streaming with retry", () => {
         mockFetch.mockResolvedValueOnce(
           new Response(encoder.encode("data:\n\ndata: null\n\n"))
         );
+        mockFetch.mockResolvedValueOnce(Response.json({ status: "success" }));
         const consume = gatherStream(client.runs.joinStream("thread-1", "run-1"));
         await vi.runAllTimersAsync();
         expect(await consume).toEqual([
@@ -660,6 +669,165 @@ describe("Client streaming with retry", () => {
       await expect(gatherStream(stream)).rejects.toThrow(
         "Expected response header Content-Type to contain 'text/event-stream'"
       );
+    });
+  });
+
+  describe("clean close before the run ends", () => {
+    const createRun = "POST /threads/thread-1/runs/stream";
+    const joinRun = "GET /threads/thread-1/runs/run-1/stream";
+    const runCheck = "GET /threads/thread-1/runs/run-1";
+    const values = { id: "1", event: "values", data: {} };
+
+    const runStream = (
+      chunks: Array<{ id?: string; event: string; data: unknown }>,
+      location = "/threads/thread-1/runs/run-1/stream"
+    ) =>
+      new Response(createSSEResponseBody(chunks), {
+        headers: { "content-type": "text/event-stream", location },
+      });
+
+    const requests = () =>
+      mockFetch.mock.calls.map(
+        ([url, init]) => `${init.method ?? "GET"} ${new URL(url).pathname}`
+      );
+
+    test("reconnects from the last event when the run is still running", async () => {
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(runStream([values]))
+        .mockResolvedValueOnce(Response.json({ status: "running" }))
+        .mockResolvedValueOnce(runStream([next]))
+        .mockResolvedValueOnce(Response.json({ status: "success" }));
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1")
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([createRun, runCheck, joinRun, runCheck]);
+      expect(
+        new Headers(mockFetch.mock.calls[2][1].headers).get("last-event-id")
+      ).toBe("1");
+    });
+
+    test("ends after one run check when the run succeeded", async () => {
+      mockFetch
+        .mockResolvedValueOnce(runStream([values]))
+        .mockResolvedValueOnce(Response.json({ status: "success" }));
+
+      const results = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1")
+      );
+
+      expect(results).toEqual([values]);
+      expect(requests()).toEqual([joinRun, runCheck]);
+    });
+
+    test.each(["end", "error"])(
+      "skips the run check after an %s event",
+      async (event) => {
+        mockFetch.mockResolvedValueOnce(
+          runStream([values, { event, data: null }])
+        );
+
+        await gatherStream(client.runs.stream("thread-1", "assistant-1"));
+
+        expect(requests()).toEqual([createRun]);
+      }
+    );
+
+    test.each([
+      {
+        name: "a thread stream",
+        location: "/threads/thread-1/stream",
+        open: () => client.threads.joinStream("thread-1"),
+      },
+      {
+        name: "a stateless run stream",
+        location: "/runs/run-1/stream",
+        open: () => client.runs.stream(null, "assistant-1"),
+      },
+    ])("skips the run check for $name", async ({ location, open }) => {
+      mockFetch.mockResolvedValueOnce(runStream([values], location));
+
+      await gatherStream<unknown>(open());
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test.each([
+      {
+        name: "a 404",
+        check: () =>
+          Promise.resolve(Response.json({ detail: "gone" }, { status: 404 })),
+      },
+      {
+        name: "a body that is not JSON",
+        check: () => Promise.resolve(new Response("<html></html>")),
+      },
+      {
+        name: "a network error",
+        check: () => Promise.reject(new TypeError("fetch failed")),
+      },
+    ])("ends quietly when the run check gets $name", async ({ check }) => {
+      mockFetch
+        .mockResolvedValueOnce(runStream([values]))
+        .mockImplementation(check);
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1")
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values]);
+      expect(requests()).toContain(runCheck);
+      expect(requests()).not.toContain(joinRun);
+    });
+
+    test("gives up after the max reconnect attempts when clean closes bring no events", async () => {
+      mockFetch
+        .mockResolvedValueOnce(runStream([values]))
+        .mockImplementation(async (url: string) =>
+          url.endsWith("/runs/run-1")
+            ? Response.json({ status: "running" })
+            : runStream([])
+        );
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1")
+      ).catch((error: unknown) => error);
+      await vi.runAllTimersAsync();
+
+      const error = await consume;
+      expect(error).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(error).toHaveProperty(
+        "cause.message",
+        "Stream closed before the run finished"
+      );
+      expect(requests().filter((r) => r === joinRun)).toHaveLength(5);
+    });
+
+    test("sends the run check with the client's auth and custom headers only", async () => {
+      client = new Client({
+        apiUrl: "http://localhost:8000",
+        apiKey: "test-key",
+        defaultHeaders: { "x-custom": "custom", "Last-Event-ID": "stale" },
+        callerOptions: { fetch: mockFetch },
+      });
+      mockFetch
+        .mockResolvedValueOnce(runStream([values]))
+        .mockResolvedValueOnce(Response.json({ status: "success" }));
+
+      await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", { lastEventId: "4" })
+      );
+
+      expect(requests()[1]).toBe(runCheck);
+      expect(mockFetch.mock.calls[1][1].headers).toEqual({
+        "x-api-key": "test-key",
+        "x-custom": "custom",
+      });
     });
   });
 });
