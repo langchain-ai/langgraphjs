@@ -1,5 +1,6 @@
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
+import { isNetworkError } from "../utils/error.js";
 import { mergeSignals } from "../utils/signals.js";
 import {
   BytesLineDecoder,
@@ -505,29 +506,40 @@ export class BaseClient {
     const isRunActive = async (reconnectPath: string) => {
       const runPath = RUN_STREAM_PATH.exec(reconnectPath)?.[1];
       if (runEnded || !runPath) return false;
-      const [url, prepared] = this.prepareFetchOptions(runPath, {
-        headers: {
-          ...config.headers,
-          "Last-Event-ID": null,
-          Accept: "application/json",
-        },
-        signal: config.signal,
-      });
-      const init = (await this.onRequest?.(url, prepared)) ?? prepared;
-      const response = await this.asyncCaller.fetchOnce(url.toString(), init);
-      // A 429 or a 5xx usually means the server is restarting or mid-deploy,
-      // so it is handled like a dropped connection instead of ending the stream.
-      if (response.status === 429 || response.status >= 500) {
-        throw new Error(`Run status check failed with HTTP ${response.status}`);
-      }
-      if (!response.ok) return false;
-      const body = await response.text();
+      // Network errors, timeouts, 429s and 5xxs usually mean the server is
+      // restarting or mid-deploy, so they are handled like a dropped
+      // connection. Any other failure ends the stream as before.
+      let status: number;
+      let run: { status?: unknown } | null | undefined;
       try {
-        const { status } = JSON.parse(body);
-        return status === "pending" || status === "running";
-      } catch {
+        const [url, prepared] = this.prepareFetchOptions(runPath, {
+          headers: {
+            ...config.headers,
+            "Last-Event-ID": null,
+            Accept: "application/json",
+          },
+          signal: config.signal,
+        });
+        const init = this.onRequest
+          ? await this.onRequest(url, prepared)
+          : prepared;
+        const response = await this.asyncCaller.fetchOnce(url.toString(), init);
+        const body = await response.text();
+        status = response.status;
+        run = response.ok ? JSON.parse(body) : undefined;
+      } catch (error) {
+        if (
+          isNetworkError(error) ||
+          (error as Error)?.name === "TimeoutError"
+        ) {
+          throw error;
+        }
         return false;
       }
+      if (status === 429 || status >= 500) {
+        throw new Error(`Run status check failed with HTTP ${status}`);
+      }
+      return run?.status === "pending" || run?.status === "running";
     };
 
     for await (const part of streamWithRetry(makeRequest, {

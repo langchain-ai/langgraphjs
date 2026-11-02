@@ -687,7 +687,7 @@ describe("Client streaming with retry", () => {
       });
 
     const httpStatus = (status: number) => async () =>
-      new Response(null, { status });
+      new Response(`HTTP ${status}`, { status });
 
     const runStatus = (status: string) => async () => Response.json({ status });
 
@@ -695,6 +695,17 @@ describe("Client streaming with retry", () => {
       mockFetch.mock.calls.map(
         ([url, init]) => `${init.method ?? "GET"} ${new URL(url).pathname}`
       );
+
+    const unreadResponses = async () => {
+      const results = await Promise.allSettled(
+        mockFetch.mock.results.map((result) => result.value)
+      );
+      return results.flatMap((result) =>
+        result.status === "fulfilled" && !result.value.bodyUsed
+          ? [result.value]
+          : []
+      );
+    };
 
     test.each([
       { name: "status running", check: runStatus("running") },
@@ -705,14 +716,26 @@ describe("Client streaming with retry", () => {
         name: "a network error",
         check: () => Promise.reject(new TypeError("fetch failed")),
       },
+      {
+        name: "a timeout",
+        check: () =>
+          Promise.reject(new DOMException("timed out", "TimeoutError")),
+      },
+      {
+        name: "status running under a path prefix",
+        check: runStatus("running"),
+        prefix: "/api",
+        query: "?x=1",
+      },
     ])(
       "reconnects from the last event after a run check with $name",
-      async ({ check }) => {
+      async ({ check, prefix = "", query = "" }) => {
+        const run = `${prefix}/threads/thread-1/runs/run-1`;
         const next = { id: "2", event: "values", data: { step: 2 } };
         mockFetch
-          .mockResolvedValueOnce(runStream([values]))
+          .mockResolvedValueOnce(runStream([values], `${run}/stream${query}`))
           .mockImplementationOnce(check)
-          .mockResolvedValueOnce(runStream([next]))
+          .mockResolvedValueOnce(runStream([next], `${run}/stream${query}`))
           .mockImplementationOnce(runStatus("success"));
 
         const consume = gatherStream(
@@ -721,10 +744,17 @@ describe("Client streaming with retry", () => {
         await vi.runAllTimersAsync();
 
         expect(await consume).toEqual([values, next]);
-        expect(requests()).toEqual([createRun, runCheck, joinRun, runCheck]);
+        expect(requests()).toEqual([
+          createRun,
+          `GET ${run}`,
+          `GET ${run}/stream`,
+          `GET ${run}`,
+        ]);
+        expect(mockFetch.mock.calls[1][0]).toBe(`http://localhost:8000${run}`);
         expect(
           new Headers(mockFetch.mock.calls[2][1].headers).get("last-event-id")
         ).toBe("1");
+        expect(await unreadResponses()).toEqual([]);
       }
     );
 
@@ -748,6 +778,10 @@ describe("Client streaming with retry", () => {
         name: "a body that is not JSON",
         check: async () => new Response("<html></html>"),
       },
+      {
+        name: "a request that fails another way",
+        check: () => Promise.reject(new Error("boom")),
+      },
     ])("ends quietly after a run check with $name", async ({ check }) => {
       mockFetch
         .mockResolvedValueOnce(runStream([values]))
@@ -760,6 +794,7 @@ describe("Client streaming with retry", () => {
 
       expect(await consume).toEqual([values]);
       expect(requests()).toEqual([createRun, runCheck]);
+      expect(await unreadResponses()).toEqual([]);
     });
 
     test.each(["end", "error"])(

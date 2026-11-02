@@ -213,7 +213,13 @@ describe("RemoteGraph with streamResumable", () => {
     await vi.runAllTimersAsync();
 
     const results = await generator;
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(
+      mockFetch.mock.calls.map(([url]) => new URL(String(url)).pathname)
+    ).toEqual([
+      "/threads/test_thread/runs/stream",
+      "/threads/test_thread/runs/run-1/stream",
+      "/threads/test_thread/runs/run-1",
+    ]);
     expect(results.length).toBe(3);
 
     const init = mockFetch.mock.calls[0]![1]!;
