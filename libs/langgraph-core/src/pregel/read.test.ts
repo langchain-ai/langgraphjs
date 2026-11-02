@@ -5,8 +5,23 @@ import { LastValue } from "../channels/last_value.js";
 import { ChannelRead, PregelNode } from "./read.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
-import { FakeTracer } from "../tests/utils.js";
+import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
+import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { omitPayload } from "./utils/index.js";
+
+/** What LangChainTracer sends to LangSmith for the root run. */
+function mockTracer() {
+  const client = { createRun: vi.fn(), updateRun: vi.fn() };
+  const tracer = new LangChainTracer({
+    client: client as unknown as LangChainTracer["client"],
+  });
+  const root = () => {
+    const [[run]] = client.createRun.mock.calls;
+    const end = client.updateRun.mock.calls.find(([id]) => id === run.id);
+    return { inputs: run.inputs, outputs: end?.[1].outputs };
+  };
+  return { tracer, root };
+}
 
 describe("ChannelRead", () => {
   it("should read a single channel value", async () => {
@@ -136,7 +151,7 @@ describe("PregelNode", () => {
     for (const node of [base, bound, twice, withWriter, joined]) {
       expect(node.tracePolicy).toBe(tracePolicy);
     }
-    const tracer = new FakeTracer();
+    const { tracer, root } = mockTracer();
     const send = vi.fn();
     expect(
       await joined
@@ -147,9 +162,8 @@ describe("PregelNode", () => {
         })
     ).toBe(3);
     expect(send).toHaveBeenCalledWith([["output", "written"]]);
-    expect(tracer.runs[0].inputs).toEqual({});
-    expect(tracer.runs[0].outputs).toEqual({});
-    expect(tracer.runs[0].child_runs[0].inputs).toEqual({ input: 1 });
+    await awaitAllCallbacks();
+    expect(root()).toEqual({ inputs: {}, outputs: {} });
   });
 
   it("applies policies to multiple writers and preserves single-step shortcuts", async () => {
@@ -167,14 +181,14 @@ describe("PregelNode", () => {
       action
     );
     expect(new PregelNode({ ...base, bound: action }).getNode()).toBe(action);
-    const tracer = new FakeTracer();
+    const { tracer, root } = mockTracer();
     const node = new PregelNode({
       ...base,
       writers: [action, action],
     }).getNode();
     expect(await node?.invoke(1, { callbacks: [tracer] })).toBe(3);
-    expect(tracer.runs[0].inputs).toEqual({});
-    expect(tracer.runs[0].outputs).toEqual({});
+    await awaitAllCallbacks();
+    expect(root()).toEqual({ inputs: {}, outputs: {} });
   });
 
   it("should create a node that subscribes to channels", () => {

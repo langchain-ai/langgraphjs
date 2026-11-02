@@ -1,5 +1,6 @@
 import { Callbacks } from "@langchain/core/callbacks/manager";
 import { RunnableConfig } from "@langchain/core/runnables";
+import type { TracePolicy as CoreTracePolicy } from "@langchain/core/tracers/tracer_langchain";
 import type {
   ChannelVersions,
   CheckpointMetadata,
@@ -112,38 +113,18 @@ export type CachePolicy = {
 };
 
 /**
- * Controls the input and output payloads recorded on a node's own trace run.
- * The graph's root run and child runs created by traced runnables are unaffected.
- * Plain function nodes do not create an additional child run.
- *
- * Processors are synchronous and receive raw values, before callback payload
- * normalization. They run even without tracing callbacks. If a processor throws,
- * the original payload is recorded instead. Avoid mutating the supplied values:
- * they are also used for execution and are not copied.
- *
- * These transforms also affect chain callbacks, including `streamEvents` and
- * message streaming. Omitting outputs can suppress messages returned directly
- * by nodes; omitting inputs can affect message deduplication.
- *
- * This policy is intended to reduce trace payload sizes, not redact secrets.
- * For redaction across all runs, configure the LangSmith client instead.
+ * Shapes what `LangChainTracer` sends to LangSmith for a node's own run.
+ * Execution, checkpoints, child runs, and other callback handlers (including
+ * `streamEvents` and message streaming) still see the raw values.
  *
  * @example
  * ```ts
  * graph.addNode("before_model", beforeModel, {
- *   tracePolicy: {
- *     processInputs: omitPayload,
- *     processOutputs: omitPayload,
- *   },
+ *   tracePolicy: { processInputs: omitPayload },
  * });
  * ```
  */
-export type TracePolicy = {
-  /** Transform the raw node input recorded on its trace run. */
-  processInputs?: (value: unknown) => unknown;
-  /** Transform the raw node output recorded on its trace run. */
-  processOutputs?: (value: unknown) => unknown;
-};
+export type TracePolicy = CoreTracePolicy;
 
 /**
  * Record an empty trace payload while retaining the node's span and timing.

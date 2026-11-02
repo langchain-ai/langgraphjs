@@ -30,7 +30,7 @@ it("preserves node input inference when a trace policy is provided", () => {
       input: z.object({ value: z.number() }),
       tracePolicy: {
         processInputs: (value) => {
-          expectTypeOf(value).toBeUnknown();
+          expectTypeOf(value).toBeObject();
           return omitPayload(value);
         },
         processOutputs: omitPayload,

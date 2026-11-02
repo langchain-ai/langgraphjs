@@ -224,7 +224,7 @@ export type StateGraphAddNodeOptions<
   Update = unknown,
 > = {
   input?: InputSchema;
-  /** Transform this node's trace payloads. See {@link TracePolicy} for scope and streaming behavior. */
+  /** Shape what LangSmith records for this node's run. See {@link TracePolicy}. */
   tracePolicy?: TracePolicy;
   /**
    * Optional node-level error handler. Runs only after this node's
