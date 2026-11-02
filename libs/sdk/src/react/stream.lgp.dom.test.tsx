@@ -678,6 +678,30 @@ describe("useStream (old engine) headless tools", () => {
     );
   });
 
+  it("resumes a pending tool on the thread submit created while the threadId prop stays null", async () => {
+    const client = createClient();
+    client.threads.create
+      .mockResolvedValueOnce({ thread_id: "t1" })
+      .mockResolvedValueOnce({ thread_id: "t2" });
+    const tool = weatherTool();
+    const view = await renderStream(client, { threadId: null, tools: [tool] });
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+      },
+    ]);
+    mockRun(client, []);
+
+    await submit(view);
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream.mock.calls.map(([threadId]) => threadId)).toEqual(
+      ["t1", "t1"]
+    );
+  });
+
   it("does not run a pending tool from a read that resolves after a rejoined run ends", async () => {
     const client = createClient();
     const answered = threadState({
