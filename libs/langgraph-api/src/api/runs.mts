@@ -10,6 +10,7 @@ import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
 import type { Run, RunKwargs } from "../storage/types.mjs";
+import { matchesStreamMode } from "../stream.mjs";
 import {
   getDisconnectAbortSignal,
   jsonExtra,
@@ -22,37 +23,6 @@ import {
 import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
-
-// JS SDKs before 1.12 send several stream modes as one JSON array.
-const parseStreamMode = (value: string): string[] => {
-  if (!value.startsWith("[")) return value ? [value] : [];
-  try {
-    return JSON.parse(value);
-  } catch {
-    return [value];
-  }
-};
-
-const JoinStreamQuery = z.object({
-  cancel_on_disconnect: schemas.coercedBoolean.optional(),
-  stream_mode: z
-    .union([z.string(), z.array(z.string())])
-    .optional()
-    .transform((value) => [value ?? []].flat().flatMap(parseStreamMode)),
-});
-
-const matchesStreamMode = (event: string, streamMode: string[]) => {
-  // A run's error is its outcome, not a mode, so no filter drops it.
-  if (streamMode.length === 0 || event === "error") return true;
-  const mode = event.split("|")[0];
-  if (streamMode.includes(mode)) return true;
-  // The messages modes stream `messages` (messages-tuple) and `messages/*`
-  // (messages) events; as on the Agent Server, either mode keeps both.
-  return (
-    mode.startsWith("messages") &&
-    (streamMode.includes("messages") || streamMode.includes("messages-tuple"))
-  );
-};
 
 const createValidRun = async (
   threadId: string | undefined,
@@ -249,7 +219,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
 api.get(
   "/runs/:run_id/stream",
   zValidator("param", z.object({ run_id: z.string().uuid() })),
-  zValidator("query", JoinStreamQuery),
+  zValidator("query", schemas.JoinStreamQuery),
   async (c) => {
     const { run_id } = c.req.valid("param");
     const query = c.req.valid("query");
@@ -478,7 +448,7 @@ api.get(
     "param",
     z.object({ thread_id: z.string().uuid(), run_id: z.string().uuid() })
   ),
-  zValidator("query", JoinStreamQuery),
+  zValidator("query", schemas.JoinStreamQuery),
   async (c) => {
     // Stream Run Http
     const { thread_id, run_id } = c.req.valid("param");

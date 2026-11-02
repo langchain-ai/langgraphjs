@@ -434,6 +434,19 @@ export async function* streamState(
   }
 }
 
+export const matchesStreamMode = (event: string, streamMode: string[]) => {
+  // A run's error is its outcome, not a mode, so no filter drops it.
+  if (streamMode.length === 0 || event === "error") return true;
+  const mode = event.split("|")[0];
+  if (streamMode.includes(mode)) return true;
+  // The messages modes stream `messages` (messages-tuple) and `messages/*`
+  // (messages) events; as on the Agent Server, either mode keeps both.
+  return (
+    mode.startsWith("messages") &&
+    (streamMode.includes("messages") || streamMode.includes("messages-tuple"))
+  );
+};
+
 function isUnsupportedStreamEventsV3Error(error: unknown): boolean {
   return (
     error instanceof Error &&
