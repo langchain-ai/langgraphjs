@@ -672,7 +672,12 @@ export function useStream<
   // interrupt on a subsequent render is never executed twice
   // (StrictMode safe).
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledThreadIdRef = useRef(options.threadId);
   useEffect(() => {
+    // StrictMode, Fast Refresh and <Activity> re-run this effect on the
+    // same thread; clearing then would run a pending tool again.
+    if (handledThreadIdRef.current === options.threadId) return;
+    handledThreadIdRef.current = options.threadId;
     handledToolsRef.current.clear();
   }, [options.threadId]);
   const tools = options.tools;
