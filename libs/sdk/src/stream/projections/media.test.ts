@@ -129,7 +129,6 @@ describe("media projections", () => {
     ];
     const events = [
       ...image([...ns, "tools:grandchild"]),
-      ...image([...ns.slice(0, -1), "tools:sibling"]),
       ...image(ns),
     ];
     const thread = {

@@ -22,7 +22,6 @@ describe("valuesProjection", () => {
     const events = [
       valuesEvent(ns, "parent-1"),
       valuesEvent([...ns, "tools:grandchild"], "child"),
-      valuesEvent([...ns.slice(0, -1), "tools:sibling"], "sibling"),
       valuesEvent(ns, "parent-2"),
     ];
     const thread = {

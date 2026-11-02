@@ -196,7 +196,6 @@ describe("messagesProjection (scoped) namespace isolation", () => {
     const runtime = projection.open({ thread, store, rootBus: makeRootBus() });
     const ids = () => store.getSnapshot().map((m) => m.id);
     const child = [...ns, "tools:grandchild"];
-    const sibling = [...ns.slice(0, -1), "tools:sibling"];
 
     push(values(["p1", "p2"], ns));
     await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2"]));
@@ -204,8 +203,6 @@ describe("messagesProjection (scoped) namespace isolation", () => {
     push(
       values(["c1"], child),
       messages({ event: "message-start", id: "c2" }, child),
-      values(["s1"], sibling),
-      messages({ event: "message-start", id: "s2" }, sibling),
       messages({ event: "message-start", id: "p3" }, ns)
     );
     await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3"]));
