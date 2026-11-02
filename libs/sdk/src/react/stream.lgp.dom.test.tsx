@@ -293,6 +293,170 @@ describe("useStream (old engine) joinStream", () => {
   });
 });
 
+describe("useStream (old engine) rejoin on mount", () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const parent = threadState({ messages: [message("h0")] });
+  const head = threadState(
+    { messages: [message("h0"), message("a0", "ai")] },
+    {
+      checkpoint: { ...parent.checkpoint, checkpoint_id: "cp2" },
+      parent_checkpoint: parent.checkpoint,
+    }
+  );
+
+  const joinedWith = (client: TestClient) => {
+    const [threadId, runId, { lastEventId, checkpointId }] =
+      client.runs.joinStream.mock.calls[0];
+    return { threadId, runId, lastEventId, checkpointId };
+  };
+
+  it.each([
+    {
+      name: "from the checkpoint of the state",
+      fetchStateHistory: false,
+      read: head,
+      checkpointId: "cp2",
+    },
+    {
+      name: "from the newest checkpoint of the history",
+      fetchStateHistory: true,
+      read: [head, parent],
+      checkpointId: "cp2",
+    },
+    {
+      name: "without a checkpoint on a new thread",
+      fetchStateHistory: false,
+      read: threadState({ messages: [] }, { checkpoint: null }),
+      checkpointId: undefined,
+    },
+  ])(
+    "rejoins a stored run once the thread loads, $name",
+    async ({ fetchStateHistory, read, checkpointId }) => {
+      const client = createClient();
+      serve(client, head);
+      let serveRead!: (value: unknown) => void;
+      (fetchStateHistory
+        ? client.threads.getHistory
+        : client.threads.getState
+      ).mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveRead = resolve;
+        })
+      );
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory,
+        reconnectOnMount: true,
+      });
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(read));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toEqual({
+        threadId: "t1",
+        runId: "run-1",
+        lastEventId: "-1",
+        checkpointId,
+      });
+    }
+  );
+
+  it("rejoins a stored run without a checkpoint when the thread fails to load", async () => {
+    const client = createClient();
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = { ...userThread(), data: undefined, isLoading: true };
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread,
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await view.rerender({
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: false, error: new Error("offline") },
+    });
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client)).toEqual({
+      threadId: "t1",
+      runId: "run-1",
+      lastEventId: "-1",
+      checkpointId: undefined,
+    });
+  });
+
+  it("rejoins a stored run only once the thread switched to loads", async () => {
+    const client = createClient();
+    serve(
+      client,
+      threadState(
+        { messages: [message("h0")] },
+        { checkpoint: { ...parent.checkpoint, thread_id: "t0" } }
+      )
+    );
+    const view = await renderStream(client, {
+      threadId: "t0",
+      reconnectOnMount: true,
+    });
+    serve(client, head);
+    const serveRead = deferRead(client, false);
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    await view.rerender({ threadId: "t1", reconnectOnMount: true });
+    await settle();
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await act(async () => serveRead(head));
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client)).toMatchObject({
+      threadId: "t1",
+      checkpointId: "cp2",
+    });
+  });
+
+  it("does not retry a failed rejoin when the thread state reloads", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockJoin(client, [{ event: "error", data: { message: "gone" } }]);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = userThread();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: true },
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    for (const isLoading of [false, true, false]) {
+      await view.rerender({
+        threadId: "t1",
+        reconnectOnMount: true,
+        thread: { ...thread, isLoading },
+      });
+      await settle();
+    }
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(view.current.error).toBeDefined();
+  });
+});
+
 describe("useStream (old engine) implicit checkpoint", () => {
   const checkpoint = (checkpoint_id: string) => ({
     thread_id: "t1",

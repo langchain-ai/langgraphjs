@@ -642,6 +642,54 @@ describe("Client streaming with retry", () => {
       expect(params.getAll("namespace")).toEqual(["tools:a"]);
       expect(params.getAll("cancel_on_disconnect")).toEqual(["0"]);
     });
+
+    test("sends checkpointId as checkpoint_id on the join and its reconnect, next to the last event id", async () => {
+      let streamCalls = 0;
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith("/runs/run-1")) {
+          return Promise.resolve(Response.json({ status: "success" }));
+        }
+        streamCalls += 1;
+        const body =
+          streamCalls === 1
+            ? createErroringSSEResponseBody(
+                [{ id: "7", event: "values", data: {} }],
+                new TypeError("disconnected")
+              )
+            : createSSEResponseBody([{ id: "8", event: "values", data: {} }]);
+        return Promise.resolve(
+          new Response(body, {
+            headers: {
+              "content-type": "text/event-stream",
+              location: "/threads/thread-1/runs/run-1/stream",
+            },
+          })
+        );
+      });
+
+      const consume = gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          lastEventId: "-1",
+          checkpointId: "cp-1",
+        })
+      );
+      await vi.runAllTimersAsync();
+      await consume;
+
+      expect(
+        mockFetch.mock.calls
+          .filter(([url]) => url.toString().includes("/stream"))
+          .map(([url, init]) => ({
+            checkpointId: new URL(url.toString()).searchParams.getAll(
+              "checkpoint_id"
+            ),
+            lastEventId: new Headers(init.headers).get("last-event-id"),
+          }))
+      ).toEqual([
+        { checkpointId: ["cp-1"], lastEventId: "-1" },
+        { checkpointId: ["cp-1"], lastEventId: "7" },
+      ]);
+    });
   });
 
   describe("threads.joinStream()", () => {
