@@ -115,7 +115,7 @@ describe("media projections", () => {
   it.each([
     ["a first level", ["tools:parent"]],
     ["a second level", ["tools:parent", "tools:child"]],
-  ])("scoped media projections ignore events outside %s namespace", async (_, ns) => {
+  ])("scoped media projections keep only their own events at %s namespace", async (_, ns) => {
     const { bus } = makeRootBus();
     const projection = imagesProjection(ns);
     const store = new StreamStore(projection.initial);
@@ -129,6 +129,7 @@ describe("media projections", () => {
     ];
     const events = [
       ...image([...ns, "tools:grandchild"]),
+      ...image([...ns, "model_request:x"]),
       ...image(ns),
     ];
     const thread = {
@@ -145,7 +146,10 @@ describe("media projections", () => {
     const runtime = projection.open({ thread, store, rootBus: bus });
 
     await vi.waitFor(() =>
-      expect(store.getSnapshot().map((media) => media.namespace)).toEqual([ns])
+      expect(store.getSnapshot().map((media) => media.namespace)).toEqual([
+        [...ns, "model_request:x"],
+        ns,
+      ])
     );
 
     await runtime.dispose();

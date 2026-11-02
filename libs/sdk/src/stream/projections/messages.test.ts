@@ -189,7 +189,7 @@ describe("messagesProjection (scoped) namespace isolation", () => {
   it.each([
     ["a first level", ["tools:parent"]],
     ["a second level", ["tools:parent", "tools:child"]],
-  ])("applies only events from %s namespace", async (_, ns) => {
+  ])("applies only its own events at %s namespace", async (_, ns) => {
     const { thread, push } = makeThread();
     const projection = messagesProjection(ns);
     const store = new StreamStore<BaseMessage[]>(projection.initial);
@@ -203,7 +203,7 @@ describe("messagesProjection (scoped) namespace isolation", () => {
     push(
       values(["c1"], child),
       messages({ event: "message-start", id: "c2" }, child),
-      messages({ event: "message-start", id: "p3" }, ns)
+      messages({ event: "message-start", id: "p3" }, [...ns, "model_request:x"])
     );
     await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3"]));
 
