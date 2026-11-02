@@ -1306,6 +1306,7 @@ export class StreamOrchestrator<
   #flushPendingHeadlessToolInterrupts(
     values: Record<string, unknown> | null | undefined
   ): void {
+    const threadId = this.#threadId;
     flushPendingHeadlessToolInterrupts(
       values,
       this.#options.tools,
@@ -1315,11 +1316,15 @@ export class StreamOrchestrator<
         defer: (run) => {
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
+        resumeSubmit: (command) => {
+          // submit() resumes the current thread. The call stays pending on its
+          // own thread and runs again when that thread is read.
+          if (threadId !== this.#threadId) return;
           void this.submit(null as unknown as StateType, {
             multitaskStrategy: "interrupt",
             command,
-          }),
+          });
+        },
       }
     );
   }

@@ -572,7 +572,8 @@ export function useStreamLGP<
   };
 
   // --- TRANSPORT ---
-  const submit = async (
+  const submitToThread = async (
+    targetThreadId: string | null,
     values: UpdateType | null | undefined,
     submitOptions?: SubmitOptions<StateType, ConfigurableType>
   ) => {
@@ -596,7 +597,7 @@ export function useStreamLGP<
 
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
-    let usableThreadId = threadId;
+    let usableThreadId = targetThreadId;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -738,6 +739,11 @@ export function useStreamLGP<
     );
   };
 
+  const submit = (
+    values: UpdateType | null | undefined,
+    submitOptions?: SubmitOptions<StateType, ConfigurableType>
+  ) => submitToThread(threadId, values, submitOptions);
+
   const joinStream = async (
     runId: string,
     lastEventId?: string,
@@ -865,6 +871,11 @@ export function useStreamLGP<
       : values;
 
   useEffect(() => {
+    // These values belong to the render's `threadId`; on a switch the ref
+    // moves first. After submit() creates a thread, though, a controlled
+    // `threadId` stays null until the parent passes it back, and only the
+    // ref has the thread.
+    const callThreadId = threadId ?? threadIdRef.current;
     flushPendingHeadlessToolInterrupts(
       pendingToolValues as Record<string, unknown>,
       options.tools,
@@ -874,14 +885,25 @@ export function useStreamLGP<
         defer: (run) => {
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
-          submit(null, {
+        resumeSubmit: (command) => {
+          // Resuming would stream this call's thread into the view of the one
+          // shown now. The call stays pending and runs again when its thread
+          // is shown.
+          if (threadIdRef.current !== callThreadId) return;
+          return submitToThread(callThreadId, null, {
             multitaskStrategy: "interrupt",
             command,
-          }),
+          });
+        },
       }
     );
-  }, [options.onTool, options.tools, submit, pendingToolValues]);
+  }, [
+    options.onTool,
+    options.tools,
+    submitToThread,
+    pendingToolValues,
+    threadId,
+  ]);
 
   const streamHandle: UseStream<StateType, Bag> = {
     get values() {
