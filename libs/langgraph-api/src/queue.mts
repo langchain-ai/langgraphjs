@@ -1,5 +1,10 @@
 import { HTTPException } from "hono/http-exception";
-import type { Ops, Run, RunStatus } from "./storage/types.mjs";
+import type {
+  CheckpointPayload,
+  Ops,
+  Run,
+  RunStatus,
+} from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,
@@ -11,6 +16,30 @@ import { callWebhook } from "./webhook.mjs";
 import { getGraph } from "./graph/load.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
+
+// Strict resume refuses an answer to an interrupt that isn't pending. A retry
+// sends its answer again, and an `interrupt` or `rollback` run has already
+// cancelled the run it replaces, so refusing either would stop the agent
+// mid-turn: those resume as before.
+function withStrictResume(run: Run, attempt: number): Run {
+  const strict =
+    attempt === 1 &&
+    run.multitask_strategy !== "interrupt" &&
+    run.multitask_strategy !== "rollback";
+  return {
+    ...run,
+    kwargs: {
+      ...run.kwargs,
+      config: {
+        ...run.kwargs.config,
+        configurable: {
+          ...run.kwargs.config?.configurable,
+          __pregel_strict_resume: strict,
+        },
+      },
+    },
+  };
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const queue = async (ops: Ops) => {
@@ -102,7 +131,7 @@ const worker = async (
     const resumable = run.kwargs?.resumable ?? false;
 
     try {
-      const stream = streamState(run, {
+      const stream = streamState(withStrictResume(run, attempt), {
         getGraph,
         attempt,
         signal,
@@ -179,6 +208,22 @@ const worker = async (
     if (temporary) {
       await unlessGone(
         ops.threads.delete(run.thread_id, undefined),
+        threadGone
+      );
+    } else if (exception?.name === "UnknownInterruptError") {
+      // A refused resume ran nothing, so the thread keeps the state it had.
+      await unlessGone(
+        ops.threads.state
+          .get(
+            { configurable: { thread_id: run.thread_id } },
+            { subgraphs: false },
+            undefined
+          )
+          .then((state) =>
+            ops.threads.setStatus(run.thread_id, {
+              checkpoint: state as unknown as CheckpointPayload,
+            })
+          ),
         threadGone
       );
     } else {
