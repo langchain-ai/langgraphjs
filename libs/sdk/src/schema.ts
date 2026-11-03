@@ -447,6 +447,21 @@ export type ThreadSelectField =
   | "values"
   | "interrupts";
 
+/**
+ * Field to include in a thread state response. `values.<key>` returns a
+ * single state key (e.g. `values.messages`).
+ */
+export type ThreadStateSelectField =
+  | "values"
+  | "next"
+  | "tasks"
+  | "checkpoint"
+  | "metadata"
+  | "created_at"
+  | "parent_checkpoint"
+  | "interrupts"
+  | `values.${string}`;
+
 export type RunSelectField =
   | "run_id"
   | "thread_id"
