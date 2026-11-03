@@ -5,6 +5,7 @@ import { ThreadsClient } from "./threads/index.js";
 import { RunsClient } from "./runs/index.js";
 import { CronsClient } from "./crons/index.js";
 import { StoreClient } from "./store/index.js";
+import { HttpClient } from "./http/index.js";
 import { UiClient } from "./ui-internal/index.js";
 
 export class Client<
@@ -36,6 +37,12 @@ export class Client<
    * The client for interacting with the KV store.
    */
   public store: StoreClient;
+
+  /**
+   * The client for sending requests to API routes that have no dedicated
+   * SDK method.
+   */
+  public http: HttpClient;
 
   /**
    * The client for interacting with the UI.
@@ -73,6 +80,7 @@ export class Client<
     this.runs = new RunsClient(config);
     this.crons = new CronsClient(config);
     this.store = new StoreClient(config);
+    this.http = new HttpClient(config);
     this["~ui"] = new UiClient(config);
   }
 }
@@ -92,6 +100,11 @@ export { ThreadsClient } from "./threads/index.js";
 export { RunsClient } from "./runs/index.js";
 export { CronsClient } from "./crons/index.js";
 export { StoreClient } from "./store/index.js";
+export { HttpClient } from "./http/index.js";
+export type {
+  HttpRequestOptions,
+  HttpRequestWithBodyOptions,
+} from "./http/index.js";
 
 export {
   ProtocolError,
