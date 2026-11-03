@@ -1621,7 +1621,10 @@ export class PregelLoop {
       if (task.writes.length === 0) {
         task.writes.push([ERROR, { message: error.message, name: error.name }]);
       }
-      this.scheduleErrorHandler(task, error);
+      const handlerTask = this.scheduleErrorHandler(task, error);
+      if (handlerTask !== undefined) {
+        this._reapplyWritesToSucceededNodes({ [handlerTask.id]: handlerTask });
+      }
     }
   }
 

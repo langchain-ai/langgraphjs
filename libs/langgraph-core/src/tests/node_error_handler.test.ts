@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
+  assert,
   it,
   expect,
   describe,
@@ -13,7 +14,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { StateGraph } from "../graph/index.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
-import { START } from "../constants.js";
+import { INTERRUPT, START, isInterrupted } from "../constants.js";
 import { Command } from "../constants.js";
 import { NodeError } from "../errors.js";
 import { interrupt } from "../interrupt.js";
@@ -321,5 +322,108 @@ describe("Node-level error handlers", () => {
     expect(result.foo).toBe("handled_async");
     expect(captured.node).toBe("alwaysFailing");
     expect(captured.error).toBeInstanceOf(Error);
+  });
+
+  it.each(["sync", "async", "exit"] as const)(
+    "keeps a finished handler's writes when a sibling interrupt resumes (%s)",
+    async (durability) => {
+      const State = new StateSchema({
+        answer: z.number().optional(),
+        done: z.boolean().optional(),
+        log: new ReducedValue(z.array(z.string()).default(() => []), {
+          reducer: (a: string[], b: string[]) => a.concat(b),
+        }),
+      });
+      const runs = { workHandler: 0, quietHandler: 0, after: 0 };
+
+      const graph = new StateGraph(State)
+        .addNode(
+          "work",
+          () => {
+            throw new Error("work failed");
+          },
+          {
+            ends: ["after"],
+            retryPolicy: { maxAttempts: 1 },
+            errorHandler: () => {
+              runs.workHandler += 1;
+              return new Command({
+                update: { done: true, log: ["handled"] },
+                goto: "after",
+              });
+            },
+          }
+        )
+        .addNode(
+          "quiet",
+          () => {
+            throw new Error("quiet failed");
+          },
+          {
+            retryPolicy: { maxAttempts: 1 },
+            errorHandler: () => {
+              runs.quietHandler += 1;
+              return {};
+            },
+          }
+        )
+        .addNode("ask", () => ({ answer: interrupt("value?") as number }))
+        .addNode("after", () => {
+          runs.after += 1;
+          return {};
+        })
+        .addEdge(START, "work")
+        .addEdge(START, "quiet")
+        .addEdge(START, "ask")
+        .compile({ checkpointer: new MemorySaver() });
+
+      const config = {
+        configurable: { thread_id: "handler-done-resume" },
+        durability,
+      };
+      await graph.invoke({}, config);
+      const result = await graph.invoke(new Command({ resume: 7 }), config);
+
+      expect(runs).toEqual({ workHandler: 1, quietHandler: 1, after: 1 });
+      expect(result).toEqual({ answer: 7, done: true, log: ["handled"] });
+    }
+  );
+
+  it("runs an interrupted handler again on resume", async () => {
+    const State = new StateSchema({
+      fix: z.string().optional(),
+      answer: z.string().optional(),
+    });
+    let handlerRuns = 0;
+
+    const graph = new StateGraph(State)
+      .addNode(
+        "work",
+        () => {
+          throw new Error("work failed");
+        },
+        {
+          retryPolicy: { maxAttempts: 1 },
+          errorHandler: () => {
+            handlerRuns += 1;
+            return { fix: interrupt("how?") as string };
+          },
+        }
+      )
+      .addNode("ask", () => ({ answer: interrupt("value?") as string }))
+      .addEdge(START, "work")
+      .addEdge(START, "ask")
+      .compile({ checkpointer: new MemorySaver() });
+
+    const config = { configurable: { thread_id: "handler-interrupt-resume" } };
+    const first = await graph.invoke({}, config);
+    assert(isInterrupted(first));
+    const resume = Object.fromEntries(
+      first[INTERRUPT].map((i) => [i.id, i.value])
+    );
+    const result = await graph.invoke(new Command({ resume }), config);
+
+    expect(handlerRuns).toBe(2);
+    expect(result).toEqual({ fix: "how?", answer: "value?" });
   });
 });
