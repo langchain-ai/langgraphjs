@@ -1594,8 +1594,8 @@ export class PregelLoop {
    * On resume, re-schedule error handlers for tasks that failed in a prior run
    * but had not finished being handled. Scans pending writes for
    * `ERROR_SOURCE_NODE` markers (paired with `ERROR`), marks the originating
-   * task as done (so the runner won't re-run it), and prepares a fresh handler
-   * task so the runner picks it up.
+   * task as done (so the runner won't re-run it), and prepares its handler
+   * task.
    */
   protected _resumeErrorHandlersIfApplicable() {
     // Collect failed task ids with both ERROR_SOURCE_NODE and ERROR writes.
