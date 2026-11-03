@@ -342,29 +342,87 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       | BaseMessage[]
       | Command
     )[] = [];
+    const hasNonToolMessages = outputs.some(
+      (output) =>
+        isCommand(output) &&
+        Array.isArray(output.update?.messages) &&
+        output.update.messages.some(
+          (message: BaseMessage) =>
+            !(message instanceof ToolMessage) && message.getType() !== "remove"
+        )
+    );
+    const toolMessages: ToolMessage[] = [];
+    const otherMessages: BaseMessage[] = [];
+    const processedCommands: Command[] = [];
     let parentCommand: Command | null = null;
 
     for (const output of outputs) {
       if (isCommand(output)) {
+        let command = output;
+        if (hasNonToolMessages && Array.isArray(output.update?.messages)) {
+          const messages = output.update.messages as BaseMessage[];
+          toolMessages.push(...messages.filter((message) => message instanceof ToolMessage));
+          otherMessages.push(
+            ...messages.filter(
+              (message) =>
+                !(message instanceof ToolMessage) && message.getType() !== "remove"
+            )
+          );
+          const retainedMessages = messages.filter((message) => message.getType() === "remove");
+          command = new Command({
+            graph: output.graph,
+            goto: output.goto,
+            resume: output.resume,
+            update: {
+              ...output.update,
+              ...(retainedMessages.length > 0 || "messages" in output.update
+                ? { messages: retainedMessages }
+                : {}),
+            },
+          });
+        }
+
         if (
-          output.graph === Command.PARENT &&
-          Array.isArray(output.goto) &&
-          output.goto.every((send) => _isSend(send))
+          command.graph === Command.PARENT &&
+          Array.isArray(command.goto) &&
+          command.goto.every((send) => _isSend(send))
         ) {
           if (parentCommand) {
-            (parentCommand.goto as Send[]).push(...(output.goto as Send[]));
+            (parentCommand.goto as Send[]).push(...(command.goto as Send[]));
           } else {
             parentCommand = new Command({
               graph: Command.PARENT,
-              goto: output.goto,
+              goto: command.goto,
             });
           }
         } else {
-          combinedOutputs.push(output);
+          if (hasNonToolMessages) {
+            processedCommands.push(command);
+          } else {
+            combinedOutputs.push(output);
+          }
         }
       } else {
+        if (hasNonToolMessages) {
+          toolMessages.push(output);
+        } else {
+          combinedOutputs.push(
+            Array.isArray(input) ? [output] : { messages: [output] }
+          );
+        }
+      }
+    }
+
+    if (hasNonToolMessages) {
+      if (toolMessages.length > 0) {
         combinedOutputs.push(
-          Array.isArray(input) ? [output] : { messages: [output] }
+          Array.isArray(input) ? toolMessages : { messages: toolMessages }
+        );
+      }
+      combinedOutputs.push(...processedCommands);
+      if (otherMessages.length > 0) {
+        combinedOutputs.push(
+          Array.isArray(input) ? otherMessages : { messages: otherMessages }
         );
       }
     }
