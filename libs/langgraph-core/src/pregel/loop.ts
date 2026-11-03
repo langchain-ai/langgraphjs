@@ -1156,13 +1156,20 @@ export class PregelLoop {
       return `ns:${ns.join(",")}|key:${key}`;
     };
 
+    // Tasks with the same input share a cache key: ask the cache for each key
+    // once and hand its writes to every task that has it.
     const keys: CacheFullKey[] = [];
-    const keyMap: Record<string, PregelExecutableTask<string, string>> = {};
+    const keyMap: Record<string, PregelExecutableTask<string, string>[]> = {};
 
     for (const task of Object.values(this.tasks)) {
       if (task.cache_key != null && !task.writes.length) {
-        keys.push([task.cache_key.ns, task.cache_key.key]);
-        keyMap[serializeKey([task.cache_key.ns, task.cache_key.key])] = task;
+        const key: CacheFullKey = [task.cache_key.ns, task.cache_key.key];
+        const serialized = serializeKey(key);
+        if (keyMap[serialized] == null) {
+          keyMap[serialized] = [];
+          keys.push(key);
+        }
+        keyMap[serialized].push(task);
       }
     }
 
@@ -1170,8 +1177,7 @@ export class PregelLoop {
     const cache = await this.cache.get(keys);
 
     for (const { key, value } of cache) {
-      const task = keyMap[serializeKey(key)];
-      if (task != null) {
+      for (const task of keyMap[serializeKey(key)] ?? []) {
         // update the task with the cached writes
         task.writes.push(...value);
         matched.push({ task, result: value });
