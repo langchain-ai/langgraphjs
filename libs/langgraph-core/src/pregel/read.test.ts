@@ -6,9 +6,10 @@ import { ChannelRead, PregelNode } from "./read.js";
 import { ChannelWrite } from "./write.js";
 import { RunnableCallable } from "../utils.js";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
-import { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
-
-const omitPayload = () => ({});
+import {
+  LangChainTracer,
+  omitPayload,
+} from "@langchain/core/tracers/tracer_langchain";
 
 /** What LangChainTracer sends to LangSmith for the root run. */
 function mockTracer() {

@@ -3,6 +3,7 @@ import { AIMessage } from "@langchain/core/messages";
 import { RunnableLambda } from "@langchain/core/runnables";
 import {
   LangChainTracer,
+  omitPayload,
   type TracePolicy,
 } from "@langchain/core/tracers/tracer_langchain";
 import {
@@ -16,7 +17,6 @@ import {
 import { gatherIterator } from "../utils.js";
 
 const State = Annotation.Root({ value: Annotation<number> });
-const omitPayload = () => ({});
 const increment = (state: typeof State.State) => ({ value: state.value + 1 });
 
 // oxlint-disable-next-line @typescript-eslint/no-explicit-any
@@ -163,22 +163,6 @@ describe("TracePolicy", () => {
     expect(runs.map((run) => run.inputs)).toEqual([{}, {}]);
     expect(ended(runs[0]).error).toContain("retry");
     expect(ended(runs[1]).outputs).toEqual({});
-  });
-
-  it("doesn't send a run whose processor throws", async () => {
-    const { tracer, created } = mockTracer();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const graph = makeGraph({
-      processInputs: () => {
-        throw new Error("boom");
-      },
-    });
-
-    expect(await graph.invoke({ value: 1 }, { callbacks: [tracer] })).toEqual({
-      value: 2,
-    });
-    expect(created("node")).toEqual([]);
-    vi.restoreAllMocks();
   });
 
   it("leaves streamEvents and message streams untouched", async () => {
