@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@langchain/core': ^1.2.18
+  '@langchain/core': ^1.3.2
   '@langchain/langgraph-sdk': workspace:*
   '@langchain/langgraph-checkpoint': workspace:*
   cheerio: ^1.0.0-rc.12
@@ -157,7 +157,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -181,7 +181,7 @@ importers:
   examples/ai-elements:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.7))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -320,7 +320,7 @@ importers:
         specifier: ^0.12.5
         version: 0.12.5(@assistant-ui/react@0.12.17(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -390,7 +390,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -417,7 +417,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -480,7 +480,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -546,7 +546,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -612,7 +612,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -675,7 +675,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -738,7 +738,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -801,7 +801,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -867,7 +867,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -930,7 +930,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/groq':
         specifier: ^1.3.1
@@ -993,7 +993,7 @@ importers:
         specifier: ^1.0.57
         version: 1.0.57(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))(@opentelemetry/api@1.9.0)(cheerio@1.2.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(typeorm@0.3.31(better-sqlite3@12.10.0)(mongodb@6.21.0(socks@2.8.7))(pg@8.20.0)(redis@4.7.1)(ts-node@10.9.2(@swc/core@1.15.18)(@types/node@25.6.0)(typescript@5.9.3)))(undici@6.29.0)(ws@8.21.1)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1032,7 +1032,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1083,7 +1083,7 @@ importers:
         specifier: workspace:*
         version: link:../../libs/sdk-angular
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1126,7 +1126,7 @@ importers:
   examples/ui-multimodal:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1205,7 +1205,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1272,7 +1272,7 @@ importers:
         specifier: ^2.1.3
         version: 2.1.3(hono@4.13.13)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1321,7 +1321,7 @@ importers:
   examples/ui-svelte:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1361,7 +1361,7 @@ importers:
   examples/ui-vue:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1407,7 +1407,7 @@ importers:
   internal/bench:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -1498,8 +1498,8 @@ importers:
   libs/checkpoint:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
     devDependencies:
       '@langchain/scripts':
         specifier: '>=0.1.3 <0.2.0'
@@ -1529,8 +1529,8 @@ importers:
   libs/checkpoint-mongodb:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       mongodb:
         specifier: ^6.21.0
         version: 6.21.0(socks@2.8.7)
@@ -1569,8 +1569,8 @@ importers:
   libs/checkpoint-postgres:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       pg:
         specifier: ^8.12.0
         version: 8.20.0
@@ -1612,8 +1612,8 @@ importers:
   libs/checkpoint-redis:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -1655,8 +1655,8 @@ importers:
   libs/checkpoint-sqlite:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
@@ -1695,8 +1695,8 @@ importers:
   libs/checkpoint-validation:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       vitest:
         specifier: ^4.1.12
         version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/browser-playwright@4.1.12)(@vitest/browser-webdriverio@4.1.11)(jsdom@26.1.0)(msw@2.12.10(@types/node@25.6.0)(typescript@5.9.3))(vite@8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))
@@ -1802,8 +1802,8 @@ importers:
   libs/langgraph:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
-        version: 1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
+        specifier: ^1.3.2
+        version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
         version: link:../langgraph-core
@@ -1891,7 +1891,7 @@ importers:
         version: 4.6.6
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -2046,7 +2046,7 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph-checkpoint-postgres':
         specifier: workspace:*
@@ -2121,7 +2121,7 @@ importers:
   libs/langgraph-cua:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       scrapybara:
         specifier: ^2.4.4
@@ -2167,7 +2167,7 @@ importers:
   libs/langgraph-supervisor:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       zod:
         specifier: 4.6.6
@@ -2207,7 +2207,7 @@ importers:
   libs/langgraph-swarm:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       zod:
         specifier: 4.6.6
@@ -2297,7 +2297,7 @@ importers:
         specifier: workspace:*
         version: link:../../internal/build
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0)
       '@langchain/scripts':
         specifier: ^0.1.4
@@ -2379,7 +2379,7 @@ importers:
         specifier: ^1.3.0
         version: 1.3.1(@hono/node-server@2.1.3(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:^
@@ -2446,7 +2446,7 @@ importers:
         specifier: ^1.3.0
         version: 1.3.1(@hono/node-server@2.1.3(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:^
@@ -2513,7 +2513,7 @@ importers:
         specifier: ^1.3.0
         version: 1.3.1(@hono/node-server@2.1.3(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:^
@@ -2577,7 +2577,7 @@ importers:
         specifier: ^1.3.0
         version: 1.3.1(@hono/node-server@2.1.3(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
-        specifier: ^1.2.18
+        specifier: ^1.3.2
         version: 1.3.2(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
       '@langchain/langgraph':
         specifier: workspace:*
@@ -4134,13 +4134,13 @@ packages:
     resolution: {integrity: sha512-owIpaDngKj2LsR7TZMcfiL1bCZqGikE+YnMEijaeBoYTL9KWLUawg0GYfMupgvDBsQDqw3NNcKVDzX/g4NOl3g==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/classic@1.0.57':
     resolution: {integrity: sha512-Tk6NxEElqqXzusL/TLQBkcdzSgw/gtDCO/l8MUsLZ8BWJ9k429k/kKQzsCzSoZwtUmFYXgfew9sqQwizjcKotw==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
       cheerio: ^1.0.0-rc.12
       peggy: ^5.1.0
       typeorm: '*'
@@ -4152,10 +4152,6 @@ packages:
       typeorm:
         optional: true
 
-  '@langchain/core@1.3.1':
-    resolution: {integrity: sha512-jt0miXWxNi+rbZLeSeZkc7BBYKnWopksoJSpB+P3zaYgzMMNwkAPWqnd1zSClfYGwLZPXQbbTtaqv8ZFXmE3FA==}
-    engines: {node: '>=20'}
-
   '@langchain/core@1.3.2':
     resolution: {integrity: sha512-kXI5wkIRy6MVNBFzFdN4MyNAGPTsodVZFQ9BRQTyOCNnKy+qPuipMCl+qaybtN6rQ+0YrJvfTxYd+u4goAHtFQ==}
     engines: {node: '>=20'}
@@ -4164,13 +4160,13 @@ packages:
     resolution: {integrity: sha512-ImxfGBis4FEHpZdeT6dot6V6l09uBLYm/1BHQ6x3XEQmJFF7aKwbOeSOV5h/h5IeRx+2gaInR+LfyYoqT8satQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/langgraph@1.4.4':
     resolution: {integrity: sha512-20p+/xHRIUIEkk6dsoA576X7D5+FY+LkShsGjBpKrwATzQU0IJ2dfpBaP+4Z4wwpL9ArpDxjoRQR58kycdxU8A==}
     engines: {node: '>=18'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
       zod: 4.6.6
       zod-to-json-schema: ^3.x
     peerDependenciesMeta:
@@ -4181,26 +4177,26 @@ packages:
     resolution: {integrity: sha512-cuqswNgfoF/J3/r9K5Qm7EnQc2f0mz7uWlAAs751KWhoK8sKfmuLABghF4b1LYq1NpK72XG1x8lWPyg45M8BOA==}
     engines: {node: '>=18'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
       zod: 4.6.6
 
   '@langchain/mistralai@1.2.0':
     resolution: {integrity: sha512-SRtCSDIBzcQc6ZK5qa1V2ZhqSdZomXOt4VzBWXkD//IYYhbMJHhbrlYuCIuHktwpF/1ME5a7Euyk+BujN9hkTA==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/ollama@1.3.0':
     resolution: {integrity: sha512-uzLkZVTXN0SI5zAoJbJzL4y/QN7gbmJ1txBgFfqJ5M0Qf+Yu2Zu8q98L3jIrfM+akWMaNmRU4R4APhcfQmeIsw==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/openai@1.8.0':
     resolution: {integrity: sha512-HstN9V0rUkNnOyzMSylP2e5z6VbyuZXyoliuepO2Tf59bezrhvB/sljLfREN1lAGsy4YysD5hUeCN/2ynAZKjQ==}
     engines: {node: '>=22'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/protocol@0.0.16':
     resolution: {integrity: sha512-ws+J7MaHyhO5dG7f0vdyHQiUn9hoCnki0f3crJPa4MCTGzcRC39jYSCghyrGtBPYQnZbUQiGyRVpW3z3M8IpJg==}
@@ -4223,13 +4219,13 @@ packages:
     resolution: {integrity: sha512-aPLPgtw8+b/Rnr3H+X8H8z98T/Y7JuCE4B5eqRDHoEWgZvMDUFF7divqwQqCTMq2deQttlVrm5bN5JbKaAR7/w==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@langchain/textsplitters@1.0.2':
     resolution: {integrity: sha512-UNCmlyFIRlRfVxqpmcRsp1jQrscnIVVqRKrrjFF2wHHq+VGTv+VDkGZLyEVUopJfHIdaiXfOKlSrROQui7VLFA==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   '@listr2/prompt-adapter-inquirer@4.2.7':
     resolution: {integrity: sha512-k180vxSv2KqmnDxoato6pCqEJsov4U5C0EVmldZkAdNeVBxY48A/LM6TCNPGIzDK/iZSfsZP0Mw+gbWc5hXLyA==}
@@ -9659,7 +9655,7 @@ packages:
     resolution: {integrity: sha512-3zKLH17Baacw+MtVcKj3f6onstPzmVSI2yfmABdClqVofsifOIt/Ypw7wyMyjFkyOzJTJePVb8hUWILxYpUhKw==}
     engines: {node: '>=20'}
     peerDependencies:
-      '@langchain/core': ^1.2.18
+      '@langchain/core': ^1.3.2
 
   langsmith@0.11.5:
     resolution: {integrity: sha512-sKKiRmQIogYR2w5KREP9cHF5LWwa+DJAkLwl9G0sTBQE6v5DaWA/ekBS0rZGlDoo6A8TFz37wRkESI+jF2XqDg==}
@@ -14476,22 +14472,6 @@ snapshots:
       - google-auth-library
       - openai
       - undici
-      - ws
-
-  '@langchain/core@1.3.1(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)':
-    dependencies:
-      '@cfworker/json-schema': 4.1.1
-      '@standard-schema/spec': 1.1.0
-      js-tiktoken: 1.0.21
-      langsmith: 0.11.5(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
-      mustache: 4.2.0
-      p-queue: 6.6.2
-      zod: 4.6.6
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
-      - '@opentelemetry/exporter-trace-otlp-proto'
-      - '@opentelemetry/sdk-trace-base'
-      - openai
       - ws
 
   '@langchain/core@1.3.2(@opentelemetry/api@1.9.0)(openai@4.104.0(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)':
