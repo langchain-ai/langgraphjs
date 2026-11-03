@@ -193,6 +193,14 @@ export interface RunsStreamPayload<
   streamSubgraphs?: TSubgraphs;
 
   /**
+   * Stream only these conversations of the run: `""` is the main agent's and
+   * `"tools:<task_id>"` a subagent's, each without the subagents it starts.
+   * Servers without the `stream_namespaces` flag in `/info` ignore it and send
+   * every event.
+   */
+  streamNamespaces?: string[];
+
+  /**
    * Whether the stream is considered resumable.
    * If true, the stream can be resumed and replayed in its entirety even after disconnection.
    */

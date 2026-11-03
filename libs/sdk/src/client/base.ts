@@ -466,7 +466,12 @@ export class BaseClient {
         timeoutMs: null,
         signal: config.signal,
         headers: requestHeaders,
-        params: config.params,
+        // A Location with a query already carries the request's params; adding
+        // them again would repeat every param once more on each reconnect.
+        params:
+          isReconnect && requestEndpoint.includes("?")
+            ? undefined
+            : config.params,
         json: isReconnect ? undefined : config.json,
       });
 

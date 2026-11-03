@@ -114,6 +114,7 @@ export class RunsClient<
       json,
       signal: payload?.signal,
       idleReconnect: payload?.streamIdleReconnect,
+      params: { namespace: payload?.streamNamespaces },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
         if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -434,6 +435,13 @@ export class RunsClient<
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
           /**
+           * Stream only these conversations of the run: `""` is the main agent's and
+           * `"tools:<task_id>"` a subagent's, each without the subagents it starts.
+           * Servers without the `stream_namespaces` flag in `/info` ignore it and send
+           * every event.
+           */
+          streamNamespaces?: string[];
+          /**
            * Idle-reconnect policy.
            *
            * Guards against half-open sockets that hang with no
@@ -473,6 +481,7 @@ export class RunsClient<
       params: {
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
+        namespace: opts?.streamNamespaces,
       },
     });
   }

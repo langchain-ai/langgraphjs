@@ -188,6 +188,30 @@ describe("Client streaming with retry", () => {
       expect(body.checkpoint_id).toBe("1f0aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     });
 
+    test("sends streamNamespaces in the URL, not the body", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody([]), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      await gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          input: {},
+          streamNamespaces: [""],
+        })
+      );
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(new URL(url.toString()).searchParams.getAll("namespace")).toEqual(
+        [""]
+      );
+      const body = JSON.parse(init.body as string);
+      expect(body).not.toHaveProperty("streamNamespaces");
+      expect(body).not.toHaveProperty("namespace");
+    });
+
     test("passes streamMode including tools in request body", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];
 
@@ -538,6 +562,65 @@ describe("Client streaming with retry", () => {
 
       const [url] = mockFetch.mock.calls[0];
       expect(url.toString()).toContain("cancel_on_disconnect=1");
+    });
+
+    test("sends streamNamespaces as repeated namespace params", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody([]), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          streamNamespaces: ["", "tools:a"],
+        })
+      );
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(new URL(url.toString()).searchParams.getAll("namespace")).toEqual(
+        ["", "tools:a"]
+      );
+    });
+
+    test("a reconnect to a Location with a query sends each param once", async () => {
+      const locationPath =
+        "/threads/thread-1/runs/run-1/stream?namespace=tools%3Aa&cancel_on_disconnect=0";
+      let callCount = 0;
+      mockFetch.mockImplementation(() => {
+        callCount += 1;
+        const body =
+          callCount === 1
+            ? createErroringSSEResponseBody(
+                [{ id: "1", event: "values", data: {} }],
+                new TypeError("terminated")
+              )
+            : createSSEResponseBody([{ id: "2", event: "values", data: {} }]);
+        return Promise.resolve(
+          new Response(body, {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              location: locationPath,
+            },
+          })
+        );
+      });
+
+      const resultsPromise = gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          streamNamespaces: ["tools:a"],
+        })
+      );
+      await vi.runAllTimersAsync();
+      await resultsPromise;
+
+      expect(callCount).toBe(2);
+      const [url] = mockFetch.mock.calls[1];
+      const params = new URL(url.toString()).searchParams;
+      expect(params.getAll("namespace")).toEqual(["tools:a"]);
+      expect(params.getAll("cancel_on_disconnect")).toEqual(["0"]);
     });
   });
 
