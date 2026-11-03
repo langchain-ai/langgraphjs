@@ -1689,6 +1689,9 @@ export class FileSystemRuns implements RunsRepo {
         control?.abort(options.action ?? "interrupt");
 
         if (run.status === "pending") {
+          // No worker will run it now, so free the log a join may have made.
+          if (control == null) StreamManager.freeLater(runId);
+
           if (control == null && run.kwargs.temporary) {
             // No worker will run it now, so nothing else deletes it, or its
             // temporary thread once no other run is left on it.
@@ -1818,9 +1821,7 @@ export class FileSystemRuns implements RunsRepo {
       const runs = this.runs;
 
       yield* conn.withGenerator(async function* (STORE) {
-        // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.signal;
-        const queue = StreamManager.getQueue(runId);
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1856,6 +1857,18 @@ export class FileSystemRuns implements RunsRepo {
             return;
           }
         }
+
+        // A run that has ended or is gone has nothing more for a join to
+        // read, and a log created for it might never be freed.
+        const status = STORE.runs[runId]?.status;
+        if (
+          StreamManager.readers[runId] == null &&
+          status !== "pending" &&
+          status !== "running"
+        ) {
+          return;
+        }
+        const queue = StreamManager.getQueue(runId);
 
         let lastEventId = options?.lastEventId;
         while (!signal?.aborted) {

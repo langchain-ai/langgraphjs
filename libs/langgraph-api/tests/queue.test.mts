@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { type AuthContext, registerAuth } from "../src/auth/index.mjs";
 import { getAssistantId, registerFromEnv } from "../src/graph/load.mjs";
 import { logger } from "../src/logging.mjs";
 import { queue } from "../src/queue.mjs";
@@ -18,6 +19,13 @@ import type { Run, RunKwargs, Store } from "../src/storage/types.mjs";
 import { gatherIterator } from "./utils.mjs";
 
 let cleanup: (() => Promise<void>) | undefined;
+
+beforeAll(() =>
+  registerAuth(
+    { path: "./auth.mts:auth" },
+    { cwd: fileURLToPath(new URL("./graphs", import.meta.url)) }
+  )
+);
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -296,3 +304,155 @@ it("keeps a re-queued run's log until a grace period after its last attempt", as
     "the log after the grace period"
   ).toBeUndefined();
 });
+
+const alice: AuthContext = {
+  user: {
+    identity: "alice",
+    permissions: ["me"],
+    display_name: "alice",
+    is_authenticated: true,
+  },
+  scopes: ["me"],
+};
+
+it.each<
+  [
+    string,
+    (run: Run) => [string, string | undefined, AuthContext | undefined],
+    unknown[],
+  ]
+>([
+  [
+    "a run through another thread",
+    (run) => [run.run_id, uuid7(), undefined],
+    [{ event: "error", data: "Run not found" }],
+  ],
+  [
+    "a run through a thread the caller can't read",
+    (run) => [run.run_id, run.thread_id, alice],
+    [
+      {
+        event: "error",
+        data: { error: "Error", message: "404: Thread not found" },
+      },
+    ],
+  ],
+  ["a hidden run by id", (run) => [run.run_id, undefined, alice], []],
+  ["an unknown run by id", () => [uuid7(), undefined, alice], []],
+  [
+    "an unknown run by id without auth",
+    () => [uuid7(), undefined, undefined],
+    [],
+  ],
+])("a join of %s ends without creating a log", async (_, target, events) => {
+  const { ops, createRun } = await openOps();
+  const [runId, threadId, auth] = target(
+    await createRun({ input: { delay: 0 } })
+  );
+  const options =
+    threadId == null
+      ? { lastEventId: "-1", ignore404: true, checkRunAccess: true }
+      : { lastEventId: "-1" };
+
+  expect(
+    await gatherIterator(ops.runs.stream.join(runId, threadId, options, auth))
+  ).toEqual(events);
+  expect(StreamManager.readers[runId], "the run's log").toBeUndefined();
+});
+
+it("a join of a finished run whose log was freed ends at once without creating a log", async () => {
+  vi.useFakeTimers();
+  const { ops, createRun } = await openOps();
+  const run = await createRun({ input: { delay: 0 } });
+  await runOnce(ops, run);
+  vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
+
+  const events = gatherIterator(
+    ops.runs.stream.join(
+      run.run_id,
+      run.thread_id,
+      { lastEventId: "-1" },
+      undefined
+    )
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(StreamManager.readers[run.run_id], "the run's log").toBeUndefined();
+  expect(await Promise.race([events, "still waiting"])).toEqual([]);
+});
+
+it.each(["pending", "running"] as const)(
+  "a join of a %s run gets the run's events",
+  async (status) => {
+    vi.useFakeTimers();
+    const { ops, createRun } = await openOps();
+    const run = await createRun({ input: { delay: 0 } });
+    await ops.runs.setStatus(run.run_id, status);
+    const join = ops.runs.stream.join(
+      run.run_id,
+      run.thread_id,
+      { lastEventId: "-1" },
+      undefined
+    );
+    const first = join.next();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(StreamManager.readers[run.run_id], "the run's log").toBeDefined();
+
+    await ops.runs.stream.publish({
+      runId: run.run_id,
+      resumable: false,
+      event: "values",
+      data: { delay: 0 },
+    });
+    expect((await first).value).toMatchObject({
+      event: "values",
+      data: { delay: 0 },
+    });
+    await join.return(undefined);
+  }
+);
+
+it("a wait reads a finished stateless run deleted with its thread during its grace period", async () => {
+  vi.useFakeTimers();
+  const { ops, createRun } = await openOps();
+  const run = await createRun({ input: { delay: 0 }, temporary: true });
+  await runOnce(ops, run, () => ops.threads.delete(run.thread_id, undefined));
+
+  const result = ops.runs.wait(run.run_id, undefined, undefined);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(await result).toEqual({ delay: 0 });
+});
+
+it.each<[string, boolean]>([
+  ["run", false],
+  ["stateless run", true],
+])(
+  "frees the log a join made for a pending %s after it is cancelled",
+  async (_, temporary) => {
+    vi.useFakeTimers();
+    const { ops, createRun } = await openOps();
+    const run = await createRun({ input: { delay: 0 }, temporary });
+    const events = gatherIterator(
+      ops.runs.stream.join(
+        run.run_id,
+        undefined,
+        { lastEventId: "-1", ignore404: true },
+        undefined
+      )
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(StreamManager.readers[run.run_id], "the run's log").toBeDefined();
+
+    await ops.runs.cancel(
+      run.thread_id,
+      [run.run_id],
+      { action: "interrupt" },
+      undefined
+    );
+    vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
+    expect(
+      StreamManager.readers[run.run_id],
+      "the log after the grace period"
+    ).toBeUndefined();
+    expect(await events).toEqual([]);
+  }
+);
