@@ -1,9 +1,9 @@
 import {
   BaseMessage,
-  ToolMessage,
   AIMessage,
   isBaseMessage,
   isAIMessage,
+  type ToolMessage,
 } from "@langchain/core/messages";
 import { RunnableToolLike } from "@langchain/core/runnables";
 import {
@@ -348,7 +348,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
         Array.isArray(output.update?.messages) &&
         output.update.messages.some(
           (message: BaseMessage) =>
-            !(message instanceof ToolMessage) && message.getType() !== "remove"
+            message.getType() !== "tool" && message.getType() !== "remove"
         )
     );
     const toolMessages: ToolMessage[] = [];
@@ -361,14 +361,20 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
         let command = output;
         if (hasNonToolMessages && Array.isArray(output.update?.messages)) {
           const messages = output.update.messages as BaseMessage[];
-          toolMessages.push(...messages.filter((message) => message instanceof ToolMessage));
+          toolMessages.push(
+            ...messages.filter(
+              (message): message is ToolMessage => message.getType() === "tool"
+            )
+          );
           otherMessages.push(
             ...messages.filter(
               (message) =>
-                !(message instanceof ToolMessage) && message.getType() !== "remove"
+                message.getType() !== "tool" && message.getType() !== "remove"
             )
           );
-          const retainedMessages = messages.filter((message) => message.getType() === "remove");
+          const retainedMessages = messages.filter(
+            (message) => message.getType() === "remove"
+          );
           command = new Command({
             graph: output.graph,
             goto: output.goto,
