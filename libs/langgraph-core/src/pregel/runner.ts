@@ -437,14 +437,13 @@ export class PregelRunner {
     if (error !== undefined) {
       if (isGraphInterrupt(error)) {
         if (error.interrupts.length) {
-          const interrupts: PendingWrite<string>[] = error.interrupts.map(
-            (interrupt) => [INTERRUPT, interrupt]
-          );
-          const resumes = task.writes.filter((w) => w[0] === RESUME);
-          if (resumes.length) {
-            interrupts.push(...resumes);
-          }
-          this.loop.putWrites(task.id, interrupts);
+          // One write holds all of them: writes to INTERRUPT replace each
+          // other, so a write per interrupt would keep only the last.
+          const writes: PendingWrite<string>[] = [
+            [INTERRUPT, error.interrupts],
+            ...task.writes.filter((w) => w[0] === RESUME),
+          ];
+          this.loop.putWrites(task.id, writes);
         }
       } else if (isGraphDrained(error)) {
         // Cooperative drain bubbled up from a subgraph. Leave the task

@@ -76,7 +76,9 @@ import {
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_RESUME_MAP,
   CONFIG_KEY_REPLAY_STATE,
+  CONFIG_KEY_STRICT_RESUME,
   START,
+  type Interrupt,
 } from "../constants.js";
 import { ReplayState } from "./replay.js";
 import {
@@ -106,6 +108,7 @@ import {
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
+  UnknownInterruptError,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
@@ -222,6 +225,15 @@ function isPlainObject(item: unknown): item is Record<string, unknown> {
   if (typeof item !== "object" || item === null) return false;
   const proto = Object.getPrototypeOf(item);
   return (proto === Object.prototype || proto === null) && !("lc" in item);
+}
+
+function isTaskOutput(channel: string): boolean {
+  return (
+    channel !== ERROR &&
+    channel !== ERROR_SOURCE_NODE &&
+    channel !== INTERRUPT &&
+    channel !== RESUME
+  );
 }
 
 function stampMessageIds(value: unknown): void {
@@ -1714,6 +1726,18 @@ export class PregelLoop {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
       }
 
+      if (
+        hasResume &&
+        this.config.configurable?.[CONFIG_KEY_STRICT_RESUME] === true &&
+        // Nested calls inherit the parent's configurable.
+        !this.isNested &&
+        // A finished task can rerun and interrupt again on replay, while its
+        // earlier output still makes its interrupt look answered.
+        !this.addressedCheckpointSuperseded
+      ) {
+        this._refuseUnmatchedResume(command.resume);
+      }
+
       const writes: { [key: string]: PendingWrite[] } = {};
 
       // group writes by task id
@@ -2362,19 +2386,49 @@ export class PregelLoop {
     tasks: Record<string, PregelExecutableTask<any, any>>
   ) {
     for (const [tid, k, v] of this.checkpointPendingWrites) {
-      if (
-        k === ERROR ||
-        k === ERROR_SOURCE_NODE ||
-        k === INTERRUPT ||
-        k === RESUME
-      ) {
-        continue;
-      }
+      if (!isTaskOutput(k)) continue;
       const task = tasks[tid];
       if (task) {
         task.writes.push([k, v]);
         this._reappliedTaskIds.add(tid);
       }
+    }
+  }
+
+  /** Ids of the interrupts still waiting for an answer: those of tasks with no output. */
+  protected _pendingInterruptIds(): Set<string> {
+    const finished = new Set(
+      this.checkpointPendingWrites
+        .filter(([, k]) => isTaskOutput(k))
+        .map(([tid]) => tid)
+    );
+    const interrupts = this.checkpointPendingWrites
+      .filter(([tid, k]) => k === INTERRUPT && !finished.has(tid))
+      .flatMap(([, , v]) => v) as Interrupt[];
+    return new Set(interrupts.flatMap(({ id }) => (id == null ? [] : [id])));
+  }
+
+  /**
+   * Strict resume mode: refuses a resume that names an interrupt that isn't
+   * pending, is an empty map, or is one value while several are pending.
+   */
+  protected _refuseUnmatchedResume(resume: unknown) {
+    const pending = this._pendingInterruptIds();
+    if (isPlainObject(resume) && Object.keys(resume).every(isXXH3)) {
+      const ids = Object.keys(resume);
+      if (ids.length === 0) {
+        throw new UnknownInterruptError("The resume map names no interrupt");
+      }
+      const unknown = ids.filter((id) => !pending.has(id)).sort();
+      if (unknown.length > 0) {
+        throw new UnknownInterruptError(
+          `Unknown or already-consumed interrupt: ${unknown[0]}`
+        );
+      }
+    } else if (pending.size > 1) {
+      throw new UnknownInterruptError(
+        "When there are multiple pending interrupts, you must specify the interrupt id when resuming."
+      );
     }
   }
 

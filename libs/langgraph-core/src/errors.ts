@@ -323,6 +323,23 @@ export class EmptyInputError extends BaseLangGraphError {
   }
 }
 
+/**
+ * Raised in strict resume mode when a resume doesn't match the pending
+ * interrupts: it names an interrupt that isn't pending, is an empty map, or is
+ * one value while several interrupts are pending. It is raised before anything
+ * is written, so the pending interrupts can still be answered.
+ */
+export class UnknownInterruptError extends BaseLangGraphError {
+  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+    super(message, fields);
+    this.name = "UnknownInterruptError";
+  }
+
+  static get unminifiable_name() {
+    return "UnknownInterruptError";
+  }
+}
+
 export class EmptyChannelError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     // Skip expensive stack trace capture — used for control flow on channel reads.
