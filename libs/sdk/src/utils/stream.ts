@@ -31,6 +31,14 @@ export interface StreamWithRetryOptions {
     lastEventId?: string;
     cause: unknown;
   }) => void;
+
+  /**
+   * Called when the stream ends without an error and a reconnect path is
+   * known. A proxy timeout or a server restart can end the response cleanly
+   * while the run goes on, so resolving `true` reconnects. A rejection is
+   * handled like a dropped connection.
+   */
+  isRunActive?: (reconnectPath: string) => Promise<boolean>;
 }
 
 /**
@@ -281,10 +289,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
 
           const { done, value } = await reader.read();
 
-          if (done) {
-            // Stream completed successfully
-            break;
-          }
+          if (done) break;
 
           // Track last event ID for reconnection
           if (value.id !== undefined) {
@@ -296,9 +301,13 @@ export async function* streamWithRetry<T extends { id?: string }>(
           yield value;
         }
 
-        // Stream completed successfully, exit retry loop
-        break;
+        if (!reconnectPath || !(await options.isRunActive?.(reconnectPath))) {
+          break;
+        }
+        shouldRetry = true;
+        lastError = new Error("Stream closed before the run finished");
       } catch (error) {
+        lastError = error;
         // Error during streaming - attempt reconnect if we have a location header
         if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;

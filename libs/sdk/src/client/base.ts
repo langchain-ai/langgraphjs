@@ -1,5 +1,6 @@
 import { AsyncCaller, AsyncCallerParams } from "../utils/async_caller.js";
 import { getEnvironmentVariable } from "../utils/env.js";
+import { isNetworkError } from "../utils/error.js";
 import { mergeSignals } from "../utils/signals.js";
 import {
   BytesLineDecoder,
@@ -501,11 +502,53 @@ export class BaseClient {
       return { response, stream };
     };
 
+    let runEnded = false;
+    const isRunActive = async (reconnectPath: string) => {
+      const runPath = RUN_STREAM_PATH.exec(reconnectPath)?.[1];
+      if (runEnded || !runPath) return false;
+      // Network errors, timeouts, 429s and 5xxs usually mean the server is
+      // restarting or mid-deploy, so they are handled like a dropped
+      // connection. Any other failure ends the stream as before.
+      let status: number;
+      let run: { status?: unknown } | null | undefined;
+      try {
+        const [url, prepared] = this.prepareFetchOptions(runPath, {
+          headers: {
+            ...config.headers,
+            "Last-Event-ID": null,
+            Accept: "application/json",
+          },
+          signal: config.signal,
+        });
+        const init = this.onRequest
+          ? await this.onRequest(url, prepared)
+          : prepared;
+        const response = await this.asyncCaller.fetchOnce(url.toString(), init);
+        const body = await response.text();
+        status = response.status;
+        run = response.ok ? JSON.parse(body) : undefined;
+      } catch (error) {
+        if (
+          isNetworkError(error) ||
+          (error as Error)?.name === "TimeoutError"
+        ) {
+          throw error;
+        }
+        return false;
+      }
+      if (status === 429 || status >= 500) {
+        throw new Error(`Run status check failed with HTTP ${status}`);
+      }
+      return run?.status === "pending" || run?.status === "running";
+    };
+
     for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
       signal: config.signal,
       onReconnect: config.onReconnect,
+      isRunActive,
     })) {
+      if (part.event === "end" || part.event === "error") runEnded = true;
       if (!isSSEControlPart(part)) {
         yield part.id === "" ? { ...part, id: undefined } : part;
       }
@@ -515,6 +558,9 @@ export class BaseClient {
 
 export const REGEX_RUN_METADATA =
   /(\/threads\/(?<thread_id>.+))?\/runs\/(?<run_id>.+)/;
+
+const RUN_STREAM_PATH =
+  /^((?:\/[^/?]+)*\/threads\/[^/?]+\/runs\/[^/?]+)\/stream(?:\?|$)/;
 
 export function getRunMetadataFromResponse(
   response: Response
