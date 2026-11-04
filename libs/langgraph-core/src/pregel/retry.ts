@@ -1,8 +1,17 @@
-import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
-import { isGraphBubbleUp, isParentCommand } from "../errors.js";
+import {
+  Command,
+  CONFIG_KEY_RESUMING,
+  CONFIG_KEY_SCRATCHPAD,
+  RETRY,
+} from "../constants.js";
+import {
+  isGraphBubbleUp,
+  isParentCommand,
+  isGraphInterrupt,
+} from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { runAttemptWithTimeout } from "./timeout.js";
-import { PregelExecutableTask } from "./types.js";
+import { PregelExecutableTask, PregelScratchpad } from "./types.js";
 import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
@@ -80,7 +89,6 @@ export async function _runWithRetry<
   signalAborted?: boolean;
 }> {
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
-  let attempts = 0;
   let error;
   let result;
 
@@ -89,11 +97,16 @@ export async function _runWithRetry<
     config = patchConfigurable(config, configurable);
   }
   config = { ...config, signal };
+  const scratchpad = config.configurable?.[CONFIG_KEY_SCRATCHPAD] as
+    | PregelScratchpad
+    | undefined;
+  let attempts = scratchpad?.retryAttempts ?? 0;
 
   const firstAttemptTime = Date.now();
   if (config.executionInfo != null) {
     config.executionInfo = {
       ...config.executionInfo,
+      nodeAttempt: attempts + 1,
       nodeFirstAttemptTime: firstAttemptTime,
     };
   }
@@ -146,6 +159,9 @@ export async function _runWithRetry<
         }
       }
       if (isGraphBubbleUp(error)) {
+        if (isGraphInterrupt(error) && attempts > 0) {
+          pregelTask.writes.push([RETRY as C, attempts]);
+        }
         break;
       }
       if (resolvedRetryPolicy === undefined) {

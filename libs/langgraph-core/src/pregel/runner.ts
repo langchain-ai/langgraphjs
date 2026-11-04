@@ -18,6 +18,7 @@ import {
   ERROR_SOURCE_NODE,
   INTERRUPT,
   RESUME,
+  RETRY,
   NO_WRITES,
   TAG_HIDDEN,
   RETURN,
@@ -441,8 +442,12 @@ export class PregelRunner {
             (interrupt) => [INTERRUPT, interrupt]
           );
           const resumes = task.writes.filter((w) => w[0] === RESUME);
+          const retryAttempts = task.writes.filter((w) => w[0] === RETRY);
           if (resumes.length) {
             interrupts.push(...resumes);
+          }
+          if (retryAttempts.length) {
+            interrupts.push(...retryAttempts);
           }
           this.loop.putWrites(task.id, interrupts);
         }

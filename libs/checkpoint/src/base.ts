@@ -7,7 +7,7 @@ import type {
   CheckpointMetadata,
   DeltaChannelHistory,
 } from "./types.js";
-import { ERROR, INTERRUPT, RESUME, SCHEDULED } from "./serde/types.js";
+import { ERROR, INTERRUPT, RESUME, RETRY, SCHEDULED } from "./serde/types.js";
 import { JsonPlusSerializer } from "./serde/jsonplus.js";
 
 /** @inline */
@@ -388,6 +388,7 @@ export const WRITES_IDX_MAP: Record<string, number> = {
   [SCHEDULED]: -2,
   [INTERRUPT]: -3,
   [RESUME]: -4,
+  [RETRY]: -5,
 };
 
 /**
