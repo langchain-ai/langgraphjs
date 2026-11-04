@@ -72,7 +72,18 @@ const worker = async (
   let status: RunStatus | "rollback" | undefined = undefined;
 
   const temporary = run.kwargs.temporary;
+  const resumable = run.kwargs?.resumable ?? false;
   const webhook = run.kwargs.webhook as string | undefined;
+
+  // A stateless run is deleted as soon as it ends, so its streams can no
+  // longer read how it ended: the worker sends their `end` before the delete.
+  const publishEnd = (status: RunStatus | "rollback") =>
+    ops.runs.stream.publish({
+      runId: run.run_id,
+      resumable,
+      event: "end",
+      data: { run_id: run.run_id, status },
+    });
 
   logger.info("Starting background run", {
     run_id: run.run_id,
@@ -128,7 +139,6 @@ const worker = async (
     }
 
     const runId = run.run_id;
-    const resumable = run.kwargs?.resumable ?? false;
 
     try {
       const stream = streamState(withStrictResume(run, attempt), {
@@ -178,6 +188,7 @@ const worker = async (
       checkpoint = undefined;
       if (signal.reason === "rollback") {
         status = "rollback";
+        if (temporary) await publishEnd(status);
         await unlessGone(
           ops.runs.delete(run.run_id, run.thread_id, undefined),
           runGone
@@ -206,6 +217,7 @@ const worker = async (
     }
   } finally {
     if (temporary) {
+      if (status != null && status !== "rollback") await publishEnd(status);
       await unlessGone(
         ops.threads.delete(run.thread_id, undefined),
         threadGone
