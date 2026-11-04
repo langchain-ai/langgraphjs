@@ -2414,20 +2414,26 @@ export class PregelLoop {
    */
   protected _refuseUnmatchedResume(resume: unknown) {
     const pending = this._pendingInterruptIds();
+    const pendingIds = [...pending].sort();
     if (isPlainObject(resume) && Object.keys(resume).every(isXXH3)) {
       const ids = Object.keys(resume);
       if (ids.length === 0) {
-        throw new UnknownInterruptError("The resume map names no interrupt");
+        throw new UnknownInterruptError("The resume map names no interrupt", {
+          reason: "empty_map",
+          pendingIds,
+        });
       }
       const unknown = ids.filter((id) => !pending.has(id)).sort();
       if (unknown.length > 0) {
         throw new UnknownInterruptError(
-          `Unknown or already-consumed interrupt: ${unknown[0]}`
+          `Unknown or already-consumed interrupt: ${unknown[0]}`,
+          { reason: "not_pending", interruptIds: unknown, pendingIds }
         );
       }
     } else if (pending.size > 1) {
       throw new UnknownInterruptError(
-        "When there are multiple pending interrupts, you must specify the interrupt id when resuming."
+        "When there are multiple pending interrupts, you must specify the interrupt id when resuming.",
+        { reason: "ambiguous", pendingIds }
       );
     }
   }

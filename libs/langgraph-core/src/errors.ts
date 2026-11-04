@@ -325,14 +325,37 @@ export class EmptyInputError extends BaseLangGraphError {
 
 /**
  * Raised in strict resume mode when a resume doesn't match the pending
- * interrupts: it names an interrupt that isn't pending, is an empty map, or is
- * one value while several interrupts are pending. It is raised before anything
- * is written, so the pending interrupts can still be answered.
+ * interrupts. `reason` says how:
+ *
+ * - `"not_pending"`: the resume names interrupts that aren't pending, listed
+ *   in `interruptIds`.
+ * - `"empty_map"`: the resume is an empty map.
+ * - `"ambiguous"`: the resume is one value while several interrupts are
+ *   pending.
+ *
+ * `pendingIds` lists the interrupts still waiting for an answer. The error is
+ * raised before anything is written, so they can still be answered.
  */
 export class UnknownInterruptError extends BaseLangGraphError {
-  constructor(message?: string, fields?: BaseLangGraphErrorFields) {
+  reason: "not_pending" | "empty_map" | "ambiguous";
+
+  interruptIds: string[];
+
+  pendingIds: string[];
+
+  constructor(
+    message: string,
+    fields: {
+      reason: "not_pending" | "empty_map" | "ambiguous";
+      interruptIds?: string[];
+      pendingIds?: string[];
+    } & BaseLangGraphErrorFields
+  ) {
     super(message, fields);
     this.name = "UnknownInterruptError";
+    this.reason = fields.reason;
+    this.interruptIds = fields.interruptIds ?? [];
+    this.pendingIds = fields.pendingIds ?? [];
   }
 
   static get unminifiable_name() {

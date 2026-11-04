@@ -59,14 +59,17 @@ describe("strict resume", () => {
       const before = await graph.getState(cfg);
       const checkpoints = (await gatherIterator(checkpointer.list(cfg)))
         .length;
+      const ids = await pendingIds(graph, cfg);
 
       await expect(
         graph.invoke(new Command({ resume: { [UNKNOWN_ID]: "x" } }), cfg)
-      ).rejects.toThrow(
-        new UnknownInterruptError(
-          `Unknown or already-consumed interrupt: ${UNKNOWN_ID}`
-        )
-      );
+      ).rejects.toMatchObject({
+        name: "UnknownInterruptError",
+        message: `Unknown or already-consumed interrupt: ${UNKNOWN_ID}`,
+        reason: "not_pending",
+        interruptIds: [UNKNOWN_ID],
+        pendingIds: Object.values(ids).sort(),
+      });
 
       const after = await graph.getState(cfg);
       expect((await gatherIterator(checkpointer.list(cfg))).length).toBe(
@@ -77,7 +80,6 @@ describe("strict resume", () => {
         before.next,
         before.tasks,
       ]);
-      const ids = await pendingIds(graph, cfg);
       const result = await graph.invoke(
         new Command({ resume: { [ids["a?"]]: "yes", [ids["b?"]]: "no" } }),
         cfg
@@ -94,7 +96,12 @@ describe("strict resume", () => {
 
     await expect(
       graph.invoke(new Command({ resume: { [ids["a?"]]: "again" } }), config())
-    ).rejects.toThrow(UnknownInterruptError);
+    ).rejects.toMatchObject({
+      name: "UnknownInterruptError",
+      reason: "not_pending",
+      interruptIds: [ids["a?"]],
+      pendingIds: [ids["b?"]],
+    });
 
     const result = await graph.invoke(
       new Command({ resume: { [ids["b?"]]: "no" } }),
@@ -106,21 +113,31 @@ describe("strict resume", () => {
   it("refuses an empty map", async () => {
     const graph = parallel();
     await graph.invoke({ log: [] }, config());
+    const ids = await pendingIds(graph, config());
 
     await expect(
       graph.invoke(new Command({ resume: {} }), config())
-    ).rejects.toThrow("The resume map names no interrupt");
+    ).rejects.toMatchObject({
+      message: "The resume map names no interrupt",
+      reason: "empty_map",
+      interruptIds: [],
+      pendingIds: Object.values(ids).sort(),
+    });
   });
 
   it("refuses one value while several interrupts are pending", async () => {
     const graph = parallel();
     await graph.invoke({ log: [] }, config());
 
+    const ids = await pendingIds(graph, config());
     await expect(
       graph.invoke(new Command({ resume: "yes" }), config())
-    ).rejects.toThrow("multiple pending interrupts");
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("multiple pending interrupts"),
+      reason: "ambiguous",
+      pendingIds: Object.values(ids).sort(),
+    });
 
-    const ids = await pendingIds(graph, config());
     await graph.invoke(new Command({ resume: { [ids["a?"]]: "yes" } }), config());
     const result = await graph.invoke(new Command({ resume: "no" }), config());
     expect([...result.log].sort()).toEqual(["a:yes", "b:no"]);
