@@ -1,4 +1,9 @@
-import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
+import {
+  Command,
+  CONFIG_KEY_RESUMING,
+  CONFIG_KEY_TASK_OUTPUT_TYPE,
+  isCommand,
+} from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { runAttemptWithTimeout } from "./timeout.js";
@@ -79,6 +84,7 @@ export async function _runWithRetry<
   error: Error | undefined;
   signalAborted?: boolean;
 }> {
+  delete pregelTask.outputType;
   const resolvedRetryPolicy = pregelTask.retry_policy ?? retryPolicy;
   let attempts = 0;
   let error;
@@ -107,6 +113,7 @@ export async function _runWithRetry<
     }
     // Clear any writes from previous attempts
     pregelTask.writes.splice(0, pregelTask.writes.length);
+    delete pregelTask.outputType;
     error = undefined;
     try {
       if (pregelTask.timeout !== undefined) {
@@ -121,6 +128,17 @@ export async function _runWithRetry<
         );
       } else {
         result = await pregelTask.proc.invoke(pregelTask.input, config);
+      }
+      if (config.configurable?.[CONFIG_KEY_TASK_OUTPUT_TYPE]) {
+        if (isCommand(result)) pregelTask.outputType = "Command";
+        else if (Array.isArray(result)) pregelTask.outputType = "Array";
+        else if (
+          result !== null &&
+          typeof result === "object" &&
+          (Object.getPrototypeOf(result) === Object.prototype ||
+            Object.getPrototypeOf(result) === null)
+        )
+          pregelTask.outputType = "Object";
       }
       break;
     } catch (e: unknown) {

@@ -71,6 +71,8 @@ interface StreamTasksResultOutput<
   StreamUpdates,
 > extends StreamTasksOutputBase {
   result: [Keys, StreamUpdates][];
+  /** Original successful return carrier, available on native V3 tasks. */
+  output_type?: "Object" | "Command" | "Array";
 }
 
 type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =
@@ -597,6 +599,8 @@ export interface PregelExecutableTask<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly proc: Runnable<any, any, LangGraphRunnableConfig>;
   readonly writes: PendingWrite<ChannelKey>[];
+  /** Actual successful return carrier, before writes normalize its shape. */
+  outputType?: "Object" | "Command" | "Array";
   readonly config?: LangGraphRunnableConfig;
   readonly triggers: Array<string>;
   readonly retry_policy?: RetryPolicy;
