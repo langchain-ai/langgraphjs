@@ -50,6 +50,22 @@ function askTwice(checkpointer = new MemorySaver()) {
     .compile({ checkpointer });
 }
 
+function askThenFailOnce(checkpointer = new MemorySaver()) {
+  const failures = [new Error("flaky api")];
+  return new StateGraph(State)
+    .addNode(
+      "ask",
+      () => {
+        const answer = interrupt("delete a.txt?");
+        if (failures.length > 0) throw failures.pop();
+        return { log: [answer] };
+      },
+      { retryPolicy: { initialInterval: 0, jitter: false, logWarning: false } }
+    )
+    .addEdge(START, "ask")
+    .compile({ checkpointer });
+}
+
 async function pendingIds(
   graph: { getState(cfg: RunnableConfig): Promise<StateSnapshot> },
   cfg: RunnableConfig
@@ -274,6 +290,18 @@ describe("strict resume", () => {
       config()
     );
     expect(result.log).toEqual(["1,2"]);
+  });
+
+  it("reuses a retried node's answer", async () => {
+    const graph = askThenFailOnce();
+    await graph.invoke({ log: [] }, config());
+    const card = (await graph.getState(config())).tasks[0].interrupts[0];
+
+    const result = await graph.invoke(
+      new Command({ resume: { [card.id!]: "yes" } }),
+      config()
+    );
+    expect(result.log).toEqual(["yes"]);
   });
 
   it("doesn't refuse a card whose resumed task raised", async () => {

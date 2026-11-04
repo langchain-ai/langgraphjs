@@ -1,8 +1,12 @@
-import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
+import {
+  Command,
+  CONFIG_KEY_RESUMING,
+  CONFIG_KEY_SCRATCHPAD,
+} from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { runAttemptWithTimeout } from "./timeout.js";
-import { PregelExecutableTask } from "./types.js";
+import { PregelExecutableTask, type PregelScratchpad } from "./types.js";
 import { getParentCheckpointNamespace } from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
@@ -193,6 +197,12 @@ export async function _runWithRetry<
 
       // signal subgraphs to resume (if available)
       config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: true });
+      // A retry reruns the node from its first line, so its interrupt() calls
+      // count from the first again to reuse the answers its task already has,
+      // rather than asking again under an id the next resume can't match.
+      const scratchpad: PregelScratchpad | undefined =
+        config.configurable?.[CONFIG_KEY_SCRATCHPAD];
+      if (scratchpad !== undefined) scratchpad.interruptCounter = -1;
 
       if (config.executionInfo != null) {
         config.executionInfo = {
