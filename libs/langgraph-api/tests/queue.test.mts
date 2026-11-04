@@ -503,6 +503,26 @@ it("keeps a thread waiting when strict resume refuses an answer", async () => {
     before.values,
     before.interrupts,
   ]);
+  const events = await gatherIterator(
+    ops.runs.stream.join(
+      refused.run_id,
+      thread_id,
+      { lastEventId: "-1" },
+      undefined
+    )
+  );
+  const pendingIds = (
+    Object.values(before.interrupts ?? {}).flat() as { id: string }[]
+  )
+    .map(({ id }) => id)
+    .sort();
+  expect(events.find(({ event }) => event === "error")?.data).toEqual({
+    error: "UnknownInterruptError",
+    message: `Unknown or already-consumed interrupt: ${UNKNOWN_ID}`,
+    reason: "not_pending",
+    interrupt_ids: [UNKNOWN_ID],
+    pending_ids: pendingIds,
+  });
 
   const resumed = await runOnThread(
     ops,
