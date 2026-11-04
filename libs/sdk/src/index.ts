@@ -62,7 +62,9 @@ export type {
   SearchItem,
   SearchItemsResponse,
   Thread,
+  ThreadSelectField,
   ThreadState,
+  ThreadStateSelectField,
   ThreadStatus,
   ThreadTask,
 } from "./schema.js";
