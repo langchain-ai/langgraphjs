@@ -193,10 +193,9 @@ export interface RunsStreamPayload<
   streamSubgraphs?: TSubgraphs;
 
   /**
-   * Stream only these conversations of the run: `""` is the main agent's and
-   * `"tools:<task_id>"` a subagent's, each without the subagents it starts.
-   * Servers without the `stream_namespaces` flag in `/info` ignore it and send
-   * every event.
+   * Stream only these namespaces of the run (`""` is the root graph), each
+   * without the subagents it starts. Servers without the `stream_namespaces`
+   * flag in `/info` ignore it and send every event.
    */
   streamNamespaces?: string[];
 
