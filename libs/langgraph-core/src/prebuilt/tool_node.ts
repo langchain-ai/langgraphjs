@@ -3,7 +3,7 @@ import {
   AIMessage,
   isBaseMessage,
   isAIMessage,
-  type ToolMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
 import { RunnableToolLike } from "@langchain/core/runnables";
 import {
