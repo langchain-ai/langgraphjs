@@ -56,7 +56,11 @@ async function openOps() {
   const ops = new FileSystemOps(conn);
   await registerFromEnv(
     ops.assistants,
-    { delay: "./delay.mts:graph" },
+    {
+      delay: "./delay.mts:graph",
+      ask_twice: "./ask_twice.mts:graph",
+      error: "./error.mts:graph",
+    },
     { cwd: fileURLToPath(new URL("./graphs", import.meta.url)) }
   );
 
@@ -456,3 +460,101 @@ it.each<[string, boolean]>([
     expect(await events).toEqual([]);
   }
 );
+
+async function runOnThread(
+  ops: FileSystemOps,
+  threadId: string,
+  graphId: string,
+  kwargs: RunKwargs,
+  multitaskStrategy?: "interrupt" | "rollback"
+) {
+  const [run] = await ops.runs.put(
+    uuid7(),
+    getAssistantId(graphId),
+    kwargs,
+    { threadId, multitaskStrategy },
+    undefined
+  );
+  return run;
+}
+
+const UNKNOWN_ID = "0".repeat(32);
+
+it("keeps a thread waiting when strict resume refuses an answer", async () => {
+  const { ops, statusOf } = await startQueue();
+  const { thread_id } = await ops.threads.put(
+    uuid7(),
+    { if_exists: "raise" },
+    undefined
+  );
+
+  const asked = await runOnThread(ops, thread_id, "ask_twice", { input: {} });
+  await expect.poll(() => statusOf(asked), { timeout: 5_000 }).toBe("success");
+  const before = await ops.threads.get(thread_id, undefined);
+  expect(before.status).toBe("interrupted");
+
+  const refused = await runOnThread(ops, thread_id, "ask_twice", {
+    command: { resume: { [UNKNOWN_ID]: "x" } },
+  });
+  await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
+  const after = await ops.threads.get(thread_id, undefined);
+  expect([after.status, after.values, after.interrupts]).toEqual([
+    "interrupted",
+    before.values,
+    before.interrupts,
+  ]);
+  const events = await gatherIterator(
+    ops.runs.stream.join(
+      refused.run_id,
+      thread_id,
+      { lastEventId: "-1" },
+      undefined
+    )
+  );
+  const pendingIds = (
+    Object.values(before.interrupts ?? {}).flat() as { id: string }[]
+  )
+    .map(({ id }) => id)
+    .sort();
+  expect(events.find(({ event }) => event === "error")?.data).toEqual({
+    error: "UnknownInterruptError",
+    message: `Unknown or already-consumed interrupt: ${UNKNOWN_ID}`,
+    reason: "not_pending",
+    interrupt_ids: [UNKNOWN_ID],
+    pending_ids: pendingIds,
+  });
+
+  const resumed = await runOnThread(
+    ops,
+    thread_id,
+    "ask_twice",
+    { command: { resume: "yes" } },
+    "interrupt"
+  );
+  await expect
+    .poll(() => statusOf(resumed), { timeout: 5_000 })
+    .toBe("success");
+  expect((await ops.threads.get(thread_id, undefined)).values).toEqual({
+    log: ["a:yes", "b:yes"],
+  });
+});
+
+it("keeps a failed thread `error` when strict resume refuses an answer", async () => {
+  const { ops, statusOf } = await startQueue();
+  const { thread_id } = await ops.threads.put(
+    uuid7(),
+    { if_exists: "raise" },
+    undefined
+  );
+
+  const failed = await runOnThread(ops, thread_id, "error", {
+    input: { messages: [] },
+  });
+  await expect.poll(() => statusOf(failed), { timeout: 5_000 }).toBe("error");
+
+  const refused = await runOnThread(ops, thread_id, "error", {
+    command: { resume: { [UNKNOWN_ID]: "x" } },
+  });
+  await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
+  expect((await ops.threads.get(thread_id, undefined)).status).toBe("error");
+});

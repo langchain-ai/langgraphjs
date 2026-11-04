@@ -17,6 +17,21 @@ export const serialiseAsDict = (obj: unknown) => {
 };
 
 export const serializeError = (error: unknown) => {
+  // Matched by name: the graph may load its own copy of @langchain/langgraph.
+  if (error instanceof Error && error.name === "UnknownInterruptError") {
+    const { reason, interruptIds, pendingIds } = error as Error & {
+      reason?: string;
+      interruptIds?: string[];
+      pendingIds?: string[];
+    };
+    return {
+      error: error.name,
+      message: error.message,
+      reason,
+      interrupt_ids: interruptIds,
+      pending_ids: pendingIds,
+    };
+  }
   if (error instanceof Error) {
     return { error: error.name, message: error.message };
   }
