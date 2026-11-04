@@ -1,6 +1,6 @@
-import { CancelReason } from "@langchain/core/errors";
+import { ExpectedCancellation } from "@langchain/core/errors";
 
-export class RunCancellation extends CancelReason {
+export class RunCancellation extends ExpectedCancellation {
   readonly name: string = "RunCancellation";
 
   readonly action: "interrupt" | "rollback";
