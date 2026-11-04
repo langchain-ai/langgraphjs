@@ -12,4 +12,5 @@ test("a run stream can end with an end event", () => {
   expectTypeOf<EndStreamEvent>().toMatchTypeOf<
     StreamPart<TypedAsyncGenerator<"values", true>>
   >();
+  expectTypeOf<EndStreamEvent["data"]>().toBeNullable();
 });

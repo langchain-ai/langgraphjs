@@ -1,5 +1,11 @@
 import type { Message } from "./types.messages.js";
-import type { Interrupt, Metadata, Config, ThreadTask } from "./schema.js";
+import type {
+  Interrupt,
+  Metadata,
+  Config,
+  RunStatus,
+  ThreadTask,
+} from "./schema.js";
 /**
 import type { SubgraphCheckpointsStreamEvent } from "./types.stream.subgraph.js";
  * Stream modes
@@ -87,15 +93,16 @@ export type ErrorStreamEvent = {
 export type SubgraphErrorStreamEvent = AsSubgraph<ErrorStreamEvent>;
 
 /**
- * Last event of a run stream, with the run's final status.
+ * Last event of a run stream, with the run's final status. Its data is `null`
+ * from servers that send it without one.
  */
 export type EndStreamEvent = {
   id?: string;
   event: "end";
   data: {
     run_id: string;
-    status: "success" | "error" | "timeout" | "interrupted" | "rollback";
-  };
+    status: Exclude<RunStatus, "pending" | "running"> | "rollback";
+  } | null;
 };
 
 /**
