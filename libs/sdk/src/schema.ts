@@ -347,6 +347,9 @@ export interface Run {
 
   /** Strategy to handle concurrent runs on the same thread */
   multitask_strategy: Optional<MultitaskStrategy>;
+
+  /** Why the run was cancelled. `null` or absent if it was not. */
+  cancel_reason?: string | null;
 }
 
 export type Checkpoint = {
@@ -471,7 +474,8 @@ export type RunSelectField =
   | "status"
   | "metadata"
   | "kwargs"
-  | "multitask_strategy";
+  | "multitask_strategy"
+  | "cancel_reason";
 
 export type CronSelectField =
   | "cron_id"
