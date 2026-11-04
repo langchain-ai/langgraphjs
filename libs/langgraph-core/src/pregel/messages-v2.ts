@@ -1,5 +1,6 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
+  AIMessage,
   BaseMessage,
   ToolMessage,
   BaseMessageChunk,
@@ -387,7 +388,7 @@ export class StreamProtocolMessagesHandler extends BaseCallbackHandler {
     if (meta === undefined) return;
 
     const emitMessage = (value: unknown) => {
-      if (BaseMessage.isInstance(value) && !ToolMessage.isInstance(value)) {
+      if (AIMessage.isInstance(value)) {
         this.emitFinalMessage(meta, value, runId, true);
       }
     };

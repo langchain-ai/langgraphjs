@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { AIMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
+import {
+  AIMessage,
+  HumanMessage,
+  BaseMessage,
+  RemoveMessage,
+} from "@langchain/core/messages";
 import { pushMessage } from "./message.js";
+import { REMOVE_ALL_MESSAGES } from "./messages_reducer.js";
 import { START } from "../constants.js";
 import { StateGraph } from "../graph/state.js";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -91,5 +97,35 @@ describe("pushMessage", () => {
       messageEvents.some((e) => e.event === "message-start" && e.id === "1")
     ).toBe(true);
     expect(messageEvents.some((e) => e.event === "message-finish")).toBe(true);
+  });
+});
+
+describe("streamEvents v3 run.messages", () => {
+  it("does not include non-AI messages written by nodes", async () => {
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("summarize", () => ({
+        messages: [
+          new RemoveMessage({ id: REMOVE_ALL_MESSAGES }),
+          new HumanMessage({ id: "summary-1", content: "summary" }),
+        ],
+      }))
+      .addNode("answer", () => ({
+        messages: [new AIMessage({ id: "answer-1", content: "answer" })],
+      }))
+      .addEdge(START, "summarize")
+      .addEdge("summarize", "answer")
+      .compile();
+
+    const run = await graph.streamEvents(
+      { messages: [new HumanMessage("hi")] },
+      { version: "v3" }
+    );
+
+    const seen: { node?: string; text: string }[] = [];
+    for await (const message of run.messages) {
+      seen.push({ node: message.node, text: await message.text });
+    }
+
+    expect(seen).toEqual([{ node: "answer", text: "answer" }]);
   });
 });
