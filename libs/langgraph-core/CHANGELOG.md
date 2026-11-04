@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.6.1
+
+### Patch Changes
+
+- [#3058](https://github.com/langchain-ai/langgraphjs/pull/3058) [`f64d595`](https://github.com/langchain-ai/langgraphjs/commit/f64d5954b721ee53746f03bf456680743b471d15) Thanks [@hntrl](https://github.com/hntrl)! - Restore per-node `tracePolicy`, using `@langchain/core`'s `TracePolicy` (requires `@langchain/core` >= 1.3.4). It only changes what `LangChainTracer` sends to LangSmith; execution, streaming, and other callbacks see raw values.
+- Updated dependencies [[`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a), [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb)]:
+  - @langchain/langgraph-sdk@1.12.10
+
 ## 1.6.0
 
 ### Minor Changes

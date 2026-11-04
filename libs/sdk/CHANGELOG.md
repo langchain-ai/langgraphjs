@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.12.10
+
+### Patch Changes
+
+- [#3163](https://github.com/langchain-ai/langgraphjs/pull/3163) [`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a) Thanks [@eliornl](https://github.com/eliornl)! - When a headless tool finishes after a switch to another thread, `StreamOrchestrator` no longer sends its result to the new thread, keyed by the previous thread's interrupt id, and the `useStream` hook no longer streams the previous thread's resumed run into the new thread's view and no longer aborts a run the new thread is streaming. The call stays pending on its own thread and runs again when that thread is shown.
+
+- [#3185](https://github.com/langchain-ai/langgraphjs/pull/3185) [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb) Thanks [@eliornl](https://github.com/eliornl)! - A thread run stream from `client.runs.stream()` or `client.runs.joinStream()` that ends without an error and without an `end` or `error` event now asks the server for the run's status. If the run is still pending or running, for example because a proxy timeout or a server restart ended the response, the stream reconnects from the last event as it does after a dropped connection, instead of ending early with a cut answer. A 429, a 5xx or a network error on that check is handled like a dropped connection too. This adds one request at the end of such a stream.
+
 ## 1.12.9
 
 ### Patch Changes
