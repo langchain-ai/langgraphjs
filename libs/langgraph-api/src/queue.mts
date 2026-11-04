@@ -18,14 +18,11 @@ import { getGraph } from "./graph/load.mjs";
 const MAX_RETRY_ATTEMPTS = 3;
 
 // Strict resume refuses an answer to an interrupt that isn't pending. A retry
-// sends its answer again, and an `interrupt` or `rollback` run has already
-// cancelled the run it replaces, so refusing either would stop the agent
+// sends its answer again, and an `interrupt` or `rollback` run that found one
+// in flight has already cancelled it, so refusing either would stop the agent
 // mid-turn: those resume as before.
 function withStrictResume(run: Run, attempt: number): Run {
-  const strict =
-    attempt === 1 &&
-    run.multitask_strategy !== "interrupt" &&
-    run.multitask_strategy !== "rollback";
+  const strict = attempt === 1 && !run.kwargs.cancels_inflight;
   return {
     ...run,
     kwargs: {

@@ -1539,6 +1539,10 @@ export class FileSystemRuns implements RunsRepo {
             typeof assistant.context !== "object" && assistant.context != null
               ? (assistant.context ?? kwargs.context)
               : Object.assign({}, assistant.context, kwargs.context),
+          cancels_inflight:
+            (multitaskStrategy === "interrupt" ||
+              multitaskStrategy === "rollback") &&
+            inflightRuns.length > 0,
         }),
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),
