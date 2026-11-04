@@ -62,6 +62,7 @@ export function valuesProjection<T = unknown>(
         thread,
         channels: ["values"],
         namespace: ns,
+        resumeOnPause: true,
         onEvent(event) {
           if (event.method !== "values") return;
           applyValuesEvent(event as ValuesEvent);
