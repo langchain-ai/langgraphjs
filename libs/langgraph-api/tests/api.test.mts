@@ -1257,14 +1257,12 @@ describe("runs", () => {
 
     const events = await join(thread.thread_id);
     expect(events.map((i) => i.event)).toContain("values");
-    expect(await join(otherThread.thread_id)).toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(otherThread.thread_id)).rejects.toThrow("HTTP 404");
 
     await client.runs.delete(thread.thread_id, run.run_id);
-    expect(await join(thread.thread_id), "after delete").toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(thread.thread_id), "after delete").rejects.toThrow(
+      "HTTP 404"
+    );
   });
 
   it.concurrent("join of a run on another thread or of a deleted run gets a 404", async () => {

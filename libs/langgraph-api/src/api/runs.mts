@@ -456,12 +456,8 @@ api.get(
     const { cancel_on_disconnect, stream_mode } = c.req.valid("query");
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
-    // A resume of a missing or hidden run gets stream.join's error event.
-    if (lastEventId == null) {
-      const run = await runs().get(run_id, thread_id, c.var.auth);
-      if (run == null)
-        throw new HTTPException(404, { message: "Run not found" });
-    }
+    const run = await runs().get(run_id, thread_id, c.var.auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
 
     return streamSSE(c, async (stream) => {
       const signal = cancel_on_disconnect
