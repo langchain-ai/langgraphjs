@@ -78,6 +78,7 @@ import type {
   RetryPolicy,
   TimeoutPolicy,
 } from "../pregel/utils/index.js";
+import type { TracePolicy } from "@langchain/core/tracers/tracer_langchain";
 import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
@@ -201,6 +202,7 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 > &
   NodePolicies & {
     input?: StateDefinition;
+    tracePolicy?: TracePolicy;
   };
 
 /**
@@ -222,6 +224,8 @@ export type StateGraphAddNodeOptions<
   Update = unknown,
 > = {
   input?: InputSchema;
+  /** Shape what `LangChainTracer` sends to LangSmith for this node's own run (see `@langchain/core`'s `TracePolicy`). */
+  tracePolicy?: TracePolicy;
   /**
    * Optional node-level error handler. Runs only after this node's
    * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
@@ -1221,6 +1225,7 @@ export class StateGraph<
         retryPolicy: options?.retryPolicy,
         cachePolicy,
         timeout: coerceTimeoutPolicy(options?.timeout),
+        tracePolicy: options?.tracePolicy,
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -1957,6 +1962,7 @@ export class CompiledStateGraph<
         retryPolicy: node?.retryPolicy,
         cachePolicy,
         timeout: node?.timeout,
+        tracePolicy: node?.tracePolicy,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
         isErrorHandler: node?.isErrorHandler,
