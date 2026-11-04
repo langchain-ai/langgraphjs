@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 1.5.8
+
+### Patch Changes
+
+- [#3161](https://github.com/langchain-ai/langgraphjs/pull/3161) [`478fffd`](https://github.com/langchain-ai/langgraphjs/commit/478fffdaf6dfcdd1c2fd0e977f53d2fcd8af8af3) Thanks [@eliornl](https://github.com/eliornl)! - The experimental embed server's run stream join (`GET /threads/:thread_id/runs/:run_id/stream`) now honors `stream_mode` like the dev server's joins, so `client.runs.joinStream(..., { streamMode })` drops other modes' events and the `metadata` event instead of returning all of the run's events. Errors always pass, and either messages mode keeps both message formats. Joins without `stream_mode` are unchanged.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.8
+
 ## 1.5.7
 
 ### Patch Changes
