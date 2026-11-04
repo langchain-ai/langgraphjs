@@ -471,8 +471,9 @@ export class PregelRunner {
         this.nodeFinished(String(task.name));
       }
 
-      if (task.writes.length === 0) {
-        // Add no writes marker
+      if (task.writes.every(([channel]) => channel === RESUME)) {
+        // A resume value alone does not distinguish completion from another
+        // interrupt. Record completion even when the node returned no output.
         task.writes.push([NO_WRITES, null]);
       }
 

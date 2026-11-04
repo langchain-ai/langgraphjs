@@ -271,16 +271,21 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[],
   states: Record<string, RunnableConfig | StateSnapshot> | undefined,
-  outputKeys: ChannelKey[] | ChannelKey
+  outputKeys: ChannelKey[] | ChannelKey,
+  finishedTasks?: ReadonlySet<string>
 ): PregelTaskDescription[] {
   return tasks.map((task): PregelTaskDescription => {
     const error = pendingWrites.find(
       ([id, n]) => id === task.id && n === ERROR
     )?.[2];
 
-    const interrupts = pendingWrites
-      .filter(([id, n]) => id === task.id && n === INTERRUPT)
-      .map(([, , v]) => v) as Interrupt[];
+    // Latest-state reads hide answered interrupts only after the task has
+    // produced output. Historical reads retain the recorded interrupts.
+    const interrupts = finishedTasks?.has(task.id)
+      ? []
+      : (pendingWrites
+          .filter(([id, n]) => id === task.id && n === INTERRUPT)
+          .map(([, , v]) => v) as Interrupt[]);
 
     const result = (() => {
       if (error || interrupts.length || !pendingWrites.length) return undefined;
