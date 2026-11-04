@@ -590,9 +590,19 @@ async function call(
     return undefined;
   } else {
     // Schedule the next task with retry
-    const prom = _runWithRetry<string, string>(nextTask, options.retry, {
-      [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask),
-    });
+    // Propagate the abort signal: this is the only `_runWithRetry` entry that
+    // never received one, so a task's retry loop kept starting attempts after
+    // the enclosing run was aborted (#3202). Prefer the composed step signal
+    // when present; the raw run signal always is.
+    const signals = task.config?.configurable?.[CONFIG_KEY_ABORT_SIGNALS] as
+      | PregelAbortSignals
+      | undefined;
+    const prom = _runWithRetry<string, string>(
+      nextTask,
+      options.retry,
+      { [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask) },
+      signals?.composedAbortSignal ?? task.config?.signal
+    );
 
     this.executingTasksMap[nextTask.id] = prom;
     this.barrier.next();

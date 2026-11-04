@@ -532,3 +532,58 @@ describe("Functional API draining", () => {
     expect(control.drainRequested).toBe(true);
   });
 });
+
+describe("functional API task retries under cancellation", () => {
+  it("does not start additional attempts after the enclosing run is aborted", async () => {
+    // Regression test for #3202: a task's retry loop kept starting new
+    // attempts after the enclosing run's abort signal fired, because the
+    // functional `call()` path never passed the composed abort signal down
+    // to `_runWithRetry`.
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let attempts = 0;
+    let called!: Promise<unknown>;
+
+    const operation = task(
+      {
+        name: "operation",
+        retry: {
+          maxAttempts: 3,
+          initialInterval: 0,
+          jitter: false,
+          logWarning: false,
+          retryOn: () => true,
+        },
+      },
+      async () => {
+        attempts += 1;
+        started();
+        await gate;
+        throw new Error("operation failed");
+      }
+    );
+
+    const workflow = entrypoint({ name: "workflow" }, async () => {
+      called = operation();
+      return called;
+    });
+
+    const controller = new AbortController();
+    const run = workflow
+      .invoke({}, { signal: controller.signal })
+      .catch(() => undefined);
+    await ready;
+    controller.abort();
+    release();
+    await called.catch(() => undefined);
+    await run;
+
+    expect(attempts).toBe(1);
+  });
+});
