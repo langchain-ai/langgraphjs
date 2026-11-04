@@ -38,6 +38,17 @@ function parallel(checkpointer = new MemorySaver()) {
     .compile({ checkpointer });
 }
 
+function askTwice() {
+  return new StateGraph(State)
+    .addNode("ask", () => {
+      const first = interrupt("first?");
+      const second = interrupt("second?");
+      return { log: [`${first},${second}`] };
+    })
+    .addEdge(START, "ask")
+    .compile({ checkpointer: new MemorySaver() });
+}
+
 async function pendingIds(
   graph: { getState(cfg: RunnableConfig): Promise<StateSnapshot> },
   cfg: RunnableConfig
@@ -185,14 +196,7 @@ describe("strict resume", () => {
   });
 
   it("accepts a second interrupt in one node by the same id", async () => {
-    const graph = new StateGraph(State)
-      .addNode("ask", () => {
-        const first = interrupt("first?");
-        const second = interrupt("second?");
-        return { log: [`${first},${second}`] };
-      })
-      .addEdge(START, "ask")
-      .compile({ checkpointer: new MemorySaver() });
+    const graph = askTwice();
     await graph.invoke({ log: [] }, config());
     const card = (await graph.getState(config())).tasks[0].interrupts[0];
     await graph.invoke(new Command({ resume: { [card.id!]: "1" } }), config());
@@ -204,6 +208,19 @@ describe("strict resume", () => {
       config()
     );
     expect(result.log).toEqual(["1,2"]);
+  });
+
+  it("applies an answer retried in one node to its next interrupt", async () => {
+    const graph = askTwice();
+    await graph.invoke({ log: [] }, config());
+    const card = (await graph.getState(config())).tasks[0].interrupts[0];
+    await graph.invoke(new Command({ resume: { [card.id!]: "yes" } }), config());
+
+    const result = await graph.invoke(
+      new Command({ resume: { [card.id!]: "yes" } }),
+      config()
+    );
+    expect(result.log).toEqual(["yes,yes"]);
   });
 
   it("doesn't refuse a card whose resumed task raised", async () => {
