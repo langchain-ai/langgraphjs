@@ -588,7 +588,10 @@ describe("Client streaming with retry", () => {
       const locationPath =
         "/threads/thread-1/runs/run-1/stream?namespace=tools%3Aa&cancel_on_disconnect=0";
       let callCount = 0;
-      mockFetch.mockImplementation(() => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith("/runs/run-1")) {
+          return Promise.resolve(Response.json({ status: "success" }));
+        }
         callCount += 1;
         const body =
           callCount === 1
