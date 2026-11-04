@@ -211,7 +211,9 @@ const worker = async (
         threadGone
       );
     } else if (exception?.name === "UnknownInterruptError") {
-      // A refused resume ran nothing, so the thread keeps the state it had.
+      // A refused resume ran nothing, so the thread is set from the state it
+      // already had. A task that failed in an earlier run leaves the thread
+      // `error`, as that run did.
       await unlessGone(
         ops.threads.state
           .get(
@@ -222,6 +224,9 @@ const worker = async (
           .then((state) =>
             ops.threads.setStatus(run.thread_id, {
               checkpoint: state as unknown as CheckpointPayload,
+              exception: state.tasks.some((task) => task.error != null)
+                ? exception
+                : undefined,
             })
           ),
         threadGone
