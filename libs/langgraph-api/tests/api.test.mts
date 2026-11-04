@@ -1303,6 +1303,29 @@ describe("runs", () => {
   );
 
   it.concurrent(
+    "ends a rolled-back stateless run's stream with rollback",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "delay" });
+      const run = await client.runs.create(null, assistant.assistant_id, {
+        input: { messages: [], delay: 5_000 },
+      });
+      const chunks = gatherIterator(
+        client.runs.joinStream(null, run.run_id, { lastEventId: "-1" })
+      );
+      await expect
+        .poll(
+          async () => (await client.runs.get(run.thread_id, run.run_id)).status,
+          { timeout: 5_000 }
+        )
+        .toBe("running");
+
+      await client.runs.cancel(run.thread_id, run.run_id, false, "rollback");
+
+      assertEnded(await chunks, "rollback");
+    }
+  );
+
+  it.concurrent(
     "stateless join stream keeps subgraph events of the requested stream mode",
     async () => {
       const assistant = await client.assistants.create({ graphId: "nested" });

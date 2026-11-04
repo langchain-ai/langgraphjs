@@ -144,32 +144,6 @@ it("logs a thread write that fails after a rollback", async () => {
   });
 });
 
-it("sends no end for a stateless run that is rolled back", async () => {
-  const { ops, createRun, statusOf } = await startQueue();
-  const publish = vi.spyOn(ops.runs.stream, "publish");
-  const run = await createRun({ input: { delay: 1_000 }, temporary: true });
-  await expect.poll(() => statusOf(run), { timeout: 3_000 }).toBe("running");
-
-  await ops.runs.cancel(
-    run.thread_id,
-    [run.run_id],
-    { action: "rollback" },
-    undefined
-  );
-
-  await expect
-    .poll(() =>
-      ops.threads.get(run.thread_id, undefined).then(
-        () => "kept",
-        () => "deleted"
-      )
-    )
-    .toBe("deleted");
-  expect(publish).not.toHaveBeenCalledWith(
-    expect.objectContaining({ event: "end" })
-  );
-});
-
 it("picks up later runs after a run's webhook can't be reached", async () => {
   const errors = vi.spyOn(logger, "error").mockImplementation(() => logger);
   const { createRun, statusOf } = await startQueue();
