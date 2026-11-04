@@ -178,13 +178,15 @@ const worker = async (
   } finally {
     if (temporary) {
       // The delete takes the run with it, so its streams can no longer read
-      // how it ended.
-      await ops.runs.stream.publish({
-        runId: run.run_id,
-        resumable,
-        event: "end",
-        data: { run_id: run.run_id, status },
-      });
+      // how it ended. A rolled-back run is gone already, its streams ended.
+      if (status != null && status !== "rollback") {
+        await ops.runs.stream.publish({
+          runId: run.run_id,
+          resumable,
+          event: "end",
+          data: { run_id: run.run_id, status },
+        });
+      }
       await unlessGone(
         ops.threads.delete(run.thread_id, undefined),
         threadGone
