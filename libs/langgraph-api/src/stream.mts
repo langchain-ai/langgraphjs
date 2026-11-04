@@ -435,8 +435,9 @@ export async function* streamState(
 }
 
 export const matchesStreamMode = (event: string, streamMode: string[]) => {
-  // A run's error is its outcome, not a mode, so no filter drops it.
-  if (streamMode.length === 0 || event === "error") return true;
+  // A run's error and end are its outcome, not modes, so no filter drops them.
+  if (streamMode.length === 0 || event === "error" || event === "end")
+    return true;
   const mode = event.split("|")[0];
   if (streamMode.includes(mode)) return true;
   // The messages modes stream `messages` (messages-tuple) and `messages/*`

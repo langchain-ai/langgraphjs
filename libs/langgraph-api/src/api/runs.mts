@@ -9,7 +9,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import type { Run, RunKwargs } from "../storage/types.mjs";
+import type { Run, RunKwargs, RunsStreamRepo } from "../storage/types.mjs";
 import { matchesStreamMode } from "../stream.mjs";
 import {
   getDisconnectAbortSignal,
@@ -23,6 +23,26 @@ import {
 import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
+
+// Ends a run stream with `end` and the run's final status. A stateless run's
+// worker sends its own `end`, since the run is deleted with its thread.
+async function* joinWithEnd(
+  ...[runId, threadId, options, auth]: Parameters<RunsStreamRepo["join"]>
+) {
+  for await (const event of runs().stream.join(
+    runId,
+    threadId,
+    options,
+    auth
+  )) {
+    yield event;
+    if (event.event === "end") return;
+  }
+  const run = await runs().get(runId, threadId, auth);
+  if (run != null && run.status !== "pending" && run.status !== "running") {
+    yield { event: "end", data: { run_id: run.run_id, status: run.status } };
+  }
+}
 
 const createValidRun = async (
   threadId: string | undefined,
@@ -196,7 +216,7 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         : undefined;
 
     try {
-      for await (const { event, data } of runs().stream.join(
+      for await (const { event, data } of joinWithEnd(
         run.run_id,
         undefined,
         {
@@ -232,7 +252,7 @@ api.get(
         : undefined;
 
       try {
-        for await (const { id, event, data } of runs().stream.join(
+        for await (const { id, event, data } of joinWithEnd(
           run_id,
           undefined,
           {
@@ -360,7 +380,7 @@ api.post(
           : undefined;
 
       try {
-        for await (const { id, event, data } of runs().stream.join(
+        for await (const { id, event, data } of joinWithEnd(
           run.run_id,
           thread_id,
           {
@@ -461,7 +481,7 @@ api.get(
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
 
-      for await (const { id, event, data } of runs().stream.join(
+      for await (const { id, event, data } of joinWithEnd(
         run_id,
         thread_id,
         {

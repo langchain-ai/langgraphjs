@@ -23,7 +23,12 @@ import {
   it,
   vi,
 } from "vitest";
-import { findLast, gatherIterator, truncate } from "./utils.mjs";
+import {
+  assertEnded,
+  findLast,
+  gatherIterator,
+  truncate,
+} from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -904,8 +909,8 @@ describe("runs", () => {
       }
     }
 
-    expect(chunk.event).toBe("values");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "values"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "values", "end"]));
 
     expect(runId).not.toBeNull();
     const run = await client.runs.get(thread.thread_id, runId as string);
@@ -995,8 +1000,8 @@ describe("runs", () => {
 
     expect(seenNodes).toEqual(["agent", "tool", "agent"]);
 
-    expect(chunk.event).toBe("updates");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "updates"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "updates", "end"]));
 
     expect(runId).not.toBeNull();
     const run = await client.runs.get(thread.thread_id, runId as string);
@@ -1015,7 +1020,7 @@ describe("runs", () => {
       { input, streamMode: "events", config: globalConfig }
     );
 
-    const events = await gatherIterator(stream);
+    const events = assertEnded(await gatherIterator(stream), "success");
     expect(new Set(events.map((i) => i.event))).toEqual(
       new Set(["metadata", "events"])
     );
@@ -1080,13 +1085,14 @@ describe("runs", () => {
     expect(lastMessage).not.toBeNull();
     expect(lastMessage.content).toBe("end");
 
-    expect(chunk.event).toBe("messages/complete");
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
     expect(seenEventTypes).toEqual(
       new Set([
         "metadata",
         "messages/metadata",
         "messages/partial",
         "messages/complete",
+        "end",
       ])
     );
 
@@ -1112,7 +1118,7 @@ describe("runs", () => {
       }
     );
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
     expect(runId).not.toBeUndefined();
     expect(runId).not.toBeNull();
@@ -1150,7 +1156,7 @@ describe("runs", () => {
       { input, streamMode: ["messages", "values"], config: globalConfig }
     );
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     expect(chunks.at(-1)?.event).toBe("messages/complete");
     expect(chunks.filter((i) => i.event === "error").length).toBe(0);
 
@@ -1196,12 +1202,15 @@ describe("runs", () => {
         }
       );
 
-      const join = (streamMode?: StreamMode | StreamMode[]) =>
-        gatherIterator(
-          client.runs.joinStream(thread.thread_id, run.run_id, {
-            lastEventId: "-1",
-            streamMode,
-          })
+      const join = async (streamMode?: StreamMode | StreamMode[]) =>
+        assertEnded(
+          await gatherIterator(
+            client.runs.joinStream(thread.thread_id, run.run_id, {
+              lastEventId: "-1",
+              streamMode,
+            })
+          ),
+          "success"
         );
 
       const all = await join();
@@ -1268,6 +1277,32 @@ describe("runs", () => {
   });
 
   it.concurrent(
+    "ends a late join, filtered or not, with the run's status",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const thread = await client.threads.create();
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          config: globalConfig,
+        }
+      );
+      await client.runs.join(thread.thread_id, run.run_id);
+
+      for (const streamMode of [undefined, "values" as const]) {
+        const chunks = await gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, { streamMode })
+        );
+        expect(chunks.map(({ event, data }) => ({ event, data }))).toEqual([
+          { event: "end", data: { run_id: run.run_id, status: "success" } },
+        ]);
+      }
+    }
+  );
+
+  it.concurrent(
     "stateless join stream keeps subgraph events of the requested stream mode",
     async () => {
       const assistant = await client.assistants.create({ graphId: "nested" });
@@ -1277,11 +1312,14 @@ describe("runs", () => {
         streamSubgraphs: true,
       });
 
-      const chunks = await gatherIterator(
-        client.runs.joinStream(null, run.run_id, {
-          lastEventId: "-1",
-          streamMode: "updates",
-        })
+      const chunks = assertEnded(
+        await gatherIterator(
+          client.runs.joinStream(null, run.run_id, {
+            lastEventId: "-1",
+            streamMode: "updates",
+          })
+        ),
+        "success"
       );
 
       expect(chunks.map((i) => i.event.replace(/:[^|]+/g, ""))).toEqual([
@@ -1826,13 +1864,16 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    const chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: {
-          messages: [{ role: "human", content: "SF", id: "initial-message" }],
-        },
-        interruptBefore: ["tool"],
-      })
+    const chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: {
+            messages: [{ role: "human", content: "SF", id: "initial-message" }],
+          },
+          interruptBefore: ["tool"],
+        })
+      ),
+      "success"
     );
 
     for (const chunk of chunks) {
@@ -1968,12 +2009,15 @@ describe("subgraphs", () => {
     expect(threadAfterInterrupt.status).toBe("interrupted");
 
     // continue after interrupt
-    const chunksSubgraph = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: null,
-        streamMode: ["values", "updates"],
-        streamSubgraphs: true,
-      })
+    const chunksSubgraph = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: null,
+          streamMode: ["values", "updates"],
+          streamSubgraphs: true,
+        })
+      ),
+      "success"
     );
 
     expect(chunksSubgraph.filter((i) => i.event === "error")).toEqual([]);
@@ -2182,10 +2226,13 @@ describe("subgraphs", () => {
     ]);
 
     // continue after interrupt
-    chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: null,
-      })
+    chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: null,
+        })
+      ),
+      "success"
     );
 
     expect(chunks.filter((i) => i.event === "error")).toEqual([]);
@@ -2263,10 +2310,13 @@ describe("subgraphs", () => {
       ],
     });
 
-    const stream = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        command: { resume: "i want to resume" },
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          command: { resume: "i want to resume" },
+        })
+      ),
+      "success"
     );
 
     expect(stream.at(-1)?.event).toBe("values");
@@ -2279,11 +2329,14 @@ describe("errors", () => {
     const assistant = await client.assistants.create({ graphId: "error" });
     const thread = await client.threads.create();
 
-    const stream = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: { messages: [] },
-        streamMode: ["debug", "events"],
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: { messages: [] },
+          streamMode: ["debug", "events"],
+        })
+      ),
+      "error"
     );
 
     expect(stream.at(-1)).toMatchObject({
@@ -2320,10 +2373,13 @@ describe("errors", () => {
       { input: { messages: [] } }
     );
 
-    const stream = await gatherIterator(
-      client.runs.joinStream(thread.thread_id, run.run_id, {
-        lastEventId: "-1",
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.joinStream(thread.thread_id, run.run_id, {
+          lastEventId: "-1",
+        })
+      ),
+      "error"
     );
 
     expect(stream.at(-1)).toMatchObject({
@@ -2350,11 +2406,14 @@ describe("errors", () => {
         { input: { messages: [] } }
       );
 
-      const stream = await gatherIterator(
-        client.runs.joinStream(thread.thread_id, run.run_id, {
-          lastEventId: "-1",
-          streamMode: "updates",
-        })
+      const stream = assertEnded(
+        await gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, {
+            lastEventId: "-1",
+            streamMode: "updates",
+          })
+        ),
+        "error"
       );
 
       expect(stream).toMatchObject([
@@ -3117,12 +3176,15 @@ it("tasks / checkpoints stream mode", async () => {
   const assistant = await client.assistants.create({ graphId: "agent" });
   const thread = await client.threads.create();
 
-  const stream = await gatherIterator(
-    client.runs.stream(thread.thread_id, assistant.assistant_id, {
-      input: { messages: [{ role: "human", content: "input" }] },
-      streamMode: ["tasks", "checkpoints"],
-      config: globalConfig,
-    })
+  const stream = assertEnded(
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+        streamMode: ["tasks", "checkpoints"],
+        config: globalConfig,
+      })
+    ),
+    "success"
   );
 
   expect(stream).toMatchObject([

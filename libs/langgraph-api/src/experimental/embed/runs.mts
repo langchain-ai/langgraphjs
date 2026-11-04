@@ -116,6 +116,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
           state.activeRunId = run_id;
           (run as Run & { status: string }).status = "running";
 
+          let status = "success";
           try {
             for await (const { event, data } of streamState(run, {
               attempt: 1,
@@ -126,6 +127,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
               await stream.writeSSE({ data: serialiseAsDict(data), event });
             }
           } catch (error) {
+            status = "error";
             await stream.writeSSE({
               data: serialiseAsDict(serializeError(error)),
               event: "error",
@@ -135,6 +137,10 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
               state.activeRunId = null;
             }
           }
+          await stream.writeSSE({
+            data: serialiseAsDict({ run_id, status }),
+            event: "end",
+          });
         } catch (err) {
           if (err instanceof DOMException && err.name === "AbortError") {
             return;
@@ -194,6 +200,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
           },
         });
 
+        let status = "success";
         try {
           for await (const { event, data } of streamState(run, {
             attempt: 1,
@@ -203,6 +210,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
             await stream.writeSSE({ data: serialiseAsDict(data), event });
           }
         } catch (error) {
+          status = "error";
           await stream.writeSSE({
             data: serialiseAsDict(serializeError(error)),
             event: "error",
@@ -212,6 +220,10 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
             state.activeRunId = null;
           }
         }
+        await stream.writeSSE({
+          data: serialiseAsDict({ run_id: run.run_id, status }),
+          event: "end",
+        });
       });
     }
   );
@@ -235,6 +247,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
       });
 
       try {
+        let status = "success";
         try {
           for await (const { event, data } of streamState(run, {
             attempt: 1,
@@ -244,11 +257,16 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
             await stream.writeSSE({ data: serialiseAsDict(data), event });
           }
         } catch (error) {
+          status = "error";
           await stream.writeSSE({
             data: serialiseAsDict(serializeError(error)),
             event: "error",
           });
         }
+        await stream.writeSSE({
+          data: serialiseAsDict({ run_id: run.run_id, status }),
+          event: "end",
+        });
       } finally {
         await context.threads.delete(threadId);
       }
