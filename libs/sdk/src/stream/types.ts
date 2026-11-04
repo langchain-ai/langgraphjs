@@ -8,6 +8,7 @@
  */
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Interrupt } from "../schema.js";
+import type { MultitaskStrategy } from "../types.js";
 import type { Client, ClientConfig } from "../client/index.js";
 import type {
   ThreadStream,
@@ -476,7 +477,7 @@ export interface StreamSubmitOptions<
    * through to `"rollback"` behaviour pending the matching server-side
    * cancel work.
    */
-  multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
+  multitaskStrategy?: MultitaskStrategy;
   signal?: AbortSignal;
   /**
    * Per-submit thread-id override. When provided, the controller

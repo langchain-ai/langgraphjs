@@ -5,6 +5,7 @@ import type {
 } from "@langchain/langgraph";
 import type { RunCommand } from "../command.mjs";
 import type { AuthContext } from "../auth/index.mjs";
+import type { CANCEL_ACTIONS, MULTITASK_STRATEGIES } from "./constants.mjs";
 
 export type { RunCommand } from "../command.mjs";
 
@@ -62,7 +63,9 @@ export type StreamMode =
   | "checkpoints"
   | "tools";
 
-export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
+export type MultitaskStrategy = (typeof MULTITASK_STRATEGIES)[number];
+
+export type CancelAction = (typeof CANCEL_ACTIONS)[number];
 
 export type OnConflictBehavior = "raise" | "do_nothing";
 
@@ -274,7 +277,7 @@ export interface RunsRepo {
     threadId: string | undefined,
     runIds: string[],
     options: {
-      action?: "interrupt" | "rollback";
+      action?: CancelAction;
     },
     auth: AuthContext | undefined
   ): Promise<void>;

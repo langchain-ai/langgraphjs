@@ -35,6 +35,7 @@ import {
 } from "./messages.js";
 import type { StreamingMessageHandle } from "./messages.js";
 import { MediaAssembler } from "./media.js";
+import type { MultitaskStrategy } from "../../types.js";
 import type {
   AnyMediaHandle,
   AudioMedia,
@@ -1363,7 +1364,7 @@ export class ThreadStream<
      * handled by the server (`reject` | `rollback` | `interrupt` |
      * `enqueue`).
      */
-    multitaskStrategy?: "reject" | "rollback" | "interrupt" | "enqueue";
+    multitaskStrategy?: MultitaskStrategy;
   }): Promise<RunResult> {
     this.#prepareForNextRun();
     // See `this.run.start` for the gating rationale — the lifecycle

@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import type { MultitaskStrategy } from "./types.js";
 
 type Optional<T> = T | null | undefined;
 
@@ -11,8 +12,6 @@ export type RunStatus =
   | "interrupted";
 
 export type ThreadStatus = "idle" | "busy" | "interrupted" | "error";
-
-type MultitaskStrategy = "reject" | "interrupt" | "rollback" | "enqueue";
 
 export type CancelAction = "interrupt" | "rollback";
 

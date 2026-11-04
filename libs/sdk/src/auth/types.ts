@@ -1,3 +1,6 @@
+import type { CancelAction } from "../schema.js";
+import type { MultitaskStrategy } from "../types.js";
+
 type Maybe<T> = T | null | undefined;
 type PromiseMaybe<T> = Promise<T> | T;
 
@@ -86,7 +89,7 @@ interface ThreadRead {
 interface ThreadUpdate {
   thread_id?: Maybe<string>;
   metadata?: Maybe<Record<string, unknown>>;
-  action?: Maybe<"interrupt" | "rollback">;
+  action?: Maybe<CancelAction>;
 }
 
 /**
@@ -214,7 +217,7 @@ interface RunsCreate {
   >;
   metadata?: Maybe<Record<string, unknown>>;
   prevent_insert_if_inflight?: Maybe<boolean>;
-  multitask_strategy?: Maybe<"interrupt" | "rollback" | "reject" | "enqueue">;
+  multitask_strategy?: Maybe<MultitaskStrategy>;
   if_not_exists?: Maybe<"reject" | "create">;
   after_seconds?: Maybe<number>;
   kwargs: Record<string, unknown>;
