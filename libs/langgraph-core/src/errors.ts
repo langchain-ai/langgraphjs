@@ -323,6 +323,49 @@ export class EmptyInputError extends BaseLangGraphError {
   }
 }
 
+/**
+ * Raised in strict resume mode when a resume doesn't match the pending
+ * interrupts. `reason` says how:
+ *
+ * - `"not_pending"`: the resume names interrupts that aren't pending, listed
+ *   in `interruptIds`.
+ * - `"empty_map"`: the resume is an empty map.
+ * - `"ambiguous"`: the resume is one value while several interrupts are
+ *   pending.
+ *
+ * `pendingIds` lists the interrupts still waiting for an answer. The error is
+ * raised before anything is written, so they can still be answered.
+ *
+ * The interrupts one task raises share an id, so an answer retried after the
+ * task asked its next question answers that question.
+ */
+export class UnknownInterruptError extends BaseLangGraphError {
+  reason: "not_pending" | "empty_map" | "ambiguous";
+
+  interruptIds: string[];
+
+  pendingIds: string[];
+
+  constructor(
+    message: string,
+    fields: {
+      reason: "not_pending" | "empty_map" | "ambiguous";
+      interruptIds?: string[];
+      pendingIds?: string[];
+    } & BaseLangGraphErrorFields
+  ) {
+    super(message, fields);
+    this.name = "UnknownInterruptError";
+    this.reason = fields.reason;
+    this.interruptIds = fields.interruptIds ?? [];
+    this.pendingIds = fields.pendingIds ?? [];
+  }
+
+  static get unminifiable_name() {
+    return "UnknownInterruptError";
+  }
+}
+
 export class EmptyChannelError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     // Skip expensive stack trace capture — used for control flow on channel reads.
