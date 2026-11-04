@@ -466,13 +466,16 @@ async function runOnThread(
   threadId: string,
   graphId: string,
   kwargs: RunKwargs,
-  multitaskStrategy?: "interrupt" | "rollback"
+  options?: {
+    multitaskStrategy?: "interrupt" | "rollback";
+    afterSeconds?: number;
+  }
 ) {
   const [run] = await ops.runs.put(
     uuid7(),
     getAssistantId(graphId),
     kwargs,
-    { threadId, multitaskStrategy },
+    { threadId, ...options },
     undefined
   );
   return run;
@@ -524,12 +527,80 @@ it("keeps a thread waiting when strict resume refuses an answer", async () => {
     pending_ids: pendingIds,
   });
 
+  const resumed = await runOnThread(ops, thread_id, "ask_twice", {
+    command: {
+      resume: Object.fromEntries(pendingIds.map((id) => [id, "yes"])),
+    },
+  });
+  await expect
+    .poll(() => statusOf(resumed), { timeout: 5_000 })
+    .toBe("success");
+  expect((await ops.threads.get(thread_id, undefined)).values).toEqual({
+    log: ["a:yes", "b:yes"],
+  });
+});
+
+it("applies strict resume to an `interrupt` run that cancelled nothing", async () => {
+  const { ops, statusOf } = await startQueue();
+  const { thread_id } = await ops.threads.put(
+    uuid7(),
+    { if_exists: "raise" },
+    undefined
+  );
+  const asked = await runOnThread(ops, thread_id, "ask_twice", { input: {} });
+  await expect.poll(() => statusOf(asked), { timeout: 5_000 }).toBe("success");
+
+  const refused = await runOnThread(
+    ops,
+    thread_id,
+    "ask_twice",
+    { command: { resume: "yes" } },
+    { multitaskStrategy: "interrupt" }
+  );
+  await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
+  const events = await gatherIterator(
+    ops.runs.stream.join(
+      refused.run_id,
+      thread_id,
+      { lastEventId: "-1" },
+      undefined
+    )
+  );
+  expect(events.find(({ event }) => event === "error")?.data).toMatchObject({
+    error: "UnknownInterruptError",
+    reason: "ambiguous",
+  });
+});
+
+it("skips strict resume for a run that cancelled one in flight", async () => {
+  const { ops, statusOf } = await startQueue();
+  const { thread_id } = await ops.threads.put(
+    uuid7(),
+    { if_exists: "raise" },
+    undefined
+  );
+  const asked = await runOnThread(ops, thread_id, "ask_twice", { input: {} });
+  await expect.poll(() => statusOf(asked), { timeout: 5_000 }).toBe("success");
+  const queued = await runOnThread(
+    ops,
+    thread_id,
+    "ask_twice",
+    { input: {} },
+    { afterSeconds: 3600 }
+  );
+
   const resumed = await runOnThread(
     ops,
     thread_id,
     "ask_twice",
     { command: { resume: "yes" } },
-    "interrupt"
+    { multitaskStrategy: "interrupt" }
+  );
+  await ops.runs.cancel(
+    thread_id,
+    [queued.run_id],
+    { action: "interrupt" },
+    undefined
   );
   await expect
     .poll(() => statusOf(resumed), { timeout: 5_000 })

@@ -123,6 +123,7 @@ export interface RunKwargs {
   resumable?: boolean;
 
   temporary?: boolean;
+  cancels_inflight?: boolean;
 
   // TODO: implement webhook
   webhook?: unknown;
