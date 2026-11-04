@@ -584,9 +584,17 @@ describe("Client streaming with retry", () => {
       );
     });
 
-    test("a reconnect to a Location with a query sends each param once", async () => {
-      const locationPath =
-        "/threads/thread-1/runs/run-1/stream?namespace=tools%3Aa&cancel_on_disconnect=0";
+    test.each([
+      [
+        "keeps the whole query",
+        "/threads/thread-1/runs/run-1/stream?namespace=tools%3Aa&cancel_on_disconnect=0",
+      ],
+      [
+        "leaves out namespace",
+        "/threads/thread-1/runs/run-1/stream?cancel_on_disconnect=0",
+      ],
+      ["has no query", "/threads/thread-1/runs/run-1/stream"],
+    ])("a reconnect to a Location that %s sends each param once", async (_, locationPath) => {
       let callCount = 0;
       mockFetch.mockImplementation((url: string) => {
         if (url.endsWith("/runs/run-1")) {

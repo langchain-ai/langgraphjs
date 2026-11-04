@@ -466,12 +466,9 @@ export class BaseClient {
         timeoutMs: null,
         signal: config.signal,
         headers: requestHeaders,
-        // A Location with a query already carries the request's params; adding
-        // them again would repeat every param once more on each reconnect.
-        params:
-          isReconnect && requestEndpoint.includes("?")
-            ? undefined
-            : config.params,
+        params: isReconnect
+          ? paramsMissingFrom(requestEndpoint, config.params)
+          : config.params,
         json: isReconnect ? undefined : config.json,
       });
 
@@ -576,4 +573,20 @@ function serializeHeaders(headers: RequestInit["headers"]): string {
     .sort()
     .map((name) => `${name}:${normalized[name]}`)
     .join("\n");
+}
+
+/**
+ * The params a reconnect still has to send: a server's `Location` usually
+ * keeps the request's query, and re-sending a param it already has would
+ * repeat it once more on every reconnect.
+ */
+function paramsMissingFrom(
+  endpoint: string,
+  params: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!params) return params;
+  const query = new URLSearchParams(endpoint.split("?")[1]);
+  return Object.fromEntries(
+    Object.entries(params).filter(([key]) => !query.has(key))
+  );
 }
