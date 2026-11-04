@@ -349,7 +349,7 @@ export interface Run {
   multitask_strategy: Optional<MultitaskStrategy>;
 
   /** Why the run was cancelled. `null` or absent if it was not. */
-  cancel_reason?: Optional<string>;
+  cancel_reason?: string | null;
 }
 
 export type Checkpoint = {
