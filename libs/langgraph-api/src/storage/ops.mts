@@ -77,20 +77,13 @@ class TimeoutError extends Error {}
 class AbortError extends Error {}
 
 class Queue {
+  // Never trimmed: each reader of a run reads it from its own cursor.
   private log: Message[] = [];
   private listeners: ((idx: number) => void)[] = [];
 
-  private nextId = 0;
-  private resumable = false;
-
-  constructor(options: { resumable: boolean }) {
-    this.resumable = options.resumable;
-  }
-
   push(item: Message) {
     this.log.push(item);
-    for (const listener of this.listeners) listener(this.nextId);
-    this.nextId += 1;
+    for (const listener of this.listeners) listener(this.log.length - 1);
   }
 
   async get(options: {
@@ -98,28 +91,19 @@ class Queue {
     lastEventId?: string;
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
-    if (this.resumable) {
-      const lastEventId = options.lastEventId;
+    const lastEventId = options.lastEventId;
 
-      // Generator stores internal state of the read head index,
-      let targetId = lastEventId != null ? +lastEventId + 1 : null;
-      if (
-        targetId == null ||
-        isNaN(targetId) ||
-        targetId < 0 ||
-        targetId >= this.log.length
-      ) {
-        targetId = null;
-      }
-
-      if (targetId != null) return [String(targetId), this.log[targetId]];
-    } else {
-      if (this.log.length) {
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem];
-      }
+    let targetId = lastEventId != null ? +lastEventId + 1 : null;
+    if (
+      targetId == null ||
+      isNaN(targetId) ||
+      targetId < 0 ||
+      targetId >= this.log.length
+    ) {
+      targetId = null;
     }
+
+    if (targetId != null) return [String(targetId), this.log[targetId]];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
     let resolver: ((idx: number) => void) | undefined = undefined;
@@ -139,15 +123,7 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then((idx) => {
-        if (this.resumable) {
-          return [String(idx), this.log[idx]] as [string, Message];
-        }
-
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem] as [string, Message];
-      })
+      .then((idx) => [String(idx), this.log[idx]] as [string, Message])
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -162,19 +138,40 @@ class CancellationAbortController extends AbortController {
   }
 }
 
-class StreamManagerImpl {
-  readers: Record<string, Queue> = {};
-  control: Record<string, CancellationAbortController> = {};
+// Long enough for a client that lost a finished run's stream, or reloaded its
+// page, to rejoin with Last-Event-ID and replay the rest.
+export const RUN_LOG_GRACE_MS = 120_000;
 
-  getQueue(
-    runId: string,
-    options: { ifNotFound: "create"; resumable: boolean }
-  ): Queue {
-    if (this.readers[runId] == null) {
-      this.readers[runId] = new Queue(options);
+class StreamManagerImpl {
+  readers = new Map<string, Queue>();
+  control: Record<string, CancellationAbortController> = {};
+  private expiry = new Map<string, NodeJS.Timeout>();
+
+  getQueue(runId: string): Queue {
+    let queue = this.readers.get(runId);
+    if (queue == null) {
+      queue = new Queue();
+      this.readers.set(runId, queue);
     }
 
-    return this.readers[runId];
+    return queue;
+  }
+
+  freeLater(runId: string) {
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.set(
+      runId,
+      setTimeout(() => this.free(runId), RUN_LOG_GRACE_MS).unref()
+    );
+  }
+
+  free(runId: string) {
+    // A worker that still holds the run keeps publishing to its log, which is
+    // freed a grace period after the worker lets the run go.
+    if (this.isLocked(runId)) return;
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.delete(runId);
+    this.readers.delete(runId);
   }
 
   getControl(runId: string) {
@@ -929,6 +926,7 @@ export class FileSystemThreads implements ThreadsRepo {
       for (const run of Object.values(STORE.runs)) {
         if (run["thread_id"] === thread_id) {
           delete STORE.runs[run["run_id"]];
+          StreamManager.free(run["run_id"]);
         }
       }
       checkpointer.delete(thread_id, null);
@@ -1362,6 +1360,8 @@ export class FileSystemRuns implements RunsRepo {
           STORE.runs[runId].status = "running";
 
           yield { run, attempt: STORE.retry_counter[runId], signal };
+          // The worker is done with the run when it asks for the next one.
+          StreamManager.freeLater(runId);
         } finally {
           StreamManager.unlock(runId);
         }
@@ -1601,10 +1601,11 @@ export class FileSystemRuns implements RunsRepo {
 
       // Ends the run's open streams, which would otherwise wait out their
       // timeout and report the run as not found.
-      StreamManager.readers[run_id]?.push({
+      StreamManager.readers.get(run_id)?.push({
         topic: `run:${run_id}:control`,
         data: "done",
       });
+      StreamManager.free(run_id);
       if (thread_id != null) checkpointer.delete(thread_id, run_id);
       delete STORE.runs[run_id];
       return run.run_id;
@@ -1619,7 +1620,7 @@ export class FileSystemRuns implements RunsRepo {
     const runStream = this.stream.join(
       runId,
       threadId,
-      { ignore404: threadId == null, lastEventId: undefined },
+      { ignore404: threadId == null, lastEventId: "-1" },
       auth
     );
 
@@ -1690,6 +1691,9 @@ export class FileSystemRuns implements RunsRepo {
         control?.abort(options.action ?? "interrupt");
 
         if (run.status === "pending") {
+          // No worker will run it now, so free the log a join may have made.
+          if (control == null) StreamManager.freeLater(runId);
+
           if (control == null && run.kwargs.temporary) {
             // No worker will run it now, so nothing else deletes it, or its
             // temporary thread once no other run is left on it.
@@ -1819,12 +1823,7 @@ export class FileSystemRuns implements RunsRepo {
       const runs = this.runs;
 
       yield* conn.withGenerator(async function* (STORE) {
-        // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.signal;
-        const queue = StreamManager.getQueue(runId, {
-          ifNotFound: "create",
-          resumable: options.lastEventId != null,
-        });
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1860,6 +1859,18 @@ export class FileSystemRuns implements RunsRepo {
             return;
           }
         }
+
+        // A run that has ended or is gone has nothing more for a join to
+        // read, and a log created for it might never be freed.
+        const status = STORE.runs[runId]?.status;
+        if (
+          !StreamManager.readers.has(runId) &&
+          status !== "pending" &&
+          status !== "running"
+        ) {
+          return;
+        }
+        const queue = StreamManager.getQueue(runId);
 
         let lastEventId = options?.lastEventId;
         while (!signal?.aborted) {
@@ -1918,13 +1929,9 @@ export class FileSystemRuns implements RunsRepo {
       runId: string;
       event: string;
       data: unknown;
-      resumable: boolean;
       normalized?: boolean;
     }) {
-      const queue = StreamManager.getQueue(payload.runId, {
-        ifNotFound: "create",
-        resumable: payload.resumable,
-      });
+      const queue = StreamManager.getQueue(payload.runId);
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,
