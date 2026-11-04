@@ -349,6 +349,7 @@ export class RunsClient<
    * @param runId The ID of the run.
    * @param wait Whether to block when canceling
    * @param action Action to take when cancelling the run. Possible values are `interrupt` or `rollback`. Default is `interrupt`.
+   * @param options.reason `taken` marks run input absorbed for steering. The server records a `cancel_reason` starting with `taken:`. Only valid with `action: "interrupt"`.
    * @returns
    */
   async cancel(
@@ -356,13 +357,13 @@ export class RunsClient<
     runId: string,
     wait: boolean = false,
     action: CancelAction = "interrupt",
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal; reason?: "taken" } = {}
   ): Promise<void> {
     return this.fetch<void>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/cancel`,
       {
         method: "POST",
-        params: { wait: wait ? "1" : "0", action },
+        params: { wait: wait ? "1" : "0", action, reason: options?.reason },
         signal: options?.signal,
       }
     );

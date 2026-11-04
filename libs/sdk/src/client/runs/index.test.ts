@@ -95,6 +95,50 @@ describe("runs.cancelMany", () => {
   });
 });
 
+describe("runs.cancel", () => {
+  function mockCancel() {
+    const fetchMock = createMockFetch();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: () => Promise.resolve(undefined),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+    return fetchMock;
+  }
+
+  it("sends the reason as a query param", async () => {
+    const fetchMock = mockCancel();
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
+
+    await client.runs.cancel("thread_abc", "run_1", false, "interrupt", {
+      reason: "taken",
+    });
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.pathname).toBe("/threads/thread_abc/runs/run_1/cancel");
+    expect(url.searchParams.get("reason")).toBe("taken");
+    expect(url.searchParams.get("action")).toBe("interrupt");
+  });
+
+  it("sends no reason when none is set", async () => {
+    const fetchMock = mockCancel();
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
+
+    await client.runs.cancel("thread_abc", "run_1");
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.searchParams.has("reason")).toBe(false);
+  });
+});
+
 describe("runs.list", () => {
   function parseFetchCall(fetchMock: MockFetch) {
     const [url] = fetchMock.mock.calls[0];
