@@ -310,7 +310,9 @@ export class PregelRunner {
     if (signals?.composedAbortSignal?.aborted) {
       // note: don't use throwIfAborted here because it throws a DOMException,
       // which isn't consistent with how we throw on abort below.
-      throw new Error("Abort");
+      throw new Error("Abort", {
+        cause: signals.composedAbortSignal.reason,
+      });
     }
 
     let startedTasksCount = 0;
@@ -323,7 +325,12 @@ export class PregelRunner {
 
     const abortPromise = timeoutOrCancelSignal.signal
       ? new Promise<never>((_resolve, reject) => {
-          listener = () => reject(new Error("Abort"));
+          listener = () =>
+            reject(
+              new Error("Abort", {
+                cause: timeoutOrCancelSignal.signal?.reason,
+              })
+            );
           timeoutOrCancelSignal.signal?.addEventListener("abort", listener, {
             once: true,
           });

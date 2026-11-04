@@ -6,6 +6,7 @@ import {
   streamState,
 } from "./stream.mjs";
 import { logError, logger } from "./logging.mjs";
+import { RunCancellation } from "./utils/abort.mjs";
 import { serializeError } from "./utils/serde.mjs";
 import { callWebhook } from "./webhook.mjs";
 import { getGraph } from "./graph/load.mjs";
@@ -67,8 +68,7 @@ const worker = async (
   };
 
   const isCancelled = () =>
-    signal.aborted &&
-    (signal.reason === "interrupt" || signal.reason === "rollback");
+    signal.aborted && signal.reason instanceof RunCancellation;
 
   // The run, or its thread, can be deleted while it runs: a final write that
   // fails because its record is gone has nothing left to update.
@@ -147,7 +147,7 @@ const worker = async (
 
     if (isCancelled()) {
       checkpoint = undefined;
-      if (signal.reason === "rollback") {
+      if (signal.reason.action === "rollback") {
         status = "rollback";
         await unlessGone(
           ops.runs.delete(run.run_id, run.thread_id, undefined),

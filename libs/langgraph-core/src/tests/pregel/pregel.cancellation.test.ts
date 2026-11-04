@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import {
   Annotation,
   Command,
@@ -507,6 +508,66 @@ describe("Pregel AbortSignal", () => {
           "2": new Set(["graph", "one", "two"]),
         });
       }
+    }
+  );
+
+  it.each(["graph", "subgraph"] as const)(
+    "keeps the abort reason for nodes and the root run error (%s)",
+    async (mode) => {
+      class Marker extends Error {}
+      const reason = new Marker("stopped on purpose");
+      const controller = new AbortController();
+      let seenReason: unknown;
+      const rootErrors: unknown[] = [];
+
+      class RootErrorHandler extends BaseCallbackHandler {
+        name = "root_error_handler";
+
+        async handleChainError(
+          error: unknown,
+          _runId: string,
+          parentRunId?: string
+        ) {
+          if (parentRunId === undefined) rootErrors.push(error);
+        }
+      }
+
+      const State = Annotation.Root({ value: Annotation<string> });
+      const inner = new StateGraph(State)
+        .addNode("wait", async (_state, config: LangGraphRunnableConfig) => {
+          await new Promise<void>((resolve) => {
+            config.signal?.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+            setTimeout(() => controller.abort(reason), 0);
+          });
+          seenReason = config.signal?.reason;
+          return {};
+        })
+        .addEdge(START, "wait")
+        .compile();
+      const graph =
+        mode === "graph"
+          ? inner
+          : new StateGraph(State)
+              .addNode("inner", inner)
+              .addEdge(START, "inner")
+              .compile();
+
+      const error = await graph
+        .invoke(
+          { value: "x" },
+          { signal: controller.signal, callbacks: [new RootErrorHandler()] }
+        )
+        .then(
+          () => undefined,
+          (e) => e
+        );
+
+      expect(seenReason).toBe(reason);
+      expect(error).toBe(reason);
+      expect(rootErrors).toHaveLength(1);
+      expect((rootErrors[0] as Error).cause).toBe(reason);
     }
   );
 });

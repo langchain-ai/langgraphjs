@@ -6,6 +6,7 @@ import type { AuthContext } from "../auth/index.mjs";
 import { getLangGraphCommand, type RunCommand } from "../command.mjs";
 import { getGraph, NAMESPACE_GRAPH } from "../graph/load.mjs";
 import { logger } from "../logging.mjs";
+import { RunCancellation } from "../utils/abort.mjs";
 import { serializeError } from "../utils/serde.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
@@ -157,7 +158,7 @@ class Queue {
 }
 
 class CancellationAbortController extends AbortController {
-  abort(reason: "rollback" | "interrupt") {
+  abort(reason: RunCancellation) {
     super.abort(reason);
   }
 }
@@ -1687,7 +1688,7 @@ export class FileSystemRuns implements RunsRepo {
 
         // send cancellation message
         const control = StreamManager.getControl(runId);
-        control?.abort(options.action ?? "interrupt");
+        control?.abort(new RunCancellation(action));
 
         if (run.status === "pending") {
           if (control == null && run.kwargs.temporary) {
