@@ -18,7 +18,7 @@ import type {
   LangGraphRunnableConfig,
   Runtime,
 } from "../pregel/runnable_types.js";
-import { BaseChannel } from "../channels/base.js";
+import { BaseChannel, isBaseChannel } from "../channels/base.js";
 import {
   CompiledGraph,
   Graph,
@@ -1641,6 +1641,11 @@ function _getChannels<Channels extends Record<string, unknown> | unknown>(
 ): Record<string, BaseChannel> {
   const channels: Record<string, BaseChannel> = {};
   for (const [name, val] of Object.entries(schema)) {
+    if (isBaseChannel(val)) {
+      throw new StateGraphInputError(
+        `Channel instance for ${JSON.stringify(name)} is not a reducer descriptor for the legacy "channels" option. Use Annotation.Root({ ${JSON.stringify(name)}: channel }) to pass channel instances.`
+      );
+    }
     if (name === ROOT) {
       channels[name] = getChannel<Channels>(val as SingleReducer<Channels>);
     } else {

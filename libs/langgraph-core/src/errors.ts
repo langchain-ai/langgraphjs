@@ -412,10 +412,12 @@ export class StateGraphInputError extends BaseLangGraphError {
    * @param fields - Optional additional error fields.
    */
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
-    super(message, fields);
+    super(
+      message ??
+        "Invalid StateGraph input. Make sure to pass a valid StateDefinition, Annotation.Root, or Zod schema.",
+      fields
+    );
     this.name = "StateGraphInputError";
-    this.message =
-      "Invalid StateGraph input. Make sure to pass a valid StateDefinition, Annotation.Root, or Zod schema.";
   }
 
   /**
