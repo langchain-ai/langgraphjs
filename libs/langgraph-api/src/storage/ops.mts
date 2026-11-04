@@ -143,33 +143,35 @@ class CancellationAbortController extends AbortController {
 export const RUN_LOG_GRACE_MS = 120_000;
 
 class StreamManagerImpl {
-  readers: Record<string, Queue> = {};
+  readers = new Map<string, Queue>();
   control: Record<string, CancellationAbortController> = {};
-  private expiry: Record<string, NodeJS.Timeout> = {};
+  private expiry = new Map<string, NodeJS.Timeout>();
 
   getQueue(runId: string): Queue {
-    if (this.readers[runId] == null) {
-      this.readers[runId] = new Queue();
+    let queue = this.readers.get(runId);
+    if (queue == null) {
+      queue = new Queue();
+      this.readers.set(runId, queue);
     }
 
-    return this.readers[runId];
+    return queue;
   }
 
   freeLater(runId: string) {
-    clearTimeout(this.expiry[runId]);
-    this.expiry[runId] = setTimeout(
-      () => this.free(runId),
-      RUN_LOG_GRACE_MS
-    ).unref();
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.set(
+      runId,
+      setTimeout(() => this.free(runId), RUN_LOG_GRACE_MS).unref()
+    );
   }
 
   free(runId: string) {
     // A worker that still holds the run keeps publishing to its log, which is
     // freed a grace period after the worker lets the run go.
     if (this.isLocked(runId)) return;
-    clearTimeout(this.expiry[runId]);
-    delete this.expiry[runId];
-    delete this.readers[runId];
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.delete(runId);
+    this.readers.delete(runId);
   }
 
   getControl(runId: string) {
@@ -1599,7 +1601,7 @@ export class FileSystemRuns implements RunsRepo {
 
       // Ends the run's open streams, which would otherwise wait out their
       // timeout and report the run as not found.
-      StreamManager.readers[run_id]?.push({
+      StreamManager.readers.get(run_id)?.push({
         topic: `run:${run_id}:control`,
         data: "done",
       });
@@ -1862,7 +1864,7 @@ export class FileSystemRuns implements RunsRepo {
         // read, and a log created for it might never be freed.
         const status = STORE.runs[runId]?.status;
         if (
-          StreamManager.readers[runId] == null &&
+          !StreamManager.readers.has(runId) &&
           status !== "pending" &&
           status !== "running"
         ) {

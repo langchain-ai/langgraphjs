@@ -238,7 +238,7 @@ it("replays a finished run's log for a grace period, then frees it", async () =>
 
   vi.advanceTimersByTime(1);
   expect(
-    StreamManager.readers[run.run_id],
+    StreamManager.readers.get(run.run_id),
     "the log after the grace period"
   ).toBeUndefined();
 });
@@ -263,7 +263,7 @@ it.each([
     await runOnce(ops, run);
 
     await remove(ops, run);
-    expect(StreamManager.readers[run.run_id]).toBeUndefined();
+    expect(StreamManager.readers.get(run.run_id)).toBeUndefined();
   }
 );
 
@@ -274,12 +274,12 @@ it("keeps a stateless run's log for the grace period after its thread is deleted
   await runOnce(ops, run, () => ops.threads.delete(run.thread_id, undefined));
 
   expect(
-    StreamManager.readers[run.run_id],
+    StreamManager.readers.get(run.run_id),
     "the log right after the run"
   ).toBeDefined();
   vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
   expect(
-    StreamManager.readers[run.run_id],
+    StreamManager.readers.get(run.run_id),
     "the log after the grace period"
   ).toBeUndefined();
 });
@@ -295,12 +295,12 @@ it("keeps a re-queued run's log until a grace period after its last attempt", as
     vi.advanceTimersByTime(RUN_LOG_GRACE_MS)
   );
   expect(
-    StreamManager.readers[run.run_id],
+    StreamManager.readers.get(run.run_id),
     "the log right after the second attempt"
   ).toBeDefined();
   vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
   expect(
-    StreamManager.readers[run.run_id],
+    StreamManager.readers.get(run.run_id),
     "the log after the grace period"
   ).toBeUndefined();
 });
@@ -357,7 +357,7 @@ it.each<
   expect(
     await gatherIterator(ops.runs.stream.join(runId, threadId, options, auth))
   ).toEqual(events);
-  expect(StreamManager.readers[runId], "the run's log").toBeUndefined();
+  expect(StreamManager.readers.get(runId), "the run's log").toBeUndefined();
 });
 
 it("a join of a finished run whose log was freed ends at once without creating a log", async () => {
@@ -376,7 +376,7 @@ it("a join of a finished run whose log was freed ends at once without creating a
     )
   );
   await vi.advanceTimersByTimeAsync(0);
-  expect(StreamManager.readers[run.run_id], "the run's log").toBeUndefined();
+  expect(StreamManager.readers.get(run.run_id), "the run's log").toBeUndefined();
   expect(await Promise.race([events, "still waiting"])).toEqual([]);
 });
 
@@ -395,7 +395,7 @@ it.each(["pending", "running"] as const)(
     );
     const first = join.next();
     await vi.advanceTimersByTimeAsync(0);
-    expect(StreamManager.readers[run.run_id], "the run's log").toBeDefined();
+    expect(StreamManager.readers.get(run.run_id), "the run's log").toBeDefined();
 
     await ops.runs.stream.publish({
       runId: run.run_id,
@@ -440,7 +440,7 @@ it.each<[string, boolean]>([
       )
     );
     await vi.advanceTimersByTimeAsync(0);
-    expect(StreamManager.readers[run.run_id], "the run's log").toBeDefined();
+    expect(StreamManager.readers.get(run.run_id), "the run's log").toBeDefined();
 
     await ops.runs.cancel(
       run.thread_id,
@@ -450,7 +450,7 @@ it.each<[string, boolean]>([
     );
     vi.advanceTimersByTime(RUN_LOG_GRACE_MS);
     expect(
-      StreamManager.readers[run.run_id],
+      StreamManager.readers.get(run.run_id),
       "the log after the grace period"
     ).toBeUndefined();
     expect(await events).toEqual([]);
