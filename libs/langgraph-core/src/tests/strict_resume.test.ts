@@ -234,6 +234,28 @@ describe("strict resume", () => {
     expect(result.log).toEqual(["yes,no"]);
   });
 
+  it("gives each of a node's parallel interrupts an answer", async () => {
+    const graph = new StateGraph(State)
+      .addNode("ask", async () => {
+        const b = (async () => interrupt("b?"))();
+        b.catch(() => undefined);
+        const a = await (async () => interrupt("a?"))();
+        return { log: [`${a},${await b}`] };
+      })
+      .addEdge(START, "ask")
+      .compile({ checkpointer: new MemorySaver() });
+    await graph.invoke({ log: [] }, config());
+    for (const answer of ["1", "2"]) {
+      const card = (await graph.getState(config())).tasks[0].interrupts[0];
+      await graph.invoke(
+        new Command({ resume: { [card.id!]: answer } }),
+        config()
+      );
+    }
+
+    expect((await graph.getState(config())).next).toEqual([]);
+  });
+
   it("still answers a later interrupt saved with the first id", async () => {
     const checkpointer = new MemorySaver();
     const graph = askTwice(checkpointer);

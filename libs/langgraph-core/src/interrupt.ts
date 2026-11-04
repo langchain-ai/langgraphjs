@@ -155,7 +155,7 @@ export function interrupt<I = unknown, R = any>(
 
   // No resume value found
   const ns: string | undefined = conf[CONFIG_KEY_CHECKPOINT_NS];
-  const id = ns != null ? interruptId(ns, idx) : undefined;
+  const id = ns != null ? interruptId(ns, scratchpad.resume.length) : undefined;
   const pending: Interrupt<I> = { id, value };
   if (schema !== undefined) {
     pending.response_schema = toJsonSchema(schema);
@@ -163,14 +163,16 @@ export function interrupt<I = unknown, R = any>(
   throw new GraphInterrupt([pending]);
 }
 
-export function interruptId(namespace: string, index: number): string {
-  // Older versions gave every interrupt in a task the bare namespace hash, so
-  // the first one keeps it and saved ids still match. The suffix can't form
-  // another task's namespace, whose segments all contain ":".
+export function interruptId(namespace: string, answered: number): string {
+  // Keyed by how many answers the task already has, the slot this interrupt's
+  // answer fills; call order isn't stable across parallel calls in one task.
+  // With none it's the bare namespace hash older versions gave every
+  // interrupt, so saved ids still match. The suffix can't form another task's
+  // namespace, whose segments all contain ":".
   return XXH3(
-    index === 0
+    answered === 0
       ? namespace
-      : `${namespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${index}`
+      : `${namespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${answered}`
   );
 }
 
