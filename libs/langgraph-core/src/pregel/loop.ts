@@ -1156,7 +1156,9 @@ export class PregelLoop {
     }
   }
 
-  async _matchCachedWrites() {
+  async _matchCachedWrites(
+    tasks: PregelExecutableTask<string, string>[] = Object.values(this.tasks)
+  ) {
     if (!this.cache) return [];
 
     const matched: {
@@ -1171,7 +1173,7 @@ export class PregelLoop {
     const keys: CacheFullKey[] = [];
     const keyMap: Record<string, PregelExecutableTask<string, string>> = {};
 
-    for (const task of Object.values(this.tasks)) {
+    for (const task of tasks) {
       if (task.cache_key != null && !task.writes.length) {
         keys.push([task.cache_key.ns, task.cache_key.key]);
         keyMap[serializeKey([task.cache_key.ns, task.cache_key.key])] = task;
@@ -1532,7 +1534,7 @@ export class PregelLoop {
     this.tasks[pushed.id] = pushed;
     if (this.skipDoneTasks) this._matchWrites({ [pushed.id]: pushed });
 
-    const tasks = await this._matchCachedWrites();
+    const tasks = await this._matchCachedWrites([pushed]);
     for (const { task } of tasks) {
       this.putWrites(task.id, task.writes, true);
     }
