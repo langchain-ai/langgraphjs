@@ -19,7 +19,7 @@ import type {
   LangGraphRunnableConfig,
 } from "../pregel/runnable_types.js";
 import { PregelNode } from "../pregel/read.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Pregel } from "../pregel/index.js";
 import type { PregelOptions, PregelParams } from "../pregel/types.js";
 import { BaseChannel } from "../channels/base.js";
 import { EphemeralValue } from "../channels/ephemeral_value.js";
@@ -816,7 +816,11 @@ export class CompiledGraph<
   ) {
     // add hidden start node
     if (start === START && !this.nodes[START]) {
-      this.nodes[START] = Channel.subscribeTo(START, { tags: [TAG_HIDDEN] });
+      this.nodes[START] = new PregelNode({
+        channels: [START],
+        triggers: [START],
+        tags: [TAG_HIDDEN],
+      });
     }
 
     // attach branch writer

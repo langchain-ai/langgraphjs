@@ -76,7 +76,8 @@ import { Topic } from "../channels/topic.js";
 import { PregelNode } from "../pregel/read.js";
 import { BaseChannel } from "../channels/base.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
-import { Channel, Pregel, PregelOptions } from "../pregel/index.js";
+import { PregelOptions } from "../pregel/index.js";
+import { Channel, RawPregel } from "./raw_pregel.js";
 import type { StreamToolsOutput } from "../pregel/types.js";
 import {
   _applyWrites,
@@ -159,7 +160,7 @@ export function runPregelTests(
       const chain = Channel.subscribeTo("input").pipe(
         Channel.writeTo(["output"])
       );
-      const app = new Pregel({
+      const app = new RawPregel({
         nodes: { one: chain },
         channels: {
           ephemeral: new EphemeralValue(),
@@ -402,7 +403,7 @@ export function runPregelTests(
           Channel.writeTo(["output"])
         );
 
-        const pregel1 = new Pregel({
+        const pregel1 = new RawPregel({
           nodes: { one: chain },
           channels: {
             input: new LastValue<number>(),
@@ -412,7 +413,7 @@ export function runPregelTests(
           outputChannels: "output",
           streamChannels: "output",
         });
-        const pregel2 = new Pregel({
+        const pregel2 = new RawPregel({
           nodes: { one: chain },
           channels: {
             input: new LastValue<number>(),
@@ -422,7 +423,7 @@ export function runPregelTests(
           outputChannels: "output",
           streamChannels: ["input", "output"],
         });
-        const pregel3 = new Pregel({
+        const pregel3 = new RawPregel({
           nodes: { one: chain },
           channels: {
             input: new LastValue<number>(),
@@ -476,7 +477,7 @@ export function runPregelTests(
 
         const checkpointer = await createCheckpointer();
         // create Pregel class
-        const pregel = new Pregel({
+        const pregel = new RawPregel({
           nodes,
           debug: false,
           inputChannels: "outputKey",
@@ -1218,7 +1219,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
@@ -1255,7 +1256,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
@@ -1282,7 +1283,7 @@ export function runPregelTests(
         })
       );
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
@@ -1322,7 +1323,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one: chain,
       },
@@ -1343,7 +1344,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one: chain },
       channels: {
         input: new LastValue<number>(),
@@ -1365,7 +1366,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         inbox: new LastValue<number>(),
@@ -1405,7 +1406,7 @@ export function runPregelTests(
       .pipe(new RunnableEach({ bound: new RunnableLambda({ func: addOne }) }))
       .pipe(new RunnableEach({ bound: Channel.writeTo(["output"]) }));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         inbox: new Topic<number>(),
@@ -1535,7 +1536,7 @@ export function runPregelTests(
       .pipe(addOneWithDelay)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         one: new LastValue<number>(),
@@ -1589,7 +1590,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         inbox: new LastValue<number>(),
@@ -1897,7 +1898,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes,
       channels,
       inputChannels: "input",
@@ -1927,7 +1928,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         output: new LastValue<number>(),
@@ -1950,7 +1951,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         output: new LastValue<number>(),
@@ -1974,7 +1975,7 @@ export function runPregelTests(
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         output: new Topic<number>(),
@@ -2206,7 +2207,7 @@ graph TD;
 
     const memory = await createCheckpointer();
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one },
       channels: {
         total: new BinaryOperatorAggregate<number>((a, b) => a + b),
@@ -2271,7 +2272,7 @@ graph TD;
       .pipe(add10Each)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
         chainThree,
@@ -2308,7 +2309,7 @@ graph TD;
     const addOne = vi.fn((x: number): number => x + 1);
     const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
-    const innerApp = new Pregel({
+    const innerApp = new RawPregel({
       nodes: {
         one: Channel.subscribeTo("input")
           .pipe(addOne)
@@ -2335,7 +2336,7 @@ graph TD;
       .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
         two,
@@ -2381,7 +2382,7 @@ graph TD;
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         input: new LastValue<number>(),
@@ -2409,7 +2410,7 @@ graph TD;
       .pipe(Channel.writeTo(["between"]));
     const two = Channel.subscribeTo("between").pipe(addOne);
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         input: new LastValue<number>(),
@@ -2434,7 +2435,7 @@ graph TD;
     const two = Channel.subscribeTo("between").pipe(addOne);
 
     // @ts-expect-error - this should throw an error
-    expect(() => new Pregel({ nodes: { one, two } })).toThrowError();
+    expect(() => new RawPregel({ nodes: { one, two } })).toThrowError();
   });
 
   it("should type-error when Channel.subscribeTo would throw at runtime", () => {
@@ -7331,7 +7332,7 @@ graph TD;
       const addOne = vi.fn((x: number) => x + 1);
       const add10Each = vi.fn((x: number[]) => x.map((y) => y + 10));
 
-      const innerApp = new Pregel({
+      const innerApp = new RawPregel({
         nodes: {
           one: Channel.subscribeTo("input")
             .pipe(addOne)
@@ -7358,7 +7359,7 @@ graph TD;
         .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
         .pipe(Channel.writeTo(["output"]));
 
-      const app = new Pregel({
+      const app = new RawPregel({
         nodes: {
           one,
           two,
@@ -10724,7 +10725,7 @@ graph TD;
     };
 
     // create Pregel class
-    const graph = new Pregel({
+    const graph = new RawPregel({
       nodes: { chain },
       debug: false,
       inputChannels: "input",

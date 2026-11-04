@@ -205,17 +205,11 @@ abstract class BaseChannel<ValueType, UpdateType, CheckpointType> {
 class Pregel {
   channels: Record<string, BaseChannel | ManagedValueSpec>;
 }
-
-// Channel is a separate utility class, not part of the BaseChannel hierarchy
-class Channel {
-  static subscribeTo(channel: string, options?): PregelNode;
-  static writeTo(channels: string[], writes?): ChannelWrite;
-}
-
-// Example of channel usage in a Pregel system:
-const node = Channel.subscribeTo("input_channel");
-const write = Channel.writeTo(["output_channel"]);
 ```
+
+`Pregel` is not constructed directly: `StateGraph.compile()` and `entrypoint`
+build it, and they create its `PregelNode`s and `ChannelWrite`s. Tests that need
+hand-built nodes use the `Channel` helper in `src/tests/raw_pregel.ts`.
 
 ## Key Interface: Checkpointer to Graph
 

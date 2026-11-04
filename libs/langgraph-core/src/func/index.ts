@@ -6,6 +6,8 @@ import {
 import { AsyncLocalStorageProviderSingleton } from "@langchain/core/singletons";
 import { Pregel } from "../pregel/index.js";
 import { PregelNode } from "../pregel/read.js";
+import type { StrRecord } from "../pregel/algo.js";
+import type { BaseChannel } from "../channels/base.js";
 import {
   CONFIG_KEY_PREVIOUS_STATE,
   END,
@@ -234,6 +236,19 @@ export interface EntrypointFunction {
 }
 
 /**
+ * The graph that `entrypoint` returns. `Pregel` itself cannot be constructed
+ * directly.
+ */
+class EntrypointPregel<
+  Nodes extends StrRecord<string, PregelNode>,
+  Channels extends StrRecord<string, BaseChannel>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ContextType extends Record<string, any>,
+  InputType,
+  OutputType,
+> extends Pregel<Nodes, Channels, ContextType, InputType, OutputType> {}
+
+/**
  * Define a LangGraph workflow using the `entrypoint` function.
  *
  * ### Function signature
@@ -428,7 +443,7 @@ export const entrypoint = function entrypoint<InputT, OutputT>(
     ],
   });
 
-  return new Pregel<
+  return new EntrypointPregel<
     Record<string, PregelNode<InputT, EntrypointReturnT<OutputT>>>, // node types
     {
       [START]: EphemeralValue<InputT>;

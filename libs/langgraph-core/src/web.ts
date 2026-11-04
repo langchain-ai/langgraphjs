@@ -43,8 +43,6 @@ export type {
   StreamOutputMap,
   PregelParams,
   PregelOptions,
-  SingleChannelSubscriptionOptions,
-  MultipleChannelSubscriptionOptions,
   GetStateOptions,
 } from "./pregel/types.js";
 export type { PregelNode } from "./pregel/read.js";

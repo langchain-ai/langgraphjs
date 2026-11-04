@@ -647,32 +647,6 @@ export interface StateSnapshot {
 }
 
 /**
- * Options for subscribing to multiple channels.
- */
-export type MultipleChannelSubscriptionOptions = {
-  /**
-   * Optional tags to associate with the subscription.
-   */
-  tags?: string[];
-};
-
-/**
- * Options for subscribing to a single channel.
- */
-export type SingleChannelSubscriptionOptions = {
-  /**
-   * When specified, the channel mapping will be an object with this key pointing
-   * to the array of channels to subscribe to. Otherwise, the channel mapping
-   * will be an array of channels.
-   */
-  key?: string;
-  /**
-   * Optional tags to associate with the subscription.
-   */
-  tags?: string[];
-};
-
-/**
  * Options for getting the state of the graph.
  */
 export type GetStateOptions = {
