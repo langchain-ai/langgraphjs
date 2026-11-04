@@ -154,16 +154,24 @@ export function interrupt<I = unknown, R = any>(
   }
 
   // No resume value found
-  const ns: string[] | undefined = conf[CONFIG_KEY_CHECKPOINT_NS]?.split(
-    CHECKPOINT_NAMESPACE_SEPARATOR
-  );
-
-  const id = ns ? XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR)) : undefined;
+  const ns: string | undefined = conf[CONFIG_KEY_CHECKPOINT_NS];
+  const id = ns != null ? interruptId(ns, idx) : undefined;
   const pending: Interrupt<I> = { id, value };
   if (schema !== undefined) {
     pending.response_schema = toJsonSchema(schema);
   }
   throw new GraphInterrupt([pending]);
+}
+
+export function interruptId(namespace: string, index: number): string {
+  // Older versions gave every interrupt in a task the bare namespace hash, so
+  // the first one keeps it and saved ids still match. The suffix can't form
+  // another task's namespace, whose segments all contain ":".
+  return XXH3(
+    index === 0
+      ? namespace
+      : `${namespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${index}`
+  );
 }
 
 type FilterAny<X> =
