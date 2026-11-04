@@ -87,6 +87,18 @@ export type ErrorStreamEvent = {
 export type SubgraphErrorStreamEvent = AsSubgraph<ErrorStreamEvent>;
 
 /**
+ * Last event of a run stream, with the run's final status.
+ */
+export type EndStreamEvent = {
+  id?: string;
+  event: "end";
+  data: {
+    run_id: string;
+    status: "success" | "error" | "timeout" | "interrupted" | "rollback";
+  };
+};
+
+/**
  * Stream event with updates to the state after each step.
  * The streamed outputs include the name of the node that
  * produced the update as well as the update.
@@ -310,6 +322,7 @@ type GetStreamModeMap<
       tools: ToolsStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | ErrorStreamEvent
+  | EndStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
 
@@ -332,6 +345,7 @@ type GetSubgraphsStreamModeMap<
       tools: SubgraphToolsStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | SubgraphErrorStreamEvent
+  | EndStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
 

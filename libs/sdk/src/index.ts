@@ -95,6 +95,7 @@ export type {
 export type {
   CustomStreamEvent,
   DebugStreamEvent,
+  EndStreamEvent,
   ErrorStreamEvent,
   EventsStreamEvent,
   FeedbackStreamEvent,
