@@ -93,6 +93,7 @@ import {
   printStepCheckpoint,
   printStepTasks,
   printStepWrites,
+  finishedTaskIds,
   tasksWithWrites,
 } from "./debug.js";
 import { mapInput, readChannels } from "./io.js";
@@ -1140,7 +1141,8 @@ export class Pregel<
         nextTasks,
         saved?.pendingWrites ?? [],
         taskStates,
-        this.streamChannelsAsIs
+        this.streamChannelsAsIs,
+        applyPendingWrites ? finishedTaskIds(saved.pendingWrites) : undefined
       ),
       metadata,
       config: patchCheckpointMap(saved.config, saved.metadata),
