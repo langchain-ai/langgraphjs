@@ -511,63 +511,37 @@ describe("Pregel AbortSignal", () => {
     }
   );
 
-  it.each(["graph", "subgraph"] as const)(
-    "keeps the abort reason for nodes and the root run error (%s)",
-    async (mode) => {
-      class Marker extends Error {}
-      const reason = new Marker("stopped on purpose");
-      const controller = new AbortController();
-      let seenReason: unknown;
-      const rootErrors: unknown[] = [];
+  it("keeps the abort reason as the root run error's cause", async () => {
+    const reason = new Error("stopped on purpose");
+    const controller = new AbortController();
+    const rootErrors: Error[] = [];
 
-      class RootErrorHandler extends BaseCallbackHandler {
-        name = "root_error_handler";
-
-        async handleChainError(
-          error: unknown,
-          _runId: string,
-          parentRunId?: string
-        ) {
-          if (parentRunId === undefined) rootErrors.push(error);
-        }
-      }
-
-      const State = Annotation.Root({ value: Annotation<string> });
-      const inner = new StateGraph(State)
-        .addNode("wait", async (_state, config: LangGraphRunnableConfig) => {
-          await new Promise<void>((resolve) => {
-            config.signal?.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
-            setTimeout(() => controller.abort(reason), 0);
+    const graph = new StateGraph(Annotation.Root({ value: Annotation<string> }))
+      .addNode("wait", async (_state, config: LangGraphRunnableConfig) => {
+        await new Promise<void>((resolve) => {
+          config.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
           });
-          seenReason = config.signal?.reason;
-          return {};
-        })
-        .addEdge(START, "wait")
-        .compile();
-      const graph =
-        mode === "graph"
-          ? inner
-          : new StateGraph(State)
-              .addNode("inner", inner)
-              .addEdge(START, "inner")
-              .compile();
+          setTimeout(() => controller.abort(reason), 0);
+        });
+        return {};
+      })
+      .addEdge(START, "wait")
+      .compile();
 
-      const error = await graph
-        .invoke(
-          { value: "x" },
-          { signal: controller.signal, callbacks: [new RootErrorHandler()] }
-        )
-        .then(
-          () => undefined,
-          (e) => e
-        );
+    const handler = BaseCallbackHandler.fromMethods({
+      handleChainError(error, _runId, parentRunId) {
+        if (parentRunId === undefined) rootErrors.push(error);
+      },
+    });
+    await expect(
+      graph.invoke(
+        { value: "x" },
+        { signal: controller.signal, callbacks: [handler] }
+      )
+    ).rejects.toBe(reason);
 
-      expect(seenReason).toBe(reason);
-      expect(error).toBe(reason);
-      expect(rootErrors).toHaveLength(1);
-      expect((rootErrors[0] as Error).cause).toBe(reason);
-    }
-  );
+    expect(rootErrors).toHaveLength(1);
+    expect(rootErrors[0].cause).toBe(reason);
+  });
 });

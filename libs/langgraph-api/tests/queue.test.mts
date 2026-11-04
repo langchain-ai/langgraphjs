@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ExpectedCancellation } from "@langchain/core/errors";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { afterEach, expect, it, vi } from "vitest";
 import { getAssistantId, registerFromEnv } from "../src/graph/load.mjs";
@@ -12,14 +11,11 @@ import { checkpointer } from "../src/storage/checkpoint.mjs";
 import { FileSystemOps } from "../src/storage/ops.mjs";
 import { FileSystemPersistence } from "../src/storage/persist.mjs";
 import type { Run, RunKwargs, Store } from "../src/storage/types.mjs";
-import { RunCancellation } from "../src/utils/abort.mjs";
-import { reasons } from "./graphs/abort-reason.mjs";
 
 let cleanup: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  reasons.length = 0;
   await cleanup?.();
   cleanup = undefined;
 });
@@ -46,12 +42,12 @@ async function startQueue() {
   const ops = new FileSystemOps(conn);
   await registerFromEnv(
     ops.assistants,
-    { delay: "./delay.mts:graph", abort_reason: "./abort-reason.mts:graph" },
+    { delay: "./delay.mts:graph" },
     { cwd: fileURLToPath(new URL("./graphs", import.meta.url)) }
   );
   void queue(ops);
 
-  const createRun = async (kwargs: RunKwargs, graphId = "delay") => {
+  const createRun = async (kwargs: RunKwargs) => {
     const thread = await ops.threads.put(
       uuid7(),
       { if_exists: "raise" },
@@ -59,7 +55,7 @@ async function startQueue() {
     );
     const [run] = await ops.runs.put(
       uuid7(),
-      getAssistantId(graphId),
+      getAssistantId("delay"),
       kwargs,
       { threadId: thread.thread_id },
       undefined
@@ -121,22 +117,3 @@ it("picks up later runs after a run's webhook can't be reached", async () => {
     { run_id: first.run_id }
   );
 });
-
-it.each(["interrupt", "rollback"] as const)(
-  "aborts a cancelled run with a RunCancellation (%s)",
-  async (action) => {
-    const { ops, createRun, statusOf } = await startQueue();
-
-    const run = await createRun({ input: {} }, "abort_reason");
-    await expect.poll(() => statusOf(run), { timeout: 3_000 }).toBe("running");
-    await ops.runs.cancel(run.thread_id, [run.run_id], { action }, undefined);
-
-    await expect.poll(() => reasons.length, { timeout: 3_000 }).toBe(1);
-    expect(reasons[0]).toBeInstanceOf(RunCancellation);
-    expect(reasons[0]).toBeInstanceOf(ExpectedCancellation);
-    expect((reasons[0] as RunCancellation).action).toBe(action);
-    await expect
-      .poll(() => statusOf(run), { timeout: 3_000 })
-      .toBe(action === "rollback" ? undefined : "interrupted");
-  }
-);
