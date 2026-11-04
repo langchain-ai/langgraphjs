@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ExpectedCancellation } from "@langchain/core/errors";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { afterEach, expect, it, vi } from "vitest";
 import { getAssistantId, registerFromEnv } from "../src/graph/load.mjs";
@@ -132,7 +133,7 @@ it.each(["interrupt", "rollback"] as const)(
 
     await expect.poll(() => reasons.length, { timeout: 3_000 }).toBe(1);
     expect(reasons[0]).toBeInstanceOf(RunCancellation);
-    expect(reasons[0]).toBeInstanceOf(Error);
+    expect(reasons[0]).toBeInstanceOf(ExpectedCancellation);
     expect((reasons[0] as RunCancellation).action).toBe(action);
     await expect
       .poll(() => statusOf(run), { timeout: 3_000 })
