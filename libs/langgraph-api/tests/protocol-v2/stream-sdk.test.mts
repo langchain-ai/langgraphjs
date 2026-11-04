@@ -33,7 +33,10 @@ import {
 import { graph as agent } from "../graphs/agent.mjs";
 import { graph as agentWithToolsGraph } from "../graphs/agent_with_tools.mjs";
 import { graph as agentWithStatsGraph } from "../graphs/agent_with_stats.mjs";
-import { graph as parallelInterruptGraph } from "./graphs/parallel_interrupt.mjs";
+import {
+  graph as parallelInterruptGraph,
+  singleInterruptGraph,
+} from "./graphs/parallel_interrupt.mjs";
 
 const threads = (() => {
   let store: Record<
@@ -80,30 +83,33 @@ let serverUrl: string;
 let httpServer: Server;
 let checkpointer: MemorySaver;
 
-beforeAll(async () => {
-  checkpointer = new MemorySaver();
-
-  const embedApp = createEmbedServer({
-    graph: {
-      agent: agent as unknown as Pregel<any, any, any, any, any>,
-      agent_with_tools: agentWithToolsGraph,
-      agent_with_stats:
-        agentWithStatsGraph as unknown as Pregel<any, any, any, any, any>,
-      parallel_interrupt: parallelInterruptGraph,
-    },
-    checkpointer,
-    threads,
-  });
-
+function serveEmbed(): Promise<{ url: string; server: Server }> {
   const app = new Hono();
-  app.route("/", embedApp);
-
-  await new Promise<void>((resolve) => {
-    httpServer = serve({ fetch: app.fetch, port: 0 }, (info) => {
-      serverUrl = `http://localhost:${info.port}`;
-      resolve();
+  app.route(
+    "/",
+    createEmbedServer({
+      graph: {
+        agent: agent as unknown as Pregel<any, any, any, any, any>,
+        agent_with_tools: agentWithToolsGraph,
+        agent_with_stats:
+          agentWithStatsGraph as unknown as Pregel<any, any, any, any, any>,
+        parallel_interrupt: parallelInterruptGraph,
+        single_interrupt: singleInterruptGraph,
+      },
+      checkpointer,
+      threads,
+    })
+  );
+  return new Promise((resolve) => {
+    const server = serve({ fetch: app.fetch, port: 0 }, (info) => {
+      resolve({ url: `http://localhost:${info.port}`, server });
     }) as Server;
   });
+}
+
+beforeAll(async () => {
+  checkpointer = new MemorySaver();
+  ({ url: serverUrl, server: httpServer } = await serveEmbed());
 });
 
 afterAll(() => {
@@ -299,27 +305,134 @@ describe("SDK streaming projections against embed server", () => {
     });
   });
 
-  describe("run.start while several interrupts are pending", () => {
-    it("refuses the input and leaves both interrupts pending", async () => {
-      const thread = createThread("parallel_interrupt");
-      const pendingInterrupts = async () => {
-        const state = await parallelInterruptGraph.getState({
-          configurable: { thread_id: thread.threadId },
-        });
-        return state.tasks.flatMap((task) => task.interrupts);
-      };
+  describe("run.start while interrupts are pending", () => {
+    it.each([
+      { name: "single_interrupt", graph: singleInterruptGraph, count: 1 },
+      { name: "parallel_interrupt", graph: parallelInterruptGraph, count: 2 },
+    ])(
+      "refuses the input and leaves the $count pending",
+      async ({ name, graph, count }) => {
+        const thread = createThread(name);
+        const pendingInterrupts = async () => {
+          const state = await graph.getState({
+            configurable: { thread_id: thread.threadId },
+          });
+          return state.tasks.flatMap((task) => task.interrupts);
+        };
 
+        await thread.run.start({ input: { answers: [] } });
+        await vi.waitFor(
+          async () => expect(await pendingInterrupts()).toHaveLength(count),
+          { timeout: 10_000 }
+        );
+        await vi.waitFor(() => expect(thread.interrupted).toBe(true), {
+          timeout: 10_000,
+        });
+
+        await expect(
+          thread.run.start({ input: { answers: ["x"] } })
+        ).rejects.toMatchObject({ code: "invalid_argument" });
+        expect(await pendingInterrupts()).toHaveLength(count);
+        await thread.close();
+      }
+    );
+
+    it("starts the input as a new run when it forks from a checkpoint", async () => {
+      const thread = createThread("single_interrupt");
+      const config = { configurable: { thread_id: thread.threadId } };
       await thread.run.start({ input: { answers: [] } });
       await vi.waitFor(
-        async () => expect(await pendingInterrupts()).toHaveLength(2),
+        async () =>
+          expect(
+            (await singleInterruptGraph.getState(config)).tasks.flatMap(
+              (task) => task.interrupts
+            )
+          ).toHaveLength(1),
         { timeout: 10_000 }
       );
+      let root: string | undefined;
+      for await (const snapshot of singleInterruptGraph.getStateHistory(
+        config
+      )) {
+        root = snapshot.config.configurable?.checkpoint_id;
+      }
 
       await expect(
-        thread.run.start({ input: { answers: ["x"] } })
-      ).rejects.toMatchObject({ code: "invalid_argument" });
-      expect(await pendingInterrupts()).toHaveLength(2);
+        thread.run.start({ input: { answers: ["x"] }, forkFrom: root })
+      ).resolves.toMatchObject({ run_id: expect.any(String) });
+      await vi.waitFor(
+        async () =>
+          expect(
+            (await singleInterruptGraph.getState(config)).values.answers
+          ).toEqual(["x"]),
+        { timeout: 10_000 }
+      );
       await thread.close();
+    });
+  });
+
+  describe("after a restart", () => {
+    async function pausedThenRestarted() {
+      const thread = createThread("single_interrupt");
+      const config = { configurable: { thread_id: thread.threadId } };
+      await thread.run.start({ input: { answers: [] } });
+      await vi.waitFor(() => expect(thread.interrupted).toBe(true), {
+        timeout: 10_000,
+      });
+      const [task] = (await singleInterruptGraph.getState(config)).tasks;
+      await thread.close();
+      const restarted = await serveEmbed();
+      return {
+        config,
+        interruptId: task.interrupts[0].id!,
+        open: (assistantId: string) =>
+          new ThreadStream(
+            new ProtocolSseTransportAdapter({
+              apiUrl: restarted.url,
+              threadId: thread.threadId,
+            }),
+            { assistantId }
+          ),
+        close: () => {
+          restarted.server.closeAllConnections();
+          restarted.server.close();
+        },
+      };
+    }
+
+    it("answers the interrupt with input.respond", async () => {
+      const { config, interruptId, open, close } = await pausedThenRestarted();
+      const thread = open("single_interrupt");
+
+      await thread.input.respond({
+        interrupt_id: interruptId,
+        namespace: [],
+        response: "yes",
+      });
+      await vi.waitFor(
+        async () =>
+          expect(
+            (await singleInterruptGraph.getState(config)).values.answers
+          ).toEqual(["a:yes"]),
+        { timeout: 10_000 }
+      );
+      await thread.close();
+      close();
+    });
+
+    it("still refuses input, from any assistant", async () => {
+      const { open, close } = await pausedThenRestarted();
+      const other = open("agent_with_tools");
+      const same = open("single_interrupt");
+
+      await expect(
+        other.run.start({ input: { answers: ["x"] } })
+      ).rejects.toMatchObject({ code: "invalid_argument" });
+      await expect(
+        same.run.start({ input: { answers: ["x"] } })
+      ).rejects.toMatchObject({ code: "invalid_argument" });
+      await Promise.all([other.close(), same.close()]);
+      close();
     });
   });
 

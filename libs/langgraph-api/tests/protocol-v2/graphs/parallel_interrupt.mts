@@ -21,3 +21,9 @@ export const graph = new StateGraph(State)
   .addEdge("a", END)
   .addEdge("b", END)
   .compile();
+
+export const singleInterruptGraph = new StateGraph(State)
+  .addNode("a", () => ({ answers: [`a:${interrupt("question_a")}`] }))
+  .addEdge(START, "a")
+  .addEdge("a", END)
+  .compile();
