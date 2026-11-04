@@ -1,4 +1,8 @@
-import { Command, CONFIG_KEY_RESUMING } from "../constants.js";
+import {
+  Command,
+  CONFIG_KEY_RESUMING,
+  CONFIG_KEY_CHILD_LOOPS,
+} from "../constants.js";
 import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { runAttemptWithTimeout } from "./timeout.js";
@@ -89,6 +93,8 @@ export async function _runWithRetry<
     config = patchConfigurable(config, configurable);
   }
   config = { ...config, signal };
+  const childLoops = new Set<Promise<void>>();
+  config = patchConfigurable(config, { [CONFIG_KEY_CHILD_LOOPS]: childLoops });
 
   const firstAttemptTime = Date.now();
   if (config.executionInfo != null) {
@@ -203,6 +209,10 @@ export async function _runWithRetry<
       }
     }
   }
+  // Cancellation may reject a runnable before its nested graphs have saved
+  // their exit checkpoints. Join graph finalizers, not user promises, before
+  // reporting this task's cancellation to its parent runner.
+  if (signal?.aborted) await Promise.all(childLoops);
   return {
     task: pregelTask,
     result,

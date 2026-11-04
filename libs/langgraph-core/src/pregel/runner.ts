@@ -255,7 +255,8 @@ export class PregelRunner {
       combineAbortSignals(
         externalAbortSignal,
         timeoutAbortSignal,
-        exceptionSignal
+        exceptionSignal,
+        signal
       );
 
     const signals: PregelAbortSignals = {

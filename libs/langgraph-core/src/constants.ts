@@ -81,6 +81,9 @@ export const CONFIG_KEY_REPLAY_STATE = "__pregel_replay_state";
 
 export const CONFIG_KEY_ABORT_SIGNALS = "__pregel_abort_signals";
 
+/** Internal child-loop finalizers owned by the currently executing task. */
+export const CONFIG_KEY_CHILD_LOOPS = "__pregel_child_loops";
+
 /** Special channel reserved for graph interrupts */
 export const INTERRUPT = "__interrupt__";
 /** Special channel reserved for graph resume */
