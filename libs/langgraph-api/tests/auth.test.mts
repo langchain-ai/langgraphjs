@@ -533,6 +533,56 @@ it.skipIf(process.version.startsWith("v18."))(
 );
 
 it.skipIf(process.version.startsWith("v18."))(
+  "join stream other user run",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Join me" }] },
+      config,
+      streamResumable: true,
+    });
+    const join = (client: Client, threadId: string | null) =>
+      gatherIterator(
+        client.runs.joinStream(threadId, run.run_id, { lastEventId: "-1" })
+      );
+
+    const events = await join(owner, thread.thread_id);
+    expect(events.map((i) => i.event)).toContain("values");
+
+    const otherThread = await otherUser.threads.create();
+    const ownerOtherThread = await owner.threads.create();
+    const notFound = [{ event: "error", data: "Run not found" }];
+    const threadNotFound = [
+      {
+        event: "error",
+        data: { error: "Error", message: "404: Thread not found" },
+      },
+    ];
+    expect(
+      await join(otherUser, otherThread.thread_id),
+      "through own thread"
+    ).toEqual(notFound);
+    expect(
+      await join(otherUser, thread.thread_id),
+      "through the run's thread"
+    ).toEqual(threadNotFound);
+    expect(
+      await join(otherUser, ownerOtherThread.thread_id),
+      "through another thread of the owner"
+    ).toEqual(threadNotFound);
+    expect(
+      await join(otherUser, crypto.randomUUID()),
+      "through a missing thread"
+    ).toEqual(threadNotFound);
+    expect(await join(otherUser, null), "by run id").toEqual([]);
+    expect(await join(owner, null), "owner by run id").toEqual(events);
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
   "cancel run other user thread",
   async () => {
     const owner = await createJwtClient("johndoe", ["me"]);

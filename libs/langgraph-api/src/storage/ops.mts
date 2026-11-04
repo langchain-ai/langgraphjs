@@ -1806,6 +1806,7 @@ export class FileSystemRuns implements RunsRepo {
         signal?: AbortSignal;
         cancelOnDisconnect?: boolean;
         lastEventId: string | undefined;
+        checkRunAccess?: boolean;
       },
       auth: AuthContext | undefined
     ): AsyncGenerator<{
@@ -1831,12 +1832,31 @@ export class FileSystemRuns implements RunsRepo {
 
         // TODO: consolidate into a single function
         if (filters != null && threadId != null) {
-          const thread = STORE.threads[threadId];
-          if (!isAuthMatching(thread["metadata"], filters)) {
+          if (!isAuthMatching(STORE.threads[threadId]?.metadata, filters)) {
             yield {
               event: "error",
               data: { error: "Error", message: "404: Thread not found" },
             };
+            return;
+          }
+        }
+
+        if (threadId != null && STORE.runs[runId]?.thread_id !== threadId) {
+          if (!options?.ignore404)
+            yield { event: "error", data: "Run not found" };
+          return;
+        }
+
+        // The requests that create a stateless run don't pass this: the run
+        // and its temporary thread can be deleted before their first read, and
+        // that thread's metadata comes from `threads:create_run`, which
+        // `threads:read` filters may not match.
+        if (options.checkRunAccess && filters != null) {
+          const run = STORE.runs[runId];
+          if (
+            run == null ||
+            !isAuthMatching(STORE.threads[run.thread_id]?.metadata, filters)
+          ) {
             return;
           }
         }

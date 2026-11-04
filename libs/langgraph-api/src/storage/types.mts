@@ -302,6 +302,7 @@ export interface RunsStreamRepo {
       signal?: AbortSignal;
       cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
+      checkRunAccess?: boolean;
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;
