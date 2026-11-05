@@ -1338,6 +1338,12 @@ export interface SubmitOptions<
   interruptAfter?: "*" | string[];
   metadata?: Metadata;
   multitaskStrategy?: MultitaskStrategy;
+  /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it.
+   */
+  strictResume?: boolean;
   onCompletion?: OnCompletionBehavior;
   onDisconnect?: DisconnectMode;
   feedbackKeys?: string[];

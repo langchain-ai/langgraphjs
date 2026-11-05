@@ -1385,7 +1385,10 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: InputRespondParams): Promise<void> {
+  async respondInput(
+    params: InputRespondParams,
+    options?: { strictResume?: boolean }
+  ): Promise<void> {
     // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
     // batch variant (`responses`) resolves several interrupts pending at
     // the same checkpoint in one command; the single variant carries a
@@ -1396,7 +1399,10 @@ export class ThreadStream<
         : params.interrupt_id;
     this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send("input.respond", params);
+    await this.#send("input.respond", {
+      ...params,
+      ...(options?.strictResume ? { strict_resume: true } : {}),
+    });
   }
 
   /**

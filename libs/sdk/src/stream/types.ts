@@ -106,6 +106,15 @@ export interface StreamRespondAllOptions<
    * (`{ node, input }`), or a list mixing the two for fan-out.
    */
   goto?: Goto;
+  /**
+   * Refuse the answer when an interrupt it names is no longer waiting
+   * (answered in another tab, or a wrong id) instead of ignoring it. The
+   * refused resume runs nothing: `error` becomes an `Error` named
+   * `"UnknownInterruptError"` with `reason`, `interruptIds` and `pendingIds`,
+   * and the interrupts still waiting show again. A server without strict
+   * resume ignores the option; the Agent Server reports it in `/info`.
+   */
+  strictResume?: boolean;
 }
 
 /**

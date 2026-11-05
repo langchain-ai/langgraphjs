@@ -167,6 +167,14 @@ export interface RunsInvokePayload {
   command?: Command;
 
   /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it; the
+   * Agent Server reports it in `/info`.
+   */
+  strictResume?: boolean;
+
+  /**
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;

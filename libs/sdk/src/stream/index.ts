@@ -140,6 +140,9 @@ export {
 } from "../client/stream/handles/tools.js";
 
 export { MediaAssembler, MediaAssemblyError } from "../client/stream/media.js";
+
+export { isUnknownInterruptError } from "./refusal.js";
+export type { StrictResumeRefusal, UnknownInterruptError } from "./refusal.js";
 export type {
   AnyMediaHandle,
   AudioMedia,

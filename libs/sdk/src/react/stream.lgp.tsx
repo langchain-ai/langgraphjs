@@ -682,6 +682,7 @@ export function useStreamLGP<
           interruptAfter: submitOptions?.interruptAfter,
           metadata: submitOptions?.metadata,
           multitaskStrategy: submitOptions?.multitaskStrategy,
+          strictResume: submitOptions?.strictResume,
           onCompletion: submitOptions?.onCompletion,
           onDisconnect:
             submitOptions?.onDisconnect ??
