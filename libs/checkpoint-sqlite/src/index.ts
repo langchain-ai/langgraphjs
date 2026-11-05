@@ -594,6 +594,10 @@ CREATE TABLE IF NOT EXISTS writes (
   }
 
   async deleteThread(threadId: string) {
+    // Every other entry point sets the schema up on first use; deleting from a
+    // database that has not been written to yet would otherwise fail with
+    // "no such table: checkpoints" instead of being a no-op.
+    this.setup();
     const transaction = this.db.transaction(() => {
       this.db
         .prepare(`DELETE FROM checkpoints WHERE thread_id = ?`)
