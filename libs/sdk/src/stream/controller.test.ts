@@ -1,4 +1,5 @@
 import type { Event } from "@langchain/protocol";
+import { isUnknownInterruptError } from "./index.js";
 import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -4553,6 +4554,9 @@ describe("StreamController", () => {
     await waitForExpectation(() => {
       expect(openIds()).toEqual(["int-2"]);
     });
+    expect(
+      isUnknownInterruptError(controller.rootStore.getSnapshot().error)
+    ).toBe(true);
     expect(controller.rootStore.getSnapshot().error).toMatchObject({
       name: "UnknownInterruptError",
       message: "Unknown or already-consumed interrupt: int-1",

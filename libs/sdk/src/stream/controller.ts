@@ -70,6 +70,7 @@ import {
 } from "./message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
+import { toRefusal } from "./refusal.js";
 import {
   prepareOptimisticInput,
   serializeUpdateMessages,
@@ -2799,16 +2800,12 @@ export class StreamController<
     ) {
       return;
     }
-    const data = (event as LifecycleEvent).params.data as {
-      event?: string;
-      pending_ids?: unknown;
-    };
-    if (data?.event !== "failed" || !Array.isArray(data.pending_ids)) return;
+    const data = (event as LifecycleEvent).params.data as { event?: string };
+    const refusal = data?.event === "failed" ? toRefusal(data) : undefined;
+    if (refusal == null) return;
     let restored = false;
-    for (const id of data.pending_ids) {
-      if (typeof id === "string" && this.#resolvedInterrupts.delete(id)) {
-        restored = true;
-      }
+    for (const id of refusal.pendingIds) {
+      if (this.#resolvedInterrupts.delete(id)) restored = true;
     }
     if (restored) void this.#reconcilePendingInterruptsFromServer();
   }
@@ -3054,9 +3051,6 @@ export class StreamController<
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
           error?: string;
-          reason?: string;
-          interrupt_ids?: string[];
-          pending_ids?: string[];
         };
         if (lifecycle?.event === "running") {
           sawRunning = true;
@@ -3065,14 +3059,7 @@ export class StreamController<
         if (lifecycle?.event === "completed") {
           setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
-          const refusal =
-            typeof lifecycle.reason === "string"
-              ? {
-                  reason: lifecycle.reason,
-                  interruptIds: lifecycle.interrupt_ids ?? [],
-                  pendingIds: lifecycle.pending_ids ?? [],
-                }
-              : undefined;
+          const refusal = toRefusal(lifecycle);
           setTimeout(
             () =>
               finish({
