@@ -367,6 +367,14 @@ export class UnknownInterruptError extends BaseLangGraphError {
   }
 }
 
+export function isUnknownInterruptError(
+  e?: unknown
+): e is UnknownInterruptError {
+  return (
+    e != null && (e as Error).name === UnknownInterruptError.unminifiable_name
+  );
+}
+
 export class EmptyChannelError extends BaseLangGraphError {
   constructor(message?: string, fields?: BaseLangGraphErrorFields) {
     // Skip expensive stack trace capture — used for control flow on channel reads.
