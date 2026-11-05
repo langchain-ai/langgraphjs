@@ -336,8 +336,9 @@ export class EmptyInputError extends BaseLangGraphError {
  * `pendingIds` lists the interrupts still waiting for an answer. The error is
  * raised before anything is written, so they can still be answered.
  *
- * The interrupts one task raises share an id, so an answer retried after the
- * task asked its next question answers that question.
+ * Each `interrupt()` call in a task has its own id, so an answer retried after
+ * the task asked its next question is refused instead of answering that
+ * question.
  */
 export class UnknownInterruptError extends BaseLangGraphError {
   reason: "not_pending" | "empty_map" | "ambiguous";
