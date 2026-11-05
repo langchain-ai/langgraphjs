@@ -162,10 +162,14 @@ function mockRun(
   );
 }
 
-function mockJoin(client: TestClient, events: StreamEvents) {
+function mockJoin(
+  client: TestClient,
+  events: StreamEvents,
+  { hang = false } = {}
+) {
   client.runs.joinStream.mockImplementationOnce(
     (_threadId: string, _runId: string, payload: { signal: AbortSignal }) =>
-      streamOf(events, payload.signal, false)
+      streamOf(events, payload.signal, hang)
   );
 }
 
@@ -371,6 +375,29 @@ describe("useStream (old engine) rejoin on mount", () => {
       });
     }
   );
+
+  it("shows a message the loaded state holds once when the rejoin sends it again", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(
+      client,
+      [
+        { event: "messages", data: [message("a0", "ai"), {}] },
+        { event: "messages", data: [message("a1", "ai"), {}] },
+      ],
+      { hang: true }
+    );
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    await settle();
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.messages.map((m) => m.id)).toEqual(["h0", "a0", "a1"]);
+  });
 
   it("rejoins a stored run without a checkpoint when the thread fails to load", async () => {
     const client = createClient();
