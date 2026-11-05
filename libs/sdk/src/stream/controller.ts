@@ -80,6 +80,7 @@ import {
   SubmitCoordinator,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
+  type TerminalResult,
 } from "./submit-coordinator.js";
 import {
   reconcileToolCallsFromMessages,
@@ -1529,6 +1530,7 @@ export class StreamController<
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
+          ...(options?.strictResume ? { strictResume: true } : {}),
         });
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: [resolved.interruptId],
@@ -1630,6 +1632,7 @@ export class StreamController<
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
+          ...(options?.strictResume ? { strictResume: true } : {}),
         });
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: responses.map((r) => r.interrupt_id),
@@ -2947,20 +2950,26 @@ export class StreamController<
    * server state so optimistic clears from {@link respond} cannot leave
    * `stream.interrupts` empty while the checkpoint still has siblings.
    */
-  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
+  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<TerminalResult> {
     const generation = this.#submitGeneration;
     const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
     // A resume never reaches `onRunEnd`. Skip it if a newer command took over.
     if (this.#submitGeneration === generation) this.#abandonRunBoundary();
+    if (!signal.aborted && !this.#disposed && terminal.refusal != null) {
+      // A refused answer ran nothing: the interrupts it named that are still
+      // waiting show again.
+      for (const id of terminal.refusal.pendingIds) {
+        this.#resolvedInterrupts.delete(id);
+      }
+    }
     if (
       !signal.aborted &&
       !this.#disposed &&
-      (terminal.event === "interrupted" || terminal.event === "completed")
+      (terminal.event === "interrupted" ||
+        terminal.event === "completed" ||
+        terminal.refusal != null)
     ) {
       await this.#reconcilePendingInterruptsFromServer();
     }
@@ -2970,19 +2979,13 @@ export class StreamController<
   #awaitRootTerminal(
     signal: AbortSignal,
     options: { skipInterruptedUntilRunning: boolean }
-  ): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
+  ): Promise<TerminalResult> {
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
       const held: Event[] = [];
       const heldReleases = this.#heldLifecycleReleases;
-      function finish(result: {
-        event: "completed" | "failed" | "interrupted" | "aborted";
-        error?: string;
-      }) {
+      function finish(result: TerminalResult) {
         if (settled) return;
         settled = true;
         heldReleases.delete(releaseHeld);
@@ -3006,6 +3009,9 @@ export class StreamController<
         const lifecycle = (event as LifecycleEvent).params.data as {
           event?: string;
           error?: string;
+          reason?: string;
+          interrupt_ids?: string[];
+          pending_ids?: string[];
         };
         if (lifecycle?.event === "running") {
           sawRunning = true;
@@ -3014,8 +3020,21 @@ export class StreamController<
         if (lifecycle?.event === "completed") {
           setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
+          const refusal =
+            typeof lifecycle.reason === "string"
+              ? {
+                  reason: lifecycle.reason,
+                  interruptIds: lifecycle.interrupt_ids ?? [],
+                  pendingIds: lifecycle.pending_ids ?? [],
+                }
+              : undefined;
           setTimeout(
-            () => finish({ event: "failed", error: lifecycle.error }),
+            () =>
+              finish({
+                event: "failed",
+                error: lifecycle.error,
+                ...(refusal != null ? { refusal } : {}),
+              }),
             0
           );
         } else if (lifecycle?.event === "interrupted") {

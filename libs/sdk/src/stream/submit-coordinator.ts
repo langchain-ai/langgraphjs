@@ -80,9 +80,11 @@ export type { SubmissionQueueEntry, SubmissionQueueSnapshot };
  * the three terminal lifecycle states the protocol surfaces, plus a
  * synthetic `"aborted"` for client-side cancellation.
  */
-type TerminalResult = {
+export type TerminalResult = {
   event: "completed" | "failed" | "interrupted" | "aborted";
   error?: string;
+  /** Set when strict resume refused the answer before the run did anything. */
+  refusal?: { reason: string; interruptIds: string[]; pendingIds: string[] };
 };
 
 function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
@@ -712,8 +714,16 @@ export class SubmitCoordinator<
     void terminalPromise.then((terminal) => {
       if (this.#runAbort === abort) this.#runAbort = undefined;
       if (terminal.event === "failed" && !abort.signal.aborted) {
+        const error = new Error(
+          terminal.error ?? "Run failed with no error message"
+        );
         reportError(
-          new Error(terminal.error ?? "Run failed with no error message")
+          terminal.refusal == null
+            ? error
+            : Object.assign(error, {
+                name: "UnknownInterruptError",
+                ...terminal.refusal,
+              })
         );
       }
       settleOptimisticOnce(abort.signal.aborted ? "aborted" : terminal.event);

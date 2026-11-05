@@ -1385,7 +1385,9 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: InputRespondParams): Promise<void> {
+  async respondInput(
+    params: InputRespondParams & { strictResume?: boolean }
+  ): Promise<void> {
     // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
     // batch variant (`responses`) resolves several interrupts pending at
     // the same checkpoint in one command; the single variant carries a
