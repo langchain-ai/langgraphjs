@@ -23,7 +23,7 @@ overrides:
   postcss-selector-parser: '>=7.1.3 <8'
   dompurify: '>=3.4.17 <4'
   katex: '>=0.18.2 <0.19'
-  follow-redirects: '>=1.16.1 <2'
+  follow-redirects: '>=1.16.2 <2'
   hono: '>=4.13.11 <5'
   '@modelcontextprotocol/server': '>=2.3.0 <3'
   form-data: '>=4.0.6 <5'
@@ -43,7 +43,7 @@ overrides:
   picomatch@<3: '>=2.3.2 <3'
   picomatch@>=4: '>=4.0.4'
   undici@<7: '>=6.28.1 <7'
-  undici@>=7: '>=7.29.1 <8'
+  undici@>=7: '>=7.30.1 <8'
   fast-xml-parser: '>=5.10.1 <6'
   lodash: '>=4.18.0'
   lodash-es: '>=4.18.0'
@@ -8879,8 +8879,8 @@ packages:
   fn.name@1.1.0:
     resolution: {integrity: sha512-GRnmB5gPyJpAhTQdSZTSp9uaPSvl09KoYcMQtsB9rQoOmzs9dH6ffeccH+Z+cv6P68Hu5bC6JjRh4Ah/mHSNRw==}
 
-  follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -12049,8 +12049,8 @@ packages:
     resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
     engines: {node: '>=18.17'}
 
-  undici@7.30.0:
-    resolution: {integrity: sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==}
+  undici@7.30.2:
+    resolution: {integrity: sha512-mLyPQnHwUxaM/rideoK/+KL8DaAJLRl4aBCfmX444aCSLnIaomqPLtNRe2jdCYcsk5wZzXrDIQC8ZeYNRAYyIA==}
     engines: {node: '>=20.18.1'}
 
   unicorn-magic@0.3.0:
@@ -18017,7 +18017,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.1
+      follow-redirects: 1.16.2
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -18304,7 +18304,7 @@ snapshots:
       parse5: 7.3.0
       parse5-htmlparser2-tree-adapter: 7.1.0
       parse5-parser-stream: 7.1.2
-      undici: 7.30.0
+      undici: 7.30.2
       whatwg-mimetype: 4.0.0
 
   cheminfo-types@1.10.0: {}
@@ -19498,7 +19498,7 @@ snapshots:
 
   fn.name@1.1.0: {}
 
-  follow-redirects@1.16.1: {}
+  follow-redirects@1.16.2: {}
 
   for-each@0.3.5:
     dependencies:
@@ -23262,7 +23262,7 @@ snapshots:
       ssh-remote-port-forward: 1.0.4
       tar-fs: 3.1.2
       tmp: 0.2.7
-      undici: 7.30.0
+      undici: 7.30.2
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -23583,7 +23583,7 @@ snapshots:
 
   undici@6.29.0: {}
 
-  undici@7.30.0: {}
+  undici@7.30.2: {}
 
   unicorn-magic@0.3.0: {}
 
