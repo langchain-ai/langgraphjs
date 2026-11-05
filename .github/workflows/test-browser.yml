@@ -22,6 +22,9 @@ jobs:
   # Path rules:
   # - libs/sdk/** → all framework browser jobs (sdk output)
   # - libs/sdk-{react,angular,vue,svelte}/** → that package only
+  # - libs/{langgraph-api,langgraph-core,checkpoint}/** → all framework
+  #   browser jobs (the mock servers run the agent server, graphs and
+  #   checkpointer from these packages)
   # - edits to this workflow → full matrix
   # - workflow_dispatch → full matrix
   detect-changes:
@@ -32,6 +35,7 @@ jobs:
       sdk-angular: ${{ steps.changes.outputs.sdk-angular }}
       sdk-vue: ${{ steps.changes.outputs.sdk-vue }}
       sdk-svelte: ${{ steps.changes.outputs.sdk-svelte }}
+      server: ${{ steps.changes.outputs.server }}
       workflow: ${{ steps.changes.outputs.workflow }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -50,6 +54,10 @@ jobs:
               - 'libs/sdk-vue/**'
             sdk-svelte:
               - 'libs/sdk-svelte/**'
+            server:
+              - 'libs/langgraph-api/**'
+              - 'libs/langgraph-core/**'
+              - 'libs/checkpoint/**'
             workflow:
               - '.github/workflows/test-browser.yml'
 
@@ -59,6 +67,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.workflow == 'true' ||
       needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.server == 'true' ||
       needs.detect-changes.outputs.sdk-react == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -75,6 +84,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.workflow == 'true' ||
       needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.server == 'true' ||
       needs.detect-changes.outputs.sdk-angular == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -91,6 +101,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.workflow == 'true' ||
       needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.server == 'true' ||
       needs.detect-changes.outputs.sdk-vue == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -107,6 +118,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.workflow == 'true' ||
       needs.detect-changes.outputs.sdk == 'true' ||
+      needs.detect-changes.outputs.server == 'true' ||
       needs.detect-changes.outputs.sdk-svelte == 'true'
     runs-on: ubuntu-latest
     steps:
