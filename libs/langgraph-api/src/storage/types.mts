@@ -60,7 +60,8 @@ export type StreamMode =
   | "debug"
   | "tasks"
   | "checkpoints"
-  | "tools";
+  | "tools"
+  | "lifecycle";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 

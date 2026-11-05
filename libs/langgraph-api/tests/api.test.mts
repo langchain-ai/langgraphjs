@@ -3559,3 +3559,127 @@ describe("graph factory config", () => {
     });
   });
 });
+
+describe("subagent lifecycle", () => {
+  type LifecycleData = {
+    event: string;
+    namespace: string[];
+    tool_call_id?: string;
+    error?: unknown;
+  };
+  const lifecycleOf = (chunks: { event: string; data: unknown }[]) =>
+    chunks.filter((c) => c.event.startsWith("lifecycle|"));
+
+  it("is reported in /info", async () => {
+    const res = await fetch(new URL("/info", API_URL));
+    expect((await res.json()).flags.stream_lifecycle).toBe(true);
+  });
+
+  it.concurrent.each([false, true])(
+    "sends started and completed per subagent, with stream_subgraphs %s",
+    async (streamSubgraphs) => {
+      const thread = await client.threads.create();
+      const chunks = await gatherIterator(
+        client.runs.stream(thread.thread_id, "subagents", {
+          input: { results: [] },
+          streamMode: ["values", "lifecycle"] as any,
+          streamSubgraphs,
+        })
+      );
+
+      const byCall: Record<string, string[]> = {};
+      for (const chunk of lifecycleOf(chunks)) {
+        const data = chunk.data as LifecycleData;
+        expect(chunk.event).toBe(`lifecycle|${data.namespace.join("|")}`);
+        (byCall[data.tool_call_id ?? ""] ??= []).push(data.event);
+      }
+      expect(byCall).toEqual({
+        call_weather: ["started", "completed"],
+        call_news: ["started", "completed"],
+      });
+    }
+  );
+
+  it.concurrent("a failing subagent ends failed with its error", async () => {
+    const thread = await client.threads.create();
+    const chunks = await gatherIterator(
+      client.runs.stream(thread.thread_id, "subagents", {
+        input: { results: [], topics: ["fail"] },
+        streamMode: ["lifecycle"] as any,
+      })
+    );
+
+    expect(lifecycleOf(chunks).map((c) => c.data)).toEqual([
+      expect.objectContaining({ event: "started", tool_call_id: "call_fail" }),
+      expect.objectContaining({
+        event: "failed",
+        tool_call_id: "call_fail",
+        error: { error: "Error", message: "connect to db://admin:hunter2" },
+      }),
+    ]);
+  });
+
+  it.concurrent(
+    "a subagent that asks for approval is interrupted, then starts again",
+    async () => {
+      const thread = await client.threads.create();
+      const eventsOf = (chunks: { event: string; data: unknown }[]) =>
+        lifecycleOf(chunks)
+          .map((c) => {
+            const data = c.data as LifecycleData;
+            return `${data.tool_call_id} ${data.event}`;
+          })
+          .sort();
+
+      const paused = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["weather"], askApproval: true },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+      const resumed = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            command: { resume: "yes" },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+
+      expect(paused).toEqual([
+        "call_weather interrupted",
+        "call_weather started",
+      ]);
+      expect(resumed).toEqual([
+        "call_weather completed",
+        "call_weather started",
+      ]);
+    }
+  );
+
+  it.concurrent.each([
+    [false, ["started", "failed", "started", "completed"]],
+    [true, ["started", "completed"]],
+  ])(
+    "a retried subagent ends completed, with stream_subgraphs %s",
+    async (streamSubgraphs, expected) => {
+      const thread = await client.threads.create();
+      const lifecycle = lifecycleOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["flaky"] },
+            streamMode: ["lifecycle"] as any,
+            streamSubgraphs,
+          })
+        )
+      );
+
+      expect(lifecycle.map((c) => (c.data as LifecycleData).event)).toEqual(
+        expected
+      );
+      expect(new Set(lifecycle.map((c) => c.event)).size).toBe(1);
+    }
+  );
+});
