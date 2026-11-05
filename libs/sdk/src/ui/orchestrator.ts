@@ -21,7 +21,12 @@ import {
   userFacingInterruptsFromThreadTasks,
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
-import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import {
+  unique,
+  filterStream,
+  onFinishRequiresThreadState,
+  streamRun,
+} from "./utils.js";
 import {
   applyStopRead,
   type HistoryReadOptions,
@@ -1020,7 +1025,7 @@ export class StreamOrchestrator<
     const assistantId = this.#accessors.getAssistantId();
 
     return this.stream.start(
-      async (signal) => {
+      async (signal, stopSignal) => {
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
@@ -1065,7 +1070,7 @@ export class StreamOrchestrator<
         const streamResumable =
           submitOptions?.streamResumable ?? !!this.#runMetadataStorage;
 
-        return client.runs.stream(usableThreadId!, assistantId, {
+        return streamRun(client, usableThreadId!, assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
           context: submitOptions?.context,
@@ -1081,6 +1086,7 @@ export class StreamOrchestrator<
             (streamResumable ? "continue" : "cancel"),
 
           signal,
+          stopSignal: this.#runMetadataStorage ? stopSignal : undefined,
 
           checkpoint,
           streamMode,
