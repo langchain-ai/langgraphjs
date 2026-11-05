@@ -99,6 +99,7 @@ export type {
   ErrorStreamEvent,
   EventsStreamEvent,
   FeedbackStreamEvent,
+  LifecycleStreamEvent,
   MessagesStreamEvent,
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
