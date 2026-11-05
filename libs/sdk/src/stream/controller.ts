@@ -2168,6 +2168,7 @@ export class StreamController<
      */
     this.#observeRunBoundary(event);
     this.#recordInterrupt(event);
+    this.#forgetAnsweredInterrupts(event);
     this.#settleParkedInterruptsOnTerminal(event);
   }
 
@@ -2775,6 +2776,20 @@ export class StreamController<
    * Tombstones are not permanent: a live `input.requested` after the
    * resume barrier clears the id when the same interrupt is raised again.
    */
+  /**
+   * Hide the interrupts another client answered: the server sends
+   * `input.answered` when a run that answers them starts.
+   */
+  #forgetAnsweredInterrupts(event: Event): void {
+    if ((event.method as string) !== "input.answered") return;
+    const ids = (event.params.data as { interrupt_ids?: unknown })
+      ?.interrupt_ids;
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+      if (typeof id === "string") this.#markInterruptResolvedInRootStore(id);
+    }
+  }
+
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
     this.rootStore.setState((s) => {

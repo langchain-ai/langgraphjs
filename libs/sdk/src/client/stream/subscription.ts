@@ -65,7 +65,7 @@ function namespaceMatches(
  * @param event - Event whose method should be mapped to a channel.
  */
 export function inferChannel(event: Event): Channel | undefined {
-  switch (event.method) {
+  switch (event.method as string) {
     case "values":
       return "values";
     case "checkpoints":
@@ -83,6 +83,7 @@ export function inferChannel(event: Event): Channel | undefined {
     case "lifecycle":
       return "lifecycle";
     case "input.requested":
+    case "input.answered":
       return "input";
     case "tasks":
       return "tasks";
