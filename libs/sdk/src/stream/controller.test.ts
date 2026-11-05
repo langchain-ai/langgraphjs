@@ -4455,10 +4455,10 @@ describe("StreamController", () => {
       startLifecycleWatcher: vi.fn(() => undefined),
     }) as unknown as ThreadStream;
 
-  it("respond() and respondAll() send strictResume only when asked", async () => {
+  it("respond() and respondAll() send strict_resume only when asked", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(
-      async (_params: { strictResume?: boolean }) => undefined
+      async (_params: { strict_resume?: boolean }) => undefined
     );
     const thread = twoInterruptThread(respondInput, (listener) => {
       onEvent = listener;
@@ -4485,7 +4485,7 @@ describe("StreamController", () => {
     await controller.respondAll({ "int-2": { approved: true } });
 
     expect(
-      respondInput.mock.calls.map(([params]) => params.strictResume)
+      respondInput.mock.calls.map(([params]) => params.strict_resume)
     ).toEqual([true, undefined]);
 
     await controller.dispose();

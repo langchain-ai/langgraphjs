@@ -1530,7 +1530,7 @@ export class StreamController<
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
-          ...(options?.strictResume ? { strictResume: true } : {}),
+          ...(options?.strictResume ? { strict_resume: true } : {}),
         });
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: [resolved.interruptId],
@@ -1632,7 +1632,7 @@ export class StreamController<
           ...(options?.goto != null ? { goto: options.goto } : {}),
           config: options?.config,
           metadata: options?.metadata,
-          ...(options?.strictResume ? { strictResume: true } : {}),
+          ...(options?.strictResume ? { strict_resume: true } : {}),
         });
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: responses.map((r) => r.interrupt_id),
