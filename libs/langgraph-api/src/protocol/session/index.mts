@@ -371,6 +371,10 @@ export class RunProtocolSession {
    */
   private async handleSourceEvent(event: SourceStreamEvent) {
     if (event.event === "metadata") return;
+    if (event.event === "interrupts") {
+      await this.emitInputAnswered(event.data);
+      return;
+    }
 
     if (event.event === "error") {
       // Core's `LifecycleTransformer.fail()` has already cascaded
@@ -773,7 +777,10 @@ export class RunProtocolSession {
   ): boolean {
     // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
     // `custom` subscription still matches via the prefix check below.
-    const channel = inferChannel(event);
+    const channel =
+      (event.method as string) === "input.answered"
+        ? "input"
+        : inferChannel(event);
     if (channel == null) return false;
 
     const channelMatched =
@@ -799,6 +806,29 @@ export class RunProtocolSession {
 
   private hasStatePayload(value: unknown) {
     return !isRecord(value) || Object.keys(value).length > 0;
+  }
+
+  private async emitInputAnswered(data: unknown) {
+    const answered =
+      isRecord(data) && Array.isArray(data.answered)
+        ? data.answered.filter((id): id is string => typeof id === "string")
+        : [];
+    if (answered.length === 0) return;
+    for (const interruptId of answered) {
+      this.pendingInterruptIds.delete(interruptId);
+    }
+    this.nextSeq += 1;
+    await this.pushEvent({
+      type: "event",
+      event_id: String(this.nextSeq),
+      seq: this.nextSeq,
+      method: "input.answered",
+      params: {
+        namespace: [],
+        timestamp: Date.now(),
+        data: { interrupt_ids: answered },
+      },
+    } as unknown as ProtocolEvent);
   }
 
   private async emitInputRequestedEvents(

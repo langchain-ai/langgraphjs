@@ -1656,6 +1656,28 @@ describe("runs", () => {
       (await client.runs.get(pending.thread_id, other.run_id)).status
     ).toBe("success");
   });
+
+  it("keeps the interrupts a resume by id answers out of its run stream", async () => {
+    const thread = await client.threads.create();
+    const context = { tenant: "t", interrupt: true };
+    const first = await client.runs.wait(thread.thread_id, "factory_context", {
+      input: {},
+      context,
+    });
+    const [{ id }] = first.__interrupt__;
+
+    const events = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, "factory_context", {
+          command: { resume: { [id]: "continue" } },
+          context,
+        })
+      ),
+      "success"
+    );
+
+    expect(events.map(({ event }) => event)).not.toContain("interrupts");
+  });
 });
 
 describe("shared state", () => {

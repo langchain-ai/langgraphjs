@@ -35,6 +35,8 @@ async function* joinWithEnd(
     options,
     auth
   )) {
+    // The interrupts a run answers are for the protocol's thread clients.
+    if (event.event === "interrupts") continue;
     yield event;
     if (event.event === "end") return;
   }

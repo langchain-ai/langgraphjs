@@ -13,7 +13,7 @@ import { MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
 
 import { PROTOCOL_STREAM_RUN_KEY } from "../src/protocol/constants.mjs";
-import { streamState } from "../src/stream.mjs";
+import { matchesStreamMode, streamState } from "../src/stream.mjs";
 import type { Run } from "../src/storage/types.mjs";
 import { omitUndefined } from "../src/utils/runnableConfig.mjs";
 import { gatherIterator } from "./utils.mjs";
@@ -102,6 +102,47 @@ describe("omitUndefined", () => {
 });
 
 describe("streamState", () => {
+  const streamEventsOf = (kwargs: Partial<Run["kwargs"]>) => {
+    const run = createRun({ kwargs: { ...createRun().kwargs, ...kwargs } });
+    return gatherIterator(
+      streamState(run, {
+        attempt: 1,
+        getGraph: async () =>
+          ({
+            async *streamEvents() {
+              yield* [];
+            },
+          }) as never,
+      })
+    );
+  };
+
+  it("names the interrupts a resume by id answers right after metadata", async () => {
+    const [idA, idB] = ["a".repeat(32), "b".repeat(32)];
+    const events = await streamEventsOf({
+      command: { resume: { [idB]: "no", [idA]: "yes" } },
+    });
+
+    expect(events[1]).toEqual({
+      event: "interrupts",
+      data: { run_id: createRun().run_id, answered: [idA, idB] },
+    });
+  });
+
+  it.each([
+    ["a plain resume", { command: { resume: "yes" } }],
+    ["an input", { input: {} }],
+  ])("names no interrupts for %s", async (_name, kwargs) => {
+    const events = await streamEventsOf(kwargs);
+
+    expect(events.map(({ event }) => event)).not.toContain("interrupts");
+  });
+
+  it("never passes the interrupts a run answers to a run stream", () => {
+    expect(matchesStreamMode("interrupts", [])).toBe(false);
+    expect(matchesStreamMode("interrupts", ["values"])).toBe(false);
+  });
+
   it("omits recursionLimit from streamEvents options when the run config omits it", async () => {
     const run = createRun();
     let seenOptions: Record<string, unknown> | undefined;

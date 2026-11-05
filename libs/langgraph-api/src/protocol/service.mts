@@ -9,7 +9,7 @@ import type {
   StreamMode,
   MultitaskStrategy,
 } from "../storage/types.mjs";
-import type { RunCommand } from "../command.mjs";
+import { isKeyedByInterruptId, type RunCommand } from "../command.mjs";
 import type {
   EventSinkEntry,
   EventSinkFilter,
@@ -50,18 +50,6 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-// LangGraph resumes interrupts by id only when every key of the resume map
-// has this shape; any other key makes the whole map one answer.
-const INTERRUPT_ID_RE = /^[0-9a-f]{32}$/;
-
-/**
- * Whether LangGraph resumes `value` per interrupt rather than as one answer.
- */
-export const isKeyedByInterruptId = (value: unknown): boolean =>
-  isRecord(value) &&
-  Object.keys(value).length > 0 &&
-  Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
 
 // Concurrency strategies accepted on `run.start`, matching the four values
 // the SDK's `multitaskStrategy` option can take.
@@ -903,7 +891,10 @@ export function matchesSinkFilter(
 
   // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
   // `custom` filter still matches via the prefix check below.
-  const channel = inferChannel(event);
+  const channel =
+    (event.method as string) === "input.answered"
+      ? "input"
+      : inferChannel(event);
   if (channel == null) return false;
 
   const channelMatched =

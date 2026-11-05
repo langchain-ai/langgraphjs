@@ -12,8 +12,8 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
+import { isKeyedByInterruptId } from "../../command.mjs";
 import {
-  isKeyedByInterruptId,
   matchesSinkFilter,
   normalizeMultitaskStrategy,
   DEFAULT_MULTITASK_STRATEGY,

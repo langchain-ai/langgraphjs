@@ -15,7 +15,7 @@ import {
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import type { ServerRuntime } from "./graph/load.utils.mjs";
-import { getLangGraphCommand } from "./command.mjs";
+import { getLangGraphCommand, isKeyedByInterruptId } from "./command.mjs";
 import { ChainLifecycle, SubgraphLifecycle } from "./lifecycle.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
 import type { SourceStreamEvent } from "./protocol/types.mjs";
@@ -217,6 +217,15 @@ export async function* streamState(
     event: "metadata",
     data: { run_id: run.run_id, attempt: options.attempt },
   };
+  // Tells the thread's other clients which interrupts this run answers,
+  // before the graph starts, so they stop offering them.
+  const resume = run.kwargs.command?.resume;
+  if (isKeyedByInterruptId(resume)) {
+    yield {
+      event: "interrupts",
+      data: { run_id: run.run_id, answered: Object.keys(resume).sort() },
+    };
+  }
 
   if (!LANGGRAPH_VERSION) {
     const version = await checkLangGraphSemver();
@@ -455,6 +464,8 @@ export async function* streamState(
 }
 
 export const matchesStreamMode = (event: string, streamMode: string[]) => {
+  // The interrupts a run answers are for the thread's other clients.
+  if (event === "interrupts") return false;
   // A run's error and end are its outcome, not modes, so no filter drops them.
   if (streamMode.length === 0 || event === "error" || event === "end")
     return true;
@@ -543,6 +554,15 @@ export async function* streamStateV2(
     event: "metadata",
     data: { run_id: run.run_id, attempt: options.attempt },
   };
+  // Tells the thread's other clients which interrupts this run answers,
+  // before the graph starts, so they stop offering them.
+  const resume = run.kwargs.command?.resume;
+  if (isKeyedByInterruptId(resume)) {
+    yield {
+      event: "interrupts",
+      data: { run_id: run.run_id, answered: Object.keys(resume).sort() },
+    };
+  }
 
   if (!LANGGRAPH_VERSION) {
     const version = await checkLangGraphSemver();
