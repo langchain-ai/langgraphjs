@@ -80,6 +80,17 @@ export const normalizeMultitaskStrategy = (
 };
 
 /**
+ * The strategy a `run.start` names: `multitask_strategy`, the protocol's
+ * spelling, or `multitaskStrategy`, the only one older SDKs send.
+ */
+export const multitaskStrategyFromRunStart = (
+  params: Record<string, unknown>
+): MultitaskStrategy | undefined =>
+  normalizeMultitaskStrategy(
+    params.multitask_strategy || params.multitaskStrategy
+  );
+
+/**
  * `run.start` params after normalization. Extends the stock protocol
  * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
  * server honors per-run (see {@link normalizeMultitaskStrategy}).
@@ -121,7 +132,7 @@ const normalizeRunStart = (value: unknown): NormalizedRunStart => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
-      multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
+      multitaskStrategy: multitaskStrategyFromRunStart(value),
       strict_resume: value.strict_resume === true,
     };
   }

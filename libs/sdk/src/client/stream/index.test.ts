@@ -301,6 +301,33 @@ describe("ThreadStream", () => {
     expect(params.config?.configurable).not.toHaveProperty("checkpoint_id");
   });
 
+  it.each([
+    [
+      "run.start",
+      (thread: ThreadStream) =>
+        thread.run.start({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+    [
+      "submitRun",
+      (thread: ThreadStream) =>
+        thread.submitRun({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+  ] as const)(
+    "%s sends the multitask strategy under both names",
+    async (_name, start) => {
+      const transport = new MockTransport();
+      const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+      await start(thread);
+
+      const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+      expect(cmd?.params).toMatchObject({
+        multitask_strategy: "interrupt",
+        multitaskStrategy: "interrupt",
+      });
+    }
+  );
+
   it("closes thread cleanly", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

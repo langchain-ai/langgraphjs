@@ -15,7 +15,7 @@ import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
 import { isKeyedByInterruptId } from "../../command.mjs";
 import {
   matchesSinkFilter,
-  normalizeMultitaskStrategy,
+  multitaskStrategyFromRunStart,
   DEFAULT_MULTITASK_STRATEGY,
 } from "../../protocol/service.mjs";
 import type {
@@ -298,11 +298,10 @@ export function registerProtocolRoutes(
       ...(forkCheckpointId != null && !isResume
         ? { checkpoint_id: forkCheckpointId }
         : {}),
-      // Honor the caller's `multitaskStrategy`, falling back to `enqueue`
-      // to match the non-embed protocol-v2 server and the Python default.
+      // Honor the caller's strategy, falling back to `enqueue` to match
+      // the non-embed protocol-v2 server and the Python default.
       multitask_strategy:
-        normalizeMultitaskStrategy(params.multitaskStrategy) ??
-        DEFAULT_MULTITASK_STRATEGY,
+        multitaskStrategyFromRunStart(params) ?? DEFAULT_MULTITASK_STRATEGY,
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
