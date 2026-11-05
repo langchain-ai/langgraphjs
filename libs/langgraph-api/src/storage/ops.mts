@@ -1521,13 +1521,21 @@ export class FileSystemRuns implements RunsRepo {
         metadata
       );
 
+      // A run that cancels the runs in flight replaces them, so refusing its
+      // answer would stop the agent mid-turn: it never resumes strictly.
+      const { strict_resume: strictResume, ...runKwargs } = kwargs;
+      const cancelsInflight =
+        (multitaskStrategy === "interrupt" ||
+          multitaskStrategy === "rollback") &&
+        inflightRuns.length > 0;
+
       const newRun: Run = {
         run_id: runId,
         thread_id: threadId!,
         assistant_id: assistantId,
         metadata: mergedMetadata,
         status: status,
-        kwargs: Object.assign({}, kwargs, {
+        kwargs: Object.assign({}, runKwargs, {
           config: Object.assign(
             {},
             assistant.config,
@@ -1539,10 +1547,7 @@ export class FileSystemRuns implements RunsRepo {
             typeof assistant.context !== "object" && assistant.context != null
               ? (assistant.context ?? kwargs.context)
               : Object.assign({}, assistant.context, kwargs.context),
-          cancels_inflight:
-            (multitaskStrategy === "interrupt" ||
-              multitaskStrategy === "rollback") &&
-            inflightRuns.length > 0,
+          ...(strictResume && !cancelsInflight ? { strict_resume: true } : {}),
         }),
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),

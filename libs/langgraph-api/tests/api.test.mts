@@ -2345,6 +2345,43 @@ describe("subgraphs", () => {
     expect(stream.at(-1)?.event).toBe("values");
     expect(stream.at(-1)?.data.messages.length).toBe(4);
   });
+
+  it.concurrent("refuses a stale answer only when the run sets strict_resume", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: {
+        messages: [{ role: "human", content: "SF", id: "initial-message" }],
+        interrupt: true,
+      },
+      config: globalConfig,
+    });
+
+    const answerStaleCard = async (strictResume: boolean) => {
+      const response = await fetch(
+        new URL(`/threads/${thread.thread_id}/runs`, API_URL),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assistant_id: assistant.assistant_id,
+            command: { resume: { ["0".repeat(32)]: "yes" } },
+            config: globalConfig,
+            strict_resume: strictResume,
+          }),
+        }
+      );
+      const { run_id } = await response.json();
+      await client.runs.join(thread.thread_id, run_id);
+      return (await client.runs.get(thread.thread_id, run_id)).status;
+    };
+
+    expect(await answerStaleCard(true)).toBe("error");
+    expect((await client.threads.get(thread.thread_id)).status).toBe(
+      "interrupted"
+    );
+    expect(await answerStaleCard(false)).toBe("success");
+  });
 });
 
 describe("errors", () => {

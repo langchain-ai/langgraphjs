@@ -118,6 +118,11 @@ type NormalizedRunStart = RunStartParams & {
    * `input.respond` (resume) path.
    */
   goto?: RunCommand["goto"];
+  /**
+   * The SDK's `strictResume` option, the run's `strict_resume`: a resume
+   * that names an interrupt that isn't pending is refused.
+   */
+  strictResume?: boolean;
 };
 
 const normalizeRunStart = (value: unknown): NormalizedRunStart => {
@@ -129,6 +134,7 @@ const normalizeRunStart = (value: unknown): NormalizedRunStart => {
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
       multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
+      strictResume: value.strictResume === true,
     };
   }
   return {
@@ -479,6 +485,7 @@ export class ProtocolService {
         goto,
         config: isRecord(rawParams.config) ? rawParams.config : undefined,
         metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
+        strictResume: rawParams.strictResume === true,
       },
       true,
       auth
@@ -561,6 +568,7 @@ export class ProtocolService {
         temporary: false,
         subgraphs: runPayload.stream_subgraphs,
         resumable: runPayload.stream_resumable,
+        ...(params.strictResume ? { strict_resume: true } : {}),
         [PROTOCOL_STREAM_RUN_KEY]: true,
       },
       {
