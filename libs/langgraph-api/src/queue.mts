@@ -11,7 +11,7 @@ import {
   streamState,
 } from "./stream.mjs";
 import { logError, logger } from "./logging.mjs";
-import { serializeError } from "./utils/serde.mjs";
+import { isUnknownInterruptError, serializeError } from "./utils/serde.mjs";
 import { callWebhook } from "./webhook.mjs";
 import { getGraph } from "./graph/load.mjs";
 
@@ -213,7 +213,7 @@ const worker = async (
         ops.threads.delete(run.thread_id, undefined),
         threadGone
       );
-    } else if (strict && exception?.name === "UnknownInterruptError") {
+    } else if (strict && isUnknownInterruptError(exception)) {
       // A refused resume ran nothing, so the thread is set from the state it
       // already had. A task that failed in an earlier run leaves the thread
       // `error`, as that run did.
