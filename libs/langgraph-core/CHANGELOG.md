@@ -1,5 +1,24 @@
 # @langchain/langgraph
 
+## 1.7.0
+
+### Minor Changes
+
+- [#3221](https://github.com/langchain-ai/langgraphjs/pull/3221) [`ed01e50`](https://github.com/langchain-ai/langgraphjs/commit/ed01e50ca29b3d20cc45c30a1630f231fba25dd7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): give each interrupt() in a task its own id
+  
+  An interrupt raised after its task already got answers now gets its own id: the namespace hash plus the answer count. A task's first question keeps its id, and strict resume refuses an answer retried after a node asked its next question. Ids saved by older versions still answer: when a resume map has no entry for the task's next interrupt, the first id is used. A node retried by its retry policy now reuses its task's answers instead of asking again.
+
+- [#3211](https://github.com/langchain-ai/langgraphjs/pull/3211) [`73df3cb`](https://github.com/langchain-ai/langgraphjs/commit/73df3cb6f7fac8af2a10b5f1b2b5e1cdcd7c0fa7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add a strict resume mode that refuses stale interrupt answers
+  
+  With the private configurable key `__pregel_strict_resume` set, the root graph throws `UnknownInterruptError` before writing anything when a `Command({ resume })` names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending. The error's `reason` (`not_pending`, `empty_map` or `ambiguous`) says which, with the interrupt ids involved in `interruptIds` and `pendingIds`. Without the key, resuming behaves as before.
+  
+  A task that raises several interrupts at once, such as a subgraph with parallel interrupts, now keeps all of them; before, only the last one was saved. `Command({ resume: false })` and other falsy resume values now reach `interrupt()` instead of throwing `EmptyInputError`.
+
+### Patch Changes
+
+- Updated dependencies [[`caa5c53`](https://github.com/langchain-ai/langgraphjs/commit/caa5c53a65b0d0cce2a597167087f1bf9b170437), [`75deb9a`](https://github.com/langchain-ai/langgraphjs/commit/75deb9a65b7e3254429ec193db35953b69ad605c), [`5ef8ba8`](https://github.com/langchain-ai/langgraphjs/commit/5ef8ba8cad1b3638d9f0bba2f2db58db7dcfaa33), [`08f6d06`](https://github.com/langchain-ai/langgraphjs/commit/08f6d069af8a51f913a63990bec31f0fe985b5f7), [`d955450`](https://github.com/langchain-ai/langgraphjs/commit/d9554503a7ccef99f46474831ec93ed1c527ca57), [`2f42fb1`](https://github.com/langchain-ai/langgraphjs/commit/2f42fb196d840931f11a4da114f030f3ba4a90fe), [`7209193`](https://github.com/langchain-ai/langgraphjs/commit/7209193a2b7f5f9275780953d92ebc454c8550d4)]:
+  - @langchain/langgraph-sdk@1.13.0
+
 ## 1.6.1
 
 ### Patch Changes
