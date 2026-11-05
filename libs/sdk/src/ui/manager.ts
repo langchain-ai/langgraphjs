@@ -1022,8 +1022,16 @@ export class StreamManager<
 
             // Assumption: we're concatenating the message
             let messages = options.getMessages(values).slice();
-            const { chunk, index } =
-              this.messages.get(messageId, messages.length) ?? {};
+            const entry = this.messages.get(messageId);
+            if (entry != null && entry.index == null) {
+              // A join from a checkpoint resends the writes of tasks that had
+              // finished when the loaded state was read.
+              const loaded = messages.findIndex(
+                (message) => message.id === messageId
+              );
+              entry.index = loaded === -1 ? messages.length : loaded;
+            }
+            const { chunk, index } = entry ?? {};
 
             if (!chunk || index == null) return values;
             if (chunk.getType() === "remove") {

@@ -1816,6 +1816,7 @@ export class RunsClient<
    *   - streamMode: Controls what types of events to receive from the stream (can be a single mode or array of modes)
    *        Must be a subset of the stream modes passed when creating the run. Background runs default to having the union of all
    *        stream modes enabled.
+   *   - checkpointId: The checkpoint whose state the caller already shows, to resume the run after it
    * @returns An async generator yielding stream parts.
    */
   async *joinStream(
@@ -1826,6 +1827,15 @@ export class RunsClient<
           signal?: AbortSignal;
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
+          /**
+           * The checkpoint whose state the caller already shows, such as the
+           * thread's head. Servers that support it send only the run's events
+           * after this checkpoint, or the whole run when it is not one of the
+           * run's; other servers ignore it. Send it with `lastEventId: "-1"`, so
+           * those servers replay the whole run instead of only new events. A
+           * `lastEventId` other than `"-1"` takes precedence.
+           */
+          checkpointId?: string;
           streamMode?: StreamMode | StreamMode[];
         }
       | AbortSignal
@@ -1852,6 +1862,7 @@ export class RunsClient<
       params: {
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
+        checkpoint_id: opts?.checkpointId,
       },
     });
   }

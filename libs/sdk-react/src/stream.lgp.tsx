@@ -89,7 +89,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-): UseStreamThread<StateType> {
+): UseStreamThread<StateType> & { key: string | undefined } {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
     key: string | undefined;
@@ -166,6 +166,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   }, [fetcher, key]);
 
   return {
+    key: state.key,
     data: state.data,
     error: state.error,
     isLoading: state.isLoading,
@@ -316,6 +317,10 @@ export function useStreamLGP<
 
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
+  // State rather than a read of the ref above: a legacy root renders a run's
+  // last store update before its onFinish clears that ref, and a ref change
+  // renders nothing.
+  const [rejoinQueued, setRejoinQueued] = useState(false);
   const threadIdPromiseRef = useRef<Promise<string> | null>(null);
 
   // Cancel the stream if thread ID has changed
@@ -762,6 +767,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
+      checkpointId?: string;
     }
   ) => {
     setToolProgressMap(new Map());
@@ -784,10 +790,12 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
+        setRejoinQueued(false);
         const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
+          checkpointId: joinOptions?.checkpointId,
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -860,13 +868,37 @@ export function useStreamLGP<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.isLoading, pendingRuns.size]);
 
+  // A stored run is rejoined once its thread's state has loaded, so the
+  // server can send only what came after the head. On the render that
+  // switches threads the history can still be the previous thread's.
+  const historyKey = getFetchHistoryKey(client, threadId, historyLimit);
   const reconnectKey = useMemo(() => {
     if (!runMetadataStorage || stream.isLoading) return undefined;
     if (typeof window === "undefined") return undefined;
     const runId = runMetadataStorage?.getItem(`lg:stream:${threadId}`);
     if (!runId) return undefined;
-    return { runId, threadId };
-  }, [runMetadataStorage, stream.isLoading, threadId]);
+    const checkpoint = branchContext.threadHead?.checkpoint;
+    const loaded =
+      !history.isLoading &&
+      (options.thread == null
+        ? builtInHistory.key === historyKey
+        : checkpoint?.thread_id == null || checkpoint.thread_id === threadId);
+    return {
+      runId,
+      threadId,
+      loaded,
+      checkpointId: checkpoint?.checkpoint_id ?? undefined,
+    };
+  }, [
+    runMetadataStorage,
+    stream.isLoading,
+    history.isLoading,
+    options.thread,
+    builtInHistory.key,
+    historyKey,
+    branchContext.threadHead,
+    threadId,
+  ]);
 
   const shouldReconnect = !!runMetadataStorage;
   const reconnectRef = useRef({ threadId, shouldReconnect });
@@ -879,11 +911,30 @@ export function useStreamLGP<
   }, [threadId, shouldReconnect]);
 
   useEffect(() => {
-    if (reconnectKey && reconnectRef.current.shouldReconnect) {
+    if (reconnectKey?.loaded && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
-      void joinStreamRef.current?.(reconnectKey.runId);
+      // The stream reports loading only once the queued join starts; until
+      // then this marks the rejoin as pending. A join that ends without
+      // starting must not leave it set.
+      setRejoinQueued(true);
+      void joinStreamRef
+        .current?.(reconnectKey.runId, undefined, {
+          checkpointId: reconnectKey.checkpointId,
+        })
+        .finally(() => setRejoinQueued(false));
     }
   }, [reconnectKey]);
+
+  // A stored run is pending while its thread's state loads and, once loaded,
+  // until its join starts; the hook counts as loading meanwhile, as when the
+  // join started at mount. A stored run whose state is neither loading nor
+  // loaded, such as the failed first run of a thread this hook created, is
+  // not rejoined, so it must not hold the hook in loading.
+  const rejoinPending =
+    (reconnectKey != null &&
+      reconnectRef.current.shouldReconnect &&
+      (reconnectKey.loaded || history.isLoading)) ||
+    rejoinQueued;
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
@@ -922,7 +973,7 @@ export function useStreamLGP<
     assistantId: options.assistantId,
 
     error,
-    isLoading: stream.isLoading,
+    isLoading: stream.isLoading || rejoinPending,
 
     stop,
     submit,
@@ -970,7 +1021,7 @@ export function useStreamLGP<
       }
 
       // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
-      if (stream.isLoading) return [];
+      if (stream.isLoading || rejoinPending) return [];
 
       // Collect interrupts from ALL tasks (not just the last one)
       const allTasks = branchContext.threadHead?.tasks ?? [];
@@ -990,7 +1041,7 @@ export function useStreamLGP<
     get interrupt() {
       return extractInterrupts<InterruptType>(values, {
         error,
-        isLoading: stream.isLoading,
+        isLoading: stream.isLoading || rejoinPending,
         threadState: branchContext.threadHead,
       });
     },
