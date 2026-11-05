@@ -9,7 +9,7 @@ import {
   INTERRUPT,
   START,
 } from "../constants.js";
-import { UnknownInterruptError } from "../errors.js";
+import { isUnknownInterruptError, UnknownInterruptError } from "../errors.js";
 import { interrupt } from "../interrupt.js";
 import type { StateSnapshot } from "../pregel/types.js";
 import { gatherIterator } from "../utils.js";
@@ -405,4 +405,19 @@ it("passes a falsy resume value to interrupt()", async () => {
     config(false)
   );
   expect(result.log).toEqual(["answered:false"]);
+});
+
+it("isUnknownInterruptError also matches the error from another copy of the library", () => {
+  const error = new UnknownInterruptError("Unknown interrupt", {
+    reason: "not_pending",
+  });
+  const fromAnotherCopy = Object.assign(new Error("Unknown interrupt"), {
+    name: "UnknownInterruptError",
+  });
+
+  expect(
+    [error, fromAnotherCopy, new Error("boom"), undefined, null].map(
+      isUnknownInterruptError
+    )
+  ).toEqual([true, true, false, false, false]);
 });
