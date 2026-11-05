@@ -360,4 +360,39 @@ describe("SqliteSaver", () => {
       checkpointTuples[0].checkpoint.channel_versions[TASKS]
     ).toBeDefined();
   });
+
+  it("should treat a limit of 0 as no checkpoints, not as no limit", async () => {
+    const saver = SqliteSaver.fromConnString(":memory:");
+    const config = await saver.put(
+      { configurable: { thread_id: "1" } },
+      checkpoint1,
+      { source: "loop", parents: {}, step: 0 }
+    );
+    await saver.put(config, checkpoint2, {
+      source: "loop",
+      parents: {},
+      step: 1,
+    });
+
+    const collect = async (limit?: number) => {
+      const tuples: CheckpointTuple[] = [];
+      for await (const tuple of saver.list(
+        { configurable: { thread_id: "1" } },
+        { limit }
+      )) {
+        tuples.push(tuple);
+      }
+      return tuples;
+    };
+
+    // Every other saver (and the Python implementation) treats `0` as "at most
+    // zero rows"; only this one read a falsy limit as "unlimited" and returned
+    // the whole thread history.
+    expect(await collect(0)).toHaveLength(0);
+    // Sanity: the limit is still applied when it is non-zero.
+    expect(await collect(1)).toHaveLength(1);
+    expect(await collect(2)).toHaveLength(2);
+    // An omitted limit keeps returning everything.
+    expect(await collect()).toHaveLength(2);
+  });
 });
