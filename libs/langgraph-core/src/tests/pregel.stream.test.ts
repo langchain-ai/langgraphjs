@@ -11,7 +11,11 @@ import { gatherIterator } from "../utils.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
 import { StreamChannel } from "../stream/stream-channel.js";
-import type { ProtocolEvent, StreamTransformer } from "../stream/types.js";
+import type {
+  InterruptPayload,
+  ProtocolEvent,
+  StreamTransformer,
+} from "../stream/types.js";
 import { AIMessage } from "@langchain/core/messages";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { MessagesAnnotation } from "../graph/messages_annotation.js";
@@ -488,6 +492,16 @@ describe("streamEvents version v3", () => {
       }),
     });
 
+    const buildAskGraph = () =>
+      new StateGraph(StringState)
+        .addNode("ask", () => {
+          const answer = interrupt("question?");
+          return { value: String(answer) };
+        })
+        .addEdge(START, "ask")
+        .addEdge("ask", END)
+        .compile();
+
     it("sets run.interrupted and run.interrupts when interrupt() is called", async () => {
       const graph = new StateGraph(StringState)
         .addNode("ask", () => {
@@ -507,7 +521,7 @@ describe("streamEvents version v3", () => {
       await collectEvents(run);
 
       expect(run.interrupted).toBe(true);
-      expect(run.interrupts.length).toBeGreaterThanOrEqual(1);
+      expect(run.interrupts).toHaveLength(1);
       expect(run.interrupts[0].payload).toBe("question?");
     });
 
@@ -537,6 +551,117 @@ describe("streamEvents version v3", () => {
       const output = await run2.output;
       expect(output!.value).toBe("yes");
       expect(run2.interrupted).toBe(false);
+    });
+
+    it("lists an interrupt raised in a subgraph once", async () => {
+      const graph = new StateGraph(StringState)
+        .addNode("review", buildAskGraph())
+        .addEdge(START, "review")
+        .addEdge("review", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await graph.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-subgraph" } }
+      );
+      await collectEvents(run);
+
+      expect(run.interrupted).toBe(true);
+      expect(run.interrupts).toHaveLength(1);
+      expect(run.interrupts[0].payload).toBe("question?");
+    });
+
+    it("lists an interrupt raised in a nested subgraph once", async () => {
+      const middle = new StateGraph(StringState)
+        .addNode("review", buildAskGraph())
+        .addEdge(START, "review")
+        .addEdge("review", END)
+        .compile();
+
+      const graph = new StateGraph(StringState)
+        .addNode("middle", middle)
+        .addEdge(START, "middle")
+        .addEdge("middle", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await graph.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-nested" } }
+      );
+      await collectEvents(run);
+
+      expect(run.interrupted).toBe(true);
+      expect(run.interrupts).toHaveLength(1);
+      expect(run.interrupts[0].payload).toBe("question?");
+    });
+
+    it("keeps separate interrupts from parallel subgraphs", async () => {
+      const graph = new StateGraph(StringState)
+        .addNode("first", buildAskGraph())
+        .addNode("second", buildAskGraph())
+        .addEdge(START, "first")
+        .addEdge(START, "second")
+        .addEdge("first", END)
+        .addEdge("second", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await graph.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-parallel" } }
+      );
+      await collectEvents(run);
+
+      expect(run.interrupts).toHaveLength(2);
+      expect(run.interrupts[0].interruptId).not.toBe(
+        run.interrupts[1].interruptId
+      );
+    });
+
+    it("reports an interrupt once when streamed inside a parent graph", async () => {
+      // Namespaces are absolute, so nothing in the inner run has an empty one.
+      // Its interrupt comes from the subgraph here: the inner graph's own
+      // `values` chunk is lost when GraphInterrupt errors the inner stream.
+      const inner = new StateGraph(StringState)
+        .addNode("review", buildAskGraph())
+        .addEdge(START, "review")
+        .addEdge("review", END)
+        .compile();
+
+      let innerInterrupted = false;
+      let innerInterrupts: readonly InterruptPayload[] = [];
+
+      const outer = new StateGraph(StringState)
+        .addNode("host", async () => {
+          const innerRun = await inner.streamEvents(
+            { value: "start" },
+            { version: "v3" }
+          );
+          try {
+            return await innerRun.output;
+          } finally {
+            innerInterrupted = innerRun.interrupted;
+            innerInterrupts = innerRun.interrupts;
+          }
+        })
+        .addEdge(START, "host")
+        .addEdge("host", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await outer.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-parent" } }
+      );
+      await collectEvents(run);
+
+      expect(innerInterrupted).toBe(true);
+      expect(innerInterrupts).toHaveLength(1);
+      expect(innerInterrupts[0].payload).toBe("question?");
+
+      expect(run.interrupted).toBe(true);
+      expect(run.interrupts).toHaveLength(1);
+      expect(run.interrupts[0].interruptId).toBe(
+        innerInterrupts[0].interruptId
+      );
     });
   });
 
