@@ -177,13 +177,9 @@ it.skipIf(process.version.startsWith("v18."))(
       config,
     });
 
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
   }
 );
 
@@ -522,13 +518,9 @@ it.skipIf(process.version.startsWith("v18."))(
     });
 
     // Other user tries to join_stream
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-    expect(chunks).toHaveLength(1);
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
   }
 );
 
@@ -554,29 +546,22 @@ it.skipIf(process.version.startsWith("v18."))(
 
     const otherThread = await otherUser.threads.create();
     const ownerOtherThread = await owner.threads.create();
-    const notFound = [{ event: "error", data: "Run not found" }];
-    const threadNotFound = [
-      {
-        event: "error",
-        data: { error: "Error", message: "404: Thread not found" },
-      },
-    ];
-    expect(
-      await join(otherUser, otherThread.thread_id),
+    await expect(
+      join(otherUser, otherThread.thread_id),
       "through own thread"
-    ).toEqual(notFound);
-    expect(
-      await join(otherUser, thread.thread_id),
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, thread.thread_id),
       "through the run's thread"
-    ).toEqual(threadNotFound);
-    expect(
-      await join(otherUser, ownerOtherThread.thread_id),
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, ownerOtherThread.thread_id),
       "through another thread of the owner"
-    ).toEqual(threadNotFound);
-    expect(
-      await join(otherUser, crypto.randomUUID()),
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, crypto.randomUUID()),
       "through a missing thread"
-    ).toEqual(threadNotFound);
+    ).rejects.toThrow("HTTP 404");
     expect(await join(otherUser, null), "by run id").toEqual([]);
     expect(await join(owner, null), "owner by run id").toEqual(events);
   }

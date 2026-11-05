@@ -1266,14 +1266,38 @@ describe("runs", () => {
 
     const events = await join(thread.thread_id);
     expect(events.map((i) => i.event)).toContain("values");
-    expect(await join(otherThread.thread_id)).toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(otherThread.thread_id)).rejects.toThrow("HTTP 404");
 
     await client.runs.delete(thread.thread_id, run.run_id);
-    expect(await join(thread.thread_id), "after delete").toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(thread.thread_id), "after delete").rejects.toThrow(
+      "HTTP 404"
+    );
+  });
+
+  it.concurrent("join of a run on another thread or of a deleted run gets a 404", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      }
+    );
+    await client.runs.join(thread.thread_id, run.run_id);
+
+    await expect(
+      client.runs.join(otherThread.thread_id, run.run_id),
+      "on another thread"
+    ).rejects.toThrow("HTTP 404");
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    await expect(
+      client.runs.join(thread.thread_id, run.run_id),
+      "deleted"
+    ).rejects.toThrow("HTTP 404");
   });
 
   it.concurrent(
