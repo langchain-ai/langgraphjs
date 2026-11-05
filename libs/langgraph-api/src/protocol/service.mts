@@ -1,4 +1,4 @@
-import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
+import { isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
@@ -26,7 +26,7 @@ import type {
 } from "./types.mjs";
 import { applyAuthToRunConfig } from "../utils/run-auth.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
-import { RunProtocolSession } from "./session/index.mjs";
+import { eventChannel, RunProtocolSession } from "./session/index.mjs";
 
 type ServiceBindings = {
   runs: RunsRepo;
@@ -891,10 +891,7 @@ export function matchesSinkFilter(
 
   // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
   // `custom` filter still matches via the prefix check below.
-  const channel =
-    (event.method as string) === "input.answered"
-      ? "input"
-      : inferChannel(event);
+  const channel = eventChannel(event);
   if (channel == null) return false;
 
   const channelMatched =

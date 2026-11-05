@@ -1842,8 +1842,8 @@ importers:
         specifier: workspace:*
         version: link:../langgraph-ui
       '@langchain/protocol':
-        specifier: ^0.0.20
-        version: 0.0.20
+        specifier: ^0.0.21
+        version: 0.0.21
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2033,8 +2033,8 @@ importers:
         specifier: workspace:*
         version: link:../sdk
       '@langchain/protocol':
-        specifier: ^0.0.20
-        version: 0.0.20
+        specifier: ^0.0.21
+        version: 0.0.21
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0
@@ -2281,8 +2281,8 @@ importers:
   libs/sdk:
     dependencies:
       '@langchain/protocol':
-        specifier: ^0.0.20
-        version: 0.0.20
+        specifier: ^0.0.21
+        version: 0.0.21
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15
@@ -2589,8 +2589,8 @@ importers:
         specifier: workspace:*
         version: link:../checkpoint
       '@langchain/protocol':
-        specifier: ^0.0.20
-        version: 0.0.20
+        specifier: ^0.0.21
+        version: 0.0.21
       '@types/node':
         specifier: ^25.4.0
         version: 25.4.0
@@ -4187,6 +4187,9 @@ packages:
 
   '@langchain/protocol@0.0.20':
     resolution: {integrity: sha512-sxlkDG2/HGyjDFLTJ8B/o3oglRjOv8iLCFgrV0550/Vym3V6RZ0SUjAQFe8jrLQw8ZXjERy3swJp5OODBSrUYA==}
+
+  '@langchain/protocol@0.0.21':
+    resolution: {integrity: sha512-HJS8Cd5GJ437MIrCnbrPHx0FJcluyOk5HdZzD081ap4SBzfWpAj/6AtI7fqpNSMo6VZEoEdaN9fIts8R0XR1AQ==}
 
   '@langchain/quickjs@1.0.0':
     resolution: {integrity: sha512-QdNWVK8Ydi3+knzO6FfX/2WRoPd5ClJIuyGxNwvGiSUmPshQA1XQ9tXvWIQmZ2VLuxpkM2GqEeGWYq/KENJIpA==}
@@ -14532,6 +14535,8 @@ snapshots:
   '@langchain/protocol@0.0.16': {}
 
   '@langchain/protocol@0.0.20': {}
+
+  '@langchain/protocol@0.0.21': {}
 
   '@langchain/quickjs@1.0.0(deepagents@1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.11.5(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))(openai@7.45.1(undici@6.29.0)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.6)))':
     dependencies:
