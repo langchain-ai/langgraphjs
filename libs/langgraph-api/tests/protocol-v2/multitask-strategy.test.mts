@@ -32,6 +32,7 @@ describe("multitaskStrategyFromRunStart", () => {
     [{ multitask_strategy: "reject" }, "reject"],
     [{ multitaskStrategy: "rollback" }, "rollback"],
     [{ multitask_strategy: "interrupt", multitaskStrategy: "rollback" }, "interrupt"],
+    [{ multitask_strategy: "", multitaskStrategy: "interrupt" }, undefined],
     [{}, undefined],
   ])("reads %o as %s", (params, expected) => {
     expect(multitaskStrategyFromRunStart(params)).toBe(expected);

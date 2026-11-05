@@ -87,7 +87,9 @@ export const multitaskStrategyFromRunStart = (
   params: Record<string, unknown>
 ): MultitaskStrategy | undefined =>
   normalizeMultitaskStrategy(
-    params.multitask_strategy || params.multitaskStrategy
+    "multitask_strategy" in params
+      ? params.multitask_strategy
+      : params.multitaskStrategy
   );
 
 /**
