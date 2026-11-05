@@ -206,6 +206,59 @@ describe("RunProtocolSession", () => {
     ]);
   });
 
+  it.each([
+    [
+      "any error",
+      { error: "ValueError", message: "boom" },
+      { error: "boom" },
+    ],
+    [
+      "a refused answer",
+      {
+        error: "UnknownInterruptError",
+        message: "boom",
+        reason: "not_pending",
+        interrupt_ids: ["abc"],
+        pending_ids: ["def"],
+      },
+      {
+        error: "boom",
+        reason: "not_pending",
+        interrupt_ids: ["abc"],
+        pending_ids: ["def"],
+      },
+    ],
+  ])("fails the run with the message of %s", async (_name, error, fields) => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["lifecycle"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({ id: "1", event: "error", data: error });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        event_id: expect.any(String),
+        seq: expect.any(Number),
+        method: "lifecycle",
+        params: {
+          namespace: [],
+          timestamp: expect.any(Number),
+          data: { event: "failed", graph_name: "nested", ...fields },
+        },
+      },
+    ]);
+  });
+
   it("filters live events by channel, namespace prefix, and depth", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);

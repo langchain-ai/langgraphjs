@@ -378,11 +378,20 @@ export class RunProtocolSession {
       // the root lifecycle, so emit only the root here.
       this.terminalLifecycleEmitted = true;
       this.setNamespaceInfo([], "failed", { graphName: this.rootGraphName });
+      // The queue publishes the error already serialized.
+      const {
+        error: name,
+        message,
+        ...details
+      } = isRecord(event.data) && typeof event.data.message === "string"
+        ? (event.data as { error?: unknown; message: string })
+        : serializeError(event.data);
       await this.pushEvent(
         this.createEvent("lifecycle", [], {
           event: "failed",
           graph_name: this.rootGraphName,
-          error: serializeError(event.data).message,
+          error: message,
+          ...(name === "UnknownInterruptError" ? details : {}),
         })
       );
       return;
