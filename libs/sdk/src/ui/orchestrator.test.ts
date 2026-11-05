@@ -992,6 +992,30 @@ describe("StreamOrchestrator", () => {
     });
   });
 
+  describe("strict resume", () => {
+    it("passes strictResume from submit to the run", async () => {
+      (client.runs.stream as Mock).mockImplementation(() =>
+        (async function* () {})()
+      );
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
+
+      await orch.submit(
+        { messages: [] },
+        { command: { resume: "yes" }, strictResume: true }
+      );
+
+      orch.dispose();
+      expect((client.runs.stream as Mock).mock.calls[0][2]).toMatchObject({
+        strictResume: true,
+      });
+    });
+  });
+
   describe("queue management", () => {
     it("cancelQueueItem removes entry and cancels on server", async () => {
       const orch = new StreamOrchestrator<TestState>(
