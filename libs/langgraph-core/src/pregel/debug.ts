@@ -187,6 +187,7 @@ export function* mapDebugTaskResults<
         })
       ),
       interrupts: writes.filter((w) => w[0] === INTERRUPT).flatMap((w) => w[1]),
+      error: writes.find((w) => w[0] === ERROR)?.[1] ?? null,
     };
   }
 }
