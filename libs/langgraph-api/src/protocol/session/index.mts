@@ -717,7 +717,7 @@ export class RunProtocolSession {
     method: "input.answered",
     namespace: Namespace,
     data: InputAnsweredData
-  ): ProtocolEvent;
+  ): Extract<ProtocolEvent, { method: "input.answered" }>;
 
   /**
    * Creates a protocol event with sequencing and payload normalization applied.
