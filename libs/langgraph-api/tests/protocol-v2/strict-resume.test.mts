@@ -54,8 +54,8 @@ const createService = () => {
   return { service, puts };
 };
 
-// Each way to answer an interrupt over the protocol, with and without the
-// SDK's `strictResume` option: only the option sets the run's `strict_resume`.
+// Each way to answer an interrupt over the protocol, with and without
+// `strict_resume`: only that field sets the run's `strict_resume`.
 describe.each([
   {
     method: "run.start" as const,
@@ -67,16 +67,16 @@ describe.each([
   },
 ])("$method", ({ method, params }) => {
   it.each([
-    { strictResume: true, expected: true },
-    { strictResume: undefined, expected: undefined },
+    { strict_resume: true, expected: true },
+    { strict_resume: undefined, expected: undefined },
   ])(
-    "with strictResume $strictResume sets strict_resume $expected",
-    async ({ strictResume, expected }) => {
+    "with strict_resume $strict_resume sets the run's strict_resume $expected",
+    async ({ strict_resume, expected }) => {
       const { service, puts } = createService();
 
       const response = await service.handleCommand(
         THREAD_ID,
-        { id: 1, method, params: { ...params, strictResume } },
+        { id: 1, method, params: { ...params, strict_resume } },
         undefined
       );
 
