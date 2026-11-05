@@ -17,24 +17,17 @@ import { getGraph } from "./graph/load.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
-// Strict resume refuses an answer to an interrupt that isn't pending. A retry
-// sends its answer again, and an `interrupt` or `rollback` run that found one
-// in flight has already cancelled it, so refusing either would stop the agent
-// mid-turn: those resume as before.
-function withStrictResume(run: Run, attempt: number): Run {
-  const strict = attempt === 1 && !run.kwargs.cancels_inflight;
+// Strict resume refuses an answer to an interrupt that isn't pending, for a run
+// whose request asked for it with `strict_resume`; a key in the client's config
+// never turns it on. Only the first attempt is checked: a retry sends the answer
+// again after the first attempt may have used it.
+function withStrictResume(run: Run, strict: boolean): Run {
+  const configurable = { ...run.kwargs.config?.configurable };
+  delete configurable.__pregel_strict_resume;
+  if (strict) configurable.__pregel_strict_resume = true;
   return {
     ...run,
-    kwargs: {
-      ...run.kwargs,
-      config: {
-        ...run.kwargs.config,
-        configurable: {
-          ...run.kwargs.config?.configurable,
-          __pregel_strict_resume: strict,
-        },
-      },
-    },
+    kwargs: { ...run.kwargs, config: { ...run.kwargs.config, configurable } },
   };
 }
 
@@ -71,6 +64,7 @@ const worker = async (
   const temporary = run.kwargs.temporary;
   const resumable = run.kwargs?.resumable ?? false;
   const webhook = run.kwargs.webhook as string | undefined;
+  const strict = run.kwargs.strict_resume === true && attempt === 1;
 
   // A stateless run is deleted as soon as it ends, so its streams can no
   // longer read how it ended: the worker sends their `end` before the delete.
@@ -138,7 +132,7 @@ const worker = async (
     const runId = run.run_id;
 
     try {
-      const stream = streamState(withStrictResume(run, attempt), {
+      const stream = streamState(withStrictResume(run, strict), {
         getGraph,
         attempt,
         signal,
@@ -219,7 +213,7 @@ const worker = async (
         ops.threads.delete(run.thread_id, undefined),
         threadGone
       );
-    } else if (exception?.name === "UnknownInterruptError") {
+    } else if (strict && exception?.name === "UnknownInterruptError") {
       // A refused resume ran nothing, so the thread is set from the state it
       // already had. A task that failed in an earlier run leaves the thread
       // `error`, as that run did.

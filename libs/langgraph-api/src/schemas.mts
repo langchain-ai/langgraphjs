@@ -192,6 +192,7 @@ export const RunCreate = z
     checkpoint: CheckpointSchema.optional(),
     input: z.union([z.unknown(), z.null()]).optional(),
     command: CommandSchema.optional(),
+    strict_resume: z.boolean().optional(),
     metadata: z
       .object({})
       .catchall(z.any())

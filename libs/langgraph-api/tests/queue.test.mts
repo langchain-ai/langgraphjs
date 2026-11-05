@@ -498,6 +498,7 @@ it("keeps a thread waiting when strict resume refuses an answer", async () => {
 
   const refused = await runOnThread(ops, thread_id, "ask_twice", {
     command: { resume: { [UNKNOWN_ID]: "x" } },
+    strict_resume: true,
   });
   await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
   const after = await ops.threads.get(thread_id, undefined);
@@ -554,7 +555,7 @@ it("applies strict resume to an `interrupt` run that cancelled nothing", async (
     ops,
     thread_id,
     "ask_twice",
-    { command: { resume: "yes" } },
+    { command: { resume: "yes" }, strict_resume: true },
     { multitaskStrategy: "interrupt" }
   );
   await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
@@ -593,9 +594,10 @@ it("skips strict resume for a run that cancelled one in flight", async () => {
     ops,
     thread_id,
     "ask_twice",
-    { command: { resume: "yes" } },
+    { command: { resume: "yes" }, strict_resume: true },
     { multitaskStrategy: "interrupt" }
   );
+  expect(resumed.kwargs.strict_resume).toBeUndefined();
   await ops.runs.cancel(
     thread_id,
     [queued.run_id],
@@ -625,7 +627,28 @@ it("keeps a failed thread `error` when strict resume refuses an answer", async (
 
   const refused = await runOnThread(ops, thread_id, "error", {
     command: { resume: { [UNKNOWN_ID]: "x" } },
+    strict_resume: true,
   });
   await expect.poll(() => statusOf(refused), { timeout: 5_000 }).toBe("error");
   expect((await ops.threads.get(thread_id, undefined)).status).toBe("error");
+});
+
+it("doesn't refuse a stale answer from a run that didn't ask for strict resume", async () => {
+  const { ops, statusOf } = await startQueue();
+  const { thread_id } = await ops.threads.put(
+    uuid7(),
+    { if_exists: "raise" },
+    undefined
+  );
+  const asked = await runOnThread(ops, thread_id, "ask_twice", { input: {} });
+  await expect.poll(() => statusOf(asked), { timeout: 5_000 }).toBe("success");
+
+  const stale = await runOnThread(ops, thread_id, "ask_twice", {
+    command: { resume: { [UNKNOWN_ID]: "x" } },
+    config: { configurable: { __pregel_strict_resume: true } },
+  });
+  await expect.poll(() => statusOf(stale), { timeout: 5_000 }).toBe("success");
+  expect((await ops.threads.get(thread_id, undefined)).status).toBe(
+    "interrupted"
+  );
 });

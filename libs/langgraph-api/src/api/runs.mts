@@ -114,6 +114,7 @@ const createValidRun = async (
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
       resumable: run.stream_resumable ?? false,
+      ...(run.strict_resume ? { strict_resume: true } : {}),
     },
     {
       threadId,
