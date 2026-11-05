@@ -1,5 +1,10 @@
 import { HTTPException } from "hono/http-exception";
-import type { Ops, Run, RunStatus } from "./storage/types.mjs";
+import type {
+  CheckpointPayload,
+  Ops,
+  Run,
+  RunStatus,
+} from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,
@@ -11,6 +16,27 @@ import { callWebhook } from "./webhook.mjs";
 import { getGraph } from "./graph/load.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
+
+// Strict resume refuses an answer to an interrupt that isn't pending. A retry
+// sends its answer again, and an `interrupt` or `rollback` run that found one
+// in flight has already cancelled it, so refusing either would stop the agent
+// mid-turn: those resume as before.
+function withStrictResume(run: Run, attempt: number): Run {
+  const strict = attempt === 1 && !run.kwargs.cancels_inflight;
+  return {
+    ...run,
+    kwargs: {
+      ...run.kwargs,
+      config: {
+        ...run.kwargs.config,
+        configurable: {
+          ...run.kwargs.config?.configurable,
+          __pregel_strict_resume: strict,
+        },
+      },
+    },
+  };
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const queue = async (ops: Ops) => {
@@ -43,7 +69,18 @@ const worker = async (
   let status: RunStatus | "rollback" | undefined = undefined;
 
   const temporary = run.kwargs.temporary;
+  const resumable = run.kwargs?.resumable ?? false;
   const webhook = run.kwargs.webhook as string | undefined;
+
+  // A stateless run is deleted as soon as it ends, so its streams can no
+  // longer read how it ended: the worker sends their `end` before the delete.
+  const publishEnd = (status: RunStatus | "rollback") =>
+    ops.runs.stream.publish({
+      runId: run.run_id,
+      resumable,
+      event: "end",
+      data: { run_id: run.run_id, status },
+    });
 
   logger.info("Starting background run", {
     run_id: run.run_id,
@@ -99,10 +136,9 @@ const worker = async (
     }
 
     const runId = run.run_id;
-    const resumable = run.kwargs?.resumable ?? false;
 
     try {
-      const stream = streamState(run, {
+      const stream = streamState(withStrictResume(run, attempt), {
         getGraph,
         attempt,
         signal,
@@ -149,6 +185,7 @@ const worker = async (
       checkpoint = undefined;
       if (signal.reason === "rollback") {
         status = "rollback";
+        if (temporary) await publishEnd(status);
         await unlessGone(
           ops.runs.delete(run.run_id, run.thread_id, undefined),
           runGone
@@ -177,8 +214,30 @@ const worker = async (
     }
   } finally {
     if (temporary) {
+      if (status != null && status !== "rollback") await publishEnd(status);
       await unlessGone(
         ops.threads.delete(run.thread_id, undefined),
+        threadGone
+      );
+    } else if (exception?.name === "UnknownInterruptError") {
+      // A refused resume ran nothing, so the thread is set from the state it
+      // already had. A task that failed in an earlier run leaves the thread
+      // `error`, as that run did.
+      await unlessGone(
+        ops.threads.state
+          .get(
+            { configurable: { thread_id: run.thread_id } },
+            { subgraphs: false },
+            undefined
+          )
+          .then((state) =>
+            ops.threads.setStatus(run.thread_id, {
+              checkpoint: state as unknown as CheckpointPayload,
+              exception: state.tasks.some((task) => task.error != null)
+                ? exception
+                : undefined,
+            })
+          ),
         threadGone
       );
     } else {

@@ -37,7 +37,6 @@ import type {
 } from "@langchain/protocol";
 
 export type { LifecycleCause };
-import type { AuthContext } from "../auth/index.mjs";
 import type { RunProtocolSession } from "./session/index.mjs";
 
 /**
@@ -176,7 +175,6 @@ export type EventSinkEntry = {
 export type ThreadRecord = {
   threadId: string;
   transport: ProtocolTransportName;
-  auth?: AuthContext;
   assistantId?: string;
   seq: number;
   session?: RunProtocolSession;

@@ -95,17 +95,19 @@ it.each([1, 2])(
       .addEdge("charge", END)
       .addEdge("hold", END)
       .compile();
-    const nested =
+    const parent =
       depth === 1
-        ? child
-        : new StateGraph(State)
-            .addNode("inner", child)
-            .addEdge(START, "inner")
-            .addEdge("inner", END)
-            .compile();
+        ? new StateGraph(State).addNode("child", child)
+        : new StateGraph(State).addNode(
+            "child",
+            new StateGraph(State)
+              .addNode("inner", child)
+              .addEdge(START, "inner")
+              .addEdge("inner", END)
+              .compile()
+          );
     let fail = true;
-    const graph = new StateGraph(State)
-      .addNode("child", nested)
+    const graph = parent
       .addNode("fail", async () => {
         if (fail) {
           fail = false;

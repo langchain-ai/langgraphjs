@@ -78,6 +78,7 @@ import { ExecutionInfo, LangGraphRunnableConfig } from "./runnable_types.js";
 import { getRunnableForFunc } from "./call.js";
 import { IterableReadableWritableStream } from "./stream.js";
 import { XXH3 } from "../hash.js";
+import { interruptId } from "../interrupt.js";
 import { Topic } from "../channels/topic.js";
 
 /**
@@ -819,7 +820,7 @@ export function _prepareSingleTask<
                   taskId: id,
                   currentTaskInput: call.input,
                   resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                  namespaceHash: XXH3(taskCheckpointNamespace),
+                  taskCheckpointNamespace,
                   pendingWritesIndex: extra.pendingWritesIndex,
                 }),
                 [CONFIG_KEY_PREVIOUS_STATE]:
@@ -992,7 +993,7 @@ export function _prepareSingleTask<
                     taskId,
                     currentTaskInput: packet.args,
                     resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                    namespaceHash: XXH3(taskCheckpointNamespace),
+                    taskCheckpointNamespace,
                     pendingWritesIndex: extra.pendingWritesIndex,
                   }),
                   [CONFIG_KEY_PREVIOUS_STATE]:
@@ -1178,7 +1179,7 @@ export function _prepareSingleTask<
                       taskId,
                       currentTaskInput: val,
                       resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-                      namespaceHash: XXH3(taskCheckpointNamespace),
+                      taskCheckpointNamespace,
                       pendingWritesIndex: extra.pendingWritesIndex,
                     }),
                     [CONFIG_KEY_PREVIOUS_STATE]:
@@ -1364,7 +1365,7 @@ export function _prepareNodeErrorHandlerTask<
               taskId,
               currentTaskInput: failedTask.input,
               resumeMap: config.configurable?.[CONFIG_KEY_RESUME_MAP],
-              namespaceHash: XXH3(taskCheckpointNamespace),
+              taskCheckpointNamespace,
             }),
             [CONFIG_KEY_PREVIOUS_STATE]: checkpoint.channel_values[PREVIOUS],
             [CONFIG_KEY_NODE_ERROR]: new NodeError(
@@ -1498,14 +1499,14 @@ function _scratchpad({
   taskId,
   currentTaskInput,
   resumeMap,
-  namespaceHash,
+  taskCheckpointNamespace,
   pendingWritesIndex,
 }: {
   pendingWrites: CheckpointPendingWrite[];
   taskId: string;
   currentTaskInput: unknown;
   resumeMap: Record<string, unknown> | undefined;
-  namespaceHash: string;
+  taskCheckpointNamespace: string;
   pendingWritesIndex?: PendingWritesIndex;
 }): PregelScratchpad {
   const nullResume = pendingWritesIndex
@@ -1524,9 +1525,15 @@ function _scratchpad({
           )
           .flatMap(([_writeTaskId, _chan, resume]) => resume);
 
-    if (resumeMap != null && namespaceHash in resumeMap) {
-      const mappedResume = resumeMap[namespaceHash];
-      result.push(mappedResume);
+    if (resumeMap != null) {
+      const nextId = interruptId(taskCheckpointNamespace, result.length);
+      const firstId = interruptId(taskCheckpointNamespace, 0);
+      if (nextId in resumeMap) {
+        result.push(resumeMap[nextId]);
+      } else if (firstId in resumeMap) {
+        // Older versions gave all of a task's interrupts the first id.
+        result.push(resumeMap[firstId]);
+      }
     }
 
     return result;
@@ -1540,7 +1547,7 @@ function _scratchpad({
     subgraphCounter: 0,
     currentTaskInput,
     consumeNullResume: () => {
-      if (scratchpad.nullResume) {
+      if (scratchpad.nullResume != null) {
         delete scratchpad.nullResume;
         pendingWrites.splice(
           pendingWrites.findIndex(

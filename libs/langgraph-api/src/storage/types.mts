@@ -123,6 +123,7 @@ export interface RunKwargs {
   resumable?: boolean;
 
   temporary?: boolean;
+  cancels_inflight?: boolean;
 
   // TODO: implement webhook
   webhook?: unknown;
@@ -302,6 +303,7 @@ export interface RunsStreamRepo {
       signal?: AbortSignal;
       cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
+      checkRunAccess?: boolean;
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;

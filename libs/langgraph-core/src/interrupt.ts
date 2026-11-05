@@ -154,16 +154,26 @@ export function interrupt<I = unknown, R = any>(
   }
 
   // No resume value found
-  const ns: string[] | undefined = conf[CONFIG_KEY_CHECKPOINT_NS]?.split(
-    CHECKPOINT_NAMESPACE_SEPARATOR
-  );
-
-  const id = ns ? XXH3(ns.join(CHECKPOINT_NAMESPACE_SEPARATOR)) : undefined;
+  const ns: string | undefined = conf[CONFIG_KEY_CHECKPOINT_NS];
+  const id = ns != null ? interruptId(ns, scratchpad.resume.length) : undefined;
   const pending: Interrupt<I> = { id, value };
   if (schema !== undefined) {
     pending.response_schema = toJsonSchema(schema);
   }
   throw new GraphInterrupt([pending]);
+}
+
+export function interruptId(namespace: string, answered: number): string {
+  // Keyed by how many answers the task already has, the slot this interrupt's
+  // answer fills; call order isn't stable across parallel calls in one task.
+  // With none it's the bare namespace hash older versions gave every
+  // interrupt, so saved ids still match. The suffix can't form another task's
+  // namespace, whose segments all contain ":".
+  return XXH3(
+    answered === 0
+      ? namespace
+      : `${namespace}${CHECKPOINT_NAMESPACE_SEPARATOR}${answered}`
+  );
 }
 
 type FilterAny<X> =
