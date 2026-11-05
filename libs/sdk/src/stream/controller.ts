@@ -1517,21 +1517,23 @@ export class StreamController<
       // background (see {@link SubmitCoordinator.dispatchResume}), which also
       // settles the optimistic handle (rolls back un-echoed keys on failure).
       await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          namespace: resolved.namespace,
-          interrupt_id: resolved.interruptId,
-          response: normalizeHitlResponseForServer(response),
-          // Fold an optional state update / directed jump into the same
-          // superstep as the resume (HITL "push card into state + resume").
-          // Omitted when absent so the server still sees a plain resume.
-          // `BaseMessage` instances under the messages key are serialized to
-          // plain dicts (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-          ...(options?.strictResume ? { strict_resume: true } : {}),
-        });
+        await thread.respondInput(
+          {
+            namespace: resolved.namespace,
+            interrupt_id: resolved.interruptId,
+            response: normalizeHitlResponseForServer(response),
+            // Fold an optional state update / directed jump into the same
+            // superstep as the resume (HITL "push card into state + resume").
+            // Omitted when absent so the server still sees a plain resume.
+            // `BaseMessage` instances under the messages key are serialized to
+            // plain dicts (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          },
+          { strictResume: options?.strictResume }
+        );
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: [resolved.interruptId],
         });
@@ -1621,19 +1623,21 @@ export class StreamController<
       // that services the batched resume surfaces failures on the reactive
       // `rootStore.error` slot and settles the optimistic handle.
       await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          responses,
-          // A batched resume services every targeted interrupt in one run, so
-          // the update / jump are run-level (not per-entry) — applied once in
-          // that run's superstep alongside all the resumes. `BaseMessage`
-          // instances under the messages key are serialized to plain dicts
-          // (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-          ...(options?.strictResume ? { strict_resume: true } : {}),
-        });
+        await thread.respondInput(
+          {
+            responses,
+            // A batched resume services every targeted interrupt in one run, so
+            // the update / jump are run-level (not per-entry) — applied once in
+            // that run's superstep alongside all the resumes. `BaseMessage`
+            // instances under the messages key are serialized to plain dicts
+            // (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          },
+          { strictResume: options?.strictResume }
+        );
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: responses.map((r) => r.interrupt_id),
         });

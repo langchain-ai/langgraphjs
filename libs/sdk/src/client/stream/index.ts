@@ -1386,7 +1386,8 @@ export class ThreadStream<
    * {@link input.respond}.
    */
   async respondInput(
-    params: InputRespondParams & { strict_resume?: boolean }
+    params: InputRespondParams,
+    options?: { strictResume?: boolean }
   ): Promise<void> {
     // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
     // batch variant (`responses`) resolves several interrupts pending at
@@ -1398,7 +1399,10 @@ export class ThreadStream<
         : params.interrupt_id;
     this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send("input.respond", params);
+    await this.#send("input.respond", {
+      ...params,
+      ...(options?.strictResume ? { strict_resume: true } : {}),
+    });
   }
 
   /**

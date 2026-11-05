@@ -1654,6 +1654,21 @@ describe("interrupts", () => {
     expect(thread.interrupts[0].interruptId).toBe("int_2");
   });
 
+  it("respondInput sends strict_resume only when asked", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const answer = { namespace: [], interrupt_id: "int_1", response: "yes" };
+
+    await thread.respondInput(answer, { strictResume: true });
+    await thread.respondInput(answer);
+
+    expect(
+      transport.sentCommands
+        .filter((c) => c.method === "input.respond")
+        .map((c) => (c.params as { strict_resume?: boolean }).strict_resume)
+    ).toEqual([true, undefined]);
+  });
+
   it("run.start resets interrupted state", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

@@ -951,7 +951,7 @@ describe("StreamController", () => {
         interrupt_id: "nested-int",
         namespace: nestedNs,
         response: { approved: true },
-      })
+      }), { strictResume: undefined }
     );
 
     await controller.dispose();
@@ -3015,7 +3015,7 @@ describe("StreamController", () => {
       namespace: [],
       interrupt_id: "int-1",
       response: { approved: true },
-    });
+    }, { strictResume: undefined });
     expect(
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual([]);
@@ -3085,7 +3085,7 @@ describe("StreamController", () => {
           },
         ],
       },
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3699,7 +3699,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3745,7 +3745,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3791,7 +3791,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3843,7 +3843,7 @@ describe("StreamController", () => {
       ],
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
     expect(
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual([]);
@@ -3898,7 +3898,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: { configurable: { model: "gpt-4o" } },
       metadata: { source: "ui" },
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3957,7 +3957,7 @@ describe("StreamController", () => {
       goto: "next_node",
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
     const sentUpdate = (
       (respondInput.mock.calls[0] as unknown[])[0] as {
         update: { messages: Array<Record<string, unknown>> };
@@ -4180,7 +4180,7 @@ describe("StreamController", () => {
       update: { reviewed: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -4458,7 +4458,8 @@ describe("StreamController", () => {
   it("respond() and respondAll() send strict_resume only when asked", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const respondInput = vi.fn(
-      async (_params: { strict_resume?: boolean }) => undefined
+      async (_params: unknown, _options?: { strictResume?: boolean }) =>
+        undefined
     );
     const thread = twoInterruptThread(respondInput, (listener) => {
       onEvent = listener;
@@ -4485,7 +4486,7 @@ describe("StreamController", () => {
     await controller.respondAll({ "int-2": { approved: true } });
 
     expect(
-      respondInput.mock.calls.map(([params]) => params.strict_resume)
+      respondInput.mock.calls.map(([, options]) => options?.strictResume)
     ).toEqual([true, undefined]);
 
     await controller.dispose();
