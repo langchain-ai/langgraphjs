@@ -2173,6 +2173,7 @@ export class StreamController<
     this.#observeRunBoundary(event);
     this.#recordInterrupt(event);
     this.#forgetAnsweredInterrupts(event);
+    this.#restoreRefusedInterrupts(event);
     this.#settleParkedInterruptsOnTerminal(event);
   }
 
@@ -2774,13 +2775,6 @@ export class StreamController<
   }
 
   /**
-   * Mark an interrupt resolved for historical-replay filtering and
-   * mirror the removal into the root snapshot the framework hooks read.
-   *
-   * Tombstones are not permanent: a live `input.requested` after the
-   * resume barrier clears the id when the same interrupt is raised again.
-   */
-  /**
    * Hide the interrupts another client answered: the server sends
    * `input.answered` when a run that answers them starts.
    */
@@ -2794,6 +2788,38 @@ export class StreamController<
     }
   }
 
+  /**
+   * A refused strict resume ran nothing, so the interrupts it hid that are
+   * still waiting show again, whichever client sent the answer.
+   */
+  #restoreRefusedInterrupts(event: Event): void {
+    if (
+      event.method !== "lifecycle" ||
+      !isRootNamespace(event.params.namespace)
+    ) {
+      return;
+    }
+    const data = (event as LifecycleEvent).params.data as {
+      event?: string;
+      pending_ids?: unknown;
+    };
+    if (data?.event !== "failed" || !Array.isArray(data.pending_ids)) return;
+    let restored = false;
+    for (const id of data.pending_ids) {
+      if (typeof id === "string" && this.#resolvedInterrupts.delete(id)) {
+        restored = true;
+      }
+    }
+    if (restored) void this.#reconcilePendingInterruptsFromServer();
+  }
+
+  /**
+   * Mark an interrupt resolved for historical-replay filtering and
+   * mirror the removal into the root snapshot the framework hooks read.
+   *
+   * Tombstones are not permanent: a live `input.requested` after the
+   * resume barrier clears the id when the same interrupt is raised again.
+   */
   #markInterruptResolvedInRootStore(interruptId: string): void {
     this.#resolvedInterrupts.add(interruptId);
     this.rootStore.setState((s) => {

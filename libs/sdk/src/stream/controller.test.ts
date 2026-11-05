@@ -4605,6 +4605,84 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("shows again an interrupt hidden by another client's refused answer", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = twoInterruptThread(
+      vi.fn(async () => undefined),
+      (listener) => {
+        onEvent = listener;
+      }
+    );
+    let serverState: Record<string, unknown> = { values: {}, next: ["a", "b"] };
+    const client = {
+      threads: {
+        getState: vi.fn(async () => serverState),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "A?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "B?" }, [], 2));
+    const openIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map(({ id }) => id);
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-1", "int-2"]);
+    });
+
+    onEvent?.({
+      type: "event",
+      event_id: "answered-3",
+      seq: 3,
+      method: "input.answered",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { interrupt_ids: ["int-1", "int-2"] },
+      },
+    } as unknown as Event);
+    expect(openIds()).toEqual([]);
+
+    serverState = {
+      values: {},
+      next: ["b"],
+      tasks: [
+        {
+          id: "task-b",
+          name: "b",
+          interrupts: [{ id: "int-2", value: { prompt: "B?" } }],
+        },
+      ],
+    };
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-4",
+      seq: 4,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: {
+          event: "failed",
+          error: "Unknown or already-consumed interrupt: int-1",
+          reason: "not_pending",
+          interrupt_ids: ["int-1"],
+          pending_ids: ["int-2"],
+        },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-2"]);
+    });
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces an input.respond dispatch failure on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const dispatchError = new Error("network down");
