@@ -40,6 +40,36 @@ describe("HostBackendClient deployment listing pagination", () => {
     }
   });
 
+  it("uses the server's next offset even after a short page", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ resources: [{ id: "one" }], offset: 150 })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ resources: [{ id: "two" }], offset: 190 })
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resources: [], offset: 190 }))
+      );
+    vi.stubGlobal("fetch", fetch);
+    const client = new HostBackendClient(
+      "https://api.host.langchain.com",
+      "test-key"
+    );
+    expect((await client.listDeployments()).resources).toEqual([
+      { id: "one" },
+      { id: "two" },
+    ]);
+    expect(
+      fetch.mock.calls.map(([url]) => new URL(url).searchParams.get("offset"))
+    ).toEqual(["0", "150", "190"]);
+  });
+
   it("fails instead of looping when the server ignores offset", async () => {
     const fetch = vi.fn().mockImplementation(async () => page(firstPage));
     vi.stubGlobal("fetch", fetch);

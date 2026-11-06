@@ -246,6 +246,7 @@ export class HostBackendClient {
     const resources: Record<string, unknown>[] = [];
     const seenIds = new Set<unknown>();
     const limit = 100;
+    let offset = 0;
     while (true) {
       const response = await this.request<Record<string, unknown>>(
         "GET",
@@ -256,7 +257,7 @@ export class HostBackendClient {
             agent_id: agentId,
             agent_environment: agentEnvironment,
             limit,
-            offset: resources.length,
+            offset,
           },
         }
       );
@@ -274,7 +275,15 @@ export class HostBackendClient {
       }
       for (const item of page) seenIds.add(item.id);
       resources.push(...page);
-      if (page.length < limit) return { ...response, resources };
+      if (page.length === 0) return { ...response, resources };
+      if (typeof response.offset === "number" && response.offset > offset) {
+        // The API returns the next offset; filtered pages may be short.
+        offset = response.offset;
+      } else {
+        // Older responses may omit the next offset. Retain count-based paging.
+        if (page.length < limit) return { ...response, resources };
+        offset += page.length;
+      }
     }
   }
 
