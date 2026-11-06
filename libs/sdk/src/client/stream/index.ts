@@ -1482,12 +1482,20 @@ export class ThreadStream<
   #startLifecycleWatcher(): void {
     if (this.#lifecycleWatcherStartPromise != null) return;
 
-    if (this.#transportAdapter.openEventStream != null) {
-      this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherSse();
-      return;
-    }
-
-    this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherWebSocket();
+    const watcher = (
+      this.#transportAdapter.openEventStream != null
+        ? this.#startLifecycleWatcherSse()
+        : this.#startLifecycleWatcherWebSocket()
+    ).finally(() => {
+      // A watcher that ended without the thread closing (the transport gave
+      // up, or it never opened) would otherwise block every later start.
+      if (!this.#closed && this.#lifecycleWatcherStartPromise === watcher) {
+        this.#lifecycleWatcherHandle?.close();
+        this.#lifecycleWatcherStartPromise = undefined;
+        this.#lifecycleWatcherHandle = null;
+      }
+    });
+    this.#lifecycleWatcherStartPromise = watcher;
   }
 
   /**

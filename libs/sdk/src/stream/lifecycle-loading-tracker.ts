@@ -85,6 +85,8 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
    */
   #lastRunningLifecycleSeq = -1;
 
+  #handled = 0;
+
   /** Notified once `isLoading` actually settles to `false` on a terminal event. */
   readonly #onSettled: (() => void) | undefined;
 
@@ -120,11 +122,17 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
     this.handle(event);
   };
 
+  /** Root lifecycle events applied so far. */
+  get handled(): number {
+    return this.#handled;
+  }
+
   /**
-   * Reset internal state when rebinding to a new thread.
+   * Reset the seq guards for a new subscription.
    *
-   * The seq guards are per-thread: a new thread's lifecycle events
-   * are not stale relative to the old thread's.
+   * They only hold within one connection: the agent server numbers each
+   * new event stream's events from 1, so a new thread, or a stream
+   * reopened after it dropped, would otherwise look stale.
    */
   reset(): void {
     this.#lastTerminalLifecycleSeq = -1;
@@ -143,6 +151,7 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
     if (event.method !== "lifecycle") return;
     if (!isRootNamespace(event.params.namespace)) return;
     if (this.#ignore?.(event)) return;
+    this.#handled += 1;
     const lifecycle = (event as LifecycleEvent).params.data as {
       event?: string;
     };

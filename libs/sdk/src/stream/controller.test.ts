@@ -5630,3 +5630,194 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     }
   );
 });
+
+describe("StreamController same-thread hydrate()", () => {
+  const busy = { values: {}, next: ["agent"], tasks: [] };
+  const idle = { values: {}, next: [], tasks: [] };
+  const parked = {
+    values: {},
+    next: ["agent"],
+    tasks: [{ interrupts: [{ id: "int-9", value: {} }] }],
+  };
+
+  function setup(initialState: unknown) {
+    const onEventListeners = new Set<(event: Event) => void>();
+    const onErrorListeners = new Set<(error: Error) => void>();
+    const subscriptions: ReturnType<typeof makePushableSubscription>[] = [];
+    const thread = {
+      subscribe: vi.fn(async () => {
+        const subscription = makePushableSubscription();
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        onErrorListeners.add(listener);
+        return () => onErrorListeners.delete(listener);
+      }),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEventListeners.add(listener);
+        return () => onEventListeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      ordering: {},
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async () => initialState);
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: { threads: { getState, stream: () => thread } } as never,
+      threadId: "thread-1",
+    });
+    const deliver = (...events: Event[]) => {
+      for (const event of events) {
+        for (const listener of [...onEventListeners]) listener(event);
+        subscriptions.at(-1)?.push(event);
+      }
+    };
+    const dropStream = () => {
+      for (const listener of [...onErrorListeners]) {
+        listener(new Error("reconnect attempts exhausted"));
+      }
+    };
+    const snapshot = () => controller.rootStore.getSnapshot();
+    return {
+      controller,
+      thread,
+      subscriptions,
+      getState,
+      deliver,
+      dropStream,
+      snapshot,
+      onEventListeners,
+    };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it("follows the run to its end on a reopened stream whose seqs start over", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 300));
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-1");
+    await h.controller.hydrate("thread-1");
+    h.getState.mockResolvedValue(parked);
+    h.deliver(
+      runLifecycleEvent("run-1", "running", 5),
+      inputRequestedEvent("int-9", {}, [], 6),
+      runLifecycleEvent("run-1", "interrupted", 7)
+    );
+
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+      expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-9"]);
+    }, 1_000);
+    expect(h.subscriptions).toHaveLength(2);
+    expect(h.subscriptions[0].close).toHaveBeenCalled();
+    expect(h.onEventListeners.size).toBe(1);
+    await h.controller.dispose();
+  });
+
+  it("stays idle when the run ended while it read the state", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 10));
+    expect(h.snapshot().isLoading).toBe(true);
+
+    let resolveState!: (state: unknown) => void;
+    h.getState.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveState = resolve))
+    );
+    const hydrating = h.controller.hydrate("thread-1");
+    h.deliver(runLifecycleEvent("run-1", "completed", 11));
+    await settle();
+    resolveState(busy);
+    await hydrating;
+    await settle();
+
+    expect(h.snapshot().isLoading).toBe(false);
+    await h.controller.dispose();
+  });
+
+  it("starts the stream when an idle thread became busy", async () => {
+    const h = setup(idle);
+    await h.controller.hydrationPromise;
+    expect(h.thread.subscribe).not.toHaveBeenCalled();
+
+    h.getState.mockResolvedValue(busy);
+    await h.controller.hydrate("thread-1");
+    expect(h.thread.subscribe).toHaveBeenCalledTimes(1);
+    expect(h.thread.startLifecycleWatcher).toHaveBeenCalled();
+    expect(h.snapshot().isLoading).toBe(true);
+
+    h.deliver(
+      runLifecycleEvent("run-1", "running", 1),
+      runLifecycleEvent("run-1", "completed", 2)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    });
+    await h.controller.dispose();
+  });
+
+  it("starts fresh on another thread after the stream dropped", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 300));
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-2");
+    h.deliver(
+      runLifecycleEvent("run-7", "running", 1),
+      runLifecycleEvent("run-7", "completed", 2)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    });
+    expect(h.subscriptions).toHaveLength(2);
+
+    await h.controller.hydrate(null);
+    expect(h.snapshot().isLoading).toBe(false);
+    expect(h.onEventListeners.size).toBe(0);
+    await h.controller.dispose();
+  });
+
+  it("opens no stream and stays idle after the run completed", async () => {
+    const h = setup(idle);
+    await h.controller.hydrationPromise;
+
+    await h.controller.hydrate("thread-1");
+
+    expect(h.thread.subscribe).not.toHaveBeenCalled();
+    expect(h.snapshot().isLoading).toBe(false);
+    await h.controller.dispose();
+  });
+
+  it("shows the interrupt and stays idle after the run paused", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 10));
+    h.getState.mockResolvedValue(parked);
+    h.deliver(
+      inputRequestedEvent("int-9", {}, [], 11),
+      runLifecycleEvent("run-1", "interrupted", 12)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    }, 1_000);
+
+    await h.controller.hydrate("thread-1");
+    await settle();
+
+    expect(h.snapshot().isLoading).toBe(false);
+    expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-9"]);
+    expect(h.thread.subscribe).toHaveBeenCalledTimes(1);
+    await h.controller.dispose();
+  });
+});

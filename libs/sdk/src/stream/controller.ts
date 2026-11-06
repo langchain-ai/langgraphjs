@@ -700,6 +700,7 @@ export class StreamController<
     // with `threadActive` where it's used, to decide whether to seed
     // `isLoading`.
     let hasActiveInterrupts = false;
+    const lifecycleEventsBeforeRead = this.#lifecycleLoading.handled;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -909,11 +910,13 @@ export class StreamController<
      * the depth-1 content pump just to replay a completed run and idle
      * forever is pure waste. When idle we take the deferred path: the
      * pump (and watcher) come up on the first local `submit()` via
-     * {@link #startDeferredRootPump}, exactly like a self-created thread.
+     * {@link #startDeferredRootPump}, exactly like a self-created thread,
+     * or on a later hydrate that finds the thread active.
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
     const thread = this.#ensureThread(hydratedThreadId, !threadActive);
+    if (threadActive) this.#startDeferredRootPump();
 
     /**
      * Picks up runs pending from before this page load, or another tab.
@@ -949,8 +952,15 @@ export class StreamController<
        * it. Excludes a thread merely parked at an interrupt — that's
        * waiting on a human, not "loading", matching
        * `LifecycleLoadingTracker`'s own `interrupted → isLoading = false`.
+       * Also skipped when a lifecycle event arrived during the read: the
+       * stream is then newer than the checkpoint, which may show a run
+       * that has since ended.
        */
-      if (threadActive && !hasActiveInterrupts) {
+      if (
+        threadActive &&
+        !hasActiveInterrupts &&
+        this.#lifecycleLoading.handled === lifecycleEventsBeforeRead
+      ) {
         this.rootStore.setState((s) =>
           s.isLoading ? s : { ...s, isLoading: true }
         );
@@ -1962,6 +1972,9 @@ export class StreamController<
    */
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
+    // A pump started again after its stream dropped reads a new connection,
+    // whose seqs start over; the old ones would keep `isLoading` stuck.
+    this.#lifecycleLoading.reset();
     const pumpGeneration = this.#rootPumpGeneration;
     let resolveReady: (() => void) | undefined;
     this.#rootPumpReady = new Promise<void>((resolve) => {

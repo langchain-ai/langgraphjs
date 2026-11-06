@@ -377,6 +377,29 @@ describe("ThreadStream", () => {
     await thread.close();
   });
 
+  it("reopens the WebSocket lifecycle watcher after the event stream failed", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(watcherSubscribes()).toBe(1);
+
+    transport.failEvents(new Error("Protocol WebSocket closed"));
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(2);
+    await thread.close();
+  });
+
   it("leaves no unhandled rejection when a command fails and then the event stream fails", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
