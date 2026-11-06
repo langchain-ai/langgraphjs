@@ -361,9 +361,9 @@ export function useStreamLGP<
           break;
         }
         default: {
-          throw new Error(
-            `Unexpected tool event: ${(data as { event: string }).event}`
-          );
+          // Some servers forward langgraph's own `tool-*` payloads, and a
+          // throw in this updater would crash the app's render.
+          return prev;
         }
       }
 
