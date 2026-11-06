@@ -82,7 +82,6 @@ export class MessageTupleManager {
     {
       chunk?: BaseMessageChunk | BaseMessage;
       metadata?: Record<string, unknown>;
-      index?: number;
     }
   > = {};
 
@@ -203,10 +202,9 @@ export class MessageTupleManager {
     this.replaying.clear();
   }
 
-  get(id: string | null | undefined, defaultIndex?: number) {
+  get(id: string | null | undefined) {
     if (id == null) return null;
     if (this.chunks[id] == null) return null;
-    if (defaultIndex != null) this.chunks[id].index ??= defaultIndex;
     return this.chunks[id];
   }
 }

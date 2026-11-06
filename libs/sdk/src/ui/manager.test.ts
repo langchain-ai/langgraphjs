@@ -155,6 +155,50 @@ describe("StreamManager", () => {
         "ai-b",
       ]);
     });
+
+    it("updates a streamed message where a values event moved it", async () => {
+      const events = [
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-a", type: "ai", content: "sun" }, {}],
+        },
+        {
+          event: "values" as const,
+          data: {
+            messages: [
+              { id: "ai-a", type: "ai", content: "sun" },
+              { id: "human-1", type: "human", content: "weather?" },
+            ],
+          },
+        },
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-a", type: "ai", content: "ny" }, {}],
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: {
+          messages: [{ id: "human-1", type: "human", content: "weather?" }],
+        },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+      });
+
+      expect(
+        streamManager.values?.messages.map((m) => [m.id, m.content])
+      ).toEqual([
+        ["ai-a", "sunny"],
+        ["human-1", "weather?"],
+      ]);
+    });
   });
 
   describe("setStreamValues callback with null", () => {
