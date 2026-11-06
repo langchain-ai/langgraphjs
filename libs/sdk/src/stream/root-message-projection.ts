@@ -189,35 +189,34 @@ export class RootMessageProjection<
   #latestCheckpointId: string | undefined = undefined;
 
   /**
-   * Message ids seeded as complete-and-final from an idle thread's
-   * `getState()` snapshot. An idle thread defers its root SSE pump, and
-   * the first `submit()` brings it up — at which point the transport
-   * replays the finished run from `seq=0`. Unlike the `values` channel
-   * (guarded by {@link #maxStep}), `messages`-channel deltas carry no
-   * step, so that replay would otherwise rebuild each already-complete
-   * message from an empty `message-start` and re-stream the whole turn
-   * token-by-token, clobbering the seeded tail (a visible "messages
-   * replay" on the first submit). Deltas for a sealed id are dropped in
-   * {@link handleMessage}. The seal is lifted once a checkpoint advances
-   * strictly past {@link #sealStep} (see {@link applyValues}) or on
-   * thread rebind ({@link reset}). New ids from the next run are never
-   * sealed, so they stream normally.
+   * Message ids seeded as complete-and-final from a `getState()`
+   * snapshot. The root SSE pump replays the thread from `seq=0` when it
+   * starts (the first `submit()` of an idle thread, or a hydrate that
+   * finds a run going). Unlike the `values` channel (guarded by
+   * {@link #maxStep}), `messages`-channel deltas carry no step, so that
+   * replay would otherwise rebuild each already-complete message from an
+   * empty `message-start` and re-stream the whole turn token-by-token,
+   * clobbering the seeded tail (a visible "messages replay"). Deltas for
+   * a sealed id are dropped in {@link handleMessage}. The seal is lifted
+   * once a checkpoint advances strictly past {@link #sealStep} (see
+   * {@link applyValues}) or on thread rebind ({@link reset}). New ids are
+   * never sealed, so they stream normally.
    */
   readonly #sealedMessageIds = new Set<string>();
 
   /**
-   * High-water {@link #maxStep} captured when {@link sealMessageIds} ran,
+   * High-water {@link #maxStep} captured when {@link sealMessageIds} last ran,
    * i.e. the seed checkpoint's step (or `undefined` when `getState()`
    * carried no `metadata.step`). It is the boundary between the replayed
-   * idle history (steps `<= #sealStep`, emitted by the deferred pump's
-   * `seq=0` replay) and the new run (steps `> #sealStep`); only a
-   * checkpoint strictly past it lifts the seal. Without this boundary the
-   * replayed old-run checkpoints — which themselves carry increasing
-   * steps — would advance {@link #maxStep} and lift the seal mid-replay,
-   * reopening the clobber. When the seed step is unknown the boundary
-   * stays `undefined` and the seal holds until {@link reset}; the
-   * `values` channel (which ignores the seal) still reconciles any
-   * genuine change to a sealed id, only its streamed deltas are dropped.
+   * history (steps `<= #sealStep`, emitted by the pump's `seq=0` replay)
+   * and the steps after it. Only a checkpoint strictly past it lifts the
+   * seal. Without this boundary the replayed old-run checkpoints, which
+   * themselves carry increasing steps, would advance {@link #maxStep} and
+   * lift the seal mid-replay, reopening the clobber. When the seed step
+   * is unknown the boundary stays `undefined` and the seal holds until
+   * {@link reset}. The `values` channel (which ignores the seal) still
+   * reconciles any genuine change to a sealed id, only its streamed
+   * deltas are dropped.
    */
   #sealStep: number | undefined = undefined;
 
@@ -279,22 +278,23 @@ export class RootMessageProjection<
   /**
    * Seal message ids so the streamed `messages` channel cannot downgrade
    * them to partial re-streams. Called by {@link StreamController.hydrate}
-   * after seeding an idle thread, whose deferred pump replays the finished
-   * run from `seq=0` on the first submit.
+   * after seeding a thread, whose pump replays it from `seq=0` when it
+   * starts.
    *
    * Captures the current {@link #maxStep} as the lift boundary
-   * ({@link #sealStep}). The seal is applied immediately after the seed's
-   * `getState()` snapshot is reconciled, so `#maxStep` here is the seed
-   * step (or `undefined` when `getState()` carried no `metadata.step`).
-   * The seal is lifted once a checkpoint advances strictly past that
-   * boundary (see {@link applyValues}) or on thread rebind
-   * ({@link reset}).
+   * ({@link #sealStep}), replacing an earlier one: a later seed's replay
+   * runs up to that seed's step. The seal is applied immediately after
+   * the seed's `getState()` snapshot is reconciled, so `#maxStep` here is
+   * the seed step (or `undefined` when `getState()` carried no
+   * `metadata.step`). The seal is lifted once a checkpoint advances
+   * strictly past that boundary (see {@link applyValues}) or on thread
+   * rebind ({@link reset}).
    *
-   * @param ids - Complete message ids from the idle `getState()` seed.
+   * @param ids - Complete message ids from the `getState()` seed.
    */
   sealMessageIds(ids: Iterable<string>): void {
     for (const id of ids) this.#sealedMessageIds.add(id);
-    if (this.#sealStep == null) this.#sealStep = this.#maxStep;
+    this.#sealStep = this.#maxStep;
   }
 
   /**
@@ -360,11 +360,10 @@ export class RootMessageProjection<
     if (update == null) return;
     const id = update.message.id;
     if (id == null) return;
-    // A sealed id belongs to a message seeded complete from an idle
-    // thread's `getState()`; the deferred pump's `seq=0` replay would
-    // otherwise rebuild it from an empty start and re-stream the whole
-    // turn. Drop the replayed delta — the authoritative seed already
-    // holds the final content (see {@link #sealedMessageIds}).
+    // A sealed id belongs to a message seeded complete from `getState()`.
+    // The pump's `seq=0` replay would otherwise rebuild it from an empty
+    // start and re-stream the whole turn, while the seed already holds the
+    // final content (see {@link #sealedMessageIds}).
     if (this.#sealedMessageIds.has(id)) return;
     if (this.#droppedRunIds.has(id)) return;
     if (!this.#valuesMessageIds.has(id)) this.#openRunStreamIds.add(id);
@@ -459,14 +458,14 @@ export class RootMessageProjection<
     }
     // Lift the replay seal only when a checkpoint advances strictly past
     // the step captured when the ids were sealed (the seed step). That
-    // boundary separates the replayed idle history (steps <= #sealStep,
-    // emitted by the deferred pump's seq=0 replay) from the new run
-    // (steps > #sealStep), so crossing it means seeded ids may now take
-    // genuine streamed updates. Replayed old-run checkpoints advance
-    // #maxStep but never reach past #sealStep, so they can't lift it. A
-    // `null` boundary (the seed step was unknown) keeps the seal until
-    // reset() — we can't tell replay from live, and the values channel
-    // still reconciles a sealed id even while its streamed deltas drop.
+    // boundary separates the replayed history (steps <= #sealStep,
+    // emitted by the pump's seq=0 replay) from the steps after it, so
+    // crossing it means seeded ids may now take genuine streamed updates.
+    // Replayed old-run checkpoints advance #maxStep but never reach past
+    // #sealStep, so they can't lift it. A `null` boundary (the seed step
+    // was unknown) keeps the seal until reset(): we can't tell replay from
+    // live, and the values channel still reconciles a sealed id even
+    // while its streamed deltas drop.
     if (
       this.#sealedMessageIds.size > 0 &&
       step != null &&
@@ -624,7 +623,7 @@ export class RootMessageProjection<
       // as the user event that produced it (no one-macrotask blink). Any
       // flush already scheduled by a prior streaming write is absorbed
       // here; its pending timer fires later as a no-op.
-      this.#flushPending();
+      this.flush();
     } else {
       this.#scheduleFlush();
     }
@@ -704,7 +703,7 @@ export class RootMessageProjection<
       next
     );
     if (options?.sync) {
-      this.#flushPending();
+      this.flush();
     } else {
       this.#scheduleFlush();
     }
@@ -762,14 +761,14 @@ export class RootMessageProjection<
   #scheduleFlush = (): void => {
     if (this.#flushScheduled) return;
     this.#flushScheduled = true;
-    setTimeout(this.#flushPending, 0);
+    setTimeout(this.flush, 0);
   };
 
   /**
    * Drain `#pendingMessages` / `#pendingValues` to the store in a
    * single `setState` call.
    */
-  #flushPending = (): void => {
+  flush = (): void => {
     this.#flushScheduled = false;
     const messages = this.#pendingMessages;
     const values = this.#pendingValues;

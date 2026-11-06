@@ -472,6 +472,7 @@ export class StreamController<
       // `submit()` settles `isLoading` itself, so skipping a pending
       // event here can't leave the flag stuck.
       ignore: (event) => this.#submittedRunMatch(event) != null,
+      runId: (event) => synthesizedEventRunId(event.event_id),
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -711,6 +712,7 @@ export class StreamController<
     // with `threadActive` where it's used, to decide whether to seed
     // `isLoading`.
     let hasActiveInterrupts = false;
+    const lifecycleEventsBeforeRead = this.#lifecycleLoading.handled;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -796,24 +798,21 @@ export class StreamController<
           }
 
           /**
-           * An idle (finished) thread defers its root SSE pump; the first
-           * `submit()` brings it up and the transport replays the finished
-           * run from `seq=0`. Seal the seeded message ids so that replay's
+           * The root SSE pump replays the thread from `seq=0` when it
+           * starts: on the first `submit()` of an idle thread, or below for
+           * a running one. Seal the seeded message ids so that replay's
            * `messages` channel deltas can't downgrade the already-complete
-           * tail to empty partials (a visible "messages replay"). Only safe
-           * for idle threads, where every seeded message is final — an
-           * active thread's tail may still be streaming and must keep
-           * receiving deltas. New ids from the next run are never sealed,
-           * and the seal lifts once a newer checkpoint advances the
-           * timeline.
+           * messages to empty partials (a visible "messages replay").
+           * Messages in a checkpoint are final, even while a run goes on:
+           * the one it's streaming isn't in the checkpoint yet. New ids are
+           * never sealed, and the seal lifts once a newer checkpoint
+           * advances the timeline.
            */
-          if (!threadActive) {
-            const sealedIds = (seedMessages as Array<{ id?: unknown }>)
-              .map((message) => message?.id)
-              .filter((id): id is string => typeof id === "string");
-            if (sealedIds.length > 0) {
-              this.#rootMessages.sealMessageIds(sealedIds);
-            }
+          const sealedIds = (seedMessages as Array<{ id?: unknown }>)
+            .map((message) => message?.id)
+            .filter((id): id is string => typeof id === "string");
+          if (sealedIds.length > 0) {
+            this.#rootMessages.sealMessageIds(sealedIds);
           }
         }
       }
@@ -829,6 +828,10 @@ export class StreamController<
         this.#rootMessages.dropMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
+      // Commit the seed now, not a macrotask later: `isThreadLoading` and
+      // `isLoading` change synchronously below, and would otherwise show
+      // with the messages from before.
+      this.#rootMessages.flush();
       /**
        * Sync the visible interrupt list to the server's authoritative
        * `state.tasks[].interrupts`. Without this, SSE replay of past
@@ -920,11 +923,13 @@ export class StreamController<
      * the depth-1 content pump just to replay a completed run and idle
      * forever is pure waste. When idle we take the deferred path: the
      * pump (and watcher) come up on the first local `submit()` via
-     * {@link #startDeferredRootPump}, exactly like a self-created thread.
+     * {@link #startDeferredRootPump}, exactly like a self-created thread,
+     * or on a later hydrate that finds the thread active.
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
     const thread = this.#ensureThread(hydratedThreadId, !threadActive);
+    if (threadActive) this.#startDeferredRootPump();
 
     /**
      * Picks up runs pending from before this page load, or another tab.
@@ -960,8 +965,15 @@ export class StreamController<
        * it. Excludes a thread merely parked at an interrupt — that's
        * waiting on a human, not "loading", matching
        * `LifecycleLoadingTracker`'s own `interrupted → isLoading = false`.
+       * Also skipped when a lifecycle event arrived during the read: the
+       * stream is then newer than the checkpoint, which may show a run
+       * that has since ended.
        */
-      if (threadActive && !hasActiveInterrupts) {
+      if (
+        threadActive &&
+        !hasActiveInterrupts &&
+        this.#lifecycleLoading.handled === lifecycleEventsBeforeRead
+      ) {
         this.rootStore.setState((s) =>
           s.isLoading ? s : { ...s, isLoading: true }
         );

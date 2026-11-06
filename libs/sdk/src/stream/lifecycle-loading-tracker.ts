@@ -19,12 +19,15 @@
  * Lifecycle handling has two subtleties that we want to keep out of
  * the {@link StreamController}'s critical path:
  *
- *   1. **Stale `running` filtering.** SSE replays older events on
+ *   1. **Stale replay filtering.** SSE replays older events on
  *      reconnect — including a `running` lifecycle that fired before
  *      the run terminated. Without filtering, that replay would flip
  *      `isLoading` back to `true` after a `completed` already brought
- *      it down. We track the highest terminal `seq` we've seen and
- *      drop any `running` whose `seq` is at or below it.
+ *      it down. When an event's id names its run, we drop the events
+ *      of runs that already ended. Otherwise we track the highest
+ *      terminal `seq` we've seen and drop any event whose `seq` is at
+ *      or below it. This also drops the second copy of a terminal,
+ *      which both the lifecycle watcher and the content pump deliver.
  *   2. **Deferred terminal flip.** The flip from `true → false` is
  *      pushed to the next macrotask (`setTimeout(..., 0)`). This
  *      gives synchronous consumers — most notably `for await`
@@ -71,24 +74,26 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
 
   /**
    * Highest sequence number of a terminal lifecycle we've observed.
-   * `running` events at or below this seq are stale replays and
-   * are dropped to avoid flipping the loading flag back on after the
-   * run has already ended.
+   * Events at or below this seq are stale replays and are dropped to
+   * avoid flipping the loading flag back on after the run has already
+   * ended.
    */
   #lastTerminalLifecycleSeq = -1;
 
   /**
-   * Highest sequence number of a `running` lifecycle we've observed.
-   * Deferred terminal resets compare against this so an
-   * `interrupted`/`completed`/`failed` whose macrotask fires after a
-   * newer `running` does not incorrectly clear `isLoading`.
+   * Runs whose terminal we applied. Their seqs can't mark a replay
+   * stale: the agent server numbers each connection's events from 1.
    */
-  #lastRunningLifecycleSeq = -1;
+  readonly #endedRunIds = new Set<string>();
+
+  #handled = 0;
 
   /** Notified once `isLoading` actually settles to `false` on a terminal event. */
   readonly #onSettled: (() => void) | undefined;
 
   readonly #ignore: ((event: Event) => boolean) | undefined;
+
+  readonly #runId: ((event: Event) => string | undefined) | undefined;
 
   /**
    * @param params.store      - Store whose `isLoading` slot we drive.
@@ -98,17 +103,21 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
    *   dispatched itself.
    * @param params.ignore     - Lifecycle events to skip, e.g. another run's
    *   replayed terminal while this client's own run is in flight.
+   * @param params.runId      - The run an event belongs to, when its id
+   *   names one.
    */
   constructor(params: {
     store: StreamStore<T>;
     isDisposed: () => boolean;
     onSettled?: () => void;
     ignore?: (event: Event) => boolean;
+    runId?: (event: Event) => string | undefined;
   }) {
     this.#store = params.store;
     this.#isDisposed = params.isDisposed;
     this.#onSettled = params.onSettled;
     this.#ignore = params.ignore;
+    this.#runId = params.runId;
   }
 
   /**
@@ -120,15 +129,20 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
     this.handle(event);
   };
 
+  /** Root lifecycle events applied so far. */
+  get handled(): number {
+    return this.#handled;
+  }
+
   /**
    * Reset internal state when rebinding to a new thread.
    *
-   * The seq guards are per-thread: a new thread's lifecycle events
+   * The stale guards are per-thread: a new thread's lifecycle events
    * are not stale relative to the old thread's.
    */
   reset(): void {
     this.#lastTerminalLifecycleSeq = -1;
-    this.#lastRunningLifecycleSeq = -1;
+    this.#endedRunIds.clear();
   }
 
   /**
@@ -147,19 +161,18 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       event?: string;
     };
     const seq = typeof event.seq === "number" ? event.seq : undefined;
+    const runId = this.#runId?.(event);
+    // Drop events of a run that already ended. SSE re-streams history on
+    // reconnect, and without this filter the loading flag would oscillate.
+    if (
+      runId != null
+        ? this.#endedRunIds.has(runId)
+        : seq != null && seq <= this.#lastTerminalLifecycleSeq
+    ) {
+      return;
+    }
     if (lifecycle?.event === "running") {
-      // Drop stale `running` replays that arrive *after* a terminal
-      // for the same run. SSE re-streams history on reconnect; without
-      // this filter the loading flag would oscillate.
-      if (seq != null && seq <= this.#lastTerminalLifecycleSeq) {
-        return;
-      }
-      if (seq != null) {
-        this.#lastRunningLifecycleSeq = Math.max(
-          this.#lastRunningLifecycleSeq,
-          seq
-        );
-      }
+      this.#handled += 1;
       this.#store.setState((s) =>
         s.isLoading ? s : { ...s, isLoading: true }
       );
@@ -170,21 +183,22 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       lifecycle?.event === "failed" ||
       lifecycle?.event === "interrupted"
     ) {
-      if (seq != null) {
-        this.#lastTerminalLifecycleSeq = Math.max(
-          this.#lastTerminalLifecycleSeq,
-          seq
-        );
+      if (runId != null) {
+        this.#endedRunIds.add(runId);
+      } else if (seq != null) {
+        this.#lastTerminalLifecycleSeq = seq;
       }
+      const handled = ++this.#handled;
       // Flip `isLoading=false` on the next macrotask so synchronous
       // consumers iterating events get one tick to observe terminal
       // state (the final values snapshot etc.) before the loading
       // indicator drops. Bail if a newer `running` arrived since this
       // terminal was scheduled (answered HITL interrupt, back-to-back
-      // runs, or history replay of interrupted → running).
+      // runs, or history replay of interrupted → running), or a newer
+      // terminal whose own reset will settle the flag.
       setTimeout(() => {
         if (this.#isDisposed()) return;
-        if (seq != null && this.#lastRunningLifecycleSeq > seq) return;
+        if (this.#handled > handled) return;
         const wasLoading = this.#store.getSnapshot().isLoading;
         this.#store.setState((s) =>
           s.isLoading ? { ...s, isLoading: false } : s

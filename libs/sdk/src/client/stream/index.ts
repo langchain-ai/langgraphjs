@@ -1482,12 +1482,20 @@ export class ThreadStream<
   #startLifecycleWatcher(): void {
     if (this.#lifecycleWatcherStartPromise != null) return;
 
-    if (this.#transportAdapter.openEventStream != null) {
-      this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherSse();
-      return;
-    }
-
-    this.#lifecycleWatcherStartPromise = this.#startLifecycleWatcherWebSocket();
+    const watcher = (
+      this.#transportAdapter.openEventStream != null
+        ? this.#startLifecycleWatcherSse()
+        : this.#startLifecycleWatcherWebSocket()
+    ).finally(() => {
+      // A watcher that ended without the thread closing (the transport gave
+      // up, or it never opened) would otherwise block every later start.
+      if (!this.#closed && this.#lifecycleWatcherStartPromise === watcher) {
+        this.#lifecycleWatcherHandle?.close();
+        this.#lifecycleWatcherStartPromise = undefined;
+        this.#lifecycleWatcherHandle = null;
+      }
+    });
+    this.#lifecycleWatcherStartPromise = watcher;
   }
 
   /**
@@ -1587,8 +1595,14 @@ export class ThreadStream<
       return;
     }
     try {
-      for await (const _event of handle) {
-        if (this.#closed) break;
+      // A root terminal pauses the handle, which ends the loop below. Keep
+      // draining across runs, and stop only once the handle is closed.
+      while (!this.#closed) {
+        for await (const _event of handle) {
+          if (this.#closed) break;
+        }
+        if (!handle.isPaused) break;
+        await handle.waitForResume();
       }
     } catch {
       // Best-effort; surface-level errors are reported by the
