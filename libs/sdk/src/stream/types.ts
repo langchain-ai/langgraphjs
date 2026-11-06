@@ -207,15 +207,6 @@ export interface UseStreamCommonOptions<
    * @default true
    */
   optimistic?: boolean;
-  /**
-   * Set to `false` to load the thread from `GET /threads/{thread_id}`
-   * instead of `/state` and `/history`. Hydrated messages carry no
-   * checkpoint ids (so they can't fork), and subagents and subgraphs are
-   * not discovered on load.
-   *
-   * @default true
-   */
-  subgraphs?: boolean;
 }
 
 /**
@@ -455,8 +446,6 @@ export interface StreamControllerOptions<
    * {@link UseStreamCommonOptions.optimistic} for the full contract.
    */
   optimistic?: boolean;
-  /** See {@link UseStreamCommonOptions.subgraphs}. */
-  subgraphs?: boolean;
 }
 
 export interface StreamSubmitOptions<

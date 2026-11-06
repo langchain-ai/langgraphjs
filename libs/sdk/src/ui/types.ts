@@ -1266,6 +1266,16 @@ export interface UseStreamOptions<
   fetchStateHistory?: boolean | { limit: number };
 
   /**
+   * Set to `false` to load the thread from `GET /threads/{thread_id}`
+   * instead of `/state` or `/history`, and never stream or reconstruct
+   * subgraphs and subagents. Takes precedence over `fetchStateHistory`;
+   * loaded messages carry no checkpoint, so they can't be forked from.
+   * Only the React `useStream` reads it.
+   * @default true
+   */
+  subgraphs?: boolean;
+
+  /**
    * Manage the thread state externally.
    */
   thread?: UseStreamThread<StateType>;
