@@ -8,10 +8,9 @@ import {
 import { BaseChannel } from "../channels/base.js";
 import {
   ERROR,
-  ERROR_SOURCE_NODE,
   Interrupt,
   INTERRUPT,
-  RESUME,
+  isTaskOutput,
   RETURN,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -268,20 +267,6 @@ export function* mapDebugCheckpoint<
     tasks: tasksWithWrites(tasks, pendingWrites, taskStates, outputKeys),
     parentConfig: parentConfig ? formatConfig(parentConfig) : undefined,
   };
-}
-
-/**
- * Whether a write to `channel` is output the task produced, rather than a
- * control write describing what happened to it (an error, an interrupt, or the
- * answer to one).
- */
-export function isTaskOutput(channel: string): boolean {
-  return (
-    channel !== ERROR &&
-    channel !== ERROR_SOURCE_NODE &&
-    channel !== INTERRUPT &&
-    channel !== RESUME
-  );
 }
 
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(

@@ -65,6 +65,7 @@ import {
   ERROR_SOURCE_NODE,
   INPUT,
   INTERRUPT,
+  isTaskOutput,
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
@@ -112,7 +113,6 @@ import {
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
-  isTaskOutput,
   mapDebugTasks,
   mapDebugCheckpoint,
   mapDebugTaskResults,
