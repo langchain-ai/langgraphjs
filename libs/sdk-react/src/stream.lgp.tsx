@@ -322,6 +322,7 @@ export function useStreamLGP<
   // State, since a ref change renders nothing.
   const [rejoinQueued, setRejoinQueued] = useState(false);
   const threadIdPromiseRef = useRef<Promise<string> | null>(null);
+  const liveRunsRef = useRef(new Map<string, Promise<void>>());
 
   // Cancel the stream if thread ID has changed
   useEffect(() => {
@@ -534,7 +535,8 @@ export function useStreamLGP<
         submitOptions?.multitaskStrategy === "rollback") &&
       stream.isLoading;
 
-    await stream.start(
+    let runId: string | undefined;
+    const started = stream.start(
       async (signal: AbortSignal) => {
         stream.setStreamValues((values) => {
           const prev = { ...historyValues, ...values };
@@ -623,6 +625,8 @@ export function useStreamLGP<
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
             };
+            runId = params.run_id;
+            liveRunsRef.current.set(runId, started);
 
             if (runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -682,6 +686,12 @@ export function useStreamLGP<
       },
       { abortPrevious: shouldAbortPrevious }
     );
+
+    try {
+      await started;
+    } finally {
+      if (runId) liveRunsRef.current.delete(runId);
+    }
   };
 
   const submitDirectRef = useRef(submitDirect);
@@ -770,6 +780,9 @@ export function useStreamLGP<
       checkpointId?: string;
     }
   ) => {
+    const live = liveRunsRef.current.get(runId);
+    if (live) return live;
+
     setToolProgressMap(new Map());
 
     // eslint-disable-next-line no-param-reassign
@@ -787,7 +800,7 @@ export function useStreamLGP<
       includeImplicitBranchJoin ||
       onFinishRequiresThreadState(options.onFinish);
 
-    await stream.start(
+    const started = stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
         setRejoinQueued(false);
@@ -842,6 +855,13 @@ export function useStreamLGP<
         },
       }
     );
+
+    liveRunsRef.current.set(runId, started);
+    try {
+      await started;
+    } finally {
+      liveRunsRef.current.delete(runId);
+    }
   };
 
   const joinStreamRef = useRef<typeof joinStream>(joinStream);
