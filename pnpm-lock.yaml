@@ -384,6 +384,12 @@ importers:
         specifier: ^8.3.3
         version: 8.3.3(@types/node@25.5.0)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1)
 
+  examples/browser-cdn:
+    devDependencies:
+      playwright:
+        specifier: ^1.55.1
+        version: 1.58.2
+
   examples/chat_agent_executor_with_function_calling:
     devDependencies:
       '@langchain/anthropic':
