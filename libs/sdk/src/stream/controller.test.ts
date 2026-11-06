@@ -2187,6 +2187,59 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("replaces the seeded branch with a fork whose checkpoints restart at a lower step", async () => {
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(async () => ({ run_id: "run-fork" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", id: "human-1", content: "hi" },
+              { type: "ai", id: "ai-1", content: "hello" },
+            ],
+          },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-9" },
+          metadata: { step: 9 },
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-fork",
+    });
+    await controller.hydrationPromise;
+
+    const edited = { type: "human", id: "human-edited", content: "hi again" };
+    void controller.submit({ messages: [edited] }, { forkFrom: "cp-0" });
+    await rootSubscription.started;
+    rootSubscription.push(checkpointsEvent(1, 1, "cp-fork-1"));
+    rootSubscription.push(valuesEvent([edited], 2));
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore
+          .getSnapshot()
+          .messages.map((m) => (m as { id?: string }).id)
+      ).toEqual(["human-edited"]);
+    });
+
+    await controller.dispose();
+  });
+
   it("applies history replayed from before the hydrated checkpoint to root projections only, not the root store", async () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
@@ -5629,6 +5682,288 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
       await controller.dispose();
     }
   );
+});
+
+describe("StreamController stop() after respond()", () => {
+  function setup(respondInput = vi.fn(async () => undefined)) {
+    const listeners = new Set<(event: Event) => void>();
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      ordering: {},
+      interrupts: [
+        { interruptId: "int-1", payload: {}, namespace: [] },
+        { interruptId: "int-2", payload: {}, namespace: [] },
+      ],
+      respondInput,
+      submitRun: vi.fn(async () => ({ run_id: "run-5" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: {} },
+                { id: "int-2", value: {} },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+      runs: { cancel },
+    };
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    const emit = (event: Event) => {
+      for (const listener of [...listeners]) listener(event);
+    };
+    return { controller, cancel, emit };
+  }
+
+  it("cancels the run respond() started", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("cancels the one run respondAll() started", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respondAll({
+      "int-1": { approved: true },
+      "int-2": { approved: false },
+    });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("cancels the resumed run once it starts when stop() came first", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    expect(cancel).not.toHaveBeenCalled();
+
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-2", "interrupted", 11));
+    emit(runLifecycleEvent("run-3", "running", 12));
+
+    await waitForExpectation(() => {
+      expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    });
+    await controller.dispose();
+  });
+
+  it("shows again the interrupt the stopped run left waiting", async () => {
+    const { controller, emit } = setup();
+    await controller.hydrationPromise;
+    const shownIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id);
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(shownIds()).toEqual(["int-2"]);
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+    emit(runLifecycleEvent("run-2", "interrupted", 11));
+
+    await waitForExpectation(() => {
+      expect(shownIds()).toEqual(["int-1", "int-2"]);
+    });
+    await controller.dispose();
+  });
+
+  it("ignores another run's lifecycle while the resumed run runs", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-1", "interrupted", 11));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("does not cancel a later run after the resume ended without running", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "failed", 10));
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 11));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("cancels nothing when no run was resumed", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.stop();
+    emit(runLifecycleEvent("run-2", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a resumed run that already ended", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-2", "completed", 11));
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 12));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a later run after input.respond failed", async () => {
+    const { controller, cancel, emit } = setup(
+      vi.fn(async () => {
+        throw new Error("offline");
+      })
+    );
+    await controller.hydrationPromise;
+
+    await expect(
+      controller.respond({ approved: true }, { interruptId: "int-1" })
+    ).rejects.toThrow("offline");
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("cancels nothing when input.respond fails after stop()", async () => {
+    let rejectRespond!: (error: Error) => void;
+    const { controller, cancel, emit } = setup(
+      vi.fn(
+        () =>
+          new Promise<undefined>((_, reject) => {
+            rejectRespond = reject;
+          })
+      )
+    );
+    await controller.hydrationPromise;
+
+    const responding = controller.respond(
+      { approved: true },
+      { interruptId: "int-1" }
+    );
+    await controller.stop();
+    rejectRespond(new Error("offline"));
+    await expect(responding).rejects.toThrow("offline");
+    emit(runLifecycleEvent("run-3", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not take the run submit() starts for the stopped resume", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    emit(runLifecycleEvent("run-5", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
+  });
+
+  it("does not take the run submit() starts for the stopped resume before run.start answers", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+    let answerRunStart!: (result: { run_id: string }) => void;
+    vi.mocked(controller.getThread()!.submitRun).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerRunStart = resolve;
+        }) as never
+    );
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    emit(runLifecycleEvent("run-5", "running", 10));
+    answerRunStart({ run_id: "run-5" });
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
+  });
+
+  it("keeps the resumed run going on disconnect()", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.disconnect();
+    emit(runLifecycleEvent("run-2", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a run on the next thread", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    await controller.hydrate("thread-2");
+    emit(runLifecycleEvent("run-9", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
 });
 
 describe("StreamController same-thread hydrate()", () => {

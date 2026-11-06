@@ -174,11 +174,19 @@ export class RootMessageProjection<
    * advanced by live `values` events. A snapshot arriving with a lower
    * step is an older checkpoint replayed by the content pump on
    * reconnect; it is reconciled in add-only mode so it cannot remove
-   * the seeded message tail (the final assistant turn). `undefined`
-   * until the first step-bearing snapshot, where the legacy
+   * the seeded message tail (the final assistant turn). A fork is the
+   * exception: its steps restart from the fork point, so a snapshot
+   * newer than {@link #latestCheckpointId} is never treated as a replay.
+   * `undefined` until the first step-bearing snapshot, where the legacy
    * remove-on-absence behavior is preserved.
    */
   #maxStep: number | undefined = undefined;
+
+  /**
+   * Checkpoint ids sort by creation time, the order the server also
+   * uses to pick a thread's latest checkpoint.
+   */
+  #latestCheckpointId: string | undefined = undefined;
 
   /**
    * Message ids seeded as complete-and-final from an idle thread's
@@ -260,6 +268,7 @@ export class RootMessageProjection<
     this.#pendingValues = null;
     this.#flushScheduled = false;
     this.#maxStep = undefined;
+    this.#latestCheckpointId = undefined;
     this.#sealedMessageIds.clear();
     this.#sealStep = undefined;
     this.#openRunStreamIds.clear();
@@ -420,23 +429,33 @@ export class RootMessageProjection<
    * @param opts.step    - Checkpoint superstep for this snapshot, when
    *   known. A snapshot whose step is below the highest applied step is
    *   treated as a stale reconnect replay and reconciled add-only.
+   * @param opts.checkpointId - Checkpoint id for this snapshot, when
+   *   known. A snapshot newer than every applied one is never stale.
    */
   applyValues(
     nextValues: StateType,
     nextMessages: BaseMessage[],
-    opts?: { step?: number }
+    opts?: { step?: number; checkpointId?: string }
   ): void {
     const baselineSnapshot = this.#store.getSnapshot();
     const baselineMessages = this.#pendingMessages ?? baselineSnapshot.messages;
     const baselineValues = this.#pendingValues ?? baselineSnapshot.values;
 
     const step = opts?.step;
-    // Stale only when we have both a prior high-water step and a lower
-    // incoming step. A missing step preserves the legacy semantics.
+    const checkpointId = opts?.checkpointId;
+    const latest = this.#latestCheckpointId;
+    const isNewerCheckpoint =
+      checkpointId != null && latest != null && checkpointId > latest;
     const addOnly =
-      step != null && this.#maxStep != null && step < this.#maxStep;
+      step != null &&
+      this.#maxStep != null &&
+      step < this.#maxStep &&
+      !isNewerCheckpoint;
     if (step != null && (this.#maxStep == null || step > this.#maxStep)) {
       this.#maxStep = step;
+    }
+    if (checkpointId != null && (latest == null || checkpointId > latest)) {
+      this.#latestCheckpointId = checkpointId;
     }
     // Lift the replay seal only when a checkpoint advances strictly past
     // the step captured when the ids were sealed (the seed step). That
