@@ -7,6 +7,7 @@ import {
 } from "../base.js";
 import type { CheckpointMetadata } from "../types.js";
 import { MemorySaver } from "../memory.js";
+import { TASKS } from "../serde/types.js";
 
 /**
  * Records written before the `taskPath` element existed — e.g. a
@@ -80,4 +81,71 @@ describe("MemorySaver legacy 3-tuple write records", () => {
     // "" (legacy) sorts before "~pull, later" (new), regardless of ids.
     expect(tuple.pendingWrites?.map((w) => w[2])).toEqual(["legacy", "new"]);
   });
+});
+
+describe("MemorySaver legacy pending sends", () => {
+  it.each(["by id", "latest", "list"])(
+    "migrates parent sends in task-path, task-id, and write-index order (%s)",
+    async (read) => {
+      const saver = new MemorySaver();
+      const config: RunnableConfig = {
+        configurable: { thread_id: "legacy-sends", checkpoint_ns: "" },
+      };
+      const metadata: CheckpointMetadata = { source: "loop", step: 0, parents: {} };
+      const parentConfig = await saver.put(
+        config,
+        { ...emptyCheckpoint(), v: 3, id: "0001" },
+        metadata
+      );
+
+      await saver.putWrites(
+        parentConfig,
+        [[TASKS, "last path"]],
+        "a-task",
+        "z-path"
+      );
+      await saver.putWrites(
+        parentConfig,
+        [
+          [TASKS, "last task, first send"],
+          [TASKS, "last task, second send"],
+        ],
+        "z-task",
+        "a-path"
+      );
+      await saver.putWrites(
+        parentConfig,
+        [
+          [TASKS, "first task, first send"],
+          ["other", "not a send"],
+          [TASKS, "first task, second send"],
+        ],
+        "b-task",
+        "a-path"
+      );
+      const childConfig = await saver.put(
+        parentConfig,
+        { ...emptyCheckpoint(), v: 3, id: "0002" },
+        { ...metadata, step: 1 }
+      );
+
+      let tuple: CheckpointTuple | undefined;
+      if (read === "list") {
+        const tuples: CheckpointTuple[] = [];
+        for await (const listed of saver.list(childConfig)) tuples.push(listed);
+        expect(tuples).toHaveLength(1);
+        [tuple] = tuples;
+      } else {
+        tuple = await saver.getTuple(read === "by id" ? childConfig : config);
+      }
+
+      expect(tuple?.checkpoint.channel_values[TASKS]).toEqual([
+        "first task, first send",
+        "first task, second send",
+        "last task, first send",
+        "last task, second send",
+        "last path",
+      ]);
+    }
+  );
 });
