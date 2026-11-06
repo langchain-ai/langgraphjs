@@ -3257,6 +3257,45 @@ graph TD;
       }
     );
 
+    it.each([[{ slowCache: false }], [{ slowCache: true }]])(
+      "serves a cached node to every Send with the same input (%s)",
+      async ({ slowCache }) => {
+        const cache = slowCache ? new SlowInMemoryCache() : new InMemoryCache();
+        const State = Annotation.Root({
+          skus: Annotation<string[]>,
+          prices: Annotation<string[]>({
+            reducer: (a, b) => [...a, ...b],
+            default: () => [],
+          }),
+        });
+
+        let priceCount = 0;
+        const graph = new StateGraph(State)
+          .addNode(
+            "price",
+            async (sku) => {
+              priceCount += 1;
+              return { prices: [`price of ${sku as unknown as string}`] };
+            },
+            { cachePolicy: {} }
+          )
+          .addConditionalEdges(
+            START,
+            (state) => state.skus.map((sku) => new Send("price", sku)),
+            ["price"]
+          )
+          .addEdge("price", END)
+          .compile({ cache });
+
+        const expected = { skus: ["A", "A"], prices: ["price of A", "price of A"] };
+        expect(await graph.invoke({ skus: ["A", "A"] })).toEqual(expected);
+        expect(priceCount).toBe(2);
+
+        expect(await graph.invoke({ skus: ["A", "A"] })).toEqual(expected);
+        expect(priceCount).toBe(2);
+      }
+    );
+
     it("keeps a checkpoint's parent when an exit-mode run has nothing to do", async () => {
       const checkpointer = await createCheckpointer();
       const StateAnnotation = Annotation.Root({
