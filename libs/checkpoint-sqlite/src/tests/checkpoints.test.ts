@@ -265,6 +265,27 @@ describe("SqliteSaver", () => {
     expect((await collect({ tenant_id: "missing" })).length).toBe(0);
   });
 
+  it("should only list the checkpoint named by the config's checkpoint_id", async () => {
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+    const metadata = { source: "update" as const, step: -1, parents: {} };
+
+    const firstConfig = await sqliteSaver.put(
+      { configurable: { thread_id: "1", checkpoint_ns: "" } },
+      checkpoint1,
+      metadata
+    );
+    await sqliteSaver.put(firstConfig, checkpoint2, metadata);
+
+    const listed: CheckpointTuple[] = [];
+    for await (const tuple of sqliteSaver.list(firstConfig)) {
+      listed.push(tuple);
+    }
+
+    expect(listed.map((tuple) => tuple.checkpoint.id)).toEqual([
+      checkpoint1.id,
+    ]);
+  });
+
   it("should delete thread", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
     await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
