@@ -1,5 +1,46 @@
 # @langchain/langgraph
 
+## 1.7.1
+
+### Patch Changes
+
+- [#3241](https://github.com/langchain-ai/langgraphjs/pull/3241) [`49f86a7`](https://github.com/langchain-ai/langgraphjs/commit/49f86a7a3baa401281de836e5fa713185655e9b3) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add `isUnknownInterruptError`, which matches the error by name like `isGraphInterrupt`, so it also recognizes an `UnknownInterruptError` thrown by another copy of `@langchain/langgraph`
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+
+- [#3218](https://github.com/langchain-ai/langgraphjs/pull/3218) [`ad73c37`](https://github.com/langchain-ai/langgraphjs/commit/ad73c37142bc5f7bec3b78819edd7ab72874c13e) Thanks [@eliornl](https://github.com/eliornl)! - Task results in the `tasks` and `debug` stream modes carry the task's `error` (`null` when it succeeded), as they do in Python, so a failed task no longer looks completed.
+
+- [#3226](https://github.com/langchain-ai/langgraphjs/pull/3226) [`429accb`](https://github.com/langchain-ai/langgraphjs/commit/429accb738ab24d7b96f281d8ee0861f5e98e571) Thanks [@eliornl](https://github.com/eliornl)! - docs(langgraph): `UnknownInterruptError` says each `interrupt()` call in a task has its own id
+- Updated dependencies [[`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa), [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa)]:
+  - @langchain/langgraph-sdk@1.14.0
+
+## 1.7.0
+
+### Minor Changes
+
+- [#3221](https://github.com/langchain-ai/langgraphjs/pull/3221) [`ed01e50`](https://github.com/langchain-ai/langgraphjs/commit/ed01e50ca29b3d20cc45c30a1630f231fba25dd7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): give each interrupt() in a task its own id
+  
+  An interrupt raised after its task already got answers now gets its own id: the namespace hash plus the answer count. A task's first question keeps its id, and strict resume refuses an answer retried after a node asked its next question. Ids saved by older versions still answer: when a resume map has no entry for the task's next interrupt, the first id is used. A node retried by its retry policy now reuses its task's answers instead of asking again.
+
+- [#3211](https://github.com/langchain-ai/langgraphjs/pull/3211) [`73df3cb`](https://github.com/langchain-ai/langgraphjs/commit/73df3cb6f7fac8af2a10b5f1b2b5e1cdcd7c0fa7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add a strict resume mode that refuses stale interrupt answers
+  
+  With the private configurable key `__pregel_strict_resume` set, the root graph throws `UnknownInterruptError` before writing anything when a `Command({ resume })` names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending. The error's `reason` (`not_pending`, `empty_map` or `ambiguous`) says which, with the interrupt ids involved in `interruptIds` and `pendingIds`. Without the key, resuming behaves as before.
+  
+  A task that raises several interrupts at once, such as a subgraph with parallel interrupts, now keeps all of them; before, only the last one was saved. `Command({ resume: false })` and other falsy resume values now reach `interrupt()` instead of throwing `EmptyInputError`.
+
+### Patch Changes
+
+- Updated dependencies [[`caa5c53`](https://github.com/langchain-ai/langgraphjs/commit/caa5c53a65b0d0cce2a597167087f1bf9b170437), [`75deb9a`](https://github.com/langchain-ai/langgraphjs/commit/75deb9a65b7e3254429ec193db35953b69ad605c), [`5ef8ba8`](https://github.com/langchain-ai/langgraphjs/commit/5ef8ba8cad1b3638d9f0bba2f2db58db7dcfaa33), [`08f6d06`](https://github.com/langchain-ai/langgraphjs/commit/08f6d069af8a51f913a63990bec31f0fe985b5f7), [`d955450`](https://github.com/langchain-ai/langgraphjs/commit/d9554503a7ccef99f46474831ec93ed1c527ca57), [`2f42fb1`](https://github.com/langchain-ai/langgraphjs/commit/2f42fb196d840931f11a4da114f030f3ba4a90fe), [`7209193`](https://github.com/langchain-ai/langgraphjs/commit/7209193a2b7f5f9275780953d92ebc454c8550d4)]:
+  - @langchain/langgraph-sdk@1.13.0
+
+## 1.6.1
+
+### Patch Changes
+
+- [#3058](https://github.com/langchain-ai/langgraphjs/pull/3058) [`f64d595`](https://github.com/langchain-ai/langgraphjs/commit/f64d5954b721ee53746f03bf456680743b471d15) Thanks [@hntrl](https://github.com/hntrl)! - Restore per-node `tracePolicy`, using `@langchain/core`'s `TracePolicy` (requires `@langchain/core` >= 1.3.4). It only changes what `LangChainTracer` sends to LangSmith; execution, streaming, and other callbacks see raw values.
+- Updated dependencies [[`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a), [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb)]:
+  - @langchain/langgraph-sdk@1.12.10
+
 ## 1.6.0
 
 ### Minor Changes

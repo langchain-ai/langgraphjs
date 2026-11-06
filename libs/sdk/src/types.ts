@@ -167,6 +167,14 @@ export interface RunsInvokePayload {
   command?: Command;
 
   /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it; the
+   * Agent Server reports it in `/info`.
+   */
+  strictResume?: boolean;
+
+  /**
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;
@@ -191,6 +199,13 @@ export interface RunsStreamPayload<
    * Stream output from subgraphs. By default, streams only the top graph.
    */
   streamSubgraphs?: TSubgraphs;
+
+  /**
+   * Stream only these namespaces of the run (`""` is the root graph), each
+   * without the subagents it starts. Servers without the `stream_namespaces`
+   * flag in `/info` ignore it and send every event.
+   */
+  streamNamespaces?: string[];
 
   /**
    * Whether the stream is considered resumable.

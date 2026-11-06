@@ -389,9 +389,9 @@ export function useStreamLGP<
           break;
         }
         default: {
-          throw new Error(
-            `Unexpected tool event: ${(data as { event: string }).event}`
-          );
+          // Some servers forward langgraph's own `tool-*` payloads, and a
+          // throw in this updater would crash the app's render.
+          return prev;
         }
       }
 
@@ -682,6 +682,7 @@ export function useStreamLGP<
           interruptAfter: submitOptions?.interruptAfter,
           metadata: submitOptions?.metadata,
           multitaskStrategy: submitOptions?.multitaskStrategy,
+          strictResume: submitOptions?.strictResume,
           onCompletion: submitOptions?.onCompletion,
           onDisconnect:
             submitOptions?.onDisconnect ??
@@ -848,11 +849,6 @@ export function useStreamLGP<
 
   const handledToolsRef = useRef<Set<string>>(new Set());
   const handledThreadIdRef = useRef(threadId);
-  useEffect(() => {
-    if (handledThreadIdRef.current === threadId) return;
-    handledThreadIdRef.current = threadId;
-    handledToolsRef.current.clear();
-  }, [threadId]);
 
   // Thread state values never carry `__interrupt__`; a pending call is in the
   // head's tasks. A run still streaming, such as one rejoined after a reload,
@@ -869,13 +865,21 @@ export function useStreamLGP<
           ),
         }
       : values;
+  const pendingToolThreadId = threadIdRef.current;
 
   useEffect(() => {
+    // A new `threadId` prop clears the stream in an earlier effect that moves
+    // the ref, so this render may have read the previous thread's values.
+    if (threadIdRef.current !== pendingToolThreadId) return;
     // These values belong to the render's `threadId`; on a switch the ref
     // moves first. After submit() creates a thread, though, a controlled
     // `threadId` stays null until the parent passes it back, and only the
     // ref has the thread.
     const callThreadId = threadId ?? threadIdRef.current;
+    if (handledThreadIdRef.current !== callThreadId) {
+      handledThreadIdRef.current = callThreadId;
+      handledToolsRef.current.clear();
+    }
     flushPendingHeadlessToolInterrupts(
       pendingToolValues as Record<string, unknown>,
       options.tools,
@@ -902,6 +906,7 @@ export function useStreamLGP<
     options.tools,
     submitToThread,
     pendingToolValues,
+    pendingToolThreadId,
     threadId,
   ]);
 

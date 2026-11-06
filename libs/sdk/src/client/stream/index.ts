@@ -363,6 +363,19 @@ function foldForkFromIntoConfig<
 }
 
 /**
+ * `multitask_strategy` is the protocol's spelling, but older Agent Servers
+ * and dev servers read only `multitaskStrategy`, so the strategy goes out
+ * under both names.
+ */
+function withMultitaskStrategy<T extends { multitaskStrategy?: string }>(
+  params: T
+): T & { multitask_strategy?: string } {
+  return params.multitaskStrategy == null
+    ? params
+    : { ...params, multitask_strategy: params.multitaskStrategy };
+}
+
+/**
  * Async iterable handle for raw event subscriptions.
  *
  * An optional `transform` maps each incoming event before it is queued
@@ -714,7 +727,7 @@ export class ThreadStream<
           // subscription landed. This keeps the zero-extensions hot path
           // free of an unused `custom` subscription per run.
           return this.#send("run.start", {
-            ...foldForkFromIntoConfig(params),
+            ...withMultitaskStrategy(foldForkFromIntoConfig(params)),
             assistant_id: this.assistantId,
           });
         });
@@ -1374,7 +1387,10 @@ export class ThreadStream<
     return await this.#withRunStartGate(() => {
       this.#startLifecycleWatcher();
       return this.#send("run.start", {
-        ...(foldForkFromIntoConfig(params) as Record<string, unknown>),
+        ...(withMultitaskStrategy(foldForkFromIntoConfig(params)) as Record<
+          string,
+          unknown
+        >),
         assistant_id: this.assistantId,
       });
     });
@@ -1385,7 +1401,10 @@ export class ThreadStream<
    * See {@link submitRun} for why this exists alongside
    * {@link input.respond}.
    */
-  async respondInput(params: InputRespondParams): Promise<void> {
+  async respondInput(
+    params: InputRespondParams,
+    options?: { strictResume?: boolean }
+  ): Promise<void> {
     // `InputRespondParams` is `InputRespondOne | InputRespondMany`. The
     // batch variant (`responses`) resolves several interrupts pending at
     // the same checkpoint in one command; the single variant carries a
@@ -1396,7 +1415,10 @@ export class ThreadStream<
         : params.interrupt_id;
     this.#prepareForNextRun(respondedIds);
     this.#startLifecycleWatcher();
-    await this.#send("input.respond", params);
+    await this.#send("input.respond", {
+      ...params,
+      ...(options?.strictResume ? { strict_resume: true } : {}),
+    });
   }
 
   /**

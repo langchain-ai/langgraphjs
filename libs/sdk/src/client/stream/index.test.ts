@@ -301,6 +301,33 @@ describe("ThreadStream", () => {
     expect(params.config?.configurable).not.toHaveProperty("checkpoint_id");
   });
 
+  it.each([
+    [
+      "run.start",
+      (thread: ThreadStream) =>
+        thread.run.start({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+    [
+      "submitRun",
+      (thread: ThreadStream) =>
+        thread.submitRun({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+  ] as const)(
+    "%s sends the multitask strategy under both names",
+    async (_name, start) => {
+      const transport = new MockTransport();
+      const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+      await start(thread);
+
+      const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+      expect(cmd?.params).toMatchObject({
+        multitask_strategy: "interrupt",
+        multitaskStrategy: "interrupt",
+      });
+    }
+  );
+
   it("closes thread cleanly", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
@@ -1652,6 +1679,21 @@ describe("interrupts", () => {
 
     expect(thread.interrupts).toHaveLength(1);
     expect(thread.interrupts[0].interruptId).toBe("int_2");
+  });
+
+  it("respondInput sends strict_resume only when asked", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const answer = { namespace: [], interrupt_id: "int_1", response: "yes" };
+
+    await thread.respondInput(answer, { strictResume: true });
+    await thread.respondInput(answer);
+
+    expect(
+      transport.sentCommands
+        .filter((c) => c.method === "input.respond")
+        .map((c) => (c.params as { strict_resume?: boolean }).strict_resume)
+    ).toEqual([true, undefined]);
   });
 
   it("run.start resets interrupted state", async () => {

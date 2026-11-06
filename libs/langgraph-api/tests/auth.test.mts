@@ -177,13 +177,9 @@ it.skipIf(process.version.startsWith("v18."))(
       config,
     });
 
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
   }
 );
 
@@ -522,13 +518,52 @@ it.skipIf(process.version.startsWith("v18."))(
     });
 
     // Other user tries to join_stream
-    const chunks = await gatherIterator(
-      otherUser.runs.joinStream(thread.thread_id, run.run_id)
-    );
-    expect(chunks).toHaveLength(1);
-    expect(chunks).toMatchObject([
-      { event: "error", data: { message: expect.stringContaining("404") } },
-    ]);
+    await expect(
+      gatherIterator(otherUser.runs.joinStream(thread.thread_id, run.run_id))
+    ).rejects.toThrow("HTTP 404");
+  }
+);
+
+it.skipIf(process.version.startsWith("v18."))(
+  "join stream other user run",
+  async () => {
+    const owner = await createJwtClient("johndoe", ["me"]);
+    const otherUser = await createJwtClient("alice", ["me"]);
+
+    const thread = await owner.threads.create();
+    const run = await owner.runs.create(thread.thread_id, "agent", {
+      input: { messages: [{ role: "human", content: "Join me" }] },
+      config,
+      streamResumable: true,
+    });
+    const join = (client: Client, threadId: string | null) =>
+      gatherIterator(
+        client.runs.joinStream(threadId, run.run_id, { lastEventId: "-1" })
+      );
+
+    const events = await join(owner, thread.thread_id);
+    expect(events.map((i) => i.event)).toContain("values");
+
+    const otherThread = await otherUser.threads.create();
+    const ownerOtherThread = await owner.threads.create();
+    await expect(
+      join(otherUser, otherThread.thread_id),
+      "through own thread"
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, thread.thread_id),
+      "through the run's thread"
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, ownerOtherThread.thread_id),
+      "through another thread of the owner"
+    ).rejects.toThrow("HTTP 404");
+    await expect(
+      join(otherUser, crypto.randomUUID()),
+      "through a missing thread"
+    ).rejects.toThrow("HTTP 404");
+    expect(await join(otherUser, null), "by run id").toEqual([]);
+    expect(await join(owner, null), "owner by run id").toEqual(events);
   }
 );
 

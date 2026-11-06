@@ -65,6 +65,7 @@ import { AgentServerQueueAdapter } from "./queue-adapter-agent-server.js";
 import { LocalQueueAdapter } from "./queue-adapter-local.js";
 import { StreamStore } from "./store.js";
 import type { OptimisticHandle } from "./optimistic-input.js";
+import { unknownInterruptError, type StrictResumeRefusal } from "./refusal.js";
 import type {
   RootSnapshot,
   RunExecutionReason,
@@ -80,9 +81,11 @@ export type { SubmissionQueueEntry, SubmissionQueueSnapshot };
  * the three terminal lifecycle states the protocol surfaces, plus a
  * synthetic `"aborted"` for client-side cancellation.
  */
-type TerminalResult = {
+export type TerminalResult = {
   event: "completed" | "failed" | "interrupted" | "aborted";
   error?: string;
+  /** Set when strict resume refused the answer before the run did anything. */
+  refusal?: StrictResumeRefusal;
 };
 
 function terminalReason(event: TerminalResult["event"]): RunExecutionReason {
@@ -712,8 +715,11 @@ export class SubmitCoordinator<
     void terminalPromise.then((terminal) => {
       if (this.#runAbort === abort) this.#runAbort = undefined;
       if (terminal.event === "failed" && !abort.signal.aborted) {
+        const message = terminal.error ?? "Run failed with no error message";
         reportError(
-          new Error(terminal.error ?? "Run failed with no error message")
+          terminal.refusal == null
+            ? new Error(message)
+            : unknownInterruptError(message, terminal.refusal)
         );
       }
       settleOptimisticOnce(abort.signal.aborted ? "aborted" : terminal.event);

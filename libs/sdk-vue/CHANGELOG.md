@@ -1,5 +1,27 @@
 # @langchain/vue
 
+## 1.2.12
+
+### Patch Changes
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+- Updated dependencies [[`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa), [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa)]:
+  - @langchain/langgraph-sdk@1.14.0
+
+## 1.2.11
+
+### Patch Changes
+
+- Updated dependencies [[`caa5c53`](https://github.com/langchain-ai/langgraphjs/commit/caa5c53a65b0d0cce2a597167087f1bf9b170437), [`75deb9a`](https://github.com/langchain-ai/langgraphjs/commit/75deb9a65b7e3254429ec193db35953b69ad605c), [`5ef8ba8`](https://github.com/langchain-ai/langgraphjs/commit/5ef8ba8cad1b3638d9f0bba2f2db58db7dcfaa33), [`08f6d06`](https://github.com/langchain-ai/langgraphjs/commit/08f6d069af8a51f913a63990bec31f0fe985b5f7), [`d955450`](https://github.com/langchain-ai/langgraphjs/commit/d9554503a7ccef99f46474831ec93ed1c527ca57), [`2f42fb1`](https://github.com/langchain-ai/langgraphjs/commit/2f42fb196d840931f11a4da114f030f3ba4a90fe), [`7209193`](https://github.com/langchain-ai/langgraphjs/commit/7209193a2b7f5f9275780953d92ebc454c8550d4)]:
+  - @langchain/langgraph-sdk@1.13.0
+
+## 1.2.10
+
+### Patch Changes
+
+- Updated dependencies [[`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a), [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb)]:
+  - @langchain/langgraph-sdk@1.12.10
+
 ## 1.2.9
 
 ### Patch Changes

@@ -70,6 +70,7 @@ import {
 } from "./message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
+import { toRefusal } from "./refusal.js";
 import {
   prepareOptimisticInput,
   serializeUpdateMessages,
@@ -80,6 +81,7 @@ import {
   SubmitCoordinator,
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
+  type TerminalResult,
 } from "./submit-coordinator.js";
 import {
   reconcileToolCallsFromMessages,
@@ -1516,20 +1518,23 @@ export class StreamController<
       // background (see {@link SubmitCoordinator.dispatchResume}), which also
       // settles the optimistic handle (rolls back un-echoed keys on failure).
       await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          namespace: resolved.namespace,
-          interrupt_id: resolved.interruptId,
-          response: normalizeHitlResponseForServer(response),
-          // Fold an optional state update / directed jump into the same
-          // superstep as the resume (HITL "push card into state + resume").
-          // Omitted when absent so the server still sees a plain resume.
-          // `BaseMessage` instances under the messages key are serialized to
-          // plain dicts (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-        });
+        await thread.respondInput(
+          {
+            namespace: resolved.namespace,
+            interrupt_id: resolved.interruptId,
+            response: normalizeHitlResponseForServer(response),
+            // Fold an optional state update / directed jump into the same
+            // superstep as the resume (HITL "push card into state + resume").
+            // Omitted when absent so the server still sees a plain resume.
+            // `BaseMessage` instances under the messages key are serialized to
+            // plain dicts (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          },
+          { strictResume: options?.strictResume }
+        );
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: [resolved.interruptId],
         });
@@ -1619,18 +1624,21 @@ export class StreamController<
       // that services the batched resume surfaces failures on the reactive
       // `rootStore.error` slot and settles the optimistic handle.
       await this.#submitter.dispatchResume(async () => {
-        await thread.respondInput({
-          responses,
-          // A batched resume services every targeted interrupt in one run, so
-          // the update / jump are run-level (not per-entry) — applied once in
-          // that run's superstep alongside all the resumes. `BaseMessage`
-          // instances under the messages key are serialized to plain dicts
-          // (like `submit()`) so they coerce server-side.
-          ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
-          ...(options?.goto != null ? { goto: options.goto } : {}),
-          config: options?.config,
-          metadata: options?.metadata,
-        });
+        await thread.respondInput(
+          {
+            responses,
+            // A batched resume services every targeted interrupt in one run, so
+            // the update / jump are run-level (not per-entry) — applied once in
+            // that run's superstep alongside all the resumes. `BaseMessage`
+            // instances under the messages key are serialized to plain dicts
+            // (like `submit()`) so they coerce server-side.
+            ...(dispatchUpdate != null ? { update: dispatchUpdate } : {}),
+            ...(options?.goto != null ? { goto: options.goto } : {}),
+            config: options?.config,
+            metadata: options?.metadata,
+          },
+          { strictResume: options?.strictResume }
+        );
         this.#advanceInterruptReplayBarrier({
           answeredInterruptIds: responses.map((r) => r.interrupt_id),
         });
@@ -2165,6 +2173,8 @@ export class StreamController<
      */
     this.#observeRunBoundary(event);
     this.#recordInterrupt(event);
+    this.#forgetAnsweredInterrupts(event);
+    this.#restoreRefusedInterrupts(event);
     this.#settleParkedInterruptsOnTerminal(event);
   }
 
@@ -2766,6 +2776,41 @@ export class StreamController<
   }
 
   /**
+   * Hide the interrupts another client answered: the server sends
+   * `input.answered` when a run that answers them starts.
+   */
+  #forgetAnsweredInterrupts(event: Event): void {
+    if (event.method !== "input.answered") return;
+    const ids = (event.params.data as { interrupt_ids?: unknown })
+      ?.interrupt_ids;
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+      if (typeof id === "string") this.#markInterruptResolvedInRootStore(id);
+    }
+  }
+
+  /**
+   * A refused strict resume ran nothing, so the interrupts it hid that are
+   * still waiting show again, whichever client sent the answer.
+   */
+  #restoreRefusedInterrupts(event: Event): void {
+    if (
+      event.method !== "lifecycle" ||
+      !isRootNamespace(event.params.namespace)
+    ) {
+      return;
+    }
+    const data = (event as LifecycleEvent).params.data as { event?: string };
+    const refusal = data?.event === "failed" ? toRefusal(data) : undefined;
+    if (refusal == null) return;
+    let restored = false;
+    for (const id of refusal.pendingIds) {
+      if (this.#resolvedInterrupts.delete(id)) restored = true;
+    }
+    if (restored) void this.#reconcilePendingInterruptsFromServer();
+  }
+
+  /**
    * Mark an interrupt resolved for historical-replay filtering and
    * mirror the removal into the root snapshot the framework hooks read.
    *
@@ -2947,20 +2992,26 @@ export class StreamController<
    * server state so optimistic clears from {@link respond} cannot leave
    * `stream.interrupts` empty while the checkpoint still has siblings.
    */
-  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
+  async #awaitResumedRunTerminal(signal: AbortSignal): Promise<TerminalResult> {
     const generation = this.#submitGeneration;
     const terminal = await this.#awaitRootTerminal(signal, {
       skipInterruptedUntilRunning: true,
     });
     // A resume never reaches `onRunEnd`. Skip it if a newer command took over.
     if (this.#submitGeneration === generation) this.#abandonRunBoundary();
+    if (!signal.aborted && !this.#disposed && terminal.refusal != null) {
+      // A refused answer ran nothing: the interrupts it named that are still
+      // waiting show again.
+      for (const id of terminal.refusal.pendingIds) {
+        this.#resolvedInterrupts.delete(id);
+      }
+    }
     if (
       !signal.aborted &&
       !this.#disposed &&
-      (terminal.event === "interrupted" || terminal.event === "completed")
+      (terminal.event === "interrupted" ||
+        terminal.event === "completed" ||
+        terminal.refusal != null)
     ) {
       await this.#reconcilePendingInterruptsFromServer();
     }
@@ -2970,19 +3021,13 @@ export class StreamController<
   #awaitRootTerminal(
     signal: AbortSignal,
     options: { skipInterruptedUntilRunning: boolean }
-  ): Promise<{
-    event: "completed" | "failed" | "interrupted" | "aborted";
-    error?: string;
-  }> {
+  ): Promise<TerminalResult> {
     return new Promise((resolve) => {
       let settled = false;
       let sawRunning = false;
       const held: Event[] = [];
       const heldReleases = this.#heldLifecycleReleases;
-      function finish(result: {
-        event: "completed" | "failed" | "interrupted" | "aborted";
-        error?: string;
-      }) {
+      function finish(result: TerminalResult) {
         if (settled) return;
         settled = true;
         heldReleases.delete(releaseHeld);
@@ -3014,8 +3059,14 @@ export class StreamController<
         if (lifecycle?.event === "completed") {
           setTimeout(() => finish({ event: "completed" }), 0);
         } else if (lifecycle?.event === "failed") {
+          const refusal = toRefusal(lifecycle);
           setTimeout(
-            () => finish({ event: "failed", error: lifecycle.error }),
+            () =>
+              finish({
+                event: "failed",
+                error: lifecycle.error,
+                ...(refusal != null ? { refusal } : {}),
+              }),
             0
           );
         } else if (lifecycle?.event === "interrupted") {

@@ -186,7 +186,8 @@ export function* mapDebugTaskResults<
             : channel === streamChannels;
         })
       ),
-      interrupts: writes.filter((w) => w[0] === INTERRUPT).map((w) => w[1]),
+      interrupts: writes.filter((w) => w[0] === INTERRUPT).flatMap((w) => w[1]),
+      error: writes.find((w) => w[0] === ERROR)?.[1] ?? null,
     };
   }
 }
@@ -278,9 +279,11 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       ([id, n]) => id === task.id && n === ERROR
     )?.[2];
 
+    // A task writes all its interrupts as one list; older checkpoints hold
+    // one interrupt per write.
     const interrupts = pendingWrites
       .filter(([id, n]) => id === task.id && n === INTERRUPT)
-      .map(([, , v]) => v) as Interrupt[];
+      .flatMap(([, , v]) => v) as Interrupt[];
 
     const result = (() => {
       if (error || interrupts.length || !pendingWrites.length) return undefined;

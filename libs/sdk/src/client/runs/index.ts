@@ -96,6 +96,7 @@ export class RunsClient<
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
       on_disconnect: payload?.onDisconnect,
@@ -114,6 +115,7 @@ export class RunsClient<
       json,
       signal: payload?.signal,
       idleReconnect: payload?.streamIdleReconnect,
+      params: { namespace: payload?.streamNamespaces },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
         if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -156,6 +158,7 @@ export class RunsClient<
       webhook: payload?.webhook,
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
@@ -249,6 +252,7 @@ export class RunsClient<
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
       on_disconnect: payload?.onDisconnect,
@@ -348,6 +352,7 @@ export class RunsClient<
    * @param runId The ID of the run.
    * @param wait Whether to block when canceling
    * @param action Action to take when cancelling the run. Possible values are `interrupt` or `rollback`. Default is `interrupt`.
+   * @param options.reason `taken` marks run input absorbed for steering. The server records a `cancel_reason` starting with `taken:`. Only valid with `action: "interrupt"`.
    * @returns
    */
   async cancel(
@@ -355,13 +360,13 @@ export class RunsClient<
     runId: string,
     wait: boolean = false,
     action: CancelAction = "interrupt",
-    options: { signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal; reason?: "taken" } = {}
   ): Promise<void> {
     return this.fetch<void>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/cancel`,
       {
         method: "POST",
-        params: { wait: wait ? "1" : "0", action },
+        params: { wait: wait ? "1" : "0", action, reason: options?.reason },
         signal: options?.signal,
       }
     );
@@ -434,6 +439,12 @@ export class RunsClient<
           lastEventId?: string;
           streamMode?: StreamMode | StreamMode[];
           /**
+           * Stream only these namespaces of the run (`""` is the root graph), each
+           * without the subagents it starts. Servers without the `stream_namespaces`
+           * flag in `/info` ignore it and send every event.
+           */
+          streamNamespaces?: string[];
+          /**
            * Idle-reconnect policy.
            *
            * Guards against half-open sockets that hang with no
@@ -473,6 +484,7 @@ export class RunsClient<
       params: {
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
+        namespace: opts?.streamNamespaces,
       },
     });
   }

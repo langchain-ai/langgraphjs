@@ -1,5 +1,6 @@
-import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
+import { isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
+import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
 import type {
   Run,
@@ -8,7 +9,7 @@ import type {
   StreamMode,
   MultitaskStrategy,
 } from "../storage/types.mjs";
-import type { RunCommand } from "../command.mjs";
+import { isKeyedByInterruptId, type RunCommand } from "../command.mjs";
 import type {
   EventSinkEntry,
   EventSinkFilter,
@@ -25,7 +26,7 @@ import type {
 } from "./types.mjs";
 import { applyAuthToRunConfig } from "../utils/run-auth.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
-import { RunProtocolSession } from "./session/index.mjs";
+import { eventChannel, RunProtocolSession } from "./session/index.mjs";
 
 type ServiceBindings = {
   runs: RunsRepo;
@@ -49,18 +50,6 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-// LangGraph resumes interrupts by id only when every key of the resume map
-// has this shape; any other key makes the whole map one answer.
-const INTERRUPT_ID_RE = /^[0-9a-f]{32}$/;
-
-/**
- * Whether LangGraph resumes `value` per interrupt rather than as one answer.
- */
-export const isKeyedByInterruptId = (value: unknown): boolean =>
-  isRecord(value) &&
-  Object.keys(value).length > 0 &&
-  Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
 
 // Concurrency strategies accepted on `run.start`, matching the four values
 // the SDK's `multitaskStrategy` option can take.
@@ -91,6 +80,19 @@ export const normalizeMultitaskStrategy = (
 };
 
 /**
+ * The strategy a `run.start` names: `multitask_strategy`, the protocol's
+ * spelling, or `multitaskStrategy`, the only one older SDKs send.
+ */
+export const multitaskStrategyFromRunStart = (
+  params: Record<string, unknown>
+): MultitaskStrategy | undefined =>
+  normalizeMultitaskStrategy(
+    "multitask_strategy" in params
+      ? params.multitask_strategy
+      : params.multitaskStrategy
+  );
+
+/**
  * `run.start` params after normalization. Extends the stock protocol
  * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
  * server honors per-run (see {@link normalizeMultitaskStrategy}).
@@ -117,6 +119,11 @@ type NormalizedRunStart = RunStartParams & {
    * `input.respond` (resume) path.
    */
   goto?: RunCommand["goto"];
+  /**
+   * The run's `strict_resume`: a resume that names an interrupt that isn't
+   * pending is refused.
+   */
+  strict_resume?: boolean;
 };
 
 const normalizeRunStart = (value: unknown): NormalizedRunStart => {
@@ -127,7 +134,8 @@ const normalizeRunStart = (value: unknown): NormalizedRunStart => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
-      multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
+      multitaskStrategy: multitaskStrategyFromRunStart(value),
+      strict_resume: value.strict_resume === true,
     };
   }
   return {
@@ -174,7 +182,6 @@ export class ProtocolService {
   ensureThread(options: {
     threadId: string;
     transport: ProtocolTransportName;
-    auth?: ThreadRecord["auth"];
     sendEvent?: EventSink;
   }): ThreadRecord {
     let record = this.threads.get(options.threadId);
@@ -182,7 +189,6 @@ export class ProtocolService {
       record = {
         threadId: options.threadId,
         transport: options.transport,
-        auth: options.auth,
         seq: 0,
         session: undefined,
         currentRunId: undefined,
@@ -285,17 +291,18 @@ export class ProtocolService {
    */
   async handleCommand(
     threadId: string,
-    command: ProtocolCommand
+    command: ProtocolCommand,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError | null> {
     const record = this.requireThread(threadId);
 
     switch (command.method) {
       case "run.start":
-        return await this.handleRunStart(record, command);
+        return await this.handleRunStart(record, command, auth);
       case "input.respond":
-        return await this.handleInputRespond(record, command);
+        return await this.handleInputRespond(record, command, auth);
       case "state.get":
-        return await this.handleStateGet(record, command);
+        return await this.handleStateGet(record, command, auth);
       default:
         return await this.forwardToRunSession(record, command);
     }
@@ -307,7 +314,8 @@ export class ProtocolService {
    */
   private async handleRunStart(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"run.start">
+    command: ProtocolCommandByMethod<"run.start">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = normalizeRunStart(command.params);
     if (!params.assistant_id) {
@@ -328,7 +336,7 @@ export class ProtocolService {
       );
     }
     const pendingInterrupts =
-      params.input != null ? await this.pendingInterruptCount(record) : 0;
+      params.input != null ? await this.pendingInterruptCount(record, auth) : 0;
     // One answer can't say which of several pending interrupts it is for:
     // LangGraph fails the run, or picks one when they share a subgraph task.
     // While a run is in flight the count can still change, so it keeps
@@ -336,7 +344,7 @@ export class ProtocolService {
     if (
       pendingInterrupts > 1 &&
       !isKeyedByInterruptId(params.input) &&
-      !(await this.hasRunInFlight(record))
+      !(await this.hasRunInFlight(record, auth))
     ) {
       return this.error(
         command.id,
@@ -355,7 +363,8 @@ export class ProtocolService {
     const run = await this.createOrResumeRun(
       record,
       params,
-      pendingInterrupts > 0
+      pendingInterrupts > 0,
+      auth
     );
     return {
       type: "success",
@@ -370,7 +379,8 @@ export class ProtocolService {
 
   private async handleInputRespond(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"input.respond">
+    command: ProtocolCommandByMethod<"input.respond">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     // Build the resume input map (`{ [interrupt_id]: response }`). The
     // SDK sends either a single `interrupt_id` / `response` or a
@@ -422,10 +432,11 @@ export class ProtocolService {
         ? await this.bindings.runs.get(
             record.currentRunId,
             record.threadId,
-            record.auth
+            auth
           )
         : null;
-    const hasPendingInterrupts = (await this.pendingInterruptCount(record)) > 0;
+    const hasPendingInterrupts =
+      (await this.pendingInterruptCount(record, auth)) > 0;
     if (currentRun == null && !hasPendingInterrupts) {
       return this.error(
         command.id,
@@ -475,8 +486,10 @@ export class ProtocolService {
         goto,
         config: isRecord(rawParams.config) ? rawParams.config : undefined,
         metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
+        strict_resume: rawParams.strict_resume === true,
       },
-      true
+      true,
+      auth
     );
 
     return {
@@ -493,7 +506,8 @@ export class ProtocolService {
   private async createOrResumeRun(
     record: ThreadRecord,
     params: NormalizedRunStart,
-    isResume: boolean
+    isResume: boolean,
+    auth: AuthContext | undefined
   ) {
     const assistantId = getAssistantId(params.assistant_id);
 
@@ -511,7 +525,7 @@ export class ProtocolService {
         thread_id: record.threadId,
       },
     };
-    const userId = applyAuthToRunConfig(runConfig, record.auth);
+    const userId = applyAuthToRunConfig(runConfig, auth);
 
     const runPayload = {
       assistant_id: assistantId,
@@ -555,6 +569,7 @@ export class ProtocolService {
         temporary: false,
         subgraphs: runPayload.stream_subgraphs,
         resumable: runPayload.stream_resumable,
+        ...(params.strict_resume ? { strict_resume: true } : {}),
         [PROTOCOL_STREAM_RUN_KEY]: true,
       },
       {
@@ -566,10 +581,10 @@ export class ProtocolService {
         preventInsertInInflight: false,
         ifNotExists: runPayload.if_not_exists,
       },
-      record.auth
+      auth
     );
 
-    await this.ensureRunSession(record, run);
+    await this.ensureRunSession(record, run, auth);
     record.currentRunId = run.run_id;
 
     // For WebSocket transports, register subscriptions on the session
@@ -609,12 +624,12 @@ export class ProtocolService {
     return run;
   }
 
-  private async hasRunInFlight(record: ThreadRecord) {
+  private async hasRunInFlight(
+    record: ThreadRecord,
+    auth: AuthContext | undefined
+  ) {
     try {
-      const thread = await this.bindings.threads.get(
-        record.threadId,
-        record.auth
-      );
+      const thread = await this.bindings.threads.get(record.threadId, auth);
       return thread.status === "busy";
     } catch {
       // Unknown, so don't refuse on a guess.
@@ -622,12 +637,15 @@ export class ProtocolService {
     }
   }
 
-  private async pendingInterruptCount(record: ThreadRecord) {
+  private async pendingInterruptCount(
+    record: ThreadRecord,
+    auth: AuthContext | undefined
+  ) {
     try {
       const state = await this.bindings.threads.state.get(
         { configurable: { thread_id: record.threadId } },
         { subgraphs: true },
-        record.auth
+        auth
       );
       return (state.tasks ?? []).reduce(
         (count, task) =>
@@ -641,7 +659,8 @@ export class ProtocolService {
 
   private async handleStateGet(
     record: ThreadRecord,
-    command: ProtocolCommandByMethod<"state.get">
+    command: ProtocolCommandByMethod<"state.get">,
+    auth: AuthContext | undefined
   ): Promise<ProtocolSuccess | ProtocolError> {
     const params = isRecord(command.params)
       ? (command.params as Partial<
@@ -651,7 +670,7 @@ export class ProtocolService {
     const values = await this.bindings.threads.state.get(
       { configurable: { thread_id: record.threadId } },
       { subgraphs: true },
-      record.auth
+      auth
     );
     const checkpointConfig = isRecord(values.config?.configurable)
       ? values.config.configurable
@@ -777,7 +796,11 @@ export class ProtocolService {
    * Bind the thread record to a concrete LangGraph run and forward
    * normalized protocol events to attached sinks.
    */
-  private async ensureRunSession(record: ThreadRecord, run: Run) {
+  private async ensureRunSession(
+    record: ThreadRecord,
+    run: Run,
+    auth: AuthContext | undefined
+  ) {
     if (record.session != null && record.currentRunId === run.run_id) return;
 
     await record.session?.close();
@@ -790,7 +813,7 @@ export class ProtocolService {
         cancelOnDisconnect: false,
         lastEventId: run.kwargs.resumable ? "-1" : undefined,
       },
-      record.auth
+      auth
     );
 
     const isSSE = record.transport === "sse-http";
@@ -798,15 +821,13 @@ export class ProtocolService {
     const session = new RunProtocolSession({
       runId: run.run_id,
       threadId: run.thread_id,
-      auth: record.auth,
       initialRun: run,
-      getRun: () =>
-        this.bindings.runs.get(run.run_id, run.thread_id, record.auth),
+      getRun: () => this.bindings.runs.get(run.run_id, run.thread_id, auth),
       getThreadState: async () =>
         await this.bindings.threads.state.get(
           { configurable: { thread_id: run.thread_id } },
           { subgraphs: true },
-          record.auth
+          auth
         ),
       source,
       startSeq: record.seq,
@@ -883,7 +904,7 @@ export function matchesSinkFilter(
 
   // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
   // `custom` filter still matches via the prefix check below.
-  const channel = inferChannel(event);
+  const channel = eventChannel(event);
   if (channel == null) return false;
 
   const channelMatched =

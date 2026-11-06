@@ -314,6 +314,18 @@ describe.each([["global"], ["mocked"]])(
         await Promise.all([p1, p2]);
       });
 
+      it("does not coalesce a selected getState read with a full read", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getState("t-select");
+        const p2 = client.threads.getState("t-select", undefined, {
+          select: ["values.messages"],
+        });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
       it("does not coalesce when the caller supplies an AbortSignal", async () => {
         const client = new Client({ apiKey: "k" });
         const ac = new AbortController();
@@ -626,6 +638,93 @@ describe("identifier path encoding", () => {
     const req = lastRequest();
     expect(req.pathname).toBe("/threads/thread_123");
     expect(req.apiKey).toBe("secret");
+  });
+});
+
+describe("thread state select", () => {
+  let requests: { method: string; url: URL; body: unknown }[];
+  let fetchMock: MockFetch;
+
+  const checkpoint = {
+    thread_id: "thread_123",
+    checkpoint_ns: "",
+    checkpoint_id: "cp_1",
+    checkpoint_map: null,
+  };
+
+  beforeEach(() => {
+    requests = [];
+    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        method: init?.method ?? "GET",
+        url: new URL(String(input)),
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+      });
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as MockFetch;
+    overrideFetchImplementation(fetchMock);
+  });
+
+  it("getState sends select as repeated query params", async () => {
+    const client = new Client({ apiKey: "k" });
+    await client.threads.getState("thread_123", undefined, {
+      select: ["values.messages", "next"],
+    });
+    await client.threads.getState("thread_123", "cp_1", {
+      select: ["values.messages"],
+    });
+
+    const [latest, byId] = requests;
+    expect(latest.method).toBe("GET");
+    expect(latest.url.pathname).toBe("/threads/thread_123/state");
+    expect(latest.url.searchParams.getAll("select")).toEqual([
+      "values.messages",
+      "next",
+    ]);
+    expect(byId.url.pathname).toBe("/threads/thread_123/state/cp_1");
+    expect(byId.url.searchParams.getAll("select")).toEqual(["values.messages"]);
+  });
+
+  it("getState sends select in the body for a checkpoint object", async () => {
+    const client = new Client({ apiKey: "k" });
+    await client.threads.getState("thread_123", checkpoint, {
+      select: ["values.messages"],
+    });
+
+    const [req] = requests;
+    expect(req.method).toBe("POST");
+    expect(req.url.pathname).toBe("/threads/thread_123/state/checkpoint");
+    expect(req.body).toEqual({ checkpoint, select: ["values.messages"] });
+  });
+
+  it("getHistory sends select in the body", async () => {
+    const client = new Client({ apiKey: "k" });
+    await client.threads.getHistory("thread_123", {
+      select: ["values.messages", "checkpoint"],
+    });
+
+    const [req] = requests;
+    expect(req.method).toBe("POST");
+    expect(req.url.pathname).toBe("/threads/thread_123/history");
+    expect(req.body).toEqual({
+      limit: 10,
+      select: ["values.messages", "checkpoint"],
+    });
+  });
+
+  it("omits select when not passed", async () => {
+    const client = new Client({ apiKey: "k" });
+    await client.threads.getState("thread_123");
+    await client.threads.getState("thread_123", checkpoint);
+    await client.threads.getHistory("thread_123");
+
+    const [latest, byCheckpoint, history] = requests;
+    expect(latest.url.searchParams.has("select")).toBe(false);
+    expect(byCheckpoint.body).not.toHaveProperty("select");
+    expect(history.body).not.toHaveProperty("select");
   });
 });
 
