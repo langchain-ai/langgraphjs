@@ -541,6 +541,7 @@ export function useStream<
     initialValues: options.initialValues,
     messagesKey: options.messagesKey,
     optimistic: asBag.optimistic,
+    subgraphs: options.subgraphs,
   });
 
   // Deferred dispose — matches the React `useEffect(() =>

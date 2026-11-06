@@ -30,7 +30,7 @@ import type {
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type { Interrupt, Thread, ThreadState } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
@@ -609,6 +609,12 @@ export class StreamController<
       return (await transport.getState<StateType>()) as ThreadState<StateType> | null;
     }
 
+    if (this.#options.subgraphs === false) {
+      return stateFromThread(
+        await this.#options.client.threads.get<StateType>(threadId)
+      );
+    }
+
     return this.#options.client.threads.getState<StateType>(threadId);
   }
 
@@ -764,7 +770,9 @@ export class StreamController<
           this.#messagesKey
         ];
         if (Array.isArray(seedMessages)) {
-          this.#subagents.seedFromCheckpointMessages(seedMessages);
+          if (this.#options.subgraphs !== false) {
+            this.#subagents.seedFromCheckpointMessages(seedMessages);
+          }
 
           // Root `toolCalls` are otherwise only built from `tools` events,
           // and the replayed ones predate the seed and are skipped. A call
@@ -956,7 +964,7 @@ export class StreamController<
         );
       }
     }
-    if (threadExists) {
+    if (threadExists && this.#options.subgraphs !== false) {
       /**
        * Seed subgraph discovery and promote subagent execution
        * namespaces from a single bounded `getHistory` page. Subgraph
@@ -1033,7 +1041,7 @@ export class StreamController<
    * @param toolCallId - Parent `task` tool-call id (the subagent's discovery key).
    */
   async resolveSubagentNamespace(toolCallId: string): Promise<void> {
-    if (this.#disposed) return;
+    if (this.#disposed || this.#options.subgraphs === false) return;
     const threadId = this.#currentThreadId;
     if (threadId == null) return;
     if (!namespaceIsDefaultOnly(this.#subagents.snapshot.get(toolCallId))) {
@@ -1109,6 +1117,7 @@ export class StreamController<
     const threadId = this.#currentThreadId;
     if (
       this.#disposed ||
+      this.#options.subgraphs === false ||
       threadId == null ||
       params.namespace.length === 0 ||
       !this.#rootPumpDeferred ||
@@ -3173,6 +3182,26 @@ function extractAndCoerceMessagesWithFallback(
   return ensureMessageInstances(
     raw as (Message | BaseMessage)[]
   ) as BaseMessage[];
+}
+
+/**
+ * Read `GET /threads/{thread_id}` as the parts of `getState()` that
+ * hydrate uses, for `subgraphs: false`. `next` stands in for a busy
+ * thread so {@link isThreadStateActive} opens the pump, and each task's
+ * interrupts become a `tasks` entry.
+ */
+function stateFromThread<StateType>(
+  thread: Thread<StateType>
+): ThreadState<StateType> {
+  return {
+    values: thread.values,
+    next: thread.status === "busy" ? [thread.status] : [],
+    tasks: Object.entries(thread.interrupts ?? {}).map(([id, interrupts]) => ({
+      id,
+      interrupts,
+    })),
+    created_at: thread.state_updated_at,
+  } as unknown as ThreadState<StateType>;
 }
 
 /**

@@ -756,6 +756,110 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  describe("subgraphs: false", () => {
+    function makeThread() {
+      return {
+        subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+        onError: vi.fn(() => vi.fn()),
+        onEvent: vi.fn(() => vi.fn()),
+        close: vi.fn(async () => undefined),
+        interrupts: [],
+        startLifecycleWatcher: vi.fn(() => undefined),
+      } as unknown as ThreadStream;
+    }
+
+    function makeClient(thread: ThreadStream, row: Record<string, unknown>) {
+      return {
+        threads: {
+          get: vi.fn(async () => ({ state_updated_at: "", ...row })),
+          getState: vi.fn(async () => {
+            throw new Error("getState should not run");
+          }),
+          getHistory: vi.fn(async () => {
+            throw new Error("getHistory should not run");
+          }),
+          stream: vi.fn(() => thread),
+        },
+      };
+    }
+
+    it("hydrates from threads.get and never reads /state or /history", async () => {
+      const thread = makeThread();
+      const client = makeClient(thread, {
+        status: "idle",
+        interrupts: {},
+        values: {
+          messages: [
+            { type: "human", id: "h1", content: "research this" },
+            {
+              type: "ai",
+              id: "a1",
+              content: "",
+              tool_calls: [
+                { id: "call-1", name: "task", args: { description: "go" } },
+              ],
+            },
+            {
+              type: "tool",
+              id: "t1",
+              tool_call_id: "call-1",
+              name: "task",
+              content: "done",
+            },
+          ],
+        },
+      });
+
+      const controller = new StreamController<State, unknown>({
+        assistantId: "agent",
+        client: client as never,
+        threadId: "thread-1",
+        subgraphs: false,
+      });
+      await controller.hydrationPromise;
+      await controller.resolveSubagentNamespace("call-1");
+
+      expect(client.threads.get).toHaveBeenCalledWith("thread-1");
+      expect(client.threads.getState).not.toHaveBeenCalled();
+      expect(client.threads.getHistory).not.toHaveBeenCalled();
+      await waitForExpectation(() => {
+        expect(
+          controller.rootStore.getSnapshot().messages.map((m) => m.id)
+        ).toEqual(["h1", "a1", "t1"]);
+      });
+      expect(controller.subagentStore.getSnapshot().size).toBe(0);
+      expect(thread.startLifecycleWatcher).not.toHaveBeenCalled();
+
+      await controller.dispose();
+    });
+
+    it("reads interrupts and busy status off the thread row", async () => {
+      const thread = makeThread();
+      const client = makeClient(thread, {
+        status: "busy",
+        values: { messages: [] },
+        interrupts: {
+          "task-1": [{ id: "int-1", value: { question: "approve?" } }],
+        },
+      });
+
+      const controller = new StreamController<State, unknown>({
+        assistantId: "agent",
+        client: client as never,
+        threadId: "thread-2",
+        subgraphs: false,
+      });
+      await controller.hydrationPromise;
+
+      const snapshot = controller.rootStore.getSnapshot();
+      expect(snapshot.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+      expect(thread.startLifecycleWatcher).toHaveBeenCalled();
+      expect(client.threads.getState).not.toHaveBeenCalled();
+
+      await controller.dispose();
+    });
+  });
+
   it("hydrate seeds rootStore.interrupts from getState tasks", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
