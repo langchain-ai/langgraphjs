@@ -620,28 +620,22 @@ export class MongoDBStore extends BaseStore {
           condition !== null &&
           !Array.isArray(condition)
         ) {
-          // Handle advanced operators
+          // Multiple operators on one field are conjunctive, as in MongoDB.
+          const operators: Record<string, any> = {};
           for (const [operator, operatorValue] of Object.entries(condition)) {
             switch (operator) {
               case "$eq":
-                mongoQuery[`value.${field}`] = { $eq: operatorValue };
-                break;
               case "$ne":
-                mongoQuery[`value.${field}`] = { $ne: operatorValue };
-                break;
               case "$gt":
-                mongoQuery[`value.${field}`] = { $gt: operatorValue };
-                break;
               case "$gte":
-                mongoQuery[`value.${field}`] = { $gte: operatorValue };
-                break;
               case "$lt":
-                mongoQuery[`value.${field}`] = { $lt: operatorValue };
-                break;
               case "$lte":
-                mongoQuery[`value.${field}`] = { $lte: operatorValue };
+                operators[operator] = operatorValue;
                 break;
             }
+          }
+          if (Object.keys(operators).length > 0) {
+            mongoQuery[`value.${field}`] = operators;
           }
         } else {
           // Exact match
