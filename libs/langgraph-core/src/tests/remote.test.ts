@@ -96,6 +96,23 @@ describe("RemoteGraph", () => {
     ]);
   });
 
+  test.each(["worker", { id: ["test", "worker"], name: "worker" }])(
+    "getGraph preserves node metadata for %j data",
+    async (data) => {
+      const client = new Client();
+      const metadata = { __interrupt: "before", owner: "review" };
+      vi.spyOn(client.assistants, "getGraph").mockResolvedValue({
+        nodes: [{ id: "worker", data, metadata }],
+        edges: [],
+      });
+      const remoteGraph = new RemoteGraph({ client, graphId: "test_graph_id" });
+
+      const graph = await remoteGraph.getGraphAsync();
+
+      expect(graph.nodes.worker.metadata).toEqual(metadata);
+    }
+  );
+
   test("getSubgraphs", async () => {
     const client = new Client({});
     vi.spyOn((client as any).assistants, "getSubgraphs").mockResolvedValue({
