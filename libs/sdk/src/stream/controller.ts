@@ -1973,7 +1973,7 @@ export class StreamController<
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
     // A pump started again after its stream dropped reads a new connection,
-    // whose seqs start over; the old ones would keep `isLoading` stuck.
+    // whose seqs start over. The old ones would keep `isLoading` stuck.
     this.#lifecycleLoading.reset();
     const pumpGeneration = this.#rootPumpGeneration;
     let resolveReady: (() => void) | undefined;

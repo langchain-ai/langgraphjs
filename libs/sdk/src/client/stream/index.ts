@@ -1595,8 +1595,14 @@ export class ThreadStream<
       return;
     }
     try {
-      for await (const _event of handle) {
-        if (this.#closed) break;
+      // A root terminal pauses the handle, which ends the loop below. Keep
+      // draining across runs, and stop only once the handle is closed.
+      while (!this.#closed) {
+        for await (const _event of handle) {
+          if (this.#closed) break;
+        }
+        if (!handle.isPaused) break;
+        await handle.waitForResume();
       }
     } catch {
       // Best-effort; surface-level errors are reported by the

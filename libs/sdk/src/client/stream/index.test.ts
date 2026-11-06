@@ -400,6 +400,31 @@ describe("ThreadStream", () => {
     await thread.close();
   });
 
+  it("keeps one WebSocket lifecycle watcher across a run's terminal", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        { event: "completed" },
+        { namespace: [], seq: 1, eventId: "terminal-1" }
+      )
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(1);
+    await thread.close();
+  });
+
   it("leaves no unhandled rejection when a command fails and then the event stream fails", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
