@@ -271,6 +271,21 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     let readySettled = false;
 
+    // Cancellation can happen between fetch attempts, when no request is
+    // listening to this signal. Settle readiness independently of fetch so
+    // callers waiting to subscribe are also released during reconnect backoff.
+    ac.signal.addEventListener(
+      "abort",
+      () => {
+        if (!readySettled) {
+          readySettled = true;
+          rejectReady(ac.signal.reason);
+        }
+        streamQueue.close();
+      },
+      { once: true }
+    );
+
     const startStream = async () => {
       let attempt = 0;
 
