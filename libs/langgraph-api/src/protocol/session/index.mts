@@ -7,6 +7,7 @@ import type {
   AgentResult,
   AgentTreeNode,
   CustomData,
+  InputAnsweredData,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -42,6 +43,14 @@ import {
   toNamespaceKey,
 } from "./namespace.mjs";
 import { normalizeProtocolStatePayload } from "./state-normalizers.mjs";
+
+/**
+ * The subscription channel of an event. The app's own @langchain/langgraph
+ * supplies `inferChannel`, and versions the dev server still supports don't
+ * map `input.answered`.
+ */
+export const eventChannel = (event: ProtocolEvent) =>
+  event.method === "input.answered" ? "input" : inferChannel(event);
 
 /**
  * Normalizes one LangGraph run into protocol events and manages per-run
@@ -704,20 +713,25 @@ export class RunProtocolSession {
     namespace: Namespace,
     data: ProtocolEventDataMap["tasks"]
   ): ProtocolEventByMethod<"tasks">;
+  private createEvent(
+    method: "input.answered",
+    namespace: Namespace,
+    data: InputAnsweredData
+  ): Extract<ProtocolEvent, { method: "input.answered" }>;
 
   /**
    * Creates a protocol event with sequencing and payload normalization applied.
    *
-   * @param method - Event channel to emit.
+   * @param method - Event channel to emit, or `input.answered`.
    * @param namespace - Namespace associated with the event.
    * @param data - Event payload.
    * @param node - Optional node name for updates and messages.
    * @returns A fully-formed protocol event.
    */
   private createEvent(
-    method: SupportedChannel,
+    method: SupportedChannel | "input.answered",
     namespace: Namespace,
-    data: ProtocolEventDataMap[SupportedChannel],
+    data: ProtocolEventDataMap[SupportedChannel] | InputAnsweredData,
     node?: string
   ): ProtocolEvent {
     this.nextSeq += 1;
@@ -777,10 +791,7 @@ export class RunProtocolSession {
   ): boolean {
     // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
     // `custom` subscription still matches via the prefix check below.
-    const channel =
-      (event.method as string) === "input.answered"
-        ? "input"
-        : inferChannel(event);
+    const channel = eventChannel(event);
     if (channel == null) return false;
 
     const channelMatched =
@@ -817,18 +828,9 @@ export class RunProtocolSession {
     for (const interruptId of answered) {
       this.pendingInterruptIds.delete(interruptId);
     }
-    this.nextSeq += 1;
-    await this.pushEvent({
-      type: "event",
-      event_id: String(this.nextSeq),
-      seq: this.nextSeq,
-      method: "input.answered",
-      params: {
-        namespace: [],
-        timestamp: Date.now(),
-        data: { interrupt_ids: answered },
-      },
-    } as unknown as ProtocolEvent);
+    await this.pushEvent(
+      this.createEvent("input.answered", [], { interrupt_ids: answered })
+    );
   }
 
   private async emitInputRequestedEvents(

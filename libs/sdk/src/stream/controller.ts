@@ -2780,7 +2780,7 @@ export class StreamController<
    * `input.answered` when a run that answers them starts.
    */
   #forgetAnsweredInterrupts(event: Event): void {
-    if ((event.method as string) !== "input.answered") return;
+    if (event.method !== "input.answered") return;
     const ids = (event.params.data as { interrupt_ids?: unknown })
       ?.interrupt_ids;
     if (!Array.isArray(ids)) return;
