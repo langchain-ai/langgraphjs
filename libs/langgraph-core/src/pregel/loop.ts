@@ -112,6 +112,7 @@ import {
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
+  isTaskOutput,
   mapDebugTasks,
   mapDebugCheckpoint,
   mapDebugTaskResults,
@@ -225,15 +226,6 @@ function isPlainObject(item: unknown): item is Record<string, unknown> {
   if (typeof item !== "object" || item === null) return false;
   const proto = Object.getPrototypeOf(item);
   return (proto === Object.prototype || proto === null) && !("lc" in item);
-}
-
-function isTaskOutput(channel: string): boolean {
-  return (
-    channel !== ERROR &&
-    channel !== ERROR_SOURCE_NODE &&
-    channel !== INTERRUPT &&
-    channel !== RESUME
-  );
 }
 
 function stampMessageIds(value: unknown): void {

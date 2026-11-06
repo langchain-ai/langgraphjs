@@ -208,3 +208,27 @@ describe("interrupt responseSchema", () => {
     ]);
   });
 });
+
+describe("task result in state history", () => {
+  it("reports the result of a task that was interrupted and then resumed", async () => {
+    const graph = new StateGraph(State)
+      .addNode("ask", () => ({ answer: interrupt("approve?") }))
+      .addEdge(START, "ask")
+      .compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: "1" } };
+    await graph.invoke({ answer: null }, config);
+    await graph.invoke(new Command({ resume: "yes" }), config);
+
+    const askTasks = [];
+    for await (const snapshot of graph.getStateHistory(config)) {
+      askTasks.push(...snapshot.tasks.filter((task) => task.name === "ask"));
+    }
+
+    expect(askTasks).toEqual([
+      expect.objectContaining({
+        interrupts: [expect.objectContaining({ value: "approve?" })],
+        result: { answer: "yes" },
+      }),
+    ]);
+  });
+});

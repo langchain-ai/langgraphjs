@@ -8,8 +8,10 @@ import {
 import { BaseChannel } from "../channels/base.js";
 import {
   ERROR,
+  ERROR_SOURCE_NODE,
   Interrupt,
   INTERRUPT,
+  RESUME,
   RETURN,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -268,6 +270,20 @@ export function* mapDebugCheckpoint<
   };
 }
 
+/**
+ * Whether a write to `channel` is output the task produced, rather than a
+ * control write describing what happened to it (an error, an interrupt, or the
+ * answer to one).
+ */
+export function isTaskOutput(channel: string): boolean {
+  return (
+    channel !== ERROR &&
+    channel !== ERROR_SOURCE_NODE &&
+    channel !== INTERRUPT &&
+    channel !== RESUME
+  );
+}
+
 export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
   tasks: PregelTaskDescription[] | readonly PregelExecutableTask<N, C>[],
   pendingWrites: CheckpointPendingWrite[],
@@ -285,8 +301,15 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       .filter(([id, n]) => id === task.id && n === INTERRUPT)
       .flatMap(([, , v]) => v) as Interrupt[];
 
+    // A task that finished records at least one output write (`NO_WRITES` if
+    // it produced nothing else). A paused task records only control writes,
+    // and its `INTERRUPT` write is kept after it resumes and finishes.
+    const finished = pendingWrites.some(
+      ([id, n]) => id === task.id && isTaskOutput(n)
+    );
+
     const result = (() => {
-      if (error || interrupts.length || !pendingWrites.length) return undefined;
+      if (!finished) return undefined;
 
       const idx = pendingWrites.findIndex(
         ([tid, n]) => tid === task.id && n === RETURN
