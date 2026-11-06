@@ -130,6 +130,40 @@ describe("ProtocolWebSocketTransportAdapter URL resolution", () => {
   });
 });
 
+describe("ProtocolWebSocketTransportAdapter handshake cancellation", () => {
+  it.each(["server", "client"])(
+    "rejects open when the %s closes the socket before the handshake finishes",
+    async (target) => {
+      let socket!: FakeWebSocket;
+      const onConnected = vi.fn();
+      const transport = new ProtocolWebSocketTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: THREAD_ID,
+        maxReconnectAttempts: 0,
+        onConnected,
+        webSocketFactory: (url) => {
+          socket = new FakeWebSocket(url);
+          return socket as unknown as WebSocket;
+        },
+      });
+      let outcome: unknown = "pending";
+      const opening = transport.open().then(
+        () => { outcome = "connected"; },
+        (error) => { outcome = error; }
+      );
+      if (target === "server") socket.close(4403, "Forbidden");
+      else await transport.close();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(outcome).toBeInstanceOf(Error);
+      if (target === "server") expect(outcome).toMatchObject({ status: 403 });
+      await opening;
+      expect(onConnected).not.toHaveBeenCalled();
+      await transport.close();
+    }
+  );
+});
+
 describe("ProtocolWebSocketTransportAdapter thread binding", () => {
   it("rejects rebinding to another thread while the socket is open", async () => {
     const urls: string[] = [];
