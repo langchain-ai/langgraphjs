@@ -349,6 +349,26 @@ function deepestCheckpointMapNamespace(
   return checkpointNamespaceFromNs(deepest);
 }
 
+/**
+ * Whether a nested graph's checkpoint was saved by an earlier call, that is
+ * under parent checkpoints other than the ones this call runs under. Only a
+ * `checkpointer: true` subgraph, whose namespace has no task ids, can load
+ * such a checkpoint. A checkpoint without `parents` counts as this call's.
+ *
+ * @param parents - The `parents` metadata of the loaded checkpoint.
+ * @param checkpointMap - The parent checkpoints this call runs under
+ *   ({@link CONFIG_KEY_CHECKPOINT_MAP}).
+ */
+function savedByEarlierCall(
+  parents: Record<string, string> | undefined,
+  checkpointMap: Record<string, string> | undefined
+): boolean {
+  if (parents === undefined || Object.keys(parents).length === 0) return false;
+  return Object.entries(checkpointMap ?? {}).some(
+    ([ns, id]) => parents[ns] !== id
+  );
+}
+
 class AsyncBatchedCache extends BaseCache<PendingWrite<string>[]> {
   protected cache: BaseCache<PendingWrite<string>[]>;
 
@@ -828,6 +848,19 @@ export class PregelLoop {
     } else {
       saved = await params.checkpointer.getTuple(checkpointConfig);
       loadedLatest = true;
+      // A resumed parent flags every task of its first step as resuming, but a
+      // subgraph whose latest checkpoint an earlier call saved starts this call
+      // on its input, as it does when the parent hasn't paused.
+      if (
+        isNested &&
+        config.configurable?.[CONFIG_KEY_RESUMING] === true &&
+        savedByEarlierCall(
+          saved?.metadata?.parents,
+          config.configurable[CONFIG_KEY_CHECKPOINT_MAP]
+        )
+      ) {
+        config = patchConfigurable(config, { [CONFIG_KEY_RESUMING]: false });
+      }
     }
     const hasPersistedParent = saved !== undefined;
     const addressedConfig = checkpointConfig;
