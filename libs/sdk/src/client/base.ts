@@ -351,8 +351,8 @@ export class BaseClient {
      * Coalesce concurrent, identical idempotent reads onto a single
      * in-flight request. Only engaged when the caller opts in
      * (`dedupe: true`), is not asking for the raw `Response`, did not
-     * supply its own `AbortSignal` (sharing a request across consumers
-     * must never let one consumer's abort cancel another's), and no
+     * have an `AbortSignal` from the caller or a request timeout (sharing
+     * must never let one consumer's deadline cancel another's), and no
      * `onRequest` hook is configured.
      *
      * `onRequest` is excluded because it can inject per-request headers
@@ -365,7 +365,7 @@ export class BaseClient {
     const canDedupe =
       options?.dedupe === true &&
       options?.withResponse !== true &&
-      options?.signal == null &&
+      init.signal == null &&
       this.onRequest == null;
 
     if (canDedupe) {

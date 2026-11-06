@@ -341,6 +341,45 @@ describe.each([["global"], ["mocked"]])(
         await Promise.all([p1, p2]);
       });
 
+      it.each(["timed-first", "untimed-first"])(
+        "keeps client timeouts independent for overlapping reads (%s)",
+        async (order) => {
+          const deadline = new AbortController();
+          vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+          expectedFetchMock.mockImplementation(
+            (_input, init) =>
+              new Promise((resolve, reject) => {
+                init?.signal?.addEventListener(
+                  "abort",
+                  () => reject(init.signal?.reason),
+                  { once: true }
+                );
+                pending.push(() => resolve(Response.json({ values: {}, next: [] })));
+              })
+          );
+          const timed = new Client({ apiKey: "k", timeoutMs: 100 });
+          const untimed = new Client({ apiKey: "k" });
+          const start = (client: Client) =>
+            client.threads.getState("t-timeout").then(
+              (value) => ({ value }),
+              (error) => ({ error })
+            );
+          const first = start(order === "timed-first" ? timed : untimed);
+          const second = start(order === "timed-first" ? untimed : timed);
+          await tick();
+          const timeout = new DOMException("Request timed out", "TimeoutError");
+          deadline.abort(timeout);
+          await tick();
+          flush();
+          const [timedResult, untimedResult] = await (order === "timed-first"
+            ? Promise.all([first, second])
+            : Promise.all([second, first]));
+          expect(timedResult).toEqual({ error: timeout });
+          expect(untimedResult).toEqual({ value: { values: {}, next: [] } });
+          expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        }
+      );
+
       it("does not coalesce across clients using different credentials", async () => {
         // Same API URL + thread, different auth → must NOT share a
         // promise (otherwise the second caller would receive a response
