@@ -27,7 +27,7 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "mongodb": "^6.21.0"
+    "mongodb": "^6.21.0 || ^7.0.0"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44",
