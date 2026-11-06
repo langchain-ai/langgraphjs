@@ -2611,6 +2611,7 @@ export class StreamController<
     }
     this.#rootMessages.applyValues(nextValues, nextMessages, {
       step: checkpoint?.step,
+      checkpointId: checkpoint?.id,
     });
     if (nextMessages.length > 0) {
       // Any optimistic message the server just echoed is now
