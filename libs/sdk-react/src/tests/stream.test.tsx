@@ -675,7 +675,7 @@ it("onRequest gets called when a request is made", async () => {
   ]);
 });
 
-it("rejoins a stored run once its thread loads, from the loaded head", async () => {
+it("sends the loaded head's checkpoint when it rejoins a stored run", async () => {
   const requests: string[] = [];
   const client = new Client({
     apiUrl: serverUrl,
