@@ -5648,6 +5648,7 @@ describe("StreamController stop() after respond()", () => {
         { interruptId: "int-2", payload: {}, namespace: [] },
       ],
       respondInput,
+      submitRun: vi.fn(async () => ({ run_id: "run-5" })),
       startLifecycleWatcher: vi.fn(() => undefined),
     } as unknown as ThreadStream;
     const cancel = vi.fn(async () => undefined);
@@ -5835,6 +5836,55 @@ describe("StreamController stop() after respond()", () => {
 
     expect(cancel).not.toHaveBeenCalled();
     await controller.dispose();
+  });
+
+  it("does not take the run submit() starts for the stopped resume", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    emit(runLifecycleEvent("run-5", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
+  });
+
+  it("does not take the run submit() starts for the stopped resume before run.start answers", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+    let answerRunStart!: (result: { run_id: string }) => void;
+    vi.mocked(controller.getThread()!.submitRun).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerRunStart = resolve;
+        }) as never
+    );
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    emit(runLifecycleEvent("run-5", "running", 10));
+    answerRunStart({ run_id: "run-5" });
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
   });
 
   it("keeps the resumed run going on disconnect()", async () => {

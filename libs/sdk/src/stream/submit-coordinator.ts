@@ -298,7 +298,7 @@ export class SubmitCoordinator<
    * Honours {@link StreamSubmitOptions.multitaskStrategy}:
    *
    *   - `"interrupt"` (default) / `"rollback"`: stops following any
-   *     in-flight run and dispatches immediately; the server cancels
+   *     in-flight run and dispatches immediately. The server cancels
    *     that run.
    *   - `"reject"`: throws synchronously when a run is
    *     already in flight.

@@ -2222,6 +2222,13 @@ export class StreamController<
     const runId = synthesizedEventRunId(event.event_id);
     if (resumed.runId == null) {
       if (status === "running" && runId != null) {
+        // A run submit() started is not the resumed one: that one never ran
+        // (the new run's strategy cancelled it), or the two can't be told
+        // apart yet.
+        if (runId === this.#submittedRunId || this.#submittedRunIdPending) {
+          this.#resumedRun = undefined;
+          return;
+        }
         resumed.runId = runId;
         if (resumed.stopped) void this.#cancelRun(runId);
         return;
