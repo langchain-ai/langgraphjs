@@ -474,6 +474,7 @@ export class MongoDBStore extends BaseStore {
   ): Promise<string[][]> {
     validateListNamespacesOperation(op);
     const { matchConditions, maxDepth, limit, offset } = op;
+    if (limit === 0) return [];
 
     const pipeline: Record<string, any>[] = [];
 
@@ -587,6 +588,8 @@ export class MongoDBStore extends BaseStore {
       offset = 0,
       query,
     } = op as SearchOperation & { query?: string };
+
+    if (limit === 0) return [];
 
     if (query) {
       if (!this.indexConfig) {
