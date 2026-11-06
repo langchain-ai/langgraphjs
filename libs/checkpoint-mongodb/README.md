@@ -94,3 +94,27 @@ When TTL is enabled:
 - Each update resets the expiration timer
 
 The `setup()` method creates the required TTL indexes. Call it during application startup or deployment. It is idempotent and handles concurrent calls safely.
+
+
+## Version-aware checkpoint storage
+
+Passing `newVersions` (including an empty map) stores versioned channel values
+separately in `<checkpointCollectionName>_blobs`. Checkpoint rows reference those
+values, and `getTuple` / `list` reconstruct the complete state. Values without a
+channel version remain inline. The first partial or empty write backfills missing
+values from the supplied full checkpoint; old full-document rows remain readable.
+Omitting `newVersions` continues to write the full checkpoint document.
+
+Call `setup()` before using the saver to create the compound and optional TTL
+indexes, including the version-value collection. Shared values have their TTL
+refreshed on each referencing checkpoint write, and `deleteThread()` removes the
+thread's values as well as its checkpoints and pending writes. Backups must
+include the version-value collection. A missing referenced value causes an error
+instead of returning incomplete state.
+
+**Deployment compatibility:** upgrade all readers of a checkpoint collection
+before enabling version-aware writes. Older saver versions cannot reconstruct
+new reference-based rows; mixed old/new readers and rolling back to old readers
+on such a collection are unsupported. Use a separate configured checkpoint
+collection for a staged rollout. The new saver reads existing full-document rows;
+no destructive migration is required.
