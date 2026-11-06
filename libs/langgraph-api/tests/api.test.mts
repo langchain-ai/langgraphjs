@@ -1702,6 +1702,28 @@ describe("runs", () => {
 
     expect(events.map(({ event }) => event)).not.toContain("interrupts");
   });
+
+  it.concurrent("a plain run after a fork continues from the forked branch", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const send = (content: string, checkpointId?: string) =>
+      client.runs.wait(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ type: "human", content }] },
+        config: globalConfig,
+        checkpointId,
+      });
+
+    await send("first");
+    const history = await client.threads.getHistory(thread.thread_id);
+    await send("edited", history.at(-1)?.checkpoint.checkpoint_id);
+    const values = (await send("second")) as AgentState;
+
+    expect(
+      values.messages
+        .filter((message) => message.type === "human")
+        .map((message) => message.content)
+    ).toEqual(["edited", "second"]);
+  });
 });
 
 describe("shared state", () => {
