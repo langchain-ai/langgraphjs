@@ -1277,6 +1277,23 @@ export class FileSystemThreads implements ThreadsRepo {
   };
 }
 
+// Each run picks its own start checkpoint. Kept on the thread, a fork's
+// checkpoint_id would make every later run on that thread fork from it again.
+const RUN_ONLY_CONFIGURABLE_KEYS = [
+  "checkpoint_id",
+  "checkpoint_ns",
+  "checkpoint_map",
+  "run_id",
+];
+
+const threadConfigurable = (
+  ...sources: RunnableConfig["configurable"][]
+): NonNullable<RunnableConfig["configurable"]> => {
+  const configurable = Object.assign({}, ...sources);
+  for (const key of RUN_ONLY_CONFIGURABLE_KEYS) delete configurable[key];
+  return configurable;
+};
+
 export class FileSystemRuns implements RunsRepo {
   private readonly conn: FileSystemPersistence<Store>;
   private readonly threads: FileSystemThreads;
@@ -1444,8 +1461,7 @@ export class FileSystemRuns implements RunsRepo {
             ...metadata,
           },
           config: Object.assign({}, assistant.config, config, {
-            configurable: Object.assign(
-              {},
+            configurable: threadConfigurable(
               assistant.config?.configurable,
               config?.configurable
             ),
@@ -1468,8 +1484,7 @@ export class FileSystemRuns implements RunsRepo {
             existingThread.config,
             config,
             {
-              configurable: Object.assign(
-                {},
+              configurable: threadConfigurable(
                 assistant.config?.configurable,
                 existingThread?.config?.configurable,
                 config?.configurable
@@ -1499,7 +1514,7 @@ export class FileSystemRuns implements RunsRepo {
       const configurable = Object.assign(
         {},
         assistant.config?.configurable,
-        existingThread?.config?.configurable,
+        threadConfigurable(existingThread?.config?.configurable),
         config?.configurable,
         {
           run_id: runId,

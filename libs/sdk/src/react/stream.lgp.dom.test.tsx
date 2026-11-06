@@ -1287,3 +1287,41 @@ describe("useStream (old engine) thread state after stop", () => {
     expect(view.current.messages).toEqual(next);
   });
 });
+
+describe("useStream (old engine) tool progress", () => {
+  it("ignores a tool event kind it doesn't know", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const view = await renderStream(client, { threadId: "t1" });
+    mockRun(client, [
+      {
+        event: "tools",
+        data: {
+          event: "tool-started",
+          tool_call_id: "call-raw",
+          tool_name: "lookup",
+          input: { q: "raw" },
+        },
+      },
+      {
+        event: "tools",
+        data: {
+          event: "on_tool_start",
+          toolCallId: "call-1",
+          name: "lookup",
+          input: { q: "known" },
+        },
+      },
+    ]);
+    await submit(view);
+
+    expect(view.current.toolProgress).toEqual([
+      {
+        toolCallId: "call-1",
+        name: "lookup",
+        state: "starting",
+        input: { q: "known" },
+      },
+    ]);
+  });
+});
