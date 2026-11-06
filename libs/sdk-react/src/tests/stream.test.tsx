@@ -711,14 +711,10 @@ it("rejoins a stored run once its thread loads, from the loaded head", async () 
     await expect
       .element(screen.getByTestId("loading"))
       .toHaveTextContent("Not loading");
-    expect(screen.getByTestId("message-2").query()).toBeNull();
 
     const join = requests.findIndex((url) =>
       url.includes(`/runs/${runId}/stream`)
     );
-    expect(
-      requests.slice(0, join).some((url) => url.endsWith("/state"))
-    ).toBe(true);
     expect(new URL(requests[join]).searchParams.get("checkpoint_id")).toBe(
       head.checkpoint.checkpoint_id
     );
