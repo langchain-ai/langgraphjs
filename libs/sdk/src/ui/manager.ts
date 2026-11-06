@@ -1022,29 +1022,26 @@ export class StreamManager<
 
             // Assumption: we're concatenating the message
             let messages = options.getMessages(values).slice();
-            const entry = this.messages.get(messageId);
-            if (entry != null && entry.index == null) {
-              // A join from a checkpoint resends the writes of tasks that had
-              // finished when the loaded state was read.
-              const loaded = messages.findIndex(
-                (message) => message.id === messageId
-              );
-              entry.index = loaded === -1 ? messages.length : loaded;
-            }
-            const { chunk, index } = entry ?? {};
+            const chunk = this.messages.get(messageId)?.chunk;
+            if (!chunk) return values;
 
-            if (!chunk || index == null) return values;
+            // Placed by id, since later events can move or remove a message
+            // and a join from a checkpoint resends ones the loaded state holds.
+            // The search starts at the end, where a streamed message usually is.
+            let index = messages.length - 1;
+            while (index >= 0 && messages[index].id !== messageId) index -= 1;
+
             if (chunk.getType() === "remove") {
               // Check for special REMOVE_ALL_MESSAGES sentinel
               if (chunk.id === REMOVE_ALL_MESSAGES) {
                 // Clear all messages when __remove_all__ is received
                 messages = [];
-              } else {
+              } else if (index !== -1) {
                 messages.splice(index, 1);
               }
             } else {
               const msgDict = this.toMessage(chunk) as Message;
-              messages[index] = msgDict;
+              messages[index === -1 ? messages.length : index] = msgDict;
 
               // Track subagents from AI messages with tool calls (main agent only)
               if (
