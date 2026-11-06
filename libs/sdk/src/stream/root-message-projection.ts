@@ -623,7 +623,7 @@ export class RootMessageProjection<
       // as the user event that produced it (no one-macrotask blink). Any
       // flush already scheduled by a prior streaming write is absorbed
       // here; its pending timer fires later as a no-op.
-      this.#flushPending();
+      this.flush();
     } else {
       this.#scheduleFlush();
     }
@@ -703,7 +703,7 @@ export class RootMessageProjection<
       next
     );
     if (options?.sync) {
-      this.#flushPending();
+      this.flush();
     } else {
       this.#scheduleFlush();
     }
@@ -761,19 +761,14 @@ export class RootMessageProjection<
   #scheduleFlush = (): void => {
     if (this.#flushScheduled) return;
     this.#flushScheduled = true;
-    setTimeout(this.#flushPending, 0);
+    setTimeout(this.flush, 0);
   };
-
-  /** Commit staged writes now instead of on the next macrotask. */
-  flush(): void {
-    this.#flushPending();
-  }
 
   /**
    * Drain `#pendingMessages` / `#pendingValues` to the store in a
    * single `setState` call.
    */
-  #flushPending = (): void => {
+  flush = (): void => {
     this.#flushScheduled = false;
     const messages = this.#pendingMessages;
     const values = this.#pendingValues;
