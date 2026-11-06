@@ -573,6 +573,80 @@ export function runFuncTests(
       });
     });
 
+    it.each(["A", "B"])(
+      "keeps running cached tasks isolated from later cache hits (%s)",
+      async (secondInput) => {
+        let markFirstStarted!: () => void;
+        const firstStarted = new Promise<void>((resolve) => {
+          markFirstStarted = resolve;
+        });
+        let finishFirst!: () => void;
+        const firstCanFinish = new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        });
+        let markCacheFilled!: () => void;
+        const cacheFilled = new Promise<void>((resolve) => {
+          markCacheFilled = resolve;
+        });
+        let markBothCached!: () => void;
+        const bothCached = new Promise<void>((resolve) => {
+          markBothCached = resolve;
+        });
+        let cacheWrites = 0;
+
+        class SignalledCache extends InMemoryCache {
+          async set(...args: Parameters<InMemoryCache["set"]>) {
+            await super.set(...args);
+            markCacheFilled();
+            if (++cacheWrites === 2) markBothCached();
+          }
+        }
+
+        let calls = 0;
+        const lookup = task(
+          { name: "lookup", cachePolicy: {} },
+          async (sku: string) => {
+            if (++calls === 1) {
+              markFirstStarted();
+              await firstCanFinish;
+            }
+            return `price of ${sku}`;
+          }
+        );
+        const trigger = task("trigger", async () => "done");
+        const workflow = entrypoint(
+          { name: "workflow", cache: new SignalledCache() },
+          async (overlap: boolean) => {
+            if (!overlap) {
+              return [await lookup("A"), await lookup(secondInput)];
+            }
+
+            const first = lookup("A");
+            await firstStarted;
+            let second: string;
+            try {
+              second = await lookup(secondInput);
+              await cacheFilled;
+              await trigger();
+            } finally {
+              finishFirst();
+            }
+            return [await first, second];
+          }
+        );
+
+        const expected = ["price of A", `price of ${secondInput}`];
+        expect(await workflow.invoke(true)).toEqual(expected);
+        expect(calls).toBe(2);
+        await bothCached;
+
+        // Sequential warm calls isolate this race from duplicate-key fan-out.
+        expect(await workflow.invoke(false)).toEqual(expected);
+        expect(await workflow.invoke(false)).toEqual(expected);
+        expect(calls).toBe(2);
+      }
+    );
+
     describe("interrupt handling", () => {
       let checkpointer: BaseCheckpointSaver | undefined;
       let thread_id: string | undefined;
