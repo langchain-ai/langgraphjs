@@ -1,5 +1,13 @@
 # @langchain/vue
 
+## 1.2.12
+
+### Patch Changes
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+- Updated dependencies [[`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa), [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa)]:
+  - @langchain/langgraph-sdk@1.14.0
+
 ## 1.2.11
 
 ### Patch Changes
