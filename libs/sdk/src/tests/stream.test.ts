@@ -436,6 +436,30 @@ describe("Client streaming with retry", () => {
       const [url] = mockFetch.mock.calls[0];
       expect(url.toString()).toContain("cancel_on_disconnect=1");
     });
+
+    test("sends checkpointId as checkpoint_id next to the last event id", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createSSEResponseBody([{ id: "1", event: "values", data: {} }]),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          lastEventId: "-1",
+          checkpointId: "cp-1",
+        })
+      );
+
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(new URL(url.toString()).searchParams.getAll("checkpoint_id")).toEqual(
+        ["cp-1"]
+      );
+      expect((init.headers as Record<string, string>)["last-event-id"]).toBe(
+        "-1"
+      );
+    });
   });
 
   describe("threads.joinStream()", () => {

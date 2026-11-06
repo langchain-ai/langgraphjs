@@ -60,6 +60,8 @@ function getFetchHistoryKey(
   return [getClientConfigHash(client), threadId, limit].join(":");
 }
 
+const noopSubscribe = () => () => {};
+
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
@@ -85,7 +87,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     submittingRef: RefObject<string | null>;
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
-): UseStreamThread<StateType> {
+): UseStreamThread<StateType> & { isFetched: boolean } {
   const key = getFetchHistoryKey(client, threadId, limit);
   const [state, setState] = useState<{
     key: string | undefined;
@@ -162,6 +164,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   }, [fetcher, key]);
 
   return {
+    isFetched: state.key === key && !state.isLoading,
     data: state.data,
     error: state.error,
     isLoading: state.isLoading,
@@ -265,6 +268,8 @@ export function useStreamLGP<
 
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
+  // State, since a ref change renders nothing.
+  const [rejoinQueued, setRejoinQueued] = useState(false);
 
   // Cancel the stream if thread ID has changed
   useEffect(() => {
@@ -670,6 +675,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
+      checkpointId?: string;
     }
   ) => {
     setToolProgressMap(new Map());
@@ -692,10 +698,12 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
+        setRejoinQueued(false);
         const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
+          checkpointId: joinOptions?.checkpointId,
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -744,13 +752,36 @@ export function useStreamLGP<
     );
   };
 
+  // null on the server so hydration matches
+  const storedRunId = useSyncExternalStore(
+    noopSubscribe,
+    () => runMetadataStorage?.getItem(`lg:stream:${threadId}`) ?? null,
+    () => null
+  );
+
   const reconnectKey = useMemo(() => {
-    if (!runMetadataStorage || stream.isLoading) return undefined;
-    if (typeof window === "undefined") return undefined;
-    const runId = runMetadataStorage?.getItem(`lg:stream:${threadId}`);
-    if (!runId) return undefined;
-    return { runId, threadId };
-  }, [runMetadataStorage, stream.isLoading, threadId]);
+    if (!storedRunId || stream.isLoading) return undefined;
+    const checkpoint = branchContext.threadHead?.checkpoint;
+    const loaded =
+      options.thread == null
+        ? builtInHistory.isFetched
+        : !history.isLoading &&
+          (checkpoint?.thread_id == null || checkpoint.thread_id === threadId);
+    return {
+      runId: storedRunId,
+      threadId,
+      loaded,
+      checkpointId: checkpoint?.checkpoint_id ?? undefined,
+    };
+  }, [
+    storedRunId,
+    stream.isLoading,
+    history.isLoading,
+    options.thread,
+    builtInHistory.isFetched,
+    branchContext.threadHead,
+    threadId,
+  ]);
 
   const shouldReconnect = !!runMetadataStorage;
   const reconnectRef = useRef({ threadId, shouldReconnect });
@@ -766,11 +797,23 @@ export function useStreamLGP<
   }, [threadId, shouldReconnect]);
 
   useEffect(() => {
-    if (reconnectKey && reconnectRef.current.shouldReconnect) {
+    if (reconnectKey?.loaded && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
-      void joinStreamRef.current?.(reconnectKey.runId);
+      setRejoinQueued(true);
+      void joinStreamRef
+        .current?.(reconnectKey.runId, undefined, {
+          checkpointId: reconnectKey.checkpointId,
+        })
+        .finally(() => setRejoinQueued(false));
     }
   }, [reconnectKey]);
+
+  // Loading until the rejoin starts, unless the thread's state won't load.
+  const rejoinPending =
+    (reconnectKey != null &&
+      reconnectRef.current.shouldReconnect &&
+      (reconnectKey.loaded || history.isLoading)) ||
+    rejoinQueued;
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
@@ -809,7 +852,7 @@ export function useStreamLGP<
     assistantId: options.assistantId,
 
     error,
-    isLoading: stream.isLoading,
+    isLoading: stream.isLoading || rejoinPending,
 
     stop,
     submit,
@@ -854,7 +897,7 @@ export function useStreamLGP<
       }
 
       // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
-      if (stream.isLoading) return [];
+      if (stream.isLoading || rejoinPending) return [];
 
       // Collect interrupts from ALL tasks (not just the last one)
       const allTasks = branchContext.threadHead?.tasks ?? [];

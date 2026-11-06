@@ -15,6 +15,7 @@ import { MultiSubmit } from "./components/MultiSubmit.js";
 import { NewThreadId } from "./components/NewThreadId.js";
 import { Branching } from "./components/Branching.js";
 import { OnRequest } from "./components/OnRequest.js";
+import { RejoinOnMount } from "./components/RejoinOnMount.js";
 import { SwitchThread } from "./components/SwitchThread.js";
 import { CustomStreamMethods } from "./components/CustomStreamMethods.js";
 import { QueueStream } from "./components/QueueStream.js";
@@ -672,6 +673,54 @@ it("onRequest gets called when a request is made", async () => {
       },
     ],
   ]);
+});
+
+it("sends the loaded head's checkpoint when it rejoins a stored run", async () => {
+  const requests: string[] = [];
+  const client = new Client({
+    apiUrl: serverUrl,
+    onRequest: (url, init) => {
+      requests.push(url.toString());
+      return init;
+    },
+  });
+  const thread = await client.threads.create();
+  let runId = "";
+  for await (const part of client.runs.stream(thread.thread_id, "agent", {
+    input: { messages: [{ content: "Hello", type: "human" }] },
+    streamResumable: true,
+  })) {
+    if (part.event === "metadata") runId = part.data.run_id;
+  }
+  const head = await client.threads.getState(thread.thread_id);
+  window.sessionStorage.setItem(`lg:stream:${thread.thread_id}`, runId);
+  requests.length = 0;
+
+  try {
+    const screen = await render(
+      <RejoinOnMount
+        apiUrl={serverUrl}
+        client={client}
+        threadId={thread.thread_id}
+      />
+    );
+
+    await expect
+      .element(screen.getByTestId("message-1"))
+      .toHaveTextContent("Hey");
+    await expect
+      .element(screen.getByTestId("loading"))
+      .toHaveTextContent("Not loading");
+
+    const join = requests.findIndex((url) =>
+      url.includes(`/runs/${runId}/stream`)
+    );
+    expect(new URL(requests[join]).searchParams.get("checkpoint_id")).toBe(
+      head.checkpoint.checkpoint_id
+    );
+  } finally {
+    window.sessionStorage.removeItem(`lg:stream:${thread.thread_id}`);
+  }
 });
 
 it("interrupts (fetchStateHistory: true)", async () => {
