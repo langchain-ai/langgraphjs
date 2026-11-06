@@ -209,7 +209,7 @@ export class SubmitCoordinator<
   /**
    * Active submission's abort controller. `undefined` between submits.
    *
-   * Used both for `multitaskStrategy: "rollback"` (abort the previous
+   * Used both for `"interrupt"` / `"rollback"` (abort the previous
    * controller's signal) and `stop()` (abort the current one without
    * starting a new one).
    */
@@ -297,13 +297,13 @@ export class SubmitCoordinator<
    *
    * Honours {@link StreamSubmitOptions.multitaskStrategy}:
    *
-   *   - `"rollback"` (default): aborts any in-flight run and
-   *     dispatches immediately.
+   *   - `"interrupt"` (default) / `"rollback"`: stops following any
+   *     in-flight run and dispatches immediately. The server cancels
+   *     that run.
    *   - `"reject"`: throws synchronously when a run is
    *     already in flight.
    *   - `"enqueue"`: defers via {@link QueueAdapter.enqueue};
    *     resolves once accepted (durably, if server-backed), not on completion.
-   *   - `"interrupt"`: falls through to the default path
    *
    * Errors are routed through both the per-submit `onError` callback
    * and `rootStore.error`. Aborts (controller dispose / rollback) are
@@ -363,7 +363,7 @@ export class SubmitCoordinator<
     const thread = this.#ensureThread(currentThreadId, pendingServerCreate);
     const activeThreadId = currentThreadId;
 
-    const strategy = options?.multitaskStrategy ?? "rollback";
+    const strategy = options?.multitaskStrategy ?? "interrupt";
     // `wasSelfCreated` short-circuit: when this submit just minted a
     // brand-new thread id (the user clicked "New Thread"), the
     // strategy check shouldn't see a run on the *previous* thread as
@@ -376,10 +376,13 @@ export class SubmitCoordinator<
     // True for a run this client dispatched (#runAbort) or one it only
     // observed via the persistent lifecycle listener (started elsewhere —
     // another tab, a webhook, Slack).
+    const showsActiveRun =
+      !wasSelfCreated && this.#rootStore.getSnapshot().isLoading;
     const hasActiveRun =
-      !wasSelfCreated &&
-      ((this.#runAbort != null && !this.#runAbort.signal.aborted) ||
-        this.#rootStore.getSnapshot().isLoading);
+      showsActiveRun ||
+      (!wasSelfCreated &&
+        this.#runAbort != null &&
+        !this.#runAbort.signal.aborted);
     if (hasActiveRun && strategy === "reject") {
       throw new Error(
         "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
@@ -409,7 +412,7 @@ export class SubmitCoordinator<
     // interrupt replay barrier or drop events buffered for it.
     this.#onSubmitStart();
 
-    // Rollback: abort the previous run before starting a new one.
+    // Interrupt or rollback: abort the previous run before starting a new one.
     this.#runAbort?.abort();
     const abort = new AbortController();
     this.#runAbort = abort;
@@ -492,10 +495,12 @@ export class SubmitCoordinator<
         config: boundConfig,
         metadata: (options?.metadata ?? undefined) as Record<string, unknown>,
         forkFrom: options?.forkFrom,
-        multitaskStrategy:
-          options?.multitaskStrategy === "enqueue"
-            ? "enqueue"
-            : options?.multitaskStrategy,
+        // Only a run this thread shows is interrupted by default. Otherwise
+        // the server queues behind it instead: `#runAbort` can still hold a
+        // run on the previous thread, or one this client hasn't seen start.
+        multitaskStrategy: showsActiveRun
+          ? strategy
+          : options?.multitaskStrategy,
       });
       // Start the deferred root pump *after* the dispatch HTTP
       // response lands — that's when the thread row exists server-

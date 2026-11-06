@@ -201,6 +201,12 @@ interface ResolvedInterrupt {
   namespace: string[];
 }
 
+interface ResumedRun {
+  answeredIds: readonly string[];
+  runId?: string;
+  stopped?: boolean;
+}
+
 export type {
   MessageMetadata,
   MessageMetadataMap,
@@ -375,6 +381,11 @@ export class StreamController<
   readonly #rootEventListeners = new Set<(event: Event) => void>();
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
+  /**
+   * Run the latest `respond()` / `respondAll()` started. `input.respond`
+   * returns no run id, so the id comes from the run's root `running` event.
+   */
+  #resumedRun: ResumedRun | undefined;
   /**
    * Run id `run.start` returned for the in-flight local `submit()`. Kept
    * apart from {@link #activeRunId}, which a rolled-back submit's late
@@ -1308,8 +1319,8 @@ export class StreamController<
   async stop(options?: StreamStopOptions): Promise<void> {
     const shouldCancel = options?.cancel ?? true;
     if (shouldCancel) {
-      const threadId = this.#currentThreadId;
-      const runId = this.#activeRunId;
+      const resumed = this.#resumedRun;
+      const runId = this.#activeRunId ?? resumed?.runId;
       if (runId != null && this.rootStore.getSnapshot().isLoading) {
         // Drop the partial reply now rather than on the server's terminal.
         const dropped = this.#rootMessages.closeRun({
@@ -1318,15 +1329,20 @@ export class StreamController<
         });
         if (dropped.size > 0) this.#messageMetadata.forget(dropped);
       }
-      if (threadId != null && runId != null) {
-        try {
-          await this.#options.client.runs.cancel(threadId, runId);
-        } catch {
-          /* server cancel failures must not block client disconnect */
-        }
-      }
+      if (resumed != null) resumed.stopped = true;
+      if (runId != null) await this.#cancelRun(runId);
     }
     await this.#submitter.stop();
+  }
+
+  async #cancelRun(runId: string): Promise<void> {
+    const threadId = this.#currentThreadId;
+    if (threadId == null) return;
+    try {
+      await this.#options.client.runs.cancel(threadId, runId);
+    } catch {
+      /* server cancel failures must not block client disconnect */
+    }
   }
 
   /**
@@ -1508,6 +1524,8 @@ export class StreamController<
       options?.update,
       prepared
     );
+    const resumed: ResumedRun = { answeredIds: [resolved.interruptId] };
+    this.#resumedRun = resumed;
 
     try {
       // Route through the coordinator so a resumed run that fails (e.g. a
@@ -1541,6 +1559,7 @@ export class StreamController<
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
       }, prepared?.handle);
     } catch (error) {
+      if (this.#resumedRun === resumed) this.#resumedRun = undefined;
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1618,6 +1637,10 @@ export class StreamController<
       options?.update,
       prepared
     );
+    const resumed: ResumedRun = {
+      answeredIds: responses.map((entry) => entry.interrupt_id),
+    };
+    this.#resumedRun = resumed;
 
     try {
       // See `respond()` — route through the coordinator so the single run
@@ -1647,6 +1670,7 @@ export class StreamController<
         }
       }, prepared?.handle);
     } catch (error) {
+      if (this.#resumedRun === resumed) this.#resumedRun = undefined;
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1906,6 +1930,7 @@ export class StreamController<
     this.#subgraphs.reset();
     this.#scopedHistorySeeds.clear();
     this.#activeRunId = undefined;
+    this.#resumedRun = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
@@ -2162,6 +2187,7 @@ export class StreamController<
     }
     this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
+    this.#observeResumedRun(event);
 
     /**
      * `input.requested` events (including HITL inside a subagent /
@@ -2176,6 +2202,48 @@ export class StreamController<
     this.#forgetAnsweredInterrupts(event);
     this.#restoreRefusedInterrupts(event);
     this.#settleParkedInterruptsOnTerminal(event);
+  }
+
+  /**
+   * Learn the id of the run a `respond()` started. Once `stop()` was called,
+   * cancel the run when it starts, and when it ends re-read the interrupts
+   * it answered: a cancel can leave them waiting again.
+   */
+  #observeResumedRun(event: Event): void {
+    const resumed = this.#resumedRun;
+    if (
+      resumed == null ||
+      event.method !== "lifecycle" ||
+      !isRootNamespace(event.params.namespace)
+    ) {
+      return;
+    }
+    const status = (event as LifecycleEvent).params.data?.event;
+    const runId = synthesizedEventRunId(event.event_id);
+    if (resumed.runId == null) {
+      if (status === "running" && runId != null) {
+        // A run submit() started is not the resumed one: that one never ran
+        // (the new run's strategy cancelled it), or the two can't be told
+        // apart yet.
+        if (runId === this.#submittedRunId || this.#submittedRunIdPending) {
+          this.#resumedRun = undefined;
+          return;
+        }
+        resumed.runId = runId;
+        if (resumed.stopped) void this.#cancelRun(runId);
+        return;
+      }
+      // Before the resumed run starts, an `interrupted` is the late terminal
+      // of the run it resumes.
+      if (status !== "completed" && status !== "failed") return;
+    } else if (runId !== resumed.runId || status === "running") {
+      return;
+    }
+    this.#resumedRun = undefined;
+    if (resumed.stopped) {
+      for (const id of resumed.answeredIds) this.#resolvedInterrupts.delete(id);
+      void this.#reconcilePendingInterruptsFromServer();
+    }
   }
 
   /**
