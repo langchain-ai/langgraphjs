@@ -150,6 +150,35 @@ jobs:
         # a dedicated job to avoid Chrome connection timeouts.
         run: pnpm -r --if-present --filter='!@langchain/react' --filter='!@langchain/angular' --filter='!@langchain/vue' --filter='!@langchain/svelte' run test
 
+  mongodb-checkpoint-tests:
+    name: MongoDB Checkpoint Tests
+    needs: [lint, format, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MONGODB_URL: "mongodb://localhost:27017/langgraph_test?authSource=admin"
+    services:
+      mongodb:
+        image: mongo:8.0.16
+        env:
+          MONGO_INITDB_ROOT_USERNAME: user
+          MONGO_INITDB_ROOT_PASSWORD: password
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --username user --password password --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-and-build
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          artifact-name: build-artifacts
+      - name: Test checkpoint queries against MongoDB
+        run: pnpm --filter @langchain/langgraph-checkpoint-mongodb test:int src/tests/checkpoints.int.test.ts src/tests/list.int.test.ts
+
   browser-tests:
     name: Browser Tests
     needs: [lint, format, build]
