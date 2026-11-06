@@ -1113,7 +1113,9 @@ export class StreamOrchestrator<
    * Submit input values with automatic queue management. If a stream is
    * already active, the run is enqueued (unless the multitask strategy
    * is `"interrupt"` or `"rollback"`, in which case the current run is
-   * replaced). Queued runs are drained sequentially via {@link drainQueue}.
+   * replaced). An explicit `"reject"` is forwarded to the server, which
+   * rejects the run; the error is reported via `onError`. Queued runs are
+   * drained sequentially via {@link drainQueue}.
    *
    * @param values - The state values to send as run input.
    * @param submitOptions - Optional configuration for the run.
@@ -1155,7 +1157,7 @@ export class StreamOrchestrator<
             interruptBefore: submitOptions?.interruptBefore,
             interruptAfter: submitOptions?.interruptAfter,
             metadata: submitOptions?.metadata,
-            multitaskStrategy: "enqueue",
+            multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
             streamMode: this.#getRunStreamModes(submitOptions),
             streamResumable: true,
             streamSubgraphs: submitOptions?.streamSubgraphs,

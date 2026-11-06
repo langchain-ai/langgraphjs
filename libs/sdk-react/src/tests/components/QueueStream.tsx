@@ -4,14 +4,16 @@ import { useStream } from "../../index.js";
 interface Props {
   apiUrl: string;
   client?: Client;
+  onError?: (error: unknown) => void;
 }
 
-export function QueueStream({ apiUrl, client }: Props) {
+export function QueueStream({ apiUrl, client, onError }: Props) {
   const stream = useStream<{ messages: Message[] }>({
     assistantId: "agent",
     apiUrl,
     client,
     fetchStateHistory: false,
+    onError,
   });
 
   return (
@@ -63,6 +65,20 @@ export function QueueStream({ apiUrl, client }: Props) {
         }}
       >
         Submit Three
+      </button>
+      <button
+        data-testid="submit-then-reject"
+        onClick={() => {
+          void stream.submit({
+            messages: [{ content: "Msg1", type: "human" }],
+          });
+          void stream.submit(
+            { messages: [{ content: "Rejected", type: "human" }] },
+            { multitaskStrategy: "reject" },
+          );
+        }}
+      >
+        Submit Then Reject
       </button>
       <button
         data-testid="cancel-first"
