@@ -2161,15 +2161,17 @@ export class StreamController<
    * @param event - Raw protocol event observed by the thread-wide listener.
    */
   #onWildcardEvent(event: Event): void {
-    try {
-      this.#subagents.push(event);
-    } catch {
-      /**
-       * Discovery store subscribers are user/UI code. If one throws, still
-       * let the wildcard watcher update subgraphs, loading, and interrupts.
-       */
+    if (this.#options.subgraphs !== false) {
+      try {
+        this.#subagents.push(event);
+      } catch {
+        /**
+         * Discovery store subscribers are user/UI code. If one throws, still
+         * let the wildcard watcher update subgraphs, loading, and interrupts.
+         */
+      }
+      this.#subgraphs.push(event);
     }
-    this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
 
     /**
@@ -2272,14 +2274,16 @@ export class StreamController<
    * @param event - Event yielded by the root subscription.
    */
   #onRootEvent(event: Event): void {
-    try {
-      this.#subagents.push(event);
-    } catch {
-      /**
-       * Discovery store subscribers are user/UI code. If one throws, still
-       * process the root event below so orchestrator messages and terminal
-       * state continue to advance.
-       */
+    if (this.#options.subgraphs !== false) {
+      try {
+        this.#subagents.push(event);
+      } catch {
+        /**
+         * Discovery store subscribers are user/UI code. If one throws, still
+         * process the root event below so orchestrator messages and terminal
+         * state continue to advance.
+         */
+      }
     }
 
     /**
