@@ -21,6 +21,47 @@ import {
   encodePathSegment,
 } from "../base.js";
 
+/**
+ * Builds the snake_case body `/runs` accepts, so `create` and `createBatch`
+ * cannot drift apart: the batch route validates every item against the same
+ * schema, and only strips the keys it does not know about.
+ */
+function runCreateBody(
+  assistantId: string,
+  payload?: Omit<RunsCreatePayload, "signal">
+): Record<string, unknown> {
+  return {
+    input: payload?.input,
+    command: payload?.command,
+    config: payload?.config,
+    context: payload?.context,
+    metadata: payload?.metadata,
+    stream_mode: payload?.streamMode,
+    stream_subgraphs: payload?.streamSubgraphs,
+    stream_resumable: payload?.streamResumable,
+    feedback_keys: payload?.feedbackKeys,
+    assistant_id: assistantId,
+    interrupt_before: payload?.interruptBefore,
+    interrupt_after: payload?.interruptAfter,
+    webhook: payload?.webhook,
+    checkpoint: payload?.checkpoint,
+    checkpoint_id: payload?.checkpointId,
+    strict_resume: payload?.strictResume,
+    multitask_strategy: payload?.multitaskStrategy,
+    after_seconds: payload?.afterSeconds,
+    if_not_exists: payload?.ifNotExists,
+    checkpoint_during: payload?.checkpointDuring,
+    durability: payload?.durability,
+    on_completion: payload?.onCompletion,
+    langsmith_tracer: payload?._langsmithTracer
+      ? {
+          project_name: payload?._langsmithTracer?.projectName,
+          example_id: payload?._langsmithTracer?.exampleId,
+        }
+      : undefined,
+  };
+}
+
 export class RunsClient<
   TStateType = DefaultValues,
   TUpdateType = TStateType,
@@ -142,36 +183,7 @@ export class RunsClient<
     assistantId: string,
     payload?: RunsCreatePayload
   ): Promise<Run> {
-    const json: Record<string, unknown> = {
-      input: payload?.input,
-      command: payload?.command,
-      config: payload?.config,
-      context: payload?.context,
-      metadata: payload?.metadata,
-      stream_mode: payload?.streamMode,
-      stream_subgraphs: payload?.streamSubgraphs,
-      stream_resumable: payload?.streamResumable,
-      feedback_keys: payload?.feedbackKeys,
-      assistant_id: assistantId,
-      interrupt_before: payload?.interruptBefore,
-      interrupt_after: payload?.interruptAfter,
-      webhook: payload?.webhook,
-      checkpoint: payload?.checkpoint,
-      checkpoint_id: payload?.checkpointId,
-      strict_resume: payload?.strictResume,
-      multitask_strategy: payload?.multitaskStrategy,
-      after_seconds: payload?.afterSeconds,
-      if_not_exists: payload?.ifNotExists,
-      checkpoint_during: payload?.checkpointDuring,
-      durability: payload?.durability,
-      on_completion: payload?.onCompletion,
-      langsmith_tracer: payload?._langsmithTracer
-        ? {
-            project_name: payload?._langsmithTracer?.projectName,
-            example_id: payload?._langsmithTracer?.exampleId,
-          }
-        : undefined,
-    };
+    const json = runCreateBody(assistantId, payload);
 
     const endpoint =
       threadId === null
@@ -200,17 +212,13 @@ export class RunsClient<
     payloads: (Omit<RunsCreatePayload, "signal"> & { assistantId: string })[],
     options?: { signal?: AbortSignal }
   ): Promise<Run[]> {
-    const filteredPayloads = payloads
-      .map((payload) => ({ ...payload, assistant_id: payload.assistantId }))
-      .map((payload) => {
-        return Object.fromEntries(
-          Object.entries(payload).filter(([_, v]) => v !== undefined)
-        );
-      });
+    const bodies = payloads.map(({ assistantId, ...payload }) =>
+      runCreateBody(assistantId, payload)
+    );
 
     return this.fetch<Run[]>("/runs/batch", {
       method: "POST",
-      json: filteredPayloads,
+      json: bodies,
       signal: options?.signal,
     });
   }
