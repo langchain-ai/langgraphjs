@@ -236,20 +236,46 @@ export class HostBackendClient {
    * List deployments (`GET /v2/deployments`).
    *
    * @param nameContains - Optional substring filter on deployment names.
-   * @returns A paginated response object with a `resources` array.
+   * @returns A response object containing every matching deployment in `resources`.
    */
-  listDeployments(
+  async listDeployments(
     nameContains = "",
     agentId?: string,
     agentEnvironment?: string
   ): Promise<Record<string, unknown>> {
-    return this.request("GET", "/v2/deployments", {
-      params: {
-        name_contains: nameContains,
-        agent_id: agentId,
-        agent_environment: agentEnvironment,
-      },
-    });
+    const resources: Record<string, unknown>[] = [];
+    const seenIds = new Set<unknown>();
+    const limit = 100;
+    while (true) {
+      const response = await this.request<Record<string, unknown>>(
+        "GET",
+        "/v2/deployments",
+        {
+          params: {
+            name_contains: nameContains,
+            agent_id: agentId,
+            agent_environment: agentEnvironment,
+            limit,
+            offset: resources.length,
+          },
+        }
+      );
+      const page = Array.isArray(response.resources)
+        ? response.resources.filter(
+            (item): item is Record<string, unknown> =>
+              item != null && typeof item === "object" && !Array.isArray(item)
+          )
+        : [];
+      if (page.length > 0 && page.every((item) => seenIds.has(item.id))) {
+        throw new HostBackendError(
+          "GET /v2/deployments returned the same resources again; the server " +
+            "may ignore offset, so deployments beyond the first page cannot be read."
+        );
+      }
+      for (const item of page) seenIds.add(item.id);
+      resources.push(...page);
+      if (page.length < limit) return { ...response, resources };
+    }
   }
 
   /**
