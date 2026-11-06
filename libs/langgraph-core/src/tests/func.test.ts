@@ -582,6 +582,48 @@ export function runFuncTests(
         thread_id = "1";
       });
 
+      it.each([
+        { interruptAfter: "*" as const, nested: false },
+        { interruptAfter: ["workflow"], nested: false },
+        { interruptAfter: "*" as const, nested: true },
+        { interruptAfter: ["workflow"], nested: true },
+      ])(
+        "finishes called tasks before interruptAfter=$interruptAfter (nested=$nested)",
+        async ({ interruptAfter, nested }) => {
+          const calls: string[] = [];
+          const reserve = task("reserve", async (order: { id: number }) => {
+            calls.push("reserve");
+            return { ...order, reserved: true };
+          });
+          const charge = task(
+            "charge",
+            async (order: { id: number; reserved: boolean }) => {
+              calls.push("charge");
+              return { ...order, charged: true };
+            }
+          );
+          const fulfil = async (order: { id: number }) =>
+            charge(await reserve(order));
+          const nestedTask = task("fulfil", fulfil);
+          const workflow = entrypoint(
+            { name: "workflow", checkpointer },
+            nested ? nestedTask : fulfil
+          );
+          const config = { configurable: { thread_id }, interruptAfter };
+          const expected = { id: 42, reserved: true, charged: true };
+
+          expect(await workflow.invoke({ id: 42 }, config)).toEqual({
+            ...expected,
+            __interrupt__: [],
+          });
+          expect(calls).toEqual(["reserve", "charge"]);
+          expect((await workflow.getState(config)).next).toEqual([]);
+
+          expect(await workflow.invoke(null, config)).toEqual(expected);
+          expect(calls).toEqual(["reserve", "charge"]);
+        }
+      );
+
       it("can call a StateGraph from a task, with interrupt in parent graph", async () => {
         // equivalent to `test_imp_nested` in python tests
         const State = Annotation.Root({

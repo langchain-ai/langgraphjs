@@ -1488,14 +1488,6 @@ export class PregelLoop {
     writeIdx: number,
     call?: Call
   ): Promise<PregelExecutableTask<string, string> | void> {
-    if (
-      this.interruptAfter?.length > 0 &&
-      shouldInterrupt(this.checkpoint, this.interruptAfter, [task])
-    ) {
-      this.toInterrupt.push(task);
-      return;
-    }
-
     const pushed = _prepareSingleTask(
       [PUSH, task.path ?? [], writeIdx, task.id, call] as CallTaskPath,
       this.checkpoint,
