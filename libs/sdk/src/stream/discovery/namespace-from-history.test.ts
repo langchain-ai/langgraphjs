@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../client/index.js";
 import type { ThreadState } from "../../schema.js";
@@ -6,6 +7,55 @@ import {
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
 } from "./namespace-from-history.js";
+
+/**
+ * Discovery pages recorded from the Python Agent Server (`langgraph-api`
+ * 0.18.0rc3), each for one thread of a scripted deepagents agent. The
+ * parent called `search`, `task(researcher)` and `task(writer)` in one
+ * AIMessage; a human rejected `search` before the subagents were dispatched.
+ *  - `one`: the researcher finished, the writer paused on an interrupt.
+ *  - `both`: both subagents paused on an interrupt.
+ * `lean` pages were requested with `select: ["checkpoint", "tasks"]`, `full`
+ * pages without it. `truth` is tool call id → namespace from the live stream.
+ */
+function loadFixture<T>(name: string): T {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../tests/fixtures/lean-history/${name}.json`, import.meta.url),
+      "utf8"
+    )
+  ) as T;
+}
+
+describe("mapSubagentNamespaces on recorded Python pages", () => {
+  it.each(["one", "both"])(
+    "maps the %s select page to the live-stream truth",
+    (scenario) => {
+      const page = loadFixture<ThreadState<Record<string, unknown>>[]>(
+        `py-${scenario}-lean`
+      );
+      const truth = loadFixture<Record<string, string>>(`py-${scenario}-truth`);
+
+      const map = mapSubagentNamespaces(page, Object.keys(truth));
+
+      expect(Object.fromEntries(map)).toEqual(truth);
+    }
+  );
+
+  it.each(["one", "both"])(
+    "maps the %s full page the same, ignoring values",
+    (scenario) => {
+      const page = loadFixture<ThreadState<Record<string, unknown>>[]>(
+        `py-${scenario}-full`
+      );
+      const truth = loadFixture<Record<string, string>>(`py-${scenario}-truth`);
+
+      const map = mapSubagentNamespaces(page, Object.keys(truth));
+
+      expect(Object.fromEntries(map)).toEqual(truth);
+    }
+  );
+});
 
 function checkpoint(ns: string, id: string) {
   return {
@@ -16,87 +66,109 @@ function checkpoint(ns: string, id: string) {
   };
 }
 
-/** A checkpoint whose completed push task carries a result ToolMessage. */
+type Entry = ThreadState<Record<string, unknown>>;
+
+/**
+ * A discovery page entry shaped like a `select: ["checkpoint", "tasks"]`
+ * response: no `values`, so matching can only read task results.
+ */
+function entry(id: string, tasks: unknown[]): Entry {
+  return { checkpoint: checkpoint("", id), tasks } as unknown as Entry;
+}
+
+/** A node task (not a Send) that wrote `messages`. */
+function nodeTask(name: string, messages: unknown) {
+  return {
+    id: `${name}-uuid`,
+    name,
+    path: ["__pregel_pull", name],
+    result: { messages },
+    error: null,
+    interrupts: [],
+    checkpoint: null,
+    state: null,
+  };
+}
+
+/** A Send task at Send index `index`, with what it wrote if it finished. */
+function sendTask(
+  id: string,
+  index: number,
+  opts: { name?: string; path?: unknown[]; messages?: unknown } = {}
+) {
+  return {
+    id,
+    name: opts.name ?? "tools",
+    path: opts.path ?? ["__pregel_push", index, false],
+    ...(opts.messages !== undefined
+      ? { result: { messages: opts.messages } }
+      : {}),
+    error: null,
+    interrupts: [],
+    checkpoint: null,
+    state: null,
+  };
+}
+
+function aiMessage(toolCalls: Array<{ id: string; name: string }>) {
+  return { type: "ai", content: "", tool_calls: toolCalls };
+}
+
+function toolMessage(toolCallId: string) {
+  return { type: "tool", content: "", tool_call_id: toolCallId };
+}
+
+/** An older entry whose model task wrote an AIMessage with these calls. */
+function modelEntry(toolCalls: Array<{ id: string; name: string }>): Entry {
+  return entry("cp-model", [nodeTask("model", [aiMessage(toolCalls)])]);
+}
+
+/** An entry whose finished Send task wrote a ToolMessage for `toolCallId`. */
 function directMappingState(
   toolCallId: string,
   taskName: string,
   taskId: string
-): ThreadState<Record<string, unknown>> {
-  return {
-    values: { messages: [] },
-    next: [],
-    checkpoint: checkpoint("", `cp-${taskId}`),
-    metadata: {},
-    parent_checkpoint: null,
-    tasks: [
-      {
-        id: taskId,
-        name: taskName,
-        path: ["__pregel_push", 0],
-        result: {
-          messages: [{ type: "tool", tool_call_id: toolCallId }],
-        },
-        error: null,
-        interrupts: [],
-        checkpoint: null,
-        state: null,
-      },
-    ],
-  } as unknown as ThreadState<Record<string, unknown>>;
+): Entry {
+  return entry(`cp-${taskId}`, [
+    sendTask(taskId, 0, {
+      name: taskName,
+      messages: [toolMessage(toolCallId)],
+    }),
+  ]);
 }
 
-/** A checkpoint whose push tasks are still pending (positional only). */
-function positionalState(
+/**
+ * Pending Sends for `task` calls, newest first: the Send entry, then the
+ * model entry that wrote the AIMessage they index into.
+ */
+function positionalPage(
   toolCallIds: string[],
   taskNames: string[],
   taskIds: string[]
-): ThreadState<Record<string, unknown>> {
-  return {
-    values: {
-      messages: [
-        {
-          type: "ai",
-          tool_calls: toolCallIds.map((id) => ({ id, name: "task" })),
-        },
-      ],
-    },
-    next: [],
-    checkpoint: checkpoint("", "cp-pos"),
-    metadata: {},
-    parent_checkpoint: null,
-    tasks: toolCallIds.map((_id, i) => ({
-      id: taskIds[i],
-      name: taskNames[i],
-      path: ["__pregel_push", i],
-      error: null,
-      interrupts: [],
-      checkpoint: null,
-      state: null,
-    })),
-  } as unknown as ThreadState<Record<string, unknown>>;
+): Entry[] {
+  return [
+    entry(
+      "cp-pos",
+      toolCallIds.map((_id, i) =>
+        sendTask(taskIds[i], i, { name: taskNames[i] })
+      )
+    ),
+    modelEntry(toolCallIds.map((id) => ({ id, name: "task" }))),
+  ];
 }
 
-/** A pending checkpoint with arbitrary mixed tool_calls and push tasks. */
-function mixedPositionalState(
+/** Pending Sends against an AIMessage with mixed tool calls. */
+function mixedPositionalPage(
   toolCalls: Array<{ id: string; name: string }>,
   pushTasks: Array<{ taskId: string; index: number }>
-): ThreadState<Record<string, unknown>> {
-  return {
-    values: { messages: [{ type: "ai", tool_calls: toolCalls }] },
-    next: [],
-    checkpoint: checkpoint("", "cp-mixed"),
-    metadata: {},
-    parent_checkpoint: null,
-    tasks: pushTasks.map(({ taskId, index }) => ({
-      id: taskId,
-      name: "tools",
-      path: ["__pregel_push", index],
-      error: null,
-      interrupts: [],
-      checkpoint: null,
-      state: null,
-    })),
-  } as unknown as ThreadState<Record<string, unknown>>;
+): Entry[] {
+  return [
+    entry(
+      "cp-mixed",
+      pushTasks.map(({ taskId, index }) => sendTask(taskId, index))
+    ),
+    modelEntry(toolCalls),
+  ];
 }
 
 describe("mapSubagentNamespaces", () => {
@@ -107,13 +179,11 @@ describe("mapSubagentNamespaces", () => {
   });
 
   it("falls back to positional Send-index alignment for unmapped ids", () => {
-    const history = [
-      positionalState(
-        ["task-a", "task-b"],
-        ["tools", "tools"],
-        ["uuid-a", "uuid-b"]
-      ),
-    ];
+    const history = positionalPage(
+      ["task-a", "task-b"],
+      ["tools", "tools"],
+      ["uuid-a", "uuid-b"]
+    );
     const map = mapSubagentNamespaces(history, ["task-a", "task-b"]);
     expect(map.get("task-a")).toBe("tools:uuid-a");
     expect(map.get("task-b")).toBe("tools:uuid-b");
@@ -121,34 +191,18 @@ describe("mapSubagentNamespaces", () => {
 
   it("reads positional tool calls from snake_case content_blocks in history", () => {
     const history = [
-      {
-        values: {
-          messages: [
-            {
-              type: "ai",
-              content: [],
-              content_blocks: [
-                { type: "tool_call", id: "task-a", name: "task", args: {} },
-              ],
-            },
-          ],
-        },
-        next: [],
-        checkpoint: checkpoint("", "cp-content-blocks"),
-        metadata: {},
-        parent_checkpoint: null,
-        tasks: [
+      entry("cp-content-blocks", [sendTask("uuid-a", 0)]),
+      entry("cp-model", [
+        nodeTask("model", [
           {
-            id: "uuid-a",
-            name: "tools",
-            path: ["__pregel_push", 0],
-            error: null,
-            interrupts: [],
-            checkpoint: null,
-            state: null,
+            type: "ai",
+            content: [],
+            content_blocks: [
+              { type: "tool_call", id: "task-a", name: "task", args: {} },
+            ],
           },
-        ],
-      } as unknown as ThreadState<Record<string, unknown>>,
+        ]),
+      ]),
     ];
 
     const map = mapSubagentNamespaces(history, ["task-a"]);
@@ -160,7 +214,7 @@ describe("mapSubagentNamespaces", () => {
     // `task` call (index 1). Both push tasks are still pending, so only the
     // positional fallback runs. The subagent must resolve to *its own* push
     // task (Send index 1), never the normal tool's push task at index 0.
-    const mixed = mixedPositionalState(
+    const history = mixedPositionalPage(
       [
         { id: "normal-1", name: "search" },
         { id: "task-1", name: "task" },
@@ -170,14 +224,14 @@ describe("mapSubagentNamespaces", () => {
         { taskId: "subagent-uuid", index: 1 },
       ]
     );
-    const map = mapSubagentNamespaces([mixed], ["task-1"]);
+    const map = mapSubagentNamespaces(history, ["task-1"]);
     expect(map.get("task-1")).toBe("tools:subagent-uuid");
   });
 
   it("positional fallback maps multiple interleaved subagents by their own index", () => {
     // tool_calls: [search(0), task-a(1), lookup(2), task-b(3)]. Each subagent
     // must land on the push task at its own Send index, never a neighbour's.
-    const mixed = mixedPositionalState(
+    const history = mixedPositionalPage(
       [
         { id: "search-1", name: "search" },
         { id: "task-a", name: "task" },
@@ -191,7 +245,7 @@ describe("mapSubagentNamespaces", () => {
         { taskId: "b-uuid", index: 3 },
       ]
     );
-    const map = mapSubagentNamespaces([mixed], ["task-a", "task-b"]);
+    const map = mapSubagentNamespaces(history, ["task-a", "task-b"]);
     expect(map.get("task-a")).toBe("tools:a-uuid");
     expect(map.get("task-b")).toBe("tools:b-uuid");
   });
@@ -199,7 +253,7 @@ describe("mapSubagentNamespaces", () => {
   it("positional fallback ignores a push index out of the tool_calls range", () => {
     // A defensive guard: a push task whose Send index points past the end of
     // tool_calls must not crash or mismap. Only the in-range subagent maps.
-    const mixed = mixedPositionalState(
+    const history = mixedPositionalPage(
       [
         { id: "search-1", name: "search" },
         { id: "task-1", name: "task" },
@@ -209,7 +263,7 @@ describe("mapSubagentNamespaces", () => {
         { taskId: "orphan-uuid", index: 9 },
       ]
     );
-    const map = mapSubagentNamespaces([mixed], ["task-1"]);
+    const map = mapSubagentNamespaces(history, ["task-1"]);
     expect(map.get("task-1")).toBe("tools:in-range-uuid");
     expect(map.size).toBe(1);
   });
@@ -219,49 +273,34 @@ describe("mapSubagentNamespaces", () => {
     // emit `[PUSH, i, false]`; error handlers of failed Sends emit
     // `[PUSH, i, false, "node_error_handler", false]` and must NOT be
     // mistaken for a second Send at the same index.
-    const make = (path: unknown) =>
-      ({
-        values: {
-          messages: [
-            { type: "ai", tool_calls: [{ id: "task-1", name: "task" }] },
-          ],
-        },
-        next: [],
-        checkpoint: checkpoint("", "cp-shape"),
-        metadata: {},
-        parent_checkpoint: null,
-        tasks: [
-          {
-            id: "legacy-uuid",
-            name: "tools",
-            path,
-            error: null,
-            interrupts: [],
-            checkpoint: null,
-            state: null,
-          },
-        ],
-      }) as unknown as ThreadState<Record<string, unknown>>;
+    const make = (path: unknown[]) => [
+      entry("cp-shape", [sendTask("legacy-uuid", 0, { path })]),
+      modelEntry([{ id: "task-1", name: "task" }]),
+    ];
 
     // Legacy two-element path: maps.
-    expect(mapSubagentNamespaces([make(["__pregel_push", 0])], ["task-1"]).get("task-1")).toBe(
-      "tools:legacy-uuid"
-    );
+    expect(
+      mapSubagentNamespaces(make(["__pregel_push", 0]), ["task-1"]).get(
+        "task-1"
+      )
+    ).toBe("tools:legacy-uuid");
     // Aligned three-element path: maps.
     expect(
-      mapSubagentNamespaces([make(["__pregel_push", 0, false])], ["task-1"]).get("task-1")
+      mapSubagentNamespaces(make(["__pregel_push", 0, false]), ["task-1"]).get(
+        "task-1"
+      )
     ).toBe("tools:legacy-uuid");
     // Handler-of-failed-Send path (five elements): not a Send task.
     expect(
       mapSubagentNamespaces(
-        [make(["__pregel_push", 0, false, "node_error_handler", false])],
+        make(["__pregel_push", 0, false, "node_error_handler", false]),
         ["task-1"]
       ).size
     ).toBe(0);
     // Call tasks (path[1] is a nested path, not a number): not Send tasks.
     expect(
       mapSubagentNamespaces(
-        [make(["__pregel_push", ["__pregel_pull", "a"], 0, true])],
+        make(["__pregel_push", ["__pregel_pull", "a"], 0, true]),
         ["task-1"]
       ).size
     ).toBe(0);
@@ -271,11 +310,159 @@ describe("mapSubagentNamespaces", () => {
     // Newer checkpoint only has a positional (pending) guess; older has the
     // correct direct mapping. Direct must win.
     const history = [
-      positionalState(["task-1"], ["tools"], ["WRONG-uuid"]),
+      ...positionalPage(["task-1"], ["tools"], ["WRONG-uuid"]),
       directMappingState("task-1", "tools", "correct-uuid"),
     ];
     const map = mapSubagentNamespaces(history, ["task-1"]);
     expect(map.get("task-1")).toBe("tools:correct-uuid");
+  });
+
+  it("skips a call answered before the Sends went out", () => {
+    // A human rejected `search` (HITL wrote its ToolMessage) before the two
+    // `task` calls were dispatched, so Send 0 is the researcher, not search.
+    const history = [
+      entry("cp-sends", [sendTask("uuid-r", 0), sendTask("uuid-w", 1)]),
+      entry("cp-hitl", [nodeTask("review", [toolMessage("call_s")])]),
+      modelEntry([
+        { id: "call_s", name: "search" },
+        { id: "call_r", name: "task" },
+        { id: "call_w", name: "task" },
+      ]),
+    ];
+
+    const map = mapSubagentNamespaces(history, ["call_r", "call_w"]);
+
+    expect(Object.fromEntries(map)).toEqual({
+      call_r: "tools:uuid-r",
+      call_w: "tools:uuid-w",
+    });
+  });
+
+  it("does not let a sibling that answered after dispatch shift the indices", () => {
+    // The researcher finished in the Sends' own step; the writer is still
+    // running. The researcher's ToolMessage came after dispatch, so the
+    // writer is still Send 1.
+    const history = [
+      entry("cp-sends", [
+        sendTask("uuid-r", 0, { messages: [toolMessage("call_r")] }),
+        sendTask("uuid-w", 1),
+      ]),
+      modelEntry([
+        { id: "call_r", name: "task" },
+        { id: "call_w", name: "task" },
+      ]),
+    ];
+
+    const map = mapSubagentNamespaces(history, ["call_w"]);
+
+    expect(Object.fromEntries(map)).toEqual({ call_w: "tools:uuid-w" });
+  });
+
+  it("indexes into a HITL-edited AIMessage over the model's original", () => {
+    const history = [
+      entry("cp-sends", [sendTask("uuid-0", 0), sendTask("uuid-1", 1)]),
+      entry("cp-hitl", [
+        nodeTask("review", [
+          aiMessage([
+            { id: "call_b", name: "task" },
+            { id: "call_a", name: "task" },
+          ]),
+        ]),
+      ]),
+      modelEntry([
+        { id: "call_a", name: "task" },
+        { id: "call_b", name: "task" },
+      ]),
+    ];
+
+    const map = mapSubagentNamespaces(history, ["call_a", "call_b"]);
+
+    expect(Object.fromEntries(map)).toEqual({
+      call_b: "tools:uuid-0",
+      call_a: "tools:uuid-1",
+    });
+  });
+
+  it("does not map a call that doesn't start a subagent", () => {
+    const history = mixedPositionalPage(
+      [{ id: "call_d", name: "delegate" }],
+      [{ taskId: "uuid-d", index: 0 }]
+    );
+
+    expect(mapSubagentNamespaces(history, ["call_d"]).size).toBe(0);
+  });
+
+  it("honours a custom subagent predicate", () => {
+    const history = mixedPositionalPage(
+      [{ id: "call_d", name: "delegate" }],
+      [{ taskId: "uuid-d", index: 0 }]
+    );
+
+    const map = mapSubagentNamespaces(history, ["call_d"], {
+      isSubagentToolCall: (name) => name === "delegate",
+    });
+
+    expect(map.get("call_d")).toBe("tools:uuid-d");
+  });
+
+  it("does not match by id from an error handler of a failed Send", () => {
+    // The subagent ran under the failed Send's namespace; the handler that
+    // wrote the error ToolMessage has its own.
+    const history = [
+      entry("cp-handler", [
+        sendTask("uuid-handler", 0, {
+          path: ["__pregel_push", 0, false, "node_error_handler", false],
+          messages: [toolMessage("call_r")],
+        }),
+      ]),
+    ];
+
+    expect(mapSubagentNamespaces(history, ["call_r"]).size).toBe(0);
+  });
+
+  it("reads a ToolMessage from a $writes result", () => {
+    // A task that wrote the messages channel more than once reports
+    // `{ $writes: [...] }`. No AIMessage is on the page, so only a match by
+    // id can map the call.
+    const history = [
+      entry("cp-sends", [
+        sendTask("uuid-r", 0, {
+          messages: { $writes: [[toolMessage("call_r")], { type: "ai" }] },
+        }),
+      ]),
+    ];
+
+    expect(mapSubagentNamespaces(history, ["call_r"]).get("call_r")).toBe(
+      "tools:uuid-r"
+    );
+  });
+
+  it("reads an AIMessage from a $writes result", () => {
+    const history = [
+      entry("cp-sends", [sendTask("uuid-w", 0)]),
+      entry("cp-model", [
+        nodeTask("model", {
+          $writes: [[aiMessage([{ id: "call_w", name: "task" }])]],
+        }),
+      ]),
+    ];
+
+    expect(mapSubagentNamespaces(history, ["call_w"]).get("call_w")).toBe(
+      "tools:uuid-w"
+    );
+  });
+
+  it("reads an AIMessage written as a single message", () => {
+    const history = [
+      entry("cp-sends", [sendTask("uuid-w", 0)]),
+      entry("cp-model", [
+        nodeTask("model", aiMessage([{ id: "call_w", name: "task" }])),
+      ]),
+    ];
+
+    expect(mapSubagentNamespaces(history, ["call_w"]).get("call_w")).toBe(
+      "tools:uuid-w"
+    );
   });
 });
 
@@ -293,12 +480,16 @@ describe("resolveSubagentNamespaces", () => {
     expect(map.get("task-1")).toBe("tools:uuid-1");
     expect(getHistory).toHaveBeenCalledTimes(1);
     expect(getHistory.mock.calls[0][1]).not.toHaveProperty("before");
+    expect(getHistory.mock.calls[0][1]).toMatchObject({
+      limit: 20,
+      select: ["checkpoint", "tasks"],
+    });
   });
 
   it("issues exactly one fallback page with a before cursor when unresolved", async () => {
     const getHistory = vi
       .fn()
-      .mockResolvedValueOnce([positionalState([], [], [])]) // page 1: nothing
+      .mockResolvedValueOnce([entry("cp-pos", [])]) // page 1: nothing
       .mockResolvedValueOnce([directMappingState("task-1", "tools", "uuid-1")]);
     const client = { threads: { getHistory } } as unknown as Client;
 
@@ -310,10 +501,32 @@ describe("resolveSubagentNamespaces", () => {
     expect(getHistory.mock.calls[1][1]).toMatchObject({
       before: { configurable: { checkpoint_id: "cp-pos" } },
     });
+    // Both pages ask only for what matching reads.
+    for (const [, options] of getHistory.mock.calls) {
+      expect(options).toMatchObject({
+        limit: 20,
+        select: ["checkpoint", "tasks"],
+      });
+    }
+  });
+
+  it("matches a Send on page 1 against an AIMessage on the fallback page", async () => {
+    const getHistory = vi
+      .fn()
+      .mockResolvedValueOnce([
+        entry("cp-sends", [sendTask("uuid-1", 0)]),
+      ])
+      .mockResolvedValueOnce([modelEntry([{ id: "task-1", name: "task" }])]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    const map = await resolveSubagentNamespaces(client, "t1", ["task-1"]);
+
+    expect(map.get("task-1")).toBe("tools:uuid-1");
+    expect(getHistory).toHaveBeenCalledTimes(2);
   });
 
   it("does not issue a third call (bounded)", async () => {
-    const getHistory = vi.fn(async () => [positionalState([], [], [])]);
+    const getHistory = vi.fn(async () => [entry("cp-pos", [])]);
     const client = { threads: { getHistory } } as unknown as Client;
 
     await resolveSubagentNamespaces(client, "t1", ["never-resolves"]);

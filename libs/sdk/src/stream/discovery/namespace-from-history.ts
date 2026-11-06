@@ -8,12 +8,12 @@
  * namespaces immediately on `hydrate()` (subgraph hosts + subagent
  * execution namespaces) and lazily for a single opened subagent.
  *
- * The logic mirrors the live discovery state machines so a
- * history-derived namespace and an SSE-derived one cannot disagree:
- *  - subagent mapping ports {@link ../../ui/manager} `fetchSubagentHistory`
- *    (direct task-result mapping, then positional Send-index fallback);
- *  - subgraph host detection ports the strict-prefix promotion rule in
- *    {@link ./subgraphs}.
+ * Subagent matching ({@link mapSubagentNamespaces}) is shared with the
+ * legacy `StreamManager.fetchSubagentHistory` in {@link ../../ui/manager},
+ * so both hooks match the same way after a reload. It reads only
+ * `checkpoint` and `tasks`, so the discovery page is requested with
+ * `select: ["checkpoint", "tasks"]`. Subgraph host detection ports the
+ * strict-prefix promotion rule in {@link ./subgraphs}.
  */
 import type { Client } from "../../client/index.js";
 import type {
@@ -21,6 +21,7 @@ import type {
   Config,
   Metadata,
   ThreadState,
+  ThreadStateSelectField,
 } from "../../schema.js";
 import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "../constants.js";
 import { namespaceKey } from "../namespace.js";
@@ -28,135 +29,254 @@ import { normalizeAIMessageToolCalls } from "../message-coercion.js";
 
 type AnyCheckpoint = ThreadState<Record<string, unknown>>;
 
+/**
+ * A discovery page entry as far as subagent matching is concerned: only
+ * its tasks are read.
+ */
+type HistoryEntry = { readonly tasks?: unknown };
+
 interface HistoryTask {
   id?: unknown;
   name?: unknown;
   path?: unknown;
-  result?: { messages?: unknown[] };
+  result?: unknown;
   checkpoint?: { checkpoint_ns?: unknown } | null;
 }
 
-function getTasks(checkpoint: AnyCheckpoint): HistoryTask[] {
-  const tasks = (checkpoint as { tasks?: unknown }).tasks;
+/** A task the parent dispatched with `Send`; its namespace is `name:id`. */
+interface SendTask extends HistoryTask {
+  id: string;
+  name: string;
+  path: ["__pregel_push", number, ...unknown[]];
+}
+
+interface ToolCallRef {
+  id?: string;
+  name?: string;
+}
+
+type SerializedMessage = Record<string, unknown>;
+
+/**
+ * What a discovery page request asks for. Matching reads only `tasks`,
+ * subgraph host detection reads `checkpoint` and `tasks`, and the `before`
+ * cursor reads `checkpoint`. Servers that don't know `select` ignore it and
+ * send full pages, which match the same way.
+ */
+export const DISCOVERY_HISTORY_SELECT: ThreadStateSelectField[] = [
+  "checkpoint",
+  "tasks",
+];
+
+function getTasks(checkpoint: HistoryEntry): HistoryTask[] {
+  const { tasks } = checkpoint;
   return Array.isArray(tasks) ? (tasks as HistoryTask[]) : [];
 }
 
 /**
- * Phase 1 (preferred): map a `task` tool-call id directly to its
- * execution namespace via the task's result `ToolMessage`. Unambiguous
- * — works even when a step mixes subagent and non-subagent tool calls.
- *
+ * Send tasks are `[PUSH, i]` (legacy JS servers) or `[PUSH, i, false]`
+ * (aligned with Python). Longer paths are error handlers of failed Sends
+ * (`[PUSH, i, false, "node_error_handler", false]`), and a non-numeric
+ * `path[1]` is a functional-API call; neither is a Send.
+ */
+function isSendTask(task: HistoryTask): task is SendTask {
+  return (
+    Array.isArray(task.path) &&
+    task.path[0] === "__pregel_push" &&
+    typeof task.path[1] === "number" &&
+    task.path.length <= 3 &&
+    typeof task.id === "string" &&
+    typeof task.name === "string"
+  );
+}
+
+/**
  * The subgraph checkpoint_ns is `task.name + ":" + task.id` (mirrors
- * pregel's `taskCheckpointNamespace`), so we derive it from name+id
+ * pregel's `taskCheckpointNamespace`), so it's derived from name+id
  * rather than the always-null completed-task checkpoint.
  */
-export function collectDirectTaskMappings(
-  tasks: HistoryTask[],
+function sendNamespace(task: SendTask): string {
+  return `${task.name}:${task.id}`;
+}
+
+/**
+ * The messages a task wrote. The channel value can be a list, a single
+ * message, or `{ $writes: [...] }` when the task wrote the channel more
+ * than once; all three are flattened.
+ */
+function messagesOf(result: unknown, messagesKey: string): SerializedMessage[] {
+  if (result == null || typeof result !== "object") return [];
+  const flatten = (value: unknown): SerializedMessage[] => {
+    if (Array.isArray(value)) return value.flatMap(flatten);
+    if (value == null || typeof value !== "object") return [];
+    const writes = (value as { $writes?: unknown }).$writes;
+    if (Array.isArray(writes)) return writes.flatMap(flatten);
+    return [value as SerializedMessage];
+  };
+  return flatten((result as Record<string, unknown>)[messagesKey]);
+}
+
+function toolCallsOf(message: SerializedMessage): ToolCallRef[] {
+  if (message.type !== "ai") return [];
+  const normalized = normalizeAIMessageToolCalls(
+    message as unknown as Parameters<typeof normalizeAIMessageToolCalls>[0]
+  ) as { tool_calls?: unknown };
+  return Array.isArray(normalized.tool_calls)
+    ? (normalized.tool_calls as ToolCallRef[])
+    : [];
+}
+
+function answeredToolCallId(message: SerializedMessage): string | undefined {
+  return message.type === "tool" && typeof message.tool_call_id === "string"
+    ? message.tool_call_id
+    : undefined;
+}
+
+/**
+ * Match by id: a Send task whose result holds a ToolMessage for a target
+ * call ran that call. Unambiguous, so it's applied across the whole page
+ * before any match by index.
+ */
+function matchById(
+  history: readonly HistoryEntry[],
   targets: Set<string>,
-  out: Map<string, string>
+  out: Map<string, string>,
+  messagesKey: string
 ): void {
-  for (const task of tasks) {
-    if (
-      !Array.isArray(task.path) ||
-      task.path[0] !== "__pregel_push" ||
-      typeof task.id !== "string" ||
-      typeof task.name !== "string"
-    ) {
-      continue;
-    }
-    const resultMessages = task.result?.messages;
-    if (!Array.isArray(resultMessages)) continue;
-    for (const msg of resultMessages) {
-      const m = msg as Record<string, unknown>;
-      const id = m.tool_call_id;
-      if (
-        m.type === "tool" &&
-        typeof id === "string" &&
-        targets.has(id) &&
-        !out.has(id)
-      ) {
-        out.set(id, `${task.name}:${task.id}`);
+  for (const entry of history) {
+    for (const task of getTasks(entry)) {
+      if (!isSendTask(task)) continue;
+      for (const message of messagesOf(task.result, messagesKey)) {
+        const id = answeredToolCallId(message);
+        if (id != null && targets.has(id) && !out.has(id)) {
+          out.set(id, sendNamespace(task));
+        }
       }
     }
   }
 }
 
 /**
- * Phase 2 (fallback): align still-pending push tasks to the triggering
- * AI message's tool calls by Send index (`path[1]`), where `path[1]`
- * indexes into the *full* `tool_calls` array. Only push tasks whose
- * targeted call is a subagent `task` are mapped, so a sibling
- * non-subagent tool call in the same message can't capture a subagent's
- * namespace. Applied only to ids Phase 1 could not resolve so a correct
- * direct mapping is never overwritten by a positional guess.
+ * The tool calls the Sends in `history[index]` index into, rebuilt from
+ * older entries' task results.
+ *
+ * Walks older entries newest to oldest up to the first one whose results
+ * hold an AIMessage with tool calls: the latest version of the message
+ * that made the Sends, so a HITL edit wins over the model's original.
+ * ToolMessages seen on the way answered their call before dispatch, so
+ * those calls got no Send and are dropped. The Send entry's own results
+ * are siblings that answered after dispatch and don't count.
+ *
+ * Returns `undefined` when no such AIMessage is on the page.
+ *
+ * Known limit, JS graphs with HITL (`createAgent`, deepagentsjs): JS
+ * history drops `result` for a task that had an interrupt, even after it
+ * resumed, so a HITL step's rewritten AIMessage and ToolMessages aren't
+ * seen. JS HITL also reorders the calls it rewrites. When HITL paused on a
+ * call in the same AIMessage as subagent calls, unfinished subagents from
+ * that step can be left unmatched or matched to a sibling. Finished ones
+ * still match by id. Python graphs keep the result.
  */
-export function collectPositionalTaskMappings(
-  checkpoint: AnyCheckpoint,
+function dispatchedToolCalls(
+  history: readonly HistoryEntry[],
+  index: number,
+  messagesKey: string
+): ToolCallRef[] | undefined {
+  const answered = new Set<string>();
+  for (const older of history.slice(index + 1)) {
+    let toolCalls: ToolCallRef[] | undefined;
+    for (const task of getTasks(older)) {
+      for (const message of messagesOf(task.result, messagesKey)) {
+        const id = answeredToolCallId(message);
+        if (id != null) answered.add(id);
+        const calls = toolCallsOf(message);
+        if (calls.length > 0) toolCalls ??= calls;
+      }
+    }
+    if (toolCalls != null) {
+      return toolCalls.filter((tc) => tc.id == null || !answered.has(tc.id));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Match by index: Send `i` ran the `i`-th call that was still unanswered
+ * when the Sends went out. Only ids still unmatched are mapped, so a
+ * match by id is never overwritten.
+ */
+function matchByIndex(
+  history: readonly HistoryEntry[],
   targets: Set<string>,
   out: Map<string, string>,
-  messagesKey: string
+  messagesKey: string,
+  isSubagentToolCall: (name: string) => boolean
 ): void {
-  const pushTasks = getTasks(checkpoint).filter(
-    (t) =>
-      Array.isArray(t.path) &&
-      t.path[0] === "__pregel_push" &&
-      typeof t.path[1] === "number" &&
-      // Send tasks are `[PUSH, i]` (legacy JS servers) or `[PUSH, i, false]`
-      // (aligned with Python); longer paths are error handlers of failed
-      // Sends (`[PUSH, i, false, "node_error_handler", false]`) and must not
-      // be mistaken for a second Send at the same index.
-      t.path.length <= 3 &&
-      typeof t.id === "string" &&
-      typeof t.name === "string"
+  for (let index = 0; index < history.length; index += 1) {
+    if (out.size === targets.size) return;
+    const sends = getTasks(history[index]).filter(isSendTask);
+    if (sends.length === 0) continue;
+    const toolCalls = dispatchedToolCalls(history, index, messagesKey);
+    if (toolCalls == null) continue;
+    for (const send of sends) {
+      const tc = toolCalls[send.path[1]];
+      if (
+        tc?.id != null &&
+        typeof tc.name === "string" &&
+        isSubagentToolCall(tc.name) &&
+        targets.has(tc.id) &&
+        !out.has(tc.id)
+      ) {
+        out.set(tc.id, sendNamespace(send));
+      }
+    }
+  }
+}
+
+export interface MapSubagentNamespacesOptions {
+  /**
+   * Whether a tool call starts a subagent, by tool name.
+   * @default name === "task"
+   */
+  isSubagentToolCall?: (name: string) => boolean;
+  /**
+   * The state key tasks write messages to.
+   * @default "messages"
+   */
+  messagesKey?: string;
+}
+
+const isTaskToolCall = (name: string) => name === "task";
+
+/**
+ * Match subagent tool calls to their subagent namespaces from a discovery
+ * page (root-thread history, newest first).
+ *
+ * Reads only `tasks[].path`, `tasks[].id`, `tasks[].name` and
+ * `tasks[].result`, never `values`, so a `select: ["checkpoint", "tasks"]`
+ * page and a full page give the same result. Shared by both hooks.
+ *
+ * @returns Map of tool call id → subagent namespace (e.g. `tools:<uuid>`).
+ *   Ids that can't be matched are omitted.
+ */
+export function mapSubagentNamespaces(
+  history: readonly HistoryEntry[],
+  toolCallIds: Iterable<string>,
+  options?: MapSubagentNamespacesOptions
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const targets = new Set(toolCallIds);
+  if (targets.size === 0) return out;
+  const messagesKey = options?.messagesKey ?? DEFAULT_MESSAGES_KEY;
+  matchById(history, targets, out, messagesKey);
+  matchByIndex(
+    history,
+    targets,
+    out,
+    messagesKey,
+    options?.isSubagentToolCall ?? isTaskToolCall
   );
-  if (pushTasks.length === 0) return;
-
-  const msgs = (checkpoint.values as Record<string, unknown> | undefined)?.[
-    messagesKey
-  ];
-  if (!Array.isArray(msgs)) return;
-
-  let toolCalls: Array<{ id?: string; name?: string }> | undefined;
-  for (let i = msgs.length - 1; i >= 0; i -= 1) {
-    const m = msgs[i] as Record<string, unknown>;
-    if (m.type !== "ai") continue;
-    const normalized = normalizeAIMessageToolCalls(
-      m as unknown as Parameters<typeof normalizeAIMessageToolCalls>[0]
-    ) as Record<string, unknown>;
-    const normalizedToolCalls = normalized.tool_calls;
-    if (
-      Array.isArray(normalizedToolCalls) &&
-      (normalizedToolCalls as Array<{ name?: string }>).some(
-        (tc) => tc.name === "task"
-      )
-    ) {
-      toolCalls = normalizedToolCalls as Array<{
-        id?: string;
-        name?: string;
-      }>;
-      break;
-    }
-  }
-  if (toolCalls == null) return;
-
-  // `path[1]` is the Send index into the *full* `tool_calls` array, not the
-  // subagent-only subset. Resolve each push task against that array and map
-  // it only when the targeted call is itself a `task`, so a sibling
-  // non-subagent tool call cannot capture a subagent's namespace.
-  for (const task of pushTasks) {
-    const index = (task.path as unknown[])[1] as number;
-    const tc = toolCalls[index];
-    if (
-      tc?.name === "task" &&
-      tc.id != null &&
-      typeof task.id === "string" &&
-      typeof task.name === "string" &&
-      targets.has(tc.id) &&
-      !out.has(tc.id)
-    ) {
-      out.set(tc.id, `${task.name}:${task.id}`);
-    }
-  }
+  return out;
 }
 
 /** Build a `getHistory` `before` cursor from a history entry. */
@@ -164,42 +284,6 @@ function beforeCursor(entry: AnyCheckpoint): Config | undefined {
   const checkpointId = entry.checkpoint?.checkpoint_id;
   if (typeof checkpointId !== "string") return undefined;
   return { configurable: { checkpoint_id: checkpointId } };
-}
-
-function applyCollectors(
-  history: AnyCheckpoint[],
-  targets: Set<string>,
-  out: Map<string, string>,
-  messagesKey: string
-): void {
-  for (const checkpoint of history) {
-    collectDirectTaskMappings(getTasks(checkpoint), targets, out);
-  }
-  const stillUnmapped = () => [...targets].some((id) => !out.has(id));
-  if (stillUnmapped()) {
-    for (const checkpoint of history) {
-      if (!stillUnmapped()) break;
-      collectPositionalTaskMappings(checkpoint, targets, out, messagesKey);
-    }
-  }
-}
-
-/**
- * Synchronous subagent namespace mapping over an already-fetched
- * history page. Used by {@link resolveSubagentNamespaces} and by the
- * controller's hydrate-time bulk seed (which shares a single
- * `getHistory` page with subgraph host detection).
- */
-export function mapSubagentNamespaces(
-  history: AnyCheckpoint[],
-  toolCallIds: string[],
-  messagesKey = DEFAULT_MESSAGES_KEY
-): Map<string, string> {
-  const out = new Map<string, string>();
-  const targets = new Set(toolCallIds);
-  if (targets.size === 0) return out;
-  applyCollectors(history, targets, out, messagesKey);
-  return out;
 }
 
 /**
@@ -219,37 +303,38 @@ export async function resolveSubagentNamespaces<TStateType>(
   toolCallIds: string[],
   opts?: { limit?: number; messagesKey?: string; signal?: AbortSignal }
 ): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
   const targets = new Set(toolCallIds);
-  if (targets.size === 0) return out;
+  if (targets.size === 0) return new Map();
 
   const limit = opts?.limit ?? 20;
-  const messagesKey = opts?.messagesKey ?? DEFAULT_MESSAGES_KEY;
   const signal = opts?.signal;
+  const matchOptions = { messagesKey: opts?.messagesKey };
 
-  const page1 = await getHistoryPage(client, threadId, { limit, signal });
-  applyCollectors(page1, targets, out, messagesKey);
+  const page1 = await getHistoryPage(client, threadId, {
+    limit,
+    select: DISCOVERY_HISTORY_SELECT,
+    signal,
+  });
+  const out = mapSubagentNamespaces(page1, targets, matchOptions);
+  if (out.size === targets.size || page1.length === 0) return out;
 
-  const unresolved = [...targets].filter((id) => !out.has(id));
-  if (unresolved.length > 0 && page1.length > 0) {
-    const before = beforeCursor(page1[page1.length - 1]);
-    if (before != null) {
-      const page2 = await getHistoryPage(client, threadId, {
-        limit,
-        before,
-        signal,
-      });
-      applyCollectors(page2, targets, out, messagesKey);
-    }
-  }
-
-  return out;
+  const before = beforeCursor(page1[page1.length - 1]);
+  if (before == null) return out;
+  const page2 = await getHistoryPage(client, threadId, {
+    limit,
+    before,
+    select: DISCOVERY_HISTORY_SELECT,
+    signal,
+  });
+  // Page 2 is older, so the two pages form one newest-first history: a
+  // Send near the end of page 1 can find its AIMessage on page 2.
+  return mapSubagentNamespaces([...page1, ...page2], targets, matchOptions);
 }
 
 /**
  * Fetch one bounded history page typed as plain records, sidestepping
- * the client's `TStateType` generic so the discovery collectors (which
- * read raw `values`/`tasks`) get a stable {@link AnyCheckpoint} shape.
+ * the client's `TStateType` generic so callers that read raw
+ * `values`/`tasks` get a stable {@link AnyCheckpoint} shape.
  */
 export function getHistoryPage<TStateType>(
   client: Client<TStateType>,
@@ -259,6 +344,7 @@ export function getHistoryPage<TStateType>(
     before?: Config;
     checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
     metadata?: Metadata;
+    select?: ThreadStateSelectField[];
     signal?: AbortSignal;
   }
 ): Promise<AnyCheckpoint[]> {

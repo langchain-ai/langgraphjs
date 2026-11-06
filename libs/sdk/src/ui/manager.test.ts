@@ -1845,6 +1845,68 @@ describe("StreamManager", () => {
   });
 
   describe("fetchSubagentHistory namespace resolution", () => {
+    type FetchThreads = Parameters<StreamManager<TestState>["fetchSubagentHistory"]>[0];
+
+    /**
+     * A discovery page entry shaped like a `select: ["checkpoint", "tasks"]`
+     * response: no `values`, so matching reads only task results.
+     */
+    function entry(id: string, tasks: unknown[]) {
+      return { checkpoint: { checkpoint_id: id, thread_id: "t" }, tasks };
+    }
+
+    /** A node task (not a Send) that wrote `messages`. */
+    function nodeTask(name: string, messages: unknown[]) {
+      return {
+        id: `${name}-uuid`,
+        name,
+        path: ["__pregel_pull", name],
+        result: { messages },
+        checkpoint: null,
+      };
+    }
+
+    function sendTask(
+      id: string,
+      index: number,
+      opts: { name?: string; path?: unknown[]; messages?: unknown[] } = {}
+    ) {
+      return {
+        id,
+        name: opts.name ?? "tools",
+        path: opts.path ?? ["__pregel_push", index, false],
+        ...(opts.messages ? { result: { messages: opts.messages } } : {}),
+        checkpoint: null,
+      };
+    }
+
+    /**
+     * A `getHistory` mock: the discovery page for the root namespace, and
+     * one entry of `values.messages` per subagent namespace.
+     */
+    function historyMock(
+      page: unknown[],
+      byNamespace: Record<string, unknown[]>
+    ) {
+      return vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          const ns = opts?.checkpoint?.checkpoint_ns;
+          if (ns) {
+            return byNamespace[ns] ? [{ values: { messages: byNamespace[ns] } }] : [];
+          }
+          return page;
+        }
+      );
+    }
+
+    const contentsOf = (sm: StreamManager<TestState>, toolCallId: string) =>
+      (sm.getSubagent(toolCallId)?.messages ?? []).map(
+        (m) => (m as { content?: unknown }).content
+      );
+
     it("does not bind a delegation to a newer turn's push tasks", async () => {
       const sm = new StreamManager<TestState>(messageManager, {
         throttle: false,
@@ -1874,40 +1936,16 @@ describe("StreamManager", () => {
         [delegation] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
       );
 
-      const getHistory = vi.fn(
-        async (
-          _threadId: string,
-          opts?: { checkpoint?: { checkpoint_ns?: string } }
-        ) => {
-          if (opts?.checkpoint?.checkpoint_ns) {
-            return [
-              {
-                values: {
-                  messages: [{ type: "ai", id: "ai-ls", content: "ls output" }],
-                },
-              },
-            ];
-          }
-          return [
-            {
-              values: { messages: [delegation, regularToolCall] },
-              tasks: [
-                {
-                  id: "uuid-ls",
-                  name: "tools",
-                  path: ["__pregel_push", 0],
-                  checkpoint: null,
-                },
-              ],
-            },
-          ];
-        }
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-ls", 0)]),
+          entry("cp-model", [nodeTask("model", [regularToolCall])]),
+        ],
+        { "tools:uuid-ls": [{ type: "ai", id: "ai-ls", content: "ls output" }] }
       );
 
       await sm.fetchSubagentHistory(
-        { getHistory } as unknown as Parameters<
-          typeof sm.fetchSubagentHistory
-        >[0],
+        { getHistory } as unknown as FetchThreads,
         "thread-1"
       );
 
@@ -1916,25 +1954,16 @@ describe("StreamManager", () => {
 
     it("prefers a completed task's direct mapping over a newer pending checkpoint's positional guess", async () => {
       /**
-       * Regression test: the most recent checkpoint is a still-pending (e.g.
-       * interrupted) PUSH task. That head checkpoint has no task result, so it
-       * cannot produce a direct tool_call_id mapping — but its accumulated
-       * `values.messages` still contains the AI message whose subagent tool
-       * call already completed in an OLDER checkpoint.
-       *
-       * The positional fallback, run against the head checkpoint, would align
-       * that stale AI tool call to the head's unrelated pending push task and
-       * stop — never reaching the older checkpoint whose task result holds the
-       * correct namespace. Direct mappings must take precedence across the
-       * whole history, not just the first checkpoint that yields any mapping.
+       * Regression test: the newest checkpoint holds a still-pending (e.g.
+       * interrupted) Send whose index points at "call-real", but "call-real"
+       * was answered by an older, completed Send. The match by id from that
+       * older Send's result must win over the index guess.
        */
       const sm = new StreamManager<TestState>(messageManager, {
         throttle: false,
         subagentToolNames: ["task"],
       });
 
-      // AI message whose subagent tool call ("call-real") completed in an
-      // OLDER checkpoint. Registers a pending subagent with empty messages.
       const aiMessage = {
         type: "ai",
         id: "ai-completed",
@@ -1956,86 +1985,44 @@ describe("StreamManager", () => {
       );
       expect(sm.getSubagent("call-real")?.messages).toHaveLength(0);
 
-      // Main history is newest-first:
-      //   [0] head    — pending push task, no result; stale AI message in values
-      //   [1] older   — completed push task; result maps call-real -> task:uuid-real
-      const mainHistory = [
-        {
-          values: { messages: [aiMessage] },
-          tasks: [
-            {
-              id: "uuid-pending",
+      // Newest first:
+      //   [0] pending Send at index 0, no result
+      //   [1] the AIMessage it would index into
+      //   [2] completed Send; its result maps call-real -> task:uuid-real
+      const getHistory = historyMock(
+        [
+          entry("cp-pending", [
+            sendTask("uuid-pending", 0, { name: "task" }),
+          ]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+          entry("cp-done", [
+            sendTask("uuid-real", 0, {
               name: "task",
-              path: ["__pregel_push", 0],
-              checkpoint: null,
-            },
-          ],
-        },
-        {
-          values: { messages: [aiMessage] },
-          tasks: [
-            {
-              id: "uuid-real",
-              name: "task",
-              path: ["__pregel_push", 0],
-              checkpoint: null,
-              result: {
-                messages: [
-                  {
-                    type: "tool",
-                    tool_call_id: "call-real",
-                    content: "ok",
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      ];
-
-      const byNamespace: Record<string, Array<{ values: unknown }>> = {
-        // Correct namespace, derived from the completed task result.
-        "task:uuid-real": [
-          {
-            values: {
               messages: [
-                { type: "human", id: "h-real", content: "Research the real topic" },
-                { type: "ai", id: "ai-real", content: "Correct research result" },
+                { type: "tool", tool_call_id: "call-real", content: "ok" },
               ],
-            },
-          },
+            }),
+          ]),
         ],
-        // Wrong namespace, returned only if the positional fallback mis-maps.
-        "task:uuid-pending": [
-          {
-            values: {
-              messages: [{ type: "ai", id: "ai-stale", content: "Stale pending result" }],
-            },
-          },
-        ],
-      };
-
-      const getHistory = vi.fn(
-        async (
-          _threadId: string,
-          opts?: { checkpoint?: { checkpoint_ns?: string } }
-        ) => {
-          const ns = opts?.checkpoint?.checkpoint_ns;
-          if (ns) return byNamespace[ns] ?? [];
-          return mainHistory;
+        {
+          // Correct namespace, derived from the completed task result.
+          "task:uuid-real": [
+            { type: "human", id: "h-real", content: "Research the real topic" },
+            { type: "ai", id: "ai-real", content: "Correct research result" },
+          ],
+          // Wrong namespace, returned only if the index guess wins.
+          "task:uuid-pending": [
+            { type: "ai", id: "ai-stale", content: "Stale pending result" },
+          ],
         }
       );
 
       await sm.fetchSubagentHistory(
-        { getHistory } as unknown as Parameters<
-          typeof sm.fetchSubagentHistory
-        >[0],
+        { getHistory } as unknown as FetchThreads,
         "thread-1"
       );
 
-      const contents = (sm.getSubagent("call-real")?.messages ?? []).map(
-        (m) => (m as { content?: unknown }).content
-      );
+      const contents = contentsOf(sm, "call-real");
       expect(contents).toContain("Correct research result");
       expect(contents).not.toContain("Stale pending result");
     });
@@ -2071,71 +2058,48 @@ describe("StreamManager", () => {
             },
           ],
         };
-        const messages = [
-          aiMessage,
-          ...rejected.map((id) => ({
-            type: "tool",
-            id: `tool-${id}`,
-            tool_call_id: id,
-            status: "error",
-            content: "User rejected the tool call.",
-          })),
-        ];
+        const rejections = rejected.map((id) => ({
+          type: "tool",
+          id: `tool-${id}`,
+          tool_call_id: id,
+          status: "error",
+          content: "User rejected the tool call.",
+        }));
         sm.reconstructSubagents(
-          messages as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+          [aiMessage, ...rejections] as unknown as Parameters<
+            typeof sm.reconstructSubagents
+          >[0]
         );
 
-        const byNamespace: Record<string, Array<{ values: unknown }>> = {
-          "tools:uuid-task": [
-            {
-              values: {
-                messages: [
-                  { type: "ai", id: "ai-sub", content: "Subagent progress" },
-                ],
-              },
-            },
+        // Newest first: the Sends, the HITL step that wrote the rejections
+        // (if any), then the model step that wrote the AIMessage.
+        const getHistory = historyMock(
+          [
+            entry(
+              "cp-sends",
+              sends.map((id, index) => sendTask(id, index))
+            ),
+            ...(rejections.length > 0
+              ? [entry("cp-hitl", [nodeTask("review", rejections)])]
+              : []),
+            entry("cp-model", [nodeTask("model", [aiMessage])]),
           ],
-          "tools:uuid-search": [
-            {
-              values: {
-                messages: [
-                  { type: "ai", id: "ai-search", content: "Search state" },
-                ],
-              },
-            },
-          ],
-        };
-        const getHistory = vi.fn(
-          async (
-            _threadId: string,
-            opts?: { checkpoint?: { checkpoint_ns?: string } }
-          ) => {
-            const ns = opts?.checkpoint?.checkpoint_ns;
-            if (ns) return byNamespace[ns] ?? [];
-            return [
-              {
-                values: { messages },
-                tasks: sends.map((id, index) => ({
-                  id,
-                  name: "tools",
-                  path: ["__pregel_push", index, false],
-                  checkpoint: null,
-                })),
-              },
-            ];
+          {
+            "tools:uuid-task": [
+              { type: "ai", id: "ai-sub", content: "Subagent progress" },
+            ],
+            "tools:uuid-search": [
+              { type: "ai", id: "ai-search", content: "Search state" },
+            ],
           }
         );
 
         await sm.fetchSubagentHistory(
-          { getHistory } as unknown as Parameters<
-            typeof sm.fetchSubagentHistory
-          >[0],
+          { getHistory } as unknown as FetchThreads,
           "thread-1"
         );
 
-        const contents = (sm.getSubagent("call-task")?.messages ?? []).map(
-          (m) => (m as { content?: unknown }).content
-        );
+        const contents = contentsOf(sm, "call-task");
         expect(contents).toContain("Subagent progress");
         expect(contents).not.toContain("Search state");
       }
@@ -2160,9 +2124,9 @@ describe("StreamManager", () => {
     ])(
       "positional fallback recognizes Send shapes correctly: $label",
       async ({ path, maps }) => {
-        // Pending head checkpoint with one push-shaped task and a subagent
-        // tool call; a namespace payload exists for the task's namespace, so
-        // a successful positional mapping is observable via getSubagent.
+        // A pending Send-shaped task and the subagent call it would index
+        // into; a namespace payload exists for the task's namespace, so a
+        // successful match is observable via getSubagent.
         const aiMessage = {
           type: "ai",
           id: "ai-shape",
@@ -2175,26 +2139,6 @@ describe("StreamManager", () => {
             },
           ],
         };
-        const mainHistory = [
-          {
-            values: { messages: [aiMessage] },
-            next: [],
-            checkpoint: { checkpoint_id: "cp-shape", thread_id: "t" },
-            metadata: {},
-            parent_checkpoint: null,
-            tasks: [
-              {
-                id: "uuid-shape",
-                name: "task",
-                path,
-                error: null,
-                interrupts: [],
-                checkpoint: null,
-                state: null,
-              },
-            ],
-          },
-        ];
         const sm = new StreamManager<TestState>(messageManager, {
           throttle: false,
           subagentToolNames: ["task"],
@@ -2205,39 +2149,22 @@ describe("StreamManager", () => {
             typeof sm.reconstructSubagents
           >[0]
         );
-        const getHistory = vi.fn(
-          async (
-            _threadId: string,
-            opts?: { checkpoint?: { checkpoint_ns?: string } }
-          ) => {
-            const ns = opts?.checkpoint?.checkpoint_ns;
-            if (ns === "task:uuid-shape") {
-              return [
-                {
-                  values: {
-                    messages: [{ type: "human", content: "shape payload" }],
-                  },
-                },
-              ];
-            }
-            return mainHistory;
-          }
+        const getHistory = historyMock(
+          [
+            entry("cp-shape", [sendTask("uuid-shape", 0, { name: "task", path })]),
+            entry("cp-model", [nodeTask("model", [aiMessage])]),
+          ],
+          { "task:uuid-shape": [{ type: "human", content: "shape payload" }] }
         );
         await sm.fetchSubagentHistory(
-          { getHistory } as unknown as Parameters<
-            typeof sm.fetchSubagentHistory
-          >[0],
+          { getHistory } as unknown as FetchThreads,
           "thread-shape"
         );
 
         const subagent = sm.getSubagent("call-shape");
         if (maps) {
           expect(subagent).toBeDefined();
-          expect(
-            (subagent?.messages ?? []).map(
-              (m) => (m as { content?: unknown }).content
-            )
-          ).toContain("shape payload");
+          expect(contentsOf(sm, "call-shape")).toContain("shape payload");
         } else {
           // A handler task is not a Send: no positional mapping, no fetch of
           // the task namespace.
@@ -2245,5 +2172,88 @@ describe("StreamManager", () => {
         }
       }
     );
+
+    it("matches by index for custom subagentToolNames", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["delegate"],
+      });
+      const aiMessage = {
+        type: "ai",
+        id: "ai-delegate",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-delegate",
+            name: "delegate",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-delegate", 0)]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+        ],
+        {
+          "tools:uuid-delegate": [
+            { type: "ai", id: "ai-sub", content: "Delegated progress" },
+          ],
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as FetchThreads,
+        "thread-1"
+      );
+
+      expect(contentsOf(sm, "call-delegate")).toContain("Delegated progress");
+    });
+
+    it("requests the discovery page with select but loads subagent messages in full", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      const aiMessage = {
+        type: "ai",
+        id: "ai-1",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-1",
+            name: "task",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-1", 0)]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+        ],
+        { "tools:uuid-1": [{ type: "ai", id: "ai-sub", content: "progress" }] }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as FetchThreads,
+        "thread-1"
+      );
+
+      expect(getHistory.mock.calls.map(([, options]) => options)).toEqual([
+        { limit: 20, select: ["checkpoint", "tasks"], signal: undefined },
+        {
+          checkpoint: { checkpoint_ns: "tools:uuid-1" },
+          limit: 1,
+          signal: undefined,
+        },
+      ]);
+    });
   });
 });

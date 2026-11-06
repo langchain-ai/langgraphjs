@@ -4,7 +4,6 @@ import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
-import { messagesProjection } from "./projections/messages.js";
 import { toolCallsProjection } from "./projections/tool-calls.js";
 import type { ThreadStream } from "../client/stream/index.js";
 
@@ -4857,9 +4856,9 @@ describe("StreamController", () => {
 
   it("hydrate promotes subagent execution namespace from getHistory", async () => {
     const { thread } = discoveryThread();
-    const getHistory = vi.fn(async () => [
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
+    const getHistory = vi.fn(async (_threadId: string, _options?: unknown) => [
       {
-        values: { messages: taskMessages },
         tasks: [
           {
             id: "exec-1",
@@ -4891,6 +4890,10 @@ describe("StreamController", () => {
       ).toEqual(["tools:exec-1"]);
     });
     expect(getHistory).toHaveBeenCalledTimes(1);
+    expect(getHistory.mock.calls[0][1]).toEqual({
+      limit: 20,
+      select: ["checkpoint", "tasks"],
+    });
 
     await controller.dispose();
   });
@@ -4901,9 +4904,9 @@ describe("StreamController", () => {
     // with NO deeper `research:u1|...` descendant. The old strict-prefix
     // rule dropped these, so the card only reappeared once SSE replay
     // arrived; hydrate must now seed it directly from getHistory.
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
     const getHistory = vi.fn(async () => [
       {
-        values: {},
         tasks: [],
         checkpoint: checkpointState("research:u1", "cp-a"),
       },
@@ -5114,73 +5117,6 @@ describe("StreamController", () => {
     expect(snapshot.get("task-3")?.namespace).toEqual(["tools:exec-3"]);
 
     await controller.dispose();
-  });
-
-  it("reuses hydrate discovery history to seed scoped messages when available", async () => {
-    const { thread } = discoveryThread();
-    const workerMessages = [
-      { type: "human", id: "worker-human", content: "Do research" },
-      { type: "ai", id: "worker-ai", content: "Research complete" },
-    ];
-    const getHistory = vi.fn(async () => [
-      {
-        values: { messages: workerMessages },
-        tasks: [],
-        checkpoint: checkpointState("tools:exec-1", "cp-worker"),
-      },
-      {
-        values: { messages: taskMessages },
-        tasks: [
-          {
-            id: "exec-1",
-            name: "tools",
-            path: ["__pregel_push", 0],
-            result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
-          },
-        ],
-        checkpoint: checkpointState("", "cp-root"),
-      },
-    ]);
-    const client = {
-      threads: {
-        getState: vi.fn(async () => ({
-          values: { messages: taskMessages },
-          next: [],
-          tasks: [],
-        })),
-        getHistory,
-        stream: vi.fn(() => thread),
-      },
-    };
-    const controller = new StreamController<State, unknown>({
-      assistantId: "deep_agent",
-      client: client as never,
-      threadId: "thread-1",
-    });
-    await controller.hydrationPromise;
-
-    await waitForExpectation(() => {
-      expect(controller.subagentStore.getSnapshot().get("task-1")?.namespace).toEqual([
-        "tools:exec-1",
-      ]);
-    });
-    expect(getHistory).toHaveBeenCalledTimes(1);
-
-    const acquired = controller.registry.acquire(
-      messagesProjection(["tools:exec-1"])
-    );
-    try {
-      await waitForExpectation(() => {
-        expect(acquired.store.getSnapshot().map((message) => message.text)).toEqual([
-          "Do research",
-          "Research complete",
-        ]);
-      });
-      expect(getHistory).toHaveBeenCalledTimes(1);
-    } finally {
-      acquired.release();
-      await controller.dispose();
-    }
   });
 
   it("does not apply stale state or reconnect when the thread is cleared during hydrate", async () => {

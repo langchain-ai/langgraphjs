@@ -38,7 +38,7 @@ import type { AssembledToolCall } from "../client/stream/handles/tools.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import { StreamStore } from "./store.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { ensureMessageInstances } from "./message-coercion.js";
@@ -51,6 +51,7 @@ import {
 } from "./discovery/index.js";
 import {
   collectSubgraphHostNamespaces,
+  DISCOVERY_HISTORY_SELECT,
   getHistoryPage,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
@@ -991,11 +992,10 @@ export class StreamController<
     try {
       const history = await getHistoryPage(this.#options.client, threadId, {
         limit: 20,
+        select: DISCOVERY_HISTORY_SELECT,
       });
       // A thread swap (or dispose) during the fetch invalidates this seed.
       if (this.#disposed || this.#currentThreadId !== threadId) return;
-
-      this.#primeScopedHistorySeedsFromHistory(threadId, history);
 
       const hosts = collectSubgraphHostNamespaces(history);
       this.#subgraphs.seedFromHistory(hosts);
@@ -1004,11 +1004,9 @@ export class StreamController<
         .filter(namespaceIsDefaultOnly)
         .map((entry) => entry.id);
       if (defaultOnlyIds.length > 0) {
-        const map = mapSubagentNamespaces(
-          history,
-          defaultOnlyIds,
-          this.#messagesKey
-        );
+        const map = mapSubagentNamespaces(history, defaultOnlyIds, {
+          messagesKey: this.#messagesKey,
+        });
         for (const [id, segment] of map) {
           this.#subagents.applyExecutionNamespace(id, segment);
         }
@@ -1188,9 +1186,8 @@ export class StreamController<
    * `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` often
    * mount together. Both need the same namespace-specific history page, so the
    * controller keeps an in-flight promise per `threadId + checkpoint_ns`.
-   * The cache may already be primed by the hydrate-time discovery history page;
-   * otherwise this method performs a narrow `checkpoint_ns` read and derives
-   * both projection snapshots from that one response:
+   * This method performs a narrow `checkpoint_ns` read and derives both
+   * projection snapshots from that one response:
    *
    * - `messages` are coerced with the stream-local message coercion rules, so
    *   serialized `content_blocks` and tool-call metadata hydrate correctly.
@@ -1234,54 +1231,6 @@ export class StreamController<
     })();
     this.#scopedHistorySeeds.set(key, seed);
     return seed;
-  }
-
-  /**
-   * Reuse the hydrate-time discovery history page as scoped projection data
-   * when it already contains checkpoint values for a namespace.
-   *
-   * The discovery read is required to resolve subagent execution namespaces and
-   * subgraph hosts. That same page often includes the latest values for those
-   * namespaces, so priming `#scopedHistorySeeds` here lets later
-   * `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` mounts
-   * hydrate from memory instead of issuing an immediate second `getHistory`
-   * request. If a namespace is not present in the bounded page,
-   * `#getScopedHistorySeed` still falls back to a targeted `checkpoint_ns`
-   * history read.
-   */
-  #primeScopedHistorySeedsFromHistory(
-    threadId: string,
-    history: Array<{
-      checkpoint?: { checkpoint_ns?: unknown };
-      values?: unknown;
-    }>
-  ): void {
-    for (const state of history) {
-      const checkpointNs = state.checkpoint?.checkpoint_ns;
-      if (typeof checkpointNs !== "string" || checkpointNs.length === 0) {
-        continue;
-      }
-      const namespace = checkpointNs
-        .split(NAMESPACE_SEPARATOR)
-        .filter((segment) => segment.length > 0);
-      if (namespace.length === 0) continue;
-      const key = `${threadId}|${namespaceKey(namespace)}`;
-      if (this.#scopedHistorySeeds.has(key)) continue;
-      const values = state.values;
-      if (values == null || typeof values !== "object") continue;
-      const messages = extractAndCoerceMessagesWithFallback(
-        values as Record<string, unknown>,
-        this.#messagesKey
-      );
-      if (messages == null) continue;
-      this.#scopedHistorySeeds.set(
-        key,
-        Promise.resolve({
-          messages,
-          toolCalls: seedToolCallsFromMessages(namespace, messages),
-        })
-      );
-    }
   }
 
   /**

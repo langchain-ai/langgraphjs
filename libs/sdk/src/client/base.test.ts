@@ -326,6 +326,19 @@ describe.each([["global"], ["mocked"]])(
         await Promise.all([p1, p2]);
       });
 
+      it("does not coalesce a selected getHistory read with a full read", async () => {
+        const client = new Client({ apiKey: "k" });
+        const p1 = client.threads.getHistory("t-hist-select", { limit: 20 });
+        const p2 = client.threads.getHistory("t-hist-select", {
+          limit: 20,
+          select: ["checkpoint", "tasks"],
+        });
+        await tick();
+        expect(expectedFetchMock).toHaveBeenCalledTimes(2);
+        flush();
+        await Promise.all([p1, p2]);
+      });
+
       it("does not coalesce when the caller supplies an AbortSignal", async () => {
         const client = new Client({ apiKey: "k" });
         const ac = new AbortController();
