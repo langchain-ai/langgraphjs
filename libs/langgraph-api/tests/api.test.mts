@@ -1643,6 +1643,15 @@ describe("runs", () => {
 
       const threads = await client.threads.search({ metadata: { marker } });
       expect(threads.length > 0).toBe(threadLeft);
+
+      // The run writes the store key the shared state tests read; let it end.
+      await vi.waitFor(
+        async () =>
+          expect(
+            await client.threads.search({ metadata: { marker } })
+          ).toHaveLength(0),
+        { timeout: 10_000 }
+      );
     }
   );
 
