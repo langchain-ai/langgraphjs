@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { Activity, StrictMode, act, type ReactElement } from "react";
 import { flushSync } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
@@ -524,6 +525,50 @@ describe("useStream (old engine) rejoin on mount", () => {
 
     expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
     expect(view.current.error).toBeDefined();
+  });
+
+  it("hides the head's interrupts while a stored run waits for the thread state", async () => {
+    const client = createClient();
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...userThread(), data: [interrupted()], isLoading: true },
+    });
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.interrupts).toEqual([]);
+  });
+
+  it("disables a loading-gated input after hydrating a server render that had no stored run", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(client, [], { hang: true });
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    function Send() {
+      const stream = useStream<State>({
+        assistantId: "agent",
+        client: client as unknown as Client,
+        threadId: "t1",
+        reconnectOnMount: true,
+      });
+      return <button disabled={stream.isLoading}>send</button>;
+    }
+    vi.stubGlobal("window", undefined);
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<Send />);
+    vi.unstubAllGlobals();
+
+    let root!: ReturnType<typeof hydrateRoot>;
+    await act(async () => {
+      root = hydrateRoot(container, <Send />);
+    });
+    await settle();
+    unmounts.push(() => act(() => root.unmount()));
+
+    expect(container.querySelector("button")?.disabled).toBe(true);
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
   });
 });
 
