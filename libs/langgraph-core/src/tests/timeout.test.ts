@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { it, expect, describe, beforeAll } from "vitest";
+import { it, expect, describe, beforeAll, vi } from "vitest";
 import { type PendingWrite } from "@langchain/langgraph-checkpoint";
 import { z } from "zod";
 import { StateGraph } from "../graph/index.js";
@@ -143,6 +143,99 @@ describe("NodeTimeoutError", () => {
 });
 
 describe("_runWithRetry timeout enforcement", () => {
+  it.each(["runTimeout", "idleTimeout"] as const)(
+    "honors %s beyond the platform timer limit without busy polling",
+    async (kind) => {
+      vi.useFakeTimers();
+      const timerLimit = 2 ** 31 - 1;
+      const timeout = timerLimit + 100;
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const taskObj = makeTask(() => pending, { timeout: { [kind]: timeout } });
+      const started = Date.now();
+      let settled = false;
+      const attempt = _runWithRetry(taskObj).then((result) => {
+        settled = true;
+        return result;
+      });
+      try {
+        // No 1 ms wake-up loop while a deadline is days away.
+        await vi.advanceTimersToNextTimerAsync();
+        expect(Date.now() - started).toBe(timerLimit);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(99);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        const { error } = await attempt;
+        expect(error).toBeInstanceOf(NodeTimeoutError);
+        expect((error as NodeTimeoutError).elapsed).toBe(timeout);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        finish();
+        await vi.advanceTimersByTimeAsync(0);
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it("refreshes a long idle deadline and clears its timer on completion", async () => {
+    vi.useFakeTimers();
+    const idleTimeout = 2 ** 31 + 100;
+    let finish!: () => void;
+    let heartbeat!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const taskObj = makeTask(
+      (_input, config) => {
+        heartbeat = config.heartbeat;
+        return pending;
+      },
+      { timeout: { idleTimeout, refreshOn: "heartbeat" } }
+    );
+    let settled = false;
+    const attempt = _runWithRetry(taskObj).then((result) => {
+      settled = true;
+      return result;
+    });
+    try {
+      await vi.advanceTimersToNextTimerAsync();
+      heartbeat();
+      await vi.advanceTimersByTimeAsync(101);
+      expect(settled).toBe(false);
+      finish();
+      expect((await attempt).error).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      finish();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the run deadline when the wall clock moves backwards", async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const attempt = _runWithRetry(makeTask(() => pending, { timeout: 100 }));
+    try {
+      await vi.advanceTimersByTimeAsync(50);
+      vi.setSystemTime(Date.now() - 60_000);
+      await vi.advanceTimersByTimeAsync(50);
+      const { error } = await attempt;
+      expect(error).toBeInstanceOf(NodeTimeoutError);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      finish();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
   it("fires a run timeout (kind=run)", async () => {
     const taskObj = makeTask(
       async (_input, config) => {
