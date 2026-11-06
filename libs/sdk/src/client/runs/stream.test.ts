@@ -1,5 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Client } from "../../client.js";
+import type { RunsStreamPayload } from "../../types.js";
 import { MaxReconnectAttemptsError } from "../../utils/stream.js";
 
 type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
@@ -187,6 +188,34 @@ describe("Client streaming with retry", () => {
       const [, init] = mockFetch.mock.calls[0];
       const body = JSON.parse(init.body as string);
       expect(body.checkpoint_id).toBe("1f0aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    });
+
+    test("sends _langsmithTracer as langsmith_tracer in the request body", async () => {
+      const chunks = [{ id: "1", event: "values", data: {} }];
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        })
+      );
+
+      const stream = client.runs.stream("thread-1", "assistant-1", {
+        input: { message: "test input" },
+        _langsmithTracer: {
+          projectName: "my-project",
+          exampleId: "example-1",
+        } as unknown as RunsStreamPayload["_langsmithTracer"],
+      });
+
+      await gatherStream(stream);
+
+      const [, init] = mockFetch.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.langsmith_tracer).toEqual({
+        project_name: "my-project",
+        example_id: "example-1",
+      });
     });
 
     test("sends streamNamespaces in the URL, not the body", async () => {
