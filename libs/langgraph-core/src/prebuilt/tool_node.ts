@@ -27,6 +27,22 @@ export type ToolNodeOptions = {
 const isBaseMessageArray = (input: unknown): input is BaseMessage[] =>
   Array.isArray(input) && input.every(isBaseMessage);
 
+const getCommandMessages = (command: Command): BaseMessage[] | undefined => {
+  const update = command.update;
+  if (update == null || Array.isArray(update) || !("messages" in update)) {
+    return undefined;
+  }
+
+  return Array.isArray(update.messages)
+    ? (update.messages as BaseMessage[])
+    : undefined;
+};
+
+const hasCommandMessages = (command: Command): boolean => {
+  const update = command.update;
+  return update != null && !Array.isArray(update) && "messages" in update;
+};
+
 const isMessagesState = (
   input: unknown
 ): input is { messages: BaseMessage[] } =>
@@ -342,15 +358,18 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       | BaseMessage[]
       | Command
     )[] = [];
-    const hasNonToolMessages = outputs.some(
-      (output) =>
-        isCommand(output) &&
-        Array.isArray(output.update?.messages) &&
-        output.update.messages.some(
+    const hasNonToolMessages = outputs.some((output) => {
+      if (!isCommand(output)) {
+        return false;
+      }
+
+      return (
+        getCommandMessages(output)?.some(
           (message: BaseMessage) =>
             message.getType() !== "tool" && message.getType() !== "remove"
-        )
-    );
+        ) ?? false
+      );
+    });
     const toolMessages: ToolMessage[] = [];
     const otherMessages: BaseMessage[] = [];
     const processedCommands: Command[] = [];
@@ -359,8 +378,8 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
     for (const output of outputs) {
       if (isCommand(output)) {
         let command = output;
-        if (hasNonToolMessages && Array.isArray(output.update?.messages)) {
-          const messages = output.update.messages as BaseMessage[];
+        const messages = getCommandMessages(output);
+        if (hasNonToolMessages && messages) {
           toolMessages.push(
             ...messages.filter(
               (message): message is ToolMessage => message.getType() === "tool"
@@ -381,7 +400,7 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
             resume: output.resume,
             update: {
               ...output.update,
-              ...(retainedMessages.length > 0 || "messages" in output.update
+              ...(retainedMessages.length > 0 || hasCommandMessages(output)
                 ? { messages: retainedMessages }
                 : {}),
             },
