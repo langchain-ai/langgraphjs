@@ -137,21 +137,17 @@ describe("MessageMetadataTracker", () => {
       expect(listener).toHaveBeenCalledTimes(1);
     });
 
-    it("notifies when an existing id's parentCheckpointId changes", () => {
+    it("keeps the first parent recorded for a message", () => {
       const tracker = new MessageMetadataTracker();
-      tracker.recordMessages([{ id: "m1" }], {
-        parentCheckpointId: "cp-1",
-      });
-
-      const listener = vi.fn();
-      tracker.store.subscribe(listener);
-
-      tracker.recordMessages([{ id: "m1" }], {
+      tracker.recordMessages([{ id: "m1" }], { parentCheckpointId: "cp-1" });
+      tracker.recordMessages([{ id: "m1" }, { id: "m2" }], {
         parentCheckpointId: "cp-2",
       });
 
-      expect(listener).toHaveBeenCalledTimes(1);
       expect(tracker.store.getSnapshot().get("m1")).toEqual({
+        parentCheckpointId: "cp-1",
+      });
+      expect(tracker.store.getSnapshot().get("m2")).toEqual({
         parentCheckpointId: "cp-2",
       });
     });
@@ -264,6 +260,16 @@ describe("MessageMetadataTracker", () => {
       const tracker = new MessageMetadataTracker();
       tracker.recordMessages([{ id: "a" }], { parentCheckpointId: "cp-1" });
       tracker.markPending(["a"]);
+      expect(tracker.store.getSnapshot().get("a")).toEqual({
+        parentCheckpointId: "cp-1",
+        optimisticStatus: "pending",
+      });
+    });
+
+    it("fills the parent of a pending message from its first snapshot", () => {
+      const tracker = new MessageMetadataTracker();
+      tracker.markPending(["a"]);
+      tracker.recordMessages([{ id: "a" }], { parentCheckpointId: "cp-1" });
       expect(tracker.store.getSnapshot().get("a")).toEqual({
         parentCheckpointId: "cp-1",
         optimisticStatus: "pending",

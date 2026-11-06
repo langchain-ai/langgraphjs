@@ -2187,6 +2187,59 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  it("replaces the seeded branch with a fork whose checkpoints restart at a lower step", async () => {
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(async () => ({ run_id: "run-fork" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", id: "human-1", content: "hi" },
+              { type: "ai", id: "ai-1", content: "hello" },
+            ],
+          },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-9" },
+          metadata: { step: 9 },
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-fork",
+    });
+    await controller.hydrationPromise;
+
+    const edited = { type: "human", id: "human-edited", content: "hi again" };
+    void controller.submit({ messages: [edited] }, { forkFrom: "cp-0" });
+    await rootSubscription.started;
+    rootSubscription.push(checkpointsEvent(1, 1, "cp-fork-1"));
+    rootSubscription.push(valuesEvent([edited], 2));
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore
+          .getSnapshot()
+          .messages.map((m) => (m as { id?: string }).id)
+      ).toEqual(["human-edited"]);
+    });
+
+    await controller.dispose();
+  });
+
   it("applies history replayed from before the hydrated checkpoint to root projections only, not the root store", async () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
