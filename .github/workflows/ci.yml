@@ -166,7 +166,7 @@ jobs:
         ports:
           - 27017:27017
         options: >-
-          --health-cmd 'mongosh --quiet --username user --password password --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 }).ok"'
+          --health-cmd "mongosh --quiet --username user --password password --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
