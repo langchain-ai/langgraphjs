@@ -950,6 +950,45 @@ describe("ToolCallAssembler", () => {
 });
 
 describe("thread.toolCalls projection", () => {
+  it("stops a cancelled consumer while other tool-call consumers keep receiving events", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const cancelled = thread.toolCalls[Symbol.asyncIterator]();
+    const active = thread.toolCalls[Symbol.asyncIterator]();
+    let cancelledDone: boolean | undefined;
+    const pending = cancelled.next().then((result) => {
+      cancelledDone = result.done;
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await cancelled.return!();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(cancelledDone).toBe(true);
+      await pending;
+      transport.pushEvent(
+        eventOf(
+          "tools",
+          {
+            event: "tool-started",
+            tool_call_id: "remaining",
+            tool_name: "calculator",
+            input: {},
+          },
+          { namespace: [], seq: 1 }
+        )
+      );
+      const result = await active.next();
+      expect(result.done).toBe(false);
+      expect(result.value.callId).toBe("remaining");
+      await expect(cancelled.next()).resolves.toEqual({
+        done: true,
+        value: undefined,
+      });
+    } finally {
+      await thread.close();
+    }
+  });
+
   it("yields assembled tool calls through the getter", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
