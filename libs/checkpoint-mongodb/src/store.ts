@@ -540,28 +540,24 @@ export class MongoDBStore extends BaseStore {
       }
     }
 
-    // Stage 2: Group to get unique namespaces
+    // Truncate before grouping so descendants share one namespace and
+    // pagination applies to the distinct truncated results.
+    const namespace =
+      maxDepth === undefined
+        ? "$namespace"
+        : maxDepth === 0
+          ? { $literal: [] }
+          : { $slice: ["$namespace", maxDepth] };
     pipeline.push({
-      $group: { _id: "$namespace" },
+      $group: { _id: namespace },
     });
 
-    // Stage 3: Filter by max depth if provided
-    if (maxDepth !== undefined) {
-      pipeline.push({
-        $match: {
-          $expr: {
-            $lte: [{ $size: "$_id" }, maxDepth],
-          },
-        },
-      });
-    }
-
-    // Stage 4: Sort by namespace
+    // Sort by namespace
     pipeline.push({
       $sort: { _id: 1 },
     });
 
-    // Stage 5: Apply offset and limit
+    // Apply offset and limit
     if (offset !== undefined && offset > 0) {
       pipeline.push({ $skip: offset });
     }
