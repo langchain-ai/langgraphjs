@@ -383,6 +383,32 @@ describe("mapSubagentNamespaces", () => {
     });
   });
 
+  it("leaves unfinished subagents unmatched past a task that had an interrupt and no result", () => {
+    // JS history before langgraph-core kept a resumed task's result: HITL
+    // rejected `search` and moved it last, but its rewrite isn't on the
+    // page. The model's original order would give the researcher the
+    // writer's namespace.
+    const history = [
+      entry("cp-sends", [sendTask("uuid-r", 0), sendTask("uuid-w", 1)]),
+      entry("cp-hitl", [
+        {
+          ...nodeTask("review", []),
+          result: undefined,
+          interrupts: [{ id: "int-1", value: {} }],
+        },
+      ]),
+      modelEntry([
+        { id: "call_s", name: "search" },
+        { id: "call_r", name: "task" },
+        { id: "call_w", name: "task" },
+      ]),
+    ];
+
+    const map = mapSubagentNamespaces(history, ["call_r", "call_w"]);
+
+    expect(Object.fromEntries(map)).toEqual({});
+  });
+
   it("does not map a call that doesn't start a subagent", () => {
     const history = mixedPositionalPage(
       [{ id: "call_d", name: "delegate" }],

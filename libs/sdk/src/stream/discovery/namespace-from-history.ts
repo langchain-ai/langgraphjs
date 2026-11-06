@@ -40,6 +40,7 @@ interface HistoryTask {
   name?: unknown;
   path?: unknown;
   result?: unknown;
+  interrupts?: unknown;
   checkpoint?: { checkpoint_ns?: unknown } | null;
 }
 
@@ -156,6 +157,14 @@ function matchById(
   }
 }
 
+function hadInterruptWithoutResult(task: HistoryTask): boolean {
+  return (
+    Array.isArray(task.interrupts) &&
+    task.interrupts.length > 0 &&
+    task.result == null
+  );
+}
+
 /**
  * The tool calls the Sends in `history[index]` index into, rebuilt from
  * older entries' task results.
@@ -167,15 +176,8 @@ function matchById(
  * those calls got no Send and are dropped. The Send entry's own results
  * are siblings that answered after dispatch and don't count.
  *
- * Returns `undefined` when no such AIMessage is on the page.
- *
- * Known limit, JS graphs with HITL (`createAgent`, deepagentsjs): JS
- * history drops `result` for a task that had an interrupt, even after it
- * resumed, so a HITL step's rewritten AIMessage and ToolMessages aren't
- * seen. JS HITL also reorders the calls it rewrites. When HITL paused on a
- * call in the same AIMessage as subagent calls, unfinished subagents from
- * that step can be left unmatched or matched to a sibling. Finished ones
- * still match by id. Python graphs keep the result.
+ * Returns `undefined` when no such AIMessage is on the page, or when the
+ * walk passes a task that had an interrupt and has no result.
  */
 function dispatchedToolCalls(
   history: readonly HistoryEntry[],
@@ -186,6 +188,9 @@ function dispatchedToolCalls(
   for (const older of history.slice(index + 1)) {
     let toolCalls: ToolCallRef[] | undefined;
     for (const task of getTasks(older)) {
+      // Some JS versions drop a resumed task's result, so a HITL rewrite
+      // may be missing.
+      if (hadInterruptWithoutResult(task)) return undefined;
       for (const message of messagesOf(task.result, messagesKey)) {
         const id = answeredToolCallId(message);
         if (id != null) answered.add(id);
@@ -252,9 +257,10 @@ const isTaskToolCall = (name: string) => name === "task";
  * Match subagent tool calls to their subagent namespaces from a discovery
  * page (root-thread history, newest first).
  *
- * Reads only `tasks[].path`, `tasks[].id`, `tasks[].name` and
- * `tasks[].result`, never `values`, so a `select: ["checkpoint", "tasks"]`
- * page and a full page give the same result. Shared by both hooks.
+ * Reads only `tasks[].path`, `tasks[].id`, `tasks[].name`,
+ * `tasks[].result` and `tasks[].interrupts`, never `values`, so a
+ * `select: ["checkpoint", "tasks"]` page and a full page give the same
+ * result. Shared by both hooks.
  *
  * @returns Map of tool call id → subagent namespace (e.g. `tools:<uuid>`).
  *   Ids that can't be matched are omitted.
