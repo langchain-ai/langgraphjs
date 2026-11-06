@@ -470,20 +470,19 @@ export interface StreamSubmitOptions<
   /**
    * Behaviour when a run is already in-flight on the thread.
    *
-   * - `"rollback"` (default) — abort the active run client-side and
-   *   start the new one immediately.
-   * - `"interrupt"` — server-side cancel of the in-flight run, then
-   *   start the new one.
+   * - `"interrupt"` (default) — cancel the active run on the server,
+   *   keeping the steps it completed, and start the new one.
+   * - `"rollback"` — like `"interrupt"`, but the server also deletes
+   *   the active run and its checkpoints, as if it never ran.
    * - `"enqueue"` — do NOT abort the active run; the new submission
    *   lands in {@link StreamController.queueStore} and is forwarded
    *   once the current run terminates.
    * - `"reject"` — error out client-side when a run is already in
    *   flight.
    *
-   * `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side.
-   * `"interrupt"` is accepted on the type surface but currently falls
-   * through to `"rollback"` behaviour pending the matching server-side
-   * cancel work.
+   * When the thread shows no run in flight, only a strategy passed here
+   * is sent, so by default the server queues the new run behind a run
+   * this client has not seen.
    */
   multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
   signal?: AbortSignal;

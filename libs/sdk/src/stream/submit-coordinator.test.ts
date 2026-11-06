@@ -573,7 +573,7 @@ describe("SubmitCoordinator", () => {
   });
 
   describe("multitaskStrategy", () => {
-    it("rolls back the active run by default and starts the new one", async () => {
+    it("interrupts the active run by default and starts the new one", async () => {
       const h = makeHarness();
 
       const first = h.coordinator.submit({ count: 1 });
@@ -599,7 +599,45 @@ describe("SubmitCoordinator", () => {
       await vi.runAllTimersAsync();
       await Promise.all([first, second]);
 
-      expect(h.submitRun).toHaveBeenCalledTimes(2);
+      expect(
+        h.submitRun.mock.calls.map(([params]) => params.multitaskStrategy)
+      ).toEqual([undefined, "interrupt"]);
+    });
+
+    it("leaves the default to the server for a run the thread no longer shows", async () => {
+      const h = makeHarness();
+
+      const first = h.coordinator.submit({ count: 1 });
+      await h.terminalRegistered();
+      h.rootStore.setState((s) => ({ ...s, isLoading: false }));
+      const second = h.coordinator.submit({ count: 2 });
+      await flush();
+      h.resolveSubmit({ run_id: "run-1" });
+      await h.currentTerminal();
+      h.resolveSubmit({ run_id: "run-2" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await Promise.all([first, second]);
+
+      expect(
+        h.submitRun.mock.calls.map(([params]) => params.multitaskStrategy)
+      ).toEqual([undefined, undefined]);
+    });
+
+    it("sends the caller's strategy when no run is in flight", async () => {
+      const h = makeHarness();
+
+      const submit = h.coordinator.submit(
+        { count: 1 },
+        { multitaskStrategy: "rollback" }
+      );
+      await h.terminalRegistered();
+      h.resolveSubmit({ run_id: "run-1" });
+      h.resolveTerminal({ event: "completed" });
+      await vi.runAllTimersAsync();
+      await submit;
+
+      expect(h.submitRun.mock.calls[0][0].multitaskStrategy).toBe("rollback");
     });
 
     it("rejects when an active run exists and strategy is 'reject'", async () => {
