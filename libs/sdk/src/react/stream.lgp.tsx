@@ -77,7 +77,9 @@ function threadAsHistory<StateType extends Record<string, unknown>>(
   return [
     {
       values: thread.values,
-      next: [],
+      // A breakpoint pause leaves no `interrupts` on the row, only its status;
+      // a non-empty `next` makes `interrupts` report it as a breakpoint.
+      next: thread.status === "interrupted" ? [thread.status] : [],
       tasks: Object.entries(thread.interrupts ?? {}).map(
         ([id, interrupts]) => ({ id, name: "", interrupts })
       ),

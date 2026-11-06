@@ -295,9 +295,9 @@ describe("useStream (old engine) joinStream", () => {
 
 describe("useStream (old engine) subgraphs: false", () => {
   const approve = { id: "int-1", value: "approve?" };
-  const threadRow = (values: State, interrupts = {}) => ({
+  const threadRow = (values: State, interrupts = {}, status = "idle") => ({
     thread_id: "t1",
-    status: "idle",
+    status,
     state_updated_at: "",
     values,
     interrupts,
@@ -322,6 +322,22 @@ describe("useStream (old engine) subgraphs: false", () => {
     expect(client.threads.getHistory).not.toHaveBeenCalled();
     expect(view.current.messages).toEqual([message("h0")]);
     expect(view.current.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+  });
+
+  it("reports a breakpoint pause from the thread status", async () => {
+    const client = createClient();
+    const get = vi
+      .fn()
+      .mockResolvedValue(
+        threadRow({ messages: [message("h0")] }, {}, "interrupted")
+      );
+    Object.assign(client.threads, { get });
+    const view = await renderStream(client, {
+      threadId: "t1",
+      subgraphs: false,
+    });
+
+    expect(view.current.interrupts).toEqual([{ when: "breakpoint" }]);
   });
 
   it("re-reads the thread row after a run and never streams subgraphs", async () => {
