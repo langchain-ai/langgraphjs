@@ -188,8 +188,8 @@ function dispatchedToolCalls(
   for (const older of history.slice(index + 1)) {
     let toolCalls: ToolCallRef[] | undefined;
     for (const task of getTasks(older)) {
-      // Some JS versions drop a resumed task's result, so a HITL rewrite
-      // may be missing.
+      // Older `@langchain/langgraph` versions drop a resumed task's result,
+      // so a HITL rewrite may be missing.
       if (hadInterruptWithoutResult(task)) return undefined;
       for (const message of messagesOf(task.result, messagesKey)) {
         const id = answeredToolCallId(message);
