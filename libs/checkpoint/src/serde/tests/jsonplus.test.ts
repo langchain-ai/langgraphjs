@@ -375,3 +375,79 @@ it("Should replace circular JSON inputs", async () => {
     `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`
   );
 });
+
+it.each([
+  ["zero", 0n],
+  ["small", 42n],
+  ["negative", -42n],
+  ["beyond Number.MAX_SAFE_INTEGER", 12345678901234567890n],
+  ["negative beyond Number.MIN_SAFE_INTEGER", -12345678901234567890n],
+  ["very large", 10n ** 200n + 1n],
+])("round trips a %s bigint", async (_description, value) => {
+  const serde = new JsonPlusSerializer();
+  const [type, serialized] = await serde.dumpsTyped(value);
+  expect(type).toEqual("json");
+
+  const restored = await serde.loadsTyped(type, serialized);
+  expect(typeof restored).toBe("bigint");
+  expect(restored).toBe(value);
+});
+
+it("round trips bigints nested in other values without losing the rest", async () => {
+  const serde = new JsonPlusSerializer();
+  const value = {
+    count: 1,
+    big: 9007199254740993n,
+    list: [1n, -2n, "three"],
+    set: new Set([5n]),
+    map: new Map([["k", 6n]]),
+    message: new AIMessage("hello"),
+  };
+
+  const [type, serialized] = await serde.dumpsTyped(value);
+  const restored = await serde.loadsTyped(type, serialized);
+
+  expect(restored).toEqual(value);
+  expect(restored.big).toBe(9007199254740993n);
+});
+
+it.each([
+  ["empty string", [""]],
+  ["hexadecimal string", ["0x10"]],
+  ["exponent string", ["1e3"]],
+  ["fractional string", ["1.5"]],
+  ["whitespace-padded string", [" 1 "]],
+  ["non-string", [1]],
+  ["no arguments", []],
+  ["extra arguments", ["1", "2"]],
+])("keeps a BigInt record with %s inert", async (_description, args) => {
+  const serde = new JsonPlusSerializer();
+  const record = {
+    lc: 2,
+    type: "constructor",
+    id: ["BigInt"],
+    method: null,
+    args,
+    kwargs: {},
+  };
+
+  const restored = await serde.loadsTyped("json", JSON.stringify(record));
+
+  expect(restored).toEqual(record);
+});
+
+it("keeps a BigInt record with a method inert", async () => {
+  const serde = new JsonPlusSerializer();
+  const record = {
+    lc: 2,
+    type: "constructor",
+    id: ["BigInt"],
+    method: "asUintN",
+    args: ["1"],
+    kwargs: {},
+  };
+
+  const restored = await serde.loadsTyped("json", JSON.stringify(record));
+
+  expect(restored).toEqual(record);
+});
