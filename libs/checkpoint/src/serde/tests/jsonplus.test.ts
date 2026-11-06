@@ -375,3 +375,42 @@ it("Should replace circular JSON inputs", async () => {
     `{"a":{"b":{"a":"[Circular]"}},"b":{"a":"[Circular]"}}`
   );
 });
+
+it("resolves legacy LangChain ids through a given import map", async () => {
+  // Python's langchain_core writes a message's id under the legacy namespace.
+  const legacy = {
+    lc: 1,
+    type: "constructor",
+    id: ["langchain", "schema", "messages", "HumanMessage"],
+    kwargs: { content: "from python" },
+  };
+  const data = JSON.stringify({ messages: [legacy] });
+
+  await expect(
+    new JsonPlusSerializer().loadsTyped("json", data)
+  ).rejects.toThrow(/Invalid namespace/);
+
+  const serde = new JsonPlusSerializer({
+    importMap: { schema__messages: { HumanMessage } },
+  });
+  const { messages } = await serde.loadsTyped("json", data);
+  expect(messages[0]).toBeInstanceOf(HumanMessage);
+  expect(messages[0].content).toBe("from python");
+});
+
+it("stores a Uint8Array with its own toJSON, like a Buffer, as bytes", async () => {
+  // Node's Buffer is one; its toJSON runs before the replacer.
+  class BufferLike extends Uint8Array {
+    toJSON() {
+      return { type: "Buffer", data: Array.from(this) };
+    }
+  }
+  const serde = new JsonPlusSerializer();
+  const [type, data] = await serde.dumpsTyped({
+    content: BufferLike.from([137, 80, 0, 255]),
+  });
+
+  const { content } = await serde.loadsTyped(type, data);
+  expect(content).toBeInstanceOf(Uint8Array);
+  expect(Array.from(content)).toEqual([137, 80, 0, 255]);
+});
