@@ -393,6 +393,9 @@ export class MongoDBStore extends BaseStore {
             update: {
               $set: doc,
               $setOnInsert: { createdAt: now },
+              ...(this.indexConfig && this.embeddings && op.index === false
+                ? { $unset: { [this.indexConfig.path ?? "embedding"]: "" } }
+                : {}),
               ...this.timestampOp,
             },
             upsert: true,
