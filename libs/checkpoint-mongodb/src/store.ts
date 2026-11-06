@@ -218,11 +218,17 @@ export class MongoDBStore extends BaseStore {
     params?: Omit<MongoDBStoreParams, "client">
   ): Promise<MongoDBStore> {
     const client = new MongoClient(connString);
-    await client.connect();
-    const store = new MongoDBStore({ ...params, client });
-    store.ownsClient = true;
-    await store.start();
-    return store;
+    try {
+      await client.connect();
+      const store = new MongoDBStore({ ...params, client });
+      store.ownsClient = true;
+      await store.start();
+      return store;
+    } catch (error) {
+      // Cleanup must not hide the error that prevented store initialization.
+      await client.close().catch(() => {});
+      throw error;
+    }
   }
 
   /**
