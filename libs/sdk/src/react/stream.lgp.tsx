@@ -43,7 +43,7 @@ import { Client, getClientConfigHash } from "../client.js";
 import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type { Interrupt, Thread, ThreadState } from "../schema.js";
 import type {
   StreamMode,
   ToolProgress,
@@ -62,16 +62,44 @@ import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 function getFetchHistoryKey(
   client: Client,
   threadId: string | undefined | null,
-  limit: boolean | number
+  limit: boolean | number | "thread"
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
+}
+
+/**
+ * `GET /threads/{thread_id}` as a one-entry history, for `subgraphs: false`.
+ * It has no checkpoint id, so its messages can't be forked from.
+ */
+function threadAsHistory<StateType extends Record<string, unknown>>(
+  thread: Thread<StateType>
+): ThreadState<StateType>[] {
+  return [
+    {
+      values: thread.values,
+      // A breakpoint pause leaves no `interrupts` on the row, only its status;
+      // a non-empty `next` makes `interrupts` report it as a breakpoint.
+      next: thread.status === "interrupted" ? [thread.status] : [],
+      tasks: Object.entries(thread.interrupts ?? {}).map(
+        ([id, interrupts]) => ({ id, name: "", interrupts })
+      ),
+      checkpoint: { thread_id: thread.thread_id, checkpoint_ns: "" },
+      metadata: {},
+      created_at: thread.state_updated_at,
+      parent_checkpoint: null,
+    } as unknown as ThreadState<StateType>,
+  ];
 }
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number | "thread" }
 ) {
+  if (options?.limit === "thread") {
+    return client.threads.get<StateType>(threadId).then(threadAsHistory);
+  }
+
   if (options?.limit === false) {
     return client.threads.getState<StateType>(threadId).then((state) => {
       if (state.checkpoint == null) return [];
@@ -86,7 +114,7 @@ function fetchHistory<StateType extends Record<string, unknown>>(
 function useThreadHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string | undefined | null,
-  limit: boolean | number,
+  limit: boolean | number | "thread",
   options: {
     passthrough: boolean;
     submittingRef: RefObject<string | null>;
@@ -125,7 +153,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   const fetcher = useCallback(
     (
       threadId: string | undefined | null,
-      limit: boolean | number,
+      limit: boolean | number | "thread",
       readOptions: HistoryReadOptions<StateType> = {}
     ): Promise<ThreadState<StateType>[]> => {
       // If only passthrough is enabled, don't fetch history
@@ -313,16 +341,19 @@ export function useStreamLGP<
     [stream, onThreadId]
   );
 
-  const historyLimit =
-    typeof options.fetchStateHistory === "object" &&
-    options.fetchStateHistory != null
+  // `subgraphs: false` reads the thread itself, never its history.
+  const subgraphs = options.subgraphs ?? true;
+  const historyLimit = !subgraphs
+    ? false
+    : typeof options.fetchStateHistory === "object" &&
+        options.fetchStateHistory != null
       ? (options.fetchStateHistory.limit ?? false)
       : (options.fetchStateHistory ?? false);
 
   const builtInHistory = useThreadHistory<StateType>(
     client,
     threadId,
-    historyLimit,
+    subgraphs ? historyLimit : "thread",
     {
       passthrough: options.thread != null,
       submittingRef: threadIdStreamingRef,
@@ -416,6 +447,7 @@ export function useStreamLGP<
   // This ensures subagent visualization persists after page refresh or stream completion
   const historyMessages = getMessages(historyValues);
   const shouldReconstructSubagents =
+    subgraphs &&
     options.filterSubagentMessages &&
     !stream.isLoading &&
     !history.isLoading &&
@@ -692,7 +724,7 @@ export function useStreamLGP<
 
           checkpoint,
           streamMode,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamSubgraphs: subgraphs && submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
           onRunCreated(params) {

@@ -293,6 +293,78 @@ describe("useStream (old engine) joinStream", () => {
   });
 });
 
+describe("useStream (old engine) subgraphs: false", () => {
+  const approve = { id: "int-1", value: "approve?" };
+  const threadRow = (values: State, interrupts = {}, status = "idle") => ({
+    thread_id: "t1",
+    status,
+    state_updated_at: "",
+    values,
+    interrupts,
+  });
+
+  it("loads the thread row instead of its state or history", async () => {
+    const client = createClient();
+    const get = vi
+      .fn()
+      .mockResolvedValue(
+        threadRow({ messages: [message("h0")] }, { "task-1": [approve] })
+      );
+    Object.assign(client.threads, { get });
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      subgraphs: false,
+    });
+
+    expect(get).toHaveBeenCalledWith("t1");
+    expect(client.threads.getState).not.toHaveBeenCalled();
+    expect(client.threads.getHistory).not.toHaveBeenCalled();
+    expect(view.current.messages).toEqual([message("h0")]);
+    expect(view.current.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+  });
+
+  it("reports a breakpoint pause from the thread status", async () => {
+    const client = createClient();
+    const get = vi
+      .fn()
+      .mockResolvedValue(
+        threadRow({ messages: [message("h0")] }, {}, "interrupted")
+      );
+    Object.assign(client.threads, { get });
+    const view = await renderStream(client, {
+      threadId: "t1",
+      subgraphs: false,
+    });
+
+    expect(view.current.interrupts).toEqual([{ when: "breakpoint" }]);
+  });
+
+  it("re-reads the thread row after a run and never streams subgraphs", async () => {
+    const client = createClient();
+    const answered = [message("h0"), message("a0", "ai")];
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce(
+        threadRow({ messages: [message("h0")] }, { "task-1": [approve] })
+      )
+      .mockResolvedValue(threadRow({ messages: answered }));
+    Object.assign(client.threads, { get });
+    const view = await renderStream(client, {
+      threadId: "t1",
+      subgraphs: false,
+    });
+    mockRun(client, [{ event: "values", data: { messages: answered } }]);
+    await submit(view, { command: { resume: "yes" }, streamSubgraphs: true });
+
+    expect(client.runs.stream.mock.calls[0]?.[2].streamSubgraphs).toBe(false);
+    expect(client.threads.getState).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(view.current.interrupts).toEqual([]);
+    expect(view.current.messages).toEqual(answered);
+  });
+});
+
 describe("useStream (old engine) implicit checkpoint", () => {
   const checkpoint = (checkpoint_id: string) => ({
     thread_id: "t1",
