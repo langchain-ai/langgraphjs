@@ -1,5 +1,31 @@
 # @langchain/langgraph-api
 
+## 1.7.0
+
+### Minor Changes
+
+- [#3229](https://github.com/langchain-ai/langgraphjs/pull/3229) [`6fb340e`](https://github.com/langchain-ai/langgraphjs/commit/6fb340e306e33f95cdb2d2a0a7eaebcc154152f1) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph-api): a run that answers interrupts by id tells the thread's other protocol clients which ones, with an `input.answered` event on the `input` channel; run streams don't carry it
+
+- [#3225](https://github.com/langchain-ai/langgraphjs/pull/3225) [`bdec328`](https://github.com/langchain-ai/langgraphjs/commit/bdec328a80439ce1d3974b10aa9e7b7f297da1b1) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph-api): refuse a stale interrupt answer only when the run asks for it with `strict_resume`
+  
+  Strict resume, which 1.6.0 turned on for every run, is now opt-in. A run created with `strict_resume: true` (the same field on the protocol's `run.start` and `input.respond`) runs the graph in strict resume mode: a `Command({ resume })` that names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending ends the run with `UnknownInterruptError`, and the thread keeps its status, values and interrupts. The error event carries `reason`, `interrupt_ids` and `pending_ids`. A retried run, and an `interrupt` or `rollback` run that cancelled one in flight, resume as before. Runs that don't set it resume as they did before 1.6.0: one value answers every pending interrupt, and an answer sent twice is a no-op.
+
+### Patch Changes
+
+- [#3227](https://github.com/langchain-ai/langgraphjs/pull/3227) [`badfe38`](https://github.com/langchain-ai/langgraphjs/commit/badfe38413720fe2bf21b81dd52cd6e74f86d845) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): the protocol's `failed` lifecycle event carries the run error's message instead of the whole error as JSON, and a refused strict resume's `reason`, `interrupt_ids` and `pending_ids`
+
+- [#3239](https://github.com/langchain-ai/langgraphjs/pull/3239) [`397e93e`](https://github.com/langchain-ai/langgraphjs/commit/397e93e0d2b47c3d9ed914c7937b92c9fd95d532) Thanks [@eliornl](https://github.com/eliornl)! - After a run that forks from a checkpoint, later runs on the thread continue from its latest state again. The dev server saved the fork's `checkpoint_id` (and `checkpoint_ns`, `checkpoint_map` and `run_id`) on the thread config, so every later run on the thread forked from the same checkpoint and dropped the new branch.
+
+- [#3190](https://github.com/langchain-ai/langgraphjs/pull/3190) [`ffe9e60`](https://github.com/langchain-ai/langgraphjs/commit/ffe9e60a5d3fdabbcbd6c814b18cf3d9fc01a34b) Thanks [@eliornl](https://github.com/eliornl)! - `GET /threads/:thread_id/runs/:run_id/join` and `GET /threads/:thread_id/runs/:run_id/stream` now return HTTP 404 when the run doesn't exist, is on another thread, or is hidden by the `threads:read` handler, as `GET /threads/:thread_id/runs/:run_id` does. `client.runs.join()` and `client.runs.joinStream()` then throw `HTTP 404` instead of returning `{ __error__ }` or yielding an error event, with or without `lastEventId`.
+
+- [#3231](https://github.com/langchain-ai/langgraphjs/pull/3231) [`184ce74`](https://github.com/langchain-ai/langgraphjs/commit/184ce74a7aac02c2337fb4909da547b7ef39912a) Thanks [@eliornl](https://github.com/eliornl)! - Run streams on the dev server take the `lifecycle` stream mode: an event named `lifecycle|<namespace>` when each subgraph starts and when it ends (`completed`, `failed` or `interrupted`), with the id of the tool call that started it. `/info` reports `stream_lifecycle`.
+
+- [#3246](https://github.com/langchain-ai/langgraphjs/pull/3246) [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): the protocol's `run.start` reads the multitask strategy from `multitask_strategy`, falling back to `multitaskStrategy`, on the dev server and the embed server.
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.0
+
 ## 1.6.0
 
 ### Minor Changes

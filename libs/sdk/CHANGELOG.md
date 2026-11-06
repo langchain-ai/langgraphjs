@@ -1,5 +1,23 @@
 # @langchain/langgraph-sdk
 
+## 1.14.0
+
+### Minor Changes
+
+- [#3230](https://github.com/langchain-ai/langgraphjs/pull/3230) [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa) Thanks [@eliornl](https://github.com/eliornl)! - feat(sdk): hide the interrupts another client answered when the server sends `input.answered`, and route that event to the `input` channel
+
+- [#3230](https://github.com/langchain-ai/langgraphjs/pull/3230) [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa) Thanks [@eliornl](https://github.com/eliornl)! - feat(sdk): add `strictResume`, so a server with strict resume refuses an answer to an interrupt that is no longer waiting. `client.runs.create()`, `stream()` and `wait()` send it as `strict_resume`, and `useStream`'s `submit()` passes it on. With `respond()` and `respondAll()`, the refusal is an `UnknownInterruptError` on `error` with `reason`, `interruptIds` and `pendingIds`, which `isUnknownInterruptError(error)` recognizes, and the interrupts still waiting show again.
+
+### Patch Changes
+
+- [#3243](https://github.com/langchain-ai/langgraphjs/pull/3243) [`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba) Thanks [@eliornl](https://github.com/eliornl)! - `useStream` ignores a `tools` event of a kind it doesn't know, such as langgraph's own `tool-started` payload, instead of throwing `Unexpected tool event` inside a state update, which crashed the app's render.
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+
+- [#3228](https://github.com/langchain-ai/langgraphjs/pull/3228) [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b) Thanks [@eliornl](https://github.com/eliornl)! - Run streams take the `lifecycle` stream mode, typed as `LifecycleStreamEvent`: an event when each subgraph starts and ends, with the id of the tool call that started it.
+
+- [#3246](https://github.com/langchain-ai/langgraphjs/pull/3246) [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `run.start` sends the multitask strategy as `multitask_strategy`, like the protocol's other fields, as well as `multitaskStrategy`, which older servers read.
+
 ## 1.13.0
 
 ### Minor Changes
