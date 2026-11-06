@@ -607,7 +607,8 @@ export function runFuncTests(
           const nestedTask = task("fulfil", fulfil);
           const workflow = entrypoint(
             { name: "workflow", checkpointer },
-            nested ? nestedTask : fulfil
+            async (order: { id: number }) =>
+              await (nested ? nestedTask(order) : fulfil(order))
           );
           const config = { configurable: { thread_id }, interruptAfter };
           const expected = { id: 42, reserved: true, charged: true };
