@@ -10,6 +10,7 @@ import {
   ERROR,
   Interrupt,
   INTERRUPT,
+  isTaskOutput,
   RETURN,
   TAG_HIDDEN,
 } from "../constants.js";
@@ -285,8 +286,16 @@ export function tasksWithWrites<N extends PropertyKey, C extends PropertyKey>(
       .filter(([id, n]) => id === task.id && n === INTERRUPT)
       .flatMap(([, , v]) => v) as Interrupt[];
 
+    // A task's result comes from its output writes. A finished task records at
+    // least one (`NO_WRITES` if it produced nothing else), and so does a task
+    // that failed after writing some. A paused task records only control
+    // writes, and its `INTERRUPT` write is kept after it resumes and finishes.
+    const hasOutput = pendingWrites.some(
+      ([id, n]) => id === task.id && isTaskOutput(n)
+    );
+
     const result = (() => {
-      if (error || interrupts.length || !pendingWrites.length) return undefined;
+      if (!hasOutput) return undefined;
 
       const idx = pendingWrites.findIndex(
         ([tid, n]) => tid === task.id && n === RETURN

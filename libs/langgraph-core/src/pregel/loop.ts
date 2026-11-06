@@ -65,6 +65,7 @@ import {
   ERROR_SOURCE_NODE,
   INPUT,
   INTERRUPT,
+  isTaskOutput,
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
@@ -225,15 +226,6 @@ function isPlainObject(item: unknown): item is Record<string, unknown> {
   if (typeof item !== "object" || item === null) return false;
   const proto = Object.getPrototypeOf(item);
   return (proto === Object.prototype || proto === null) && !("lc" in item);
-}
-
-function isTaskOutput(channel: string): boolean {
-  return (
-    channel !== ERROR &&
-    channel !== ERROR_SOURCE_NODE &&
-    channel !== INTERRUPT &&
-    channel !== RESUME
-  );
 }
 
 function stampMessageIds(value: unknown): void {
