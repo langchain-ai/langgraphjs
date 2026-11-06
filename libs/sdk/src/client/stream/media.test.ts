@@ -1,10 +1,64 @@
 import type { Event } from "@langchain/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { MediaAssembler } from "./media.js";
+import { MediaAssembler, type AnyMediaHandle } from "./media.js";
 import { eventOf } from "./test/utils.js";
 
 describe("MediaAssembler", () => {
+  it("preserves initial metadata on URL-sourced media without fetching it", async () => {
+    const media: AnyMediaHandle[] = [];
+    const fetch = vi.fn();
+    const assembler = new MediaAssembler({ fetch, onMedia: (handle) => media.push(handle) });
+    assembler.consume(
+      eventOf("messages", { event: "message-start", id: "url-media" }) as Extract<
+        Event,
+        { method: "messages" }
+      >
+    );
+    const blocks = [
+      {
+        type: "image",
+        url: "https://example.com/image.png",
+        mime_type: "image/png",
+        width: 640,
+        height: 480,
+      },
+      {
+        type: "file",
+        url: "https://example.com/report.pdf",
+        mime_type: "application/pdf",
+        filename: "report.pdf",
+      },
+      {
+        type: "audio",
+        url: "https://example.com/audio.wav",
+        mime_type: "audio/wav",
+        transcript: "Hello",
+      },
+    ];
+    for (const [index, content] of blocks.entries()) {
+      assembler.consume(
+        eventOf("messages", { event: "content-block-start", index, content }) as Extract<
+          Event,
+          { method: "messages" }
+        >
+      );
+    }
+    assembler.consume(
+      eventOf("messages", { event: "message-finish", reason: "stop" }) as Extract<
+        Event,
+        { method: "messages" }
+      >
+    );
+    expect(media).toHaveLength(3);
+    expect(media[0]).toMatchObject({ width: 640, height: 480, mimeType: "image/png" });
+    expect(media[1]).toMatchObject({ filename: "report.pdf", mimeType: "application/pdf" });
+    const audio = media[2];
+    if (audio?.type !== "audio") throw new Error("Expected audio handle");
+    await expect(audio.transcript).resolves.toBe("Hello");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("assembles audio bytes from protocol data deltas", async () => {
     const audio: Array<{
       mimeType?: string;
