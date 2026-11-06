@@ -37,7 +37,7 @@ describe("HostBackendClient", () => {
     expect(result).toEqual({ resources: [] });
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      "https://api.host.langchain.com/v2/deployments?name_contains=foo"
+      "https://api.host.langchain.com/v2/deployments?name_contains=foo&limit=100&offset=0"
     );
     expect(init.method).toBe("GET");
     expect(init.headers["X-Api-Key"]).toBe("secret");
