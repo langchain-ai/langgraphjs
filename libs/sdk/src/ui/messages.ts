@@ -77,6 +77,11 @@ export class MessageTupleManager {
     {
       chunk?: BaseMessageChunk | BaseMessage;
       metadata?: Record<string, unknown>;
+      /**
+       * @deprecated `StreamManager` places messages by id and no longer reads
+       * this. It will be removed in 2.0.
+       */
+      index?: number;
     }
   > = {};
 
@@ -126,9 +131,14 @@ export class MessageTupleManager {
     this.chunks = {};
   }
 
-  get(id: string | null | undefined) {
+  /**
+   * @param defaultIndex Deprecated: stored as the entry's `index`, which
+   * `StreamManager` no longer reads. It will be removed in 2.0.
+   */
+  get(id: string | null | undefined, defaultIndex?: number) {
     if (id == null) return null;
     if (this.chunks[id] == null) return null;
+    if (defaultIndex != null) this.chunks[id].index ??= defaultIndex;
     return this.chunks[id];
   }
 }
