@@ -376,7 +376,12 @@ class MediaHandleImpl {
     reason?: string,
     cause?: unknown
   ): MediaAssemblyError {
-    if (this.#settled) {
+    // A URL-backed handle fetches lazily, often after message-finish has
+    // settled its protocol lifecycle. That later fetch can still fail.
+    if (
+      this.#settled &&
+      (!this.#urlSourced || kind !== "fetch-failed" || this.error != null)
+    ) {
       return (
         this.error ??
         new MediaAssemblyError(
