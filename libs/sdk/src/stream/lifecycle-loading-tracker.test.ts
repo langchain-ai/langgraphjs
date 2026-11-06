@@ -155,6 +155,22 @@ describe("LifecycleLoadingTracker", () => {
     expect(store.getSnapshot().isLoading).toBe(true);
   });
 
+  it("keeps isLoading true when a terminal's second copy arrives after the next run started", () => {
+    const store = makeStore();
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+    });
+
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 5 }));
+    tracker.handle(lifecycleEvent({ event: "completed" }, { seq: 6 }));
+    tracker.handle(lifecycleEvent({ event: "running" }, { seq: 7 }));
+    tracker.handle(lifecycleEvent({ event: "completed" }, { seq: 6 }));
+    vi.runAllTimers();
+
+    expect(store.getSnapshot().isLoading).toBe(true);
+  });
+
   it("keeps isLoading true when a newer running supersedes a deferred interrupt reset", () => {
     // Hydration / SSE replay of an answered HITL interrupt delivers
     // interrupted → running in the same turn. The interrupt's deferred
@@ -241,7 +257,7 @@ describe("LifecycleLoadingTracker", () => {
     expect(store.getSnapshot().isLoading).toBe(true);
   });
 
-  it("reset() clears the running-seq guard so a prior deferred terminal can settle", () => {
+  it("settles a new thread's terminal after reset()", () => {
     const store = makeStore();
     const tracker = new LifecycleLoadingTracker({
       store,
@@ -255,6 +271,33 @@ describe("LifecycleLoadingTracker", () => {
     tracker.handle(lifecycleEvent({ event: "running" }, { seq: 1 }));
     tracker.handle(lifecycleEvent({ event: "completed" }, { seq: 2 }));
 
+    vi.runAllTimers();
+    expect(store.getSnapshot().isLoading).toBe(false);
+  });
+
+  it("tracks runs by id across a new connection that numbers events from 1", () => {
+    const store = makeStore();
+    const tracker = new LifecycleLoadingTracker({
+      store,
+      isDisposed: () => false,
+      runId: (event) => event.event_id,
+    });
+    const runEvent = (runId: string, event: string, seq: number) =>
+      ({ ...lifecycleEvent({ event }, { seq }), event_id: runId }) as Event;
+
+    tracker.handle(runEvent("run-1", "running", 300));
+    tracker.handle(runEvent("run-1", "completed", 301));
+    vi.runAllTimers();
+    const updates = vi.fn();
+    store.subscribe(updates);
+    tracker.handle(runEvent("run-1", "running", 1));
+    tracker.handle(runEvent("run-1", "completed", 2));
+    vi.runAllTimers();
+    expect(updates).not.toHaveBeenCalled();
+
+    tracker.handle(runEvent("run-2", "running", 3));
+    expect(store.getSnapshot().isLoading).toBe(true);
+    tracker.handle(runEvent("run-2", "interrupted", 4));
     vi.runAllTimers();
     expect(store.getSnapshot().isLoading).toBe(false);
   });

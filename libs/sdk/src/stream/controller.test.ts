@@ -5635,13 +5635,13 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     await controller.dispose();
   });
   it.each([
-    { label: "without", next: ["agent"] },
-    { label: "after", next: [] as string[] },
+    { label: "a running thread", next: ["agent"] },
+    { label: "an idle thread", next: [] as string[] },
   ])(
-    "never rebuilds a dropped message from a replayed message-start, $label an earlier hydrate seal",
+    "never rebuilds a dropped message from a replayed message-start on $label",
     async ({ next }) => {
-      // An idle thread (`next: []`) is seeded and sealed at step 2 by
-      // hydrate; an active one isn't sealed.
+      // hydrate() seeds and seals both threads at step 2. The idle one
+      // starts its run with a submit.
       const { subscription, controller } = setup({ next });
       await controller.hydrationPromise;
 
@@ -6096,6 +6096,99 @@ describe("StreamController same-thread hydrate()", () => {
     await waitForExpectation(() => {
       expect(h.snapshot().isLoading).toBe(false);
     });
+    await h.controller.dispose();
+  });
+
+  it("keeps isLoading steady while a reopened stream replays earlier runs", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(
+      runLifecycleEvent("run-0", "running", 1),
+      runLifecycleEvent("run-0", "completed", 2),
+      runLifecycleEvent("run-1", "running", 3)
+    );
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-1");
+    const seen: boolean[] = [h.snapshot().isLoading];
+    const unsubscribe = h.controller.rootStore.subscribe(() => {
+      const { isLoading } = h.snapshot();
+      if (seen.at(-1) !== isLoading) seen.push(isLoading);
+    });
+    h.deliver(
+      runLifecycleEvent("run-0", "running", 1),
+      runLifecycleEvent("run-0", "completed", 2)
+    );
+    await settle();
+    h.deliver(runLifecycleEvent("run-1", "running", 3));
+    await settle();
+    h.deliver(runLifecycleEvent("run-1", "completed", 4));
+    await settle();
+
+    expect(seen).toEqual([true, false]);
+    unsubscribe();
+    await h.controller.dispose();
+  });
+
+  const seeded = [
+    { type: "human", id: "human-1", content: "hi" },
+    { type: "ai", id: "ai-1", content: "Hello there." },
+  ];
+  const running = {
+    ...busy,
+    values: { messages: seeded },
+    checkpoint: { checkpoint_id: "cp-3" },
+    metadata: { step: 3 },
+  };
+  const texts = (h: ReturnType<typeof setup>) =>
+    h.snapshot().messages.map((message) => (message as { text?: string }).text);
+
+  it.each([
+    { label: "opened while running", first: running },
+    {
+      label: "opened idle",
+      first: {
+        ...idle,
+        values: { messages: seeded.slice(0, 1) },
+        checkpoint: { checkpoint_id: "cp-1" },
+        metadata: { step: 1 },
+      },
+    },
+  ])(
+    "keeps the seeded messages while the stream replays the run, $label",
+    async ({ first }) => {
+      const h = setup(first);
+      await h.controller.hydrationPromise;
+      h.getState.mockResolvedValue(running);
+      await h.controller.hydrate("thread-1");
+
+      h.deliver(
+        runLifecycleEvent("run-1", "running", 1),
+        checkpointsEvent(2, 2),
+        valuesEvent(seeded.slice(0, 1), 3),
+        messageStartEvent("ai-1", 4),
+        messageDeltaEvent(5, "Hel")
+      );
+      await settle();
+
+      expect(texts(h)).toEqual(["hi", "Hello there."]);
+      await h.controller.dispose();
+    }
+  );
+
+  it("shows the seeded messages by the time isLoading turns on", async () => {
+    const h = setup(running);
+    let textsWhenLoading: unknown;
+    h.controller.rootStore.subscribe(() => {
+      if (h.snapshot().isLoading && textsWhenLoading === undefined) {
+        textsWhenLoading = texts(h);
+      }
+    });
+    await h.controller.hydrationPromise;
+
+    expect(textsWhenLoading).toEqual(["hi", "Hello there."]);
     await h.controller.dispose();
   });
 

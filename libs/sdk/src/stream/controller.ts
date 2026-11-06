@@ -472,6 +472,7 @@ export class StreamController<
       // `submit()` settles `isLoading` itself, so skipping a pending
       // event here can't leave the flag stuck.
       ignore: (event) => this.#submittedRunMatch(event) != null,
+      runId: (event) => synthesizedEventRunId(event.event_id),
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -797,24 +798,21 @@ export class StreamController<
           }
 
           /**
-           * An idle (finished) thread defers its root SSE pump; the first
-           * `submit()` brings it up and the transport replays the finished
-           * run from `seq=0`. Seal the seeded message ids so that replay's
+           * The root SSE pump replays the thread from `seq=0` when it
+           * starts: on the first `submit()` of an idle thread, or below for
+           * a running one. Seal the seeded message ids so that replay's
            * `messages` channel deltas can't downgrade the already-complete
-           * tail to empty partials (a visible "messages replay"). Only safe
-           * for idle threads, where every seeded message is final — an
-           * active thread's tail may still be streaming and must keep
-           * receiving deltas. New ids from the next run are never sealed,
-           * and the seal lifts once a newer checkpoint advances the
-           * timeline.
+           * messages to empty partials (a visible "messages replay").
+           * Messages in a checkpoint are final, even while a run goes on:
+           * the one it's streaming isn't in the checkpoint yet. New ids are
+           * never sealed, and the seal lifts once a newer checkpoint
+           * advances the timeline.
            */
-          if (!threadActive) {
-            const sealedIds = (seedMessages as Array<{ id?: unknown }>)
-              .map((message) => message?.id)
-              .filter((id): id is string => typeof id === "string");
-            if (sealedIds.length > 0) {
-              this.#rootMessages.sealMessageIds(sealedIds);
-            }
+          const sealedIds = (seedMessages as Array<{ id?: unknown }>)
+            .map((message) => message?.id)
+            .filter((id): id is string => typeof id === "string");
+          if (sealedIds.length > 0) {
+            this.#rootMessages.sealMessageIds(sealedIds);
           }
         }
       }
@@ -830,6 +828,10 @@ export class StreamController<
         this.#rootMessages.dropMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
+      // Commit the seed now, not a macrotask later: `isThreadLoading` and
+      // `isLoading` change synchronously below, and would otherwise show
+      // with the messages from before.
+      this.#rootMessages.flush();
       /**
        * Sync the visible interrupt list to the server's authoritative
        * `state.tasks[].interrupts`. Without this, SSE replay of past
@@ -1997,9 +1999,6 @@ export class StreamController<
    */
   #startRootPump(thread: ThreadStream): void {
     if (this.#rootPump != null) return;
-    // A pump started again after its stream dropped reads a new connection,
-    // whose seqs start over. The old ones would keep `isLoading` stuck.
-    this.#lifecycleLoading.reset();
     const pumpGeneration = this.#rootPumpGeneration;
     let resolveReady: (() => void) | undefined;
     this.#rootPumpReady = new Promise<void>((resolve) => {
