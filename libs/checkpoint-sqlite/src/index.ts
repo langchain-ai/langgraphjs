@@ -390,9 +390,13 @@ CREATE TABLE IF NOT EXISTS writes (
 
     sql += "\nORDER BY checkpoint_id DESC";
 
-    if (limit) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
+    if (limit !== undefined) {
+      // `parseInt` sanitizes the input, as limit may be user-provided. Check
+      // for `undefined` rather than truthiness: a `limit` of 0 means "at most
+      // zero checkpoints", as it does for every other saver, but a falsy 0
+      // used to skip the clause entirely and return the whole thread history.
+      const parsedLimit = Number.parseInt(String(limit), 10);
+      if (!Number.isNaN(parsedLimit)) sql += ` LIMIT ${parsedLimit}`;
     }
 
     const args = [
