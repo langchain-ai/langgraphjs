@@ -75,12 +75,17 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     metadata,
     (
       select array_agg(array[bl.channel::bytea, bl.type::bytea, bl.blob])
-      from jsonb_each_text(checkpoint -> 'channel_versions')
-      inner join ${SCHEMA_TABLES.checkpoint_blobs} bl
-        on bl.thread_id = cp.thread_id
-        and bl.checkpoint_ns = cp.checkpoint_ns
-        and bl.channel = jsonb_each_text.key
-        and bl.version = jsonb_each_text.value
+      from jsonb_each_text(checkpoint -> 'channel_versions') versions
+      inner join lateral (
+        select channel, type, blob from ${SCHEMA_TABLES.checkpoint_blobs} b
+        where b.thread_id = cp.thread_id
+          and b.checkpoint_ns = cp.checkpoint_ns
+          and b.channel = versions.key
+          and b.version = versions.value
+        -- Keep each channel/version lookup parameterized instead of hashing
+        -- every historical blob in this thread and checkpoint namespace.
+        offset 0
+      ) bl on true
     ) as channel_values,
     (
       select
