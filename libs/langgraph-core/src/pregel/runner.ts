@@ -100,6 +100,9 @@ export class PregelRunner {
    */
   private handledExceptions = new WeakSet<Error>();
 
+  /** Called tasks report ordinary failures through their caller's promise. */
+  private calledTasks = new WeakSet<PregelExecutableTask<string, string>>();
+
   /**
    * Construct a new PregelRunner, which executes tasks from the provided PregelLoop.
    * @param loop - The PregelLoop that produces tasks for this runner to execute.
@@ -150,6 +153,9 @@ export class PregelRunner {
 
     for await (const { task, error, signalAborted } of taskStream) {
       this._commit(task, error);
+      if (this.calledTasks.has(task) && !isGraphBubbleUp(error)) {
+        continue;
+      }
       if (error !== undefined && this.handledExceptions.has(error)) {
         // Routed to a node-level error handler in this tick; provenance is
         // checkpointed and the error must not abort the run.
@@ -304,7 +310,11 @@ export class PregelRunner {
         task: PregelExecutableTask<string, string>,
         writeIdx: number,
         call?: Call
-      ) => this.loop.acceptPush(task, writeIdx, call),
+      ) => {
+        const pushed = await this.loop.acceptPush(task, writeIdx, call);
+        if (pushed && call) this.calledTasks.add(pushed);
+        return pushed;
+      },
     };
 
     if (signals?.composedAbortSignal?.aborted) {
