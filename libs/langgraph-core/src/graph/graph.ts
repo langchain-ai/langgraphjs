@@ -164,6 +164,7 @@ export class Branch<
       new RunnableCallable({
         name: "<branch_run>",
         trace: false,
+        bindContext: false,
         func: async (input: IO, config: CallOptions) => {
           try {
             return await this._route(input, config, writer, reader);

@@ -62,6 +62,7 @@ export class ChannelWrite<
     super({
       ...{ writes, name, tags },
       trace: false,
+      bindContext: false,
       func: async (input: RunInput, config?: RunnableConfig) => {
         return this._write(input, config ?? {});
       },

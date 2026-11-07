@@ -16,6 +16,7 @@ export interface RunnableCallableArgs extends Partial<any> {
   tags?: string[];
   trace?: boolean;
   recurse?: boolean;
+  bindContext?: boolean;
 }
 
 export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
@@ -32,6 +33,14 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
 
   recurse: boolean = true;
 
+  /**
+   * Run `func` inside an async context holding its config, which user code
+   * needs for `getConfig()` and tracing. Internal callables that only call
+   * runnables (which set their own context) turn it off, because entering a
+   * context builds a LangSmith run tree on every call.
+   */
+  bindContext: boolean = true;
+
   constructor(fields: RunnableCallableArgs) {
     super();
     this.name = fields.name ?? fields.func.name;
@@ -39,6 +48,7 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
     this.config = fields.tags ? { tags: fields.tags } : undefined;
     this.trace = fields.trace ?? this.trace;
     this.recurse = fields.recurse ?? this.recurse;
+    this.bindContext = fields.bindContext ?? this.bindContext;
   }
 
   protected async _tracedInvoke(
@@ -81,6 +91,8 @@ export class RunnableCallable<I = unknown, O = unknown> extends Runnable<I, O> {
         input,
         mergedConfig
       );
+    } else if (!this.bindContext) {
+      returnValue = await this.func(input, mergedConfig);
     } else {
       returnValue = await AsyncLocalStorageProviderSingleton.runWithConfig(
         mergedConfig,
