@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AsyncCaller } from "./async_caller.js";
+import { getEventListeners } from "node:events";
 
 describe("AsyncCaller", () => {
   afterEach(() => {
@@ -139,6 +140,57 @@ describe("AsyncCaller", () => {
   });
 
   describe("callWithOptions", () => {
+    it("does not invoke the callable when the signal is already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const callable = vi.fn(async () => "unexpected");
+      const caller = new AsyncCaller({ maxRetries: 0 });
+
+      await expect(
+        caller.callWithOptions({ signal: controller.signal }, callable)
+      ).rejects.toThrow("AbortError");
+      expect(callable).not.toHaveBeenCalled();
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    });
+
+    it("registers cancellation before invoking the callable", async () => {
+      const controller = new AbortController();
+      const callable = vi.fn(async () => {
+        controller.abort();
+        return "too late";
+      });
+
+      await expect(
+        new AsyncCaller({ maxRetries: 0 }).callWithOptions(
+          { signal: controller.signal },
+          callable
+        )
+      ).rejects.toThrow("AbortError");
+      expect(callable).toHaveBeenCalledTimes(1);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    });
+
+    it.each([false, true])(
+      "removes the abort listener when the callable settles (reject: %s)",
+      async (reject) => {
+        const controller = new AbortController();
+        const caller = new AsyncCaller({ maxRetries: 0 });
+        const callable = vi.fn(async () => {
+          if (reject) throw new Error("call failed");
+          return "success";
+        });
+        for (let i = 0; i < 15; i += 1) {
+          const result = caller.callWithOptions(
+            { signal: controller.signal },
+            callable
+          );
+          if (reject) await expect(result).rejects.toThrow("call failed");
+          else await expect(result).resolves.toBe("success");
+          expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+        }
+      }
+    );
+
     it("should work without signal option", async () => {
       const caller = new AsyncCaller({ maxRetries: 3 });
 

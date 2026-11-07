@@ -290,15 +290,22 @@ export class AsyncCaller {
   ): Promise<Awaited<ReturnType<T>>> {
     // Note this doesn't cancel the underlying request,
     // when available prefer to use the signal option of the underlying call
-    if (options.signal) {
+    const { signal } = options;
+    if (signal) {
+      if (signal.aborted) return Promise.reject(new Error("AbortError"));
+
+      let onAbort: (() => void) | undefined;
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error("AbortError"));
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+
       return Promise.race([
+        aborted,
         this.callWithRetry<A, T>(options.method, callable, ...args),
-        new Promise<never>((_, reject) => {
-          options.signal?.addEventListener("abort", () => {
-            reject(new Error("AbortError"));
-          });
-        }),
-      ]);
+      ]).finally(() => {
+        if (onAbort) signal.removeEventListener("abort", onAbort);
+      });
     }
     return this.callWithRetry<A, T>(options.method, callable, ...args);
   }
