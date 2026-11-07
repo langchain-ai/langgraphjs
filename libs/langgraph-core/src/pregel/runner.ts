@@ -300,6 +300,7 @@ export class PregelRunner {
       executingTasksMap,
       barrier,
       retryPolicy,
+      signal: signals?.composedAbortSignal,
       scheduleTask: async (
         task: PregelExecutableTask<string, string>,
         writeIdx: number,
@@ -499,6 +500,8 @@ async function call(
 
     retryPolicy?: RetryPolicy;
 
+    signal?: AbortSignal;
+
     scheduleTask: (
       task: PregelExecutableTask<string, string>,
       writeIdx: number,
@@ -589,9 +592,12 @@ async function call(
     return undefined;
   } else {
     // Schedule the next task with retry
-    const prom = _runWithRetry<string, string>(nextTask, options.retry, {
-      [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask),
-    });
+    const prom = _runWithRetry<string, string>(
+      nextTask,
+      options.retry,
+      { [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask) },
+      this.signal
+    );
 
     this.executingTasksMap[nextTask.id] = prom;
     this.barrier.next();
