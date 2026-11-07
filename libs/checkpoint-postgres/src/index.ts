@@ -7,7 +7,9 @@ import {
   type SerializerProtocol,
   type PendingWrite,
   type CheckpointMetadata,
+  type CheckpointPendingWrite,
   type ChannelVersions,
+  type DeltaChannelHistory,
   compareWritesSortKeys,
   writesSortKey,
   WRITES_IDX_MAP,
@@ -19,8 +21,12 @@ import { parse as parseArray } from "postgres-array";
 
 import { getMigrations } from "./migrations.js";
 import {
+  type DeltaStage1Row,
+  type DeltaStage2Row,
   type SQL_STATEMENTS,
   type SQL_TYPES,
+  getDeltaStage1SQL,
+  getDeltaStage2SQL,
   getSQLStatements,
   getTablesWithSchema,
 } from "./sql.js";
@@ -61,6 +67,54 @@ const _ensureCompleteOptions = (
 };
 
 const { Pool } = pg;
+
+/** Checkpoints per stage-1 page, as Python's `_DELTA_PAGE_SIZE`. */
+const DELTA_PAGE_SIZE = 1024;
+
+/** One channel's walk up the target's ancestors. */
+type DeltaWalk = {
+  channel: string;
+  /** Ancestors walked, the target's parent first. */
+  chain: string[];
+  /** The next ancestor: unset until the target is read, null once ended. */
+  cursor?: string | null;
+  /** The version whose stored blob ended the walk. */
+  seedVersion?: string;
+};
+
+/**
+ * Python's `_try_advance_walks` for one channel: walks as far as the stage-1
+ * rows read so far allow, up to a stored value, a root, or an ancestor on a
+ * page not read yet.
+ */
+function tryAdvanceWalk(
+  walk: DeltaWalk,
+  i: number,
+  targetId: string,
+  rows: Map<string, DeltaStage1Row>
+): void {
+  if (walk.cursor === undefined) {
+    const target = rows.get(targetId);
+    if (target === undefined) return;
+    walk.cursor = target.parent_checkpoint_id;
+  }
+  while (walk.cursor != null) {
+    const row = rows.get(walk.cursor);
+    if (row === undefined) return;
+    // More steps than rows read means a loop of parent links, on which the
+    // base walk never returns.
+    if (walk.chain.length === rows.size) {
+      throw new Error(`Checkpoint ${walk.cursor} is its own ancestor.`);
+    }
+    walk.chain.push(row.checkpoint_id);
+    if (row[`hb_${i}`]) {
+      walk.seedVersion = row[`ver_${i}`] as string;
+      walk.cursor = null;
+    } else {
+      walk.cursor = row.parent_checkpoint_id;
+    }
+  }
+}
 
 /**
  * LangGraph checkpointer that uses a Postgres instance as the backing store.
@@ -768,5 +822,115 @@ export class PostgresSaver extends BaseCheckpointSaver {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Port of langgraph (Python)'s `PostgresSaver.get_delta_channel_history`:
+   * the base walk's result without a `getTuple` per ancestor.
+   *
+   * Stage 1 pages through the thread's checkpoints newest first, reading each
+   * one's parent and, per channel, its version and whether a blob is stored
+   * at it, and walks each channel's ancestors over the rows read up to its
+   * first stored value. Paging stops once every channel has one or a page
+   * comes back short. Stage 2 reads the walked writes and the stored values'
+   * blobs in one query. Unlike Python, only blobs count as stored values, as
+   * `put` stores every value as one, and writes follow `writesSortKey`, as
+   * the base walk's do.
+   *
+   * @remarks Beta. See {@link BaseCheckpointSaver.getDeltaChannelHistory}.
+   */
+  async getDeltaChannelHistory(options: {
+    config: RunnableConfig;
+    channels: string[];
+  }): Promise<Record<string, DeltaChannelHistory>> {
+    const channels = Array.from(new Set(options.channels));
+    if (channels.length === 0) return {};
+    const { thread_id, checkpoint_ns = "" } = options.config.configurable ?? {};
+    let targetId: string = options.config.configurable?.checkpoint_id;
+    if (!targetId) {
+      const target = await this.getTuple(options.config);
+      if (target === undefined) {
+        return Object.fromEntries(channels.map((ch) => [ch, { writes: [] }]));
+      }
+      targetId = target.config.configurable?.checkpoint_id;
+    }
+
+    const stage1SQL = getDeltaStage1SQL(this.options.schema, channels.length);
+    const rows = new Map<string, DeltaStage1Row>();
+    const walks: DeltaWalk[] = channels.map((channel) => ({
+      channel,
+      chain: [],
+    }));
+    let cursor: string | null = null;
+    for (;;) {
+      const { rows: page }: { rows: DeltaStage1Row[] } = await this.pool.query(
+        stage1SQL,
+        [...channels, thread_id, checkpoint_ns, cursor, DELTA_PAGE_SIZE]
+      );
+      if (page.length === 0) break;
+      for (const row of page) rows.set(row.checkpoint_id, row);
+      walks.forEach((walk, i) => tryAdvanceWalk(walk, i, targetId, rows));
+      if (
+        walks.every((walk) => walk.seedVersion !== undefined) ||
+        page.length < DELTA_PAGE_SIZE
+      ) {
+        break;
+      }
+      cursor = page[page.length - 1].checkpoint_id;
+    }
+
+    const chained = walks.filter((walk) => walk.chain.length > 0);
+    const seeded = walks.filter((walk) => walk.seedVersion !== undefined);
+    const { rows: stage2Rows } =
+      chained.length > 0
+        ? await this.pool.query<DeltaStage2Row>(
+            getDeltaStage2SQL(
+              this.options.schema,
+              chained.length,
+              seeded.length
+            ),
+            [
+              thread_id,
+              checkpoint_ns,
+              ...chained.flatMap((walk) => [walk.channel, walk.chain]),
+              ...seeded.flatMap((walk) => [walk.channel, walk.seedVersion]),
+            ]
+          )
+        : { rows: [] };
+
+    const result: Record<string, DeltaChannelHistory> = {};
+    for (const { channel, chain } of walks) {
+      const writesOf = new Map(
+        chain.map((id) => [id, [] as Extract<DeltaStage2Row, { _kind: "w" }>[]])
+      );
+      let seed: DeltaStage2Row | undefined;
+      for (const row of stage2Rows) {
+        if (row.channel !== channel) continue;
+        if (row._kind === "w") writesOf.get(row.checkpoint_id)?.push(row);
+        else seed = row;
+      }
+      const writes: CheckpointPendingWrite[] = [];
+      for (const id of chain.slice().reverse()) {
+        const rowsOfId = (writesOf.get(id) ?? []).sort((a, b) =>
+          compareWritesSortKeys(
+            writesSortKey(a.task_path, a.task_id, a.idx),
+            writesSortKey(b.task_path, b.task_id, b.idx)
+          )
+        );
+        for (const row of rowsOfId) {
+          writes.push([
+            row.task_id,
+            channel,
+            await this.serde.loadsTyped(row.type, row.blob),
+          ]);
+        }
+      }
+      const entry: DeltaChannelHistory = { writes };
+      if (seed !== undefined && seed.type !== "empty") {
+        entry.seed = await this.serde.loadsTyped(seed.type, seed.blob);
+      }
+      result[channel] = entry;
+    }
+    return result;
   }
 }

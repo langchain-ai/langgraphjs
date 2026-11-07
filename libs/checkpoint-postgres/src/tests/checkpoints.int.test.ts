@@ -1,11 +1,17 @@
 /* eslint-disable no-process-env */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import type {
   Checkpoint,
   CheckpointMetadata,
   CheckpointTuple,
 } from "@langchain/langgraph-checkpoint";
-import { emptyCheckpoint, TASKS, uuid6 } from "@langchain/langgraph-checkpoint";
+import {
+  BaseCheckpointSaver,
+  DeltaSnapshot,
+  emptyCheckpoint,
+  TASKS,
+  uuid6,
+} from "@langchain/langgraph-checkpoint";
 import pg from "pg";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { PostgresSaver } from "../index.js"; // Adjust the import path as needed
@@ -700,5 +706,197 @@ describe.each([
     } finally {
       await pool.end();
     }
+  });
+
+  describe("getDeltaChannelHistory", () => {
+    type ChannelPlan = {
+      stores: (step: number) => boolean;
+      writes: (step: number) => boolean;
+      /** The stored value, a DeltaSnapshot when absent. */
+      value?: unknown;
+    };
+
+    // A channel's version moves when it was written the step before or
+    // stores a value now, as a running DeltaChannel's does, so most steps
+    // leave Postgres an "empty" blob row and an unwritten channel keeps
+    // pointing at its last version.
+    async function writeThread(
+      saver: PostgresSaver,
+      steps: number,
+      plans: Record<string, ChannelPlan>
+    ): Promise<RunnableConfig[]> {
+      const channels = Object.keys(plans);
+      const versions: Record<string, number> = {};
+      const configs: RunnableConfig[] = [];
+      let config: RunnableConfig = {
+        configurable: { thread_id: uuid6(0), checkpoint_ns: "" },
+      };
+      for (let step = 0; step < steps; step += 1) {
+        const changed = channels.filter(
+          (ch) =>
+            step === 0 || plans[ch].writes(step - 1) || plans[ch].stores(step)
+        );
+        for (const ch of changed) versions[ch] = (versions[ch] ?? 0) + 1;
+        const newVersions = Object.fromEntries(
+          changed.map((ch) => [ch, versions[ch]])
+        );
+        const values = Object.fromEntries(
+          channels
+            .filter((ch) => plans[ch].stores(step))
+            .map((ch) => [
+              ch,
+              "value" in plans[ch]
+                ? plans[ch].value
+                : new DeltaSnapshot([`${ch} at ${step}`]),
+            ])
+        );
+        config = await saver.put(
+          config,
+          {
+            ...emptyCheckpoint(),
+            id: uuid6(step),
+            channel_values: values,
+            channel_versions: { ...versions },
+          },
+          { source: "loop", step, parents: {} },
+          newVersions
+        );
+        const writes = channels
+          .filter((ch) => plans[ch].writes(step))
+          .map((ch): [string, unknown] => [ch, `${ch} ${step}`]);
+        if (writes.length > 0) {
+          await saver.putWrites(config, writes, `task-${step}`);
+        }
+        configs.push(config);
+      }
+      return configs;
+    }
+
+    async function countingSaver() {
+      const pool = new Pool({ connectionString: currentDbConnectionString });
+      const saver = new PostgresSaver(pool, undefined, { schema });
+      postgresSavers.push(saver);
+      return { saver, queries: vi.spyOn(pool, "query") };
+    }
+
+    const baseWalk = (
+      saver: PostgresSaver,
+      args: Parameters<PostgresSaver["getDeltaChannelHistory"]>[0]
+    ) => BaseCheckpointSaver.prototype.getDeltaChannelHistory.call(saver, args);
+
+    it("loads a delta channel's history in the same number of queries at any depth", async () => {
+      const { saver, queries } = await countingSaver();
+      const queriesAt = async (depth: number) => {
+        const configs = await writeThread(saver, depth + 1, {
+          messages: { stores: (step) => step === 0, writes: () => true },
+        });
+        const args = { config: configs[depth], channels: ["messages"] };
+        queries.mockClear();
+        const history = await saver.getDeltaChannelHistory(args);
+        const count = queries.mock.calls.length;
+        expect(history.messages.writes).toHaveLength(depth);
+        expect(history).toStrictEqual(await baseWalk(saver, args));
+        return count;
+      };
+
+      expect([await queriesAt(5), await queriesAt(50)]).toEqual([2, 2]);
+    });
+
+    it("matches the base walk across pages of checkpoints", async () => {
+      const { saver } = await countingSaver();
+      const configs = await writeThread(saver, 1100, {
+        messages: { stores: (step) => step === 0, writes: () => true },
+        files: { stores: (step) => step % 100 === 0, writes: () => true },
+        todos: { stores: () => false, writes: (step) => step % 250 === 0 },
+        settings: {
+          stores: (step) => step === 3,
+          writes: () => false,
+          value: null,
+        },
+        unused: { stores: () => false, writes: () => false },
+      });
+      const channels = ["messages", "files", "todos", "settings", "unused"];
+
+      for (const config of [configs[1099], configs[1060], configs[40]]) {
+        const args = { config, channels };
+        const history = await saver.getDeltaChannelHistory(args);
+        expect(history).toStrictEqual(await baseWalk(saver, args));
+      }
+      const latest = await saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: configs[0].configurable?.thread_id } },
+        channels,
+      });
+      expect(latest.messages.writes).toHaveLength(1099);
+      expect(latest.settings).toStrictEqual({ writes: [], seed: null });
+      expect(latest.todos).toEqual({
+        writes: [0, 250, 500, 750, 1000].map((step) => [
+          `task-${step}`,
+          "todos",
+          `todos ${step}`,
+        ]),
+      });
+    }, 120_000);
+
+    it("rejects parent links that form a cycle", async () => {
+      const { saver } = await countingSaver();
+      const thread_id = uuid6(0);
+      const [a, b] = [uuid6(0), uuid6(0)];
+      const at = (checkpoint_id: string): RunnableConfig => ({
+        configurable: { thread_id, checkpoint_ns: "", checkpoint_id },
+      });
+      for (const [id, parent] of [
+        [a, b],
+        [b, a],
+      ]) {
+        await saver.put(
+          at(parent),
+          { ...emptyCheckpoint(), id },
+          { source: "loop", step: 0, parents: {} },
+          {}
+        );
+      }
+
+      await expect(
+        saver.getDeltaChannelHistory({ config: at(a), channels: ["messages"] })
+      ).rejects.toThrow(`Checkpoint ${b} is its own ancestor`);
+    });
+
+    it("matches the base walk on a parent loop that reaches a stored value", async () => {
+      const { saver } = await countingSaver();
+      const thread_id = uuid6(0);
+      const [a, b] = [uuid6(0), uuid6(0)];
+      const at = (checkpoint_id: string): RunnableConfig => ({
+        configurable: { thread_id, checkpoint_ns: "", checkpoint_id },
+      });
+      for (const [id, parent] of [
+        [a, b],
+        [b, a],
+      ]) {
+        const stores = id === a;
+        const versions: Record<string, number> = stores ? { messages: 1 } : {};
+        await saver.put(
+          at(parent),
+          {
+            ...emptyCheckpoint(),
+            id,
+            channel_values: stores ? { messages: new DeltaSnapshot(["a"]) } : {},
+            channel_versions: versions,
+          },
+          { source: "loop", step: 0, parents: {} },
+          versions
+        );
+        await saver.putWrites(at(id), [["messages", `${id} write`]], id);
+      }
+      const args = { config: at(a), channels: ["messages"] };
+
+      const history = await saver.getDeltaChannelHistory(args);
+
+      expect(history).toStrictEqual(await baseWalk(saver, args));
+      expect(history.messages.seed).toStrictEqual(new DeltaSnapshot(["a"]));
+      expect(history.messages.writes.map((write) => write[2])).toEqual([
+        `${a} write`,
+        `${b} write`,
+      ]);
+    });
   });
 });
