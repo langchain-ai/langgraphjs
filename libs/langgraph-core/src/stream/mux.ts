@@ -142,6 +142,7 @@ export class StreamMux {
   readonly #streamMap = new Map<string, StreamHandle>();
   readonly #latestValues = new Map<string, Record<string, unknown>>();
   readonly #interrupts: InterruptPayload[] = [];
+  readonly #interruptIds = new Set<string>();
 
   /**
    * Final-value projection keys tracked for remote surfacing. Populated
@@ -419,11 +420,22 @@ export class StreamMux {
    * Records that the run was interrupted, appending the supplied payloads
    * for later retrieval.
    *
+   * An interrupt raised in a subgraph arrives once per graph level, so ids
+   * already recorded are skipped. This can't be done by keeping only root
+   * namespace chunks: namespaces are absolute, so a run started inside a
+   * parent graph never sees one. Payloads with no id can't be matched, so
+   * they are all kept.
+   *
    * @param interrupts - The interrupt payloads to store.
    */
   markInterrupted(interrupts: InterruptPayload[]): void {
     this.#interrupted = true;
-    this.#interrupts.push(...interrupts);
+    for (const interrupt of interrupts) {
+      const { interruptId } = interrupt;
+      if (interruptId !== "" && this.#interruptIds.has(interruptId)) continue;
+      this.#interruptIds.add(interruptId);
+      this.#interrupts.push(interrupt);
+    }
   }
 
   /**
