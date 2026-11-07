@@ -23,11 +23,14 @@ import {
 } from "./constants.js";
 
 // Moves a thread's head pointer (a hash field per namespace) to ARGV[2] when
-// the field is missing, still names ARGV[3] (a checkpoint the caller found
-// gone), or names an id that sorts before ARGV[2]. The ids are compared byte
-// by byte, the order `keys.sort()` gives the KEYS lookup, rather than with
-// Lua's `<`, which uses the server's locale. So writing an older checkpoint
-// again under its id never moves the pointer back.
+// the field still names ARGV[3] (a checkpoint the caller found gone) or names
+// an id that sorts before ARGV[2]. A missing field is set only when ARGV[4] is
+// '1': a lookup that found the latest checkpoint, or a put of a thread's first
+// checkpoint. Any other put may be an older checkpoint written again, so it
+// leaves a missing field for the next lookup to set. The ids are compared
+// byte by byte, the order `keys.sort()` gives the KEYS lookup, rather than
+// with Lua's `<`, which uses the server's locale. So writing an older
+// checkpoint again under its id never moves the pointer back.
 const MOVE_HEAD_SCRIPT = `
 local function sorts_after(a, b)
   local n = math.min(#a, #b)
@@ -38,8 +41,9 @@ local function sorts_after(a, b)
   return #a > #b
 end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
-if (not current) or (ARGV[3] ~= '' and current == ARGV[3])
-  or sorts_after(ARGV[2], current) then
+if ((not current) and ARGV[4] == '1') or (current and (
+  (ARGV[3] ~= '' and current == ARGV[3]) or sorts_after(ARGV[2], current)
+)) then
   redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
   return 1
 end
@@ -335,7 +339,9 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Use Redis JSON commands
     await this.client.json.set(key, "$", jsonDoc as any);
-    await this.moveHeadPointer(threadId, checkpointNs, checkpointId);
+    await this.moveHeadPointer(threadId, checkpointNs, checkpointId, {
+      seed: !parentCheckpointId,
+    });
 
     // Apply TTL if configured
     if (this.ttlConfig?.defaultTTL) {
@@ -1202,7 +1208,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       threadId,
       checkpointNs,
       key.slice(`checkpoint:${threadId}:${checkpointNs}:`.length),
-      headId ?? ""
+      { replaceStale: headId ?? "" }
     );
     return { key, jsonDoc };
   }
@@ -1210,21 +1216,25 @@ export class RedisSaver extends BaseCheckpointSaver {
   /**
    * Points the thread's head pointer at `checkpointId` unless it already
    * names a later checkpoint (`replaceStale`: an id the caller found gone,
-   * which is replaced either way). Never throws: if the move fails, the
-   * pointer is removed so the next read falls back to the KEYS lookup rather
-   * than trust a pointer that may be behind.
+   * which is replaced either way). A missing pointer is set only with `seed`
+   * (the default). Never throws: if the move fails, the pointer is removed so
+   * the next read falls back to the KEYS lookup rather than trust a pointer
+   * that may be behind.
    */
   private async moveHeadPointer(
     threadId: string,
     checkpointNs: string,
     checkpointId: string,
-    replaceStale = ""
+    {
+      replaceStale = "",
+      seed = true,
+    }: { replaceStale?: string; seed?: boolean } = {}
   ): Promise<void> {
     const headKey = `${CHECKPOINT_HEAD_PREFIX}:${threadId}`;
     try {
       await this.client.eval(MOVE_HEAD_SCRIPT, {
         keys: [headKey],
-        arguments: [checkpointNs, checkpointId, replaceStale],
+        arguments: [checkpointNs, checkpointId, replaceStale, seed ? "1" : "0"],
       });
     } catch (error) {
       console.warn(`Failed to move the head pointer ${headKey}:`, error);

@@ -27,7 +27,7 @@ const makeMockClient = (
     keys: vi.fn(async () => [...docs.keys()]),
     hGet: vi.fn(async () => options.head ?? null),
     hDel: vi.fn(async () => 1),
-    eval: vi.fn(async () => {
+    eval: vi.fn(async (_script: string, _options: unknown) => {
       if (options.evalError) throw options.evalError;
       return 1;
     }),
@@ -66,7 +66,7 @@ describe("RedisSaver head pointer", () => {
     expect(client.keys).toHaveBeenCalledWith("checkpoint:t::*");
     expect(client.eval).toHaveBeenCalledWith(expect.any(String), {
       keys: ["checkpoint_head:t"],
-      arguments: ["", "c3", ""],
+      arguments: ["", "c3", "", "1"],
     });
   });
 
@@ -79,11 +79,11 @@ describe("RedisSaver head pointer", () => {
     expect(tuple?.config.configurable?.checkpoint_id).toBe("c1");
     expect(client.eval).toHaveBeenCalledWith(expect.any(String), {
       keys: ["checkpoint_head:t"],
-      arguments: ["", "c1", "c9"],
+      arguments: ["", "c1", "c9", "1"],
     });
   });
 
-  it("moves the pointer on put", async () => {
+  it("moves the pointer on put, and lets only a first checkpoint set a missing one", async () => {
     const client = makeMockClient();
     const saver = new RedisSaver(client as never);
 
@@ -93,11 +93,17 @@ describe("RedisSaver head pointer", () => {
       { source: "loop", step: 0, parents: {} },
       {}
     );
+    await saver.put(
+      { configurable: { ...config.configurable, checkpoint_id: "c1" } },
+      { ...emptyCheckpoint(), id: "c2" },
+      { source: "loop", step: 1, parents: {} },
+      {}
+    );
 
-    expect(client.eval).toHaveBeenCalledWith(expect.any(String), {
-      keys: ["checkpoint_head:t"],
-      arguments: ["", "c1", ""],
-    });
+    expect(client.eval.mock.calls.map(([, options]) => options)).toEqual([
+      { keys: ["checkpoint_head:t"], arguments: ["", "c1", "", "1"] },
+      { keys: ["checkpoint_head:t"], arguments: ["", "c2", "", "0"] },
+    ]);
   });
 
   it("removes the pointer when moving it fails, and the put still succeeds", async () => {

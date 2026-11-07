@@ -26,9 +26,20 @@ describe("RedisSaver head pointer", () => {
 
   const config = { configurable: { thread_id: "thread", checkpoint_ns: "" } };
 
-  async function put(saver: RedisSaver, id: string, ns = "") {
+  async function put(
+    saver: RedisSaver,
+    id: string,
+    ns = "",
+    parent?: string
+  ) {
     await saver.put(
-      { configurable: { thread_id: "thread", checkpoint_ns: ns } },
+      {
+        configurable: {
+          thread_id: "thread",
+          checkpoint_ns: ns,
+          ...(parent ? { checkpoint_id: parent } : {}),
+        },
+      },
       { ...emptyCheckpoint(), id, channel_values: { ch: id } },
       { source: "loop", step: 0, parents: {} },
       {}
@@ -66,6 +77,61 @@ describe("RedisSaver head pointer", () => {
     await put(saver, older);
 
     expect(await latest(saver)).toEqual({ id: newer, keysCalls: 0 });
+  });
+
+  it("compares ids byte by byte, as the KEYS lookup sorts them", async () => {
+    const saver = new RedisSaver(client);
+    // Bytes: "B" (0x42) < "a" (0x61), "9" < "A"; a collating locale puts
+    // "a" before "B".
+    for (const [older, newer] of [
+      ["B1", "a1"],
+      ["9z", "Az"],
+    ]) {
+      await client.flushAll();
+      await put(saver, older);
+      await put(saver, newer, "", older);
+      await put(saver, older);
+      await client.del("checkpoint_head:thread");
+      // The KEYS lookup's answer, then the pointer's.
+      expect(await latest(saver)).toEqual({ id: newer, keysCalls: 1 });
+      await put(saver, older);
+      expect(await latest(saver)).toEqual({ id: newer, keysCalls: 0 });
+    }
+  });
+
+  it("lets a put set a missing pointer only for a thread's first checkpoint", async () => {
+    const saver = new RedisSaver(client);
+    const [first, second, third] = [uuid6(-2), uuid6(-1), uuid6(0)];
+    await put(saver, first);
+    expect(await client.hGet("checkpoint_head:thread", "")).toBe(first);
+    await put(saver, second, "", first);
+    await put(saver, third, "", second);
+    // The pointer is gone (a failed move), and an older checkpoint is written
+    // again under its id.
+    await client.del("checkpoint_head:thread");
+    await put(saver, second, "", first);
+    expect(await client.exists("checkpoint_head:thread")).toBe(0);
+
+    expect(await latest(saver)).toEqual({ id: third, keysCalls: 1 });
+    expect(await client.hGet("checkpoint_head:thread", "")).toBe(third);
+  });
+
+  it("reads the latest checkpoint of a subgraph namespace without KEYS", async () => {
+    const saver = new RedisSaver(client);
+    const ns = "model_request:4c1d-ab|tools:9e2f.x";
+    const [older, newer] = [uuid6(-1), uuid6(0)];
+    await put(saver, older, ns);
+    await put(saver, newer, ns, older);
+    const keys = vi.spyOn(client, "keys");
+    try {
+      const tuple = await saver.getTuple({
+        configurable: { thread_id: "thread", checkpoint_ns: ns },
+      });
+      expect(tuple?.config.configurable?.checkpoint_id).toBe(newer);
+      expect(keys).not.toHaveBeenCalled();
+    } finally {
+      keys.mockRestore();
+    }
   });
 
   it("keeps a pointer per namespace", async () => {
