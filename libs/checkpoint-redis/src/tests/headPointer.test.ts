@@ -83,26 +83,35 @@ describe("RedisSaver head pointer", () => {
     });
   });
 
-  it("moves the pointer on put, and lets only a first checkpoint set a missing one", async () => {
+  it("moves the pointer on put, and lets only a thread's first checkpoint set a missing one", async () => {
     const client = makeMockClient();
     const saver = new RedisSaver(client as never);
 
+    // LangGraph's first checkpoint of a thread: the run's input.
     await saver.put(
       config,
       { ...emptyCheckpoint(), id: "c1" },
-      { source: "loop", step: 0, parents: {} },
+      { source: "input", step: -1, parents: {} },
       {}
     );
     await saver.put(
       { configurable: { ...config.configurable, checkpoint_id: "c1" } },
       { ...emptyCheckpoint(), id: "c2" },
-      { source: "loop", step: 1, parents: {} },
+      { source: "loop", step: 0, parents: {} },
+      {}
+    );
+    // A write with no parent that is not a first checkpoint.
+    await saver.put(
+      config,
+      { ...emptyCheckpoint(), id: "c1" },
+      {} as never,
       {}
     );
 
     expect(client.eval.mock.calls.map(([, options]) => options)).toEqual([
       { keys: ["checkpoint_head:t"], arguments: ["", "c1", "", "1"] },
       { keys: ["checkpoint_head:t"], arguments: ["", "c2", "", "0"] },
+      { keys: ["checkpoint_head:t"], arguments: ["", "c1", "", "0"] },
     ]);
   });
 

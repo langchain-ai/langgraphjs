@@ -26,11 +26,16 @@ describe("RedisSaver head pointer", () => {
 
   const config = { configurable: { thread_id: "thread", checkpoint_ns: "" } };
 
+  /**
+   * Without `parent`, the metadata is that of LangGraph's first checkpoint of
+   * a thread (the run's input), unless `metadata` is given.
+   */
   async function put(
     saver: RedisSaver,
     id: string,
     ns = "",
-    parent?: string
+    parent?: string,
+    metadata?: Record<string, unknown>
   ) {
     await saver.put(
       {
@@ -41,7 +46,10 @@ describe("RedisSaver head pointer", () => {
         },
       },
       { ...emptyCheckpoint(), id, channel_values: { ch: id } },
-      { source: "loop", step: 0, parents: {} },
+      (metadata ??
+        (parent
+          ? { source: "loop", step: 0, parents: {} }
+          : { source: "input", step: -1, parents: {} })) as never,
       {}
     );
   }
@@ -106,10 +114,12 @@ describe("RedisSaver head pointer", () => {
     expect(await client.hGet("checkpoint_head:thread", "")).toBe(first);
     await put(saver, second, "", first);
     await put(saver, third, "", second);
-    // The pointer is gone (a failed move), and an older checkpoint is written
-    // again under its id.
+    // The pointer is gone (a failed move), and older checkpoints are written
+    // again under their ids: one with its parent, and the first one with no
+    // parent and other metadata.
     await client.del("checkpoint_head:thread");
     await put(saver, second, "", first);
+    await put(saver, first, "", undefined, {});
     expect(await client.exists("checkpoint_head:thread")).toBe(0);
 
     expect(await latest(saver)).toEqual({ id: third, keysCalls: 1 });

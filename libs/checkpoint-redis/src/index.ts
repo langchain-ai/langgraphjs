@@ -336,8 +336,15 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Use Redis JSON commands
     await this.client.json.set(key, "$", jsonDoc as any);
+    // Only a thread's first checkpoint sets a missing pointer: the one
+    // LangGraph writes for the input of a run on an empty thread. A write with
+    // no parent and other metadata may be an older checkpoint written again,
+    // so it leaves the pointer for the next lookup to set.
     await this.moveHeadPointer(threadId, checkpointNs, checkpointId, {
-      seed: !parentCheckpointId,
+      seed:
+        !parentCheckpointId &&
+        metadata?.source === "input" &&
+        metadata?.step === -1,
     });
 
     // Apply TTL if configured
