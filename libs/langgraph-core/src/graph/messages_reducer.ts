@@ -50,7 +50,14 @@ const MESSAGE_CLASS_BY_TYPE: Record<
 // Same conversion as Python's `add_messages`.
 function toMessage(messageLike: BaseMessageLike): BaseMessage {
   const message = coerceMessageLikeToMessage(messageLike);
-  if (!BaseMessageChunk.isInstance(message)) return message;
+  // The native prototype check rules out non-chunks first: `isInstance` walks
+  // the prototype chain in JS, and every update coerces the whole history.
+  if (
+    !Object.prototype.isPrototypeOf.call(BaseMessageChunk.prototype, message) ||
+    !BaseMessageChunk.isInstance(message)
+  ) {
+    return message;
+  }
   const MessageClass = MESSAGE_CLASS_BY_TYPE[message.getType()];
   if (MessageClass === undefined) return message;
   const fields = Object.fromEntries(
@@ -136,7 +143,12 @@ export function messagesStateReducer(
 
   // Begin normal merging logic
   const merged = [...leftMessages];
-  const mergedById = new Map(merged.map((m, i) => [m.id, i]));
+  // Only ids in `right` are ever looked up, so only those are indexed.
+  const rightIds = new Set(rightMessages.map((m) => m.id));
+  const mergedById = new Map<string | undefined, number>();
+  for (let i = 0; i < merged.length; i += 1) {
+    if (rightIds.has(merged[i].id)) mergedById.set(merged[i].id, i);
+  }
   const idsToRemove = new Set();
 
   for (const m of rightMessages) {
@@ -162,6 +174,7 @@ export function messagesStateReducer(
   }
 
   // Remove any messages whose IDs are marked for removal
+  if (idsToRemove.size === 0) return merged;
   return merged.filter((m) => !idsToRemove.has(m.id));
 }
 

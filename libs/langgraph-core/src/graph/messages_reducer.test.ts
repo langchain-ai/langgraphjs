@@ -68,6 +68,16 @@ describe("messagesStateReducer", () => {
     expect(result[0].content).toBe("Hi there again!");
   });
 
+  it("should update the last of duplicate ids already in state", () => {
+    const left = [
+      new HumanMessage({ id: "1", content: "first" }),
+      new HumanMessage({ id: "1", content: "second" }),
+    ];
+    const right = new AIMessage({ id: "1", content: "new" });
+    const result = messagesStateReducer(left, right);
+    expect(result.map((m) => m.content)).toEqual(["first", "new"]);
+  });
+
   it("should handle duplicates with remove", () => {
     const left = [new AIMessage({ id: "1", content: "Hello!" })];
     const right = [
