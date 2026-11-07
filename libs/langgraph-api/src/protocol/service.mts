@@ -134,6 +134,12 @@ const normalizeRunStart = (value: unknown): NormalizedRunStart => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
+      // `langsmith_tracer` is the protocol's per-run LangSmith destination.
+      // A non-object value is ignored rather than rejected, matching the
+      // lenient posture of the rest of this normalizer.
+      langsmith_tracer: isRecord(value.langsmith_tracer)
+        ? (value.langsmith_tracer as RunStartParams["langsmith_tracer"])
+        : undefined,
       multitaskStrategy: multitaskStrategyFromRunStart(value),
       strict_resume: value.strict_resume === true,
     };
@@ -525,6 +531,21 @@ export class ProtocolService {
         thread_id: record.threadId,
       },
     };
+
+    /**
+     * Route the run's traces to the LangSmith project the caller asked
+     * for. `langsmith_tracer` is part of the protocol's `RunStartParams`,
+     * and the legacy run endpoints and the embed server both fold it into
+     * `config.configurable`; without this the run traces to the
+     * deployment's default project instead.
+     */
+    if (params.langsmith_tracer) {
+      Object.assign(runConfig.configurable, {
+        langsmith_project: params.langsmith_tracer.project_name,
+        langsmith_example_id: params.langsmith_tracer.example_id,
+      });
+    }
+
     const userId = applyAuthToRunConfig(runConfig, auth);
 
     const runPayload = {
