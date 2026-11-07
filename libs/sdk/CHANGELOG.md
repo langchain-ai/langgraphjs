@@ -1,5 +1,21 @@
 # @langchain/langgraph-sdk
 
+## 1.15.0
+
+### Minor Changes
+
+- [#3186](https://github.com/langchain-ai/langgraphjs/pull/3186) [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba) Thanks [@eliornl](https://github.com/eliornl)! - `client.runs.joinStream` takes a `checkpointId` option, sent as the `checkpoint_id` query parameter: servers that support it send only the run's events after that checkpoint, or the whole run when it is not one of the run's, and other servers ignore it. With `reconnectOnMount`, the `useStream` hook now rejoins a running run once the thread state has loaded, from the loaded head's checkpoint, so a reload no longer replays the run from its start over the state it just loaded. A streamed message now updates the message with its id wherever it is in the list, so one the loaded state already holds, or one a `values` event moved, is not appended again or written over another. `MessageTupleManager.get`'s `defaultIndex` argument and the `index` field of its entries are deprecated: `StreamManager` no longer reads them, and they will be removed in 2.0.
+
+### Patch Changes
+
+- [#3263](https://github.com/langchain-ai/langgraphjs/pull/3263) [`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9) Thanks [@eliornl](https://github.com/eliornl)! - After `submit(input, { forkFrom })`, `messages` shows only the new branch. A fork's checkpoints restart at a lower step, so they were treated as an old replay and merged add-only, which kept every message from the abandoned branch until a reload. Also, `useMessageMetadata(...).parentCheckpointId` now keeps the parent of the first checkpoint that carried each message, instead of moving every message to the latest checkpoint's parent, so forking from it edits the right message.
+
+- [#3260](https://github.com/langchain-ai/langgraphjs/pull/3260) [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): a `hydrate()` of the thread already shown no longer leaves `isLoading` stuck on `true` after the run ends: when it reopens the thread's stream after the connection dropped, when the run ends while it reads the state, or when it finds a run on a thread that was idle. When it finds a run going, the messages it loaded stay on screen while the stream replays the run. The stream also picks up interrupts raised inside subagents again after it reconnects.
+
+- [#3261](https://github.com/langchain-ai/langgraphjs/pull/3261) [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `stop()` cancels the run `respond()` or `respondAll()` started, also when it is called before that run starts, and shows again the interrupts the cancel left waiting.
+
+- [#3261](https://github.com/langchain-ai/langgraphjs/pull/3261) [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `submit()` without a `multitaskStrategy`, while the thread shows a run in flight, now sends `interrupt`, so the server cancels the run the client stopped following instead of queueing the new one behind it. Otherwise it still sends only a strategy the caller passed.
+
 ## 1.14.0
 
 ### Minor Changes
