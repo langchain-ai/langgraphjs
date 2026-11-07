@@ -45,9 +45,10 @@ describe("RedisSaver.deleteThread", () => {
         "write_keys_zset:thread-1::cp-1",
         "checkpoint_blob:thread-1::messages:1",
         "checkpoint_blob:thread-1::status:2",
+        "checkpoint_head:thread-1",
       ])
     );
-    expect(deletedKeys).toHaveLength(7);
+    expect(deletedKeys).toHaveLength(8);
   });
 
   it("handles empty key sets gracefully", async () => {
@@ -64,6 +65,7 @@ describe("RedisSaver.deleteThread", () => {
     const saver = new RedisSaver(mockClient);
     await saver.deleteThread("nonexistent-thread");
 
-    expect(deletedKeys).toHaveLength(0);
+    // Only the head pointer, which is deleted by name.
+    expect(deletedKeys).toEqual(["checkpoint_head:nonexistent-thread"]);
   });
 });
