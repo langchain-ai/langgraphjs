@@ -53,6 +53,7 @@ import {
   CHECKPOINT_NAMESPACE_SEPARATOR,
   Command,
   CONFIG_KEY_CHECKPOINTER,
+  CONFIG_KEY_CHILD_LOOPS,
   CONFIG_KEY_NODE_FINISHED,
   CONFIG_KEY_READ,
   CONFIG_KEY_SEND,
@@ -2750,6 +2751,12 @@ export class Pregel<
       }
     };
     const runLoopPromise = createAndRunLoop();
+    const parentChildLoops = config.configurable?.[CONFIG_KEY_CHILD_LOOPS] as
+      | Set<Promise<void>>
+      | undefined;
+    parentChildLoops?.add(runLoopPromise);
+    const unregisterChildLoop = () => parentChildLoops?.delete(runLoopPromise);
+    void runLoopPromise.then(unregisterChildLoop, unregisterChildLoop);
 
     try {
       for await (const chunk of stream) {
