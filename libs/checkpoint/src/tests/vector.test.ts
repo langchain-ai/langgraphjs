@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Embeddings, EmbeddingsParams } from "@langchain/core/embeddings";
 import { InMemoryStore } from "../store/memory.js";
 
@@ -109,6 +109,17 @@ describe("InMemoryStore Vector Search", () => {
     });
     expect(results.some((r) => r.key === "doc1")).toBe(true);
     expect(results.some((r) => r.key === "doc2")).toBe(true);
+  });
+
+  it("should embed array values selected within multi-field paths", async () => {
+    const embedDocuments = vi.spyOn(embeddings, "embedDocuments");
+    await store.put(
+      ["test"],
+      "book",
+      { title: "Book", chapters: [{ text: "first" }, { text: "last" }] },
+      ["{title,chapters[*].text}"]
+    );
+    expect(embedDocuments).toHaveBeenCalledWith(["Book", "first", "last"]);
   });
 
   it("should combine vector search with filters", async () => {
