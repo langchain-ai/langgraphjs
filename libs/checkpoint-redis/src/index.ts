@@ -17,10 +17,7 @@ import {
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
 import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
-import {
-  CHECKPOINT_HEAD_PREFIX,
-  WRITE_KEYS_ZSET_PREFIX,
-} from "./constants.js";
+import { CHECKPOINT_HEAD_PREFIX, WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 // Moves a thread's head pointer (a hash field per namespace) to ARGV[2] when
 // the field still names ARGV[3] (a checkpoint the caller found gone) or names
