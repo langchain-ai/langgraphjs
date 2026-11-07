@@ -118,7 +118,7 @@ describe.each([["global"], ["mocked"]])(
     describe("header coalescing", () => {
       it("should properly merge headers with conflicting name casing", async () => {
         const client = new Client({ apiKey: "test-api-key" });
-        await (client.threads as any).fetch("/test", {
+        await (client.threads as any).request("/test", {
           headers: { "X-Api-Key": "custom-value" },
         });
         expect(expectedFetchMock).toHaveBeenCalledWith(
@@ -140,7 +140,7 @@ describe.each([["global"], ["mocked"]])(
           },
         });
 
-        await (client.threads as any).fetch("/test", {
+        await (client.threads as any).request("/test", {
           headers: {
             "x-custom": "custom-value",
             "x-override": "custom-value",
@@ -162,7 +162,7 @@ describe.each([["global"], ["mocked"]])(
         vi.clearAllMocks();
 
         // Test with null/undefined values
-        await (client.threads as any).fetch("/test", {
+        await (client.threads as any).request("/test", {
           headers: {
             "x-null": null,
             "x-undefined": undefined,
@@ -197,7 +197,7 @@ describe.each([["global"], ["mocked"]])(
         headers.append("x-multi", "value1");
         headers.append("x-multi", "value2");
 
-        await (client.threads as any).fetch("/test", { headers });
+        await (client.threads as any).request("/test", { headers });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
           expect.any(String),
@@ -223,7 +223,7 @@ describe.each([["global"], ["mocked"]])(
           ["x-multi", "value2"],
         ];
 
-        await (client.threads as any).fetch("/test", { headers });
+        await (client.threads as any).request("/test", { headers });
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
           expect.any(String),
@@ -392,7 +392,7 @@ describe.each([["global"], ["mocked"]])(
           });
 
         const client = new Client();
-        await (client.threads as any).fetch("/test");
+        await (client.threads as any).request("/test");
 
         expect(expectedFetchMock).toHaveBeenNthCalledWith(
           1,
@@ -405,7 +405,7 @@ describe.each([["global"], ["mocked"]])(
         );
 
         const client2 = new Client({ apiKey: undefined });
-        await (client2.threads as any).fetch("/test");
+        await (client2.threads as any).request("/test");
 
         expect(expectedFetchMock).toHaveBeenNthCalledWith(
           2,
@@ -429,7 +429,7 @@ describe.each([["global"], ["mocked"]])(
           });
 
         const client = new Client({ apiKey: null });
-        await (client.threads as any).fetch("/test");
+        await (client.threads as any).request("/test");
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
           expect.any(String),
@@ -454,7 +454,7 @@ describe.each([["global"], ["mocked"]])(
         const client = new Client({
           apiKey: "explicit-api-key",
         });
-        await (client.threads as any).fetch("/test");
+        await (client.threads as any).request("/test");
 
         expect(expectedFetchMock).toHaveBeenCalledWith(
           expect.any(String),

@@ -177,7 +177,7 @@ export class RunsClient<
       threadId === null
         ? "/runs"
         : `/threads/${encodePathSegment(threadId)}/runs`;
-    const [run, response] = await this.fetch<Run>(endpoint, {
+    const [run, response] = await this.request<Run>(endpoint, {
       method: "POST",
       json,
       signal: payload?.signal,
@@ -208,7 +208,7 @@ export class RunsClient<
         );
       });
 
-    return this.fetch<Run[]>("/runs/batch", {
+    return this.request<Run[]>("/runs/batch", {
       method: "POST",
       json: filteredPayloads,
       signal: options?.signal,
@@ -271,13 +271,16 @@ export class RunsClient<
       threadId == null
         ? `/runs/wait`
         : `/threads/${encodePathSegment(threadId)}/runs/wait`;
-    const [run, response] = await this.fetch<ThreadState["values"]>(endpoint, {
-      method: "POST",
-      json,
-      timeoutMs: null,
-      signal: payload?.signal,
-      withResponse: true,
-    });
+    const [run, response] = await this.request<ThreadState["values"]>(
+      endpoint,
+      {
+        method: "POST",
+        json,
+        timeoutMs: null,
+        signal: payload?.signal,
+        withResponse: true,
+      }
+    );
 
     const runMetadata = getRunMetadataFromResponse(response);
     if (runMetadata) payload?.onRunCreated?.(runMetadata);
@@ -314,7 +317,7 @@ export class RunsClient<
       signal?: AbortSignal;
     }
   ): Promise<Run[]> {
-    return this.fetch<Run[]>(`/threads/${encodePathSegment(threadId)}/runs`, {
+    return this.request<Run[]>(`/threads/${encodePathSegment(threadId)}/runs`, {
       params: {
         limit: options?.limit ?? 10,
         offset: options?.offset ?? 0,
@@ -337,7 +340,7 @@ export class RunsClient<
     runId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Run> {
-    return this.fetch<Run>(
+    return this.request<Run>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}`,
       {
         signal: options?.signal,
@@ -362,7 +365,7 @@ export class RunsClient<
     action: CancelAction = "interrupt",
     options: { signal?: AbortSignal; reason?: "taken" } = {}
   ): Promise<void> {
-    return this.fetch<void>(
+    return this.request<void>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/cancel`,
       {
         method: "POST",
@@ -385,7 +388,7 @@ export class RunsClient<
     action?: CancelAction;
     signal?: AbortSignal;
   }): Promise<void> {
-    return this.fetch<void>(`/runs/cancel`, {
+    return this.request<void>(`/runs/cancel`, {
       method: "POST",
       json: {
         thread_id: options.threadId,
@@ -409,7 +412,7 @@ export class RunsClient<
     runId: string,
     options?: { cancelOnDisconnect?: boolean; signal?: AbortSignal }
   ): Promise<TStateType> {
-    return this.fetch<TStateType>(
+    return this.request<TStateType>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/join`,
       {
         timeoutMs: null,
@@ -511,7 +514,7 @@ export class RunsClient<
     runId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    return this.fetch<void>(
+    return this.request<void>(
       `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}`,
       {
         method: "DELETE",

@@ -311,7 +311,7 @@ export class BaseClient {
     return [targetUrl, mutatedOptions];
   }
 
-  protected async fetch<T>(
+  protected async request<T>(
     path: string,
     options: RequestInit & {
       json?: unknown;
@@ -322,7 +322,7 @@ export class BaseClient {
     }
   ): Promise<[T, Response]>;
 
-  protected async fetch<T>(
+  protected async request<T>(
     path: string,
     options?: RequestInit & {
       json?: unknown;
@@ -334,7 +334,7 @@ export class BaseClient {
     }
   ): Promise<T>;
 
-  protected async fetch<T>(
+  protected async request<T>(
     path: string,
     options?: RequestInit & {
       json?: unknown;
