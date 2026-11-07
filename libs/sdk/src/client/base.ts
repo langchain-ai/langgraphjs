@@ -311,6 +311,49 @@ export class BaseClient {
     return [targetUrl, mutatedOptions];
   }
 
+  /** @deprecated Use request() instead. Will be removed in the next major. */
+  protected async fetch<T>(
+    path: string,
+    options: RequestInit & {
+      json?: unknown;
+      params?: Record<string, unknown>;
+      timeoutMs?: number | null;
+      signal: AbortSignal | undefined;
+      withResponse: true;
+    }
+  ): Promise<[T, Response]>;
+
+  /** @deprecated Use request() instead. Will be removed in the next major. */
+  protected async fetch<T>(
+    path: string,
+    options?: RequestInit & {
+      json?: unknown;
+      params?: Record<string, unknown>;
+      timeoutMs?: number | null;
+      signal: AbortSignal | undefined;
+      withResponse?: false;
+      dedupe?: boolean;
+    }
+  ): Promise<T>;
+
+  /** @deprecated Use request() instead. Will be removed in the next major. */
+  protected async fetch<T>(
+    path: string,
+    options?: RequestInit & {
+      json?: unknown;
+      params?: Record<string, unknown>;
+      timeoutMs?: number | null;
+      signal: AbortSignal | undefined;
+      withResponse?: boolean;
+      dedupe?: boolean;
+    }
+  ): Promise<T | [T, Response]> {
+    return this.request<T>(
+      path,
+      options as Parameters<BaseClient["request"]>[1]
+    );
+  }
+
   protected async request<T>(
     path: string,
     options: RequestInit & {
