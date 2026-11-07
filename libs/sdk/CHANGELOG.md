@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.8.12
+
+### Patch Changes
+
+- [#3245](https://github.com/langchain-ai/langgraphjs/pull/3245) [`276b026`](https://github.com/langchain-ai/langgraphjs/commit/276b026b2d11c680ae275b2c37b0342cd0e55bd0) Thanks [@eliornl](https://github.com/eliornl)! - `client.runs.joinStream` takes a `checkpointId` option, sent as the `checkpoint_id` query parameter: servers that support it send only the run's events after that checkpoint, or the whole run when it is not one of the run's, and other servers ignore it. With `reconnectOnMount`, `useStream` now rejoins a running run once the thread state has loaded, from the loaded head's checkpoint, so a reload no longer replays the run from its start over the state it just loaded. A streamed message now updates the message with its id wherever it is in the list, so one the loaded state already holds, or one a `values` event moved, is not appended again or written over another. `MessageTupleManager.get`'s `defaultIndex` argument and the `index` field of its entries are deprecated: `StreamManager` no longer reads them, and they will be removed in 2.0.
+
+- [#3244](https://github.com/langchain-ai/langgraphjs/pull/3244) [`40adaf5`](https://github.com/langchain-ai/langgraphjs/commit/40adaf5cc272789de8d02c1652ec373d092bb416) Thanks [@eliornl](https://github.com/eliornl)! - `useStream` ignores a `tools` event of a kind it doesn't know, such as langgraph's own `tool-started` payload, instead of throwing `Unexpected tool event` inside a state update, which crashed the app's render.
+
 ## 1.8.11
 
 ### Patch Changes
