@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { v4 as uuidv4 } from "@langchain/core/utils/uuid";
+import { InMemoryCache } from "@langchain/langgraph-checkpoint";
 import {
   Annotation,
   Command,
@@ -509,4 +510,101 @@ describe("Pregel AbortSignal", () => {
       }
     }
   );
+});
+
+describe("Pregel AbortSignal with a step served from the node cache", () => {
+  // A step whose every task is served from the cache has no task to run. The
+  // runner must not keep a listener on the signal for such a step: aborting the
+  // signal later would reject a promise that nothing awaits.
+  const unhandled: unknown[] = [];
+  const onUnhandledRejection = (reason: unknown) => {
+    unhandled.push(reason);
+  };
+
+  beforeEach(() => {
+    unhandled.length = 0;
+    process.on("unhandledRejection", onUnhandledRejection);
+  });
+
+  afterEach(() => {
+    process.off("unhandledRejection", onUnhandledRejection);
+  });
+
+  function flushRejectionEvents(): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  const State = Annotation.Root({ value: Annotation<number> });
+
+  // "cached" is served from the cache once it has run. After holdNext() is
+  // called, "hold" blocks the next run until its signal is aborted.
+  function createGraph() {
+    let onHold: (() => void) | undefined;
+
+    const graph = new StateGraph(State)
+      .addNode("cached", ({ value }) => ({ value: value + 1 }), {
+        cachePolicy: true,
+      })
+      .addNode("hold", async ({ value }, config) => {
+        if (onHold !== undefined) {
+          onHold();
+          await new Promise((_resolve, reject) => {
+            config.signal?.addEventListener(
+              "abort",
+              () => reject(config.signal?.reason),
+              { once: true }
+            );
+          });
+        }
+        return { value: value + 10 };
+      })
+      .addEdge(START, "cached")
+      .addEdge("cached", "hold")
+      .addEdge("hold", END)
+      .compile({ cache: new InMemoryCache() });
+
+    return {
+      graph,
+      // Resolves once "hold" is blocking the next run.
+      holdNext: () =>
+        new Promise<void>((resolve) => {
+          onHold = resolve;
+        }),
+    };
+  }
+
+  it("rejects nothing when the signal is aborted after the run is done", async () => {
+    const { graph } = createGraph();
+    // Runs "cached" and fills the cache.
+    await graph.invoke({ value: 0 });
+
+    const abortController = new AbortController();
+    // "cached" is served from the cache, so its step has no task to run.
+    await expect(
+      graph.invoke({ value: 0 }, { signal: abortController.signal })
+    ).resolves.toEqual({ value: 11 });
+
+    abortController.abort();
+    await flushRejectionEvents();
+
+    expect(unhandled).toEqual([]);
+  });
+
+  it("rejects only the run when the signal is aborted at a step after the cached one", async () => {
+    const { graph, holdNext } = createGraph();
+    await graph.invoke({ value: 0 });
+
+    const abortController = new AbortController();
+    const holding = holdNext();
+    const run = graph.invoke({ value: 0 }, { signal: abortController.signal });
+    await holding;
+
+    abortController.abort();
+    await expect(run).rejects.toThrow(ABORT_ERROR_RE);
+    await flushRejectionEvents();
+
+    expect(unhandled).toEqual([]);
+  });
 });
