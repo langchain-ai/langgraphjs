@@ -17,7 +17,34 @@ import {
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
 import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
-import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
+import {
+  CHECKPOINT_HEAD_PREFIX,
+  WRITE_KEYS_ZSET_PREFIX,
+} from "./constants.js";
+
+// Moves a thread's head pointer (a hash field per namespace) to ARGV[2] when
+// the field is missing, still names ARGV[3] (a checkpoint the caller found
+// gone), or names an id that sorts before ARGV[2]. The ids are compared byte
+// by byte, the order `keys.sort()` gives the KEYS lookup, rather than with
+// Lua's `<`, which uses the server's locale. So writing an older checkpoint
+// again under its id never moves the pointer back.
+const MOVE_HEAD_SCRIPT = `
+local function sorts_after(a, b)
+  local n = math.min(#a, #b)
+  for i = 1, n do
+    local x, y = string.byte(a, i), string.byte(b, i)
+    if x ~= y then return x > y end
+  end
+  return #a > #b
+end
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if (not current) or (ARGV[3] ~= '' and current == ARGV[3])
+  or sorts_after(ARGV[2], current) then
+  redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+  return 1
+end
+return 0
+`;
 
 // Type for Redis client - supports both standalone and cluster
 export type RedisClientType =
@@ -158,25 +185,22 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     let key: string;
     let jsonDoc: CheckpointDocument | null;
+    const refreshKeys: string[] = [];
 
     if (checkpointId) {
       // Get specific checkpoint
       key = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
       jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
     } else {
-      // Get latest checkpoint - need to search
-      const pattern = `checkpoint:${threadId}:${checkpointNs}:*`;
-      // Use keys for simplicity - scan would be better for large datasets
-      const keys = await (this.client as any).keys(pattern);
-
-      if (keys.length === 0) {
+      const latest = await this.getLatestCheckpointDocument(
+        threadId,
+        checkpointNs
+      );
+      if (!latest) {
         return undefined;
       }
-
-      // Sort by key to get latest
-      keys.sort();
-      key = keys[keys.length - 1];
-      jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
+      ({ key, jsonDoc } = latest);
+      refreshKeys.push(`${CHECKPOINT_HEAD_PREFIX}:${threadId}`);
     }
 
     if (!jsonDoc) {
@@ -185,7 +209,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Refresh TTL if configured
     if (this.ttlConfig?.refreshOnRead && this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
+      await this.applyTTL(key, ...refreshKeys);
     }
 
     // Load checkpoint with pending writes
@@ -311,10 +335,11 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Use Redis JSON commands
     await this.client.json.set(key, "$", jsonDoc as any);
+    await this.moveHeadPointer(threadId, checkpointNs, checkpointId);
 
     // Apply TTL if configured
     if (this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
+      await this.applyTTL(key, `${CHECKPOINT_HEAD_PREFIX}:${threadId}`);
     }
 
     return {
@@ -856,6 +881,8 @@ export class RedisSaver extends BaseCheckpointSaver {
     if (blobKeys.length > 0) {
       await this.client.del(blobKeys);
     }
+
+    await this.client.del([`${CHECKPOINT_HEAD_PREFIX}:${threadId}`]);
   }
 
   async end(): Promise<void> {
@@ -1124,6 +1151,88 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     if ("score" in metadata) {
       jsonDoc.score = metadata.score;
+    }
+  }
+
+  /**
+   * The newest checkpoint of a thread and namespace. `put()` keeps a pointer
+   * to it, so it is one hash read and one key read. Without a pointer (a
+   * thread written before this version), or when the pointer names a
+   * checkpoint that is gone, it falls back to the KEYS lookup, which takes the
+   * highest checkpoint id, and points the pointer at the result.
+   */
+  private async getLatestCheckpointDocument(
+    threadId: string,
+    checkpointNs: string
+  ): Promise<{ key: string; jsonDoc: CheckpointDocument } | undefined> {
+    const headKey = `${CHECKPOINT_HEAD_PREFIX}:${threadId}`;
+    const headId = (await this.client.hGet(headKey, checkpointNs)) as
+      | string
+      | null
+      | undefined;
+    if (headId) {
+      const key = `checkpoint:${threadId}:${checkpointNs}:${headId}`;
+      const jsonDoc = (await this.client.json.get(
+        key
+      )) as CheckpointDocument | null;
+      if (jsonDoc) {
+        return { key, jsonDoc };
+      }
+    }
+
+    const pattern = `checkpoint:${threadId}:${checkpointNs}:*`;
+    const keys = await (this.client as any).keys(pattern);
+    if (keys.length === 0) {
+      if (headId) {
+        await this.client.hDel(headKey, checkpointNs);
+      }
+      return undefined;
+    }
+
+    // Sort by key to get latest
+    keys.sort();
+    const key = keys[keys.length - 1];
+    const jsonDoc = (await this.client.json.get(
+      key
+    )) as CheckpointDocument | null;
+    if (!jsonDoc) {
+      return undefined;
+    }
+    await this.moveHeadPointer(
+      threadId,
+      checkpointNs,
+      key.slice(`checkpoint:${threadId}:${checkpointNs}:`.length),
+      headId ?? ""
+    );
+    return { key, jsonDoc };
+  }
+
+  /**
+   * Points the thread's head pointer at `checkpointId` unless it already
+   * names a later checkpoint (`replaceStale`: an id the caller found gone,
+   * which is replaced either way). Never throws: if the move fails, the
+   * pointer is removed so the next read falls back to the KEYS lookup rather
+   * than trust a pointer that may be behind.
+   */
+  private async moveHeadPointer(
+    threadId: string,
+    checkpointNs: string,
+    checkpointId: string,
+    replaceStale = ""
+  ): Promise<void> {
+    const headKey = `${CHECKPOINT_HEAD_PREFIX}:${threadId}`;
+    try {
+      await this.client.eval(MOVE_HEAD_SCRIPT, {
+        keys: [headKey],
+        arguments: [checkpointNs, checkpointId, replaceStale],
+      });
+    } catch (error) {
+      console.warn(`Failed to move the head pointer ${headKey}:`, error);
+      try {
+        await this.client.hDel(headKey, checkpointNs);
+      } catch {
+        // The next read cannot trust it either way; nothing more to do.
+      }
     }
   }
 
