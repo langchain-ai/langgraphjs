@@ -11,6 +11,7 @@ export interface SQL_STATEMENTS {
   DELETE_CHECKPOINT_BLOBS_SQL: string;
   DELETE_CHECKPOINT_WRITES_SQL: string;
   INSERT_CHECKPOINT_WRITES_BATCH_SQL: (rows: number) => string;
+  UPSERT_CHECKPOINT_WITH_BLOBS_SQL: (blobs: number) => string;
 }
 
 export type SQL_TYPES = {
@@ -149,6 +150,20 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
       `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
   VALUES ${batchValues(rows, "$1, $2, $3, $4, $5", 6)}
   ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING`,
+
+    // The blobs and the checkpoint in one statement, which is atomic alone.
+    UPSERT_CHECKPOINT_WITH_BLOBS_SQL: (blobs) =>
+      `WITH blobs AS (
+    INSERT INTO ${SCHEMA_TABLES.checkpoint_blobs} (thread_id, checkpoint_ns, channel, version, type, blob)
+    VALUES ${batchValues(blobs, "$1, $2", 7)}
+    ON CONFLICT (thread_id, checkpoint_ns, channel, version) DO NOTHING
+  )
+  INSERT INTO ${SCHEMA_TABLES.checkpoints} (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, checkpoint, metadata)
+  VALUES ($1, $2, $3, $4, $5, $6)
+  ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id)
+  DO UPDATE SET
+    checkpoint = EXCLUDED.checkpoint,
+    metadata = EXCLUDED.metadata`,
   };
 };
 
