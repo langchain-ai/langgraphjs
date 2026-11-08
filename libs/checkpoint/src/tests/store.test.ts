@@ -119,6 +119,16 @@ describe("AsyncBatchedStore", () => {
       ],
     ]);
   });
+
+  it("should not wait on a timer between sequential calls", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      await store.put(["a"], "k", { value: 1 });
+      await expect(store.get(["a"], "k")).resolves.toMatchObject({ key: "k" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("BaseStore", () => {

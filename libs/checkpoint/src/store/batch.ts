@@ -11,6 +11,12 @@ import {
   validateNamespace,
 } from "./base.js";
 
+// Not setTimeout(0): Node clamps it to 1 ms, which every store call would wait.
+// setImmediate still batches the operations queued in the same turn. Browsers
+// have no setImmediate.
+const nextTurn: (callback: () => void) => void =
+  (globalThis as any).setImmediate ?? ((callback) => setTimeout(callback, 0));
+
 /**
  * Extracts and returns the underlying store from an `AsyncBatchedStore`,
  * or returns the input if it is not an `AsyncBatchedStore`.
@@ -42,6 +48,8 @@ export class AsyncBatchedStore extends BaseStore {
   private running = false;
 
   private processingTask: Promise<void> | null = null;
+
+  private wake: (() => void) | undefined;
 
   constructor(store: BaseStore) {
     super();
@@ -123,6 +131,7 @@ export class AsyncBatchedStore extends BaseStore {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.wake?.();
     if (this.processingTask) {
       await this.processingTask;
     }
@@ -135,13 +144,20 @@ export class AsyncBatchedStore extends BaseStore {
       const key = this.nextKey;
       this.nextKey += 1;
       this.queue.set(key, { operation, resolve, reject });
+      this.wake?.();
     });
   }
 
   private async processBatchQueue(): Promise<void> {
     while (this.running) {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0);
+      if (this.queue.size === 0) {
+        await new Promise<void>((resolve) => {
+          this.wake = resolve;
+        });
+        this.wake = undefined;
+      }
+      await new Promise<void>((resolve) => {
+        nextTurn(resolve);
       });
       if (this.queue.size === 0) continue;
 
@@ -154,9 +170,10 @@ export class AsyncBatchedStore extends BaseStore {
         );
         const results = await this.store.batch(operations);
 
-        batch.forEach(({ resolve }, key) => {
-          const index = Array.from(batch.keys()).indexOf(key);
+        let index = 0;
+        batch.forEach(({ resolve }) => {
           resolve(results[index]);
+          index += 1;
         });
       } catch (e) {
         batch.forEach(({ reject }) => {
