@@ -148,20 +148,20 @@ export class InMemoryStore extends BaseStore {
             results[i] = scoredResults;
           } else {
             results[i] = this.paginateResults(
-              candidates.map((item) => ({ ...item, score: undefined })),
+              candidates,
               op.offset ?? 0,
               op.limit ?? 10
-            );
+            ).map((item) => ({ ...item, score: undefined }));
           }
         }
       } else {
         // No embeddings - just paginate the filtered results
         for (const [i, [op, candidates]] of searchOps.entries()) {
           results[i] = this.paginateResults(
-            candidates.map((item) => ({ ...item, score: undefined })),
+            candidates,
             op.offset ?? 0,
             op.limit ?? 10
-          );
+          ).map((item) => ({ ...item, score: undefined }));
         }
       }
     }
@@ -270,6 +270,15 @@ export class InMemoryStore extends BaseStore {
     }
 
     const prefix = op.namespacePrefix.join(":");
+    const filters = Object.entries(op.filter ?? {});
+    const offset = op.offset ?? 0;
+    const limit = op.limit ?? 10;
+    // Without a query embedding, batch() keeps only candidates[offset, offset + limit).
+    // Negative bounds keep the full scan, since slice() counts them from the end.
+    const stop =
+      (op.query && this._indexConfig?.embeddings) || offset < 0 || limit < 0
+        ? Infinity
+        : offset + limit;
     const candidates: Item[] = [];
     for (const [namespace, items] of this.data.entries()) {
       // Match exact namespaces and descendants at a segment boundary.
@@ -279,19 +288,19 @@ export class InMemoryStore extends BaseStore {
         namespace === prefix ||
         namespace.startsWith(`${prefix}:`)
       ) {
-        candidates.push(...items.values());
+        for (const item of items.values()) {
+          if (
+            filters.every(([key, value]) =>
+              compareValues(item.value[key], value)
+            )
+          ) {
+            candidates.push(item);
+            if (candidates.length >= stop) return candidates;
+          }
+        }
       }
     }
-
-    let filteredCandidates = candidates;
-    if (op.filter) {
-      filteredCandidates = candidates.filter((item) =>
-        Object.entries(op.filter!).every(([key, value]) =>
-          compareValues(item.value[key], value)
-        )
-      );
-    }
-    return filteredCandidates;
+    return candidates;
   }
 
   private scoreResults(

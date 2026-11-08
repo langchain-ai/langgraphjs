@@ -685,3 +685,37 @@ describe("Namespace validation", () => {
     }
   });
 });
+
+describe("InMemoryStore search pagination", () => {
+  it("should page plain and filtered searches like the full listing", async () => {
+    const store = new InMemoryStore();
+    const itemsPerNamespace = 7;
+    for (const ns of [["a"], ["a", "b"], ["ab"], ["a", "c", "d"]]) {
+      for (let i = 0; i < itemsPerNamespace; i += 1) {
+        await store.put(ns, `k${i}`, { i, even: i % 2 === 0 });
+      }
+    }
+    const keys = (items: Item[]) =>
+      items.map((item) => `${item.namespace.join("/")}:${item.key}`);
+
+    const full = keys(await store.search(["a"], { limit: 100 }));
+    expect(new Set(full.map((key) => key.split(":")[0]))).toEqual(
+      new Set(["a", "a/b", "a/c/d"])
+    );
+    expect(full).toHaveLength(3 * itemsPerNamespace);
+    const paged: string[] = [];
+    for (let offset = 0; offset < full.length; offset += 4) {
+      paged.push(...keys(await store.search(["a"], { limit: 4, offset })));
+    }
+    expect(paged).toEqual(full);
+
+    const even = keys(
+      await store.search(["a"], { filter: { even: true }, limit: 100 })
+    );
+    expect(
+      keys(
+        await store.search(["a"], { filter: { even: true }, limit: 3, offset: 2 })
+      )
+    ).toEqual(even.slice(2, 5));
+  });
+});
