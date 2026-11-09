@@ -131,15 +131,18 @@ export function messagesStateReducer(
     }
   }
 
-  // If remove-all is present, all previous messages are wiped; return only subsequent ones
-  if (removeAllIdx != null) return rightMessages.slice(removeAllIdx + 1);
+  // If remove-all is present, all previous messages are wiped; merge only subsequent ones
+  const merged = removeAllIdx != null ? [] : [...leftMessages];
+  const newMessages =
+    removeAllIdx != null
+      ? rightMessages.slice(removeAllIdx + 1)
+      : rightMessages;
 
   // Begin normal merging logic
-  const merged = [...leftMessages];
   const mergedById = new Map(merged.map((m, i) => [m.id, i]));
   const idsToRemove = new Set();
 
-  for (const m of rightMessages) {
+  for (const m of newMessages) {
     const existingIdx = mergedById.get(m.id);
     if (existingIdx !== undefined) {
       // Case: updating or removing an existing message by id
