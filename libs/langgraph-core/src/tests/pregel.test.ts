@@ -10200,6 +10200,51 @@ graph TD;
     expect(result).toEqual({ foo: "a|c" });
   });
 
+  it.each([
+    ["added as a node", false],
+    ["invoked inside a node", true],
+  ])(
+    "should handle Command.PARENT from a checkpointer: true subgraph %s",
+    async (_, invokeInsideNode) => {
+      const StateAnnotation = Annotation.Root({
+        active: Annotation<string>,
+      });
+
+      const child = new StateGraph(StateAnnotation)
+        .addNode(
+          "inner",
+          () =>
+            new Command({
+              graph: Command.PARENT,
+              goto: "other",
+              update: { active: "child" },
+            })
+        )
+        .addEdge(START, "inner")
+        .compile({ checkpointer: true });
+
+      const parent = new StateGraph(StateAnnotation)
+        .addNode(
+          "child",
+          invokeInsideNode
+            ? (state: typeof StateAnnotation.State, config) =>
+                child.invoke(state, config)
+            : child,
+          { ends: ["other"] }
+        )
+        .addNode("other", () => ({ active: "other" }))
+        .addEdge(START, "child")
+        .addEdge("other", END)
+        .compile({ checkpointer: await createCheckpointer() });
+
+      const result = await parent.invoke(
+        { active: "start" },
+        { configurable: { thread_id: "1" } }
+      );
+      expect(result).toEqual({ active: "other" });
+    }
+  );
+
   it("should pass recursion limit set via .withConfig", async () => {
     const StateAnnotation = Annotation.Root({
       prop: Annotation<string>,
