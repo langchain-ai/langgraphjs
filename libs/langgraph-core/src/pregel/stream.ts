@@ -96,10 +96,6 @@ export class IterableReadableStreamWithAbortSignal<
           });
         }
       },
-      // Runs when a consumer cancels through the stream's reader, which is what
-      // `for await ... break` (via `return()`) and `reader.cancel()` do. Those
-      // never reach the `cancel()` override below, so abort the run and cancel
-      // the wrapped stream here as well.
       cancel(reason?: unknown) {
         ac.abort(reason);
         return reader.cancel(reason);
