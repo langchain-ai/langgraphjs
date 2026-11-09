@@ -486,7 +486,16 @@ export const ThreadStateUpdate = z
 
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
-  before: z.string().optional(),
+  // A checkpoint config, as the SDK and the Python Agent Server use, or a
+  // checkpoint ID.
+  before: z
+    .union([
+      z.string(),
+      z
+        .object({ configurable: z.record(z.string(), z.unknown()).optional() })
+        .passthrough(),
+    ])
+    .optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   checkpoint: z
     .object({

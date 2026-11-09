@@ -810,6 +810,26 @@ describe("threads copy", () => {
     expect(filteredHistory.at(-1)?.values.messages.length).toBe(4);
   });
 
+  it.concurrent("get thread history before a checkpoint config", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory(thread.thread_id);
+    const page = await client.threads.getHistory(thread.thread_id, {
+      before: {
+        configurable: { checkpoint_id: history[1].checkpoint.checkpoint_id },
+      },
+    });
+
+    expect(page.map((state) => state.checkpoint.checkpoint_id)).toEqual(
+      history.slice(2).map((state) => state.checkpoint.checkpoint_id)
+    );
+  });
+
   it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
