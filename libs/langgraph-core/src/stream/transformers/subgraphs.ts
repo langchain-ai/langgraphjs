@@ -1,6 +1,6 @@
 /**
  * SubgraphDiscoveryTransformer - materializes a {@link StreamHandle} for
- * each newly observed top-level subgraph namespace and announces it on
+ * each newly observed subgraph namespace and announces it on
  * the mux's shared {@link StreamMux._discoveries} channel.
  *
  * Previously this work was inlined in {@link StreamMux.push}.  Extracting
@@ -17,12 +17,8 @@
  * delegation and surface child streams via the standard native
  * projection pattern.
  *
- * Only first-level namespace segments are announced.  Deeper segments
- * (e.g. `["researcher:uuid", "tools:uuid"]`) are internal Pregel
- * checkpoint namespaces for nodes inside a subgraph and should not
- * appear as user-facing `SubgraphRunStream` instances; the mux still
- * resolves their values via its own `#streamMap` when registered
- * elsewhere.
+ * Each newly observed namespace prefix is announced in parent-first order
+ * so subgraph streams can discover their direct children recursively.
  */
 
 import { hasPrefix, nsKey } from "../mux.js";
@@ -67,13 +63,13 @@ export interface SubgraphDiscoveryTransformerOptions<
   TStream extends StreamHandle = StreamHandle,
 > {
   /**
-   * Factory invoked once per newly observed top-level namespace.
+   * Factory invoked once per newly observed namespace prefix.
    *
    * Receives the discovery-channel and event-channel offsets so the resulting
    * stream can iterate only events arriving after the namespace was
    * first seen (no retroactive replay).
    *
-   * @param path - The single-segment top-level namespace.
+   * @param path - The discovered namespace prefix.
    * @param discoveryStart - Current size of the mux discovery log.
    * @param eventStart - Current size of the mux event log.
    * @returns A stream handle registered with the mux for values/error
@@ -181,20 +177,27 @@ export function createSubgraphDiscoveryTransformer<
 
     process(event: ProtocolEvent): boolean {
       const ns = event.params.namespace;
-      if (ns.length === 0) return true;
+      if (
+        ns.length === 0 ||
+        (event.method !== "checkpoints" && event.method !== "values")
+      ) {
+        return true;
+      }
 
-      const topNs = ns.slice(0, 1);
-      const topKey = nsKey(topNs);
-      if (seen.has(topKey)) return true;
-      seen.add(topKey);
+      for (let depth = 1; depth <= ns.length; depth += 1) {
+        const path = ns.slice(0, depth);
+        const key = nsKey(path);
+        if (seen.has(key)) continue;
+        seen.add(key);
 
-      const stream = createStream(
-        topNs,
-        mux._discoveries.size,
-        mux._events.size
-      );
-      mux.register(topNs, stream);
-      mux._discoveries.push({ ns: topNs, stream });
+        const stream = createStream(
+          path,
+          mux._discoveries.size,
+          mux._events.size
+        );
+        mux.register(path, stream);
+        mux._discoveries.push({ ns: path, stream });
+      }
       return true;
     },
   };
