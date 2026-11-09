@@ -5,7 +5,7 @@ import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 
 import { z } from "zod/v3";
 import * as schemas from "../schemas.mjs";
-import { stateSnapshotToThreadState } from "../state.mjs";
+import { selectThreadState, stateSnapshotToThreadState } from "../state.mjs";
 import { threads } from "../storage/context.mjs";
 import type { RunnableConfig, ThreadSelectField } from "../storage/types.mjs";
 import { jsonExtra } from "../utils/hono.mjs";
@@ -211,19 +211,31 @@ api.get(
         .default("10")
         .transform((value) => parseInt(value, 10)),
       before: z.string().optional(),
+      select: z
+        .union([
+          schemas.ThreadStateSelectField,
+          z.array(schemas.ThreadStateSelectField),
+        ])
+        .optional()
+        .transform((value) => (value == null ? undefined : [value].flat())),
     })
   ),
   async (c) => {
     // Get Thread History
     const { thread_id } = c.req.valid("param");
-    const { limit, before } = c.req.valid("query");
+    const { limit, before, select } = c.req.valid("query");
 
     const states = await threads().state.list(
       { configurable: { thread_id, checkpoint_ns: "" } },
       { limit, before },
       c.var.auth
     );
-    return jsonExtra(c, states.map(stateSnapshotToThreadState));
+    return jsonExtra(
+      c,
+      states.map((state) =>
+        selectThreadState(stateSnapshotToThreadState(state), select)
+      )
+    );
   }
 );
 
@@ -234,7 +246,7 @@ api.post(
   async (c) => {
     // Get Thread History Post
     const { thread_id } = c.req.valid("param");
-    const { limit, before, metadata, checkpoint } = c.req.valid("json");
+    const { limit, before, metadata, checkpoint, select } = c.req.valid("json");
 
     const states = await threads().state.list(
       { configurable: { thread_id, checkpoint_ns: "", ...checkpoint } },
@@ -242,7 +254,12 @@ api.post(
       c.var.auth
     );
 
-    return jsonExtra(c, states.map(stateSnapshotToThreadState));
+    return jsonExtra(
+      c,
+      states.map((state) =>
+        selectThreadState(stateSnapshotToThreadState(state), select)
+      )
+    );
   }
 );
 

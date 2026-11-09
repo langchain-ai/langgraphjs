@@ -484,6 +484,20 @@ export const ThreadStateUpdate = z
   })
   .describe("Payload for adding state to a thread.");
 
+export const ThreadStateSelectField = z.union([
+  z.enum([
+    "values",
+    "next",
+    "tasks",
+    "checkpoint",
+    "metadata",
+    "created_at",
+    "parent_checkpoint",
+    "interrupts",
+  ]),
+  z.string().regex(/^values\.[A-Za-z0-9_-]+$/),
+]);
+
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
   before: z
@@ -500,6 +514,7 @@ export const ThreadHistoryRequest = z.object({
       checkpoint_map: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
+  select: z.array(ThreadStateSelectField).optional(),
 });
 
 export const ThreadPatchRequest = z.object({
