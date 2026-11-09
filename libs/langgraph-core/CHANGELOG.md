@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.7.3
+
+### Patch Changes
+
+- [#3308](https://github.com/langchain-ai/langgraphjs/pull/3308) [`c6874b4`](https://github.com/langchain-ai/langgraphjs/commit/c6874b4095a5c3d2d12512cb90999d9e4f36eeb0) Thanks [@richardscarrott](https://github.com/richardscarrott)! - match whole namespace segments in `getSubgraphs` and `getSubgraphsAsync`, so a `namespace` such as `research_review` no longer also yields `research|review`, and yield a namespace's subgraph once when a node declares several `subgraphs`
+
+- [#3090](https://github.com/langchain-ai/langgraphjs/pull/3090) [`3944b75`](https://github.com/langchain-ai/langgraphjs/commit/3944b75c9344ce5703c12d8144c6b9168057da59) Thanks [@OsamaAnsar](https://github.com/OsamaAnsar)! - Stop the run when a consumer breaks out of a `for await` loop over `graph.stream()` or `graph.streamEvents()`, or cancels the stream's reader. Only an explicit `stream.cancel()` aborted the run before; breaking out of the loop left the remaining nodes running in the background.
+
 ## 1.7.2
 
 ### Patch Changes
