@@ -370,7 +370,8 @@ export class InMemoryStore extends BaseStore {
       return {};
     }
 
-    const toEmbed: { [text: string]: [string[], string, string][] } = {};
+    const toEmbed: { [text: string]: [string[], string, string][] } =
+      Object.create(null);
 
     for (const op of ops) {
       if (op.value !== null && op.index !== false) {
