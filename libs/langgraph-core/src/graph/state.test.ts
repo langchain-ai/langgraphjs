@@ -8,6 +8,7 @@ import { MessagesAnnotation, MessagesZodState } from "./messages_annotation.js";
 import { StateSchema } from "../state/schema.js";
 import { ReducedValue } from "../state/values/reduced.js";
 import { Command, END, Overwrite, START } from "../constants.js";
+import { InvalidUpdateError } from "../errors.js";
 import { messagesStateReducer } from "./messages_reducer.js";
 
 describe("StateGraph", () => {
@@ -1020,6 +1021,54 @@ describe("StateGraph", () => {
 
   describe("Overwrite end-to-end", () => {
     describe("Annotation.Root", () => {
+      it.each([true, false])(
+        "should overwrite concurrent updates without a default (overwrite first: %s)",
+        async (overwriteFirst) => {
+          const StateAnnotation = Annotation.Root({
+            trigger: Annotation<boolean>(),
+            count: Annotation<number>({ reducer: (a, b) => a + b }),
+          });
+
+          const graph = new StateGraph(StateAnnotation)
+            .addNode("a", () => ({
+              count: overwriteFirst ? new Overwrite(42) : 7,
+            }))
+            .addNode("b", () => ({
+              count: overwriteFirst ? 7 : new Overwrite(42),
+            }))
+            .addEdge(START, "a")
+            .addEdge(START, "b")
+            .addEdge("a", END)
+            .addEdge("b", END)
+            .compile();
+
+          await expect(graph.invoke({ trigger: true })).resolves.toEqual({
+            trigger: true,
+            count: 42,
+          });
+        }
+      );
+
+      it("should reject concurrent overwrites without a default", async () => {
+        const StateAnnotation = Annotation.Root({
+          trigger: Annotation<boolean>(),
+          count: Annotation<number>({ reducer: (a, b) => a + b }),
+        });
+
+        const graph = new StateGraph(StateAnnotation)
+          .addNode("a", () => ({ count: new Overwrite(42) }))
+          .addNode("b", () => ({ count: new Overwrite(100) }))
+          .addEdge(START, "a")
+          .addEdge(START, "b")
+          .addEdge("a", END)
+          .addEdge("b", END)
+          .compile();
+
+        await expect(graph.invoke({ trigger: true })).rejects.toThrow(
+          InvalidUpdateError
+        );
+      });
+
       it("should overwrite a reducer field with Overwrite class", async () => {
         const StateAnnotation = Annotation.Root({
           items: Annotation<string[]>({
