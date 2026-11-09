@@ -107,6 +107,38 @@ describe("mapCommand", () => {
     ]);
   });
 
+  it("accumulates successive interrupt-id resumes as a flat list", () => {
+    // Regression: the prior `__resume__` write's value is already the
+    // accumulated list. Wrapping it as an element nests one level per
+    // respond (`[[["m1"],"m2"],"m3"]…`) while `_scratchpad` only
+    // `.flat()`s once. Concatenate instead.
+    const interruptId = "123e4567e89b12d3a456426614174000";
+    let pendingWrites: Array<[string, string, unknown]> = [];
+    const respond = (value: unknown) => {
+      const writes = [
+        ...mapCommand(
+          new Command({ resume: { [interruptId]: value } }),
+          pendingWrites
+        ),
+      ];
+      // Emulate the checkpointer's putWrites upsert per (task, channel).
+      for (const [taskId, channel, written] of writes) {
+        pendingWrites = pendingWrites.filter(
+          ([t, c]) => !(t === taskId && c === channel)
+        );
+        pendingWrites.push([taskId, channel, written]);
+      }
+    };
+
+    respond("m1");
+    respond("m2");
+    respond("m3");
+
+    expect(pendingWrites).toEqual([
+      [interruptId, "__resume__", ["m1", "m2", "m3"]],
+    ]);
+  });
+
   it("should handle Command with update (object)", () => {
     const cmd = new Command({
       update: {
