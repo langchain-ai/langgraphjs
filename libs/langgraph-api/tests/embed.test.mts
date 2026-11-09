@@ -269,6 +269,27 @@ describe("runs", () => {
     );
   });
 
+  it.concurrent("history with select", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "agent", {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      })
+    );
+
+    const history = await client.threads.getHistory<AgentState>(
+      thread.thread_id,
+      { select: ["values.messages", "tasks"] }
+    );
+
+    expect(history).toHaveLength(5);
+    for (const state of history) {
+      expect(Object.keys(state).sort()).toEqual(["tasks", "values"]);
+      expect(Object.keys(state.values)).toEqual(["messages"]);
+    }
+  });
+
   it.concurrent("stream updates", async () => {
     const thread = await client.threads.create();
     const input = {

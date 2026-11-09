@@ -841,6 +841,80 @@ describe("threads copy", () => {
     expect(legacy).toEqual(page);
   });
 
+  it.concurrent("history with select", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory<AgentState>(
+      thread.thread_id,
+      { select: ["values.messages", "tasks"] }
+    );
+
+    expect(history).toHaveLength(5);
+    for (const state of history) {
+      expect(Object.keys(state).sort()).toEqual(["tasks", "values"]);
+      expect(Object.keys(state.values)).toEqual(["messages"]);
+    }
+    expect(history[0].values.messages).toHaveLength(4);
+
+    const query = "select=values.messages&select=tasks";
+    const getHistory = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?${query}`
+    ).then((res) => res.json());
+    expect(getHistory).toEqual(history);
+
+    const full = await client.threads.getHistory<AgentState>(thread.thread_id);
+    expect(Object.keys(full[0].values).length).toBeGreaterThan(1);
+
+    // An empty select returns full entries.
+    expect(
+      await client.threads.getHistory(thread.thread_id, { select: [] })
+    ).toEqual(full);
+
+    // `values` keeps every key, even next to `values.<key>`.
+    const allValues = await client.threads.getHistory(thread.thread_id, {
+      select: ["values", "values.messages"],
+    });
+    expect(allValues).toEqual(full.map(({ values }) => ({ values })));
+
+    // A key the state doesn't have is left out.
+    const missing = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.missing"],
+    });
+    expect(missing).toEqual(full.map(() => ({ values: {} })));
+
+    // GET with a single field.
+    const single = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?select=next`
+    ).then((res) => res.json());
+    expect(single).toEqual(full.map(({ next }) => ({ next })));
+  });
+
+  it.concurrent("history with select when values aren't an object", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "functional", { input: "foo" })
+    );
+
+    const history = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.messages", "next"],
+    });
+
+    expect(history.length).toBeGreaterThan(0);
+    for (const state of history) expect(Object.keys(state)).toEqual(["next"]);
+  });
+
+  it.concurrent("history rejects an invalid select field", async () => {
+    for (const field of ["files", "values.", "values.a.b"]) {
+      await expect(
+        client.threads.getHistory(randomUUID(), { select: [field as never] })
+      ).rejects.toThrow("HTTP 400");
+    }
+  });
+
   it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
