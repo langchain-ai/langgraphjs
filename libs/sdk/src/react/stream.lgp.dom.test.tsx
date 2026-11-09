@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { Activity, StrictMode, act, type ReactElement } from "react";
-import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
 import type { Client } from "../client.js";
+import { StreamManager } from "../ui/manager.js";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -160,10 +163,14 @@ function mockRun(
   );
 }
 
-function mockJoin(client: TestClient, events: StreamEvents) {
+function mockJoin(
+  client: TestClient,
+  events: StreamEvents,
+  { hang = false } = {}
+) {
   client.runs.joinStream.mockImplementationOnce(
     (_threadId: string, _runId: string, payload: { signal: AbortSignal }) =>
-      streamOf(events, payload.signal, false)
+      streamOf(events, payload.signal, hang)
   );
 }
 
@@ -290,6 +297,278 @@ describe("useStream (old engine) joinStream", () => {
     });
 
     expect(view.current.messages).toEqual([message("h0"), final]);
+  });
+});
+
+describe("useStream (old engine) rejoin on mount", () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const parent = threadState({ messages: [message("h0")] });
+  const head = threadState(
+    { messages: [message("h0"), message("a0", "ai")] },
+    {
+      checkpoint: { ...parent.checkpoint, checkpoint_id: "cp2" },
+      parent_checkpoint: parent.checkpoint,
+    }
+  );
+
+  const joinedWith = (client: TestClient) => {
+    const [threadId, runId, { lastEventId, checkpointId }] =
+      client.runs.joinStream.mock.calls[0];
+    return { threadId, runId, lastEventId, checkpointId };
+  };
+
+  it.each([
+    {
+      name: "from the checkpoint of the state",
+      fetchStateHistory: false,
+      read: head,
+      checkpointId: "cp2",
+    },
+    {
+      name: "from the newest checkpoint of the history",
+      fetchStateHistory: true,
+      read: [head, parent],
+      checkpointId: "cp2",
+    },
+    {
+      name: "without a checkpoint on a new thread",
+      fetchStateHistory: false,
+      read: threadState({ messages: [] }, { checkpoint: null }),
+      checkpointId: undefined,
+    },
+  ])(
+    "rejoins a stored run once the thread loads, $name",
+    async ({ fetchStateHistory, read, checkpointId }) => {
+      const client = createClient();
+      serve(client, head);
+      let serveRead!: (value: unknown) => void;
+      (fetchStateHistory
+        ? client.threads.getHistory
+        : client.threads.getState
+      ).mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveRead = resolve;
+        })
+      );
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory,
+        reconnectOnMount: true,
+      });
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(read));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toEqual({
+        threadId: "t1",
+        runId: "run-1",
+        lastEventId: "-1",
+        checkpointId,
+      });
+    }
+  );
+
+  it("shows a message the loaded state holds once when the rejoin sends it again", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(
+      client,
+      [
+        { event: "messages", data: [message("a0", "ai"), {}] },
+        { event: "messages", data: [message("a1", "ai"), {}] },
+      ],
+      { hang: true }
+    );
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    await settle();
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.messages.map((m) => m.id)).toEqual(["h0", "a0", "a1"]);
+  });
+
+  it("rejoins a stored run without a checkpoint when the thread fails to load", async () => {
+    const client = createClient();
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = { ...userThread(), data: undefined, isLoading: true };
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread,
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await view.rerender({
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: false, error: new Error("offline") },
+    });
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client)).toEqual({
+      threadId: "t1",
+      runId: "run-1",
+      lastEventId: "-1",
+      checkpointId: undefined,
+    });
+  });
+
+  it("stays loading while a stored run waits for the thread state", async () => {
+    const client = createClient();
+    serve(client, head);
+    const serveRead = deferRead(client, false);
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    expect(view.current.isLoading).toBe(true);
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await act(async () => serveRead(head));
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client).checkpointId).toBe("cp2");
+    expect(view.current.isLoading).toBe(false);
+  });
+
+  it("stays idle on a new thread before and after its first run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockRun(client, [{ event: "error", data: { message: "boom" } }]);
+    const view = await renderStream(client, { reconnectOnMount: true });
+    expect(view.current.isLoading).toBe(false);
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
+    expect(view.current.error).toBeDefined();
+  });
+
+  it.each([
+    {
+      from: "a thread with a checkpoint",
+      threadId: "t0",
+      checkpoint: { ...parent.checkpoint, thread_id: "t0" },
+    },
+    { from: "a thread without a checkpoint", threadId: "t0", checkpoint: null },
+    { from: "no thread", threadId: null, checkpoint: null },
+  ])(
+    "waits for the new thread's state before rejoining after a switch from $from",
+    async ({ threadId, checkpoint }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }, { checkpoint }));
+      const view = await renderStream(client, {
+        threadId,
+        reconnectOnMount: true,
+      });
+      serve(client, head);
+      const serveRead = deferRead(client, false);
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await view.rerender({ threadId: "t1", reconnectOnMount: true });
+      await settle();
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(head));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toMatchObject({
+        threadId: "t1",
+        checkpointId: "cp2",
+      });
+    }
+  );
+
+  it("does not retry a failed rejoin when the thread state reloads", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockJoin(client, [{ event: "error", data: { message: "gone" } }]);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = userThread();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: true },
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    for (const isLoading of [false, true, false]) {
+      await view.rerender({
+        threadId: "t1",
+        reconnectOnMount: true,
+        thread: { ...thread, isLoading },
+      });
+      await settle();
+    }
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(view.current.error).toBeDefined();
+  });
+
+  it("hides the head's interrupts while a stored run waits for the thread state", async () => {
+    const client = createClient();
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...userThread(), data: [interrupted()], isLoading: true },
+    });
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.interrupts).toEqual([]);
+  });
+
+  it("disables a loading-gated input after hydrating a server render that had no stored run", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(client, [], { hang: true });
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    function Send() {
+      const stream = useStream<State>({
+        assistantId: "agent",
+        client: client as unknown as Client,
+        threadId: "t1",
+        reconnectOnMount: true,
+      });
+      return <button disabled={stream.isLoading}>send</button>;
+    }
+    vi.stubGlobal("window", undefined);
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<Send />);
+    vi.unstubAllGlobals();
+
+    let root!: ReturnType<typeof hydrateRoot>;
+    await act(async () => {
+      root = hydrateRoot(container, <Send />);
+    });
+    await settle();
+    unmounts.push(() => act(() => root.unmount()));
+
+    expect(container.querySelector("button")?.disabled).toBe(true);
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -582,6 +861,34 @@ describe("useStream (old engine) headless tools", () => {
     await submit(view);
     await settle();
 
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("ends loading and runs a pending tool after a run when each store update renders synchronously", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const isLoadingReads = vi.spyOn(
+      StreamManager.prototype,
+      "isLoading",
+      "get"
+    );
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      tools: [tool],
+    });
+    const manager = isLoadingReads.mock.contexts[0] as StreamManager<State>;
+    isLoadingReads.mockRestore();
+    manager.subscribe(() => flushSync(() => {}));
+    mockRun(client, []);
+    mockRun(client, []);
+    serve(client, pendingTool());
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
     expect(tool.execute).toHaveBeenCalledTimes(1);
   });
 

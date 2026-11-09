@@ -35,8 +35,8 @@
  *     metadata to attach" — older snapshots without a paired
  *     checkpoint are still applied to the store, just without
  *     `parentCheckpointId`.
- *   - `recordMessages(msgs, meta)` — write metadata for the supplied
- *     message ids if it differs from what's already stored.
+ *   - `recordMessages(msgs, meta)` — keep the first parent recorded
+ *     for each of the supplied message ids.
  *   - `reset()`                    — clear everything (called on
  *     thread rebind / dispose).
  *
@@ -232,10 +232,11 @@ export class MessageMetadataTracker {
   /**
    * Record metadata for a list of messages.
    *
-   * Skips messages whose existing entry already matches `metadata`;
-   * those without an `id` (or with a non-string id) are silently
-   * ignored — there's nothing to key the metadata on. The store is
-   * only updated when at least one entry actually changed, so
+   * Keeps the first `parentCheckpointId` recorded for each message,
+   * because the parent of the first checkpoint that carried a message
+   * is the fork point for editing it. Messages without a non-empty
+   * string `id` are ignored, since there's nothing to key the metadata
+   * on. The store is only updated when at least one entry changed, so
    * reapplying the same values snapshot is cheap.
    *
    * @param messages - Messages from the latest values payload.
@@ -253,12 +254,7 @@ export class MessageMetadataTracker {
       const id = msg?.id;
       if (typeof id !== "string" || id.length === 0) continue;
       const prev = next.get(id);
-      if (
-        prev != null &&
-        prev.parentCheckpointId === metadata.parentCheckpointId
-      ) {
-        continue;
-      }
+      if (prev?.parentCheckpointId != null) continue;
       next.set(id, { ...prev, ...metadata });
       changed = true;
     }

@@ -1,5 +1,13 @@
 # @langchain/langgraph
 
+## 1.7.2
+
+### Patch Changes
+
+- [#3258](https://github.com/langchain-ai/langgraphjs/pull/3258) [`585b78b`](https://github.com/langchain-ai/langgraphjs/commit/585b78bbc8249014c6d092ff0e38699679b33034) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `getState` and `getStateHistory` report the `result` of a task that was interrupted and then resumed. The task's interrupt write stays on the checkpoint after it finishes, and that hid the result, so a node with human-in-the-loop never showed what it returned in history. A task that failed after writing some output now reports that output as its `result` too, as in Python. A task still paused at an interrupt keeps `result: undefined`.
+- Updated dependencies [[`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9), [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95), [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5)]:
+  - @langchain/langgraph-sdk@1.15.0
+
 ## 1.7.1
 
 ### Patch Changes

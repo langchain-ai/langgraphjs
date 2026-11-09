@@ -437,6 +437,15 @@ export class RunsClient<
           signal?: AbortSignal;
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
+          /**
+           * The checkpoint whose state the caller already shows, such as the
+           * thread's head. Servers that support it send only the run's events
+           * after this checkpoint, or the whole run when it is not one of the
+           * run's; other servers ignore it. Send it with `lastEventId: "-1"`, so
+           * those servers replay the whole run instead of only new events. A
+           * `lastEventId` other than `"-1"` takes precedence.
+           */
+          checkpointId?: string;
           streamMode?: StreamMode | StreamMode[];
           /**
            * Stream only these namespaces of the run (`""` is the root graph), each
@@ -485,6 +494,7 @@ export class RunsClient<
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
         namespace: opts?.streamNamespaces,
+        checkpoint_id: opts?.checkpointId,
       },
     });
   }
