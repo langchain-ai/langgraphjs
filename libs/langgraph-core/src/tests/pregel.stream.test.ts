@@ -538,6 +538,45 @@ describe("streamEvents version v3", () => {
       expect(output!.value).toBe("yes");
       expect(run2.interrupted).toBe(false);
     });
+
+    it("reports an interrupt from the graph's own node when streamed inside a parent graph", async () => {
+      const inner = new StateGraph(StringState)
+        .addNode("ask", () => ({ value: String(interrupt("question?")) }))
+        .addEdge(START, "ask")
+        .addEdge("ask", END)
+        .compile();
+
+      let innerInterrupted = false;
+      let innerInterrupts: { interruptId: string; payload: unknown }[] = [];
+
+      const outer = new StateGraph(StringState)
+        .addNode("host", async () => {
+          const innerRun = await inner.streamEvents(
+            { value: "start" },
+            { version: "v3" }
+          );
+          try {
+            return await innerRun.output;
+          } finally {
+            innerInterrupted = innerRun.interrupted;
+            innerInterrupts = [...innerRun.interrupts];
+          }
+        })
+        .addEdge(START, "host")
+        .addEdge("host", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await outer.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-parent-own" } }
+      );
+      await collectEvents(run);
+
+      expect(innerInterrupted).toBe(true);
+      expect(innerInterrupts).toHaveLength(1);
+      expect(innerInterrupts[0].payload).toBe("question?");
+      expect(run.interrupted).toBe(true);
+    });
   });
 
   describe("abort", () => {

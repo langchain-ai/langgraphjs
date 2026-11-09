@@ -17,6 +17,7 @@
 
 import type { StreamChunk } from "../pregel/stream.js";
 import { INTERRUPT, isInterrupted, type Interrupt } from "../constants.js";
+import { isGraphInterrupt } from "../errors.js";
 import { convertToProtocolEvent, STREAM_EVENTS_V3_MODES } from "./convert.js";
 import { StreamChannel, isStreamChannel } from "./stream-channel.js";
 import type {
@@ -511,6 +512,20 @@ export async function pump(
       }
     }
   } catch (err) {
+    // A graph running inside a parent's node rethrows its interrupt so the
+    // parent pauses. That errors the stream, which drops the last `values`
+    // chunk, so take any interrupts not seen yet from the error instead.
+    if (isGraphInterrupt(err)) {
+      const recorded = new Set(mux.interrupts.map((i) => i.interruptId));
+      const missing = err.interrupts.filter((i) =>
+        i.id ? !recorded.has(i.id) : !mux.interrupted
+      );
+      if (missing.length > 0) {
+        mux.markInterrupted(
+          missing.map((i) => ({ interruptId: i.id ?? "", payload: i.value }))
+        );
+      }
+    }
     mux.fail(err);
     return;
   }
