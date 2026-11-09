@@ -865,6 +865,32 @@ describe("threads copy", () => {
       `${API_URL}/threads/${thread.thread_id}/history?${query}`
     ).then((res) => res.json());
     expect(getHistory).toEqual(history);
+
+    const full = await client.threads.getHistory<AgentState>(thread.thread_id);
+    expect(Object.keys(full[0].values).length).toBeGreaterThan(1);
+
+    // An empty select returns full entries.
+    expect(
+      await client.threads.getHistory(thread.thread_id, { select: [] })
+    ).toEqual(full);
+
+    // `values` keeps every key, even next to `values.<key>`.
+    const allValues = await client.threads.getHistory(thread.thread_id, {
+      select: ["values", "values.messages"],
+    });
+    expect(allValues).toEqual(full.map(({ values }) => ({ values })));
+
+    // A key the state doesn't have is left out.
+    const missing = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.missing"],
+    });
+    expect(missing).toEqual(full.map(() => ({ values: {} })));
+
+    // GET with a single field.
+    const single = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?select=next`
+    ).then((res) => res.json());
+    expect(single).toEqual(full.map(({ next }) => ({ next })));
   });
 
   it.concurrent("history with select when values aren't an object", async () => {
@@ -881,10 +907,12 @@ describe("threads copy", () => {
     for (const state of history) expect(Object.keys(state)).toEqual(["next"]);
   });
 
-  it.concurrent("history rejects an unknown select field", async () => {
-    await expect(
-      client.threads.getHistory(randomUUID(), { select: ["files" as never] })
-    ).rejects.toThrow("HTTP 400");
+  it.concurrent("history rejects an invalid select field", async () => {
+    for (const field of ["files", "values.", "values.a.b"]) {
+      await expect(
+        client.threads.getHistory(randomUUID(), { select: [field as never] })
+      ).rejects.toThrow("HTTP 400");
+    }
   });
 
   it.concurrent("copy update", async () => {
