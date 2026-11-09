@@ -105,6 +105,7 @@ import { PregelRunner } from "./runner.js";
 import {
   IterableReadableStreamWithAbortSignal,
   IterableReadableWritableStream,
+  type StreamNamespaceOptions,
   StreamToolsHandler,
   toEventStream,
 } from "./stream.js";
@@ -798,7 +799,8 @@ export class Pregel<
    * A subgraph is a Pregel instance that is nested within a node of this graph.
    *
    * @deprecated Use getSubgraphsAsync instead. The async method will become the default in the next minor release.
-   * @param namespace - Optional namespace to filter subgraphs
+   * @param namespace - Yield only the subgraph at this exact namespace, such
+   *   as `parent|child` (without task IDs). A nested namespace needs `recurse`.
    * @param recurse - Whether to recursively get subgraphs of subgraphs
    * @returns Generator yielding tuples of [name, subgraph]
    */
@@ -808,9 +810,12 @@ export class Pregel<
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Generator<[string, Pregel<any, any>]> {
     for (const [name, node] of Object.entries(this.nodes)) {
-      // filter by prefix
+      // filter by the namespace's first segment, matched whole
       if (namespace !== undefined) {
-        if (!namespace.startsWith(name)) {
+        if (
+          namespace !== name &&
+          !namespace.startsWith(`${name}${CHECKPOINT_NAMESPACE_SEPARATOR}`)
+        ) {
           continue;
         }
       }
@@ -846,6 +851,8 @@ export class Pregel<
                 `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
                 subgraph,
               ];
+              // one subgraph per namespace, even across several candidates
+              if (namespace !== undefined) return;
             }
           }
         }
@@ -857,7 +864,8 @@ export class Pregel<
    * Gets all subgraphs within this graph asynchronously.
    * A subgraph is a Pregel instance that is nested within a node of this graph.
    *
-   * @param namespace - Optional namespace to filter subgraphs
+   * @param namespace - Yield only the subgraph at this exact namespace, such
+   *   as `parent|child` (without task IDs). A nested namespace needs `recurse`.
    * @param recurse - Whether to recursively get subgraphs of subgraphs
    * @returns AsyncGenerator yielding tuples of [name, subgraph]
    */
@@ -936,18 +944,16 @@ export class Pregel<
       return undefined;
     }
     const recastNamespace = recastCheckpointNamespace(checkpointNamespace);
-    for await (const [name, subgraph] of this.getSubgraphsAsync(
+    for await (const [, subgraph] of this.getSubgraphsAsync(
       recastNamespace,
       true
     )) {
-      if (name === recastNamespace) {
-        return [
-          subgraph,
-          patchConfigurable(config, {
-            [CONFIG_KEY_CHECKPOINTER]: checkpointer,
-          }),
-        ];
-      }
+      return [
+        subgraph,
+        patchConfigurable(config, {
+          [CONFIG_KEY_CHECKPOINTER]: checkpointer,
+        }),
+      ];
     }
     return undefined;
   }
@@ -2557,11 +2563,18 @@ export class Pregel<
 
     config.configurable = this._ownCheckpointConfig(config).configurable;
 
+    const namespaceOptions: StreamNamespaceOptions = {
+      subgraphs: streamSubgraphs ?? false,
+    };
+
     // set up messages stream mode
     if (streamMode.includes("messages")) {
       const messageStreamer = isV3
         ? new StreamProtocolMessagesHandler((chunk) => stream.push(chunk))
-        : new StreamMessagesHandler((chunk) => stream.push(chunk));
+        : new StreamMessagesHandler(
+            (chunk) => stream.push(chunk),
+            namespaceOptions
+          );
       const { callbacks } = config;
       if (callbacks === undefined) {
         config.callbacks = [messageStreamer];
@@ -2576,8 +2589,10 @@ export class Pregel<
 
     // set up tools stream mode
     if (streamMode.includes("tools")) {
-      const toolStreamer = new StreamToolsHandler((chunk) =>
-        stream.push(chunk)
+      const toolStreamer = new StreamToolsHandler(
+        (chunk) => stream.push(chunk),
+        // streamEvents v3 reads tool events under their full namespace.
+        isV3 ? undefined : namespaceOptions
       );
       const { callbacks } = config;
       if (callbacks === undefined) {
@@ -2678,6 +2693,10 @@ export class Pregel<
           triggerToNodes: this.triggerToNodes,
           durability,
         });
+        // Only known now: initialize() numbers the namespace of every subgraph
+        // a task runs after its first.
+        namespaceOptions.parentNs =
+          loop.config.configurable?.[CONFIG_KEY_CHECKPOINT_NS] || undefined;
 
         const runner = new PregelRunner({
           loop,

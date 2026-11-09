@@ -11,6 +11,7 @@ import {
   type SearchOperation,
   type SearchItem,
   InvalidNamespaceError,
+  validateNamespace,
 } from "@langchain/langgraph-checkpoint";
 
 /**
@@ -31,35 +32,43 @@ function computeNamespacePath(namespace: string[]): string[] {
 }
 
 /**
- * Validates the provided namespace.
- * @param namespace The namespace to validate.
- * @throws {InvalidNamespaceError} If the namespace is invalid.
+ * Validates a list namespaces operation before its labels and `maxDepth` are
+ * placed in an aggregation `$expr`. `batch()` can receive operations that
+ * never went through `BaseStore.listNamespaces`, so the check lives here.
+ * @param op The operation to validate.
+ * @throws {InvalidNamespaceError} If a match condition or `maxDepth` is invalid.
  */
-function validateNamespace(namespace: string[]): void {
-  if (namespace.length === 0) {
-    throw new InvalidNamespaceError("Namespace cannot be empty.");
+function validateListNamespacesOperation(op: ListNamespacesOperation): void {
+  const { matchConditions, maxDepth } = op;
+  if (matchConditions !== undefined && !Array.isArray(matchConditions)) {
+    throw new InvalidNamespaceError("matchConditions must be an array.");
   }
-  for (const label of namespace) {
-    if (typeof label !== "string") {
+  for (const condition of matchConditions ?? []) {
+    if (
+      condition?.matchType !== "prefix" &&
+      condition?.matchType !== "suffix"
+    ) {
       throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels ` +
-          `must be strings, but got ${typeof label}.`
+        `Invalid match type '${String(condition?.matchType)}'. Expected "prefix" or "suffix".`
       );
     }
-    if (label.includes(".")) {
+    if (!Array.isArray(condition.path)) {
       throw new InvalidNamespaceError(
-        `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain periods ('.').`
+        "Match condition path must be an array of strings."
       );
     }
-    if (label === "") {
-      throw new InvalidNamespaceError(
-        `Namespace labels cannot be empty strings. Got ${label} in ${namespace}`
-      );
-    }
+    // The same check BaseStore.listNamespaces applies to its prefix and suffix.
+    validateNamespace(condition.path, {
+      allowEmpty: true,
+      allowReservedRoot: true,
+    });
   }
-  if (namespace[0] === "langgraph") {
+  if (
+    maxDepth !== undefined &&
+    !(Number.isInteger(maxDepth) && maxDepth >= 0)
+  ) {
     throw new InvalidNamespaceError(
-      `Root label for namespace cannot be "langgraph". Got: ${namespace}`
+      `maxDepth must be a non-negative integer, but got ${String(maxDepth)}.`
     );
   }
 }
@@ -140,6 +149,20 @@ export type MongoDBStoreParams = {
   embeddings?: EmbeddingsInterface;
   indexConfig?: IndexConfig;
 };
+
+/**
+ * MongoDB matches a string namespace against any stored namespace containing
+ * it, and an object can be a query operator, so only an array is accepted.
+ * `$eq` compares the key as a plain value even when it is an object.
+ */
+function itemFilter(namespace: string[], key: string) {
+  if (!Array.isArray(namespace)) {
+    throw new InvalidNamespaceError(
+      `Namespace must be an array of strings, but got ${typeof namespace}.`
+    );
+  }
+  return { namespace, key: { $eq: key } };
+}
 
 /**
  * A long-term persistent key-value store backed by MongoDB.
@@ -328,7 +351,7 @@ export class MongoDBStore extends BaseStore {
         if (value === null) {
           bulkOps.push({
             deleteOne: {
-              filter: { namespace, key },
+              filter: itemFilter(namespace, key),
             },
           });
           continue;
@@ -366,7 +389,7 @@ export class MongoDBStore extends BaseStore {
 
         bulkOps.push({
           updateOne: {
-            filter: { namespace, key },
+            filter: itemFilter(namespace, key),
             update: {
               $set: doc,
               $setOnInsert: { createdAt: now },
@@ -409,14 +432,14 @@ export class MongoDBStore extends BaseStore {
       doc = await this.db
         .collection(this.collectionName)
         .findOneAndUpdate(
-          { namespace, key },
+          itemFilter(namespace, key),
           { $set: updateDoc },
           { returnDocument: "after" }
         );
     } else {
       doc = await this.db
         .collection(this.collectionName)
-        .findOne({ namespace, key });
+        .findOne(itemFilter(namespace, key));
     }
 
     if (!doc) {
@@ -449,6 +472,7 @@ export class MongoDBStore extends BaseStore {
   private async listNamespacesOp(
     op: ListNamespacesOperation
   ): Promise<string[][]> {
+    validateListNamespacesOperation(op);
     const { matchConditions, maxDepth, limit, offset } = op;
 
     const pipeline: Record<string, any>[] = [];
@@ -466,11 +490,16 @@ export class MongoDBStore extends BaseStore {
           //   namespace[0] == "users" AND namespace[2] == "settings"
           //   AND namespace.length >= 3
           // (index 1 is skipped because it's a wildcard)
+          // Labels are wrapped in $literal so a leading "$" is compared as
+          // text instead of being read as a field path.
           const elemConditions: Record<string, any>[] = [];
           for (let i = 0; i < path.length; i++) {
             if (path[i] !== "*") {
               elemConditions.push({
-                $eq: [{ $arrayElemAt: ["$namespace", i] }, path[i]],
+                $eq: [
+                  { $arrayElemAt: ["$namespace", i] },
+                  { $literal: path[i] },
+                ],
               });
             }
           }
@@ -489,7 +518,7 @@ export class MongoDBStore extends BaseStore {
               elemConditions.push({
                 $eq: [
                   { $arrayElemAt: ["$namespace", -(path.length - i)] },
-                  path[i],
+                  { $literal: path[i] },
                 ],
               });
             }
@@ -574,12 +603,12 @@ export class MongoDBStore extends BaseStore {
 
     // Filter by namespace prefix using dot-notation array indexing.
     // E.g. namespacePrefix ["users", "profiles"] becomes:
-    //   { "namespace.0": "users", "namespace.1": "profiles" }
+    //   { "namespace.0": { $eq: "users" }, "namespace.1": { $eq: "profiles" } }
     // This matches ["users", "profiles"] and any nested namespaces like
     // ["users", "profiles", "settings"], but not ["users"] alone.
     if (namespacePrefix && namespacePrefix.length > 0) {
       for (let idx = 0; idx < namespacePrefix.length; idx++) {
-        mongoQuery[`namespace.${idx}`] = namespacePrefix[idx];
+        mongoQuery[`namespace.${idx}`] = { $eq: namespacePrefix[idx] };
       }
     }
 
@@ -595,7 +624,7 @@ export class MongoDBStore extends BaseStore {
           for (const [operator, operatorValue] of Object.entries(condition)) {
             switch (operator) {
               case "$eq":
-                mongoQuery[`value.${field}`] = operatorValue;
+                mongoQuery[`value.${field}`] = { $eq: operatorValue };
                 break;
               case "$ne":
                 mongoQuery[`value.${field}`] = { $ne: operatorValue };
@@ -696,9 +725,9 @@ export class MongoDBStore extends BaseStore {
     // ["team/alice"] and ["team", "alice"] both store "team/alice".
     // Match on the real namespace array to drop them before paging.
     if (namespacePrefix.length > 0) {
-      const namespaceMatch: Record<string, string> = {};
+      const namespaceMatch: Record<string, { $eq: string }> = {};
       namespacePrefix.forEach((label, idx) => {
-        namespaceMatch[`namespace.${idx}`] = label;
+        namespaceMatch[`namespace.${idx}`] = { $eq: label };
       });
       pipeline.push({ $match: namespaceMatch });
     }

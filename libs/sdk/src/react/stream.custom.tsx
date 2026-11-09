@@ -269,7 +269,10 @@ export function useStreamCustom<
   };
 
   const handledToolsRef = useRef<Set<string>>(new Set());
+  const handledThreadIdRef = useRef(threadId);
   useEffect(() => {
+    if (handledThreadIdRef.current === threadId) return;
+    handledThreadIdRef.current = threadId;
     handledToolsRef.current.clear();
   }, [threadId]);
 

@@ -41,12 +41,12 @@ describe("inferChannel", () => {
     expect(inferChannel(makeEvent({ method: "tasks" }))).toBe("tasks");
   });
 
-  it("maps both 'input' and 'input.requested' to the input channel", () => {
-    expect(inferChannel(makeEvent({ method: "input" }))).toBe("input");
-    expect(inferChannel(makeEvent({ method: "input.requested" }))).toBe(
-      "input"
-    );
-  });
+  it.each(["input", "input.requested", "input.answered"])(
+    "maps %s to the input channel",
+    (method) => {
+      expect(inferChannel(makeEvent({ method }))).toBe("input");
+    }
+  );
 
   it("resolves the named custom channel when the payload carries a name", () => {
     expect(

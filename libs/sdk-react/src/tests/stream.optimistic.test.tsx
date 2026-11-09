@@ -73,9 +73,9 @@ it("reconciles the server echo by id without duplicating the message", async () 
   }
 });
 
-it("keeps the optimistic message and marks it failed when the run errors", async () => {
+it("keeps the optimistic message and marks it failed when dispatch rejects", async () => {
   const screen = await render(
-    <OptimisticStream apiUrl={apiUrl} assistantId="error_graph" />,
+    <OptimisticStream apiUrl={apiUrl} assistantId="missing_graph" />,
   );
 
   try {

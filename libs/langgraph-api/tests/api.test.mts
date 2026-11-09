@@ -6,6 +6,7 @@ import type {
 import {
   Client,
   type MessagesTupleStreamEvent,
+  type StreamMode,
 } from "@langchain/langgraph-sdk";
 import { RemoteGraph } from "@langchain/langgraph/remote";
 import postgres from "postgres";
@@ -22,9 +23,16 @@ import {
   it,
   vi,
 } from "vitest";
-import { findLast, gatherIterator, truncate } from "./utils.mjs";
+import {
+  assertEnded,
+  findLast,
+  gatherIterator,
+  truncate,
+} from "./utils.mjs";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { connect } from "node:net";
 import waitPort from "wait-port";
 
 const API_URL = "http://localhost:2024";
@@ -802,6 +810,111 @@ describe("threads copy", () => {
     expect(filteredHistory.at(-1)?.values.messages.length).toBe(4);
   });
 
+  it.concurrent("history before a checkpoint config", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory(thread.thread_id);
+    const page = await client.threads.getHistory(thread.thread_id, {
+      before: {
+        configurable: { checkpoint_id: history[1].checkpoint.checkpoint_id },
+      },
+    });
+
+    expect(page.map((state) => state.checkpoint.checkpoint_id)).toEqual(
+      history.slice(2).map((state) => state.checkpoint.checkpoint_id)
+    );
+
+    // Deprecated: a checkpoint ID string, until 2.0.0.
+    const legacy = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ before: history[1].checkpoint.checkpoint_id }),
+      }
+    ).then((res) => res.json());
+    expect(legacy).toEqual(page);
+  });
+
+  it.concurrent("history with select", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory<AgentState>(
+      thread.thread_id,
+      { select: ["values.messages", "tasks"] }
+    );
+
+    expect(history).toHaveLength(5);
+    for (const state of history) {
+      expect(Object.keys(state).sort()).toEqual(["tasks", "values"]);
+      expect(Object.keys(state.values)).toEqual(["messages"]);
+    }
+    expect(history[0].values.messages).toHaveLength(4);
+
+    const query = "select=values.messages&select=tasks";
+    const getHistory = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?${query}`
+    ).then((res) => res.json());
+    expect(getHistory).toEqual(history);
+
+    const full = await client.threads.getHistory<AgentState>(thread.thread_id);
+    expect(Object.keys(full[0].values).length).toBeGreaterThan(1);
+
+    // An empty select returns full entries.
+    expect(
+      await client.threads.getHistory(thread.thread_id, { select: [] })
+    ).toEqual(full);
+
+    // `values` keeps every key, even next to `values.<key>`.
+    const allValues = await client.threads.getHistory(thread.thread_id, {
+      select: ["values", "values.messages"],
+    });
+    expect(allValues).toEqual(full.map(({ values }) => ({ values })));
+
+    // A key the state doesn't have is left out.
+    const missing = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.missing"],
+    });
+    expect(missing).toEqual(full.map(() => ({ values: {} })));
+
+    // GET with a single field.
+    const single = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?select=next`
+    ).then((res) => res.json());
+    expect(single).toEqual(full.map(({ next }) => ({ next })));
+  });
+
+  it.concurrent("history with select when values aren't an object", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "functional", { input: "foo" })
+    );
+
+    const history = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.messages", "next"],
+    });
+
+    expect(history.length).toBeGreaterThan(0);
+    for (const state of history) expect(Object.keys(state)).toEqual(["next"]);
+  });
+
+  it.concurrent("history rejects an invalid select field", async () => {
+    for (const field of ["files", "values.", "values.a.b"]) {
+      await expect(
+        client.threads.getHistory(randomUUID(), { select: [field as never] })
+      ).rejects.toThrow("HTTP 400");
+    }
+  });
+
   it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
@@ -901,8 +1014,8 @@ describe("runs", () => {
       }
     }
 
-    expect(chunk.event).toBe("values");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "values"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "values", "end"]));
 
     expect(runId).not.toBeNull();
     const run = await client.runs.get(thread.thread_id, runId as string);
@@ -992,8 +1105,8 @@ describe("runs", () => {
 
     expect(seenNodes).toEqual(["agent", "tool", "agent"]);
 
-    expect(chunk.event).toBe("updates");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "updates"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "updates", "end"]));
 
     expect(runId).not.toBeNull();
     const run = await client.runs.get(thread.thread_id, runId as string);
@@ -1012,7 +1125,7 @@ describe("runs", () => {
       { input, streamMode: "events", config: globalConfig }
     );
 
-    const events = await gatherIterator(stream);
+    const events = assertEnded(await gatherIterator(stream), "success");
     expect(new Set(events.map((i) => i.event))).toEqual(
       new Set(["metadata", "events"])
     );
@@ -1077,13 +1190,14 @@ describe("runs", () => {
     expect(lastMessage).not.toBeNull();
     expect(lastMessage.content).toBe("end");
 
-    expect(chunk.event).toBe("messages/complete");
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
     expect(seenEventTypes).toEqual(
       new Set([
         "metadata",
         "messages/metadata",
         "messages/partial",
         "messages/complete",
+        "end",
       ])
     );
 
@@ -1109,7 +1223,7 @@ describe("runs", () => {
       }
     );
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
     expect(runId).not.toBeUndefined();
     expect(runId).not.toBeNull();
@@ -1147,7 +1261,7 @@ describe("runs", () => {
       { input, streamMode: ["messages", "values"], config: globalConfig }
     );
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     expect(chunks.at(-1)?.event).toBe("messages/complete");
     expect(chunks.filter((i) => i.event === "error").length).toBe(0);
 
@@ -1176,6 +1290,200 @@ describe("runs", () => {
     const run = await client.runs.get(thread.thread_id, runId!);
     expect(run.status).toBe("success");
   });
+
+  it.concurrent(
+    "join stream returns only the requested stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const thread = await client.threads.create();
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          streamMode: ["values", "updates", "messages", "messages-tuple"],
+          streamResumable: true,
+          config: globalConfig,
+        }
+      );
+
+      const join = async (streamMode?: StreamMode | StreamMode[]) =>
+        assertEnded(
+          await gatherIterator(
+            client.runs.joinStream(thread.thread_id, run.run_id, {
+              lastEventId: "-1",
+              streamMode,
+            })
+          ),
+          "success"
+        );
+
+      const all = await join();
+      expect(new Set(all.map((i) => i.event))).toEqual(
+        new Set([
+          "metadata",
+          "values",
+          "updates",
+          "messages/metadata",
+          "messages/partial",
+          "messages/complete",
+          "messages",
+        ])
+      );
+
+      const messages = all.filter((i) => i.event.startsWith("messages"));
+      const valuesAndMessages = all.filter(
+        (i) => i.event === "values" || i.event.startsWith("messages")
+      );
+      expect(await join("messages")).toEqual(messages);
+      expect(await join(["values", "messages-tuple"])).toEqual(
+        valuesAndMessages
+      );
+      expect(
+        await join(JSON.stringify(["values", "messages-tuple"]) as StreamMode),
+        "one JSON array, as SDKs before 1.12 send"
+      ).toEqual(valuesAndMessages);
+      expect(await join("" as StreamMode), "empty stream_mode").toEqual(all);
+      expect(
+        await join("[values" as StreamMode),
+        "malformed JSON array"
+      ).toEqual([]);
+    }
+  );
+
+  it.concurrent("join stream does not read a run on another thread", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        streamResumable: true,
+        config: globalConfig,
+      }
+    );
+    const join = (threadId: string) =>
+      gatherIterator(
+        client.runs.joinStream(threadId, run.run_id, { lastEventId: "-1" })
+      );
+
+    const events = await join(thread.thread_id);
+    expect(events.map((i) => i.event)).toContain("values");
+    await expect(join(otherThread.thread_id)).rejects.toThrow("HTTP 404");
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    await expect(join(thread.thread_id), "after delete").rejects.toThrow(
+      "HTTP 404"
+    );
+  });
+
+  it.concurrent("join of a run on another thread or of a deleted run gets a 404", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      }
+    );
+    await client.runs.join(thread.thread_id, run.run_id);
+
+    await expect(
+      client.runs.join(otherThread.thread_id, run.run_id),
+      "on another thread"
+    ).rejects.toThrow("HTTP 404");
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    await expect(
+      client.runs.join(thread.thread_id, run.run_id),
+      "deleted"
+    ).rejects.toThrow("HTTP 404");
+  });
+
+  it.concurrent(
+    "ends a late join, filtered or not, with the run's status",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const thread = await client.threads.create();
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          config: globalConfig,
+        }
+      );
+      await client.runs.join(thread.thread_id, run.run_id);
+
+      for (const streamMode of [undefined, "values" as const]) {
+        const chunks = await gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, { streamMode })
+        );
+        expect(chunks.map(({ event, data }) => ({ event, data }))).toEqual([
+          { event: "end", data: { run_id: run.run_id, status: "success" } },
+        ]);
+      }
+    }
+  );
+
+  it.concurrent(
+    "ends a rolled-back stateless run's stream with rollback",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "delay" });
+      const run = await client.runs.create(null, assistant.assistant_id, {
+        input: { messages: [], delay: 5_000 },
+      });
+      const chunks = gatherIterator(
+        client.runs.joinStream(null, run.run_id, { lastEventId: "-1" })
+      );
+      await expect
+        .poll(
+          async () => (await client.runs.get(run.thread_id, run.run_id)).status,
+          { timeout: 5_000 }
+        )
+        .toBe("running");
+
+      await client.runs.cancel(run.thread_id, run.run_id, false, "rollback");
+
+      assertEnded(await chunks, "rollback");
+    }
+  );
+
+  it.concurrent(
+    "stateless join stream keeps subgraph events of the requested stream mode",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "nested" });
+      const run = await client.runs.create(null, assistant.assistant_id, {
+        input: { messages: [] },
+        streamMode: ["values", "updates"],
+        streamSubgraphs: true,
+      });
+
+      const chunks = assertEnded(
+        await gatherIterator(
+          client.runs.joinStream(null, run.run_id, {
+            lastEventId: "-1",
+            streamMode: "updates",
+          })
+        ),
+        "success"
+      );
+
+      expect(chunks.map((i) => i.event.replace(/:[^|]+/g, ""))).toEqual([
+        "updates",
+        "updates|gp_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two|p_two",
+        "updates|gp_two",
+        "updates",
+      ]);
+    }
+  );
 
   it.concurrent(
     "human in the loop - no modification",
@@ -1347,6 +1655,188 @@ describe("runs", () => {
         client.runs.stream(thread.thread_id, "non-existent", { input })
       )
     ).rejects.toThrow(/No assistant found for/);
+  });
+
+  const postAndDropBeforeTheResponse = async (
+    path: string,
+    body: Record<string, unknown>
+  ) => {
+    const url = new URL(path, API_URL);
+    const payload = JSON.stringify(body);
+    const socket = connect({ host: url.hostname, port: Number(url.port) });
+    socket.write(
+      [
+        `POST ${url.pathname} HTTP/1.1`,
+        `Host: ${url.host}`,
+        "Content-Type: application/json",
+        `Content-Length: ${Buffer.byteLength(payload)}`,
+        "",
+        payload,
+      ].join("\r\n"),
+      () => socket.destroy()
+    );
+    await once(socket, "close");
+  };
+
+  it.concurrent.for([
+    { stateless: false, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: false, onDisconnect: "continue", status: "success" },
+    { stateless: true, onDisconnect: "cancel", status: "interrupted" },
+    { stateless: true, onDisconnect: "continue", status: "success" },
+  ] as const)(
+    "stream request dropped before the response (stateless: $stateless, on_disconnect: $onDisconnect) leaves the run $status",
+    async ({ stateless, onDisconnect, status }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+      const thread = stateless ? undefined : await client.threads.create();
+
+      await postAndDropBeforeTheResponse(
+        stateless
+          ? "/runs/stream"
+          : `/threads/${thread!.thread_id}/runs/stream`,
+        {
+          assistant_id: assistant.assistant_id,
+          input: { messages: [{ type: "human", content: "foo" }], sleep: 1 },
+          config: globalConfig,
+          metadata: { marker },
+          on_completion: "keep",
+          on_disconnect: onDisconnect,
+          stream_resumable: true,
+        }
+      );
+
+      const findRun = async () => {
+        const [owner] = stateless
+          ? await client.threads.search({ metadata: { marker } })
+          : [thread!];
+        if (owner == null) return undefined;
+        const [run] = await client.runs.list(owner.thread_id);
+        return run;
+      };
+      let run = await findRun();
+      for (let attempt = 0; run == null && attempt < 50; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        run = await findRun();
+      }
+      expect(run).toBeDefined();
+
+      await client.runs.join(run!.thread_id, run!.run_id);
+      expect((await client.runs.get(run!.thread_id, run!.run_id)).status).toBe(
+        status
+      );
+    }
+  );
+
+  it.concurrent.for([
+    { onDisconnect: "cancel", threadLeft: false },
+    { onDisconnect: "continue", threadLeft: true },
+  ] as const)(
+    "stateless stream request deleted on completion and dropped before the response (on_disconnect: $onDisconnect) leaves its thread: $threadLeft",
+    async ({ onDisconnect, threadLeft }) => {
+      const assistant = await client.assistants.create({ graphId: "agent" });
+      const marker = randomUUID();
+
+      await postAndDropBeforeTheResponse("/runs/stream", {
+        assistant_id: assistant.assistant_id,
+        input: { messages: [{ type: "human", content: "foo" }], sleep: 3 },
+        config: globalConfig,
+        metadata: { marker },
+        on_disconnect: onDisconnect,
+        stream_resumable: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const threads = await client.threads.search({ metadata: { marker } });
+      expect(threads.length > 0).toBe(threadLeft);
+
+      // The run writes the store key the shared state tests read; let it end.
+      await vi.waitFor(
+        async () =>
+          expect(
+            await client.threads.search({ metadata: { marker } })
+          ).toHaveLength(0),
+        { timeout: 10_000 }
+      );
+    }
+  );
+
+  it.concurrent("cancelling a pending stateless run with wait deletes it and its thread", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const run = await client.runs.create(null, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+
+    await client.runs.cancel(run.thread_id, run.run_id, true);
+
+    await expect(client.threads.get(run.thread_id)).rejects.toThrow(/HTTP 404/);
+  });
+
+  it.concurrent("cancelling a pending stateless run keeps its thread and the other runs on it", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const input = { messages: [{ type: "human", content: "foo" }] };
+    const pending = await client.runs.create(null, assistant.assistant_id, {
+      input,
+      config: globalConfig,
+      afterSeconds: 30,
+    });
+    const other = await client.runs.create(
+      pending.thread_id,
+      assistant.assistant_id,
+      { input, config: globalConfig, multitaskStrategy: "enqueue" }
+    );
+
+    await client.runs.cancel(pending.thread_id, pending.run_id);
+    await client.runs.join(pending.thread_id, other.run_id);
+
+    expect(
+      (await client.runs.get(pending.thread_id, other.run_id)).status
+    ).toBe("success");
+  });
+
+  it("keeps the interrupts a resume by id answers out of its run stream", async () => {
+    const thread = await client.threads.create();
+    const context = { tenant: "t", interrupt: true };
+    const first = await client.runs.wait(thread.thread_id, "factory_context", {
+      input: {},
+      context,
+    });
+    const [{ id }] = first.__interrupt__;
+
+    const events = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, "factory_context", {
+          command: { resume: { [id]: "continue" } },
+          context,
+        })
+      ),
+      "success"
+    );
+
+    expect(events.map(({ event }) => event)).not.toContain("interrupts");
+  });
+
+  it.concurrent("a plain run after a fork continues from the forked branch", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const send = (content: string, checkpointId?: string) =>
+      client.runs.wait(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ type: "human", content }] },
+        config: globalConfig,
+        checkpointId,
+      });
+
+    await send("first");
+    const history = await client.threads.getHistory(thread.thread_id);
+    await send("edited", history.at(-1)?.checkpoint.checkpoint_id);
+    const values = (await send("second")) as AgentState;
+
+    expect(
+      values.messages
+        .filter((message) => message.type === "human")
+        .map((message) => message.content)
+    ).toEqual(["edited", "second"]);
   });
 });
 
@@ -1579,13 +2069,16 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    const chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: {
-          messages: [{ role: "human", content: "SF", id: "initial-message" }],
-        },
-        interruptBefore: ["tool"],
-      })
+    const chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: {
+            messages: [{ role: "human", content: "SF", id: "initial-message" }],
+          },
+          interruptBefore: ["tool"],
+        })
+      ),
+      "success"
     );
 
     for (const chunk of chunks) {
@@ -1721,12 +2214,15 @@ describe("subgraphs", () => {
     expect(threadAfterInterrupt.status).toBe("interrupted");
 
     // continue after interrupt
-    const chunksSubgraph = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: null,
-        streamMode: ["values", "updates"],
-        streamSubgraphs: true,
-      })
+    const chunksSubgraph = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: null,
+          streamMode: ["values", "updates"],
+          streamSubgraphs: true,
+        })
+      ),
+      "success"
     );
 
     expect(chunksSubgraph.filter((i) => i.event === "error")).toEqual([]);
@@ -1935,10 +2431,13 @@ describe("subgraphs", () => {
     ]);
 
     // continue after interrupt
-    chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: null,
-      })
+    chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: null,
+        })
+      ),
+      "success"
     );
 
     expect(chunks.filter((i) => i.event === "error")).toEqual([]);
@@ -2016,14 +2515,54 @@ describe("subgraphs", () => {
       ],
     });
 
-    const stream = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        command: { resume: "i want to resume" },
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          command: { resume: "i want to resume" },
+        })
+      ),
+      "success"
     );
 
     expect(stream.at(-1)?.event).toBe("values");
     expect(stream.at(-1)?.data.messages.length).toBe(4);
+  });
+
+  it.concurrent("refuses a stale answer only when the run sets strict_resume", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: {
+        messages: [{ role: "human", content: "SF", id: "initial-message" }],
+        interrupt: true,
+      },
+      config: globalConfig,
+    });
+
+    const answerStaleCard = async (strictResume: boolean) => {
+      const response = await fetch(
+        new URL(`/threads/${thread.thread_id}/runs`, API_URL),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assistant_id: assistant.assistant_id,
+            command: { resume: { ["0".repeat(32)]: "yes" } },
+            config: globalConfig,
+            strict_resume: strictResume,
+          }),
+        }
+      );
+      const { run_id } = await response.json();
+      await client.runs.join(thread.thread_id, run_id);
+      return (await client.runs.get(thread.thread_id, run_id)).status;
+    };
+
+    expect(await answerStaleCard(true)).toBe("error");
+    expect((await client.threads.get(thread.thread_id)).status).toBe(
+      "interrupted"
+    );
+    expect(await answerStaleCard(false)).toBe("success");
   });
 });
 
@@ -2032,11 +2571,14 @@ describe("errors", () => {
     const assistant = await client.assistants.create({ graphId: "error" });
     const thread = await client.threads.create();
 
-    const stream = await gatherIterator(
-      client.runs.stream(thread.thread_id, assistant.assistant_id, {
-        input: { messages: [] },
-        streamMode: ["debug", "events"],
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, assistant.assistant_id, {
+          input: { messages: [] },
+          streamMode: ["debug", "events"],
+        })
+      ),
+      "error"
     );
 
     expect(stream.at(-1)).toMatchObject({
@@ -2073,8 +2615,13 @@ describe("errors", () => {
       { input: { messages: [] } }
     );
 
-    const stream = await gatherIterator(
-      client.runs.joinStream(thread.thread_id, run.run_id)
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.joinStream(thread.thread_id, run.run_id, {
+          lastEventId: "-1",
+        })
+      ),
+      "error"
     );
 
     expect(stream.at(-1)).toMatchObject({
@@ -2088,6 +2635,34 @@ describe("errors", () => {
     const runState = await client.runs.get(thread.thread_id, run.run_id);
     expect(runState.status).toEqual("error");
   });
+
+  it.concurrent(
+    "create + stream join keeps the error when filtering stream modes",
+    async () => {
+      const assistant = await client.assistants.create({ graphId: "error" });
+      const thread = await client.threads.create();
+
+      const run = await client.runs.create(
+        thread.thread_id,
+        assistant.assistant_id,
+        { input: { messages: [] } }
+      );
+
+      const stream = assertEnded(
+        await gatherIterator(
+          client.runs.joinStream(thread.thread_id, run.run_id, {
+            lastEventId: "-1",
+            streamMode: "updates",
+          })
+        ),
+        "error"
+      );
+
+      expect(stream).toMatchObject([
+        { event: "error", data: { error: "CustomError", message: "Boo!" } },
+      ]);
+    }
+  );
 });
 
 describe("long running tasks", () => {
@@ -2397,11 +2972,10 @@ describe("multitasking", () => {
     }
   });
 
-  it("multitasking rollback", { timeout: 8_000, retry: 3 }, async () => {
+  it("multitasking rollback", { timeout: 8_000 }, async () => {
     const assistant = await client.assistants.create({ graphId: "agent" });
     const thread = await client.threads.create();
 
-    // Start first run
     const input1 = {
       messages: [{ role: "human", content: "foo", id: "initial-message-1" }],
       sleep: 4,
@@ -2412,7 +2986,23 @@ describe("multitasking", () => {
       { input: input1, config: globalConfig }
     );
 
-    // Start second run that should rollback first
+    await expect
+      .poll(
+        async () => {
+          const state = await client.threads.getState<AgentState>(
+            thread.thread_id
+          );
+          return state.values.messages?.map((message) => message.content);
+        },
+        { timeout: 5_000 }
+      )
+      .toEqual(["foo"]);
+    const run1Stream = client.runs.joinStream(thread.thread_id, run1.run_id, {
+      lastEventId: "-1",
+    });
+    const first = await run1Stream.next();
+    const run1Events = gatherIterator(run1Stream);
+
     const input2 = {
       messages: [{ role: "human", content: "bar", id: "initial-message-2" }],
     };
@@ -2422,17 +3012,50 @@ describe("multitasking", () => {
       { input: input2, multitaskStrategy: "rollback", config: globalConfig }
     );
 
-    // First run should be deleted
-    await expect(() =>
-      pollRun(thread.thread_id, run1.run_id)
-    ).rejects.toThrow();
+    expect(await pollRun(thread.thread_id, run2.run_id)).toBe("success");
+    await expect(
+      client.runs.get(thread.thread_id, run1.run_id)
+    ).rejects.toThrow("HTTP 404: Run not found");
+    expect(first.value?.event).toBe("metadata");
+    expect((await run1Events).map((event) => event.event)).toEqual(["values"]);
 
-    const run2Status = await pollRun(thread.thread_id, run2.run_id);
-    expect(run2Status).toBe("success");
+    const history = await client.threads.getHistory(thread.thread_id);
+    expect(new Set(history.map((state) => state.metadata?.run_id))).toEqual(
+      new Set([run2.run_id])
+    );
 
     const state = await client.threads.getState<AgentState>(thread.thread_id);
-    expect(state.values.messages.length).toBe(4);
-    expect(state.values.messages.at(0)?.content).toBe("bar");
+    expect(state.values.messages.map((message) => message.content)).toEqual([
+      "bar",
+      "begin",
+      "tool_call__begin",
+      "end",
+    ]);
+    expect((await client.threads.get(thread.thread_id)).status).toBe("idle");
+  });
+
+  it("multitasking defaults to enqueue", { timeout: 8_000 }, async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const first = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "foo" }], sleep: 2 },
+        config: globalConfig,
+      }
+    );
+    const second = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ role: "human", content: "bar" }], sleep: 0 },
+        config: globalConfig,
+      }
+    );
+
+    expect(await pollRun(thread.thread_id, first.run_id)).toBe("success");
+    expect(await pollRun(thread.thread_id, second.run_id)).toBe("success");
   });
 
   it("multitasking enqueue", { timeout: 8_000, retry: 3 }, async () => {
@@ -2795,12 +3418,15 @@ it("tasks / checkpoints stream mode", async () => {
   const assistant = await client.assistants.create({ graphId: "agent" });
   const thread = await client.threads.create();
 
-  const stream = await gatherIterator(
-    client.runs.stream(thread.thread_id, assistant.assistant_id, {
-      input: { messages: [{ role: "human", content: "input" }] },
-      streamMode: ["tasks", "checkpoints"],
-      config: globalConfig,
-    })
+  const stream = assertEnded(
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ role: "human", content: "input" }] },
+        streamMode: ["tasks", "checkpoints"],
+        config: globalConfig,
+      })
+    ),
+    "success"
   );
 
   expect(stream).toMatchObject([
@@ -3151,4 +3777,128 @@ describe("graph factory config", () => {
       },
     });
   });
+});
+
+describe("subagent lifecycle", () => {
+  type LifecycleData = {
+    event: string;
+    namespace: string[];
+    tool_call_id?: string;
+    error?: unknown;
+  };
+  const lifecycleOf = (chunks: { event: string; data: unknown }[]) =>
+    chunks.filter((c) => c.event.startsWith("lifecycle|"));
+
+  it("is reported in /info", async () => {
+    const res = await fetch(new URL("/info", API_URL));
+    expect((await res.json()).flags.stream_lifecycle).toBe(true);
+  });
+
+  it.concurrent.each([false, true])(
+    "sends started and completed per subagent, with stream_subgraphs %s",
+    async (streamSubgraphs) => {
+      const thread = await client.threads.create();
+      const chunks = await gatherIterator(
+        client.runs.stream(thread.thread_id, "subagents", {
+          input: { results: [] },
+          streamMode: ["values", "lifecycle"] as any,
+          streamSubgraphs,
+        })
+      );
+
+      const byCall: Record<string, string[]> = {};
+      for (const chunk of lifecycleOf(chunks)) {
+        const data = chunk.data as LifecycleData;
+        expect(chunk.event).toBe(`lifecycle|${data.namespace.join("|")}`);
+        (byCall[data.tool_call_id ?? ""] ??= []).push(data.event);
+      }
+      expect(byCall).toEqual({
+        call_weather: ["started", "completed"],
+        call_news: ["started", "completed"],
+      });
+    }
+  );
+
+  it.concurrent("a failing subagent ends failed with its error", async () => {
+    const thread = await client.threads.create();
+    const chunks = await gatherIterator(
+      client.runs.stream(thread.thread_id, "subagents", {
+        input: { results: [], topics: ["fail"] },
+        streamMode: ["lifecycle"] as any,
+      })
+    );
+
+    expect(lifecycleOf(chunks).map((c) => c.data)).toEqual([
+      expect.objectContaining({ event: "started", tool_call_id: "call_fail" }),
+      expect.objectContaining({
+        event: "failed",
+        tool_call_id: "call_fail",
+        error: { error: "Error", message: "connect to db://admin:hunter2" },
+      }),
+    ]);
+  });
+
+  it.concurrent(
+    "a subagent that asks for approval is interrupted, then starts again",
+    async () => {
+      const thread = await client.threads.create();
+      const eventsOf = (chunks: { event: string; data: unknown }[]) =>
+        lifecycleOf(chunks)
+          .map((c) => {
+            const data = c.data as LifecycleData;
+            return `${data.tool_call_id} ${data.event}`;
+          })
+          .sort();
+
+      const paused = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["weather"], askApproval: true },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+      const resumed = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            command: { resume: "yes" },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+
+      expect(paused).toEqual([
+        "call_weather interrupted",
+        "call_weather started",
+      ]);
+      expect(resumed).toEqual([
+        "call_weather completed",
+        "call_weather started",
+      ]);
+    }
+  );
+
+  it.concurrent.each([
+    [false, ["started", "failed", "started", "completed"]],
+    [true, ["started", "completed"]],
+  ])(
+    "a retried subagent ends completed, with stream_subgraphs %s",
+    async (streamSubgraphs, expected) => {
+      const thread = await client.threads.create();
+      const lifecycle = lifecycleOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["flaky"] },
+            streamMode: ["lifecycle"] as any,
+            streamSubgraphs,
+          })
+        )
+      );
+
+      expect(lifecycle.map((c) => (c.data as LifecycleData).event)).toEqual(
+        expected
+      );
+      expect(new Set(lifecycle.map((c) => c.event)).size).toBe(1);
+    }
+  );
 });

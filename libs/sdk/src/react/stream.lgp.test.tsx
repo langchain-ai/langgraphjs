@@ -2,6 +2,7 @@ import { renderToString } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
+import { MessageTupleManager } from "../ui/messages.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Client } from "../client.js";
 
@@ -108,4 +109,20 @@ it("still opts into tools/updates when explicitly accessed", async () => {
     .calls[0]?.[2] as { streamMode?: StreamMode[] } | undefined;
   expect(streamCall?.streamMode).toContain("tools");
   expect(streamCall?.streamMode).toContain("updates");
+});
+
+it("joinStream replays the run only when it joins from the first event", async () => {
+  const client = createMockClient();
+  (client.runs.joinStream as ReturnType<typeof vi.fn>).mockImplementation(
+    async function* () {}
+  );
+  const startReplay = vi.spyOn(MessageTupleManager.prototype, "startReplay");
+  const thread = mountThread(client);
+
+  await thread.joinStream("run-1");
+  expect(startReplay).toHaveBeenCalledTimes(1);
+
+  await thread.joinStream("run-1", "5");
+  expect(startReplay).toHaveBeenCalledTimes(1);
+  startReplay.mockRestore();
 });

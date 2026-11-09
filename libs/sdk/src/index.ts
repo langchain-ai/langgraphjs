@@ -62,7 +62,9 @@ export type {
   SearchItem,
   SearchItemsResponse,
   Thread,
+  ThreadSelectField,
   ThreadState,
+  ThreadStateSelectField,
   ThreadStatus,
   ThreadTask,
 } from "./schema.js";
@@ -93,9 +95,11 @@ export type {
 export type {
   CustomStreamEvent,
   DebugStreamEvent,
+  EndStreamEvent,
   ErrorStreamEvent,
   EventsStreamEvent,
   FeedbackStreamEvent,
+  LifecycleStreamEvent,
   MessagesStreamEvent,
   MessagesTupleStreamEvent,
   MetadataStreamEvent,
@@ -111,6 +115,11 @@ export type { BagTemplate } from "./types.template.js";
 export type * from "./ui/stream/index.js";
 
 export { StreamError } from "./ui/errors.js";
+export { isUnknownInterruptError } from "./stream/refusal.js";
+export type {
+  StrictResumeRefusal,
+  UnknownInterruptError,
+} from "./stream/refusal.js";
 
 export type {
   HeadlessToolImplementation,

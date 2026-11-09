@@ -65,7 +65,6 @@ export default function createProtocolApi(
       const record = protocolService.ensureThread({
         threadId: thread_id,
         transport: "websocket" as const,
-        auth: c.var.auth,
       });
 
       return {
@@ -113,7 +112,8 @@ export default function createProtocolApi(
 
           const response = await protocolService.handleCommand(
             record.threadId,
-            payload as ProtocolCommand
+            payload as ProtocolCommand,
+            c.var.auth
           );
           // `null` means the session already wrote the response through
           // the shared transport queue (see
@@ -142,12 +142,11 @@ export default function createProtocolApi(
       protocolService.ensureThread({
         threadId: thread_id,
         transport: "sse-http" as const,
-        auth: c.var.auth,
       });
       const payload = c.req.valid("json") as unknown as ProtocolCommand;
       return jsonExtra(
         c,
-        await protocolService.handleCommand(thread_id, payload)
+        await protocolService.handleCommand(thread_id, payload, c.var.auth)
       );
     }
   );
@@ -161,7 +160,6 @@ export default function createProtocolApi(
       protocolService.ensureThread({
         threadId: thread_id,
         transport: "sse-http" as const,
-        auth: c.var.auth,
       });
 
       const body = c.req.valid("json");

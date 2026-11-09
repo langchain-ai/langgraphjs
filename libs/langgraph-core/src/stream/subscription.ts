@@ -140,8 +140,8 @@ export function isSupportedChannel(value: string): value is Channel {
  * channels (e.g. from extension transformers) don't break existing
  * subscribers. The `custom` method resolves to the named `custom:<name>`
  * channel when the payload carries a `name`, otherwise the bare `custom`
- * channel. Both `"input"` and the wire-level `"input.requested"` map to the
- * `input` channel.
+ * channel. `"input"` and the wire-level `"input.requested"` and
+ * `"input.answered"` map to the `input` channel.
  *
  * @param event - Event whose method should be mapped to a channel.
  */
@@ -165,6 +165,7 @@ export function inferChannel(event: MatchableEvent): Channel | undefined {
       return "lifecycle";
     case "input":
     case "input.requested":
+    case "input.answered":
       return "input";
     case "tasks":
       return "tasks";

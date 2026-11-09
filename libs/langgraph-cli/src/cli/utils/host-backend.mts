@@ -289,14 +289,20 @@ export class HostBackendClient {
   }
 
   /**
-   * Request a signed GCS upload URL for the source tarball used by remote
-   * builds (`POST /v2/deployments/{id}/upload-url`).
+   * Request a signed upload URL for the source tarball used by remote builds
+   * (`POST /v2/deployments/{id}/upload-url`).
+   *
+   * Tells the control plane this client sends the returned `upload_headers`
+   * with its upload, which some storage requires.
    *
    * @param deploymentId - Deployment ID.
-   * @returns A response containing the `upload_url` and `object_path`.
+   * @returns A response containing the `upload_url` and `object_path`, plus
+   * `upload_headers` when the signed URL requires them.
    */
   requestUploadUrl(deploymentId: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v2/deployments/${deploymentId}/upload-url`);
+    return this.request("POST", `/v2/deployments/${deploymentId}/upload-url`, {
+      payload: { supports_upload_headers: true },
+    });
   }
 
   /**
