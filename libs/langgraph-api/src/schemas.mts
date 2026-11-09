@@ -486,15 +486,11 @@ export const ThreadStateUpdate = z
 
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
-  // A checkpoint config, as the SDK and the Python Agent Server use, or a
-  // checkpoint ID.
   before: z
-    .union([
-      z.string(),
-      z
-        .object({ configurable: z.record(z.string(), z.unknown()).optional() })
-        .passthrough(),
-    ])
+    .union([Config, z.string()])
+    .describe(
+      "Return states before this checkpoint config. A checkpoint ID string is deprecated and will be removed in 2.0.0."
+    )
     .optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   checkpoint: z
