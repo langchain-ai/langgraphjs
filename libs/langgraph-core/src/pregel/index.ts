@@ -851,6 +851,8 @@ export class Pregel<
                 `${name}${CHECKPOINT_NAMESPACE_SEPARATOR}${subgraphName}`,
                 subgraph,
               ];
+              // one subgraph per namespace, even across several candidates
+              if (namespace !== undefined) return;
             }
           }
         }

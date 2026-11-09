@@ -65,6 +65,28 @@ describe("getSubgraphsAsync with a namespace", () => {
     expect(found.map(([name]) => name)).toEqual([namespace]);
     expect(found[0][1]).toBe(graphs[namespace]);
   });
+
+  it("yields one subgraph when a node declares several", async () => {
+    const inner = notesGraph("first's inner");
+    const wrap = (graph: typeof inner) =>
+      new StateGraph(NotesState)
+        .addNode("inner", graph)
+        .addEdge(START, "inner")
+        .compile();
+    const parent = new StateGraph(NotesState)
+      .addNode("multi", () => ({}), {
+        subgraphs: [wrap(inner), wrap(notesGraph("second's inner"))],
+      })
+      .addEdge(START, "multi")
+      .compile();
+
+    const found = await gatherIterator(
+      parent.getSubgraphsAsync("multi|inner", true)
+    );
+
+    expect(found.map(([name]) => name)).toEqual(["multi|inner"]);
+    expect(found[0][1]).toBe(inner);
+  });
 });
 
 describe("updateState on a nested namespace", () => {
