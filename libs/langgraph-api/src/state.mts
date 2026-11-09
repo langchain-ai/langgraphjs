@@ -23,11 +23,18 @@ export const selectThreadState = (
     .filter((field) => field.startsWith("values."))
     .map((field) => field.slice("values.".length));
 
-  if (!select.includes("values") && valueKeys.length > 0) {
+  const { values } = state;
+  if (
+    !select.includes("values") &&
+    valueKeys.length > 0 &&
+    typeof values === "object" &&
+    values != null &&
+    !Array.isArray(values)
+  ) {
     selected.values = Object.fromEntries(
       valueKeys
-        .filter((key) => key in state.values)
-        .map((key) => [key, state.values[key]])
+        .filter((key) => Object.hasOwn(values, key))
+        .map((key) => [key, values[key]])
     );
   }
   return selected;

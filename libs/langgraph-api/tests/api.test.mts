@@ -867,6 +867,20 @@ describe("threads copy", () => {
     expect(getHistory).toEqual(history);
   });
 
+  it.concurrent("history with select when values aren't an object", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "functional", { input: "foo" })
+    );
+
+    const history = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.messages", "next"],
+    });
+
+    expect(history.length).toBeGreaterThan(0);
+    for (const state of history) expect(Object.keys(state)).toEqual(["next"]);
+  });
+
   it.concurrent("history rejects an unknown select field", async () => {
     await expect(
       client.threads.getHistory(randomUUID(), { select: ["files" as never] })

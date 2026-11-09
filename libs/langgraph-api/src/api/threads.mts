@@ -217,7 +217,7 @@ api.get(
           z.array(schemas.ThreadStateSelectField),
         ])
         .optional()
-        .transform((value) => (value == null ? undefined : [value].flat())),
+        .transform((value) => [value ?? []].flat()),
     })
   ),
   async (c) => {
