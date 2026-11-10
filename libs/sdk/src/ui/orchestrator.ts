@@ -1,11 +1,16 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
 import { Client } from "../client.js";
-import type { ThreadState, Interrupt } from "../schema.js";
+import type { ThreadState, Interrupt, Config } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import type { StreamEvent } from "../types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import type {
+  IdleReconnectMode,
+  StreamReconnectOptions,
+} from "../utils/stream.js";
 import { StreamManager, type EventStreamEvent } from "./manager.js";
 import {
   MessageTupleManager,
@@ -24,6 +29,8 @@ import {
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import {
   applyStopRead,
+  hasPendingNodes,
+  hasTaskInterrupts,
   type HistoryReadOptions,
   planReadAfterRun,
   planStopRead,
@@ -56,6 +63,39 @@ interface LiveRun {
    * interrupt aborts it, the run is no longer live and can be joined again.
    */
   signal?: AbortSignal;
+}
+
+type RunOutcome = "success" | "aborted" | { error: unknown };
+
+interface RunWatch {
+  /** The status in the run's `end` event, from servers that send one. */
+  status?: string;
+  /** A root `values` or `updates` event carried `__interrupt__`. */
+  paused?: boolean;
+}
+
+function watchRunEvent(watch: RunWatch, event: string, data: unknown) {
+  if (event === "end") {
+    watch.status = (data as { status?: string } | null)?.status;
+  } else if (
+    (event === "values" || event === "updates") &&
+    typeof data === "object" &&
+    data != null &&
+    "__interrupt__" in data
+  ) {
+    watch.paused = true;
+  }
+}
+
+/**
+ * Turns off the v3 streaming marker a thread keeps once a v3 client used it,
+ * so the run streams the shape this engine reads.
+ */
+function withV1Streaming(config: Config | undefined): Config {
+  return {
+    ...config,
+    configurable: { ...config?.configurable, __event_streaming_v2: false },
+  };
 }
 
 /**
@@ -125,6 +165,35 @@ export interface OrchestratorAccessors {
   getMessagesKey(): string;
 }
 
+/** Why a run's stream ended, as {@link StreamOrchestratorOptions.onRunEnd} gets it. */
+export type RunEndReason = "success" | "error" | "interrupt" | "stopped";
+
+/**
+ * Options of {@link StreamOrchestrator}: the stream options, plus the run
+ * behavior that framework bindings can turn on.
+ */
+export type StreamOrchestratorOptions<
+  StateType extends Record<string, unknown> = Record<string, unknown>,
+  Bag extends BagTemplate = BagTemplate,
+> = AnyStreamOptions<StateType, Bag> &
+  StreamReconnectOptions & {
+    /**
+     * Runs outlive their tab: they are created with `streamResumable` and
+     * `onDisconnect: "continue"`, and {@link StreamOrchestrator.stop} cancels
+     * them on the server. After each thread load, the thread's running run is
+     * joined, from the checkpoint the load showed, whichever tab started it. A
+     * new thread gets its id from the client, so `onThreadId` fires at once,
+     * and its first run creates it.
+     */
+    durableRuns?: boolean;
+
+    /** Called when the stream of each run this orchestrator streams ends. */
+    onRunEnd?: (run: { runId: string; reason: RunEndReason }) => void;
+
+    /** Idle-reconnect policy for run streams, as `client.runs.stream` takes it. */
+    streamIdleReconnect?: IdleReconnectMode;
+  };
+
 /**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
  *
@@ -148,7 +217,7 @@ export class StreamOrchestrator<
     SubmitOptions<StateType, GetConfigurableType<Bag>>
   >;
 
-  readonly #options: AnyStreamOptions<StateType, Bag>;
+  readonly #options: StreamOrchestratorOptions<StateType, Bag>;
 
   readonly #accessors: OrchestratorAccessors;
 
@@ -174,6 +243,16 @@ export class StreamOrchestrator<
 
   #liveRuns = new Map<string, LiveRun>();
 
+  /** The run being streamed, whether this orchestrator created or joined it. */
+  #streamingRunId: string | undefined;
+
+  /** Pending while the create request of the run being submitted awaits its response. */
+  #ownRun: Promise<string | undefined> | undefined;
+
+  #hydration: Promise<void> = Promise.resolve();
+
+  #pendingDispose: ReturnType<typeof setTimeout> | undefined;
+
   #listeners = new Set<() => void>();
 
   #version = 0;
@@ -195,7 +274,7 @@ export class StreamOrchestrator<
    *   primitives (client, assistant ID, messages key) at call time.
    */
   constructor(
-    options: AnyStreamOptions<StateType, Bag>,
+    options: StreamOrchestratorOptions<StateType, Bag>,
     accessors: OrchestratorAccessors
   ) {
     this.#options = options;
@@ -333,7 +412,9 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       this.#notify();
-      void this.#mutate(threadId);
+      this.#hydration = this.#mutate(threadId).then((states) =>
+        this.#joinActiveRun(threadId, states)
+      );
     } else {
       this.#history = {
         data: undefined,
@@ -341,7 +422,37 @@ export class StreamOrchestrator<
         isLoading: false,
         mutate: this.#mutate,
       };
+      this.#hydration = Promise.resolve();
       this.#notify();
+    }
+  }
+
+  async #joinActiveRun(
+    threadId: string,
+    states: ThreadState<StateType>[] | undefined
+  ): Promise<void> {
+    if (
+      !this.#options.durableRuns ||
+      states == null ||
+      threadId !== this.#threadId
+    ) {
+      return;
+    }
+    const runs = await this.#accessors
+      .getClient()
+      .runs.list(threadId, { status: "running", limit: 1 })
+      .catch(() => undefined);
+    if (runs == null || threadId !== this.#threadId) return;
+    const head = states.at(0);
+    const runId = runs.at(0)?.run_id;
+    if (runId != null) {
+      void this.joinStream(runId, "-1", {
+        checkpointId: head?.checkpoint?.checkpoint_id ?? undefined,
+      });
+    } else if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
+      // The read caught a run mid-step that has ended since, so it misses
+      // the run's last steps.
+      await this.#mutate(threadId, { quiet: true });
     }
   }
 
@@ -387,6 +498,20 @@ export class StreamOrchestrator<
       return data;
     } catch (err) {
       if (tid !== this.#threadId || readOptions.quiet) return undefined;
+      // A durable run's thread exists only once that run starts.
+      if (
+        this.#options.durableRuns &&
+        (err as { status?: unknown })?.status === 404
+      ) {
+        this.#history = {
+          data: [],
+          error: undefined,
+          isLoading: false,
+          mutate: this.#mutate,
+        };
+        this.#notify();
+        return [];
+      }
       this.#history = {
         ...this.#history,
         error: err,
@@ -854,12 +979,22 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Stop the currently active stream. If reconnect metadata storage is
-   * configured, also cancels the run on the server and cleans up stored
-   * run metadata.
+   * Stop the currently active stream. With `durableRuns`, also cancel its
+   * run on the server, even a run whose id is still on its way, unless
+   * `cancel` is `false`. Otherwise, if reconnect metadata storage is
+   * configured, cancel the run stored there and clean up its entry.
    */
-  async stop(): Promise<void> {
+  async stop(options?: { cancel?: boolean }): Promise<void> {
     const threadId = this.#threadId;
+    if (this.#options.durableRuns && options?.cancel !== false && threadId) {
+      const runId = this.#streamingRunId ?? (await this.#ownRun);
+      if (runId) {
+        void this.#accessors
+          .getClient()
+          .runs.cancel(threadId, runId)
+          .catch(() => undefined);
+      }
+    }
     const shownHead = this.branchContext.threadHead;
     const read = planStopRead({
       history:
@@ -872,7 +1007,7 @@ export class StreamOrchestrator<
           const runId = this.#runMetadataStorage.getItem(
             `lg:stream:${this.#threadId}`
           );
-          if (runId) {
+          if (runId && !this.#options.durableRuns) {
             void this.#accessors.getClient().runs.cancel(this.#threadId, runId);
           }
           this.#runMetadataStorage.removeItem(`lg:stream:${this.#threadId}`);
@@ -916,11 +1051,16 @@ export class StreamOrchestrator<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
+      /** See `checkpointId` on `client.runs.joinStream`. */
+      checkpointId?: string;
     }
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
+    // The run being submitted may be this one, known only once its create
+    // request answers.
+    if (this.#ownRun) await this.#ownRun;
     const live = this.#liveRuns.get(runId);
     if (live && !live.signal?.aborted) return live.promise;
 
@@ -942,15 +1082,20 @@ export class StreamOrchestrator<
       onFinishRequiresThreadState(this.#options.onFinish);
 
     const client = this.#accessors.getClient();
+    const watch: RunWatch = {};
+    let outcome: RunOutcome = "aborted";
 
     const run: LiveRun = { promise: Promise.resolve() };
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
         run.signal = signal;
+        this.#streamingRunId = runId;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
+          checkpointId: joinOptions?.checkpointId,
+          ...this.#reconnectOptions(),
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -966,16 +1111,21 @@ export class StreamOrchestrator<
         initialValues: this.historyValues,
         callbacks: this.#options,
         onSuccess: async () => {
+          outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
           return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
         },
         onError: (error) => {
+          outcome = { error };
           this.#options.onError?.(error, callbackMeta);
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
+          void this.#reportRunEnd(tid, runId, watch, outcome);
         },
         isReplaying: lastEventId === "-1",
+        onEvent: (event, data) => watchRunEvent(watch, event, data),
       }
     );
 
@@ -1044,6 +1194,21 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
+    const durable = this.#options.durableRuns === true;
+    if (durable && this.#threadId == null) {
+      this.#setThreadIdFromSubmit(submitOptions?.threadId ?? uuidv7());
+    }
+
+    let settleOwnRun: (runId?: string) => void = () => {};
+    const ownRun = new Promise<string | undefined>((resolve) => {
+      settleOwnRun = (id) => {
+        resolve(id);
+        if (this.#ownRun === ownRun) this.#ownRun = undefined;
+      };
+    });
+    this.#ownRun = ownRun;
+    const watch: RunWatch = {};
+    let outcome: RunOutcome = "aborted";
 
     const started = this.stream.start(
       async (signal) => {
@@ -1083,11 +1248,12 @@ export class StreamOrchestrator<
         });
 
         const streamResumable =
-          submitOptions?.streamResumable ?? !!this.#runMetadataStorage;
+          submitOptions?.streamResumable ??
+          (durable || !!this.#runMetadataStorage);
 
         return client.runs.stream(usableThreadId!, assistantId, {
           input: values as Record<string, unknown>,
-          config: submitOptions?.config,
+          config: withV1Streaming(submitOptions?.config),
           context: submitOptions?.context,
           command: submitOptions?.command,
 
@@ -1108,6 +1274,8 @@ export class StreamOrchestrator<
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
+          ifNotExists: durable ? "create" : undefined,
+          ...this.#reconnectOptions(),
           onRunCreated: (params) => {
             callbackMeta = {
               run_id: params.run_id,
@@ -1115,6 +1283,8 @@ export class StreamOrchestrator<
             };
             runId = params.run_id;
             this.#liveRuns.set(runId, { promise: started, signal });
+            this.#streamingRunId = runId;
+            settleOwnRun(runId);
 
             if (this.#runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -1135,15 +1305,27 @@ export class StreamOrchestrator<
         callbacks: this.#options,
 
         onSuccess: async () => {
+          outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
           return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
         },
         onError: (error) => {
+          outcome = { error };
           this.#options.onError?.(error, callbackMeta);
           submitOptions?.onError?.(error, callbackMeta);
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          settleOwnRun();
+          if (runId == null) return;
+          if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
+          void this.#reportRunEnd(usableThreadId, runId, watch, outcome);
+        },
+        onEvent: (event, data) => {
+          // The run exists once it streams, even when no response header
+          // named it.
+          settleOwnRun();
+          watchRunEvent(watch, event, data);
         },
       }
     );
@@ -1228,9 +1410,12 @@ export class StreamOrchestrator<
         const client = this.#accessors.getClient();
         const assistantId = this.#accessors.getAssistantId();
         try {
+          // Sent before the run being submitted reaches the server, it would
+          // run first.
+          if (this.#ownRun) await this.#ownRun;
           const run = await client.runs.create(usableThreadId, assistantId, {
             input: values as Record<string, unknown>,
-            config: submitOptions?.config,
+            config: withV1Streaming(submitOptions?.config),
             context: submitOptions?.context,
             command: submitOptions?.command,
             interruptBefore: submitOptions?.interruptBefore,
@@ -1331,12 +1516,117 @@ export class StreamOrchestrator<
    * After calling this method, the orchestrator should not be reused.
    */
   dispose(): void {
+    clearTimeout(this.#pendingDispose);
     this.#disposed = true;
     this.#streamUnsub?.();
     this.#queueUnsub?.();
     this.#streamUnsub = null;
     this.#queueUnsub = null;
-    void this.stop().catch(() => undefined);
+    void this.stop({ cancel: false }).catch(() => undefined);
+  }
+
+  /**
+   * StrictMode-safe lifecycle for framework bindings: call it from the bind
+   * site's effect and return the result as the effect's cleanup. The
+   * returned release disposes on the next macrotask, unless another
+   * `activate()` comes first, as on StrictMode's remount.
+   */
+  activate(): () => void {
+    clearTimeout(this.#pendingDispose);
+    return () => {
+      if (this.#disposed) return;
+      this.#pendingDispose = setTimeout(() => this.dispose(), 0);
+    };
+  }
+
+  /**
+   * Load a thread. Another thread is switched to, as with
+   * {@link switchThread}. The current one is read again, and when no run
+   * streams, the read replaces values left from earlier streams. With
+   * `durableRuns`, the thread's running run is joined after the read.
+   *
+   * @returns {@link hydrationPromise}.
+   */
+  hydrate(threadId: string | null = this.#threadId ?? null): Promise<void> {
+    if ((threadId ?? undefined) !== this.#threadId) {
+      this.switchThread(threadId);
+    } else if (threadId != null) {
+      this.#hydration = this.#mutate(threadId).then((states) => {
+        if (states == null || threadId !== this.#threadId) return;
+        if (!this.isLoading) this.stream.setStreamValues(null);
+        return this.#joinActiveRun(threadId, states);
+      });
+    }
+    return this.#hydration;
+  }
+
+  /**
+   * Settles once the latest thread load is done: its state read and, with
+   * `durableRuns`, the running run's lookup. It never rejects: a failed read
+   * sets {@link error}.
+   */
+  get hydrationPromise(): Promise<void> {
+    return this.#hydration;
+  }
+
+  #reconnectOptions() {
+    const {
+      maxReconnectAttempts,
+      reconnectDelayMs,
+      onReconnect,
+      onConnected,
+      streamIdleReconnect,
+    } = this.#options;
+    return {
+      maxReconnectAttempts,
+      reconnectDelayMs,
+      onReconnect,
+      onConnected,
+      streamIdleReconnect,
+    };
+  }
+
+  async #reportRunEnd(
+    threadId: string | undefined,
+    runId: string,
+    watch: RunWatch,
+    outcome: RunOutcome
+  ): Promise<void> {
+    const { onRunEnd } = this.#options;
+    if (onRunEnd == null || threadId == null) return;
+    let reason: RunEndReason;
+    if (outcome === "aborted") {
+      reason = "stopped";
+    } else if (outcome !== "success") {
+      const { name } = outcome.error as { name?: unknown };
+      reason =
+        name === "UserInterrupt" || name === "UserRollback"
+          ? "stopped"
+          : "error";
+    } else {
+      // Servers that send no `end` event leave the run's status to a read.
+      // A rolled back run is deleted.
+      const status =
+        watch.status ??
+        (await this.#accessors
+          .getClient()
+          .runs.get(threadId, runId)
+          .then(
+            (run) => run.status,
+            (error) =>
+              (error as { status?: unknown })?.status === 404
+                ? "rollback"
+                : "success"
+          ));
+      if (status === "success") {
+        reason = watch.paused ? "interrupt" : "success";
+      } else if (status === "interrupted" || status === "rollback") {
+        reason = "stopped";
+      } else {
+        reason = "error";
+      }
+    }
+    if (!this.#disposed) onRunEnd({ runId, reason });
   }
 
   #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {

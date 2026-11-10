@@ -649,6 +649,9 @@ export class StreamManager<
 
       /** The stream replays the run from its first event. */
       isReplaying?: boolean;
+
+      /** Called with each event, before it is applied. */
+      onEvent?: (event: string, data: unknown) => void;
     }
   ) => {
     try {
@@ -745,6 +748,7 @@ export class StreamManager<
 
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
+        options.onEvent?.(event, data);
         if (event === "error") {
           streamError = new StreamError(data);
           break;
@@ -1087,6 +1091,9 @@ export class StreamManager<
 
       /** The stream replays the run from its first event. */
       isReplaying?: boolean;
+
+      /** Called with each event, before it is applied. */
+      onEvent?: (event: string, data: unknown) => void;
     },
     startOptions?: {
       /**

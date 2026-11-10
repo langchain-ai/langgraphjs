@@ -50,5 +50,7 @@ export {
 export {
   StreamOrchestrator,
   type OrchestratorAccessors,
+  type RunEndReason,
+  type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
