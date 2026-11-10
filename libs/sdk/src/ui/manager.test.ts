@@ -2339,4 +2339,261 @@ describe("StreamManager", () => {
       ]);
     });
   });
+
+  describe("subagents bound by tool call id", () => {
+    const task = (id: string, description: string) => ({
+      id,
+      name: "task",
+      args: { subagent_type: "researcher", description },
+    });
+    const human = (id: string, content: string) => ({
+      id,
+      type: "human",
+      content,
+    });
+    const ai = (id: string, content: string) => ({ id, type: "ai", content });
+
+    async function run(
+      manager: StreamManager<TestState>,
+      events: Array<{ event: string; data: unknown }>
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+      });
+    }
+
+    function subagentManager() {
+      return new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+      });
+    }
+
+    it("parallel subagents with the same task text bind by tool call id", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            {
+              ...ai("ai-1", ""),
+              tool_calls: [task("call_1", "Same task"), task("call_2", "Same task")],
+            },
+            {},
+          ],
+        },
+        {
+          event: "lifecycle|tools:b",
+          data: { event: "started", namespace: ["tools:b"], tool_call_id: "call_2" },
+        },
+        {
+          event: "lifecycle|tools:a",
+          data: { event: "started", namespace: ["tools:a"], tool_call_id: "call_1" },
+        },
+        { event: "values|tools:b", data: { messages: [human("h-b", "Same task")] } },
+        { event: "messages|tools:b", data: [ai("from-b", "b"), {}] },
+        { event: "values|tools:a", data: { messages: [human("h-a", "Same task")] } },
+        { event: "messages|tools:a", data: [ai("from-a", "a"), {}] },
+      ]);
+
+      expect(manager.getSubagent("call_1")?.namespace).toEqual(["tools:a"]);
+      expect(manager.getSubagent("call_2")?.namespace).toEqual(["tools:b"]);
+      expect(manager.getSubagent("call_1")?.messages.map((m) => m.id)).toEqual(["from-a"]);
+      expect(manager.getSubagent("call_2")?.messages.map((m) => m.id)).toEqual(["from-b"]);
+    });
+
+    it("binds a subagent from the tool call id deepagents puts on its tokens", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            {
+              ...ai("ai-1", ""),
+              tool_calls: [task("call_1", "Same task"), task("call_2", "Same task")],
+            },
+            {},
+          ],
+        },
+        {
+          event: "messages|tools:b",
+          data: [ai("from-b", "b"), { lc_subagent_tool_call_id: "call_2" }],
+        },
+      ]);
+
+      expect(manager.getSubagent("call_2")?.status).toBe("running");
+      expect(manager.getSubagent("call_2")?.messages.map((m) => m.id)).toEqual(["from-b"]);
+      expect(manager.getSubagent("call_1")?.messages).toEqual([]);
+    });
+
+    it("a graph a tool runs inside a subagent leaves the subagent's namespace alone", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            { ...ai("ai-1", ""), tool_calls: [task("call_1", "Research")] },
+            {},
+          ],
+        },
+        {
+          event: "messages|tools:a",
+          data: [ai("own", "a"), { lc_subagent_tool_call_id: "call_1" }],
+        },
+        {
+          event: "messages|tools:a|tools:s",
+          data: [ai("tool-graph", "s"), { lc_subagent_tool_call_id: "call_1" }],
+        },
+        {
+          event: "messages|tools:a|tools:b",
+          data: [ai("nested", "b"), { lc_subagent_tool_call_id: "call_nested" }],
+        },
+      ]);
+
+      expect(manager.getSubagent("call_1")).toMatchObject({
+        namespace: ["tools:a"],
+        parentId: null,
+        depth: 1,
+      });
+    });
+
+    it("a failed lifecycle event ends the subagent with its error, and a retry starts it again", async () => {
+      const manager = subagentManager();
+      const lifecycle = (event: string) => ({
+        event: "lifecycle|tools:a",
+        data: {
+          event,
+          namespace: ["tools:a"],
+          tool_call_id: "call_1",
+          error: { error: "Error", message: "boom" },
+        },
+      });
+      await run(manager, [
+        { event: "messages", data: [{ ...ai("ai-1", ""), tool_calls: [task("call_1", "x")] }, {}] },
+        lifecycle("started"),
+        lifecycle("failed"),
+      ]);
+      expect(manager.getSubagent("call_1")).toMatchObject({ status: "error", error: "boom" });
+
+      await run(manager, [lifecycle("started")]);
+      expect(manager.getSubagent("call_1")).toMatchObject({ status: "running", error: null });
+    });
+  });
+
+  describe("a restarted run", () => {
+    const tuple = (id: string, content: string) => [
+      { id, type: "ai", content },
+      {},
+    ];
+
+    async function run(
+      manager: StreamManager<TestState>,
+      events: Array<{ event: string; data: unknown }>,
+      isReplaying = false
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+        isReplaying,
+      });
+    }
+
+    const finished = { id: "done", type: "human", content: "hi" };
+
+    it("drops the cut attempt's message and keeps finished steps", async () => {
+      await run(streamManager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "values", data: { messages: [finished] } },
+        { event: "messages", data: tuple("cut", "Hel") },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+        { event: "messages", data: tuple("again", "Hello") },
+      ]);
+
+      expect(streamManager.values?.messages).toEqual([
+        finished,
+        expect.objectContaining({ id: "again", content: "Hello" }),
+      ]);
+    });
+
+    it("drops the subagent card its cut attempt started", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+      });
+      const withTask = (id: string, callId: string) => ({
+        id,
+        type: "ai",
+        content: "",
+        tool_calls: [
+          {
+            id: callId,
+            name: "task",
+            args: { subagent_type: "researcher", description: "x" },
+          },
+        ],
+      });
+      await run(manager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "values", data: { messages: [finished, withTask("kept", "call_kept")] } },
+        { event: "messages", data: [withTask("cut", "call_cut"), {}] },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+      ]);
+
+      expect(manager.getSubagent("call_cut")).toBeUndefined();
+    });
+
+    it("a message sent again by the new attempt starts over", async () => {
+      await run(streamManager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "messages", data: tuple("same", "Hel") },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+        { event: "messages", data: tuple("same", "Hello") },
+      ]);
+
+      expect(streamManager.values?.messages).toEqual([
+        expect.objectContaining({ id: "same", content: "Hello" }),
+      ]);
+    });
+
+    it("a replay that holds a restart resets once", async () => {
+      await run(streamManager, [{ event: "messages", data: tuple("cut", "Hel") }]);
+      await run(
+        streamManager,
+        [
+          { event: "metadata", data: { run_id: "r", attempt: 1 } },
+          { event: "values", data: { messages: [finished] } },
+          { event: "messages", data: tuple("cut", "Hel") },
+          { event: "metadata", data: { run_id: "r", attempt: 2 } },
+          { event: "messages", data: tuple("again", "Hello") },
+        ],
+        true
+      );
+
+      expect(streamManager.values?.messages).toEqual([
+        finished,
+        expect.objectContaining({ id: "again", content: "Hello" }),
+      ]);
+    });
+  });
 });

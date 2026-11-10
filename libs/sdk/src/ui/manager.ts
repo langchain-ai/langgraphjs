@@ -494,6 +494,16 @@ export class StreamManager<
     return this.subagentManager.hasSubagents();
   }
 
+  /** See `SubagentManager.hasOpenSubagents`. */
+  hasOpenSubagents(): boolean {
+    return this.subagentManager.hasOpenSubagents();
+  }
+
+  /** See `SubagentManager.closeOpenSubagents`. */
+  closeOpenSubagents(error: string): void {
+    this.subagentManager.closeOpenSubagents(error);
+  }
+
   private setState = (newState: Partial<typeof this.state>) => {
     this.state = { ...this.state, ...newState };
     this.notifyListeners();
@@ -668,6 +678,11 @@ export class StreamManager<
 
       const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
+      // A run sends `metadata` once per attempt, so one after other events
+      // starts a new attempt: what the cut one streamed since its last root
+      // `values` goes, and messages it sends again start over.
+      let attemptValues = this.values;
+      let sawEvent = false;
 
       // Subagent messages kept in the main stream (`filterSubagentMessages` off)
       const subagentMessageIds = new Set<string>();
@@ -766,6 +781,20 @@ export class StreamManager<
           break;
         }
 
+        if (event === "metadata" && sawEvent) {
+          this.messages.startReplay();
+          this.subagentManager.startReplay();
+          this.setStreamValues(attemptValues);
+          this.subagentManager.dropPendingOutside(
+            new Set(
+              options
+                .getMessages(attemptValues ?? options.initialValues)
+                .flatMap((message) => message.id ?? [])
+            )
+          );
+        }
+        sawEvent = true;
+
         const namespace = event.includes("|")
           ? event.split("|").slice(1)
           : undefined;
@@ -774,6 +803,9 @@ export class StreamManager<
 
         if (event === "metadata") options.callbacks.onMetadataEvent?.(data);
         if (event === "events") options.callbacks.onLangChainEvent?.(data);
+        if (event.startsWith("lifecycle|")) {
+          this.subagentManager.applyLifecycle(data);
+        }
 
         if (this.matchEventType("updates", event, data)) {
           options.callbacks.onUpdateEvent?.(data, { namespace, mutate });
@@ -982,6 +1014,7 @@ export class StreamManager<
                 return data as StateType;
               });
             }
+            attemptValues = this.values;
           }
         }
 
@@ -1007,6 +1040,23 @@ export class StreamManager<
           // If filtering is enabled and this is a subagent message,
           // add it to the subagent's messages instead of the main stream
           if (this.filterSubagentMessages && isFromSubagent && toolCallId) {
+            // deepagents names the subagent's `task` call on its tokens, and
+            // on those of every graph that runs inside it, so it names a
+            // top-level subagent, whose namespace ends at the first `tools:`.
+            const taskCallId = metadata?.lc_subagent_tool_call_id;
+            if (
+              typeof taskCallId === "string" &&
+              checkpointNs != null &&
+              this.subagentManager.hasSubagent(taskCallId)
+            ) {
+              this.subagentManager.bindNamespace(
+                taskCallId,
+                checkpointNs.slice(
+                  0,
+                  checkpointNs.findIndex((s) => s.startsWith("tools:")) + 1
+                )
+              );
+            }
             // Add to subagent's message list
             this.subagentManager.addMessageToSubagent(
               toolCallId,

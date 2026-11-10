@@ -6,6 +6,7 @@ import type { StreamMode } from "../types.stream.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import { StreamManager, type EventStreamEvent } from "./manager.js";
+import { ChannelListeners, type ChannelEvent } from "./channels.js";
 import {
   MessageTupleManager,
   toMessageClass,
@@ -68,6 +69,8 @@ export class CustomStreamOrchestrator<
   readonly messageManager: MessageTupleManager;
 
   readonly #options: AnyStreamCustomOptions<StateType, Bag>;
+
+  readonly #channels = new ChannelListeners();
 
   readonly #historyValues: StateType;
 
@@ -150,6 +153,16 @@ export class CustomStreamOrchestrator<
    * both orchestrator variants. Keep the API surface aligned as a no-op.
    */
   trackStreamMode(..._modes: StreamMode[]): void {}
+
+  /**
+   * Call `listener` with every event of this orchestrator's streams, in
+   * `@langchain/react` 1.x's channel shape.
+   *
+   * @returns A function that removes the listener.
+   */
+  onChannelEvent(listener: (event: ChannelEvent) => void): () => void {
+    return this.#channels.add(listener);
+  }
 
   #notify(): void {
     if (this.#disposed) return;
@@ -484,6 +497,7 @@ export class CustomStreamOrchestrator<
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
+        onEvent: (event, data) => this.#channels.emit(event, data),
       }
     );
   }

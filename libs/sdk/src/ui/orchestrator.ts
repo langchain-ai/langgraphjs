@@ -2,9 +2,15 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
 import { Client } from "../client.js";
-import type { ThreadState, ThreadTask, Interrupt, Config } from "../schema.js";
+import type {
+  ThreadState,
+  ThreadTask,
+  Interrupt,
+  Config,
+  ServerInfo,
+} from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
-import type { Command, StreamEvent } from "../types.js";
+import type { Command, RunsStreamPayload, StreamEvent } from "../types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
@@ -21,6 +27,7 @@ import {
 import { PendingRunsTracker, type QueueEntry } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
+import { ChannelListeners, type ChannelEvent } from "./channels.js";
 import {
   extractInterrupts,
   userFacingInterruptsFromThreadTasks,
@@ -128,6 +135,58 @@ function withV1Streaming(
     ...config,
     configurable: { ...config?.configurable, __event_streaming_v2: false },
   };
+}
+
+/** Run events that only servers with `stream_lifecycle` send on run routes. */
+const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
+
+const withoutRunEventModes = (modes: StreamMode[]) =>
+  modes.filter((mode) => !RUN_EVENT_MODES.includes(mode));
+
+const serverInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
+
+/**
+ * What the server supports, from `/info`, read once per client. A server
+ * that doesn't answer it in time supports none of it.
+ */
+function serverInfo(client: Client): Promise<ServerInfo | undefined> {
+  let read = serverInfoReads.get(client);
+  if (read == null) {
+    // Not AbortSignal.timeout, which React Native lacks.
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(), 5_000);
+    read = Promise.resolve()
+      .then(() => client.info({ signal: timeout.signal }))
+      .catch(() => undefined)
+      .finally(() => clearTimeout(timer));
+    serverInfoReads.set(client, read);
+  }
+  return read;
+}
+
+const isUnprocessable = (error: unknown) =>
+  (error as { status?: unknown } | null)?.status === 422;
+
+/**
+ * Streams `first`, or `retry` when `first` is refused with a 422 before any
+ * event: an older pod during a rollout rejects `lifecycle` and `tools`.
+ */
+async function* retryUnprocessable<T>(
+  first: AsyncIterable<T>,
+  retry: () => AsyncIterable<T>
+): AsyncGenerator<T> {
+  const events = first[Symbol.asyncIterator]();
+  let head: IteratorResult<T>;
+  try {
+    head = await events.next();
+  } catch (error) {
+    if (!isUnprocessable(error)) throw error;
+    yield* retry();
+    return;
+  }
+  if (head.done) return;
+  yield head.value;
+  yield* { [Symbol.asyncIterator]: () => events };
 }
 
 /**
@@ -334,6 +393,8 @@ export class StreamOrchestrator<
 
   #handledHeadlessToolInterruptIds = new Set<string>();
 
+  readonly #channels = new ChannelListeners();
+
   /**
    * Create a new StreamOrchestrator.
    *
@@ -354,6 +415,9 @@ export class StreamOrchestrator<
     );
     this.#durable = options.durableRuns !== false;
     this.#callbackStreamModes = resolveCallbackStreamModes(options);
+    if (options.filterSubagentMessages || options.onToolEvent != null) {
+      void serverInfo(accessors.getClient());
+    }
 
     this.historyLimit =
       typeof options.fetchStateHistory === "object" &&
@@ -1103,6 +1167,16 @@ export class StreamOrchestrator<
   }
 
   /**
+   * Call `listener` with every event of this orchestrator's streams, in
+   * `@langchain/react` 1.x's channel shape.
+   *
+   * @returns A function that removes the listener.
+   */
+  onChannelEvent(listener: (event: ChannelEvent) => void): () => void {
+    return this.#channels.add(listener);
+  }
+
+  /**
    * Stop the currently active stream at once and cancel its run on the
    * server, unless `cancel` is `false`. A run whose id is still on its way is
    * cancelled once it arrives. A run joined through {@link joinStream} keeps
@@ -1112,6 +1186,9 @@ export class StreamOrchestrator<
   async stop(options?: { cancel?: boolean }): Promise<void> {
     const threadId = this.#threadId;
     if (this.#durable && options?.cancel !== false && threadId) {
+      if (this.#stopOwnRun != null || this.#streamingRunId != null) {
+        this.stream.closeOpenSubagents("The run ended: stopped");
+      }
       this.#stopOwnRun?.abort();
       if (this.#streamingRunId) {
         void this.#accessors
@@ -1266,7 +1343,10 @@ export class StreamOrchestrator<
           void this.#reportRunEnd(tid, runId, watch, outcome);
         },
         isReplaying: lastEventId === "-1",
-        onEvent: (event, data) => this.#watchEvent(watch, event, data),
+        onEvent: (event, data) => {
+          this.#watchEvent(watch, event, data);
+          this.#channels.emit(event, data, watch.paused);
+        },
       }
     );
 
@@ -1382,8 +1462,6 @@ export class StreamOrchestrator<
           this.#setThreadIdFromSubmit(usableThreadId);
         }
 
-        const streamMode = this.#getRunStreamModes(submitOptions);
-
         this.stream.setStreamValues(() => {
           const current = { ...this.historyValues, ...this.stream.values };
           const prev =
@@ -1406,6 +1484,8 @@ export class StreamOrchestrator<
           return { ...prev };
         });
 
+        const modes = this.#getRunStreamModes(submitOptions);
+        const streamMode = Array.isArray(modes) ? modes : await modes;
         const streamResumable =
           submitOptions?.streamResumable ??
           (this.#durable || !!this.#runMetadataStorage);
@@ -1427,7 +1507,7 @@ export class StreamOrchestrator<
         if (signal.aborted) request.abort();
         else signal.addEventListener("abort", closeRequest, { once: true });
 
-        return client.runs.stream(usableThreadId!, assistantId, {
+        const runOptions: RunsStreamPayload<StreamMode[], boolean> = {
           input: (optimistic?.dispatchInput ?? values) as Record<
             string,
             unknown
@@ -1452,7 +1532,6 @@ export class StreamOrchestrator<
           signal: request.signal,
 
           checkpoint,
-          streamMode,
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
@@ -1481,9 +1560,18 @@ export class StreamOrchestrator<
 
             this.#options.onCreated?.(callbackMeta);
           },
-        }) as AsyncGenerator<
-          EventStreamEvent<StateType, UpdateType, CustomType>
-        >;
+        };
+        const runStream = (modes: StreamMode[]) =>
+          client.runs.stream(usableThreadId!, assistantId, {
+            ...runOptions,
+            streamMode: modes,
+          }) as AsyncGenerator<
+            EventStreamEvent<StateType, UpdateType, CustomType>
+          >;
+        const fallback = withoutRunEventModes(streamMode);
+        return fallback.length < streamMode.length
+          ? retryUnprocessable(runStream(streamMode), () => runStream(fallback))
+          : runStream(streamMode);
       },
       {
         getMessages: (value: StateType) => this.#getMessages(value),
@@ -1517,6 +1605,7 @@ export class StreamOrchestrator<
           responded = true;
           settleOwnRun();
           this.#watchEvent(watch, event, data);
+          this.#channels.emit(event, data, watch.paused);
         },
       },
       {
@@ -1534,16 +1623,35 @@ export class StreamOrchestrator<
     });
   }
 
+  /**
+   * A submit's own `streamMode` goes as it is. `lifecycle`, asked for when
+   * subagents are tracked, and `tools`, asked for by `onToolEvent`, go only
+   * to servers that send them on run routes, as do tracked ones. Runs that
+   * ask for neither get their modes without waiting for `/info`.
+   */
   #getRunStreamModes(
     submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
-  ): StreamMode[] {
-    return unique([
-      "values" as StreamMode,
-      "updates" as StreamMode,
-      ...(submitOptions?.streamMode ?? []),
+  ): StreamMode[] | Promise<StreamMode[]> {
+    const tracked = unique([
       ...this.#trackedStreamModes,
-      ...this.#callbackStreamModes,
+      ...(this.#options.filterSubagentMessages
+        ? (["lifecycle"] as StreamMode[])
+        : []),
+      ...(this.#options.onToolEvent != null ? (["tools"] as StreamMode[]) : []),
     ]);
+    const modes = (sent: StreamMode[]) =>
+      unique([
+        "values" as StreamMode,
+        "updates" as StreamMode,
+        ...(submitOptions?.streamMode ?? []),
+        ...sent,
+        ...this.#callbackStreamModes,
+      ]);
+    const plain = withoutRunEventModes(tracked);
+    if (plain.length === tracked.length) return modes(tracked);
+    return serverInfo(this.#accessors.getClient()).then((info) =>
+      modes(info?.flags?.stream_lifecycle === true ? tracked : plain)
+    );
   }
 
   #drainQueue(): void {
@@ -1629,23 +1737,35 @@ export class StreamOrchestrator<
           // Sent before the run being submitted reaches the server, it would
           // run first.
           if (this.#ownRun) await this.#ownRun;
-          const run = await client.runs.create(usableThreadId, assistantId, {
-            input: values as Record<string, unknown>,
-            config: withV1Streaming(
-              submitOptions?.config,
-              submitOptions?.context
-            ),
-            context: submitOptions?.context,
-            command: submitOptions?.command,
-            interruptBefore: submitOptions?.interruptBefore,
-            interruptAfter: submitOptions?.interruptAfter,
-            metadata: submitOptions?.metadata,
-            multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
-            strictResume: submitOptions?.strictResume,
-            streamMode: this.#getRunStreamModes(submitOptions),
-            streamResumable: true,
-            streamSubgraphs: submitOptions?.streamSubgraphs,
-            durability: submitOptions?.durability,
+          const streamMode = await this.#getRunStreamModes(submitOptions);
+          const create = (modes: StreamMode[]) =>
+            client.runs.create(usableThreadId!, assistantId, {
+              input: values as Record<string, unknown>,
+              config: withV1Streaming(
+                submitOptions?.config,
+                submitOptions?.context
+              ),
+              context: submitOptions?.context,
+              command: submitOptions?.command,
+              interruptBefore: submitOptions?.interruptBefore,
+              interruptAfter: submitOptions?.interruptAfter,
+              metadata: submitOptions?.metadata,
+              multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
+              strictResume: submitOptions?.strictResume,
+              streamMode: modes,
+              streamResumable: true,
+              streamSubgraphs: submitOptions?.streamSubgraphs,
+              durability: submitOptions?.durability,
+            });
+          const fallback = withoutRunEventModes(streamMode);
+          const run = await create(streamMode).catch((error: unknown) => {
+            if (
+              !isUnprocessable(error) ||
+              fallback.length === streamMode.length
+            ) {
+              throw error;
+            }
+            return create(fallback);
           });
 
           this.pendingRuns.add({
@@ -1880,16 +2000,24 @@ export class StreamOrchestrator<
     outcome: RunOutcome
   ): Promise<void> {
     const { onRunEnd } = this.#options;
-    if (onRunEnd == null || threadId == null) return;
+    const epoch = this.stream.epoch;
+    if (threadId == null) return;
+    if (onRunEnd == null && !this.stream.hasOpenSubagents()) return;
     let reason: RunEndReason;
+    // Whether the server said how the run ended, not only that this client
+    // stopped its stream or lost the connection while the run went on.
+    let ended = true;
     if (outcome === "aborted") {
       reason = "stopped";
+      ended = false;
     } else if (outcome !== "success") {
       const { name } = outcome.error as { name?: unknown };
       reason =
         name === "UserInterrupt" || name === "UserRollback"
           ? "stopped"
           : "error";
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      ended = outcome.error instanceof StreamError;
     } else {
       // Servers that send no `end` event leave the run's status to a read.
       // A rolled back run is deleted.
@@ -1913,7 +2041,15 @@ export class StreamOrchestrator<
         reason = "error";
       }
     }
-    if (!this.#disposed) onRunEnd({ runId, reason });
+    // Subagents the run left open take its word, unless another stream began.
+    if (
+      ended &&
+      (reason === "error" || reason === "stopped") &&
+      this.stream.epoch === epoch
+    ) {
+      this.stream.closeOpenSubagents(`The run ended: ${reason}`);
+    }
+    if (!this.#disposed) onRunEnd?.({ runId, reason });
   }
 
   #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
