@@ -58,7 +58,7 @@ import type {
 } from "./types.js";
 import type { EventStreamHandle, TransportAdapter } from "./transport.js";
 import { ProtocolError } from "./error.js";
-import { NAMESPACE_SEPARATOR } from "../../stream/constants.js";
+import { NAMESPACE_SEPARATOR } from "../../ui/constants.js";
 import { isHeadlessToolInterrupt } from "../../headless-tools.js";
 
 type PendingCommand = {

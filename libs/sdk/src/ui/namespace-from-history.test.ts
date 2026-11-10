@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { Client } from "../../client/index.js";
-import type { ThreadState } from "../../schema.js";
+import type { Client } from "../client/index.js";
+import type { ThreadState } from "../schema.js";
 import {
   collectSubgraphHostNamespaces,
   mapSubagentNamespaces,
@@ -21,7 +21,7 @@ import {
 function loadFixture<T>(name: string): T {
   return JSON.parse(
     readFileSync(
-      new URL(`../../tests/fixtures/lean-history/${name}.json`, import.meta.url),
+      new URL(`../tests/fixtures/lean-history/${name}.json`, import.meta.url),
       "utf8"
     )
   ) as T;

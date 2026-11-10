@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { EventStreamEvent, StreamManager } from "../ui/manager.js";
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 import type {
   GetUpdateType,
   GetCustomEventType,

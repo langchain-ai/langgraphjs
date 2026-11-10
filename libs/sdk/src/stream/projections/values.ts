@@ -15,11 +15,11 @@ import type { BaseMessage } from "@langchain/core/messages";
 import {
   ensureMessageInstances,
   tryCoerceMessageLikeToMessage,
-} from "../message-coercion.js";
+} from "../../ui/message-coercion.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
-import { DEFAULT_MESSAGES_KEY } from "../constants.js";
-import { isRootNamespace, namespaceKey } from "../namespace.js";
+import { DEFAULT_MESSAGES_KEY } from "../../ui/constants.js";
+import { isRootNamespace, namespaceKey } from "../../ui/namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 export function valuesProjection<T = unknown>(

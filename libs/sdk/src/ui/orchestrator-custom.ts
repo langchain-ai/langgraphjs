@@ -1,6 +1,6 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import type { ThreadState, Interrupt } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Message } from "../types.messages.js";

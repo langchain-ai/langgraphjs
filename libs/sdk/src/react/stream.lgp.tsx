@@ -40,7 +40,7 @@ import type {
 import type { UseStream, SubmitOptions } from "./types.js";
 
 import { Client, getClientConfigHash } from "../client.js";
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";

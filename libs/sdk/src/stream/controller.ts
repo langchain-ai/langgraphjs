@@ -34,14 +34,14 @@ import type { Interrupt, ThreadState } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { DEFAULT_MESSAGES_KEY } from "./constants.js";
-import { StreamStore } from "./store.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import { StreamStore } from "../ui/store.js";
 import { ChannelRegistry } from "./channel-registry.js";
-import { ensureMessageInstances } from "./message-coercion.js";
+import { ensureMessageInstances } from "../ui/message-coercion.js";
 import {
   SubagentDiscovery,
   type SubagentMap,
@@ -55,20 +55,20 @@ import {
   getHistoryPage,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
-} from "./discovery/namespace-from-history.js";
+} from "../ui/namespace-from-history.js";
 import type { SubagentDiscoverySnapshot } from "./types.js";
 import {
   isInternalWorkNamespace,
   isLegacySubagentNamespace,
   isRootNamespace,
   namespaceKey,
-} from "./namespace.js";
+} from "../ui/namespace.js";
 import {
   MessageMetadataTracker,
   type CheckpointEnvelope,
   type MessageMetadata,
   type MessageMetadataMap,
-} from "./message-metadata-tracker.js";
+} from "../ui/message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import { toRefusal } from "./refusal.js";
@@ -76,7 +76,7 @@ import {
   prepareOptimisticInput,
   serializeUpdateMessages,
   type OptimisticHandle,
-} from "./optimistic-input.js";
+} from "../ui/optimistic-input.js";
 import {
   EMPTY_QUEUE,
   SubmitCoordinator,
@@ -88,7 +88,7 @@ import {
   reconcileToolCallsFromMessages,
   seedToolCallsFromMessages,
   upsertToolCall,
-} from "./tool-calls.js";
+} from "../ui/tool-calls.js";
 import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
