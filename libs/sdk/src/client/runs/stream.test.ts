@@ -108,7 +108,6 @@ describe("Client streaming with retry", () => {
       const chunks = [
         { id: "1", event: "values", data: { messages: ["hello"] } },
         { id: "2", event: "values", data: { messages: ["hello", "world"] } },
-        { event: "end", data: { run_id: "run-1", status: "success" } },
       ];
 
       mockFetch.mockResolvedValueOnce(
@@ -128,7 +127,7 @@ describe("Client streaming with retry", () => {
 
       const results = await gatherStream(stream);
 
-      expect(results).toHaveLength(3);
+      expect(results).toHaveLength(2);
       expect(results[0]).toMatchObject({ id: "1", event: "values" });
       expect(results[1]).toMatchObject({ id: "2", event: "values" });
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -1150,7 +1149,10 @@ describe("Client streaming with retry", () => {
         .mockImplementationOnce(runStatus("success"));
 
       const consume = gatherStream(
-        client.runs.stream("thread-1", "assistant-1", { onRunCreated })
+        client.runs.stream("thread-1", "assistant-1", {
+          onRunCreated,
+          streamResumable: true,
+        })
       );
       await vi.runAllTimersAsync();
 
@@ -1180,7 +1182,9 @@ describe("Client streaming with retry", () => {
         .mockResolvedValueOnce(runStream([next], null))
         .mockImplementationOnce(runStatus("success"));
 
-      const consume = gatherStream(client.runs.stream(null, "assistant-1"));
+      const consume = gatherStream(
+        client.runs.stream(null, "assistant-1", { streamResumable: true })
+      );
       await vi.runAllTimersAsync();
 
       expect(await consume).toEqual([values, next]);
@@ -1190,6 +1194,21 @@ describe("Client streaming with retry", () => {
         `GET ${temporaryRun}/stream`,
         `GET ${temporaryRun}`,
       ]);
+    });
+
+    test("fails a run stream that isn't resumable on a drop without Location", async () => {
+      const metadata = { id: "0", event: "metadata", data: { run_id: "run-1" } };
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createErroringSSEResponseBody([metadata], new TypeError("terminated")),
+          { headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      await expect(
+        gatherStream(client.runs.stream("thread-1", "assistant-1"))
+      ).rejects.toThrow("terminated");
+      expect(requests()).toEqual([createRun]);
     });
 
     test("rejoins a run join without Location at its own URL", async () => {

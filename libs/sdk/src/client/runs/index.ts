@@ -131,8 +131,11 @@ export class RunsClient<
       onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
       // A run's join route is its `Content-Location` plus `/stream` on every
-      // server, threadless runs included.
+      // server, threadless runs included. Only a resumable run's events are
+      // kept for a rejoin, so another run fails on a drop rather than skip
+      // what it missed.
       fallbackReconnectPath: () => {
+        if (!payload?.streamResumable) return undefined;
         if (runPath != null) return `${runPath}/stream`;
         if (threadId == null || runId == null) return undefined;
         return `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`;
