@@ -8,4 +8,4 @@
 - `onRunEnd({ runId, reason })`, with `"success"`, `"error"`, `"interrupt"` or `"stopped"`.
 - `maxReconnectAttempts`, `reconnectDelayMs`, `onReconnect`, `onConnected` and `streamIdleReconnect`, passed to every run stream and join.
 
-It also gets `hydrate(threadId?)`, `hydrationPromise` and a StrictMode-safe `activate()`. For every user, a join of the run being submitted waits for its id, so the run doesn't stream twice, and a server-queued submit waits for that run to exist, so it can't overtake it. Runs it creates send `config.configurable.__event_streaming_v2: false`, so a thread a v3 client used streams the shape this engine reads.
+It also gets `hydrate(threadId?)`, `hydrationPromise` and a StrictMode-safe `activate()`. For every user, a join of the run being submitted waits for its id, so the run doesn't stream twice, and a server-queued submit waits for that run to exist, so it can't overtake it. Runs it creates send `config.configurable.__event_streaming_v2: false`, so a thread a v3 client used streams the shape this engine reads, unless they send `context`, which the Agent Server doesn't take together with `configurable`.
