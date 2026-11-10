@@ -10,6 +10,10 @@ import {
   TimeoutPolicy,
 } from "./utils/index.js";
 
+// Larger delays overflow to 1 ms in Node and browsers. Recheck long
+// deadlines in chunks rather than timing out early or polling every ms.
+const MAX_TIMER_DELAY = 2 ** 31 - 1;
+
 /**
  * Tracks the live progress state of a single timed node attempt.
  *
@@ -227,6 +231,7 @@ export async function runAttemptWithTimeout<T>(
   );
 
   const start = Date.now();
+  const monotonicStart = performance.now();
   const bg = invoke(scopedConfig);
 
   // Normalize the node result into an outcome. Catching the rejection here
@@ -251,10 +256,16 @@ export async function runAttemptWithTimeout<T>(
   // fixed `setTimeout`.
   const watchdog = new Promise<AttemptOutcome<T>>((resolve) => {
     if (policy.runTimeout !== undefined) {
-      runTimer = setTimeout(
-        () => resolve({ type: "timeout", kind: "run" }),
-        policy.runTimeout
-      );
+      const runMs = policy.runTimeout;
+      const checkRun = () => {
+        const remaining = runMs - (performance.now() - monotonicStart);
+        if (remaining <= 0) {
+          resolve({ type: "timeout", kind: "run" });
+        } else {
+          runTimer = setTimeout(checkRun, Math.min(remaining, MAX_TIMER_DELAY));
+        }
+      };
+      runTimer = setTimeout(checkRun, Math.min(runMs, MAX_TIMER_DELAY));
     }
 
     if (policy.idleTimeout !== undefined) {
@@ -264,10 +275,13 @@ export async function runAttemptWithTimeout<T>(
         if (remaining <= 0) {
           resolve({ type: "timeout", kind: "idle" });
         } else {
-          idleTimer = setTimeout(checkIdle, remaining);
+          idleTimer = setTimeout(
+            checkIdle,
+            Math.min(remaining, MAX_TIMER_DELAY)
+          );
         }
       };
-      idleTimer = setTimeout(checkIdle, idleMs);
+      idleTimer = setTimeout(checkIdle, Math.min(idleMs, MAX_TIMER_DELAY));
     }
   });
 
