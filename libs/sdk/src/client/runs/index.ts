@@ -110,6 +110,7 @@ export class RunsClient<
     };
 
     let runId: string | undefined;
+    let runPath: string | undefined;
     const runCreated = (run: { run_id: string; thread_id?: string }) => {
       runId = run.run_id;
       payload?.onRunCreated?.(run);
@@ -129,13 +130,18 @@ export class RunsClient<
       onReconnect: payload?.onReconnect,
       onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
-      fallbackReconnectPath: () =>
-        threadId != null && runId != null
-          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
-          : undefined,
+      // A run's join route is its `Content-Location` plus `/stream` on every
+      // server, threadless runs included.
+      fallbackReconnectPath: () => {
+        if (runPath != null) return `${runPath}/stream`;
+        if (threadId == null || runId == null) return undefined;
+        return `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`;
+      },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
-        if (runMetadata) runCreated(runMetadata);
+        if (runMetadata == null) return;
+        runPath = response.headers.get("Content-Location") ?? undefined;
+        runCreated(runMetadata);
       },
       // A CORS config that doesn't expose `Content-Location` hides the run id
       // until the run's first event.

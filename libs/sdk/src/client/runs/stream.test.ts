@@ -1164,6 +1164,34 @@ describe("Client streaming with retry", () => {
       ).toBe("1");
     });
 
+    test("rejoins a threadless run stream without Location through its Content-Location", async () => {
+      const temporaryRun = "/threads/temporary-thread/runs/run-1";
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(
+          new Response(createSSEResponseBody([values]), {
+            headers: {
+              "content-type": "text/event-stream",
+              "content-location": temporaryRun,
+            },
+          })
+        )
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(client.runs.stream(null, "assistant-1"));
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([
+        "POST /runs/stream",
+        `GET ${temporaryRun}`,
+        `GET ${temporaryRun}/stream`,
+        `GET ${temporaryRun}`,
+      ]);
+    });
+
     test("rejoins a run join without Location at its own URL", async () => {
       const next = { id: "2", event: "values", data: { step: 2 } };
       mockFetch
