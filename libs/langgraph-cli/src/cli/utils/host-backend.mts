@@ -57,13 +57,37 @@ const TRANSPORT_RETRIES = 3;
 /** Per-request timeout in milliseconds, enforced via `AbortController`. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
+// A failed connection is safe to retry even for a deployment mutation.
+// A reset or request timeout may happen after the server committed it.
+const CONNECT_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ConnectionRefused",
+]);
+
+function isConnectError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current != null && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const { code, cause } = current as { code?: string; cause?: unknown };
+    if (code !== undefined && CONNECT_ERROR_CODES.has(code)) return true;
+    current = cause;
+  }
+  return false;
+}
+
 /**
  * Minimal JSON HTTP client for the host backend deployment service.
  *
  * @remarks
  * Wraps the global `fetch`, attaching the API-key (and optional tenant)
- * headers to every request, retrying transport-level failures, and decoding
- * JSON responses. All methods reject with a {@link HostBackendError} on
+ * headers to every request and decoding JSON responses. Mutations are retried
+ * only for connection failures; other methods retry transport-level failures. All methods reject with a {@link HostBackendError} on
  * failure.
  */
 export class HostBackendClient {
@@ -158,9 +182,13 @@ export class HostBackendClient {
       try {
         response = await fetch(url, { ...init, signal: controller.signal });
       } catch (error) {
-        // Transport-level error (network, DNS, timeout). Retry a few times.
+        // Do not repeat a mutation unless the connection failed before sending it.
         lastError = error;
-        if (attempt < TRANSPORT_RETRIES) continue;
+        if (
+          attempt < TRANSPORT_RETRIES &&
+          ((method !== "POST" && method !== "PATCH") || isConnectError(error))
+        )
+          continue;
         throw new HostBackendError(
           error instanceof Error ? error.message : String(error)
         );
