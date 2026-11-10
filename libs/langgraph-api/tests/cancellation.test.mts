@@ -22,6 +22,26 @@ describe("run cancellation reason", () => {
     }
   );
 
+  it.each(["interrupt", "rollback"] as const)(
+    "still accepts the legacy %s string reason",
+    (action) => {
+      const controller = new AbortController();
+      controller.abort(action);
+      expect(getCancelAction(controller.signal)).toBe(action);
+    }
+  );
+
+  it("accepts a marker error from another copy of the class", () => {
+    const controller = new AbortController();
+    controller.abort(
+      Object.assign(new Error("x"), {
+        name: "ExpectedCancellation",
+        action: "rollback",
+      })
+    );
+    expect(getCancelAction(controller.signal)).toBe("rollback");
+  });
+
   it("does not treat other aborts as a cancel", () => {
     const plain = new AbortController();
     plain.abort();
