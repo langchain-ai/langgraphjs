@@ -2369,7 +2369,7 @@ describe("StreamOrchestrator runs", () => {
     (client.runs.stream as Mock).mockImplementation(
       (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
         async *[Symbol.asyncIterator]() {
-          await options.created;
+          await Promise.race([options.created, openUntil(payload.signal)]);
           payload.onRunCreated?.({ run_id: "run-1" });
           yield* events;
           await openUntil(payload.signal, options.ended);
@@ -2471,6 +2471,32 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("stop() stops the stream after a while when the run's id never arrives", async () => {
+      vi.useFakeTimers();
+      try {
+        mockRunStream(undefined, { created: new Promise<void>(() => {}) });
+        const orch = orchestrator({ durableRuns: true });
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.advanceTimersByTimeAsync(0);
+        let stopped = false;
+
+        void orch.stop().then(() => {
+          stopped = true;
+        });
+        await vi.advanceTimersByTimeAsync(4_000);
+        expect(stopped).toBe(false);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(stopped).toBe(true);
+        expect(orch.isLoading).toBe(false);
+        expect(client.runs.cancel).not.toHaveBeenCalled();
+        orch.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("stop() cancels a run it joined", async () => {
       mockJoinStream();
       const orch = orchestrator({ durableRuns: true });
@@ -2566,6 +2592,20 @@ describe("StreamOrchestrator runs", () => {
         runConfig
       );
       await orch.stop();
+      orch.dispose();
+    });
+
+    it("leaves the v3 marker off a run that sends context, which the server would refuse", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] }, { context: { user_id: "u1" } });
+
+      expect((client.runs.stream as Mock).mock.calls[0][2]).toMatchObject({
+        config: undefined,
+        context: { user_id: "u1" },
+      });
       orch.dispose();
     });
 
