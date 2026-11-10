@@ -425,6 +425,7 @@ describe("Client streaming with retry", () => {
       const chunks = [
         { id: "1", event: "values", data: { state: "running" } },
         { id: "2", event: "values", data: { state: "complete" } },
+        { event: "end", data: { run_id: "run-1", status: "success" } },
       ];
 
       mockFetch.mockResolvedValueOnce(
@@ -437,7 +438,7 @@ describe("Client streaming with retry", () => {
       const stream = client.runs.joinStream("thread-1", "run-1");
       const results = await gatherStream(stream);
 
-      expect(results).toHaveLength(2);
+      expect(results).toHaveLength(3);
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
       // Verify GET was used (not POST)
@@ -929,10 +930,13 @@ describe("Client streaming with retry", () => {
 
     const runStream = (
       chunks: Array<{ id?: string; event: string; data: unknown }>,
-      location = "/threads/thread-1/runs/run-1/stream"
+      location: string | null = "/threads/thread-1/runs/run-1/stream"
     ) =>
       new Response(createSSEResponseBody(chunks), {
-        headers: { "content-type": "text/event-stream", location },
+        headers: {
+          "content-type": "text/event-stream",
+          ...(location != null && { location }),
+        },
       });
 
     const httpStatus = (status: number) => async () =>
@@ -1132,6 +1136,94 @@ describe("Client streaming with retry", () => {
         "x-api-key": "test-key",
         "x-custom": "custom",
       });
+    });
+
+    test("rejoins a run stream without Location by the run id in its first event", async () => {
+      const metadata = { id: "0", event: "metadata", data: { run_id: "run-1" } };
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      const onRunCreated = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(runStream([metadata, values], null))
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          onRunCreated,
+          streamResumable: true,
+        })
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([metadata, values, next]);
+      expect(onRunCreated.mock.calls).toEqual([
+        [{ run_id: "run-1", thread_id: "thread-1" }],
+      ]);
+      expect(requests()).toEqual([createRun, runCheck, joinRun, runCheck]);
+      expect(
+        new Headers(mockFetch.mock.calls[2][1].headers).get("last-event-id")
+      ).toBe("1");
+    });
+
+    test("rejoins a threadless run stream without Location through its Content-Location", async () => {
+      const temporaryRun = "/threads/temporary-thread/runs/run-1";
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(
+          new Response(createSSEResponseBody([values]), {
+            headers: {
+              "content-type": "text/event-stream",
+              "content-location": temporaryRun,
+            },
+          })
+        )
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(
+        client.runs.stream(null, "assistant-1", { streamResumable: true })
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([
+        "POST /runs/stream",
+        `GET ${temporaryRun}`,
+        `GET ${temporaryRun}/stream`,
+        `GET ${temporaryRun}`,
+      ]);
+    });
+
+    test("fails a run stream that isn't resumable on a drop without Location", async () => {
+      const metadata = { id: "0", event: "metadata", data: { run_id: "run-1" } };
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createErroringSSEResponseBody([metadata], new TypeError("terminated")),
+          { headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      await expect(
+        gatherStream(client.runs.stream("thread-1", "assistant-1"))
+      ).rejects.toThrow("terminated");
+      expect(requests()).toEqual([createRun]);
+    });
+
+    test("rejoins a run join without Location at its own URL", async () => {
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(runStream([values], null))
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(client.runs.joinStream("thread-1", "run-1"));
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([joinRun, runCheck, joinRun, runCheck]);
     });
   });
 });

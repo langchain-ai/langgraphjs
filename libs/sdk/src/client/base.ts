@@ -444,7 +444,9 @@ export class BaseClient {
     reconnectDelayMs?: StreamWithRetryOptions["reconnectDelayMs"];
     onReconnect?: StreamWithRetryOptions["onReconnect"];
     onConnected?: StreamWithRetryOptions["onConnected"];
+    fallbackReconnectPath?: StreamWithRetryOptions["fallbackReconnectPath"];
     onInitialResponse?: (response: Response) => void | Promise<void>;
+    onEvent?: (event: T) => void;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
@@ -549,10 +551,12 @@ export class BaseClient {
       signal: config.signal,
       onReconnect: config.onReconnect,
       onConnected: config.onConnected,
+      fallbackReconnectPath: config.fallbackReconnectPath,
       isRunActive,
     })) {
       if (part.event === "end" || part.event === "error") runEnded = true;
       if (!isSSEControlPart(part)) {
+        config.onEvent?.(part);
         yield part.id === "" ? { ...part, id: undefined } : part;
       }
     }
