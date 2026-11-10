@@ -2391,48 +2391,31 @@ describe("StreamOrchestrator runs", () => {
   const message = (id: string) => ({ id, content: id, type: "human" });
 
   describe("durableRuns", () => {
-    it("gives a new thread a client id, reports it at once, and creates it with the first run", async () => {
-      mockRunStream(undefined, { ended: Promise.resolve() });
-      const onThreadId = vi.fn();
-      const orch = orchestrator({ durableRuns: true, onThreadId });
+    it.each([
+      { durableRuns: undefined, streamResumable: true, onDisconnect: "continue" },
+      { durableRuns: false, streamResumable: false, onDisconnect: "cancel" },
+    ])(
+      "durableRuns $durableRuns: creates a new thread, then its run with onDisconnect $onDisconnect",
+      async ({ durableRuns, streamResumable, onDisconnect }) => {
+        mockRunStream(undefined, { ended: Promise.resolve() });
+        const orch = orchestrator({ durableRuns });
 
-      const submitted = orch.submit({ messages: [] });
-      expect(onThreadId).toHaveBeenCalledOnce();
-      await submitted;
+        await orch.submit({ messages: [] });
 
-      expect(client.threads.create).not.toHaveBeenCalled();
-      expect(client.runs.stream).toHaveBeenCalledWith(
-        onThreadId.mock.calls[0][0],
-        "test-assistant",
-        expect.objectContaining({
-          ifNotExists: "create",
-          streamResumable: true,
-          onDisconnect: "continue",
-        })
-      );
-      orch.dispose();
-    });
-
-    it("reads a thread that doesn't exist yet as empty, not as an error", async () => {
-      (client.threads.getState as Mock).mockRejectedValueOnce(
-        Object.assign(new Error("Not found"), { status: 404 })
-      );
-      const onError = vi.fn();
-      const orch = orchestrator({ durableRuns: true, onError });
-
-      orch.initThreadId("t-new");
-      await orch.hydrationPromise;
-
-      expect(orch.error).toBeUndefined();
-      expect(onError).not.toHaveBeenCalled();
-      expect(orch.isThreadLoading).toBe(false);
-      orch.dispose();
-    });
+        expect(client.threads.create).toHaveBeenCalledOnce();
+        expect(client.runs.stream).toHaveBeenCalledWith(
+          "new-thread-1",
+          "test-assistant",
+          expect.objectContaining({ streamResumable, onDisconnect })
+        );
+        orch.dispose();
+      }
+    );
 
     it("stop() cancels the run it streams, which then ends stopped", async () => {
       mockRunStream();
       const onRunEnd = vi.fn();
-      const orch = orchestrator({ durableRuns: true, onRunEnd });
+      const orch = orchestrator({ onRunEnd });
       orch.initThreadId("t1");
 
       void orch.submit({ messages: [] });
@@ -2452,7 +2435,7 @@ describe("StreamOrchestrator runs", () => {
     it("stop() before the run's id arrives cancels the run once it does", async () => {
       const created = deferred();
       mockRunStream(undefined, { created: created.promise });
-      const orch = orchestrator({ durableRuns: true });
+      const orch = orchestrator();
       orch.initThreadId("t1");
 
       void orch.submit({ messages: [] });
@@ -2471,7 +2454,7 @@ describe("StreamOrchestrator runs", () => {
       vi.useFakeTimers();
       try {
         mockRunStream(undefined, { created: new Promise<void>(() => {}) });
-        const orch = orchestrator({ durableRuns: true });
+        const orch = orchestrator();
         orch.initThreadId("t1");
         void orch.submit({ messages: [] });
         await vi.advanceTimersByTimeAsync(0);
@@ -2493,16 +2476,31 @@ describe("StreamOrchestrator runs", () => {
       }
     });
 
-    it("stop() cancels a run it joined", async () => {
+    it("stop() cancels the run it found after a load", async () => {
+      (client.runs.list as Mock).mockResolvedValue([{ run_id: "run-9" }]);
       mockJoinStream();
-      const orch = orchestrator({ durableRuns: true });
+      const orch = orchestrator();
       orch.initThreadId("t1");
+
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      await orch.stop();
+
+      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-9");
+      orch.dispose();
+    });
+
+    it("stop() leaves a run the app joined going", async () => {
+      mockJoinStream();
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
 
       void orch.joinStream("run-9");
       await vi.waitFor(() => expect(orch.isLoading).toBe(true));
       await orch.stop();
 
-      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-9");
+      expect(orch.isLoading).toBe(false);
+      expect(client.runs.cancel).not.toHaveBeenCalled();
       orch.dispose();
     });
 
@@ -2518,7 +2516,7 @@ describe("StreamOrchestrator runs", () => {
       },
     ])("$name leaves the run going", async ({ end }) => {
       mockRunStream();
-      const orch = orchestrator({ durableRuns: true });
+      const orch = orchestrator();
       orch.initThreadId("t1");
 
       void orch.submit({ messages: [] });
@@ -2753,7 +2751,7 @@ describe("StreamOrchestrator runs", () => {
     it("joins the thread's running run from the loaded checkpoint, naming no stream mode", async () => {
       (client.runs.list as Mock).mockResolvedValue([{ run_id: "run-9" }]);
       mockJoinStream([], Promise.resolve());
-      const orch = orchestrator({ durableRuns: true });
+      const orch = orchestrator();
 
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -2774,8 +2772,8 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("without durableRuns, loads a thread without asking for its runs", async () => {
-      const orch = orchestrator();
+    it("with durableRuns false, loads a thread without asking for its runs", async () => {
+      const orch = orchestrator({ durableRuns: false });
 
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -2789,7 +2787,7 @@ describe("StreamOrchestrator runs", () => {
         ...createThreadState({ messages: [] }),
         next: ["agent"],
       });
-      const orch = orchestrator({ durableRuns: true });
+      const orch = orchestrator();
 
       orch.initThreadId("t1");
       await orch.hydrationPromise;
