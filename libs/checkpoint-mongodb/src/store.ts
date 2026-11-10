@@ -119,7 +119,10 @@ export type IndexConfig = {
   model?: string;
   /** Modality for auto embedding (default: "text"). */
   modality?: string;
-  /** Additional filter fields to declare in the vector search index. */
+  /**
+   * Additional filter fields to declare in the vector search index, as `value.<field>`.
+   * Search filters on declared fields run inside $vectorSearch; others run as a $match afterwards.
+   */
   filters?: string[];
 };
 
@@ -346,13 +349,6 @@ export class MongoDBStore extends BaseStore {
 
         // Validate namespace
         validateNamespace(namespace);
-        for (const label of namespace) {
-          if (label.includes("/")) {
-            throw new InvalidNamespaceError(
-              `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain slashes ('/').`
-            );
-          }
-        }
 
         // Handle delete
         if (value === null) {
@@ -362,6 +358,14 @@ export class MongoDBStore extends BaseStore {
             },
           });
           continue;
+        }
+
+        for (const label of namespace) {
+          if (label.includes("/")) {
+            throw new InvalidNamespaceError(
+              `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain slashes ('/').`
+            );
+          }
         }
 
         // Build document
@@ -718,11 +722,17 @@ export class MongoDBStore extends BaseStore {
       vectorSearchStage.$vectorSearch.query = { text: query };
     }
 
-    if (namespacePrefix.length > 0) {
-      filter.namespacePath = namespacePrefix.join("/");
+    const indexedFields = new Set(this.indexConfig!.filters ?? []);
+    const preFilter: Record<string, any> = {};
+    const postFilter: Record<string, any> = {};
+    for (const [field, condition] of Object.entries(filter)) {
+      (indexedFields.has(field) ? preFilter : postFilter)[field] = condition;
     }
-    if (Object.keys(filter).length > 0) {
-      vectorSearchStage.$vectorSearch.filter = filter;
+    if (namespacePrefix.length > 0) {
+      preFilter.namespacePath = namespacePrefix.join("/");
+    }
+    if (Object.keys(preFilter).length > 0) {
+      vectorSearchStage.$vectorSearch.filter = preFilter;
     }
 
     const pipeline: Record<string, any>[] = [
@@ -739,6 +749,9 @@ export class MongoDBStore extends BaseStore {
         namespaceMatch[`namespace.${idx}`] = { $eq: label };
       });
       pipeline.push({ $match: namespaceMatch });
+    }
+    if (Object.keys(postFilter).length > 0) {
+      pipeline.push({ $match: postFilter });
     }
 
     // Strip the embedding field from manual mode results (vectors can be large)
