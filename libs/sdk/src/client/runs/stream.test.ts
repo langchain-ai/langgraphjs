@@ -721,7 +721,7 @@ describe("Client streaming with retry", () => {
       expect(init.body).toBeUndefined();
     });
 
-    test("passes streamMode parameter", async () => {
+    test("sends the modes as stream_mode and as one comma-joined stream_modes", async () => {
       const chunks = [{ id: "1", event: "messages", data: {} }];
 
       mockFetch.mockResolvedValueOnce(
@@ -738,10 +738,116 @@ describe("Client streaming with retry", () => {
       await gatherStream(stream);
 
       const [url] = mockFetch.mock.calls[0];
-      const urlObj = new URL(url.toString());
-      const streamMode = urlObj.searchParams.get("stream_mode");
+      const { searchParams } = new URL(url.toString());
+      expect(searchParams.getAll("stream_mode")).toEqual([
+        "lifecycle",
+        "state_update",
+      ]);
+      expect(searchParams.getAll("stream_modes")).toEqual([
+        "lifecycle,state_update",
+      ]);
+    });
+  });
 
-      expect(streamMode).toBeTruthy();
+  describe("per-call reconnect options", () => {
+    const dropAfter = (chunks: Array<{ id: string; event: string; data: unknown }>) =>
+      new Response(
+        createErroringSSEResponseBody(chunks, new TypeError("terminated")),
+        {
+          headers: {
+            "content-type": "text/event-stream",
+            location: "/threads/thread-1/runs/run-1/stream",
+          },
+        }
+      );
+    const firstEvent = { id: "1", event: "values", data: {} };
+
+    test("maxReconnectAttempts 0 ends a run stream on the first drop", async () => {
+      const onReconnect = vi.fn();
+      mockFetch.mockResolvedValueOnce(dropAfter([firstEvent]));
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          maxReconnectAttempts: 0,
+          onReconnect,
+        })
+      ).catch((caught: unknown) => caught);
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(onReconnect).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("a run stream waits reconnectDelayMs, reports each connection and gives up after maxReconnectAttempts", async () => {
+      const onReconnect = vi.fn();
+      const onConnected = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(dropAfter([firstEvent]))
+        .mockResolvedValueOnce(dropAfter([]));
+
+      let settled = false;
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          maxReconnectAttempts: 1,
+          reconnectDelayMs: () => 60_000,
+          onReconnect,
+          onConnected,
+        })
+      )
+        .catch((caught: unknown) => caught)
+        .finally(() => {
+          settled = true;
+        });
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(settled).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.runAllTimersAsync();
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onConnected.mock.calls).toEqual([
+        [{ kind: "initial", attempt: 0 }],
+        [{ kind: "reconnected", attempt: 1 }],
+      ]);
+      expect(onReconnect.mock.calls).toEqual([
+        [
+          expect.objectContaining({
+            attempt: 1,
+            delayMs: 60_000,
+            lastEventId: "1",
+          }),
+        ],
+      ]);
+    });
+
+    test("a run join takes the same reconnect options", async () => {
+      const onReconnect = vi.fn();
+      const onConnected = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(dropAfter([firstEvent]))
+        .mockResolvedValueOnce(dropAfter([]));
+
+      const consume = gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          maxReconnectAttempts: 1,
+          reconnectDelayMs: () => 0,
+          onReconnect,
+          onConnected,
+        })
+      ).catch((caught: unknown) => caught);
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(onConnected.mock.calls).toEqual([
+        [{ kind: "initial", attempt: 0 }],
+        [{ kind: "reconnected", attempt: 1 }],
+      ]);
+      expect(onReconnect.mock.calls).toEqual([
+        [expect.objectContaining({ attempt: 1, delayMs: 0 })],
+      ]);
     });
   });
 

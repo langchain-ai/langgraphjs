@@ -1,7 +1,10 @@
 import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
-import type { IdleReconnectMode } from "./utils/stream.js";
+import type {
+  IdleReconnectMode,
+  StreamReconnectOptions,
+} from "./utils/stream.js";
 
 export type ServerRuntime<Context = unknown> =
   | {
@@ -189,7 +192,8 @@ export interface RunsInvokePayload {
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
   TSubgraphs extends boolean = false,
-> extends RunsInvokePayload {
+>
+  extends RunsInvokePayload, StreamReconnectOptions {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
    */
@@ -334,7 +338,10 @@ export interface CronsUpdatePayload extends RunsInvokePayload {
   enabled?: boolean;
 }
 
-export interface RunsWaitPayload extends RunsStreamPayload {
+export interface RunsWaitPayload extends Omit<
+  RunsStreamPayload,
+  keyof StreamReconnectOptions
+> {
   /**
    * Raise errors returned by the run. Default is `true`.
    */

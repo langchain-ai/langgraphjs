@@ -1075,6 +1075,118 @@ describe("StreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("queues a submit made while streaming with the same stream modes", async () => {
+      let submitSignal: AbortSignal | undefined;
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { signal: AbortSignal }
+        ) => {
+          submitSignal = payload.signal;
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield { event: "values" as const, data: { messages: [] } };
+              await new Promise<never>((_resolve, reject) => {
+                submitSignal?.addEventListener("abort", () => {
+                  const err = new Error("The operation was aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                });
+              });
+            },
+          };
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+      orch.trackStreamMode("messages-tuple");
+
+      const firstSubmit = orch.submit({ messages: [] });
+      await flushMicrotasks();
+      expect(orch.isLoading).toBe(true);
+
+      await orch.submit({ messages: [] });
+
+      expect(orch.queueSize).toBe(1);
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({
+          multitaskStrategy: "enqueue",
+          streamMode: expect.arrayContaining(["values", "messages-tuple"]),
+        })
+      );
+
+      await orch.stop();
+      await firstSubmit;
+      orch.dispose();
+    });
+
+    it("forwards multitaskStrategy 'reject' while streaming and reports the server error", async () => {
+      let submitSignal: AbortSignal | undefined;
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { signal: AbortSignal }
+        ) => {
+          submitSignal = payload.signal;
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield { event: "values" as const, data: { messages: [] } };
+              await new Promise<never>((_resolve, reject) => {
+                submitSignal?.addEventListener("abort", () => {
+                  const err = new Error("The operation was aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                });
+              });
+            },
+          };
+        }
+      );
+      const conflict = new Error("HTTP 409: Thread is busy");
+      (client.runs.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+        conflict
+      );
+
+      const onError = vi.fn();
+      const submitOnError = vi.fn();
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ onError }),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      const firstSubmit = orch.submit({ messages: [] });
+      await vi.waitFor(() => {
+        expect(orch.isLoading).toBe(true);
+      });
+
+      await orch.submit(
+        { messages: [] },
+        { multitaskStrategy: "reject", onError: submitOnError }
+      );
+
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({ multitaskStrategy: "reject" })
+      );
+      expect(onError).toHaveBeenCalledWith(conflict, undefined);
+      expect(submitOnError).toHaveBeenCalledWith(conflict, undefined);
+      expect(orch.queueSize).toBe(0);
+
+      await orch.stop();
+      await firstSubmit;
+      orch.dispose();
+    });
   });
 
   describe("switchThread", () => {
@@ -1819,6 +1931,189 @@ describe("StreamOrchestrator", () => {
       );
 
       expect(orch.tryReconnect()).toBe(false);
+
+      orch.dispose();
+    });
+  });
+
+  describe("joinStream of a live run", () => {
+    function createControlledStream() {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return {
+        release,
+        stream: {
+          async *[Symbol.asyncIterator]() {
+            yield { event: "values" as const, data: { messages: [] } };
+            await released;
+          },
+        },
+      };
+    }
+
+    function createAbortableStream(signal: AbortSignal) {
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { event: "values" as const, data: { messages: [] } };
+          await new Promise<never>((_resolve, reject) => {
+            const abort = () => {
+              const err = new Error("The operation was aborted");
+              err.name = "AbortError";
+              reject(err);
+            };
+            if (signal.aborted) abort();
+            else signal.addEventListener("abort", abort);
+          });
+        },
+      };
+    }
+
+    function trackLoadingStarts(orch: StreamOrchestrator<TestState>) {
+      const starts = { count: 0 };
+      let wasLoading = orch.isLoading;
+      orch.subscribe(() => {
+        if (orch.isLoading && !wasLoading) starts.count += 1;
+        wasLoading = orch.isLoading;
+      });
+      return starts;
+    }
+
+    it("does not rejoin a run already joined by reconnect", async () => {
+      const { stream, release } = createControlledStream();
+      (client.runs.joinStream as ReturnType<typeof vi.fn>).mockReturnValue(
+        stream
+      );
+      const storage = {
+        getItem: vi.fn().mockReturnValue("run-1"),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      };
+      // Run metadata storage is only resolved in a browser.
+      vi.stubGlobal("window", {});
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ reconnectOnMount: () => storage }),
+        accessors
+      );
+      orch.initThreadId("t1");
+      const loadingStarts = trackLoadingStarts(orch);
+
+      expect(orch.tryReconnect()).toBe(true);
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      const secondJoin = orch.joinStream("run-1");
+      release();
+      await secondJoin;
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(orch.isLoading).toBe(false);
+      expect(loadingStarts.count).toBe(1);
+
+      orch.dispose();
+      vi.unstubAllGlobals();
+    });
+
+    it("does not join the run it is streaming from its own submit", async () => {
+      const { stream, release } = createControlledStream();
+      (client.runs.stream as ReturnType<typeof vi.fn>).mockImplementation(
+        (
+          _threadId: string,
+          _assistantId: string,
+          payload: { onRunCreated?: (params: { run_id: string }) => void }
+        ) => {
+          payload.onRunCreated?.({ run_id: "run-1" });
+          return stream;
+        }
+      );
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+      const loadingStarts = trackLoadingStarts(orch);
+
+      const submitted = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+      const join = orch.joinStream("run-1");
+      release();
+      await Promise.all([submitted, join]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      expect(orch.isLoading).toBe(false);
+      expect(loadingStarts.count).toBe(1);
+
+      orch.dispose();
+    });
+
+    it("still joins a different run after the current one", async () => {
+      const first = createControlledStream();
+      const second = createControlledStream();
+      (client.runs.joinStream as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce(first.stream)
+        .mockReturnValueOnce(second.stream);
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      const joinFirst = orch.joinStream("run-1");
+      const joinSecond = orch.joinStream("run-2");
+      first.release();
+      second.release();
+      await Promise.all([joinFirst, joinSecond]);
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(2);
+      expect(client.runs.joinStream).toHaveBeenNthCalledWith(
+        2,
+        "t1",
+        "run-2",
+        expect.anything()
+      );
+
+      orch.dispose();
+    });
+
+    it("joins a run again right after stop() aborted its stream", async () => {
+      const rejoined = createControlledStream();
+      (client.runs.joinStream as ReturnType<typeof vi.fn>)
+        .mockImplementationOnce(
+          (
+            _threadId: string,
+            _runId: string,
+            payload: { signal: AbortSignal }
+          ) => createAbortableStream(payload.signal)
+        )
+        .mockReturnValueOnce(rejoined.stream);
+
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+
+      void orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      void orch.stop();
+      const rejoin = orch.joinStream("run-1");
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledTimes(2)
+      );
+
+      const thirdJoin = orch.joinStream("run-1");
+      rejoined.release();
+      await Promise.all([rejoin, thirdJoin]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(2);
 
       orch.dispose();
     });

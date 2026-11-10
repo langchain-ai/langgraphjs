@@ -49,6 +49,15 @@ interface RunMetadataStorage {
   removeItem(key: `lg:stream:${string}`): void;
 }
 
+interface LiveRun {
+  promise: Promise<void>;
+  /**
+   * Set when the stream starts. Once `stop()`, a thread switch or an
+   * interrupt aborts it, the run is no longer live and can be joined again.
+   */
+  signal?: AbortSignal;
+}
+
 /**
  * Fetch the history of a thread.
  * @param client - The client to use.
@@ -162,6 +171,8 @@ export class StreamOrchestrator<
   #branch: string = "";
 
   #submitting = false;
+
+  #liveRuns = new Map<string, LiveRun>();
 
   #listeners = new Set<() => void>();
 
@@ -886,7 +897,9 @@ export class StreamOrchestrator<
 
   /**
    * Join an existing run's event stream by run ID. Used for reconnecting
-   * to in-progress runs or consuming queued runs.
+   * to in-progress runs or consuming queued runs. A run this orchestrator
+   * is already streaming or has queued is not joined again: the call
+   * returns that stream's promise and ignores its own options.
    *
    * @param runId - The ID of the run to join.
    * @param lastEventId - The last event ID received, for resuming mid-stream.
@@ -908,6 +921,9 @@ export class StreamOrchestrator<
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
+    const live = this.#liveRuns.get(runId);
+    if (live && !live.signal?.aborted) return live.promise;
+
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     const tid = this.#threadId;
@@ -927,8 +943,10 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
 
-    await this.stream.start(
+    const run: LiveRun = { promise: Promise.resolve() };
+    run.promise = this.stream.start(
       async (signal: AbortSignal) => {
+        run.signal = signal;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -960,6 +978,13 @@ export class StreamOrchestrator<
         isReplaying: lastEventId === "-1",
       }
     );
+
+    this.#liveRuns.set(runId, run);
+    try {
+      await run.promise;
+    } finally {
+      if (this.#liveRuns.get(runId) === run) this.#liveRuns.delete(runId);
+    }
   }
 
   /**
@@ -1015,11 +1040,12 @@ export class StreamOrchestrator<
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
+    let runId: string | undefined;
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
 
-    return this.stream.start(
+    const started = this.stream.start(
       async (signal) => {
         usableThreadId = this.#threadId;
         if (usableThreadId) {
@@ -1039,13 +1065,7 @@ export class StreamOrchestrator<
           this.#setThreadIdFromSubmit(usableThreadId);
         }
 
-        const streamMode = unique([
-          "values" as StreamMode,
-          "updates" as StreamMode,
-          ...(submitOptions?.streamMode ?? []),
-          ...this.#trackedStreamModes,
-          ...this.#callbackStreamModes,
-        ]);
+        const streamMode = this.#getRunStreamModes(submitOptions);
 
         this.stream.setStreamValues(() => {
           const prev = { ...this.historyValues, ...this.stream.values };
@@ -1093,6 +1113,8 @@ export class StreamOrchestrator<
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
             };
+            runId = params.run_id;
+            this.#liveRuns.set(runId, { promise: started, signal });
 
             if (this.#runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -1125,6 +1147,24 @@ export class StreamOrchestrator<
         },
       }
     );
+
+    return started.finally(() => {
+      if (runId && this.#liveRuns.get(runId)?.promise === started) {
+        this.#liveRuns.delete(runId);
+      }
+    });
+  }
+
+  #getRunStreamModes(
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+  ): StreamMode[] {
+    return unique([
+      "values" as StreamMode,
+      "updates" as StreamMode,
+      ...(submitOptions?.streamMode ?? []),
+      ...this.#trackedStreamModes,
+      ...this.#callbackStreamModes,
+    ]);
   }
 
   #drainQueue(): void {
@@ -1152,7 +1192,9 @@ export class StreamOrchestrator<
    * Submit input values with automatic queue management. If a stream is
    * already active, the run is enqueued (unless the multitask strategy
    * is `"interrupt"` or `"rollback"`, in which case the current run is
-   * replaced). Queued runs are drained sequentially via {@link drainQueue}.
+   * replaced). An explicit `"reject"` is forwarded to the server, which
+   * rejects the run while another is in flight. The error is reported via
+   * `onError`. Queued runs are drained sequentially via {@link drainQueue}.
    *
    * @param values - The state values to send as run input.
    * @param submitOptions - Optional configuration for the run.
@@ -1194,7 +1236,8 @@ export class StreamOrchestrator<
             interruptBefore: submitOptions?.interruptBefore,
             interruptAfter: submitOptions?.interruptAfter,
             metadata: submitOptions?.metadata,
-            multitaskStrategy: "enqueue",
+            multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
+            streamMode: this.#getRunStreamModes(submitOptions),
             streamResumable: true,
             streamSubgraphs: submitOptions?.streamSubgraphs,
             durability: submitOptions?.durability,

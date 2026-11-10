@@ -61,6 +61,7 @@ export type {
   Run,
   SearchItem,
   SearchItemsResponse,
+  ServerInfo,
   Thread,
   ThreadSelectField,
   ThreadState,

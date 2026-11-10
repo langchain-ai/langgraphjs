@@ -41,7 +41,7 @@ import type {
   InferToolOutput,
   ToolCallFromTool,
 } from "../types.messages.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 
 /** @internal Map a {@link ToolCallFromTool} message shape to {@link AssembledToolCall}. */
 type AssembledToolCallFromToolCall<

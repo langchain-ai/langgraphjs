@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EMPTY_QUEUE, type ServerQueueCapability, type SubmissionQueueSnapshot } from "./queue-adapter.js";
 import { AgentServerQueueAdapter } from "./queue-adapter-agent-server.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import type { ThreadStream } from "../client/index.js";
 
 interface State {

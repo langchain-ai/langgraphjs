@@ -1,6 +1,6 @@
 import { ToolMessage } from "@langchain/core/messages";
 import { describe, expect, it } from "vitest";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "./tool-payload.js";
 import { reconcileToolCallsFromMessages, upsertToolCall } from "./tool-calls.js";
 
 describe("reconcileToolCallsFromMessages", () => {

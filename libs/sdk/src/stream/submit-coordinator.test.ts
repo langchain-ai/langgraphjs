@@ -5,14 +5,14 @@ import {
   SubmitCoordinator,
   type SubmissionQueueSnapshot,
 } from "./submit-coordinator.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type {
   RootSnapshot,
   RunExecutionReason,
   StreamControllerOptions,
 } from "./types.js";
-import type { OptimisticHandle } from "./optimistic-input.js";
+import type { OptimisticHandle } from "../ui/optimistic-input.js";
 
 interface State {
   count?: number;

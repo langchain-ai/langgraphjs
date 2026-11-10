@@ -14,7 +14,7 @@
  */
 import type { BaseMessage } from "@langchain/core/messages";
 import type { Message } from "../types.messages.js";
-import { toMessageDict } from "../ui/messages.js";
+import { toMessageDict } from "./messages.js";
 import { ensureMessageInstances } from "./message-coercion.js";
 
 /**

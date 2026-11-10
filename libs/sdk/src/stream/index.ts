@@ -47,8 +47,8 @@ export type {
   WidenUpdateMessages,
 } from "./types-inference.js";
 
-export { StreamStore } from "./store.js";
-export type { StoreListener } from "./store.js";
+export { StreamStore } from "../ui/store.js";
+export type { StoreListener } from "../ui/store.js";
 
 export { ChannelRegistry } from "./channel-registry.js";
 
@@ -125,19 +125,13 @@ export type {
   TransportAdapter,
 } from "../client/stream/transport.js";
 
-export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
+export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 
 // Types framework bindings (React, Vue, Svelte, Angular) typically
 // need when wrapping the projection factories. Re-exported here so
 // bindings can reach them without a deep subpath import.
-export type {
-  AssembledToolCall,
-  ToolCallStatus,
-} from "../client/stream/handles/tools.js";
-export {
-  parseToolPayload,
-  parseToolOutput,
-} from "../client/stream/handles/tools.js";
+export type { AssembledToolCall, ToolCallStatus } from "../ui/tool-payload.js";
+export { parseToolPayload, parseToolOutput } from "../ui/tool-payload.js";
 
 export { MediaAssembler, MediaAssemblyError } from "../client/stream/media.js";
 
