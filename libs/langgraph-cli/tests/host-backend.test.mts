@@ -23,6 +23,7 @@ describe("HostBackendClient", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("requires a base url", () => {
@@ -112,6 +113,41 @@ describe("HostBackendClient", () => {
     const result = await client.getDeployment("dep-1");
     expect(result).toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([200, 403])("times out a stalled %s response body", async (status) => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_url, init) => {
+      signal = init.signal;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal!.addEventListener(
+              "abort",
+              () => controller.error(signal!.reason),
+              { once: true }
+            );
+          },
+        }),
+        { status }
+      );
+    });
+    const client = new HostBackendClient(BASE, "secret");
+    const result = client.getDeployment("dep-1").catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(signal?.aborted).toBe(true);
+    expect(await result).toBeInstanceOf(HostBackendError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["{}", "not JSON"])("clears the timeout after reading %s", async (body) => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValueOnce(new Response(body));
+    const client = new HostBackendClient(BASE, "secret");
+    await client.getDeployment("dep-1").catch(() => undefined);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("setTenantId updates subsequent requests", async () => {

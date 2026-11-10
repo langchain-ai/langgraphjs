@@ -154,39 +154,50 @@ export class HostBackendClient {
     for (let attempt = 0; attempt <= TRANSPORT_RETRIES; attempt += 1) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      let response: Response;
       try {
-        response = await fetch(url, { ...init, signal: controller.signal });
-      } catch (error) {
-        // Transport-level error (network, DNS, timeout). Retry a few times.
-        lastError = error;
-        if (attempt < TRANSPORT_RETRIES) continue;
-        throw new HostBackendError(
-          error instanceof Error ? error.message : String(error)
-        );
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if (!response.ok) {
-        const detail =
-          (await response.text().catch(() => "")) || String(response.status);
-        throw new HostBackendError(
-          `${method} ${path} failed with status ${response.status}: ${detail}`,
-          response.status
-        );
-      }
-
-      const text = await response.text();
-      if (!text) return undefined as T;
-      try {
-        return JSON.parse(text) as T;
-      } catch (error) {
-        throw new HostBackendError(
-          `Failed to decode response from ${path}: ${
+        let response: Response;
+        try {
+          response = await fetch(url, { ...init, signal: controller.signal });
+        } catch (error) {
+          // Only retry failures before receiving a response. Reading the body
+          // can fail after a deployment mutation has already been committed.
+          lastError = error;
+          if (attempt < TRANSPORT_RETRIES) continue;
+          throw new HostBackendError(
             error instanceof Error ? error.message : String(error)
-          }`
-        );
+          );
+        }
+
+        if (!response.ok) {
+          const detail =
+            (await response.text().catch(() => "")) || String(response.status);
+          throw new HostBackendError(
+            `${method} ${path} failed with status ${response.status}: ${detail}`,
+            response.status
+          );
+        }
+
+        let text: string;
+        try {
+          text = await response.text();
+        } catch (error) {
+          throw new HostBackendError(
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+        if (!text) return undefined as T;
+        try {
+          return JSON.parse(text) as T;
+        } catch (error) {
+          throw new HostBackendError(
+            `Failed to decode response from ${path}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      } finally {
+        // fetch resolves at the headers; keep the deadline through body reads.
+        clearTimeout(timeout);
       }
     }
 
