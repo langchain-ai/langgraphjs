@@ -447,6 +447,7 @@ export class BaseClient {
     fallbackReconnectPath?: StreamWithRetryOptions["fallbackReconnectPath"];
     onInitialResponse?: (response: Response) => void | Promise<void>;
     onEvent?: (event: T) => void;
+    keep?: (event: T) => boolean;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
@@ -555,7 +556,7 @@ export class BaseClient {
       isRunActive,
     })) {
       if (part.event === "end" || part.event === "error") runEnded = true;
-      if (!isSSEControlPart(part)) {
+      if (!isSSEControlPart(part) && (config.keep?.(part) ?? true)) {
         config.onEvent?.(part);
         yield part.id === "" ? { ...part, id: undefined } : part;
       }

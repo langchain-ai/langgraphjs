@@ -23,6 +23,7 @@ import {
   getRunMetadataFromResponse,
   encodePathSegment,
 } from "../base.js";
+import { inNamespaces } from "./namespaces.js";
 
 export class RunsClient<
   TStateType = DefaultValues,
@@ -130,6 +131,7 @@ export class RunsClient<
       onReconnect: payload?.onReconnect,
       onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
+      keep: inNamespaces(payload?.streamNamespaces),
       // A run's join route is its `Content-Location` plus `/stream` on every
       // server, threadless runs included. Only a resumable run's events are
       // kept for a rejoin, so another run fails on a drop rather than skip
@@ -485,7 +487,7 @@ export class RunsClient<
           /**
            * Stream only these namespaces of the run (`""` is the root graph), each
            * without the subagents it starts. Servers without the `stream_namespaces`
-           * flag in `/info` ignore it and send every event.
+           * flag in `/info` send every event, and the client drops the others.
            */
           streamNamespaces?: string[];
           /**
@@ -537,6 +539,7 @@ export class RunsClient<
         namespace: opts?.streamNamespaces,
         checkpoint_id: opts?.checkpointId,
       },
+      keep: inNamespaces(opts?.streamNamespaces),
     });
   }
 

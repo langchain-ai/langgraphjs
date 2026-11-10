@@ -37,6 +37,13 @@ import type { SubagentStreamInterface } from "./types.js";
  */
 export const REMOVE_ALL_MESSAGES = "__remove_all__";
 
+const TOOL_EVENT_KINDS = new Set<string>([
+  "on_tool_start",
+  "on_tool_event",
+  "on_tool_end",
+  "on_tool_error",
+]);
+
 type GetUpdateType<
   Bag extends BagTemplate,
   StateType extends Record<string, unknown>,
@@ -852,7 +859,11 @@ export class StreamManager<
           options.callbacks.onDebugEvent?.(data, { namespace });
         }
 
-        if (this.matchEventType("tools", event, data)) {
+        // Older queue workers forward langgraph's own `tool-*` payloads.
+        if (
+          this.matchEventType("tools", event, data) &&
+          TOOL_EVENT_KINDS.has(data?.event)
+        ) {
           options.callbacks.onToolEvent?.(data, { namespace, mutate });
         }
 

@@ -207,7 +207,7 @@ export interface RunsStreamPayload<
   /**
    * Stream only these namespaces of the run (`""` is the root graph), each
    * without the subagents it starts. Servers without the `stream_namespaces`
-   * flag in `/info` ignore it and send every event.
+   * flag in `/info` send every event, and the client drops the others.
    */
   streamNamespaces?: string[];
 
