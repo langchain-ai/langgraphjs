@@ -63,8 +63,8 @@ import {
 } from "./queue-adapter.js";
 import { AgentServerQueueAdapter } from "./queue-adapter-agent-server.js";
 import { LocalQueueAdapter } from "./queue-adapter-local.js";
-import { StreamStore } from "./store.js";
-import type { OptimisticHandle } from "./optimistic-input.js";
+import { StreamStore } from "../ui/store.js";
+import type { OptimisticHandle } from "../ui/optimistic-input.js";
 import { unknownInterruptError, type StrictResumeRefusal } from "./refusal.js";
 import type {
   RootSnapshot,

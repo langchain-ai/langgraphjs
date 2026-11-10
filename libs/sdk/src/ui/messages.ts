@@ -10,11 +10,11 @@ import {
 
 import type { Message } from "../types.messages.js";
 import type { ThreadState } from "../schema.js";
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import {
   normalizeAIMessageToolCalls,
   tryCoerceMessageLikeToMessage,
-} from "../stream/message-coercion.js";
+} from "./message-coercion.js";
 
 export { tryCoerceMessageLikeToMessage };
 

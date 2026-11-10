@@ -1,10 +1,10 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import {
   DISCOVERY_HISTORY_SELECT,
   mapSubagentNamespaces,
-} from "../stream/discovery/namespace-from-history.js";
+} from "./namespace-from-history.js";
 import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,

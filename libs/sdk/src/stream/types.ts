@@ -13,7 +13,7 @@ import type {
   ThreadStream,
   ThreadStreamOptions,
 } from "../client/stream/index.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 import type {
   AgentServerAdapter,
   TransportAdapter,
@@ -25,8 +25,8 @@ import type {
   OnToolCallback,
 } from "../headless-tools.js";
 import type { Channel, Event, Goto } from "@langchain/protocol";
-import { DEFAULT_MESSAGES_KEY } from "./constants.js";
-import type { StreamStore } from "./store.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import type { StreamStore } from "../ui/store.js";
 
 export {
   DEFAULT_IDLE_RECONNECT,

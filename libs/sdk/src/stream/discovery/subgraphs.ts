@@ -42,13 +42,13 @@
  * of milliseconds.
  */
 import type { Event, LifecycleEvent, ValuesEvent } from "@langchain/protocol";
-import { StreamStore } from "../store.js";
+import { StreamStore } from "../../ui/store.js";
 import type { SubgraphDiscoverySnapshot } from "../types.js";
 import {
   isInternalWorkNamespace,
   isRootNamespace,
   namespaceKey,
-} from "../namespace.js";
+} from "../../ui/namespace.js";
 
 export type SubgraphMap = ReadonlyMap<string, SubgraphDiscoverySnapshot>;
 export type SubgraphByNodeMap = ReadonlyMap<

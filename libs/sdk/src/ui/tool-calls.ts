@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { ToolMessage } from "@langchain/core/messages";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
-import { parseToolOutput } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "./tool-payload.js";
+import { parseToolOutput } from "./tool-payload.js";
 
 /**
  * Insert or replace an assembled tool call by call id.

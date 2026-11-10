@@ -15,17 +15,17 @@
  * `select: ["checkpoint", "tasks"]`. Subgraph host detection ports the
  * strict-prefix promotion rule in {@link ./subgraphs}.
  */
-import type { Client } from "../../client/index.js";
+import type { Client } from "../client/index.js";
 import type {
   Checkpoint,
   Config,
   Metadata,
   ThreadState,
   ThreadStateSelectField,
-} from "../../schema.js";
-import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "../constants.js";
-import { namespaceKey } from "../namespace.js";
-import { normalizeAIMessageToolCalls } from "../message-coercion.js";
+} from "../schema.js";
+import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
+import { namespaceKey } from "./namespace.js";
+import { normalizeAIMessageToolCalls } from "./message-coercion.js";
 
 type AnyCheckpoint = ThreadState<Record<string, unknown>>;
 
