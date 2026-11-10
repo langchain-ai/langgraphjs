@@ -121,9 +121,9 @@ export type IndexConfig = {
   modality?: string;
   /**
    * Additional filter fields to declare in the vector search index, as `value.<field>`.
-   * Search filters on declared fields run inside $vectorSearch. Others run as a $match over a
-   * widened candidate window (up to 10000 hits), so they are best-effort; declare fields here
-   * for exact filtered results.
+   * Search filters on declared fields run inside $vectorSearch. Others run as a $match
+   * afterwards, re-querying with a wider window until the page fills; Atlas caps that
+   * window at 10000 hits, so declare fields here for exact results on large collections.
    */
   filters?: string[];
 };
@@ -711,18 +711,7 @@ export class MongoDBStore extends BaseStore {
       (indexedFields.has(field) ? preFilter : postFilter)[field] = condition;
     }
     const vectorSearchStage: Record<string, any> = {
-      $vectorSearch: {
-        index: this.indexConfig!.name,
-        path,
-        // numCandidates should be 10-20x limit for good recall, capped at 10000.
-        // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
-        numCandidates: Object.keys(postFilter).length > 0
-          ? 10000
-          : Math.min((limit + offset) * 20, 10000),
-        limit: Object.keys(postFilter).length > 0
-          ? Math.min(Math.max((limit + offset) * 20, limit + offset), 10000)
-          : limit + offset,
-      },
+      $vectorSearch: { index: this.indexConfig!.name, path },
     };
 
     if (this.embeddings) {
@@ -741,10 +730,7 @@ export class MongoDBStore extends BaseStore {
       vectorSearchStage.$vectorSearch.filter = preFilter;
     }
 
-    const pipeline: Record<string, any>[] = [
-      vectorSearchStage,
-      { $addFields: { score: { $meta: "vectorSearchScore" } } },
-    ];
+    const pagePipeline: Record<string, any>[] = [];
 
     // The namespacePath filter above can match other namespaces, since
     // ["team/alice"] and ["team", "alice"] both store "team/alice".
@@ -754,26 +740,50 @@ export class MongoDBStore extends BaseStore {
       namespacePrefix.forEach((label, idx) => {
         namespaceMatch[`namespace.${idx}`] = { $eq: label };
       });
-      pipeline.push({ $match: namespaceMatch });
+      pagePipeline.push({ $match: namespaceMatch });
     }
     if (Object.keys(postFilter).length > 0) {
-      pipeline.push({ $match: postFilter });
+      pagePipeline.push({ $match: postFilter });
     }
 
     // Strip the embedding field from manual mode results (vectors can be large)
     if (this.embeddings) {
-      pipeline.push({ $project: { [path]: 0 } });
+      pagePipeline.push({ $project: { [path]: 0 } });
     }
 
     if (offset > 0) {
-      pipeline.push({ $skip: offset });
+      pagePipeline.push({ $skip: offset });
     }
-    pipeline.push({ $limit: limit });
+    pagePipeline.push({ $limit: limit });
 
-    const docs = await this.db
-      .collection(this.collectionName)
-      .aggregate(pipeline)
-      .toArray();
+    // Matches after $vectorSearch drop hits from its capped window, so widen
+    // the window until the page is full or the index has no more hits.
+    const maxWindow = 10000;
+    let window = Math.min(limit + offset, maxWindow);
+    let docs: Record<string, any>[] = [];
+    for (;;) {
+      // numCandidates should be 10-20x limit for good recall, capped at 10000.
+      // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
+      vectorSearchStage.$vectorSearch.numCandidates = Math.min(
+        window * 20,
+        maxWindow
+      );
+      vectorSearchStage.$vectorSearch.limit = window;
+      const [result] = await this.db
+        .collection(this.collectionName)
+        .aggregate([
+          vectorSearchStage,
+          { $addFields: { score: { $meta: "vectorSearchScore" } } },
+          { $facet: { hits: [{ $count: "n" }], page: pagePipeline } },
+        ])
+        .toArray();
+      docs = result?.page ?? [];
+      const hits = result?.hits?.[0]?.n ?? 0;
+      if (docs.length >= limit || hits < window || window >= maxWindow) {
+        break;
+      }
+      window = Math.min(window * 4, maxWindow);
+    }
 
     return docs.map((doc) => ({
       value: doc.value,
