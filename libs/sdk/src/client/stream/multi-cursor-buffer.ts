@@ -29,21 +29,35 @@ export class MultiCursorBuffer<T> implements AsyncIterable<T> {
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
     let cursor = 0;
+    let finished = false;
+    const pending = new Set<() => void>();
     return {
       next: async (): Promise<IteratorResult<T>> => {
         while (true) {
+          if (finished) return { done: true, value: undefined };
           if (cursor < this.#items.length) {
             return { done: false, value: this.#items[cursor++] };
           }
           if (this.#closed) {
+            finished = true;
             return { done: true, value: undefined };
           }
           await new Promise<void>((resolve) => {
-            this.#wakeups.add(resolve);
+            const wake = () => {
+              this.#wakeups.delete(wake);
+              pending.delete(wake);
+              resolve();
+            };
+            pending.add(wake);
+            this.#wakeups.add(wake);
           });
         }
       },
-      return: async () => ({ done: true, value: undefined }),
+      return: async () => {
+        finished = true;
+        for (const wake of pending) wake();
+        return { done: true, value: undefined };
+      },
     };
   }
 }
