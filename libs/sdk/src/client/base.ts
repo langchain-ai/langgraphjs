@@ -11,6 +11,7 @@ import {
   streamWithRetry,
   idleReconnectStream,
   type IdleReconnectMode,
+  type StreamWithRetryOptions,
   StreamRequestParams,
   DEFAULT_IDLE_RECONNECT,
 } from "../utils/stream.js";
@@ -440,11 +441,9 @@ export class BaseClient {
     json?: unknown;
     maxRetries?: number;
     idleReconnect?: IdleReconnectMode;
-    onReconnect?: (options: {
-      attempt: number;
-      lastEventId?: string;
-      cause: unknown;
-    }) => void;
+    reconnectDelayMs?: StreamWithRetryOptions["reconnectDelayMs"];
+    onReconnect?: StreamWithRetryOptions["onReconnect"];
+    onConnected?: StreamWithRetryOptions["onConnected"];
     onInitialResponse?: (response: Response) => void | Promise<void>;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
@@ -546,8 +545,10 @@ export class BaseClient {
 
     for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
+      reconnectDelayMs: config.reconnectDelayMs,
       signal: config.signal,
       onReconnect: config.onReconnect,
+      onConnected: config.onConnected,
       isRunActive,
     })) {
       if (part.event === "end" || part.event === "error") runEnded = true;
