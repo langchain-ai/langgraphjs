@@ -249,8 +249,10 @@ export type StreamOrchestratorOptions<
     queue?: "server" | "local";
 
     /**
-     * Show a submit's input at once: its messages, with ids minted for the
-     * ones without, and its other keys. The run's `values` then replace them.
+     * Show a submit's input at once, unless this is `false`: its messages,
+     * with ids minted for the ones without, and its other keys. The run's
+     * `values` then replace them. A submit with its own `optimisticValues`
+     * shows only those.
      */
     optimistic?: boolean;
   };
@@ -1366,7 +1368,8 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
     const optimistic =
-      this.#options.optimistic &&
+      this.#options.optimistic !== false &&
+      submitOptions?.optimisticValues == null &&
       values != null &&
       typeof values === "object" &&
       !Array.isArray(values)

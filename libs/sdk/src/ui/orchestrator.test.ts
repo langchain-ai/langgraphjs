@@ -3048,7 +3048,7 @@ describe("StreamOrchestrator runs", () => {
 
       ended.resolve();
       await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalledTimes(2));
-      expect(streamInput(1)).toEqual({ messages: [message("second")] });
+      expect(streamInput(1)).toMatchObject({ messages: [message("second")] });
       expect(orch.queueSize).toBe(0);
       orch.dispose();
     });
@@ -3091,9 +3091,9 @@ describe("StreamOrchestrator runs", () => {
     });
   });
 
-  it("optimistic shows the input at once and sends the ids it minted", async () => {
+  it("shows a submit's input at once and sends the ids it minted", async () => {
     mockRunStream(undefined, { created: new Promise(() => {}) });
-    const orch = orchestrator({ optimistic: true });
+    const orch = orchestrator();
     orch.initThreadId("t1");
     await orch.hydrationPromise;
 
@@ -3106,6 +3106,41 @@ describe("StreamOrchestrator runs", () => {
     expect(streamInput().messages).toEqual([
       expect.objectContaining({ type: "human", content: "hi", id: shown.id }),
     ]);
+    orch.dispose();
+  });
+
+  it("a submit with its own optimisticValues shows only those and sends its input as it is", async () => {
+    mockRunStream(undefined, { created: new Promise(() => {}) });
+    const orch = orchestrator();
+    orch.initThreadId("t1");
+    await orch.hydrationPromise;
+    const input = { type: "human", content: "hi" };
+
+    void orch.submit({ messages: [input] } as never, {
+      optimisticValues: (prev: TestState) => ({
+        ...prev,
+        messages: [...(prev.messages ?? []), input],
+      }),
+    } as never);
+    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+    expect(orch.messages).toHaveLength(1);
+    expect(streamInput().messages).toEqual([input]);
+    orch.dispose();
+  });
+
+  it("with optimistic false, sends the input as it is and shows nothing early", async () => {
+    mockRunStream(undefined, { created: new Promise(() => {}) });
+    const orch = orchestrator({ optimistic: false });
+    orch.initThreadId("t1");
+    await orch.hydrationPromise;
+    const input = { type: "human", content: "hi" };
+
+    void orch.submit({ messages: [input] } as never);
+    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+    expect(orch.messages).toHaveLength(0);
+    expect(streamInput().messages).toEqual([input]);
     orch.dispose();
   });
 
