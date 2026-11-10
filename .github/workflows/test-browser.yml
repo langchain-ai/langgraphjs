@@ -84,16 +84,15 @@ jobs:
       - uses: ./.github/actions/setup-and-build
         with:
           artifact-name: ${{ inputs.artifact-name }}
-      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Start the Python dev server
         working-directory: libs/sdk/src/react/tests/python
         run: |
-          uvx --from "langgraph-cli[inmem]" \
-            --with langgraph-api==0.19.0.dev6 \
-            --with langgraph-runtime-inmem==0.39.0.dev6 \
-            --with deepagents \
-            langgraph dev --port 2124 --host 127.0.0.1 --no-browser --no-reload \
-            --n-jobs-per-worker 10 > "$RUNNER_TEMP/server.log" 2>&1 &
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet "langgraph-cli[inmem]" \
+            langgraph-api==0.19.0.dev6 langgraph-runtime-inmem==0.39.0.dev6 deepagents
+          "$RUNNER_TEMP/venv/bin/langgraph" dev --port 2124 --host 127.0.0.1 \
+            --no-browser --no-reload --n-jobs-per-worker 10 \
+            > "$RUNNER_TEMP/server.log" 2>&1 &
           for _ in $(seq 60); do
             curl -sf "$LANGGRAPH_SERVER_URL/ok" > /dev/null && exit 0
             sleep 1
