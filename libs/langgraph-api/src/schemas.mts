@@ -192,6 +192,7 @@ export const RunCreate = z
     checkpoint: CheckpointSchema.optional(),
     input: z.union([z.unknown(), z.null()]).optional(),
     command: CommandSchema.optional(),
+    strict_resume: z.boolean().optional(),
     metadata: z
       .object({})
       .catchall(z.any())
@@ -223,6 +224,7 @@ export const RunCreate = z
             "debug",
             "custom",
             "tools",
+            "lifecycle",
           ])
         ),
         z.enum([
@@ -236,6 +238,7 @@ export const RunCreate = z
           "debug",
           "custom",
           "tools",
+          "lifecycle",
         ]),
       ])
       .optional(),
@@ -481,9 +484,28 @@ export const ThreadStateUpdate = z
   })
   .describe("Payload for adding state to a thread.");
 
+export const ThreadStateSelectField = z.union([
+  z.enum([
+    "values",
+    "next",
+    "tasks",
+    "checkpoint",
+    "metadata",
+    "created_at",
+    "parent_checkpoint",
+    "interrupts",
+  ]),
+  z.string().regex(/^values\.[A-Za-z0-9_-]+$/),
+]);
+
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
-  before: z.string().optional(),
+  before: z
+    .union([Config, z.string()])
+    .describe(
+      "Return states before this checkpoint config. A checkpoint ID string is deprecated and will be removed in 2.0.0."
+    )
+    .optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   checkpoint: z
     .object({
@@ -492,6 +514,7 @@ export const ThreadHistoryRequest = z.object({
       checkpoint_map: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
+  select: z.array(ThreadStateSelectField).optional(),
 });
 
 export const ThreadPatchRequest = z.object({
@@ -540,4 +563,22 @@ export const StoreGetItem = z.object({
 export const coercedBoolean = z.string().transform((val) => {
   const lower = val.toLowerCase();
   return lower === "true" || lower === "1" || lower === "yes";
+});
+
+// JS SDKs before 1.12 send several stream modes as one JSON array.
+const parseStreamMode = (value: string): string[] => {
+  if (!value.startsWith("[")) return value ? [value] : [];
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [value];
+  }
+};
+
+export const JoinStreamQuery = z.object({
+  cancel_on_disconnect: coercedBoolean.optional(),
+  stream_mode: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value) => [value ?? []].flat().flatMap(parseStreamMode)),
 });

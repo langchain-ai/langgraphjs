@@ -60,7 +60,8 @@ export type StreamMode =
   | "debug"
   | "tasks"
   | "checkpoints"
-  | "tools";
+  | "tools"
+  | "lifecycle";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
@@ -123,6 +124,7 @@ export interface RunKwargs {
   resumable?: boolean;
 
   temporary?: boolean;
+  strict_resume?: boolean;
 
   // TODO: implement webhook
   webhook?: unknown;
@@ -154,7 +156,7 @@ export interface Store {
 }
 
 export interface Message {
-  topic: `run:${string}:stream:${string}`;
+  topic: `run:${string}:stream:${string}` | `run:${string}:control`;
   data: unknown;
   /**
    * Marks payloads that have already been converted to their protocol
@@ -302,6 +304,7 @@ export interface RunsStreamRepo {
       signal?: AbortSignal;
       cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
+      checkRunAccess?: boolean;
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;

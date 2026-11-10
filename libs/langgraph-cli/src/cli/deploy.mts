@@ -37,7 +37,7 @@ import {
   type Secret,
 } from "./utils/host-backend.mjs";
 import { Emitter, Spinner } from "./utils/deploy-output.mjs";
-import { createArchive, BYTES_PER_MIB } from "./utils/archive.mjs";
+import { createArchive, BYTES_PER_MIB, MAX_SIZE } from "./utils/archive.mjs";
 import {
   API_KEY_ENV_NAMES,
   DEFAULT_HOST_URL,
@@ -738,10 +738,24 @@ async function resolvePushedImageDigest(
 /** Chunk size used when streaming the source archive upload (1 MiB). */
 const UPLOAD_CHUNK_SIZE = 1024 * 1024;
 
-async function uploadToGcs(
+/** Byte range Cloud Storage signs into upload URLs, up to the archive limit. */
+const GCS_SIZE_RANGE = `0,${MAX_SIZE}`;
+
+/** The string-valued entries of a control plane's `upload_headers`. */
+function uploadHeadersFrom(value: unknown): Record<string, string> {
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
+}
+
+async function uploadSourceTarball(
   signedUrl: string,
   filePath: string,
-  fileSize: number
+  fileSize: number,
+  uploadHeaders: Record<string, string>
 ): Promise<void> {
   const sizeMb = fileSize / BYTES_PER_MIB;
   const handle = await fs.open(filePath, "r");
@@ -785,15 +799,22 @@ async function uploadToGcs(
     },
   });
 
+  // Control planes that return no `upload_headers` sign for the Cloud Storage
+  // size range. Content-Type is a fallback, so both CLIs send one even when the
+  // control plane leaves it out.
+  const headers = new Headers({ "Content-Type": "application/gzip" });
+  const required = Object.keys(uploadHeaders).length
+    ? uploadHeaders
+    : { "X-Goog-Content-Length-Range": GCS_SIZE_RANGE };
+  for (const [name, value] of Object.entries(required))
+    headers.set(name, value);
+  headers.set("Content-Length", String(fileSize));
+
   try {
     // `duplex: "half"` is required by undici when sending a streaming body.
     const response = await fetch(signedUrl, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/gzip",
-        "Content-Length": String(fileSize),
-        "X-Goog-Content-Length-Range": "0,209715200",
-      },
+      headers,
       body,
       duplex: "half",
     } as RequestInit & { duplex: "half" });
@@ -1074,7 +1095,12 @@ async function runRemoteBuild(args: RemoteBuildArgs): Promise<BuildResult> {
     step += 1;
 
     emitter.step(step, "Uploading source");
-    await uploadToGcs(signedUrl, archive.archivePath, archive.fileSize);
+    await uploadSourceTarball(
+      signedUrl,
+      archive.archivePath,
+      archive.fileSize,
+      uploadHeadersFrom(uploadData.upload_headers)
+    );
     step += 1;
 
     emitter.step(step, "Triggering remote build");

@@ -11,6 +11,7 @@ vi.mock("../src/cli/utils/analytics.mjs", () => ({
 }));
 vi.mock("../src/cli/utils/archive.mjs", () => ({
   BYTES_PER_MIB: 1024 * 1024,
+  MAX_SIZE: 200 * 1024 * 1024,
   createArchive: async (configPath: string) => ({
     archivePath: configPath,
     fileSize: 0,
@@ -67,7 +68,44 @@ async function run(...args: string[]) {
   });
 }
 
-it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
+// `sent` is the upload's headers apart from Content-Length.
+const GCS_DEFAULTS = {
+  "content-type": "application/gzip",
+  "x-goog-content-length-range": "0,209715200",
+};
+const AGENT_DEPLOYS = [
+  {
+    label: "new deployment, returned headers",
+    existing: false,
+    uploadHeaders: {
+      "Content-Type": "application/x-gzip",
+      "x-ms-blob-type": "BlockBlob",
+      "content-length": "1",
+    } as unknown,
+    sent: { "content-type": "application/x-gzip", "x-ms-blob-type": "BlockBlob" },
+  },
+  {
+    label: "existing deployment, no returned headers",
+    existing: true,
+    uploadHeaders: undefined as unknown,
+    sent: GCS_DEFAULTS,
+  },
+  {
+    label: "returned headers without a Content-Type",
+    existing: true,
+    uploadHeaders: { "x-ms-blob-type": "BlockBlob" } as unknown,
+    sent: { "content-type": "application/gzip", "x-ms-blob-type": "BlockBlob" },
+  },
+  {
+    label: "malformed returned headers",
+    existing: true,
+    uploadHeaders: ["x-ms-blob-type", "BlockBlob"] as unknown,
+    sent: GCS_DEFAULTS,
+  },
+];
+
+it.each(AGENT_DEPLOYS)("deploys by agent ($label)", async (c) => {
+  const { existing, uploadHeaders, sent } = c;
   fetchMock.mockResolvedValueOnce(
     json({
       resources: existing
@@ -80,7 +118,11 @@ it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
       json({ id: "dep-1", name: "generated-name" })
     );
   fetchMock.mockResolvedValueOnce(
-    json({ upload_url: "https://upload.example/source", object_path: "source" })
+    json({
+      upload_url: "https://upload.example/source",
+      object_path: "source",
+      upload_headers: uploadHeaders,
+    })
   );
   fetchMock.mockImplementationOnce(async (_url, init) => {
     await new Response(init.body).arrayBuffer();
@@ -110,6 +152,13 @@ it.each([false, true])("deploys by agent (existing: %s)", async (existing) => {
       secrets: [],
     });
   }
+  const [, upload] = fetchMock.mock.calls.find(
+    ([url]) => url === "https://upload.example/source"
+  )!;
+  expect(Object.fromEntries(new Headers(upload.headers))).toEqual({
+    ...sent,
+    "content-length": "0",
+  });
   const [updateUrl, update] = fetchMock.mock.calls.at(-1)!;
   expect(new URL(updateUrl).pathname).toBe("/v2/deployments/dep-1");
   expect(update.method).toBe("PATCH");

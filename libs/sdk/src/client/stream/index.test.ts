@@ -301,6 +301,33 @@ describe("ThreadStream", () => {
     expect(params.config?.configurable).not.toHaveProperty("checkpoint_id");
   });
 
+  it.each([
+    [
+      "run.start",
+      (thread: ThreadStream) =>
+        thread.run.start({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+    [
+      "submitRun",
+      (thread: ThreadStream) =>
+        thread.submitRun({ input: {}, multitaskStrategy: "interrupt" }),
+    ],
+  ] as const)(
+    "%s sends the multitask strategy under both names",
+    async (_name, start) => {
+      const transport = new MockTransport();
+      const thread = new ThreadStream(transport, { assistantId: "agent" });
+
+      await start(thread);
+
+      const cmd = transport.sentCommands.find((c) => c.method === "run.start");
+      expect(cmd?.params).toMatchObject({
+        multitask_strategy: "interrupt",
+        multitaskStrategy: "interrupt",
+      });
+    }
+  );
+
   it("closes thread cleanly", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });
@@ -347,6 +374,54 @@ describe("ThreadStream", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ status: 404 });
 
+    await thread.close();
+  });
+
+  it("reopens the WebSocket lifecycle watcher after the event stream failed", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(watcherSubscribes()).toBe(1);
+
+    transport.failEvents(new Error("Protocol WebSocket closed"));
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(2);
+    await thread.close();
+  });
+
+  it("keeps one WebSocket lifecycle watcher across a run's terminal", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        { event: "completed" },
+        { namespace: [], seq: 1, eventId: "terminal-1" }
+      )
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(1);
     await thread.close();
   });
 
@@ -1652,6 +1727,21 @@ describe("interrupts", () => {
 
     expect(thread.interrupts).toHaveLength(1);
     expect(thread.interrupts[0].interruptId).toBe("int_2");
+  });
+
+  it("respondInput sends strict_resume only when asked", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const answer = { namespace: [], interrupt_id: "int_1", response: "yes" };
+
+    await thread.respondInput(answer, { strictResume: true });
+    await thread.respondInput(answer);
+
+    expect(
+      transport.sentCommands
+        .filter((c) => c.method === "input.respond")
+        .map((c) => (c.params as { strict_resume?: boolean }).strict_resume)
+    ).toEqual([true, undefined]);
   });
 
   it("run.start resets interrupted state", async () => {

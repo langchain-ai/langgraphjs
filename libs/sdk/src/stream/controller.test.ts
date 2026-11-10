@@ -1,9 +1,9 @@
 import type { Event } from "@langchain/protocol";
+import { isUnknownInterruptError } from "./index.js";
 import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
-import { messagesProjection } from "./projections/messages.js";
 import { toolCallsProjection } from "./projections/tool-calls.js";
 import type { ThreadStream } from "../client/stream/index.js";
 
@@ -951,7 +951,7 @@ describe("StreamController", () => {
         interrupt_id: "nested-int",
         namespace: nestedNs,
         response: { approved: true },
-      })
+      }), { strictResume: undefined }
     );
 
     await controller.dispose();
@@ -1430,6 +1430,330 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  describe("when a command reports applied_through_seq 0", () => {
+    // The agent server answers HTTP commands from a fresh per-request
+    // manager, so `meta.applied_through_seq` is 0 while the thread stream
+    // replays the whole history with positive seqs. The barrier is found on
+    // the stream instead: the `running` event of the command's run, whose
+    // `synth:<run_id>:` id names it. The tape below follows a real reload:
+    // rounds 1 and 2 resolved five interrupts, then round 3 starts.
+    const input = (runId: string, id: string, seq: number): Event =>
+      ({
+        type: "event",
+        event_id: `synth:${runId}:input||${id}`,
+        seq,
+        method: "input.requested",
+        params: {
+          namespace: [],
+          timestamp: 0,
+          data: { interrupt_id: id, payload: { prompt: id } },
+        },
+      }) as Event;
+    const lifecycle = (runId: string, status: string, seq: number): Event =>
+      ({
+        type: "event",
+        event_id: `synth:${runId}:lc||${status}`,
+        seq,
+        method: "lifecycle",
+        params: { namespace: [], timestamp: 0, data: { event: status } },
+      }) as Event;
+    const historyBeforeReload = [
+      lifecycle("run-1", "running", 1),
+      input("run-1", "r1-a", 4),
+      lifecycle("run-1", "interrupted", 5),
+      input("run-1", "r1-b", 7),
+      lifecycle("run-1-resume", "running", 9),
+      lifecycle("run-1-resume", "completed", 11),
+      lifecycle("run-2", "running", 12),
+      input("run-2", "r2-a", 15),
+      lifecycle("run-2", "interrupted", 16),
+      input("run-2", "r2-b", 18),
+      input("run-2", "r2-c", 20),
+      // Resolving r2-a re-raises the two still-open ones under the resumed run.
+      lifecycle("run-2-resume", "running", 21),
+      input("run-2-resume", "r2-b", 24),
+      lifecycle("run-2-resume", "interrupted", 25),
+      input("run-2-resume", "r2-c", 27),
+      lifecycle("run-2-final", "running", 29),
+      lifecycle("run-2-final", "completed", 31),
+    ];
+    const round3 = [
+      lifecycle("run-3", "running", 32),
+      input("run-3", "r3-a", 35),
+      lifecycle("run-3", "interrupted", 36),
+      input("run-3", "r3-b", 38),
+    ];
+
+    function zeroBarrierFixture(options: {
+      states: Array<Record<string, unknown>>;
+      threadInterrupts?: unknown[];
+      /** Hold `run.start`'s response until the test releases it. */
+      holdRunStart?: boolean;
+    }) {
+      let releaseRunStart: (() => void) | undefined;
+      const eventListeners = new Set<(event: Event) => void>();
+      const emit = (...events: Event[]) => {
+        for (const event of events) {
+          for (const listener of eventListeners) listener(event);
+        }
+      };
+      const ordering: ThreadStream["ordering"] = {};
+      const thread = {
+        subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+        onError: vi.fn(() => vi.fn()),
+        onEvent: vi.fn((listener: (event: Event) => void) => {
+          eventListeners.add(listener);
+          return vi.fn(() => {
+            eventListeners.delete(listener);
+          });
+        }),
+        close: vi.fn(async () => undefined),
+        interrupts: options.threadInterrupts ?? [],
+        ordering,
+        submitRun: vi.fn(async () => {
+          if (options.holdRunStart) {
+            await new Promise<void>((resolve) => {
+              releaseRunStart = resolve;
+            });
+          }
+          ordering.lastAppliedThroughSeq = 0;
+          return { run_id: "run-3" };
+        }),
+        respondInput: vi.fn(async () => {
+          ordering.lastAppliedThroughSeq = 0;
+        }),
+        startLifecycleWatcher: vi.fn(() => undefined),
+      } as unknown as ThreadStream;
+      let calls = 0;
+      const getState = vi.fn(
+        async () =>
+          options.states[Math.min(calls++, options.states.length - 1)]
+      );
+      const client = { threads: { getState, stream: vi.fn(() => thread) } };
+      const onCreated = vi.fn();
+      const controller = new StreamController<State, unknown>({
+        assistantId: "interrupt_test",
+        client: client as never,
+        threadId: "thread-reloaded",
+        onCreated,
+      });
+      const ids = () =>
+        controller.rootStore.getSnapshot().interrupts.map((i) => i.id);
+      // Every id the store ever showed, so a brief flash fails the test too.
+      const shown = new Set<string>();
+      controller.rootStore.subscribe(() => {
+        for (const id of ids()) if (id != null) shown.add(id);
+      });
+      return {
+        controller,
+        thread,
+        onCreated,
+        emit,
+        ids,
+        shown,
+        releaseRunStart: () => releaseRunStart?.(),
+        runStartHeld: () => releaseRunStart != null,
+      };
+    }
+
+    const idle = { values: {}, next: [], tasks: [] };
+    const pendingOn = (...ids: string[]) => ({
+      values: {},
+      next: ids.map(() => "ask"),
+      tasks: ids.map((id) => ({ interrupts: [{ id, value: {} }] })),
+    });
+    const stale = ["r1-a", "r1-b", "r2-a", "r2-b", "r2-c"];
+
+    it("drops interrupts replayed from earlier runs after submit", async () => {
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: [idle],
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // The reloaded page subscribes after run.start returns, so the whole
+      // history replays ahead of the new run's events.
+      emit(...historyBeforeReload, ...round3);
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("finds the barrier when the run pauses before run.start returns", async () => {
+      // A thread the server may still be running (no `next`) keeps the
+      // stream open across submit, so events can beat run.start's response.
+      const fixture = zeroBarrierFixture({
+        states: [{ values: {}, tasks: [] }],
+        holdRunStart: true,
+      });
+      const { controller, onCreated, emit, ids, shown } = fixture;
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(fixture.runStartHeld()).toBe(true));
+
+      // The whole replay and the new run's pause arrive while run.start is
+      // still in flight; nothing can be classified until it names the run.
+      emit(...historyBeforeReload, ...round3);
+      expect(ids()).toEqual([]);
+
+      fixture.releaseRunStart();
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("drops interrupts replayed from earlier runs after respond", async () => {
+      const { controller, thread, emit, ids, shown } = zeroBarrierFixture({
+        // The server lists `w` once the resumed run pauses.
+        states: [pendingOn("x"), pendingOn("w")],
+        threadInterrupts: [{ interruptId: "x", payload: {}, namespace: [] }],
+      });
+      await controller.hydrationPromise;
+      expect(ids()).toEqual(["x"]);
+
+      await controller.respondAll({ x: "yes" });
+      expect(thread.respondInput).toHaveBeenCalled();
+      expect(ids()).toEqual([]);
+      shown.clear();
+
+      emit(
+        ...historyBeforeReload,
+        lifecycle("run-x", "running", 32),
+        input("run-x", "x", 34),
+        lifecycle("run-x", "interrupted", 35),
+        lifecycle("run-x-resume", "running", 37),
+        input("run-x-resume", "w", 40),
+        lifecycle("run-x-resume", "interrupted", 41)
+      );
+      expect(ids()).toEqual(["w"]);
+      for (const id of [...stale, "x"]) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+    });
+
+    it("ignores a lagging duplicate stream replaying older runs", async () => {
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: [idle],
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // The content pump and the lifecycle watcher replay the same tape;
+      // one can still be in round 2 after the other reached round 3.
+      emit(...historyBeforeReload, ...round3, ...historyBeforeReload);
+      expect(ids()).toEqual(["r3-a", "r3-b"]);
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+      await submitPromise;
+    });
+
+    it("keeps interrupts the resumed run re-raises", async () => {
+      const { controller, emit, ids } = zeroBarrierFixture({
+        states: [pendingOn("a", "b", "c"), pendingOn("b", "c")],
+        threadInterrupts: ["a", "b", "c"].map((id) => ({
+          interruptId: id,
+          payload: {},
+          namespace: [],
+        })),
+      });
+      await controller.hydrationPromise;
+      emit(
+        lifecycle("run-p", "running", 1),
+        input("run-p", "a", 2),
+        input("run-p", "b", 3),
+        input("run-p", "c", 4),
+        lifecycle("run-p", "interrupted", 5)
+      );
+      expect(ids()).toEqual(["a", "b", "c"]);
+
+      await controller.respondAll({ a: "yes" });
+      emit(
+        lifecycle("run-p-resume", "running", 6),
+        input("run-p-resume", "b", 8),
+        lifecycle("run-p-resume", "interrupted", 9),
+        input("run-p-resume", "c", 10)
+      );
+      expect(ids()).toEqual(["b", "c"]);
+
+      await controller.dispose();
+    });
+
+    it("stops holding interrupts when the submitted run never starts", async () => {
+      // One-element list: `server[0]` is what getState returns right now.
+      const server: Array<Record<string, unknown>> = [idle];
+      const { controller, onCreated, emit, ids, shown } = zeroBarrierFixture({
+        states: server,
+      });
+      await controller.hydrationPromise;
+
+      const submitPromise = controller.submit({ round: 3 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalled());
+
+      // run-3 was cancelled while queued, so its `running` never arrives.
+      // The run it queued behind pauses on `q` instead.
+      emit(
+        ...historyBeforeReload,
+        lifecycle("run-other", "running", 32),
+        input("run-other", "q", 34),
+        lifecycle("run-other", "interrupted", 35)
+      );
+      expect(ids()).toEqual([]);
+
+      server[0] = pendingOn("q");
+      await controller.stop({ cancel: false });
+      await submitPromise;
+      await waitForExpectation(() => expect(ids()).toEqual(["q"]));
+      for (const id of stale) expect(shown.has(id)).toBe(false);
+
+      await controller.dispose();
+    });
+
+    it("stops holding interrupts when the answered one is not on the tape", async () => {
+      const server: Array<Record<string, unknown>> = [pendingOn("x")];
+      const { controller, emit, ids, shown } = zeroBarrierFixture({
+        states: server,
+        threadInterrupts: [{ interruptId: "x", payload: {}, namespace: [] }],
+      });
+      await controller.hydrationPromise;
+
+      await controller.respondAll({ x: "yes" });
+      shown.clear();
+
+      // The tape was trimmed: `x` was never requested on it, so the
+      // resumed run cannot be told apart from any other.
+      server[0] = pendingOn("w");
+      emit(
+        lifecycle("run-x-resume", "running", 37),
+        input("run-x-resume", "w", 40),
+        lifecycle("run-x-resume", "interrupted", 41)
+      );
+      await waitForExpectation(() => expect(ids()).toEqual(["w"]));
+
+      // Interrupts after the resumed run are no longer held either.
+      server[0] = pendingOn("w", "y");
+      emit(
+        lifecycle("run-y", "running", 42),
+        input("run-y", "y", 44),
+        lifecycle("run-y", "interrupted", 45)
+      );
+      await waitForExpectation(() => expect(ids()).toEqual(["w", "y"]));
+      expect(shown.has("x")).toBe(false);
+
+      await controller.dispose();
+    });
+  });
+
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const thread = {
@@ -1858,6 +2182,59 @@ describe("StreamController", () => {
       "ai-1",
     ]);
     expect((messages[1] as { text?: string }).text).toBe("All done.");
+
+    await controller.dispose();
+  });
+
+  it("replaces the seeded branch with a fork whose checkpoints restart at a lower step", async () => {
+    const rootSubscription = makePushableSubscription();
+    const thread = {
+      subscribe: vi.fn(async () => rootSubscription),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn(() => vi.fn()),
+      close: vi.fn(async () => undefined),
+      interrupts: [],
+      submitRun: vi.fn(async () => ({ run_id: "run-fork" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {
+            messages: [
+              { type: "human", id: "human-1", content: "hi" },
+              { type: "ai", id: "ai-1", content: "hello" },
+            ],
+          },
+          next: [],
+          tasks: [],
+          checkpoint: { checkpoint_id: "cp-9" },
+          metadata: { step: 9 },
+        })),
+        getHistory: vi.fn(async () => []),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-fork",
+    });
+    await controller.hydrationPromise;
+
+    const edited = { type: "human", id: "human-edited", content: "hi again" };
+    void controller.submit({ messages: [edited] }, { forkFrom: "cp-0" });
+    await rootSubscription.started;
+    rootSubscription.push(checkpointsEvent(1, 1, "cp-fork-1"));
+    rootSubscription.push(valuesEvent([edited], 2));
+
+    await waitForExpectation(() => {
+      expect(
+        controller.rootStore
+          .getSnapshot()
+          .messages.map((m) => (m as { id?: string }).id)
+      ).toEqual(["human-edited"]);
+    });
 
     await controller.dispose();
   });
@@ -2691,7 +3068,7 @@ describe("StreamController", () => {
       namespace: [],
       interrupt_id: "int-1",
       response: { approved: true },
-    });
+    }, { strictResume: undefined });
     expect(
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual([]);
@@ -2761,7 +3138,7 @@ describe("StreamController", () => {
           },
         ],
       },
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3375,7 +3752,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3421,7 +3798,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3467,7 +3844,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3519,7 +3896,7 @@ describe("StreamController", () => {
       ],
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
     expect(
       controller.rootStore.getSnapshot().interrupts.map((i) => i.id)
     ).toEqual([]);
@@ -3574,7 +3951,7 @@ describe("StreamController", () => {
       response: { approved: true },
       config: { configurable: { model: "gpt-4o" } },
       metadata: { source: "ui" },
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -3633,7 +4010,7 @@ describe("StreamController", () => {
       goto: "next_node",
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
     const sentUpdate = (
       (respondInput.mock.calls[0] as unknown[])[0] as {
         update: { messages: Array<Record<string, unknown>> };
@@ -3856,7 +4233,7 @@ describe("StreamController", () => {
       update: { reviewed: true },
       config: undefined,
       metadata: undefined,
-    });
+    }, { strictResume: undefined });
 
     await controller.dispose();
   });
@@ -4111,6 +4488,257 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
+  const twoInterruptThread = (
+    respondInput: ReturnType<typeof vi.fn>,
+    onListener: (listener: (event: Event) => void) => void
+  ) =>
+    ({
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onListener(listener);
+        return vi.fn();
+      }),
+      close: vi.fn(async () => undefined),
+      interrupts: [
+        { interruptId: "int-1", payload: { prompt: "A?" }, namespace: [] },
+        { interruptId: "int-2", payload: { prompt: "B?" }, namespace: [] },
+      ],
+      respondInput,
+      startLifecycleWatcher: vi.fn(() => undefined),
+    }) as unknown as ThreadStream;
+
+  it("respond() and respondAll() send strict_resume only when asked", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(
+      async (_params: unknown, _options?: { strictResume?: boolean }) =>
+        undefined
+    );
+    const thread = twoInterruptThread(respondInput, (listener) => {
+      onEvent = listener;
+    });
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["a", "b"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "A?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "B?" }, [], 2));
+
+    await controller.respond(
+      { approved: true },
+      { interruptId: "int-1", strictResume: true }
+    );
+    await controller.respondAll({ "int-2": { approved: true } });
+
+    expect(
+      respondInput.mock.calls.map(([, options]) => options?.strictResume)
+    ).toEqual([true, undefined]);
+
+    await controller.dispose();
+  });
+
+  it("a refused strict resume shows the interrupts still waiting again", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const respondInput = vi.fn(async () => undefined);
+    const thread = twoInterruptThread(respondInput, (listener) => {
+      onEvent = listener;
+    });
+    let serverState: Record<string, unknown> = { values: {}, next: ["a", "b"] };
+    const client = {
+      threads: {
+        getState: vi.fn(async () => serverState),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "A?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "B?" }, [], 2));
+    const openIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map(({ id }) => id);
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-1", "int-2"]);
+    });
+
+    await controller.respondAll(
+      { "int-1": "yes", "int-2": "no" },
+      { strictResume: true }
+    );
+    expect(openIds()).toEqual([]);
+
+    serverState = {
+      values: {},
+      next: ["b"],
+      tasks: [
+        { id: "task-b", name: "b", interrupts: [{ id: "int-2", value: { prompt: "B?" } }] },
+      ],
+    };
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-3",
+      seq: 3,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: {
+          event: "failed",
+          error: "Unknown or already-consumed interrupt: int-1",
+          reason: "not_pending",
+          interrupt_ids: ["int-1"],
+          pending_ids: ["int-2"],
+        },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-2"]);
+    });
+    expect(
+      isUnknownInterruptError(controller.rootStore.getSnapshot().error)
+    ).toBe(true);
+    expect(controller.rootStore.getSnapshot().error).toMatchObject({
+      name: "UnknownInterruptError",
+      message: "Unknown or already-consumed interrupt: int-1",
+      reason: "not_pending",
+      interruptIds: ["int-1"],
+      pendingIds: ["int-2"],
+    });
+
+    await controller.dispose();
+  });
+
+  it("hides the interrupts another client answered", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = twoInterruptThread(
+      vi.fn(async () => undefined),
+      (listener) => {
+        onEvent = listener;
+      }
+    );
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({ values: {}, next: ["a", "b"] })),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "A?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "B?" }, [], 2));
+    const openIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map(({ id }) => id);
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-1", "int-2"]);
+    });
+
+    onEvent?.({
+      type: "event",
+      event_id: "answered-3",
+      seq: 3,
+      method: "input.answered",
+      params: { namespace: [], timestamp: 0, data: { interrupt_ids: ["int-1"] } },
+    } as unknown as Event);
+
+    expect(openIds()).toEqual(["int-2"]);
+
+    await controller.dispose();
+  });
+
+  it("shows again an interrupt hidden by another client's refused answer", async () => {
+    let onEvent: ((event: Event) => void) | undefined;
+    const thread = twoInterruptThread(
+      vi.fn(async () => undefined),
+      (listener) => {
+        onEvent = listener;
+      }
+    );
+    let serverState: Record<string, unknown> = { values: {}, next: ["a", "b"] };
+    const client = {
+      threads: {
+        getState: vi.fn(async () => serverState),
+        stream: vi.fn(() => thread),
+      },
+    };
+    const controller = new StreamController<State, { prompt: string }>({
+      assistantId: "interrupt_graph",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    await controller.hydrationPromise;
+    onEvent?.(inputRequestedEvent("int-1", { prompt: "A?" }));
+    onEvent?.(inputRequestedEvent("int-2", { prompt: "B?" }, [], 2));
+    const openIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map(({ id }) => id);
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-1", "int-2"]);
+    });
+
+    onEvent?.({
+      type: "event",
+      event_id: "answered-3",
+      seq: 3,
+      method: "input.answered",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: { interrupt_ids: ["int-1", "int-2"] },
+      },
+    } as unknown as Event);
+    expect(openIds()).toEqual([]);
+
+    serverState = {
+      values: {},
+      next: ["b"],
+      tasks: [
+        {
+          id: "task-b",
+          name: "b",
+          interrupts: [{ id: "int-2", value: { prompt: "B?" } }],
+        },
+      ],
+    };
+    onEvent?.({
+      type: "event",
+      event_id: "lifecycle-failed-4",
+      seq: 4,
+      method: "lifecycle",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: {
+          event: "failed",
+          error: "Unknown or already-consumed interrupt: int-1",
+          reason: "not_pending",
+          interrupt_ids: ["int-1"],
+          pending_ids: ["int-2"],
+        },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(openIds()).toEqual(["int-2"]);
+    });
+
+    await controller.dispose();
+  });
+
   it("respond() surfaces an input.respond dispatch failure on rootStore.error", async () => {
     let onEvent: ((event: Event) => void) | undefined;
     const dispatchError = new Error("network down");
@@ -4281,9 +4909,9 @@ describe("StreamController", () => {
 
   it("hydrate promotes subagent execution namespace from getHistory", async () => {
     const { thread } = discoveryThread();
-    const getHistory = vi.fn(async () => [
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
+    const getHistory = vi.fn(async (_threadId: string, _options?: unknown) => [
       {
-        values: { messages: taskMessages },
         tasks: [
           {
             id: "exec-1",
@@ -4315,6 +4943,10 @@ describe("StreamController", () => {
       ).toEqual(["tools:exec-1"]);
     });
     expect(getHistory).toHaveBeenCalledTimes(1);
+    expect(getHistory.mock.calls[0][1]).toEqual({
+      limit: 20,
+      select: ["checkpoint", "tasks"],
+    });
 
     await controller.dispose();
   });
@@ -4325,9 +4957,9 @@ describe("StreamController", () => {
     // with NO deeper `research:u1|...` descendant. The old strict-prefix
     // rule dropped these, so the card only reappeared once SSE replay
     // arrived; hydrate must now seed it directly from getHistory.
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
     const getHistory = vi.fn(async () => [
       {
-        values: {},
         tasks: [],
         checkpoint: checkpointState("research:u1", "cp-a"),
       },
@@ -4538,73 +5170,6 @@ describe("StreamController", () => {
     expect(snapshot.get("task-3")?.namespace).toEqual(["tools:exec-3"]);
 
     await controller.dispose();
-  });
-
-  it("reuses hydrate discovery history to seed scoped messages when available", async () => {
-    const { thread } = discoveryThread();
-    const workerMessages = [
-      { type: "human", id: "worker-human", content: "Do research" },
-      { type: "ai", id: "worker-ai", content: "Research complete" },
-    ];
-    const getHistory = vi.fn(async () => [
-      {
-        values: { messages: workerMessages },
-        tasks: [],
-        checkpoint: checkpointState("tools:exec-1", "cp-worker"),
-      },
-      {
-        values: { messages: taskMessages },
-        tasks: [
-          {
-            id: "exec-1",
-            name: "tools",
-            path: ["__pregel_push", 0],
-            result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
-          },
-        ],
-        checkpoint: checkpointState("", "cp-root"),
-      },
-    ]);
-    const client = {
-      threads: {
-        getState: vi.fn(async () => ({
-          values: { messages: taskMessages },
-          next: [],
-          tasks: [],
-        })),
-        getHistory,
-        stream: vi.fn(() => thread),
-      },
-    };
-    const controller = new StreamController<State, unknown>({
-      assistantId: "deep_agent",
-      client: client as never,
-      threadId: "thread-1",
-    });
-    await controller.hydrationPromise;
-
-    await waitForExpectation(() => {
-      expect(controller.subagentStore.getSnapshot().get("task-1")?.namespace).toEqual([
-        "tools:exec-1",
-      ]);
-    });
-    expect(getHistory).toHaveBeenCalledTimes(1);
-
-    const acquired = controller.registry.acquire(
-      messagesProjection(["tools:exec-1"])
-    );
-    try {
-      await waitForExpectation(() => {
-        expect(acquired.store.getSnapshot().map((message) => message.text)).toEqual([
-          "Do research",
-          "Research complete",
-        ]);
-      });
-      expect(getHistory).toHaveBeenCalledTimes(1);
-    } finally {
-      acquired.release();
-      await controller.dispose();
-    }
   });
 
   it("does not apply stale state or reconnect when the thread is cleared during hydrate", async () => {
@@ -5006,13 +5571,13 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
     await controller.dispose();
   });
   it.each([
-    { label: "without", next: ["agent"] },
-    { label: "after", next: [] as string[] },
+    { label: "a running thread", next: ["agent"] },
+    { label: "an idle thread", next: [] as string[] },
   ])(
-    "never rebuilds a dropped message from a replayed message-start, $label an earlier hydrate seal",
+    "never rebuilds a dropped message from a replayed message-start on $label",
     async ({ next }) => {
-      // An idle thread (`next: []`) is seeded and sealed at step 2 by
-      // hydrate; an active one isn't sealed.
+      // hydrate() seeds and seals both threads at step 2. The idle one
+      // starts its run with a submit.
       const { subscription, controller } = setup({ next });
       await controller.hydrationPromise;
 
@@ -5053,4 +5618,570 @@ describe("StreamController never-checkpointed messages (#2904)", () => {
       await controller.dispose();
     }
   );
+});
+
+describe("StreamController stop() after respond()", () => {
+  function setup(respondInput = vi.fn(async () => undefined)) {
+    const listeners = new Set<(event: Event) => void>();
+    const thread = {
+      subscribe: vi.fn(async () => makeNeverEndingSubscription()),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      ordering: {},
+      interrupts: [
+        { interruptId: "int-1", payload: {}, namespace: [] },
+        { interruptId: "int-2", payload: {}, namespace: [] },
+      ],
+      respondInput,
+      submitRun: vi.fn(async () => ({ run_id: "run-5" })),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const cancel = vi.fn(async () => undefined);
+    const client = {
+      threads: {
+        getState: vi.fn(async () => ({
+          values: {},
+          next: ["review"],
+          tasks: [
+            {
+              interrupts: [
+                { id: "int-1", value: {} },
+                { id: "int-2", value: {} },
+              ],
+            },
+          ],
+        })),
+        stream: vi.fn(() => thread),
+      },
+      runs: { cancel },
+    };
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: client as never,
+      threadId: "thread-1",
+    });
+    const emit = (event: Event) => {
+      for (const listener of [...listeners]) listener(event);
+    };
+    return { controller, cancel, emit };
+  }
+
+  it("cancels the run respond() started", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("cancels the one run respondAll() started", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respondAll({
+      "int-1": { approved: true },
+      "int-2": { approved: false },
+    });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("cancels the resumed run once it starts when stop() came first", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    expect(cancel).not.toHaveBeenCalled();
+
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-2", "interrupted", 11));
+    emit(runLifecycleEvent("run-3", "running", 12));
+
+    await waitForExpectation(() => {
+      expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    });
+    await controller.dispose();
+  });
+
+  it("shows again the interrupt the stopped run left waiting", async () => {
+    const { controller, emit } = setup();
+    await controller.hydrationPromise;
+    const shownIds = () =>
+      controller.rootStore.getSnapshot().interrupts.map((i) => i.id);
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    expect(shownIds()).toEqual(["int-2"]);
+    emit(runLifecycleEvent("run-2", "running", 10));
+    await controller.stop();
+    emit(runLifecycleEvent("run-2", "interrupted", 11));
+
+    await waitForExpectation(() => {
+      expect(shownIds()).toEqual(["int-1", "int-2"]);
+    });
+    await controller.dispose();
+  });
+
+  it("ignores another run's lifecycle while the resumed run runs", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-1", "interrupted", 11));
+    await controller.stop();
+
+    expect(cancel.mock.calls).toEqual([["thread-1", "run-2"]]);
+    await controller.dispose();
+  });
+
+  it("does not cancel a later run after the resume ended without running", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "failed", 10));
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 11));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("cancels nothing when no run was resumed", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.stop();
+    emit(runLifecycleEvent("run-2", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a resumed run that already ended", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    emit(runLifecycleEvent("run-2", "running", 10));
+    emit(runLifecycleEvent("run-2", "completed", 11));
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 12));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a later run after input.respond failed", async () => {
+    const { controller, cancel, emit } = setup(
+      vi.fn(async () => {
+        throw new Error("offline");
+      })
+    );
+    await controller.hydrationPromise;
+
+    await expect(
+      controller.respond({ approved: true }, { interruptId: "int-1" })
+    ).rejects.toThrow("offline");
+    await controller.stop();
+    emit(runLifecycleEvent("run-3", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("cancels nothing when input.respond fails after stop()", async () => {
+    let rejectRespond!: (error: Error) => void;
+    const { controller, cancel, emit } = setup(
+      vi.fn(
+        () =>
+          new Promise<undefined>((_, reject) => {
+            rejectRespond = reject;
+          })
+      )
+    );
+    await controller.hydrationPromise;
+
+    const responding = controller.respond(
+      { approved: true },
+      { interruptId: "int-1" }
+    );
+    await controller.stop();
+    rejectRespond(new Error("offline"));
+    await expect(responding).rejects.toThrow("offline");
+    emit(runLifecycleEvent("run-3", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not take the run submit() starts for the stopped resume", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    emit(runLifecycleEvent("run-5", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
+  });
+
+  it("does not take the run submit() starts for the stopped resume before run.start answers", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+    let answerRunStart!: (result: { run_id: string }) => void;
+    vi.mocked(controller.getThread()!.submitRun).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerRunStart = resolve;
+        }) as never
+    );
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    const submitting = controller.submit(
+      { messages: [] },
+      { multitaskStrategy: "interrupt" }
+    );
+    await waitForExpectation(() => {
+      expect(controller.getThread()?.submitRun).toHaveBeenCalled();
+    });
+    emit(runLifecycleEvent("run-5", "running", 10));
+    answerRunStart({ run_id: "run-5" });
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+    await submitting;
+  });
+
+  it("keeps the resumed run going on disconnect()", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.disconnect();
+    emit(runLifecycleEvent("run-2", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
+  it("does not cancel a run on the next thread", async () => {
+    const { controller, cancel, emit } = setup();
+    await controller.hydrationPromise;
+
+    await controller.respond({ approved: true }, { interruptId: "int-1" });
+    await controller.stop();
+    await controller.hydrate("thread-2");
+    emit(runLifecycleEvent("run-9", "running", 10));
+
+    expect(cancel).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+});
+
+describe("StreamController same-thread hydrate()", () => {
+  const busy = { values: {}, next: ["agent"], tasks: [] };
+  const idle = { values: {}, next: [], tasks: [] };
+  const parked = {
+    values: {},
+    next: ["agent"],
+    tasks: [{ interrupts: [{ id: "int-9", value: {} }] }],
+  };
+
+  function setup(initialState: unknown) {
+    const onEventListeners = new Set<(event: Event) => void>();
+    const onErrorListeners = new Set<(error: Error) => void>();
+    const subscriptions: ReturnType<typeof makePushableSubscription>[] = [];
+    const thread = {
+      subscribe: vi.fn(async () => {
+        const subscription = makePushableSubscription();
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      onError: vi.fn((listener: (error: Error) => void) => {
+        onErrorListeners.add(listener);
+        return () => onErrorListeners.delete(listener);
+      }),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEventListeners.add(listener);
+        return () => onEventListeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      ordering: {},
+      interrupts: [],
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async () => initialState);
+    const controller = new StreamController<State>({
+      assistantId: "agent",
+      client: { threads: { getState, stream: () => thread } } as never,
+      threadId: "thread-1",
+    });
+    const deliver = (...events: Event[]) => {
+      for (const event of events) {
+        for (const listener of [...onEventListeners]) listener(event);
+        subscriptions.at(-1)?.push(event);
+      }
+    };
+    const dropStream = () => {
+      for (const listener of [...onErrorListeners]) {
+        listener(new Error("reconnect attempts exhausted"));
+      }
+    };
+    const snapshot = () => controller.rootStore.getSnapshot();
+    return {
+      controller,
+      thread,
+      subscriptions,
+      getState,
+      deliver,
+      dropStream,
+      snapshot,
+      onEventListeners,
+    };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it("follows the run to its end on a reopened stream whose seqs start over", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 300));
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-1");
+    await h.controller.hydrate("thread-1");
+    h.getState.mockResolvedValue(parked);
+    h.deliver(
+      runLifecycleEvent("run-1", "running", 5),
+      inputRequestedEvent("int-9", {}, [], 6),
+      runLifecycleEvent("run-1", "interrupted", 7)
+    );
+
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+      expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-9"]);
+    }, 1_000);
+    expect(h.subscriptions).toHaveLength(2);
+    expect(h.subscriptions[0].close).toHaveBeenCalled();
+    expect(h.onEventListeners.size).toBe(1);
+    await h.controller.dispose();
+  });
+
+  it("stays idle when the run ended while it read the state", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 10));
+    expect(h.snapshot().isLoading).toBe(true);
+
+    let resolveState!: (state: unknown) => void;
+    h.getState.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveState = resolve))
+    );
+    const hydrating = h.controller.hydrate("thread-1");
+    h.deliver(runLifecycleEvent("run-1", "completed", 11));
+    await settle();
+    resolveState(busy);
+    await hydrating;
+    await settle();
+
+    expect(h.snapshot().isLoading).toBe(false);
+    await h.controller.dispose();
+  });
+
+  it("starts the stream when an idle thread became busy", async () => {
+    const h = setup(idle);
+    await h.controller.hydrationPromise;
+    expect(h.thread.subscribe).not.toHaveBeenCalled();
+
+    h.getState.mockResolvedValue(busy);
+    await h.controller.hydrate("thread-1");
+    expect(h.thread.subscribe).toHaveBeenCalledTimes(1);
+    expect(h.thread.startLifecycleWatcher).toHaveBeenCalled();
+    expect(h.snapshot().isLoading).toBe(true);
+
+    h.deliver(
+      runLifecycleEvent("run-1", "running", 1),
+      runLifecycleEvent("run-1", "completed", 2)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    });
+    await h.controller.dispose();
+  });
+
+  it("keeps isLoading steady while a reopened stream replays earlier runs", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(
+      runLifecycleEvent("run-0", "running", 1),
+      runLifecycleEvent("run-0", "completed", 2),
+      runLifecycleEvent("run-1", "running", 3)
+    );
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-1");
+    const seen: boolean[] = [h.snapshot().isLoading];
+    const unsubscribe = h.controller.rootStore.subscribe(() => {
+      const { isLoading } = h.snapshot();
+      if (seen.at(-1) !== isLoading) seen.push(isLoading);
+    });
+    h.deliver(
+      runLifecycleEvent("run-0", "running", 1),
+      runLifecycleEvent("run-0", "completed", 2)
+    );
+    await settle();
+    h.deliver(runLifecycleEvent("run-1", "running", 3));
+    await settle();
+    h.deliver(runLifecycleEvent("run-1", "completed", 4));
+    await settle();
+
+    expect(seen).toEqual([true, false]);
+    unsubscribe();
+    await h.controller.dispose();
+  });
+
+  const seeded = [
+    { type: "human", id: "human-1", content: "hi" },
+    { type: "ai", id: "ai-1", content: "Hello there." },
+  ];
+  const running = {
+    ...busy,
+    values: { messages: seeded },
+    checkpoint: { checkpoint_id: "cp-3" },
+    metadata: { step: 3 },
+  };
+  const texts = (h: ReturnType<typeof setup>) =>
+    h.snapshot().messages.map((message) => (message as { text?: string }).text);
+
+  it.each([
+    { label: "opened while running", first: running },
+    {
+      label: "opened idle",
+      first: {
+        ...idle,
+        values: { messages: seeded.slice(0, 1) },
+        checkpoint: { checkpoint_id: "cp-1" },
+        metadata: { step: 1 },
+      },
+    },
+  ])(
+    "keeps the seeded messages while the stream replays the run, $label",
+    async ({ first }) => {
+      const h = setup(first);
+      await h.controller.hydrationPromise;
+      h.getState.mockResolvedValue(running);
+      await h.controller.hydrate("thread-1");
+
+      h.deliver(
+        runLifecycleEvent("run-1", "running", 1),
+        checkpointsEvent(2, 2),
+        valuesEvent(seeded.slice(0, 1), 3),
+        messageStartEvent("ai-1", 4),
+        messageDeltaEvent(5, "Hel")
+      );
+      await settle();
+
+      expect(texts(h)).toEqual(["hi", "Hello there."]);
+      await h.controller.dispose();
+    }
+  );
+
+  it("shows the seeded messages by the time isLoading turns on", async () => {
+    const h = setup(running);
+    let textsWhenLoading: unknown;
+    h.controller.rootStore.subscribe(() => {
+      if (h.snapshot().isLoading && textsWhenLoading === undefined) {
+        textsWhenLoading = texts(h);
+      }
+    });
+    await h.controller.hydrationPromise;
+
+    expect(textsWhenLoading).toEqual(["hi", "Hello there."]);
+    await h.controller.dispose();
+  });
+
+  it("starts fresh on another thread after the stream dropped", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 300));
+    await settle();
+    h.dropStream();
+    await settle();
+
+    await h.controller.hydrate("thread-2");
+    h.deliver(
+      runLifecycleEvent("run-7", "running", 1),
+      runLifecycleEvent("run-7", "completed", 2)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    });
+    expect(h.subscriptions).toHaveLength(2);
+
+    await h.controller.hydrate(null);
+    expect(h.snapshot().isLoading).toBe(false);
+    expect(h.onEventListeners.size).toBe(0);
+    await h.controller.dispose();
+  });
+
+  it("opens no stream and stays idle after the run completed", async () => {
+    const h = setup(idle);
+    await h.controller.hydrationPromise;
+
+    await h.controller.hydrate("thread-1");
+
+    expect(h.thread.subscribe).not.toHaveBeenCalled();
+    expect(h.snapshot().isLoading).toBe(false);
+    await h.controller.dispose();
+  });
+
+  it("shows the interrupt and stays idle after the run paused", async () => {
+    const h = setup(busy);
+    await h.controller.hydrationPromise;
+    h.deliver(runLifecycleEvent("run-1", "running", 10));
+    h.getState.mockResolvedValue(parked);
+    h.deliver(
+      inputRequestedEvent("int-9", {}, [], 11),
+      runLifecycleEvent("run-1", "interrupted", 12)
+    );
+    await waitForExpectation(() => {
+      expect(h.snapshot().isLoading).toBe(false);
+    }, 1_000);
+
+    await h.controller.hydrate("thread-1");
+    await settle();
+
+    expect(h.snapshot().isLoading).toBe(false);
+    expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-9"]);
+    expect(h.thread.subscribe).toHaveBeenCalledTimes(1);
+    await h.controller.dispose();
+  });
 });

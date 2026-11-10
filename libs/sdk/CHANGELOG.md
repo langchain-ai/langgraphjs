@@ -1,5 +1,121 @@
 # @langchain/langgraph-sdk
 
+## 1.15.0
+
+### Minor Changes
+
+- [#3186](https://github.com/langchain-ai/langgraphjs/pull/3186) [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba) Thanks [@eliornl](https://github.com/eliornl)! - `client.runs.joinStream` takes a `checkpointId` option, sent as the `checkpoint_id` query parameter: servers that support it send only the run's events after that checkpoint, or the whole run when it is not one of the run's, and other servers ignore it. With `reconnectOnMount`, the `useStream` hook now rejoins a running run once the thread state has loaded, from the loaded head's checkpoint, so a reload no longer replays the run from its start over the state it just loaded. A streamed message now updates the message with its id wherever it is in the list, so one the loaded state already holds, or one a `values` event moved, is not appended again or written over another. `MessageTupleManager.get`'s `defaultIndex` argument and the `index` field of its entries are deprecated: `StreamManager` no longer reads them, and they will be removed in 2.0.
+
+### Patch Changes
+
+- [#3263](https://github.com/langchain-ai/langgraphjs/pull/3263) [`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9) Thanks [@eliornl](https://github.com/eliornl)! - After `submit(input, { forkFrom })`, `messages` shows only the new branch. A fork's checkpoints restart at a lower step, so they were treated as an old replay and merged add-only, which kept every message from the abandoned branch until a reload. Also, `useMessageMetadata(...).parentCheckpointId` now keeps the parent of the first checkpoint that carried each message, instead of moving every message to the latest checkpoint's parent, so forking from it edits the right message.
+
+- [#3260](https://github.com/langchain-ai/langgraphjs/pull/3260) [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): a `hydrate()` of the thread already shown no longer leaves `isLoading` stuck on `true` after the run ends: when it reopens the thread's stream after the connection dropped, when the run ends while it reads the state, or when it finds a run on a thread that was idle. When it finds a run going, the messages it loaded stay on screen while the stream replays the run. The stream also picks up interrupts raised inside subagents again after it reconnects.
+
+- [#3261](https://github.com/langchain-ai/langgraphjs/pull/3261) [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `stop()` cancels the run `respond()` or `respondAll()` started, also when it is called before that run starts, and shows again the interrupts the cancel left waiting.
+
+- [#3261](https://github.com/langchain-ai/langgraphjs/pull/3261) [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `submit()` without a `multitaskStrategy`, while the thread shows a run in flight, now sends `interrupt`, so the server cancels the run the client stopped following instead of queueing the new one behind it. Otherwise it still sends only a strategy the caller passed.
+
+## 1.14.0
+
+### Minor Changes
+
+- [#3230](https://github.com/langchain-ai/langgraphjs/pull/3230) [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa) Thanks [@eliornl](https://github.com/eliornl)! - feat(sdk): hide the interrupts another client answered when the server sends `input.answered`, and route that event to the `input` channel
+
+- [#3230](https://github.com/langchain-ai/langgraphjs/pull/3230) [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa) Thanks [@eliornl](https://github.com/eliornl)! - feat(sdk): add `strictResume`, so a server with strict resume refuses an answer to an interrupt that is no longer waiting. `client.runs.create()`, `stream()` and `wait()` send it as `strict_resume`, and `useStream`'s `submit()` passes it on. With `respond()` and `respondAll()`, the refusal is an `UnknownInterruptError` on `error` with `reason`, `interruptIds` and `pendingIds`, which `isUnknownInterruptError(error)` recognizes, and the interrupts still waiting show again.
+
+### Patch Changes
+
+- [#3243](https://github.com/langchain-ai/langgraphjs/pull/3243) [`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba) Thanks [@eliornl](https://github.com/eliornl)! - `useStream` ignores a `tools` event of a kind it doesn't know, such as langgraph's own `tool-started` payload, instead of throwing `Unexpected tool event` inside a state update, which crashed the app's render.
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+
+- [#3228](https://github.com/langchain-ai/langgraphjs/pull/3228) [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b) Thanks [@eliornl](https://github.com/eliornl)! - Run streams take the `lifecycle` stream mode, typed as `LifecycleStreamEvent`: an event when each subgraph starts and ends, with the id of the tool call that started it.
+
+- [#3246](https://github.com/langchain-ai/langgraphjs/pull/3246) [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): `run.start` sends the multitask strategy as `multitask_strategy`, like the protocol's other fields, as well as `multitaskStrategy`, which older servers read.
+
+## 1.13.0
+
+### Minor Changes
+
+- [#3209](https://github.com/langchain-ai/langgraphjs/pull/3209) [`7209193`](https://github.com/langchain-ai/langgraphjs/commit/7209193a2b7f5f9275780953d92ebc454c8550d4) Thanks [@eliornl](https://github.com/eliornl)! - `client.runs.stream` and `client.runs.joinStream` take `streamNamespaces`, the namespaces of a run to stream (`""` is the root graph), each without the subagents it starts. Servers that support it report `stream_namespaces` in `/info`; older servers ignore it and send every event. A reconnect no longer re-sends query params its `Location` already carries, so the URL stops growing on every reconnect.
+
+### Patch Changes
+
+- [#3223](https://github.com/langchain-ai/langgraphjs/pull/3223) [`caa5c53`](https://github.com/langchain-ai/langgraphjs/commit/caa5c53a65b0d0cce2a597167087f1bf9b170437) Thanks [@casparb](https://github.com/casparb)! - Add a `reason` option to `client.runs.cancel`. Set `reason: "taken"` to mark run input absorbed for steering; the server records a `cancel_reason` starting with `taken:`.
+
+- [#3219](https://github.com/langchain-ai/langgraphjs/pull/3219) [`75deb9a`](https://github.com/langchain-ai/langgraphjs/commit/75deb9a65b7e3254429ec193db35953b69ad605c) Thanks [@eliornl](https://github.com/eliornl)! - Type the `end` event that closes a run stream as `EndStreamEvent`: its data carries the run's `run_id` and final `status`, or is `null` from servers that send it without data.
+
+- [#3191](https://github.com/langchain-ai/langgraphjs/pull/3191) [`5ef8ba8`](https://github.com/langchain-ai/langgraphjs/commit/5ef8ba8cad1b3638d9f0bba2f2db58db7dcfaa33) Thanks [@eliornl](https://github.com/eliornl)! - When the `threadId` option of `useStream` changes while the last run's values still hold a pending headless tool call, the hook no longer runs that tool again. It also no longer resumes the new thread, or a thread it creates after a switch to `null`, with the previous thread's interrupt id. Passing back the `threadId` of a thread `submit` created no longer runs its pending tool again either.
+
+- [#3208](https://github.com/langchain-ai/langgraphjs/pull/3208) [`08f6d06`](https://github.com/langchain-ai/langgraphjs/commit/08f6d069af8a51f913a63990bec31f0fe985b5f7) Thanks [@casparb](https://github.com/casparb)! - The client no longer sends a `POST` or `PATCH` request again after it may have reached the server, so a retry can no longer create a second run or repeat a protocol command. These requests are now retried only when the connection failed before they were sent (for example, the connection was refused or the host was not found). `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` requests are retried as before.
+
+- [#3206](https://github.com/langchain-ai/langgraphjs/pull/3206) [`d955450`](https://github.com/langchain-ai/langgraphjs/commit/d9554503a7ccef99f46474831ec93ed1c527ca57) Thanks [@casparb](https://github.com/casparb)! - Add `cancel_reason` to the `Run` type and to `RunSelectField`. The Agent Server returns why a run was cancelled, but callers had to cast to read it.
+
+- [#3204](https://github.com/langchain-ai/langgraphjs/pull/3204) [`2f42fb1`](https://github.com/langchain-ai/langgraphjs/commit/2f42fb196d840931f11a4da114f030f3ba4a90fe) Thanks [@sera-wi](https://github.com/sera-wi)! - `ThreadsClient.getState` and `ThreadsClient.getHistory` accept a `select` option to return only some fields, e.g. `select: ["values.messages"]` to read a single state key. Exports the new `ThreadStateSelectField` type and the existing `ThreadSelectField` type from the package root.
+
+## 1.12.10
+
+### Patch Changes
+
+- [#3163](https://github.com/langchain-ai/langgraphjs/pull/3163) [`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a) Thanks [@eliornl](https://github.com/eliornl)! - When a headless tool finishes after a switch to another thread, `StreamOrchestrator` no longer sends its result to the new thread, keyed by the previous thread's interrupt id, and the `useStream` hook no longer streams the previous thread's resumed run into the new thread's view and no longer aborts a run the new thread is streaming. The call stays pending on its own thread and runs again when that thread is shown.
+
+- [#3185](https://github.com/langchain-ai/langgraphjs/pull/3185) [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb) Thanks [@eliornl](https://github.com/eliornl)! - A thread run stream from `client.runs.stream()` or `client.runs.joinStream()` that ends without an error and without an `end` or `error` event now asks the server for the run's status. If the run is still pending or running, for example because a proxy timeout or a server restart ended the response, the stream reconnects from the last event as it does after a dropped connection, instead of ending early with a cut answer. A 429, a 5xx or a network error on that check is handled like a dropped connection too. This adds one request at the end of such a stream.
+
+## 1.12.9
+
+### Patch Changes
+
+- [#3128](https://github.com/langchain-ai/langgraphjs/pull/3128) [`e0109cb`](https://github.com/langchain-ai/langgraphjs/commit/e0109cb5711f42c8c4986a61967d2a7634a4ef0a) Thanks [@hntrl](https://github.com/hntrl)! - Fix SSE multiline JSON framing, colonless fields, stream-leading BOM handling, and empty event ID resets during reconnection. Match Python streaming behavior: empty payloads yield null, events inherit the reconnect cursor, and ID-only/retry-only blocks update internal state without being yielded to callers. Cleared event IDs are exposed as undefined. Pending unnamed data is flushed at EOF, matching Python's existing tolerant EOF behavior.
+
+- [#3123](https://github.com/langchain-ai/langgraphjs/pull/3123) [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c) Thanks [@eliornl](https://github.com/eliornl)! - A run abandoned by `clear()` or `stop()` no longer runs `onSuccess`, so a thread switch during a reconnect backoff no longer loads the previous thread's history.
+
+- [#3158](https://github.com/langchain-ai/langgraphjs/pull/3158) [`3aa46f1`](https://github.com/langchain-ai/langgraphjs/commit/3aa46f1075a7a2975461dc4b42f86867def9a139) Thanks [@eliornl](https://github.com/eliornl)! - A headless tool call still waiting for its result when a thread opens, for example after a page reload, now runs once and resumes the run in the `useStream` hook and `StreamOrchestrator`; before, nothing ran and the thread stayed paused. Effects replayed by StrictMode, Fast Refresh or `<Activity>` no longer run a pending headless tool twice in the hook, nor, under Fast Refresh or `<Activity>`, with a custom `transport`.
+
+- [#3139](https://github.com/langchain-ai/langgraphjs/pull/3139) [`a181b4d`](https://github.com/langchain-ai/langgraphjs/commit/a181b4d95501a41b949e1f9f1dea9ed055a50147) Thanks [@eliornl](https://github.com/eliornl)! - With history enabled, `joinStream` in the `useStream` hook and `StreamOrchestrator` now shows the thread state read after the joined run ends, as `submit` already does, instead of the joined stream's last values.
+
+- [#3153](https://github.com/langchain-ai/langgraphjs/pull/3153) [`5e7fa49`](https://github.com/langchain-ai/langgraphjs/commit/5e7fa49a0c3bfa3c68aff4e982483f098062ba8e) Thanks [@eliornl](https://github.com/eliornl)! - Joining a run from its first event in a mount that already streamed it no longer doubles each message's text, subagent messages included. A join that resumes from a `lastEventId` still continues the message where it left off.
+
+- [#3159](https://github.com/langchain-ai/langgraphjs/pull/3159) [`204fc6f`](https://github.com/langchain-ai/langgraphjs/commit/204fc6fa7c5d6c427a2a85f6ec5c6219afac5efc) Thanks [@eliornl](https://github.com/eliornl)! - With history enabled, `submit` in the `useStream` hook and `StreamOrchestrator` no longer pins the run to the cached head of the shown branch when the latest branch is shown, so turns added elsewhere since the history was read (another tab, a cron, an API call, or this tab's own earlier run when a second submit was queued behind it) stay on the shown branch instead of moving to a sibling branch. A shown branch whose head is not the newest loaded checkpoint still forks from that head.
+
+- [#3140](https://github.com/langchain-ai/langgraphjs/pull/3140) [`918f958`](https://github.com/langchain-ai/langgraphjs/commit/918f958768c69d952769fcb979844490b7b40ded) Thanks [@eliornl](https://github.com/eliornl)! - Without history, the `useStream` hook and `StreamOrchestrator` now read the thread again after a run that succeeds when the state shown had an interrupt, a node still to run or a task error, so an answered approval no longer comes back and an old error goes away. A run on a thread that showed none of these makes no extra request, and a failed read reports no error. With history, a failed read after a run no longer fails the run in the hook or skips `onFinish` in `StreamOrchestrator`.
+
+- [#3152](https://github.com/langchain-ai/langgraphjs/pull/3152) [`3c632fa`](https://github.com/langchain-ai/langgraphjs/commit/3c632fa2aa2d7e35f2540f556d8318f157ebe306) Thanks [@eliornl](https://github.com/eliornl)! - A stream that reconnects now gets a fresh set of reconnect attempts each time an event arrives, as the Python SDK does, so a long stream no longer gives up at its sixth drop when every reconnect worked. A frame with only an `id:` or a `retry:` field does not count as an event.
+
+- [#3124](https://github.com/langchain-ai/langgraphjs/pull/3124) [`a73261d`](https://github.com/langchain-ai/langgraphjs/commit/a73261dd575f4a8a84058a241cd60ccabdb08ccf) Thanks [@eliornl](https://github.com/eliornl)! - `stop()` in the `useStream` hook and `StreamOrchestrator` no longer loses the session. Without history and without an `onFinish` that takes the thread state, stopping a running stream put back the thread state read when the thread opened, so the turns sent since disappeared and `onStop` edits were overwritten. A stop now reads the thread and shows what the server kept, with the `onStop` edits applied on top. With or without history, a stop no longer shows the cancellation as an error, or the node it cut off as a breakpoint.
+
+- [#3123](https://github.com/langchain-ai/langgraphjs/pull/3123) [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c) Thanks [@eliornl](https://github.com/eliornl)! - After a reload, a subagent delegated by an older turn is no longer shown with the tool results of a newer turn.
+
+- [#3123](https://github.com/langchain-ai/langgraphjs/pull/3123) [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c) Thanks [@eliornl](https://github.com/eliornl)! - After a reload, a subagent that is still running or waiting on an approval no longer shows the state of a regular tool called before it in the same message.
+
+- [#3123](https://github.com/langchain-ai/langgraphjs/pull/3123) [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c) Thanks [@eliornl](https://github.com/eliornl)! - With `streamSubgraphs`, values from a subgraph that is not a subagent no longer replace the root state while the subgraph runs. Its results show once its node returns.
+
+- [#3123](https://github.com/langchain-ai/langgraphjs/pull/3123) [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c) Thanks [@eliornl](https://github.com/eliornl)! - A numeric `throttle` notifies at most once per interval while values keep changing, as documented, instead of waiting until they stop.
+
+- [#3137](https://github.com/langchain-ai/langgraphjs/pull/3137) [`2965bc1`](https://github.com/langchain-ai/langgraphjs/commit/2965bc1083945c16f38cdc9ef427991d7af11ff6) Thanks [@richardscarrott](https://github.com/richardscarrott)! - fix(sdk): re-parse streamed tool call args at most every 50ms instead of on every chunk
+  
+  The `useStream` hook from `@langchain/langgraph-sdk/react` re-parsed a streaming tool call's full arguments on every `messages` chunk, so the work grew quadratically with the length of the arguments. It now reuses the previous parse and re-parses at most every 50ms, and once more when the stream ends. Subagent messages get the same treatment.
+  
+  The `@langchain/core` peer dependency is raised from `^1.1.48` to `^1.2.18`, the first release that parses tool call chunks lazily. Older releases parse them on every chunk regardless, so they would get the delay without the speedup.
+
+## 1.12.8
+
+### Patch Changes
+
+- [#3096](https://github.com/langchain-ai/langgraphjs/pull/3096) [`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde) Thanks [@eliornl](https://github.com/eliornl)! - fix(sdk): stop retrying cancelled requests, release abort listeners and emit CR-terminated SSE lines at once
+  
+  - A request cancelled with an `AbortSignal` or `timeoutMs` is no longer retried. Native `AbortError` and `TimeoutError` exceptions were retried with backoff, so calling `stop()` before the server answered kept `isLoading` on for 15 to 30 seconds.
+  - A request with a timeout no longer leaves an abort listener on the caller's signal, so reusing one signal for many requests stops piling up listeners. Runtimes without `AbortSignal.any` (Safari before 17.4, Node before 20.3) still hold one listener per request until its timeout fires or it is cancelled.
+  - The SSE decoder emits a line ending in a bare CR as soon as it arrives instead of holding it until the next chunk, and no longer drops the blank line of a stream that ends with CR.
+
+## 1.12.7
+
+### Patch Changes
+
+- [#3060](https://github.com/langchain-ai/langgraphjs/pull/3060) [`2b982b6`](https://github.com/langchain-ai/langgraphjs/commit/2b982b6cb4fbdf1493a40994660b1c7df97963aa) Thanks [@hntrl](https://github.com/hntrl)! - fix(sdk): stop resolved interrupts from coming back after a reload
+  
+  After a reload, the first submit or respond on the Agent Server brought back every interrupt the thread had already resolved, and accepting them failed with `no_such_interrupt`. Its HTTP commands report `applied_through_seq: 0`, so the SDK treated the whole replayed history as new. When a command reports 0, the SDK now finds where the command's run starts on the thread stream and treats everything before it as history.
+
 ## 1.12.6
 
 ### Patch Changes

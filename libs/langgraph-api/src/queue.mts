@@ -1,21 +1,47 @@
-import type { Ops, Run, RunStatus } from "./storage/types.mjs";
+import { HTTPException } from "hono/http-exception";
+import type {
+  CheckpointPayload,
+  Ops,
+  Run,
+  RunStatus,
+} from "./storage/types.mjs";
 import {
   type StreamCheckpoint,
   type StreamTaskResult,
   streamState,
 } from "./stream.mjs";
 import { logError, logger } from "./logging.mjs";
-import { serializeError } from "./utils/serde.mjs";
+import { isUnknownInterruptError, serializeError } from "./utils/serde.mjs";
 import { callWebhook } from "./webhook.mjs";
 import { getGraph } from "./graph/load.mjs";
 
 const MAX_RETRY_ATTEMPTS = 3;
 
+// Strict resume refuses an answer to an interrupt that isn't pending, for a run
+// whose request asked for it with `strict_resume`; a key in the client's config
+// never turns it on. Only the first attempt is checked: a retry sends the answer
+// again after the first attempt may have used it.
+function withStrictResume(run: Run, strict: boolean): Run {
+  const configurable = { ...run.kwargs.config?.configurable };
+  delete configurable.__pregel_strict_resume;
+  if (strict) configurable.__pregel_strict_resume = true;
+  return {
+    ...run,
+    kwargs: { ...run.kwargs, config: { ...run.kwargs.config, configurable } },
+  };
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const queue = async (ops: Ops) => {
   while (true) {
     for await (const { run, attempt, signal } of ops.runs.next()) {
-      await worker(ops, run, attempt, signal);
+      // Nothing restarts this loop, so one run's failure must not end it.
+      await worker(ops, run, attempt, signal).catch((error) =>
+        logError(error, {
+          prefix: "Background worker failed",
+          context: { run_id: run.run_id },
+        })
+      );
     }
 
     // TODO: this is very suboptimal, we should implement subscription to the run
@@ -33,10 +59,22 @@ const worker = async (
   let endedAt: Date | undefined = undefined;
   let checkpoint: StreamCheckpoint | undefined = undefined;
   let exception: Error | undefined = undefined;
-  let status: RunStatus | undefined = undefined;
+  let status: RunStatus | "rollback" | undefined = undefined;
 
   const temporary = run.kwargs.temporary;
+  const resumable = run.kwargs?.resumable ?? false;
   const webhook = run.kwargs.webhook as string | undefined;
+  const strict = run.kwargs.strict_resume === true && attempt === 1;
+
+  // A stateless run is deleted as soon as it ends, so its streams can no
+  // longer read how it ended: the worker sends their `end` before the delete.
+  const publishEnd = (status: RunStatus | "rollback") =>
+    ops.runs.stream.publish({
+      runId: run.run_id,
+      resumable,
+      event: "end",
+      data: { run_id: run.run_id, status },
+    });
 
   logger.info("Starting background run", {
     run_id: run.run_id,
@@ -59,7 +97,32 @@ const worker = async (
     };
   };
 
-  const isInterrupted = () => signal.aborted && signal.reason === "interrupt";
+  const isCancelled = () =>
+    signal.aborted &&
+    (signal.reason === "interrupt" || signal.reason === "rollback");
+
+  // The run, or its thread, can be deleted while it runs: a final write that
+  // fails because its record is gone has nothing left to update.
+  const unlessGone = async (
+    write: Promise<unknown>,
+    isGone: () => Promise<boolean>
+  ) => {
+    try {
+      await write;
+    } catch (error) {
+      if (!(await isGone())) throw error;
+    }
+  };
+  const runGone = async () =>
+    (await ops.runs.get(run.run_id, run.thread_id, undefined)) == null;
+  const threadGone = () =>
+    ops.threads.get(run.thread_id, undefined).then(
+      () => false,
+      (error) => {
+        if (error instanceof HTTPException && error.status === 404) return true;
+        throw error;
+      }
+    );
 
   try {
     if (attempt > MAX_RETRY_ATTEMPTS) {
@@ -67,10 +130,9 @@ const worker = async (
     }
 
     const runId = run.run_id;
-    const resumable = run.kwargs?.resumable ?? false;
 
     try {
-      const stream = streamState(run, {
+      const stream = streamState(withStrictResume(run, strict), {
         getGraph,
         attempt,
         signal,
@@ -87,7 +149,7 @@ const worker = async (
         });
       }
     } catch (error) {
-      if (!isInterrupted()) {
+      if (!isCancelled()) {
         await ops.runs.stream.publish({
           runId,
           resumable,
@@ -109,14 +171,23 @@ const worker = async (
     });
 
     status = "success";
-    await ops.runs.setStatus(run.run_id, status);
+    await unlessGone(ops.runs.setStatus(run.run_id, status), runGone);
   } catch (error) {
     endedAt = new Date();
 
-    if (isInterrupted()) {
+    if (isCancelled()) {
       checkpoint = undefined;
-      status = "interrupted";
-      await ops.runs.setStatus(run.run_id, status);
+      if (signal.reason === "rollback") {
+        status = "rollback";
+        if (temporary) await publishEnd(status);
+        await unlessGone(
+          ops.runs.delete(run.run_id, run.thread_id, undefined),
+          runGone
+        );
+      } else {
+        status = "interrupted";
+        await unlessGone(ops.runs.setStatus(run.run_id, status), runGone);
+      }
     } else {
       if (error instanceof Error) exception = error;
 
@@ -133,13 +204,41 @@ const worker = async (
       });
 
       status = "error";
-      await ops.runs.setStatus(run.run_id, status);
+      await unlessGone(ops.runs.setStatus(run.run_id, status), runGone);
     }
   } finally {
     if (temporary) {
-      await ops.threads.delete(run.thread_id, undefined);
+      if (status != null && status !== "rollback") await publishEnd(status);
+      await unlessGone(
+        ops.threads.delete(run.thread_id, undefined),
+        threadGone
+      );
+    } else if (strict && isUnknownInterruptError(exception)) {
+      // A refused resume ran nothing, so the thread is set from the state it
+      // already had. A task that failed in an earlier run leaves the thread
+      // `error`, as that run did.
+      await unlessGone(
+        ops.threads.state
+          .get(
+            { configurable: { thread_id: run.thread_id } },
+            { subgraphs: false },
+            undefined
+          )
+          .then((state) =>
+            ops.threads.setStatus(run.thread_id, {
+              checkpoint: state as unknown as CheckpointPayload,
+              exception: state.tasks.some((task) => task.error != null)
+                ? exception
+                : undefined,
+            })
+          ),
+        threadGone
+      );
     } else {
-      await ops.threads.setStatus(run.thread_id, { checkpoint, exception });
+      await unlessGone(
+        ops.threads.setStatus(run.thread_id, { checkpoint, exception }),
+        threadGone
+      );
     }
 
     if (webhook) {

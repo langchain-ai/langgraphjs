@@ -27,9 +27,9 @@
   "author": "LangChain",
   "license": "MIT",
   "dependencies": {
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "yargs": "^17.7.2",
-    "zod": "^3.25.76 || ^4"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@langchain/core": "^1.1.44",

@@ -1,6 +1,10 @@
 import type { BaseMessage } from "@langchain/core/messages";
 
 import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import {
+  DISCOVERY_HISTORY_SELECT,
+  mapSubagentNamespaces,
+} from "../stream/discovery/namespace-from-history.js";
 import type {
   CheckpointsStreamEvent,
   CustomStreamEvent,
@@ -19,6 +23,7 @@ import { MessageTupleManager, toMessageDict } from "./messages.js";
 import { StreamError } from "./errors.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
+import type { ThreadStateSelectField } from "../schema.js";
 import {
   SubagentManager,
   extractToolCallIdFromNamespace,
@@ -154,6 +159,10 @@ export interface StreamManagerOptions {
    * This is useful for deep agent architectures where you want to display
    * the main conversation separately from subagent activity.
    *
+   * Subagent messages stream as they are generated only when the run streams
+   * subgraphs, so submit with `streamSubgraphs: true`. Without it, a subagent
+   * shows only its final result.
+   *
    * @default false
    *
    * @example
@@ -162,6 +171,8 @@ export interface StreamManagerOptions {
    *   assistantId: "my-agent",
    *   filterSubagentMessages: true,
    * });
+   *
+   * stream.submit(input, { streamSubgraphs: true });
    *
    * // Main thread messages only (no subagent messages)
    * stream.messages
@@ -202,6 +213,8 @@ export class StreamManager<
   private queue: Promise<unknown> = Promise.resolve();
 
   private queueSize: number = 0;
+
+  #epoch = 0;
 
   private state: {
     isLoading: boolean;
@@ -300,11 +313,12 @@ export class StreamManager<
    *
    * Subagent messages are persisted in the LangGraph checkpointer under a
    * subgraph-specific `checkpoint_ns` (e.g. `tools:<uuid>`). This method
-   * discovers the correct namespace by inspecting the main thread's intermediate
-   * history checkpoints, where each pending task's `checkpoint.checkpoint_ns`
-   * identifies the subgraph. Tasks are matched to tool calls by their Send index
-   * (`task.path[1]`), which corresponds to the order of tool calls in the AI
-   * message — no deepagent-specific metadata required.
+   * matches each subagent tool call to its namespace from one page of the
+   * main thread's history, requested with `select: ["checkpoint", "tasks"]`:
+   * by the ToolMessage a finished Send task wrote, else by the Send index
+   * (`task.path[1]`) into the tool calls that were still unanswered when the
+   * Sends went out. It shares this matching with `useStream` from
+   * `@langchain/react`, and needs no deepagents-specific metadata.
    *
    * @param threads - Client with a `getHistory` method (e.g. `client.threads`)
    * @param threadId - The parent thread ID
@@ -319,15 +333,18 @@ export class StreamManager<
         options?: {
           limit?: number;
           checkpoint?: { checkpoint_ns?: string };
+          select?: ThreadStateSelectField[];
           signal?: AbortSignal;
         }
       ): Promise<
         Array<{
-          values: V;
+          /** Absent from the discovery page, which selects no `values`. */
+          values?: V;
           tasks?: Array<{
             id: string;
             name: string;
             path?: unknown[];
+            result?: unknown;
             checkpoint?: { checkpoint_ns?: string } | null;
           }>;
         }>
@@ -365,203 +382,30 @@ export class StreamManager<
     }
 
     /**
-     * Step 1: Discover subgraph namespaces from intermediate history
-     *
-     * When LangGraph dispatches parallel tool calls (v2 mode), each is a
-     * separate Send task with a unique UUID-based checkpoint_ns. The intermediate
-     * history checkpoints record these as `tasks[i]` where:
-     *   - `tasks[i].checkpoint.checkpoint_ns` = "tools:<uuid>" for each subgraph
-     *   - `tasks[i].path = ["__pregel_push", sendIndex]` matches tool_calls order
-     *
-     * By matching task Send index → tool_call position in the AI message we can
-     * derive the subgraph namespace for every tool call without any external
-     * metadata on the ToolMessage itself.
+     * Step 1: Match each subagent tool call to its subagent namespace from
+     * one discovery page of root-thread history. Only `checkpoint` and
+     * `tasks` are requested: matching never reads `values`.
      */
-    const toolCallIdToNamespace = new Map<string, string>();
+    let toolCallIdToNamespace = new Map<string, string>();
 
     try {
-      /**
-       * Fetch enough history to include the intermediate checkpoint where
-       * tool-call tasks were pending (typically within the last 10 checkpoints).
-       */
       const mainHistory = await threads.getHistory<Record<string, unknown>>(
         threadId,
-        { limit: options?.historyLimit ?? 20, signal }
+        {
+          limit: options?.historyLimit ?? 20,
+          select: DISCOVERY_HISTORY_SELECT,
+          signal,
+        }
       );
-
-      /**
-       * Phase 1: Direct mapping across ALL checkpoints (preferred).
-       *
-       * When a completed checkpoint contains task results, each task.result
-       * has a ToolMessage whose tool_call_id directly and unambiguously maps
-       * the task to the LLM tool call that triggered it. This is more robust
-       * than positional alignment: it works even when a step mixes subagent
-       * tool calls with other tool calls, and requires no assumptions about
-       * the ordering of tasks vs tool_calls.
-       *
-       * We collect these direct mappings across the entire history before
-       * attempting any positional fallback. Otherwise a more recent checkpoint
-       * whose task is still pending (e.g. an interrupted run) could produce a
-       * positional guess and stop the scan before reaching the older checkpoint
-       * that actually holds the correct, completed mapping.
-       *
-       * LangGraph v2 dispatches each parallel tool call as a separate PUSH
-       * task ("__pregel_push"). The subgraph checkpoint_ns is constructed as
-       * `task.name + ":" + task.id`, mirroring algo.ts:
-       *   taskCheckpointNamespace = checkpointNamespace + ":" + taskId
-       *   where checkpointNamespace = task.name for root-level tasks.
-       *
-       * task.checkpoint is always null for completed tasks, so we derive the
-       * namespace from task.name + task.id rather than task.checkpoint.checkpoint_ns.
-       */
-      for (const checkpoint of mainHistory) {
-        const { tasks } = checkpoint;
-        if (!tasks || tasks.length === 0) {
-          continue;
+      toolCallIdToNamespace = mapSubagentNamespaces(
+        mainHistory,
+        toFetch.map(([id]) => id),
+        {
+          messagesKey,
+          isSubagentToolCall: (name) =>
+            this.subagentManager.isSubagentToolCall(name),
         }
-
-        for (const task of tasks) {
-          if (
-            !Array.isArray(task.path) ||
-            task.path[0] !== "__pregel_push" ||
-            typeof task.id !== "string" ||
-            typeof task.name !== "string"
-          ) {
-            continue;
-          }
-
-          /**
-           * Read tool_call_id directly from the task's result ToolMessage.
-           */
-          const resultMessages = (
-            task as unknown as { result?: { messages?: unknown[] } }
-          ).result?.messages;
-
-          if (!Array.isArray(resultMessages)) {
-            continue;
-          }
-
-          for (const msg of resultMessages) {
-            const m = msg as Record<string, unknown>;
-            if (
-              m.type === "tool" &&
-              typeof m.tool_call_id === "string" &&
-              toFetch.some(([id]) => id === m.tool_call_id) &&
-              !toolCallIdToNamespace.has(m.tool_call_id)
-            ) {
-              toolCallIdToNamespace.set(
-                m.tool_call_id,
-                `${task.name}:${task.id}`
-              );
-            }
-          }
-        }
-      }
-
-      /**
-       * Phase 2: Positional fallback, applied ONLY to tool calls that Phase 1
-       * could not resolve.
-       *
-       * This covers checkpoints whose task results are not yet populated (tasks
-       * still pending — the live or just-interrupted case). We align push tasks
-       * to the subagent tool calls of the triggering AI message by Send index
-       * (task.path[1]). Restricting this to still-unmapped tool calls guarantees
-       * a correct direct mapping from Phase 1 is never overwritten by a guess.
-       */
-      const hasUnmappedToolCalls = () =>
-        toFetch.some(([id]) => !toolCallIdToNamespace.has(id));
-
-      if (hasUnmappedToolCalls()) {
-        for (const checkpoint of mainHistory) {
-          if (!hasUnmappedToolCalls()) break;
-
-          const { tasks } = checkpoint;
-          if (!tasks || tasks.length === 0) {
-            continue;
-          }
-
-          const pushTasks = tasks.filter(
-            (t) =>
-              Array.isArray(t.path) &&
-              t.path[0] === "__pregel_push" &&
-              typeof t.path[1] === "number" &&
-              // Send tasks are `[PUSH, i]` (legacy JS servers) or
-              // `[PUSH, i, false]` (aligned with Python); longer paths are
-              // error handlers of failed Sends (`[PUSH, i, false,
-              // "node_error_handler", false]`) and must not be mistaken for
-              // a second Send at the same index.
-              t.path.length <= 3 &&
-              typeof t.id === "string" &&
-              typeof t.name === "string"
-          );
-          if (pushTasks.length === 0) continue;
-
-          /**
-           * Find the AI message with subagent tool calls to align by Send index.
-           */
-          const msgs = checkpoint.values[messagesKey];
-          if (!Array.isArray(msgs)) continue;
-
-          let aiMessage: Record<string, unknown> | undefined;
-          for (let i = msgs.length - 1; i >= 0; i -= 1) {
-            const m = msgs[i] as Record<string, unknown>;
-            if (
-              m.type === "ai" &&
-              Array.isArray(m.tool_calls) &&
-              m.tool_calls.length > 0 &&
-              (m.tool_calls as Array<{ name: string }>).some((tc) =>
-                this.subagentManager.isSubagentToolCall(tc.name)
-              )
-            ) {
-              aiMessage = m;
-              break;
-            }
-          }
-          if (!aiMessage) {
-            continue;
-          }
-
-          /**
-           * Only consider subagent tool calls from the AI message — not all tool
-           * calls. This ensures regular tool calls (searchWeb, queryDatabase, etc.)
-           * are never mistaken for subagents even when they appear in the same step.
-           */
-          const subagentToolCalls = (
-            aiMessage.tool_calls as Array<{ id?: string; name: string }>
-          ).filter((tc) => this.subagentManager.isSubagentToolCall(tc.name));
-
-          if (subagentToolCalls.length === 0) {
-            continue;
-          }
-
-          /**
-           * Sort push tasks by Send index (path[1]) to align with tool_calls order
-           */
-          const sorted = [...pushTasks].sort((a, b) => {
-            const ai = Array.isArray(a.path) ? (a.path[1] as number) : 0;
-            const bi = Array.isArray(b.path) ? (b.path[1] as number) : 0;
-            return ai - bi;
-          });
-
-          for (
-            let i = 0;
-            i < sorted.length && i < subagentToolCalls.length;
-            i += 1
-          ) {
-            const tc = subagentToolCalls[i];
-            const task = sorted[i];
-            if (
-              tc?.id &&
-              task.id &&
-              task.name &&
-              toFetch.some(([id]) => id === tc.id) &&
-              !toolCallIdToNamespace.has(tc.id)
-            ) {
-              toolCallIdToNamespace.set(tc.id, `${task.name}:${task.id}`);
-            }
-          }
-        }
-      }
+      );
     } catch {
       /**
        * Non-fatal: fall back to subagent.namespace below
@@ -669,9 +513,9 @@ export class StreamManager<
     let timeoutId: NodeJS.Timeout | number | undefined;
 
     const throttledListener = () => {
-      clearTimeout(timeoutId);
+      if (timeoutId !== undefined) return;
       timeoutId = setTimeout(() => {
-        clearTimeout(timeoutId);
+        timeoutId = undefined;
         listener();
       }, timeoutMs);
     };
@@ -697,6 +541,14 @@ export class StreamManager<
     return this.state.error;
   }
 
+  /**
+   * Bumped when a stream begins (not when it is queued) and on `clear()`, so
+   * a read that resolves after either is stale.
+   */
+  get epoch() {
+    return this.#epoch;
+  }
+
   setStreamValues = (
     values:
       | (StateType | null)
@@ -717,6 +569,10 @@ export class StreamManager<
     return (
       update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
     ) => {
+      // Publish any pending re-parse first, so it can't later overwrite this
+      // update
+      this.messages.flush();
+
       const stateValues = (this.state.values ?? [null, "stream"])[0];
       const prev = {
         ...historyValues,
@@ -774,6 +630,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -784,15 +646,102 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     }
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
+      this.#epoch += 1;
       this.setState({ isLoading: true, error: undefined });
-      this.abortRef = new AbortController();
+      // clear() and stop() replace abortRef, so the run keeps its own.
+      const abort = new AbortController();
+      this.abortRef = abort;
+      if (options.isReplaying) {
+        this.messages.startReplay();
+        this.subagentManager.startReplay();
+      }
 
-      const run = await action(this.abortRef.signal);
+      const run = await action(abort.signal);
       let clearedPreviousInterrupts = false;
+
+      // Subagent messages kept in the main stream (`filterSubagentMessages` off)
+      const subagentMessageIds = new Set<string>();
+
+      const applyMessage = (messageId: string, { updateOnly = false } = {}) => {
+        const isFromSubagent = subagentMessageIds.has(messageId);
+
+        this.setStreamValues((streamValues) => {
+          const values = {
+            ...options.initialValues,
+            ...streamValues,
+          };
+
+          // Assumption: we're concatenating the message
+          let messages = options.getMessages(values).slice();
+          const chunk = this.messages.get(messageId)?.chunk;
+          if (!chunk) return values;
+
+          // Placed by id, since later events can move or remove a message and
+          // a join from a checkpoint resends ones the loaded state holds. The
+          // search starts at the end, where a streamed message usually is.
+          let index = messages.length - 1;
+          while (index >= 0 && messages[index].id !== messageId) index -= 1;
+
+          if (chunk.getType() === "remove") {
+            // Check for special REMOVE_ALL_MESSAGES sentinel
+            if (chunk.id === REMOVE_ALL_MESSAGES) {
+              // Clear all messages when __remove_all__ is received
+              messages = [];
+            } else if (index !== -1) {
+              messages.splice(index, 1);
+            }
+          } else {
+            // A refresh never brings back a message removed since.
+            if (index === -1 && updateOnly) return values;
+            const msgDict = this.toMessage(chunk) as Message;
+            messages[index === -1 ? messages.length : index] = msgDict;
+
+            // Track subagents from AI messages with tool calls (main agent only)
+            if (
+              !isFromSubagent &&
+              msgDict.type === "ai" &&
+              "tool_calls" in msgDict &&
+              Array.isArray(msgDict.tool_calls)
+            ) {
+              this.subagentManager.registerFromToolCalls(
+                msgDict.tool_calls,
+                msgDict.id as string | undefined
+              );
+            }
+
+            // Complete subagents when tool messages arrive (main agent only)
+            if (
+              !isFromSubagent &&
+              msgDict.type === "tool" &&
+              "tool_call_id" in msgDict
+            ) {
+              const tcId = msgDict.tool_call_id as string;
+              const content =
+                typeof msgDict.content === "string"
+                  ? msgDict.content
+                  : JSON.stringify(msgDict.content);
+              const status =
+                "status" in msgDict && msgDict.status === "error"
+                  ? "error"
+                  : "success";
+              this.subagentManager.processToolMessage(tcId, content, status);
+            }
+          }
+
+          return options.setMessages(values, messages);
+        });
+      };
+
+      // Re-publish messages whose tool calls were re-parsed on the timer
+      this.messages.onRefresh = (ids) =>
+        ids.forEach((id) => applyMessage(id, { updateOnly: true }));
 
       let streamError: StreamError | undefined;
       for await (const { event, data } of run) {
@@ -936,7 +885,11 @@ export class StreamManager<
                 valuesData
               );
             }
-          } else {
+          } else if (namespace == null) {
+            // Publish any pending re-parse first, so it can't later overwrite
+            // the messages in these values
+            this.messages.flush();
+
             if (!clearedPreviousInterrupts) {
               // Clear stale __interrupt__ from the previous run once the new
               // stream starts delivering main values. This avoids carrying
@@ -1055,73 +1008,18 @@ export class StreamManager<
             continue;
           }
 
-          this.setStreamValues((streamValues) => {
-            const values = {
-              ...options.initialValues,
-              ...streamValues,
-            };
-
-            // Assumption: we're concatenating the message
-            let messages = options.getMessages(values).slice();
-            const { chunk, index } =
-              this.messages.get(messageId, messages.length) ?? {};
-
-            if (!chunk || index == null) return values;
-            if (chunk.getType() === "remove") {
-              // Check for special REMOVE_ALL_MESSAGES sentinel
-              if (chunk.id === REMOVE_ALL_MESSAGES) {
-                // Clear all messages when __remove_all__ is received
-                messages = [];
-              } else {
-                messages.splice(index, 1);
-              }
-            } else {
-              const msgDict = this.toMessage(chunk) as Message;
-              messages[index] = msgDict;
-
-              // Track subagents from AI messages with tool calls (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "ai" &&
-                "tool_calls" in msgDict &&
-                Array.isArray(msgDict.tool_calls)
-              ) {
-                this.subagentManager.registerFromToolCalls(
-                  msgDict.tool_calls,
-                  msgDict.id as string | undefined
-                );
-              }
-
-              // Complete subagents when tool messages arrive (main agent only)
-              if (
-                !isFromSubagent &&
-                msgDict.type === "tool" &&
-                "tool_call_id" in msgDict
-              ) {
-                const tcId = msgDict.tool_call_id as string;
-                const content =
-                  typeof msgDict.content === "string"
-                    ? msgDict.content
-                    : JSON.stringify(msgDict.content);
-                const status =
-                  "status" in msgDict && msgDict.status === "error"
-                    ? "error"
-                    : "success";
-                this.subagentManager.processToolMessage(tcId, content, status);
-              }
-            }
-
-            return options.setMessages(values, messages);
-          });
+          if (isFromSubagent) subagentMessageIds.add(messageId);
+          applyMessage(messageId);
         }
       }
 
+      this.messages.flush();
       if (streamError != null) throw streamError;
 
       // Skip onSuccess when the stream was aborted (e.g., by multitask interrupt).
       // This avoids unnecessary HTTP calls (like history fetching) that would
       // delay the next queued stream from starting.
-      if (!this.abortRef.signal.aborted) {
+      if (!abort.signal.aborted) {
         const values = await options.onSuccess?.();
         if (typeof values !== "undefined" && this.queueSize === 0) {
           this.setStreamValues(values);
@@ -1139,6 +1037,10 @@ export class StreamManager<
         await options.onError?.(error);
       }
     } finally {
+      // Publish any pending refresh for this run (e.g. after an abort), then
+      // detach so it can't publish into a later run's state
+      this.messages.flush();
+      this.messages.onRefresh = undefined;
       this.setState({ isLoading: false });
       this.abortRef = new AbortController();
       options.onFinish?.();
@@ -1166,6 +1068,12 @@ export class StreamManager<
 
       callbacks: StreamManagerEventCallbacks<StateType, Bag>;
 
+      /**
+       * Called when the stream ends without an error or an abort. Return the
+       * values to show, `null` to clear the stream values so the history
+       * values show instead, or `undefined` to keep the stream's values. The
+       * result is ignored while another stream is queued.
+       */
       onSuccess: () =>
         | StateType
         | null
@@ -1176,6 +1084,9 @@ export class StreamManager<
       onError: (error: unknown) => void | Promise<void>;
 
       onFinish?: () => void;
+
+      /** The stream replays the run from its first event. */
+      isReplaying?: boolean;
     },
     startOptions?: {
       /**
@@ -1203,15 +1114,59 @@ export class StreamManager<
           update: Partial<StateType> | ((prev: StateType) => Partial<StateType>)
         ) => void;
       }) => void;
+      /**
+       * Reads what the server kept after the stop cut a stream off. Resolve
+       * to its head's values to show them, `null` to clear the stream values
+       * so the history values show, or `undefined` to keep the stopped
+       * stream's values, as a rejection does. `onStop`'s updates are applied
+       * again on top, and the result is dropped if a stream began or
+       * `clear()` ran in the meantime.
+       */
+      read?: () => Promise<StateType | null | undefined>;
     }
   ): Promise<void> => {
+    const wasLoading = this.isLoading;
+    const epoch = this.#epoch;
     this.abortRef.abort();
     this.abortRef = new AbortController();
 
-    options.onStop?.({ mutate: this.getMutateFn("stop", historyValues) });
+    const updates: Array<
+      Partial<StateType> | ((prev: StateType) => Partial<StateType>)
+    > = [];
+    const mutate = this.getMutateFn("stop", historyValues);
+    options.onStop?.({
+      mutate: (update) => {
+        updates.push(update);
+        mutate(update);
+      },
+    });
+
+    if (!wasLoading || options.read == null) return;
+    let head: StateType | null | undefined;
+    try {
+      head = await options.read();
+    } catch {
+      return;
+    }
+    if (head === undefined || this.#epoch !== epoch) return;
+    // Without a head the history takes over. Null keeps it live; only
+    // onStop's updates need a copy of it to sit on.
+    this.setStreamValues(
+      head == null && updates.length === 0
+        ? null
+        : updates.reduce<StateType>(
+            (prev, update) => ({
+              ...prev,
+              ...(typeof update === "function" ? update(prev) : update),
+            }),
+            head ?? historyValues
+          )
+    );
   };
 
   clear = () => {
+    this.#epoch += 1;
+
     // Cancel any running streams
     this.abortRef.abort();
     this.abortRef = new AbortController();

@@ -1,4 +1,5 @@
 import { isNetworkError } from "./error.js";
+import { isSSEControlPart } from "./sse.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   reconnectDelayMs,
@@ -12,8 +13,8 @@ type IterableReadableStreamInterface<T> = ReadableStream<T> & AsyncIterable<T>;
  */
 export interface StreamWithRetryOptions {
   /**
-   * Maximum number of reconnection attempts. Default is
-   * {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
+   * Maximum number of reconnection attempts in a row without an event. Default
+   * is {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}.
    */
   maxRetries?: number;
 
@@ -30,6 +31,14 @@ export interface StreamWithRetryOptions {
     lastEventId?: string;
     cause: unknown;
   }) => void;
+
+  /**
+   * Called when the stream ends without an error and a reconnect path is
+   * known. A proxy timeout or a server restart can end the response cleanly
+   * while the run goes on, so resolving `true` reconnects. A rejection is
+   * handled like a dropped connection.
+   */
+  isRunActive?: (reconnectPath: string) => Promise<boolean>;
 }
 
 /**
@@ -288,16 +297,22 @@ export async function* streamWithRetry<T extends { id?: string }>(
           }
 
           // Track last event ID for reconnection
-          if (value.id) {
+          if (value.id !== undefined) {
             lastEventId = value.id;
           }
+          // Progress since the last drop earns a fresh set of reconnect attempts.
+          if (!isSSEControlPart(value)) attempt = 0;
 
           yield value;
         }
 
-        // Stream completed successfully, exit retry loop
-        break;
+        if (!reconnectPath || !(await options.isRunActive?.(reconnectPath))) {
+          break;
+        }
+        shouldRetry = true;
+        lastError = new Error("Stream closed before the run finished");
       } catch (error) {
+        lastError = error;
         // Error during streaming - attempt reconnect if we have a location header
         if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;

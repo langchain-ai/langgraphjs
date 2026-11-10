@@ -1,5 +1,48 @@
 # @langchain/langgraph-cli
 
+## 1.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`904126c`](https://github.com/langchain-ai/langgraphjs/commit/904126cef1dcc758ac7dd13d330f8595deeed65b), [`c5ad00f`](https://github.com/langchain-ai/langgraphjs/commit/c5ad00f399d4f815376c88d4ef3e9bcd6fe81c54)]:
+  - @langchain/langgraph-api@1.7.1
+
+## 1.7.0
+
+### Patch Changes
+
+- Updated dependencies [[`badfe38`](https://github.com/langchain-ai/langgraphjs/commit/badfe38413720fe2bf21b81dd52cd6e74f86d845), [`397e93e`](https://github.com/langchain-ai/langgraphjs/commit/397e93e0d2b47c3d9ed914c7937b92c9fd95d532), [`6fb340e`](https://github.com/langchain-ai/langgraphjs/commit/6fb340e306e33f95cdb2d2a0a7eaebcc154152f1), [`ffe9e60`](https://github.com/langchain-ai/langgraphjs/commit/ffe9e60a5d3fdabbcbd6c814b18cf3d9fc01a34b), [`184ce74`](https://github.com/langchain-ai/langgraphjs/commit/184ce74a7aac02c2337fb4909da547b7ef39912a), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`bdec328`](https://github.com/langchain-ai/langgraphjs/commit/bdec328a80439ce1d3974b10aa9e7b7f297da1b1), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a)]:
+  - @langchain/langgraph-api@1.7.0
+
+## 1.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e), [`024c902`](https://github.com/langchain-ai/langgraphjs/commit/024c902ef59dea82d4e121e1ecb882f370326cf0), [`881a734`](https://github.com/langchain-ai/langgraphjs/commit/881a7347fc510770b450ac8c70bef5e1bdacdd57), [`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e), [`ceefe05`](https://github.com/langchain-ai/langgraphjs/commit/ceefe0575f49a7fdfbfc60d33eb5ece5f3de3bad), [`b2c3d0b`](https://github.com/langchain-ai/langgraphjs/commit/b2c3d0b2a7cfe6e9e8a4944840d75835ee9ae4ee)]:
+  - @langchain/langgraph-api@1.6.0
+
+## 1.5.8
+
+### Patch Changes
+
+- Updated dependencies [[`478fffd`](https://github.com/langchain-ai/langgraphjs/commit/478fffdaf6dfcdd1c2fd0e977f53d2fcd8af8af3)]:
+  - @langchain/langgraph-api@1.5.8
+
+## 1.5.7
+
+### Patch Changes
+
+- Updated dependencies [[`e26cb84`](https://github.com/langchain-ai/langgraphjs/commit/e26cb846363dae6f4ae337d99a6340aba3673905), [`844f6fc`](https://github.com/langchain-ai/langgraphjs/commit/844f6fcafc8ad1b0b56b69bec302e25968fb974d), [`32542a5`](https://github.com/langchain-ai/langgraphjs/commit/32542a57e86fd55406eeaf08f850f6eaaf9a6583), [`824f24c`](https://github.com/langchain-ai/langgraphjs/commit/824f24ced5ee5a6d1c60c66b52031d61c2f7f30e), [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185), [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185), [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185)]:
+  - @langchain/langgraph-api@1.5.7
+
+## 1.5.6
+
+### Patch Changes
+
+- [#3095](https://github.com/langchain-ai/langgraphjs/pull/3095) [`75d179c`](https://github.com/langchain-ai/langgraphjs/commit/75d179cf63baa5f197b7f03b6f4928c05724fb16) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy --remote` sends the headers the control plane returns with its source upload, so uploads work with storage that needs extra headers, such as Azure Blob Storage. Control planes that return none keep the previous behavior.
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.5.6
+
 ## 1.5.5
 
 ### Patch Changes

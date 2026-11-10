@@ -1208,6 +1208,11 @@ export interface UseStreamOptions<
    * Provides a mutate function to update the stream state immediately
    * without requiring a server roundtrip.
    *
+   * Stopping a running stream then reads the thread's state again and
+   * applies each update once more on top of it, so a function update runs
+   * twice: first on the stopped stream's values, then on the state the
+   * server kept.
+   *
    * @example
    * ```typescript
    * onStop: ({ mutate }) => {
@@ -1333,6 +1338,12 @@ export interface SubmitOptions<
   interruptAfter?: "*" | string[];
   metadata?: Metadata;
   multitaskStrategy?: MultitaskStrategy;
+  /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it.
+   */
+  strictResume?: boolean;
   onCompletion?: OnCompletionBehavior;
   onDisconnect?: DisconnectMode;
   feedbackKeys?: string[];
