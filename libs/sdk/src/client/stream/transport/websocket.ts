@@ -207,12 +207,18 @@ export class ProtocolWebSocketTransportAdapter implements TransportAdapter {
         cleanup();
         reject(new Error("Failed to open protocol WebSocket."));
       };
+      const onClose = (event: CloseEvent) => {
+        cleanup();
+        reject(closeError(event));
+      };
       const cleanup = () => {
         socket.removeEventListener("open", onOpen);
         socket.removeEventListener("error", onError);
+        socket.removeEventListener("close", onClose);
       };
       socket.addEventListener("open", onOpen, { once: true });
       socket.addEventListener("error", onError, { once: true });
+      socket.addEventListener("close", onClose, { once: true });
     });
 
     if (!reconnecting) {
