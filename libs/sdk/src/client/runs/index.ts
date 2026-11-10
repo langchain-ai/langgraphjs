@@ -13,7 +13,10 @@ import type {
   StreamEvent,
 } from "../../types.js";
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
-import type { IdleReconnectMode } from "../../utils/stream.js";
+import type {
+  IdleReconnectMode,
+  StreamReconnectOptions,
+} from "../../utils/stream.js";
 
 import {
   BaseClient,
@@ -115,6 +118,10 @@ export class RunsClient<
       json,
       signal: payload?.signal,
       idleReconnect: payload?.streamIdleReconnect,
+      maxRetries: payload?.maxReconnectAttempts,
+      reconnectDelayMs: payload?.reconnectDelayMs,
+      onReconnect: payload?.onReconnect,
+      onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
@@ -433,7 +440,7 @@ export class RunsClient<
     threadId: string | undefined | null,
     runId: string,
     options?:
-      | {
+      | ({
           signal?: AbortSignal;
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
@@ -467,7 +474,7 @@ export class RunsClient<
            * - `0`: disables it.
            */
           streamIdleReconnect?: IdleReconnectMode;
-        }
+        } & StreamReconnectOptions)
       | AbortSignal
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
@@ -487,6 +494,10 @@ export class RunsClient<
       method: "GET",
       signal: opts?.signal,
       idleReconnect: opts?.streamIdleReconnect,
+      maxRetries: opts?.maxReconnectAttempts,
+      reconnectDelayMs: opts?.reconnectDelayMs,
+      onReconnect: opts?.onReconnect,
+      onConnected: opts?.onConnected,
       headers: opts?.lastEventId
         ? { "Last-Event-ID": opts.lastEventId }
         : undefined,

@@ -458,6 +458,7 @@ export class ThreadsClient<
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
+    const streamModes = [options?.streamMode ?? []].flat();
     yield* this.streamWithRetry({
       endpoint: `/threads/${encodePathSegment(threadId)}/stream`,
       method: "GET",
@@ -465,8 +466,12 @@ export class ThreadsClient<
       headers: options?.lastEventId
         ? { "Last-Event-ID": options.lastEventId }
         : undefined,
-      params: options?.streamMode
-        ? { stream_mode: options.streamMode }
+      params: streamModes.length
+        ? {
+            stream_mode: streamModes,
+            // Older servers read only `stream_modes`, as one comma-joined value.
+            stream_modes: streamModes.join(","),
+          }
         : undefined,
     });
   }
