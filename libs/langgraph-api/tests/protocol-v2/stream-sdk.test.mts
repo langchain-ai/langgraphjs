@@ -30,6 +30,8 @@ import {
   createEmbedServer,
   type ThreadSaver,
 } from "../../src/experimental/embed.mjs";
+import { replayQueuedEvents } from "../../src/experimental/embed/protocol.mjs";
+import type { ProtocolEvent } from "../../src/protocol/types.mjs";
 import { graph as agent } from "../graphs/agent.mjs";
 import { graph as agentWithToolsGraph } from "../graphs/agent_with_tools.mjs";
 import { graph as agentWithStatsGraph } from "../graphs/agent_with_stats.mjs";
@@ -445,5 +447,22 @@ describe("SDK streaming projections against embed server", () => {
           .sort()
       ).toEqual([...forkedIds].sort());
     });
+  });
+});
+
+describe("replayQueuedEvents", () => {
+  it("moves on to the buffer a new run swaps in mid-replay", async () => {
+    const [first, second, third] = [1, 2, 3].map(
+      (seq) => ({ seq }) as unknown as ProtocolEvent
+    );
+    const thread = { queuedEvents: [first, second] };
+    const written: ProtocolEvent[] = [];
+
+    await replayQueuedEvents(thread, async (event) => {
+      written.push(event);
+      if (event === first) thread.queuedEvents = [third];
+    });
+
+    expect(written).toEqual([first, third]);
   });
 });

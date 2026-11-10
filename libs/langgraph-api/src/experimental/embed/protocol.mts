@@ -61,6 +61,28 @@ const parseSocketPayload = async (event: MessageEvent): Promise<string> => {
 };
 
 /**
+ * Writes a thread's buffered events in order, including ones pushed while a
+ * write awaits. A run that drops the buffer swaps in a new array, and the
+ * replay moves to it from the start: the live path skips this sink until the
+ * replay ends, so stopping early would lose the new run's first events.
+ */
+export async function replayQueuedEvents(
+  thread: Pick<EmbedThread, "queuedEvents">,
+  write: (event: ProtocolEvent) => Promise<void>
+) {
+  let events = thread.queuedEvents;
+  let cursor = 0;
+  while (cursor < events.length || events !== thread.queuedEvents) {
+    if (events !== thread.queuedEvents) {
+      events = thread.queuedEvents;
+      cursor = 0;
+      continue;
+    }
+    await write(events[cursor++]);
+  }
+}
+
+/**
  * Register thread-centric v2 protocol routes on an embed server Hono app.
  *
  * @experimental Does not follow semver.
@@ -261,11 +283,13 @@ export function registerProtocolRoutes(
     // the checkpoint that applies the input to state).
     const isResume = pendingInterrupts > 0;
 
-    if (isResume || forkFrom != null) {
+    if ((isResume || forkFrom != null) && !runInFlight) {
       // Drop the previous run's buffered events so late-attaching sinks
       // replay neither a paused run's `lifecycle.interrupted` nor the
-      // branch a fork moved away from.
-      thread.queuedEvents.length = 0;
+      // branch a fork moved away from. A run still going would keep
+      // adding events, so its buffer stays whole. A new array, so a sink
+      // still replaying moves to it.
+      thread.queuedEvents = [];
     }
 
     const run = createStubRun(thread.threadId, {
@@ -280,12 +304,6 @@ export function registerProtocolRoutes(
             : {}),
         },
       },
-      // `createStubRun` promotes the top-level `checkpoint_id` into
-      // `config.configurable.checkpoint_id` after merging (and, in
-      // fact, *replaces* any inline configurable the caller passed),
-      // so this is the only reliable way to reach the engine with a
-      // fork target.
-      ...(forkFrom != null ? { checkpoint_id: forkFrom } : {}),
       // Honor the caller's strategy, falling back to `enqueue` to match
       // the non-embed protocol-v2 server and the Python default.
       multitask_strategy:
@@ -406,8 +424,9 @@ export function registerProtocolRoutes(
     // Drop the previous run's buffered events so that a sink attaching
     // *after* this resume does not replay stale terminal lifecycle
     // events (e.g. `lifecycle.interrupted`) from the paused run. Any
-    // sink that was already receiving live events is unaffected.
-    thread.queuedEvents.length = 0;
+    // sink that was already receiving live events is unaffected. A new
+    // array, so a sink still replaying moves to it.
+    thread.queuedEvents = [];
 
     const protocolSession = attachRunSession(thread, run);
     await protocolSession.start();
@@ -542,13 +561,9 @@ export function registerProtocolRoutes(
         };
         thread.eventSinks.set(sinkId, sink);
         try {
-          let cursor = 0;
-          while (cursor < thread.queuedEvents.length) {
-            const event = thread.queuedEvents[cursor++];
-            if (matchesSinkFilter(filter, event)) {
-              await writeSse(event);
-            }
-          }
+          await replayQueuedEvents(thread, async (event) => {
+            if (matchesSinkFilter(filter, event)) await writeSse(event);
+          });
         } finally {
           sink.pendingReplay = false;
         }
@@ -595,10 +610,7 @@ export function registerProtocolRoutes(
             };
             thread.eventSinks.set(sinkId, sink);
             try {
-              let cursor = 0;
-              while (cursor < thread.queuedEvents.length) {
-                await writeWs(thread.queuedEvents[cursor++]);
-              }
+              await replayQueuedEvents(thread, writeWs);
             } finally {
               sink.pendingReplay = false;
             }
