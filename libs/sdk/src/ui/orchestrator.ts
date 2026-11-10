@@ -1692,7 +1692,9 @@ export class StreamOrchestrator<
    * streams, or waits in the queue behind the run in flight, never
    * interrupting it. The answered interrupts are hidden until that run
    * ends. Resolves once the run is created or queued, and rejects when it
-   * can't be sent.
+   * can't be sent. Unless `strictResume` is `false`, an answer to an
+   * interrupt that is no longer waiting fails its run, and its card shows
+   * again, instead of running the step again.
    */
   async respondAll(
     responses: Record<string, unknown>,
@@ -1726,7 +1728,7 @@ export class StreamOrchestrator<
       },
       config: options.config,
       metadata: options.metadata,
-      strictResume: options.strictResume,
+      strictResume: options.strictResume ?? true,
       multitaskStrategy: "enqueue",
       onError: (error) => {
         failed ??= { error };

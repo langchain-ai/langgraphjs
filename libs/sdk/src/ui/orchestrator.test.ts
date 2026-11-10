@@ -2831,13 +2831,24 @@ describe("StreamOrchestrator runs", () => {
       orch.initThreadId("t1");
       await orch.hydrationPromise;
 
-      await orch.respond("yes", { strictResume: true });
+      await orch.respond("yes");
 
       expect(streamOptions()).toMatchObject({
         command: { resume: { i2: "yes" } },
         multitaskStrategy: "enqueue",
         strictResume: true,
       });
+      orch.dispose();
+    });
+
+    it("with strictResume false, asks for no strict check", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.respond("yes", { interruptId: "i1", strictResume: false });
+
+      expect(streamOptions()).toMatchObject({ strictResume: false });
       orch.dispose();
     });
 
