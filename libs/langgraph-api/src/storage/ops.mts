@@ -10,6 +10,7 @@ import { serializeError } from "../utils/serde.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
 import { store } from "./store.mjs";
+import { RunCancellation, type CancelAction } from "../utils/cancellation.mjs";
 import type {
   Metadata,
   ThreadStatus,
@@ -133,8 +134,8 @@ class Queue {
 }
 
 class CancellationAbortController extends AbortController {
-  abort(reason: "rollback" | "interrupt") {
-    super.abort(reason);
+  abort(action: CancelAction) {
+    super.abort(new RunCancellation(action));
   }
 }
 
