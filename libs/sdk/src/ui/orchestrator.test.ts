@@ -2926,7 +2926,7 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("hides an answered interrupt, and shows it again when the answer can't be sent", async () => {
+    it("hides an answered interrupt, and when the queued answer can't be sent, shows it again and rejects", async () => {
       vi.spyOn(console, "error").mockImplementation(() => undefined);
       let reject!: (error: Error) => void;
       (client.runs.create as Mock).mockReturnValueOnce(
@@ -2948,7 +2948,7 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.interrupt).toBeUndefined();
 
       reject(new Error("busy"));
-      await responded;
+      await expect(responded).rejects.toThrow("busy");
       expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1"]);
       expect(onError).toHaveBeenCalled();
       await orch.stop();

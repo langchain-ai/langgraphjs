@@ -1700,6 +1700,7 @@ export class StreamOrchestrator<
     for (const id of ids) this.#answered.add(id);
     this.#notify();
 
+    let failed: { error: unknown } | undefined;
     const queued = this.stream.isLoading || this.#submitting;
     const sent = this.submit(null as unknown as StateType, {
       command: {
@@ -1719,15 +1720,12 @@ export class StreamOrchestrator<
       metadata: options.metadata,
       strictResume: options.strictResume,
       multitaskStrategy: "enqueue",
+      onError: (error) => {
+        failed ??= { error };
+      },
     });
-    if (queued) {
-      await sent;
-      return;
-    }
-    const created = this.#ownRun;
-    if ((await created) == null && this.stream.error != null) {
-      throw this.stream.error;
-    }
+    const created = queued ? sent : this.#ownRun;
+    if ((await created) == null && failed != null) throw failed.error;
   }
 
   /**
