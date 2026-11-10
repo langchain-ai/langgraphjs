@@ -604,6 +604,7 @@ export class RemoteGraph<
 
     const abortController = new AbortController();
     const mergedConfig = mergeConfigs(this.config, options);
+    mergedConfig.signal?.throwIfAborted();
     const sanitizedConfig = this._sanitizeConfig(mergedConfig);
     const configurable = { ...sanitizedConfig.configurable };
     const threadId = configurable.thread_id;
@@ -614,11 +615,6 @@ export class RemoteGraph<
       configurable,
     };
 
-    const thread =
-      typeof threadId === "string"
-        ? this.client.threads.stream(threadId, { assistantId: this.graphId })
-        : this.client.threads.stream({ assistantId: this.graphId });
-
     let serializedInput;
     if (isCommand(input)) {
       serializedInput = input.toJSON() as Record<string, unknown>;
@@ -626,10 +622,26 @@ export class RemoteGraph<
       serializedInput = _serializeInputs(input);
     }
 
-    const run = await thread.run.start({
-      input: serializedInput,
-      config: runConfig,
-    });
+    const thread =
+      typeof threadId === "string"
+        ? this.client.threads.stream(threadId, { assistantId: this.graphId })
+        : this.client.threads.stream({ assistantId: this.graphId });
+
+    let run;
+    try {
+      run = await thread.run.start({
+        input: serializedInput,
+        config: runConfig,
+      });
+    } catch (error) {
+      // No run handle will be returned to the caller to release the thread.
+      try {
+        await thread.close();
+      } catch {
+        // Keep the original run-start error if cleanup also fails.
+      }
+      throw error;
+    }
 
     const graphRun = new RemoteGraphRunStream<PregelOutputType>({
       client: this.client,
