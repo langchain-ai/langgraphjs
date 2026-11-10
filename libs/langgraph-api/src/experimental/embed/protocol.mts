@@ -14,6 +14,7 @@ import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
 import { isKeyedByInterruptId } from "../../command.mjs";
 import {
+  forkCheckpointId,
   matchesSinkFilter,
   multitaskStrategyFromRunStart,
   DEFAULT_MULTITASK_STRATEGY,
@@ -192,8 +193,13 @@ export function registerProtocolRoutes(
         message: `Thread ${thread.threadId} is bound to assistant ${thread.assistantId}; cannot run ${assistantId}.`,
       });
     }
+    const forkFrom = forkCheckpointId(params.config);
+    // A fork starts a new run from its checkpoint whatever the thread's
+    // latest one waits on, so only a plain run.start can resume.
     const pendingInterrupts =
-      params.input != null ? await pendingInterruptCount(thread) : 0;
+      params.input != null && forkFrom == null
+        ? await pendingInterruptCount(thread)
+        : 0;
     // One answer can't say which of several pending interrupts it is for:
     // LangGraph fails the run, or picks one when they share a subgraph task.
     // While a run is in flight the count can still change, so it keeps
@@ -247,23 +253,6 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Fork/time-travel replays from `config.configurable.checkpoint_id`
-    // — the single legacy-compliant fork field. The SDK folds its
-    // `forkFrom` convenience option into this field client-side, so the
-    // server reads it from there rather than a top-level `forkFrom`.
-    // `createStubRun` only reliably forwards a fork target via the
-    // top-level `checkpoint_id`, so lift it out of `configurable` below.
-    const forkCheckpointId = (() => {
-      const configurable =
-        isRecord(params.config) && isRecord(params.config.configurable)
-          ? params.config.configurable
-          : undefined;
-      const checkpointId = configurable?.checkpoint_id;
-      return typeof checkpointId === "string" && checkpointId.length > 0
-        ? checkpointId
-        : undefined;
-    })();
-
     // Resume only when the thread actually has a pending `interrupt()`.
     // A cancelled run also ends with status "interrupted" but has no
     // pending interrupt to consume the resume value, so folding the
@@ -295,9 +284,7 @@ export function registerProtocolRoutes(
       // fact, *replaces* any inline configurable the caller passed),
       // so this is the only reliable way to reach the engine with a
       // fork target.
-      ...(forkCheckpointId != null && !isResume
-        ? { checkpoint_id: forkCheckpointId }
-        : {}),
+      ...(forkFrom != null ? { checkpoint_id: forkFrom } : {}),
       // Honor the caller's strategy, falling back to `enqueue` to match
       // the non-embed protocol-v2 server and the Python default.
       multitask_strategy:

@@ -226,4 +226,51 @@ describe("protocol transport", () => {
       expect(runState.status).toBe("success");
     }
   );
+
+  it.concurrent("a run.start that forks while the thread waits on an interrupt starts a new run", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const runStart = async (params: Record<string, unknown>) => {
+      const response = await fetch(
+        `${API_URL}/threads/${thread.thread_id}/commands`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: 1,
+            method: "run.start",
+            params: { assistant_id: assistant.assistant_id, ...params },
+          }),
+        }
+      );
+      const envelope = await response.json();
+      expect(envelope).toMatchObject({ type: "success" });
+      await client.runs.join(thread.thread_id, envelope.result.run_id);
+    };
+
+    await runStart({
+      input: { messages: [{ type: "human", content: "first" }], interrupt: true },
+      config: globalConfig,
+    });
+    const history = await client.threads.getHistory(thread.thread_id);
+    await runStart({
+      input: { messages: [{ type: "human", content: "edited" }] },
+      config: {
+        configurable: {
+          ...globalConfig.configurable,
+          checkpoint_id: history.at(-1)?.checkpoint.checkpoint_id,
+        },
+      },
+    });
+
+    const state = await client.threads.getState<{
+      messages: { type: string; content: string }[];
+    }>(thread.thread_id);
+    expect(
+      state.values.messages
+        .filter((message) => message.type === "human")
+        .map((message) => message.content)
+    ).toEqual(["edited"]);
+    expect(state.tasks.flatMap((task) => task.interrupts)).toEqual([]);
+  });
 });

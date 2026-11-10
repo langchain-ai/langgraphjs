@@ -394,5 +394,29 @@ describe("SDK streaming projections against embed server", () => {
       // claim the root as its parent and this assertion would fail.
       expect(childrenOfRoot.length).toBeGreaterThanOrEqual(2);
     });
+
+    it("starts a new run while the thread waits on interrupts", async () => {
+      const thread = createThread("parallel_interrupt");
+      const config = { configurable: { thread_id: thread.threadId } };
+      const pausedWith = async (answers: string[]) => {
+        const state = await parallelInterruptGraph.getState(config);
+        expect(state.values.answers).toEqual(answers);
+        expect(state.tasks.flatMap((task) => task.interrupts)).toHaveLength(2);
+      };
+
+      await thread.run.start({ input: { answers: [] } });
+      await vi.waitFor(() => pausedWith([]), { timeout: 10_000 });
+      let rootCheckpointId: string | undefined;
+      for await (const tuple of checkpointer.list(config)) {
+        rootCheckpointId = tuple.checkpoint.id;
+      }
+
+      await thread.run.start({
+        input: { answers: ["edited"] },
+        forkFrom: rootCheckpointId,
+      });
+      await vi.waitFor(() => pausedWith(["edited"]), { timeout: 10_000 });
+      await thread.close();
+    });
   });
 });
