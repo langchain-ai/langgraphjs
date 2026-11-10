@@ -300,6 +300,51 @@ describe("useStream (old engine) joinStream", () => {
   });
 });
 
+describe("useStream (old engine) submit onError", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const boom = expect.objectContaining({ message: "boom" });
+
+  it("calls the submit's onError and the hook's onError when a run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockRun(client, [{ event: "error", data: { message: "boom" } }]);
+    const hookOnError = vi.fn();
+    const submitOnError = vi.fn();
+    const view = await renderStream(client, { onError: hookOnError });
+
+    await submit(view, { onError: submitOnError });
+
+    const run = { run_id: "run-1", thread_id: "t1" };
+    expect(submitOnError).toHaveBeenCalledExactlyOnceWith(boom, run);
+    expect(hookOnError).toHaveBeenCalledExactlyOnceWith(boom, run);
+  });
+
+  it("calls the submit's onError and the hook's onError when a custom transport run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const transport = {
+      stream: vi.fn(async () =>
+        (async function* () {
+          yield { event: "error", data: { message: "boom" } };
+        })()
+      ),
+    };
+    const hookOnError = vi.fn();
+    const submitOnError = vi.fn();
+    const view = await renderStream(createClient(), {
+      transport,
+      onError: hookOnError,
+    });
+
+    await submit(view, { onError: submitOnError });
+
+    expect(submitOnError).toHaveBeenCalledExactlyOnceWith(boom, undefined);
+    expect(hookOnError).toHaveBeenCalledExactlyOnceWith(boom, undefined);
+  });
+});
+
 describe("useStream (old engine) rejoin on mount", () => {
   afterEach(() => {
     window.sessionStorage.clear();
