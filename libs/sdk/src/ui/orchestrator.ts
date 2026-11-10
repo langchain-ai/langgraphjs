@@ -65,6 +65,30 @@ interface LiveRun {
   signal?: AbortSignal;
 }
 
+/**
+ * A create request answers once its run exists, normally well within this.
+ * Past it, `stop()` stops the stream anyway, and a run the request still
+ * creates keeps going.
+ */
+const STOP_RUN_ID_WAIT_MS = 5_000;
+
+async function settleWithin<T>(
+  promise: Promise<T> | undefined,
+  ms: number
+): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type RunOutcome = "success" | "aborted" | { error: unknown };
 
 interface RunWatch {
@@ -993,7 +1017,9 @@ export class StreamOrchestrator<
   async stop(options?: { cancel?: boolean }): Promise<void> {
     const threadId = this.#threadId;
     if (this.#options.durableRuns && options?.cancel !== false && threadId) {
-      const runId = this.#streamingRunId ?? (await this.#ownRun);
+      const runId =
+        this.#streamingRunId ??
+        (await settleWithin(this.#ownRun, STOP_RUN_ID_WAIT_MS));
       if (runId) {
         void this.#accessors
           .getClient()

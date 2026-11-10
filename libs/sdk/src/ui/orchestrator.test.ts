@@ -2368,7 +2368,7 @@ describe("StreamOrchestrator runs", () => {
     (client.runs.stream as Mock).mockImplementation(
       (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
         async *[Symbol.asyncIterator]() {
-          await options.created;
+          await Promise.race([options.created, openUntil(payload.signal)]);
           payload.onRunCreated?.({ run_id: "run-1" });
           yield* events;
           await openUntil(payload.signal, options.ended);
@@ -2465,6 +2465,32 @@ describe("StreamOrchestrator runs", () => {
       await stopped;
       expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-1");
       orch.dispose();
+    });
+
+    it("stop() stops the stream after a while when the run's id never arrives", async () => {
+      vi.useFakeTimers();
+      try {
+        mockRunStream(undefined, { created: new Promise<void>(() => {}) });
+        const orch = orchestrator({ durableRuns: true });
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.advanceTimersByTimeAsync(0);
+        let stopped = false;
+
+        void orch.stop().then(() => {
+          stopped = true;
+        });
+        await vi.advanceTimersByTimeAsync(4_000);
+        expect(stopped).toBe(false);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(stopped).toBe(true);
+        expect(orch.isLoading).toBe(false);
+        expect(client.runs.cancel).not.toHaveBeenCalled();
+        orch.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stop() cancels a run it joined", async () => {
