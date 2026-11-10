@@ -66,27 +66,10 @@ interface LiveRun {
 
 /**
  * A create request answers once its run exists, normally well within this.
- * Past it, `stop()` stops the stream anyway, and a run the request still
+ * Past it, a request kept open after a stop closes, and a run it still
  * creates keeps going.
  */
 const STOP_RUN_ID_WAIT_MS = 5_000;
-
-async function settleWithin<T>(
-  promise: Promise<T> | undefined,
-  ms: number
-): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), ms);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 type RunOutcome = "success" | "aborted" | { error: unknown };
 
@@ -279,8 +262,8 @@ export class StreamOrchestrator<
   /** Pending while the create request of the run being submitted awaits its response. */
   #ownRun: Promise<string | undefined> | undefined;
 
-  /** `#ownRun` of the stream being streamed, which a later submit doesn't replace. */
-  #streamingOwnRun: Promise<string | undefined> | undefined;
+  /** Aborted by `stop()` to cancel the own run being streamed once its id arrives. */
+  #stopOwnRun: AbortController | undefined;
 
   #hydration: Promise<void> = Promise.resolve();
 
@@ -998,23 +981,20 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Stop the currently active stream and cancel its run on the server, even a
-   * run whose id is still on its way, unless `cancel` is `false`. A run joined
-   * through {@link joinStream} keeps going. With `durableRuns: false`, if
-   * reconnect metadata storage is configured, cancel the run stored there
-   * instead, and clean up its entry.
+   * Stop the currently active stream at once and cancel its run on the
+   * server, unless `cancel` is `false`. A run whose id is still on its way is
+   * cancelled once it arrives. A run joined through {@link joinStream} keeps
+   * going. With `durableRuns: false`, if reconnect metadata storage is
+   * configured, cancel the run stored there instead, and clean up its entry.
    */
   async stop(options?: { cancel?: boolean }): Promise<void> {
     const threadId = this.#threadId;
     if (this.#durable && options?.cancel !== false && threadId) {
-      const runId =
-        this.#streamingRunId ??
-        (this.#streamingOwnRun &&
-          (await settleWithin(this.#streamingOwnRun, STOP_RUN_ID_WAIT_MS)));
-      if (runId) {
+      this.#stopOwnRun?.abort();
+      if (this.#streamingRunId) {
         void this.#accessors
           .getClient()
-          .runs.cancel(threadId, runId)
+          .runs.cancel(threadId, this.#streamingRunId)
           .catch(() => undefined);
       }
     }
@@ -1230,6 +1210,7 @@ export class StreamOrchestrator<
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
     let runId: string | undefined;
+    let responded = false;
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
@@ -1239,16 +1220,16 @@ export class StreamOrchestrator<
       settleOwnRun = (id) => {
         resolve(id);
         if (this.#ownRun === ownRun) this.#ownRun = undefined;
-        if (this.#streamingOwnRun === ownRun) this.#streamingOwnRun = undefined;
       };
     });
     this.#ownRun = ownRun;
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
+    const stopRun = new AbortController();
 
     const started = this.stream.start(
       async (signal) => {
-        this.#streamingOwnRun = ownRun;
+        this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
@@ -1288,6 +1269,21 @@ export class StreamOrchestrator<
           submitOptions?.streamResumable ??
           (this.#durable || !!this.#runMetadataStorage);
 
+        // Only the response names a run that outlives its request, so after a
+        // stop that came before it the request stays open, for onRunCreated
+        // to cancel the run. Anything else closes the request with the stream.
+        const request = new AbortController();
+        const closeRequest = () => {
+          if (!stopRun.signal.aborted || runId != null || responded) {
+            request.abort();
+            return;
+          }
+          const timer = setTimeout(() => request.abort(), STOP_RUN_ID_WAIT_MS);
+          request.signal.addEventListener("abort", () => clearTimeout(timer));
+        };
+        if (signal.aborted) closeRequest();
+        else signal.addEventListener("abort", closeRequest, { once: true });
+
         return client.runs.stream(usableThreadId!, assistantId, {
           input: values as Record<string, unknown>,
           config: withV1Streaming(
@@ -1307,7 +1303,7 @@ export class StreamOrchestrator<
             submitOptions?.onDisconnect ??
             (streamResumable ? "continue" : "cancel"),
 
-          signal,
+          signal: request.signal,
 
           checkpoint,
           streamMode,
@@ -1316,6 +1312,13 @@ export class StreamOrchestrator<
           durability: submitOptions?.durability,
           ...this.#reconnectOptions(),
           onRunCreated: (params) => {
+            if (stopRun.signal.aborted) {
+              void client.runs
+                .cancel(usableThreadId!, params.run_id)
+                .catch(() => undefined);
+              request.abort();
+              return;
+            }
             callbackMeta = {
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
@@ -1356,6 +1359,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
           settleOwnRun();
+          if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) return;
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           void this.#reportRunEnd(usableThreadId, runId, watch, outcome);
@@ -1363,6 +1367,7 @@ export class StreamOrchestrator<
         onEvent: (event, data) => {
           // The run exists once it streams, even when no response header
           // named it.
+          responded = true;
           settleOwnRun();
           watchRunEvent(watch, event, data);
         },

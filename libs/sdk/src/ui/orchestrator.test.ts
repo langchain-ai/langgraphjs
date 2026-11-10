@@ -2432,7 +2432,7 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("stop() before the run's id arrives cancels the run once it does", async () => {
+    it("stop() before the run's id arrives stops at once and cancels the run once it does", async () => {
       const created = deferred();
       mockRunStream(undefined, { created: created.promise });
       const orch = orchestrator();
@@ -2440,17 +2440,21 @@ describe("StreamOrchestrator runs", () => {
 
       void orch.submit({ messages: [] });
       await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
-      const stopped = orch.stop();
-      await flushMicrotasks();
+      await orch.stop();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
       expect(client.runs.cancel).not.toHaveBeenCalled();
 
       created.resolve();
-      await stopped;
-      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-1");
+      await vi.waitFor(() =>
+        expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith(
+          "t1",
+          "run-1"
+        )
+      );
       orch.dispose();
     });
 
-    it("stop() stops the stream after a while when the run's id never arrives", async () => {
+    it("stop() before an id that never arrives stops at once and closes the request after 5 s", async () => {
       vi.useFakeTimers();
       try {
         mockRunStream(undefined, { created: new Promise<void>(() => {}) });
@@ -2458,17 +2462,17 @@ describe("StreamOrchestrator runs", () => {
         orch.initThreadId("t1");
         void orch.submit({ messages: [] });
         await vi.advanceTimersByTimeAsync(0);
-        let stopped = false;
+        const request: AbortSignal = (client.runs.stream as Mock).mock
+          .calls[0][2].signal;
 
-        void orch.stop().then(() => {
-          stopped = true;
-        });
+        await orch.stop();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(orch.isLoading).toBe(false);
         await vi.advanceTimersByTimeAsync(4_000);
-        expect(stopped).toBe(false);
+        expect(request.aborted).toBe(false);
         await vi.advanceTimersByTimeAsync(1_000);
 
-        expect(stopped).toBe(true);
-        expect(orch.isLoading).toBe(false);
+        expect(request.aborted).toBe(true);
         expect(client.runs.cancel).not.toHaveBeenCalled();
         orch.dispose();
       } finally {
