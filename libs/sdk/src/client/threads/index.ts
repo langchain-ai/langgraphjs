@@ -10,6 +10,7 @@ import {
   ThreadSelectField,
   ThreadSortBy,
   ThreadState,
+  ThreadStateSelectField,
   ThreadStatus,
   ThreadValuesFilter,
 } from "../../schema.js";
@@ -283,12 +284,28 @@ export class ThreadsClient<
    * Get state for a thread.
    *
    * @param threadId ID of the thread.
+   * @param checkpoint Checkpoint (or checkpoint ID) to read the state at.
+   * @param options.select Fields to include in the response. Use
+   * `values.<key>` to return a single state key, which lets the server skip
+   * loading the rest of the state. Fields not selected are omitted from the
+   * response. Defaults to all fields.
    * @returns Thread state.
+   *
+   * @example
+   * ```ts
+   * const { values } = await client.threads.getState(threadId, undefined, {
+   *   select: ["values.messages"],
+   * });
+   * ```
    */
   async getState<ValuesType = TStateType>(
     threadId: string,
     checkpoint?: Checkpoint | string,
-    options?: { subgraphs?: boolean; signal?: AbortSignal }
+    options?: {
+      subgraphs?: boolean;
+      select?: ThreadStateSelectField[];
+      signal?: AbortSignal;
+    }
   ): Promise<ThreadState<ValuesType>> {
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
@@ -296,7 +313,11 @@ export class ThreadsClient<
           `/threads/${encodePathSegment(threadId)}/state/checkpoint`,
           {
             method: "POST",
-            json: { checkpoint, subgraphs: options?.subgraphs },
+            json: {
+              checkpoint,
+              subgraphs: options?.subgraphs,
+              select: options?.select,
+            },
             signal: options?.signal,
           }
         );
@@ -305,14 +326,17 @@ export class ThreadsClient<
       // deprecated
       return this.fetch<ThreadState<ValuesType>>(
         `/threads/${encodePathSegment(threadId)}/state/${encodePathSegment(checkpoint)}`,
-        { params: { subgraphs: options?.subgraphs }, signal: options?.signal }
+        {
+          params: { subgraphs: options?.subgraphs, select: options?.select },
+          signal: options?.signal,
+        }
       );
     }
 
     return this.fetch<ThreadState<ValuesType>>(
       `/threads/${encodePathSegment(threadId)}/state`,
       {
-        params: { subgraphs: options?.subgraphs },
+        params: { subgraphs: options?.subgraphs, select: options?.select },
         signal: options?.signal,
         // Coalesce concurrent identical reads (e.g. two controllers
         // hydrating the same thread on reconnect). Skipped automatically
@@ -389,6 +413,9 @@ export class ThreadsClient<
    *
    * @param threadId ID of the thread.
    * @param options Additional options.
+   * @param options.select Fields to include in each state. Use
+   * `values.<key>` to return a single state key. Fields not selected are
+   * omitted from the response. Defaults to all fields.
    * @returns List of thread states.
    */
   async getHistory<ValuesType = TStateType>(
@@ -398,6 +425,7 @@ export class ThreadsClient<
       before?: Config;
       checkpoint?: Partial<Omit<Checkpoint, "thread_id">>;
       metadata?: Metadata;
+      select?: ThreadStateSelectField[];
       signal?: AbortSignal;
     }
   ): Promise<ThreadState<ValuesType>[]> {
@@ -410,6 +438,7 @@ export class ThreadsClient<
           before: options?.before,
           metadata: options?.metadata,
           checkpoint: options?.checkpoint,
+          select: options?.select,
         },
         signal: options?.signal,
         // `getHistory` is a read despite using POST — coalesce the

@@ -22,6 +22,12 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import {
+  applyStopRead,
+  type HistoryReadOptions,
+  planReadAfterRun,
+  planStopRead,
+} from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -41,6 +47,15 @@ interface RunMetadataStorage {
   getItem(key: `lg:stream:${string}`): string | null;
   setItem(key: `lg:stream:${string}`, value: string): void;
   removeItem(key: `lg:stream:${string}`): void;
+}
+
+interface LiveRun {
+  promise: Promise<void>;
+  /**
+   * Set when the stream starts. Once `stop()`, a thread switch or an
+   * interrupt aborts it, the run is no longer live and can be joined again.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -156,6 +171,8 @@ export class StreamOrchestrator<
   #branch: string = "";
 
   #submitting = false;
+
+  #liveRuns = new Map<string, LiveRun>();
 
   #listeners = new Set<() => void>();
 
@@ -338,28 +355,38 @@ export class StreamOrchestrator<
   }
 
   async #mutate(
-    mutateId?: string
+    mutateId?: string,
+    readOptions: HistoryReadOptions<StateType> = {}
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
+    const idle = !this.stream.isLoading;
+    const epoch = this.stream.epoch;
     try {
-      const data = await fetchHistory<StateType>(
+      const fetched = await fetchHistory<StateType>(
         this.#accessors.getClient(),
         tid,
         { limit: this.historyLimit }
       );
+      const data = readOptions.map?.(fetched) ?? fetched;
+      // The thread switched during the read; its own fetch fills the history.
+      if (tid !== this.#threadId) return data;
       this.#history = {
         data,
         error: undefined,
         isLoading: false,
         mutate: this.#mutate,
       };
-      this.#flushPendingHeadlessToolInterrupts(
-        data?.at(0)?.values as Record<string, unknown> | null | undefined
-      );
+      // A read issued while a run streamed, or before one began, can show a
+      // call that run answered; `#finishRun` runs the calls in the head read
+      // after a run.
+      if (idle && epoch === this.stream.epoch) {
+        this.#flushHeadToolCalls(data?.at(0));
+      }
       this.#notify();
       return data;
     } catch (err) {
+      if (tid !== this.#threadId || readOptions.quiet) return undefined;
       this.#history = {
         ...this.#history,
         error: err,
@@ -369,6 +396,38 @@ export class StreamOrchestrator<
       this.#options.onError?.(err, undefined);
       return undefined;
     }
+  }
+
+  /**
+   * Called when a run succeeds. Returns null when the head was read, which
+   * clears the run's streamed values so the head shows.
+   */
+  async #finishRun(
+    threadId: string | undefined,
+    refetch: boolean,
+    callbackMeta: RunCallbackMeta | undefined
+  ): Promise<null | undefined> {
+    const read = planReadAfterRun(this.branchContext.threadHead, refetch);
+    if (read && threadId) {
+      const lastHead = (await this.#mutate(threadId, read))?.at(0);
+      if (lastHead) {
+        // The read can land after a thread switch, and a resume goes to the
+        // current thread.
+        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
+        this.#options.onFinish?.(lastHead, callbackMeta);
+        return null;
+      }
+    }
+    if (
+      this.#options.onFinish != null &&
+      !onFinishRequiresThreadState(this.#options.onFinish)
+    ) {
+      this.#options.onFinish(
+        undefined as unknown as ThreadState<StateType>,
+        callbackMeta
+      );
+    }
+    return undefined;
   }
 
   /**
@@ -800,14 +859,12 @@ export class StreamOrchestrator<
    * run metadata.
    */
   async stop(): Promise<void> {
-    const wasLoading = this.stream.isLoading;
     const threadId = this.#threadId;
-
-    const includeImplicitBranch =
-      this.historyLimit === true || typeof this.historyLimit === "number";
-    const shouldRefetch =
-      includeImplicitBranch ||
-      onFinishRequiresThreadState(this.#options.onFinish);
+    const shownHead = this.branchContext.threadHead;
+    const read = planStopRead({
+      history:
+        this.historyLimit === true || typeof this.historyLimit === "number",
+    });
 
     await this.stream.stop(this.historyValues, {
       onStop: (args) => {
@@ -822,31 +879,27 @@ export class StreamOrchestrator<
         }
         this.#options.onStop?.(args);
       },
+      // A cancelled run skips `onSuccess`, so the buffer still holds what it
+      // streamed, including a message chunk the server never saved.
+      read:
+        threadId == null || this.#disposed
+          ? undefined
+          : async () => {
+              const newHistory = await this.#mutate(threadId, {
+                ...read,
+                map: (states) => applyStopRead(states, shownHead),
+              });
+              if (newHistory == null) return undefined;
+              return newHistory.at(0)?.values ?? null;
+            },
     });
-
-    // A cancelled run makes `enqueue()` throw `AbortError`, which skips its
-    // `onSuccess` history reconciliation (see `StreamManager.enqueue`). Left
-    // alone, the locally-buffered stream values — including any message
-    // chunk still being assembled when `stop()` was called — stay stuck in
-    // `stream.values` and keep outranking `historyValues` on every render
-    // until a thread switch or a full remount. Re-sync so the buffer only
-    // reflects what was actually persisted: refetch when the caller needs
-    // authoritative thread state (branching / `onFinish`), otherwise fall
-    // back to the already-cached `historyValues` to avoid an extra round
-    // trip on every cancel.
-    if (wasLoading && threadId) {
-      if (shouldRefetch) {
-        const newHistory = await this.#mutate(threadId);
-        this.stream.setStreamValues(newHistory?.at(0)?.values ?? null);
-      } else {
-        this.stream.setStreamValues(this.historyValues);
-      }
-    }
   }
 
   /**
    * Join an existing run's event stream by run ID. Used for reconnecting
-   * to in-progress runs or consuming queued runs.
+   * to in-progress runs or consuming queued runs. A run this orchestrator
+   * is already streaming or has queued is not joined again: the call
+   * returns that stream's promise and ignores its own options.
    *
    * @param runId - The ID of the run to join.
    * @param lastEventId - The last event ID received, for resuming mid-stream.
@@ -868,6 +921,9 @@ export class StreamOrchestrator<
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
+    const live = this.#liveRuns.get(runId);
+    if (live && !live.signal?.aborted) return live.promise;
+
     // eslint-disable-next-line no-param-reassign
     lastEventId ??= "-1";
     const tid = this.#threadId;
@@ -887,8 +943,10 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
 
-    await this.stream.start(
+    const run: LiveRun = { promise: Promise.resolve() };
+    run.promise = this.stream.start(
       async (signal: AbortSignal) => {
+        run.signal = signal;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -909,21 +967,7 @@ export class StreamOrchestrator<
         callbacks: this.#options,
         onSuccess: async () => {
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          if (!shouldRefetchJoin) {
-            if (
-              this.#options.onFinish != null &&
-              !onFinishRequiresThreadState(this.#options.onFinish)
-            ) {
-              this.#options.onFinish(
-                undefined as unknown as ThreadState<StateType>,
-                callbackMeta
-              );
-            }
-            return;
-          }
-          const newHistory = await this.#mutate(tid);
-          const lastHead = newHistory?.at(0);
-          if (lastHead) this.#options.onFinish?.(lastHead, callbackMeta);
+          return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
@@ -931,8 +975,16 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
         },
+        isReplaying: lastEventId === "-1",
       }
     );
+
+    this.#liveRuns.set(runId, run);
+    try {
+      await run.promise;
+    } finally {
+      if (this.#liveRuns.get(runId) === run) this.#liveRuns.delete(runId);
+    }
   }
 
   /**
@@ -967,9 +1019,15 @@ export class StreamOrchestrator<
       includeImplicitBranch ||
       onFinishRequiresThreadState(this.#options.onFinish);
 
+    // On the latest branch the cached head may be behind the server's
+    // (the thread moved on since history was read); pinning it would
+    // fork the thread.
+    const viewingLatest =
+      currentBranchContext.threadHead?.checkpoint?.checkpoint_id ===
+      this.#history.data?.[0]?.checkpoint?.checkpoint_id;
     let checkpoint =
       submitOptions?.checkpoint ??
-      (includeImplicitBranch
+      (includeImplicitBranch && !viewingLatest
         ? currentBranchContext.threadHead?.checkpoint
         : undefined) ??
       undefined;
@@ -982,11 +1040,12 @@ export class StreamOrchestrator<
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId: string | undefined;
+    let runId: string | undefined;
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
 
-    return this.stream.start(
+    const started = this.stream.start(
       async (signal) => {
         usableThreadId = this.#threadId;
         if (usableThreadId) {
@@ -1006,13 +1065,7 @@ export class StreamOrchestrator<
           this.#setThreadIdFromSubmit(usableThreadId);
         }
 
-        const streamMode = unique([
-          "values" as StreamMode,
-          "updates" as StreamMode,
-          ...(submitOptions?.streamMode ?? []),
-          ...this.#trackedStreamModes,
-          ...this.#callbackStreamModes,
-        ]);
+        const streamMode = this.#getRunStreamModes(submitOptions);
 
         this.stream.setStreamValues(() => {
           const prev = { ...this.historyValues, ...this.stream.values };
@@ -1042,6 +1095,7 @@ export class StreamOrchestrator<
           interruptAfter: submitOptions?.interruptAfter,
           metadata: submitOptions?.metadata,
           multitaskStrategy: submitOptions?.multitaskStrategy,
+          strictResume: submitOptions?.strictResume,
           onCompletion: submitOptions?.onCompletion,
           onDisconnect:
             submitOptions?.onDisconnect ??
@@ -1059,6 +1113,8 @@ export class StreamOrchestrator<
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
             };
+            runId = params.run_id;
+            this.#liveRuns.set(runId, { promise: started, signal });
 
             if (this.#runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -1080,24 +1136,7 @@ export class StreamOrchestrator<
 
         onSuccess: async () => {
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-
-          if (shouldRefetch && usableThreadId) {
-            const newHistory = await this.#mutate(usableThreadId);
-            const lastHead = newHistory?.at(0);
-            if (lastHead) {
-              this.#options.onFinish?.(lastHead, callbackMeta);
-              return null;
-            }
-          } else if (
-            this.#options.onFinish != null &&
-            !onFinishRequiresThreadState(this.#options.onFinish)
-          ) {
-            this.#options.onFinish(
-              undefined as unknown as ThreadState<StateType>,
-              callbackMeta
-            );
-          }
-          return undefined;
+          return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
         },
         onError: (error) => {
           this.#options.onError?.(error, callbackMeta);
@@ -1108,6 +1147,24 @@ export class StreamOrchestrator<
         },
       }
     );
+
+    return started.finally(() => {
+      if (runId && this.#liveRuns.get(runId)?.promise === started) {
+        this.#liveRuns.delete(runId);
+      }
+    });
+  }
+
+  #getRunStreamModes(
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+  ): StreamMode[] {
+    return unique([
+      "values" as StreamMode,
+      "updates" as StreamMode,
+      ...(submitOptions?.streamMode ?? []),
+      ...this.#trackedStreamModes,
+      ...this.#callbackStreamModes,
+    ]);
   }
 
   #drainQueue(): void {
@@ -1135,7 +1192,9 @@ export class StreamOrchestrator<
    * Submit input values with automatic queue management. If a stream is
    * already active, the run is enqueued (unless the multitask strategy
    * is `"interrupt"` or `"rollback"`, in which case the current run is
-   * replaced). Queued runs are drained sequentially via {@link drainQueue}.
+   * replaced). An explicit `"reject"` is forwarded to the server, which
+   * rejects the run while another is in flight. The error is reported via
+   * `onError`. Queued runs are drained sequentially via {@link drainQueue}.
    *
    * @param values - The state values to send as run input.
    * @param submitOptions - Optional configuration for the run.
@@ -1177,7 +1236,8 @@ export class StreamOrchestrator<
             interruptBefore: submitOptions?.interruptBefore,
             interruptAfter: submitOptions?.interruptAfter,
             metadata: submitOptions?.metadata,
-            multitaskStrategy: "enqueue",
+            multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
+            streamMode: this.#getRunStreamModes(submitOptions),
             streamResumable: true,
             streamSubgraphs: submitOptions?.streamSubgraphs,
             durability: submitOptions?.durability,
@@ -1279,9 +1339,18 @@ export class StreamOrchestrator<
     void this.stop().catch(() => undefined);
   }
 
+  #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
+    // Thread state values never carry `__interrupt__`; a pending call is in
+    // the head's tasks.
+    this.#flushPendingHeadlessToolInterrupts({
+      __interrupt__: head?.tasks?.flatMap((task) => task.interrupts ?? []),
+    });
+  }
+
   #flushPendingHeadlessToolInterrupts(
     values: Record<string, unknown> | null | undefined
   ): void {
+    const threadId = this.#threadId;
     flushPendingHeadlessToolInterrupts(
       values,
       this.#options.tools,
@@ -1291,11 +1360,15 @@ export class StreamOrchestrator<
         defer: (run) => {
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
+        resumeSubmit: (command) => {
+          // submit() resumes the current thread. The call stays pending on its
+          // own thread and runs again when that thread is read.
+          if (threadId !== this.#threadId) return;
           void this.submit(null as unknown as StateType, {
             multitaskStrategy: "interrupt",
             command,
-          }),
+          });
+        },
       }
     );
   }

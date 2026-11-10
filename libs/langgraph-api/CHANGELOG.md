@@ -1,5 +1,114 @@
 # @langchain/langgraph-api
 
+## 1.7.1
+
+### Patch Changes
+
+- [#3309](https://github.com/langchain-ai/langgraphjs/pull/3309) [`904126c`](https://github.com/langchain-ai/langgraphjs/commit/904126cef1dcc758ac7dd13d330f8595deeed65b) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `POST /threads/:thread_id/history` takes `before` as a checkpoint config, as the SDK sends it and the Python Agent Server takes it, so paging with `getHistory({ before })` no longer fails with HTTP 400. A checkpoint ID string still works but is deprecated and will be removed in 2.0.0: send `{ configurable: { checkpoint_id } }` instead.
+
+- [#3310](https://github.com/langchain-ai/langgraphjs/pull/3310) [`c5ad00f`](https://github.com/langchain-ai/langgraphjs/commit/c5ad00f399d4f815376c88d4ef3e9bcd6fe81c54) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `GET` and `POST /threads/:thread_id/history` honor `select`, as the Python Agent Server does: each state keeps only the fields named, and `values.<key>` keeps one key of the values. An unknown field is rejected with HTTP 400.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.1
+
+## 1.7.0
+
+### Minor Changes
+
+- [#3229](https://github.com/langchain-ai/langgraphjs/pull/3229) [`6fb340e`](https://github.com/langchain-ai/langgraphjs/commit/6fb340e306e33f95cdb2d2a0a7eaebcc154152f1) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph-api): a run that answers interrupts by id tells the thread's other protocol clients which ones, with an `input.answered` event on the `input` channel; run streams don't carry it
+
+- [#3225](https://github.com/langchain-ai/langgraphjs/pull/3225) [`bdec328`](https://github.com/langchain-ai/langgraphjs/commit/bdec328a80439ce1d3974b10aa9e7b7f297da1b1) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph-api): refuse a stale interrupt answer only when the run asks for it with `strict_resume`
+  
+  Strict resume, which 1.6.0 turned on for every run, is now opt-in. A run created with `strict_resume: true` (the same field on the protocol's `run.start` and `input.respond`) runs the graph in strict resume mode: a `Command({ resume })` that names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending ends the run with `UnknownInterruptError`, and the thread keeps its status, values and interrupts. The error event carries `reason`, `interrupt_ids` and `pending_ids`. A retried run, and an `interrupt` or `rollback` run that cancelled one in flight, resume as before. Runs that don't set it resume as they did before 1.6.0: one value answers every pending interrupt, and an answer sent twice is a no-op.
+
+### Patch Changes
+
+- [#3227](https://github.com/langchain-ai/langgraphjs/pull/3227) [`badfe38`](https://github.com/langchain-ai/langgraphjs/commit/badfe38413720fe2bf21b81dd52cd6e74f86d845) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): the protocol's `failed` lifecycle event carries the run error's message instead of the whole error as JSON, and a refused strict resume's `reason`, `interrupt_ids` and `pending_ids`
+
+- [#3239](https://github.com/langchain-ai/langgraphjs/pull/3239) [`397e93e`](https://github.com/langchain-ai/langgraphjs/commit/397e93e0d2b47c3d9ed914c7937b92c9fd95d532) Thanks [@eliornl](https://github.com/eliornl)! - After a run that forks from a checkpoint, later runs on the thread continue from its latest state again. The dev server saved the fork's `checkpoint_id` (and `checkpoint_ns`, `checkpoint_map` and `run_id`) on the thread config, so every later run on the thread forked from the same checkpoint and dropped the new branch.
+
+- [#3190](https://github.com/langchain-ai/langgraphjs/pull/3190) [`ffe9e60`](https://github.com/langchain-ai/langgraphjs/commit/ffe9e60a5d3fdabbcbd6c814b18cf3d9fc01a34b) Thanks [@eliornl](https://github.com/eliornl)! - `GET /threads/:thread_id/runs/:run_id/join` and `GET /threads/:thread_id/runs/:run_id/stream` now return HTTP 404 when the run doesn't exist, is on another thread, or is hidden by the `threads:read` handler, as `GET /threads/:thread_id/runs/:run_id` does. `client.runs.join()` and `client.runs.joinStream()` then throw `HTTP 404` instead of returning `{ __error__ }` or yielding an error event, with or without `lastEventId`.
+
+- [#3231](https://github.com/langchain-ai/langgraphjs/pull/3231) [`184ce74`](https://github.com/langchain-ai/langgraphjs/commit/184ce74a7aac02c2337fb4909da547b7ef39912a) Thanks [@eliornl](https://github.com/eliornl)! - Run streams on the dev server take the `lifecycle` stream mode: an event named `lifecycle|<namespace>` when each subgraph starts and when it ends (`completed`, `failed` or `interrupted`), with the id of the tool call that started it. `/info` reports `stream_lifecycle`.
+
+- [#3246](https://github.com/langchain-ai/langgraphjs/pull/3246) [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): the protocol's `run.start` reads the multitask strategy from `multitask_strategy`, falling back to `multitaskStrategy`, on the dev server and the embed server.
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.0
+
+## 1.6.0
+
+### Minor Changes
+
+- [#3212](https://github.com/langchain-ai/langgraphjs/pull/3212) [`881a734`](https://github.com/langchain-ai/langgraphjs/commit/881a7347fc510770b450ac8c70bef5e1bdacdd57) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): refuse a stale interrupt answer on the dev server
+  
+  The dev server now runs graphs in strict resume mode: a `Command({ resume })` that names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending ends the run with `UnknownInterruptError`, and the thread keeps its status, values and interrupts. A retried run, and an `interrupt` or `rollback` run that cancelled one in flight, resume as before.
+  
+  Two things that used to succeed now fail: one value sent while several interrupts are pending, which answered all of them, and an answer sent twice, such as a double-click, whose second run was a silent no-op. Both now end the run with an error.
+
+### Patch Changes
+
+- [#3169](https://github.com/langchain-ai/langgraphjs/pull/3169) [`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e) Thanks [@eliornl](https://github.com/eliornl)! - Joining a run that doesn't exist, or that ended long enough ago that its events were dropped, now ends at once instead of after half a second, and no longer leaves an empty event log in memory. A run cancelled before it started now drops its event log two minutes later, as a run that ended does.
+
+- [#3189](https://github.com/langchain-ai/langgraphjs/pull/3189) [`024c902`](https://github.com/langchain-ai/langgraphjs/commit/024c902ef59dea82d4e121e1ecb882f370326cf0) Thanks [@eliornl](https://github.com/eliornl)! - `GET /threads/:thread_id/runs/:run_id/stream` now ends with a `Run not found` error unless the run exists and is on that thread, where it used to stream a run on any thread. A join that arrives after its run was deleted (by `DELETE /threads/:thread_id/runs/:run_id` or a rollback) gets that error too, as `GET /threads/:thread_id/runs/:run_id` does, instead of the deleted run's events. When the `threads:read` handler returns filters, `GET /runs/:run_id/stream` streams only a run that exists and whose thread matches them, and ends with no events otherwise, so a stateless run can be joined that way only until it ends.
+
+- [#3169](https://github.com/langchain-ai/langgraphjs/pull/3169) [`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e) Thanks [@eliornl](https://github.com/eliornl)! - The dev server no longer splits a run's events between the clients reading it. A run created without `stream_resumable` kept its events in a queue that each read emptied, so two clients joining the run each got only part of them, and `runs.join()` took events away from a stream still open on the run. Every run now keeps its events, as resumable runs already did, and each reader reads them from its own position: the request that creates a streamed run, `runs.wait()` and `runs.join()` read the run from the start, a join with `Last-Event-ID` resumes after that event, and a join without one gets the events published after it joins. Before, such a join got whatever events no other reader had taken yet. To read a run from the start, pass `lastEventId: "-1"` to `client.runs.joinStream()`. A finished run's events now stay in memory for two minutes, long enough to rejoin it with `Last-Event-ID`, and are dropped as soon as the run or its thread is deleted. Resumable runs used to keep their events until the server restarted.
+
+- [#3220](https://github.com/langchain-ai/langgraphjs/pull/3220) [`ceefe05`](https://github.com/langchain-ai/langgraphjs/commit/ceefe0575f49a7fdfbfc60d33eb5ece5f3de3bad) Thanks [@eliornl](https://github.com/eliornl)! - Run streams on the dev server and the experimental embed server now end with an `end` event whose data carries the run's `run_id` and final `status`, so a client learns how the run ended without asking for the run again. `stream_mode` filters never drop it, and on the dev server a join of a run that has already ended gets just the `end` event. A rolled-back stateless run ends with `rollback`. A thread run that is deleted, as a rollback does, ends its streams without one.
+
+- [#3165](https://github.com/langchain-ai/langgraphjs/pull/3165) [`b2c3d0b`](https://github.com/langchain-ai/langgraphjs/commit/b2c3d0b2a7cfe6e9e8a4944840d75835ee9ae4ee) Thanks [@eliornl](https://github.com/eliornl)! - Thread protocol commands (`POST /threads/:thread_id/commands` and the `/threads/:thread_id/stream/events` WebSocket) now run with the auth of the request or WebSocket connection that sent them, instead of the auth of the first request that touched the thread. A run started over HTTP after a token refresh, or over a WebSocket opened after it, now gets the new token in `config.configurable.langgraph_auth_user`, and run creation, state reads and interrupt answers are authorized as the request that sent them.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.6.0
+
+## 1.5.8
+
+### Patch Changes
+
+- [#3161](https://github.com/langchain-ai/langgraphjs/pull/3161) [`478fffd`](https://github.com/langchain-ai/langgraphjs/commit/478fffdaf6dfcdd1c2fd0e977f53d2fcd8af8af3) Thanks [@eliornl](https://github.com/eliornl)! - The experimental embed server's run stream join (`GET /threads/:thread_id/runs/:run_id/stream`) now honors `stream_mode` like the dev server's joins, so `client.runs.joinStream(..., { streamMode })` drops other modes' events and the `metadata` event instead of returning all of the run's events. Errors always pass, and either messages mode keeps both message formats. Joins without `stream_mode` are unchanged.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.8
+
+## 1.5.7
+
+### Patch Changes
+
+- [#3144](https://github.com/langchain-ai/langgraphjs/pull/3144) [`e26cb84`](https://github.com/langchain-ai/langgraphjs/commit/e26cb846363dae6f4ae337d99a6340aba3673905) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph-api): cancel a stateless streamed run when its request drops and `on_disconnect` is `cancel`
+  
+  `POST /runs/stream` never cancelled its run when the client went away, before or after the response started, because the stream only cancelled runs it joined with a thread id. A stateless run created with `on_disconnect: "cancel"` now stops when its request drops, as thread runs already did, and `GET /runs/:run_id/stream?cancel_on_disconnect=true` gets the same fix. Cancelling a stateless run that has not started yet now deletes the run, and its temporary thread when no other run is left on it, instead of leaving an `interrupted` run and its thread behind. Runs created with `on_disconnect: "continue"` keep running.
+
+- [#3157](https://github.com/langchain-ai/langgraphjs/pull/3157) [`844f6fc`](https://github.com/langchain-ai/langgraphjs/commit/844f6fcafc8ad1b0b56b69bec302e25968fb974d) Thanks [@eliornl](https://github.com/eliornl)! - The dev server's run stream joins (`GET /threads/:thread_id/runs/:run_id/stream`, `GET /runs/:run_id/stream`) now honor `stream_mode` as the Agent Server does, so `client.runs.joinStream(..., { streamMode })` drops other modes' events instead of returning all of the run's events. Errors always pass, and either messages mode keeps both message formats. Joins without `stream_mode` are unchanged.
+
+- [#3151](https://github.com/langchain-ai/langgraphjs/pull/3151) [`32542a5`](https://github.com/langchain-ai/langgraphjs/commit/32542a57e86fd55406eeaf08f850f6eaaf9a6583) Thanks [@eliornl](https://github.com/eliornl)! - A run created on a busy thread without a `multitask_strategy` is now queued (`enqueue`), as on the Agent Server and in the API reference, instead of being rejected with 422.
+
+- [#3143](https://github.com/langchain-ai/langgraphjs/pull/3143) [`824f24c`](https://github.com/langchain-ai/langgraphjs/commit/824f24ced5ee5a6d1c60c66b52031d61c2f7f30e) Thanks [@eliornl](https://github.com/eliornl)! - Fix three bugs in the legacy run stream:
+  
+  - In `messages` mode, each chat model reply streams under one message id. Anthropic sets the id only on a reply's first chunk, so `messages/partial` could switch to a `run-<runId>` id mid-reply that never matched the id in `messages/complete`.
+  - In `messages` mode with `stream_subgraphs: true`, `messages/complete` is now sent for the root graph's messages. It was never sent before.
+  - With `stream_subgraphs: true`, a node that streams a runnable of its own (for example a generator `RunnableLambda` called with the node's config) no longer fails the run with `TypeError: rawTuple is not iterable`, in any stream mode.
+
+- [#3142](https://github.com/langchain-ai/langgraphjs/pull/3142) [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185) Thanks [@eliornl](https://github.com/eliornl)! - Runs that were running when the dev server restarted, for example on a hot reload after a file save, are now retried when it starts again and continue from their last checkpoint. Before, they stayed `running` forever, their thread stayed busy and new runs on it were rejected with 422.
+
+- [#3142](https://github.com/langchain-ai/langgraphjs/pull/3142) [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185) Thanks [@eliornl](https://github.com/eliornl)! - The `rollback` multitask strategy, and cancelling with `action=rollback`, now roll back a run that is already running, as they already did for a pending one: the run is cancelled, then deleted with its checkpoints, so the next run starts from the state before it, and its stream ends without an error. Before, the run ended as `error` and its writes stayed on the thread.
+
+- [#3142](https://github.com/langchain-ai/langgraphjs/pull/3142) [`3f21e26`](https://github.com/langchain-ai/langgraphjs/commit/3f21e26235f04e1181facccf11166720b082b185) Thanks [@eliornl](https://github.com/eliornl)! - Deleting a thread, or a run, while the run is running no longer stops one of the server's run workers for good, and neither does any other failure while a worker finishes a run, such as a webhook URL that can't be reached. After enough of these, new runs were never picked up.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.7
+
+## 1.5.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.6
+
+## 1.5.5
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Depend on `@langchain/protocol` 0.0.20, the version `@langchain/langgraph-sdk` uses, so installs resolve a single copy and the protocol event types stay compatible.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.5.5
+
 ## 1.5.4
 
 ### Patch Changes

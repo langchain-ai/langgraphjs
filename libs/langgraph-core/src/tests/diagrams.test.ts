@@ -1,12 +1,14 @@
 import { test, expect } from "vitest";
+import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
-import { createReactAgent } from "../prebuilt/index.js";
+import { createReactAgent, ToolNode } from "../prebuilt/index.js";
 import { FakeSearchTool } from "./utils.js";
 import { FakeToolCallingChatModel } from "./utils.models.js";
 import {
   Annotation,
   Command,
   END,
+  MessagesAnnotation,
   NodeError,
   START,
   StateGraph,
@@ -15,18 +17,31 @@ import {
 
 test("prebuilt agent", async () => {
   // Define the tools for the agent to use
-  const tools = [new FakeSearchTool()];
+  const tools = [
+    new FakeSearchTool(),
+    tool(() => "sunny", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    }),
+  ];
 
   const model = new FakeToolCallingChatModel({});
 
   const app = createReactAgent({ llm: model, tools });
 
   const graph = app.getGraph();
+  for (const drawable of [graph, await app.getGraphAsync()]) {
+    expect(drawable.nodes.tools.metadata).toEqual({
+      __tools: ["search_api", "get_weather"],
+    });
+    expect(drawable.nodes.agent.metadata).toEqual({});
+  }
   const mermaid = graph.drawMermaid();
   expect(mermaid).toEqual(`%%{init: {'flowchart': {'curve': 'linear'}}}%%
 graph TD;
 \t__start__([<p>__start__</p>]):::first
-\ttools(tools)
+\ttools(tools<hr/><small><em>__tools = search_api,get_weather</em></small>)
 \tagent(agent)
 \t__end__([<p>__end__</p>]):::last
 \t__start__ --> agent;
@@ -37,6 +52,24 @@ graph TD;
 \tclassDef first fill-opacity:0;
 \tclassDef last fill:#bfb6fc;
 `);
+});
+
+test("drawing leaves node metadata unchanged", async () => {
+  const app = new StateGraph(MessagesAnnotation)
+    .addNode("tools", new ToolNode([new FakeSearchTool()]), {
+      metadata: { owner: "search" },
+    })
+    .addEdge(START, "tools")
+    .compile({ interruptBefore: ["tools"] });
+
+  for (const drawable of [app.getGraph(), await app.getGraphAsync()]) {
+    expect(drawable.nodes.tools.metadata).toEqual({
+      owner: "search",
+      __interrupt: "before",
+      __tools: ["search_api"],
+    });
+  }
+  expect(app.nodes.tools.metadata).toEqual({ owner: "search" });
 });
 
 test("implicit end edge for terminal nodes", async () => {

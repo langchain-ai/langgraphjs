@@ -18,8 +18,13 @@ import {
 } from "@langchain/core/outputs";
 import { ChainValues } from "@langchain/core/utils/types";
 
-import { TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
-import { StreamChunk } from "./stream.js";
+import { isCommand, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import {
+  isOutsideStream,
+  StreamChunk,
+  eventNamespace,
+  type StreamNamespaceOptions,
+} from "./stream.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Meta = [string[], Record<string, any>];
@@ -29,6 +34,7 @@ function isChatGenerationChunk(x: unknown): x is ChatGenerationChunk {
 }
 
 function normalizeStreamMetadata(
+  options: StreamNamespaceOptions | undefined,
   metadata?: Record<string, unknown>,
   tags?: string[],
   name?: string
@@ -44,7 +50,10 @@ function normalizeStreamMetadata(
   if (!namespace) {
     return undefined;
   }
-  return [namespace.split("|"), { tags, name, ...metadata }];
+  return [
+    eventNamespace(namespace, metadata, options),
+    { tags, name, ...metadata },
+  ];
 }
 
 /**
@@ -68,16 +77,23 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
 
   lc_prefer_streaming = true;
 
-  constructor(streamFn: (streamChunk: StreamChunk) => void) {
+  namespaceOptions?: StreamNamespaceOptions;
+
+  constructor(
+    streamFn: (streamChunk: StreamChunk) => void,
+    namespaceOptions?: StreamNamespaceOptions
+  ) {
     super();
     this.streamFn = streamFn;
+    this.namespaceOptions = namespaceOptions;
   }
 
   _emit(
     meta: Meta,
     message: BaseMessage,
     runId: string | undefined,
-    dedupe = false
+    dedupe = false,
+    outputIdx?: number
   ) {
     if (
       dedupe &&
@@ -93,6 +109,10 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       if (isToolMessage(message)) {
         // Distinguish tool messages by tool call ID.
         messageId ??= `run-${runId}-tool-${message.tool_call_id}`;
+      } else if (outputIdx !== undefined) {
+        // A node's outputs are separate messages, not chunks of one, and the
+        // messages reducer keeps one message per id.
+        messageId ??= `run-${runId}-out-${outputIdx}`;
       } else {
         // For instance in ChatAnthropic, the first chunk has an message ID
         // but the subsequent chunks do not. To avoid clients seeing two messages
@@ -134,7 +154,14 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       // Include legacy LangGraph SDK tag
       (!tags || (!tags.includes(TAG_NOSTREAM) && !tags.includes("nostream")))
     ) {
-      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
+      const meta = normalizeStreamMetadata(
+        this.namespaceOptions,
+        metadata,
+        tags,
+        name
+      );
+      if (meta && isOutsideStream(meta[0], this.namespaceOptions)) return;
+      this.metadatas[runId] = meta;
     }
   }
 
@@ -197,7 +224,14 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
       name === metadata.langgraph_node &&
       (tags === undefined || !tags.includes(TAG_HIDDEN))
     ) {
-      this.metadatas[runId] = normalizeStreamMetadata(metadata, tags, name);
+      const meta = normalizeStreamMetadata(
+        this.namespaceOptions,
+        metadata,
+        tags,
+        name
+      );
+      if (meta && isOutsideStream(meta[0], this.namespaceOptions)) return;
+      this.metadatas[runId] = meta;
 
       if (typeof inputs === "object") {
         for (const value of Object.values(inputs)) {
@@ -224,29 +258,36 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   handleChainEnd(outputs: ChainValues, runId: string) {
     const metadata = this.metadatas[runId];
     delete this.metadatas[runId];
-    if (metadata !== undefined) {
-      if (isBaseMessage(outputs)) {
-        this._emit(metadata, outputs, runId, true);
-      } else if (Array.isArray(outputs)) {
-        for (const value of outputs) {
-          if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
-          }
+    if (metadata === undefined) return;
+
+    let outputIdx = 0;
+    const emit = (value: unknown) => {
+      if (isBaseMessage(value)) {
+        this._emit(metadata, value, runId, true, outputIdx);
+        outputIdx += 1;
+      }
+    };
+    const emitOutput = (output: unknown): void => {
+      if (isCommand(output)) {
+        emitOutput(output.update);
+      } else if (isBaseMessage(output)) {
+        emit(output);
+      } else if (Array.isArray(output)) {
+        // As in Python, a list holding a Command is a node's list of updates,
+        // each searched like a whole output; any other list holds messages.
+        const updates = output.some(isCommand);
+        for (const value of output) {
+          if (updates) emitOutput(value);
+          else emit(value);
         }
-      } else if (outputs != null && typeof outputs === "object") {
-        for (const value of Object.values(outputs)) {
-          if (isBaseMessage(value)) {
-            this._emit(metadata, value, runId, true);
-          } else if (Array.isArray(value)) {
-            for (const item of value) {
-              if (isBaseMessage(item)) {
-                this._emit(metadata, item, runId, true);
-              }
-            }
-          }
+      } else if (output != null && typeof output === "object") {
+        for (const value of Object.values(output)) {
+          if (Array.isArray(value)) emitOutput(value);
+          else emit(value);
         }
       }
-    }
+    };
+    emitOutput(outputs);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

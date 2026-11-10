@@ -4,82 +4,45 @@ const NULL = "\0".charCodeAt(0);
 const COLON = ":".charCodeAt(0);
 const SPACE = " ".charCodeAt(0);
 
-const TRAILING_NEWLINE = [CR, LF];
-
 export function BytesLineDecoder() {
   let buffer: Uint8Array[] = [];
-  let trailingCr = false;
+  let skipLeadingLf = false;
 
   return new TransformStream<Uint8Array, Uint8Array>({
     start() {
       buffer = [];
-      trailingCr = false;
+      skipLeadingLf = false;
     },
 
     transform(chunk, controller) {
-      // See https://docs.python.org/3/glossary.html#term-universal-newlines
-      let text = chunk;
+      if (!chunk.length) return;
 
-      // Handle trailing CR from previous chunk
-      if (trailingCr) {
-        text = joinArrays([[CR], text]);
-        trailingCr = false;
+      let start = 0;
+      if (skipLeadingLf && chunk[0] === LF) start = 1;
+      skipLeadingLf = false;
+
+      for (let i = start; i < chunk.length; i += 1) {
+        if (chunk[i] !== CR && chunk[i] !== LF) continue;
+
+        const line = chunk.subarray(start, i);
+        if (buffer.length) {
+          buffer.push(line);
+          controller.enqueue(joinArrays(buffer));
+          buffer = [];
+        } else {
+          controller.enqueue(line);
+        }
+
+        // A CR ends its line at once; an LF right after it, even at the
+        // start of the next chunk, completes the same CRLF line break.
+        if (chunk[i] === CR) {
+          if (i === chunk.length - 1) skipLeadingLf = true;
+          else if (chunk[i + 1] === LF) i += 1;
+        }
+        start = i + 1;
       }
 
-      // Check for trailing CR in current chunk
-      if (text.length > 0 && text.at(-1) === CR) {
-        trailingCr = true;
-        text = text.subarray(0, -1);
-      }
-
-      if (!text.length) return;
-      const trailingNewline = TRAILING_NEWLINE.includes(text.at(-1)!);
-
-      const lastIdx = text.length - 1;
-      const { lines } = text.reduce<{ lines: Uint8Array[]; from: number }>(
-        (acc, cur, idx) => {
-          if (acc.from > idx) return acc;
-
-          if (cur === CR || cur === LF) {
-            acc.lines.push(text.subarray(acc.from, idx));
-            if (cur === CR && text[idx + 1] === LF) {
-              acc.from = idx + 2;
-            } else {
-              acc.from = idx + 1;
-            }
-          }
-
-          if (idx === lastIdx && acc.from <= lastIdx) {
-            acc.lines.push(text.subarray(acc.from));
-          }
-
-          return acc;
-        },
-        { lines: [], from: 0 }
-      );
-
-      if (lines.length === 1 && !trailingNewline) {
-        buffer.push(lines[0]);
-        return;
-      }
-
-      if (buffer.length) {
-        // Include existing buffer in first line
-        buffer.push(lines[0]);
-        lines[0] = joinArrays(buffer);
-        buffer = [];
-      }
-
-      if (!trailingNewline) {
-        // If the last segment is not newline terminated,
-        // buffer it for the next chunk
-        if (lines.length) buffer = [lines.pop()!];
-      }
-
-      // Enqueue complete lines
-      for (const line of lines) {
-        controller.enqueue(line);
-      }
+      if (start < chunk.length) buffer.push(chunk.subarray(start));
     },
 
     flush(controller) {
@@ -96,29 +59,47 @@ export interface StreamPart {
   data: unknown;
 }
 
-export function SSEDecoder() {
+const controlParts = new WeakSet<object>();
+
+export function isSSEControlPart(part: object) {
+  return controlParts.has(part);
+}
+
+export function SSEDecoder(initialLastEventId?: string) {
   let event = "";
   let data: Uint8Array[] = [];
-  let lastEventId = "";
+  let lastEventId = initialLastEventId;
+  let idChanged = false;
   let retry: number | null = null;
+  let firstLine = true;
 
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
   return new TransformStream<Uint8Array, StreamPart>({
     transform(chunk, controller) {
+      if (firstLine) {
+        firstLine = false;
+        if (chunk[0] === 0xef && chunk[1] === 0xbb && chunk[2] === 0xbf) {
+          chunk = chunk.subarray(3);
+        }
+      }
+
       // Handle empty line case
       if (!chunk.length) {
-        if (!event && !data.length && !lastEventId && retry == null) return;
+        if (!event && !data.length && !idChanged && retry == null) return;
 
         const sse = {
-          id: lastEventId || undefined,
+          id: lastEventId,
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         };
 
+        if (!event && !data.length) controlParts.add(sse);
+
         // NOTE: as per the SSE spec, do not reset lastEventId
         event = "";
         data = [];
+        idChanged = false;
         retry = null;
 
         controller.enqueue(sse);
@@ -129,10 +110,10 @@ export function SSEDecoder() {
       if (chunk[0] === COLON) return;
 
       const sepIdx = chunk.indexOf(COLON);
-      if (sepIdx === -1) return;
-
-      const fieldName = decoder.decode(chunk.subarray(0, sepIdx));
-      let value = chunk.subarray(sepIdx + 1);
+      const fieldName = decoder.decode(
+        sepIdx === -1 ? chunk : chunk.subarray(0, sepIdx)
+      );
+      let value = sepIdx === -1 ? new Uint8Array() : chunk.subarray(sepIdx + 1);
       if (value[0] === SPACE) value = value.subarray(1);
 
       if (fieldName === "event") {
@@ -140,17 +121,21 @@ export function SSEDecoder() {
       } else if (fieldName === "data") {
         data.push(value);
       } else if (fieldName === "id") {
-        if (value.indexOf(NULL) === -1) lastEventId = decoder.decode(value);
+        if (value.indexOf(NULL) === -1) {
+          lastEventId = decoder.decode(value);
+          idChanged = true;
+        }
       } else if (fieldName === "retry") {
-        const retryNum = Number.parseInt(decoder.decode(value), 10);
-        if (!Number.isNaN(retryNum)) retry = retryNum;
+        const retryValue = decoder.decode(value);
+        if (/^[0-9]+$/.test(retryValue))
+          retry = Number.parseInt(retryValue, 10);
       }
     },
 
     flush(controller) {
-      if (event) {
+      if (event || data.length) {
         controller.enqueue({
-          id: lastEventId || undefined,
+          id: lastEventId,
           event,
           data: data.length ? decodeArraysToJson(decoder, data) : null,
         });
@@ -170,6 +155,7 @@ function joinArrays(data: ArrayLike<number>[]) {
   return merged;
 }
 
-function decodeArraysToJson(decoder: TextDecoder, data: ArrayLike<number>[]) {
-  return JSON.parse(decoder.decode(joinArrays(data)));
+function decodeArraysToJson(decoder: TextDecoder, data: Uint8Array[]) {
+  const body = data.map((line) => decoder.decode(line)).join("\n");
+  return /^[\x09-\x0d\x20]*$/.test(body) ? null : JSON.parse(body);
 }

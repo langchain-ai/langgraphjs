@@ -7,6 +7,7 @@ import {
   OperationResults,
   Item,
   InvalidNamespaceError,
+  validateNamespace,
 } from "../store/base.js";
 import { AsyncBatchedStore } from "../store/batch.js";
 import { InMemoryStore } from "../store/memory.js";
@@ -554,7 +555,13 @@ describe("Namespace validation", () => {
     // label check.
     ["a non-string label", ["tenant", 1.5 as unknown as string]],
     ["a dotted label", ["tenant", "alice.files"]],
+    ["a colon-containing label", ["a:b"]],
+    ["a NUL-containing label", ["a\x00b"]],
   ];
+
+  it.each(invalidLabels)("should reject %s directly", (_, namespace) => {
+    expect(() => validateNamespace(namespace)).toThrow(InvalidNamespaceError);
+  });
 
   describe.each([false, true])(
     "shared namespace rules (batched: %s)",

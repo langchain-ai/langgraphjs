@@ -125,6 +125,25 @@ const deltaCounters = async (saver: MemorySaver, config: RunnableConfig) =>
   {};
 
 describe("DeltaChannel (unit)", () => {
+  it.each([undefined, 50, 1000])(
+    "snapshots at the configured frequency (%s)",
+    (snapshotFrequency) => {
+      const ch = new DeltaChannel(listReducer, { snapshotFrequency });
+      const expected = snapshotFrequency ?? 100;
+      ch.update([[1]]);
+      expect(ch.fromCheckpoint().snapshotFrequency).toBe(expected);
+      for (const updates of [expected - 1, expected]) {
+        expect(
+          deltaChannelsToSnapshot(
+            { messages: ch },
+            { messages: [updates, updates] },
+            { messages: 1 }
+          )
+        ).toEqual(new Set(updates === expected ? ["messages"] : []));
+      }
+    }
+  );
+
   it("rejects a non-positive snapshotFrequency", () => {
     expect(() => new DeltaChannel(listReducer, { snapshotFrequency: 0 })).toThrow();
     expect(

@@ -8,6 +8,7 @@ import { StateGraph } from "./state.js";
 import { ensureLangGraphConfig } from "../pregel/utils/config.js";
 import type { StreamMessagesHandler } from "../pregel/messages.js";
 import type { StreamProtocolMessagesHandler } from "../pregel/messages-v2.js";
+import { eventNamespace, isOutsideStream } from "../pregel/stream.js";
 import { messagesStateReducer, type Messages } from "./messages_reducer.js";
 
 /** @ignore */
@@ -72,7 +73,7 @@ export function pushMessage(
     return [];
   })();
 
-  const messagesHandler = callbacks.find(
+  const messagesHandlers = callbacks.filter(
     (cb): cb is StreamMessagesHandler =>
       "name" in cb && cb.name === "StreamMessagesHandler"
   );
@@ -81,19 +82,21 @@ export function pushMessage(
       "name" in cb && cb.name === "StreamProtocolMessagesHandler"
   );
 
-  if (messagesHandler || protocolMessagesHandler) {
+  if (messagesHandlers.length > 0 || protocolMessagesHandler) {
     const metadata = config.metadata ?? {};
-    const namespace = (
-      (metadata.langgraph_checkpoint_ns ?? "") as string
-    ).split("|");
+    const checkpointNs = (metadata.langgraph_checkpoint_ns ?? "") as string;
+    const namespace = checkpointNs.split("|");
 
-    if (messagesHandler) {
-      messagesHandler._emit(
-        [namespace, metadata],
-        validMessage,
-        undefined,
-        false
-      );
+    if (messagesHandlers.length > 0) {
+      // A node that streams its own subgraph adds a handler after its
+      // caller's, and the caller's may skip the message, so ask each one.
+      for (const handler of messagesHandlers) {
+        const options = handler.namespaceOptions;
+        const eventNs = eventNamespace(checkpointNs, metadata, options);
+        if (!isOutsideStream(eventNs, options)) {
+          handler._emit([eventNs, metadata], validMessage, undefined, false);
+        }
+      }
     } else if (protocolMessagesHandler) {
       // streamEvents v3 registers StreamProtocolMessagesHandler instead of
       // StreamMessagesHandler; without this branch, pushed messages are

@@ -72,7 +72,7 @@ function startEvent(
 
 function blockStartEvent(
   index: number,
-  block: { type: string; text?: string },
+  block: { type: string; text?: string; [key: string]: unknown },
   namespace: string[] = []
 ): MessagesEvent {
   return {
@@ -104,7 +104,7 @@ function blockDeltaEvent(
 
 function coreBlockDeltaEvent(
   index: number,
-  delta: { type: "text-delta"; text: string },
+  delta: { type: string; [key: string]: unknown },
   namespace: string[] = []
 ): MessagesEvent {
   return {
@@ -114,6 +114,34 @@ function coreBlockDeltaEvent(
       namespace,
       timestamp: Date.now(),
       data: { event: "content-block-delta", index, delta },
+    },
+  } as unknown as MessagesEvent;
+}
+
+function blockFinishEvent(
+  index: number,
+  block: { type: string; [key: string]: unknown },
+  namespace: string[] = []
+): MessagesEvent {
+  return {
+    type: "event",
+    method: "messages",
+    params: {
+      namespace,
+      timestamp: Date.now(),
+      data: { event: "content-block-finish", index, content: block },
+    },
+  } as unknown as MessagesEvent;
+}
+
+function finishEvent(namespace: string[] = []): MessagesEvent {
+  return {
+    type: "event",
+    method: "messages",
+    params: {
+      namespace,
+      timestamp: Date.now(),
+      data: { event: "message-finish", reason: "stop" },
     },
   } as unknown as MessagesEvent;
 }
@@ -291,6 +319,49 @@ describe("RootMessageProjection", () => {
       const snap = store.getSnapshot();
       expect(snap.messages).toHaveLength(1);
       expect(snap.messages[0].text).toBe("Hi there");
+    });
+
+    it.each([
+      [
+        "block-delta snapshots",
+        [
+          { type: "block-delta", fields: { type: "tool_call_chunk", id: "call_1", name: "search", args: '{"query":' } },
+          { type: "block-delta", fields: { type: "tool_call_chunk", id: "call_1", name: "search", args: '{"query":"weather"}' } },
+        ],
+      ],
+      [
+        "tool-call-delta slices",
+        [
+          { type: "tool-call-delta", args: '{"query":' },
+          { type: "tool-call-delta", args: '"weather"}' },
+        ],
+      ],
+    ])("streams tool-call args from %s", async (_form, deltas) => {
+      const { store, projection } = makeProjection();
+
+      projection.handleMessage(startEvent({ id: "m1", role: "ai" }));
+      projection.handleMessage(
+        blockStartEvent(0, { type: "tool_call_chunk", id: "call_1", name: "search", args: "" })
+      );
+      const live: unknown[] = [];
+      for (const delta of deltas) {
+        projection.handleMessage(coreBlockDeltaEvent(0, delta));
+        await drainFlush();
+        live.push((store.getSnapshot().messages[0] as AIMessage).tool_calls);
+      }
+      projection.handleMessage(
+        blockFinishEvent(0, { type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } })
+      );
+      projection.handleMessage(finishEvent());
+      await drainFlush();
+
+      expect(live).toEqual([
+        [{ type: "tool_call", id: "call_1", name: "search", args: {} }],
+        [{ type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } }],
+      ]);
+      expect((store.getSnapshot().messages[0] as AIMessage).tool_calls).toEqual([
+        { type: "tool_call", id: "call_1", name: "search", args: { query: "weather" } },
+      ]);
     });
 
     it("mirrors messages into values[messagesKey]", async () => {
@@ -828,6 +899,32 @@ describe("RootMessageProjection", () => {
       expect(snap.messages[0]).toBe(human);
       expect(snap.messages[1].id).toBe("a1");
       expect(snap.messages[1].text).toContain("more");
+    });
+
+    it("treats a lower step as a replay unless its checkpoint is newer, as after a fork", async () => {
+      const { store, projection } = makeProjection();
+      const ids = () => store.getSnapshot().messages.map((m) => m.id);
+      const h1 = new HumanMessage({ id: "h1", content: "first" });
+      const a1 = new AIMessage({ id: "a1", content: "echo: first" });
+
+      projection.applyValues({ messages: [h1, a1] } as State, [h1, a1], {
+        step: 6,
+        checkpointId: "cp-a6",
+      });
+      projection.applyValues({ messages: [h1] } as State, [h1], {
+        step: 5,
+        checkpointId: "cp-a5",
+      });
+      await drainFlush();
+      expect(ids()).toEqual(["h1", "a1"]);
+
+      const edited = new HumanMessage({ id: "h1-edited", content: "edited" });
+      projection.applyValues({ messages: [edited] } as State, [edited], {
+        step: 1,
+        checkpointId: "cp-b1",
+      });
+      await drainFlush();
+      expect(ids()).toEqual(["h1-edited"]);
     });
   });
 

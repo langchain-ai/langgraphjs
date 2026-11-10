@@ -1,5 +1,122 @@
 # @langchain/langgraph
 
+## 1.7.3
+
+### Patch Changes
+
+- [#3308](https://github.com/langchain-ai/langgraphjs/pull/3308) [`c6874b4`](https://github.com/langchain-ai/langgraphjs/commit/c6874b4095a5c3d2d12512cb90999d9e4f36eeb0) Thanks [@richardscarrott](https://github.com/richardscarrott)! - match whole namespace segments in `getSubgraphs` and `getSubgraphsAsync`, so a `namespace` such as `research_review` no longer also yields `research|review`, and yield a namespace's subgraph once when a node declares several `subgraphs`
+
+- [#3090](https://github.com/langchain-ai/langgraphjs/pull/3090) [`3944b75`](https://github.com/langchain-ai/langgraphjs/commit/3944b75c9344ce5703c12d8144c6b9168057da59) Thanks [@OsamaAnsar](https://github.com/OsamaAnsar)! - Stop the run when a consumer breaks out of a `for await` loop over `graph.stream()` or `graph.streamEvents()`, or cancels the stream's reader. Only an explicit `stream.cancel()` aborted the run before; breaking out of the loop left the remaining nodes running in the background.
+
+## 1.7.2
+
+### Patch Changes
+
+- [#3258](https://github.com/langchain-ai/langgraphjs/pull/3258) [`585b78b`](https://github.com/langchain-ai/langgraphjs/commit/585b78bbc8249014c6d092ff0e38699679b33034) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `getState` and `getStateHistory` report the `result` of a task that was interrupted and then resumed. The task's interrupt write stays on the checkpoint after it finishes, and that hid the result, so a node with human-in-the-loop never showed what it returned in history. A task that failed after writing some output now reports that output as its `result` too, as in Python. A task still paused at an interrupt keeps `result: undefined`.
+- Updated dependencies [[`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9), [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95), [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5)]:
+  - @langchain/langgraph-sdk@1.15.0
+
+## 1.7.1
+
+### Patch Changes
+
+- [#3241](https://github.com/langchain-ai/langgraphjs/pull/3241) [`49f86a7`](https://github.com/langchain-ai/langgraphjs/commit/49f86a7a3baa401281de836e5fa713185655e9b3) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add `isUnknownInterruptError`, which matches the error by name like `isGraphInterrupt`, so it also recognizes an `UnknownInterruptError` thrown by another copy of `@langchain/langgraph`
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+
+- [#3218](https://github.com/langchain-ai/langgraphjs/pull/3218) [`ad73c37`](https://github.com/langchain-ai/langgraphjs/commit/ad73c37142bc5f7bec3b78819edd7ab72874c13e) Thanks [@eliornl](https://github.com/eliornl)! - Task results in the `tasks` and `debug` stream modes carry the task's `error` (`null` when it succeeded), as they do in Python, so a failed task no longer looks completed.
+
+- [#3226](https://github.com/langchain-ai/langgraphjs/pull/3226) [`429accb`](https://github.com/langchain-ai/langgraphjs/commit/429accb738ab24d7b96f281d8ee0861f5e98e571) Thanks [@eliornl](https://github.com/eliornl)! - docs(langgraph): `UnknownInterruptError` says each `interrupt()` call in a task has its own id
+- Updated dependencies [[`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa), [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa)]:
+  - @langchain/langgraph-sdk@1.14.0
+
+## 1.7.0
+
+### Minor Changes
+
+- [#3221](https://github.com/langchain-ai/langgraphjs/pull/3221) [`ed01e50`](https://github.com/langchain-ai/langgraphjs/commit/ed01e50ca29b3d20cc45c30a1630f231fba25dd7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): give each interrupt() in a task its own id
+  
+  An interrupt raised after its task already got answers now gets its own id: the namespace hash plus the answer count. A task's first question keeps its id, and strict resume refuses an answer retried after a node asked its next question. Ids saved by older versions still answer: when a resume map has no entry for the task's next interrupt, the first id is used. A node retried by its retry policy now reuses its task's answers instead of asking again.
+
+- [#3211](https://github.com/langchain-ai/langgraphjs/pull/3211) [`73df3cb`](https://github.com/langchain-ai/langgraphjs/commit/73df3cb6f7fac8af2a10b5f1b2b5e1cdcd7c0fa7) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add a strict resume mode that refuses stale interrupt answers
+  
+  With the private configurable key `__pregel_strict_resume` set, the root graph throws `UnknownInterruptError` before writing anything when a `Command({ resume })` names an interrupt that isn't pending, is an empty map, or is one value while several interrupts are pending. The error's `reason` (`not_pending`, `empty_map` or `ambiguous`) says which, with the interrupt ids involved in `interruptIds` and `pendingIds`. Without the key, resuming behaves as before.
+  
+  A task that raises several interrupts at once, such as a subgraph with parallel interrupts, now keeps all of them; before, only the last one was saved. `Command({ resume: false })` and other falsy resume values now reach `interrupt()` instead of throwing `EmptyInputError`.
+
+### Patch Changes
+
+- Updated dependencies [[`caa5c53`](https://github.com/langchain-ai/langgraphjs/commit/caa5c53a65b0d0cce2a597167087f1bf9b170437), [`75deb9a`](https://github.com/langchain-ai/langgraphjs/commit/75deb9a65b7e3254429ec193db35953b69ad605c), [`5ef8ba8`](https://github.com/langchain-ai/langgraphjs/commit/5ef8ba8cad1b3638d9f0bba2f2db58db7dcfaa33), [`08f6d06`](https://github.com/langchain-ai/langgraphjs/commit/08f6d069af8a51f913a63990bec31f0fe985b5f7), [`d955450`](https://github.com/langchain-ai/langgraphjs/commit/d9554503a7ccef99f46474831ec93ed1c527ca57), [`2f42fb1`](https://github.com/langchain-ai/langgraphjs/commit/2f42fb196d840931f11a4da114f030f3ba4a90fe), [`7209193`](https://github.com/langchain-ai/langgraphjs/commit/7209193a2b7f5f9275780953d92ebc454c8550d4)]:
+  - @langchain/langgraph-sdk@1.13.0
+
+## 1.6.1
+
+### Patch Changes
+
+- [#3058](https://github.com/langchain-ai/langgraphjs/pull/3058) [`f64d595`](https://github.com/langchain-ai/langgraphjs/commit/f64d5954b721ee53746f03bf456680743b471d15) Thanks [@hntrl](https://github.com/hntrl)! - Restore per-node `tracePolicy`, using `@langchain/core`'s `TracePolicy` (requires `@langchain/core` >= 1.3.4). It only changes what `LangChainTracer` sends to LangSmith; execution, streaming, and other callbacks see raw values.
+- Updated dependencies [[`2f7b082`](https://github.com/langchain-ai/langgraphjs/commit/2f7b082df1fdf18122e41dead7cce7cda3c7fb6a), [`60bf21d`](https://github.com/langchain-ai/langgraphjs/commit/60bf21d7ab897a94d652a0258df6896b3ed0bfdb)]:
+  - @langchain/langgraph-sdk@1.12.10
+
+## 1.6.0
+
+### Minor Changes
+
+- [#3121](https://github.com/langchain-ai/langgraphjs/pull/3121) [`dbfb9a5`](https://github.com/langchain-ai/langgraphjs/commit/dbfb9a5e93000b6a0e2ee27d428866a6ea006d36) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): give messages and tools events the namespace of the graph that ran them
+  
+  `messages` and `tools` stream events now carry the namespace of the graph that ran them:
+  
+  - An event's namespace no longer ends with the node that made the call. Root tokens have the namespace `[]`, so with `subgraphs: true` they stream as `messages`, not `messages|model:<id>`, and a subgraph's tokens as `messages|sub:<id>`.
+  - Events from a model or tool called inside a `task()` belong to the graph that called the task: they stream without `subgraphs: true`, under that graph's namespace.
+  - Without `subgraphs: true`, events from inside subgraphs no longer stream. A subgraph node's returned messages still stream, whole, when it ends, and a node that streams its own subgraph with `streamMode: "messages"` or `"tools"` still receives that subgraph's events.
+  - Messages sent with `pushMessage` follow the same rules, so a node that streams its own subgraph receives the messages that subgraph pushes.
+  - Apps that show subagent messages as they stream, like `useStream` with `filterSubagentMessages`, now need `streamSubgraphs: true` when they submit, as they already did with a Python server.
+  
+  `streamEvents` with `version: "v3"` is unchanged.
+
+### Patch Changes
+
+- [#3119](https://github.com/langchain-ai/langgraphjs/pull/3119) [`58d490e`](https://github.com/langchain-ai/langgraphjs/commit/58d490e07568621787a814ab7ce24e5da0cfe658) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): keep every message a node returns in messages stream mode
+  
+  - In `streamMode: "messages"`, the id-less messages a node returned all got one id, and an id-less message could take the id of a sibling that had one, so the messages reducer kept only one of them and the saved state depended on the stream mode. Each id-less message of a node's output now gets its own id.
+  - Messages a node returns through `Command({ update })` are now emitted in `messages` mode, as in Python. So are all the messages of a list of updates that holds a `Command`, such as `ToolNode` returns when one of its tools returns a `Command`; before, none of that list's messages were emitted, and they reached clients only with the next `values` event.
+  - A model tagged `nostream` still streams no tokens, but when its node returns its message in a list with a `Command`, as `createAgent` does, that message now streams whole when the node ends, as it already did for a plain update and does in Python.
+  
+  `streamEvents` with `version: "v3"` is unchanged.
+
+- [#3145](https://github.com/langchain-ai/langgraphjs/pull/3145) [`5cf585b`](https://github.com/langchain-ai/langgraphjs/commit/5cf585bae6ed80488e59ff752f04390be3b9e6a8) Thanks [@hntrl](https://github.com/hntrl)! - fix(langgraph): route a RemoteGraph's subgraph events like a local graph's when it streams inside a node
+  
+  When a node streams a `RemoteGraph` and its parent graph is streamed with `subgraphs: true`:
+  
+  - The node no longer receives the remote graph's subgraph events unless it passed `subgraphs: true` itself. With `streamMode: "updates"` it got `["model", "child"]` where a local graph gives `["child"]`. `messages` events are not filtered. The server sends each message once, from the namespace where it first saw it, so it never sends the top-level copy the node would get from a local graph, and filtering would leave the node with no messages.
+  - The parent now receives the remote graph's subgraph events, at every depth. Before, it received only the remote graph's top-level events.
+  - The same holds when the node passes `subgraphs: false`. Before, that turned off subgraph events for the parent too. So a node that streams with `streamMode: "messages"` and `subgraphs: false` now gets the subgraph's message tokens instead of the whole message at the top level, as it already did when it didn't pass `subgraphs`, and as Python's `RemoteGraph` does.
+
+- [#3127](https://github.com/langchain-ai/langgraphjs/pull/3127) [`a3fe525`](https://github.com/langchain-ai/langgraphjs/commit/a3fe52505c82953c9636330ab2d1266d382366ec) Thanks [@sera-wi](https://github.com/sera-wi)! - List a `ToolNode`'s tool names under the `__tools` node metadata key in `getGraph()` and `getGraphAsync()`, matching Python, so graph viewers such as Studio can show which tools it runs.
+
+- [#3118](https://github.com/langchain-ai/langgraphjs/pull/3118) [`7ab1b8d`](https://github.com/langchain-ai/langgraphjs/commit/7ab1b8d840c068c2593fea4683899508d93e6b33) Thanks [@eliornl](https://github.com/eliornl)! - fix(langgraph): stop reporting a paused tool as failed on the tools stream
+  
+  A tool that calls `interrupt()`, or whose run is drained, no longer emits `on_tool_error` on the `tools` stream mode. The tool is paused, not failed: on resume it runs again and emits `on_tool_start` and `on_tool_end`. `ToolNode` now re-throws a drain, as it already did an interrupt, instead of turning it into an error `ToolMessage`.
+- Updated dependencies [[`2a97004`](https://github.com/langchain-ai/langgraphjs/commit/2a9700476810507d2b3a224d0383272f2d69f8f6), [`e0109cb`](https://github.com/langchain-ai/langgraphjs/commit/e0109cb5711f42c8c4986a61967d2a7634a4ef0a), [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c), [`3aa46f1`](https://github.com/langchain-ai/langgraphjs/commit/3aa46f1075a7a2975461dc4b42f86867def9a139), [`a181b4d`](https://github.com/langchain-ai/langgraphjs/commit/a181b4d95501a41b949e1f9f1dea9ed055a50147), [`5e7fa49`](https://github.com/langchain-ai/langgraphjs/commit/5e7fa49a0c3bfa3c68aff4e982483f098062ba8e), [`204fc6f`](https://github.com/langchain-ai/langgraphjs/commit/204fc6fa7c5d6c427a2a85f6ec5c6219afac5efc), [`918f958`](https://github.com/langchain-ai/langgraphjs/commit/918f958768c69d952769fcb979844490b7b40ded), [`3c632fa`](https://github.com/langchain-ai/langgraphjs/commit/3c632fa2aa2d7e35f2540f556d8318f157ebe306), [`a73261d`](https://github.com/langchain-ai/langgraphjs/commit/a73261dd575f4a8a84058a241cd60ccabdb08ccf), [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c), [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c), [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c), [`b5f96bd`](https://github.com/langchain-ai/langgraphjs/commit/b5f96bdac43542a053a80cb4b056d710cf46393c), [`2965bc1`](https://github.com/langchain-ai/langgraphjs/commit/2965bc1083945c16f38cdc9ef427991d7af11ff6)]:
+  - @langchain/langgraph-checkpoint@1.2.2
+  - @langchain/langgraph-sdk@1.12.9
+
+## 1.5.3
+
+### Patch Changes
+
+- [#3125](https://github.com/langchain-ai/langgraphjs/pull/3125) [`e24ec8c`](https://github.com/langchain-ai/langgraphjs/commit/e24ec8c3ff3cf4191c4988e84a26c405816976cd) Thanks [@eliornl](https://github.com/eliornl)! - Change the default `DeltaChannel` snapshot frequency from 1000 to 100 updates, matching Python. Channels now persist full snapshots more frequently to reduce replay latency at the cost of increased storage. Set `snapshotFrequency: 1000` explicitly to retain the previous cadence.
+- Updated dependencies [[`f3dfbb2`](https://github.com/langchain-ai/langgraphjs/commit/f3dfbb2c3f6c4ff5d30aceca027ab19fca021bde)]:
+  - @langchain/langgraph-sdk@1.12.8
+
+## 1.5.2
+
+### Patch Changes
+
+- [#3022](https://github.com/langchain-ai/langgraphjs/pull/3022) [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083) Thanks [@richardscarrott](https://github.com/richardscarrott)! - Depend on `@langchain/protocol` 0.0.20, the version `@langchain/langgraph-sdk` uses, so installs resolve a single copy and the protocol event types stay compatible.
+- Updated dependencies [[`6e84570`](https://github.com/langchain-ai/langgraphjs/commit/6e845706b9a7d12f85e9477722908cc9f7003521), [`a17f609`](https://github.com/langchain-ai/langgraphjs/commit/a17f6098a853d1051c810f2c8dffa15e4de8f083)]:
+  - @langchain/langgraph-checkpoint@1.2.1
+  - @langchain/langgraph-sdk@1.12.6
+
 ## 1.5.1
 
 ### Patch Changes

@@ -1,4 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type pg from "pg";
+import { CrudOperations } from "./crud-operations.js";
+import type { DatabaseCore } from "./database-core.js";
+import type { VectorOperations } from "./vector-operations.js";
 import { namespaceListingCondition, validateNamespace } from "./utils.js";
 
 describe("validateNamespace", () => {
@@ -22,6 +26,10 @@ describe("validateNamespace", () => {
     );
   });
 
+  it("rejects labels containing NUL bytes", () => {
+    expect(() => validateNamespace(["a\x00b"])).toThrow(/NUL bytes/);
+  });
+
   it("rejects labels containing periods", () => {
     expect(() => validateNamespace(["a.b"])).toThrow(/cannot contain periods/);
   });
@@ -37,7 +45,7 @@ describe("validateNamespace", () => {
       validateNamespace(["langgraph"], { isRoot: false })
     ).not.toThrow();
 
-    for (const label of ["%", "_", "\\", "tenant:a", "", "a.b"]) {
+    for (const label of ["%", "_", "\\", "tenant:a", "a\x00b", "", "a.b"]) {
       expect(() => validateNamespace([label], { isRoot: false })).toThrow();
     }
   });
@@ -65,6 +73,25 @@ describe("validateNamespace", () => {
     });
   });
 });
+
+it.each(["a:b", "a\x00b"])(
+  "rejects namespace label %j before CRUD queries",
+  async (label) => {
+    const query = vi.fn();
+    const client = { query } as unknown as pg.PoolClient;
+    const crud = new CrudOperations({} as DatabaseCore, {} as VectorOperations);
+    const operation = { namespace: [label], key: "k" };
+
+    await expect(crud.executeGet(client, operation)).rejects.toThrow();
+    await expect(
+      crud.executePut(client, { ...operation, value: { v: 1 } })
+    ).rejects.toThrow();
+    await expect(
+      crud.executePut(client, { ...operation, value: null })
+    ).rejects.toThrow();
+    expect(query).not.toHaveBeenCalled();
+  }
+);
 
 it("escapes LIKE patterns independently of namespace validation", () => {
   for (const matchType of ["prefix", "suffix"] as const) {
