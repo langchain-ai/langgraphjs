@@ -262,6 +262,7 @@ export function useStreamCustom<
         },
         onError(error) {
           options.onError?.(error, undefined);
+          submitOptions?.onError?.(error, undefined);
         },
       }
     );
