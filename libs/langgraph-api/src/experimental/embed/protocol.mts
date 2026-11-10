@@ -261,9 +261,10 @@ export function registerProtocolRoutes(
     // the checkpoint that applies the input to state).
     const isResume = pendingInterrupts > 0;
 
-    if (isResume) {
-      // Drop stale lifecycle events from the paused run so late-attaching
-      // sinks do not replay `lifecycle.interrupted` after resume.
+    if (isResume || forkFrom != null) {
+      // Drop the previous run's buffered events so late-attaching sinks
+      // replay neither a paused run's `lifecycle.interrupted` nor the
+      // branch a fork moved away from.
       thread.queuedEvents.length = 0;
     }
 

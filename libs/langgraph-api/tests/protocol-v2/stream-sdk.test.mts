@@ -401,7 +401,9 @@ describe("SDK streaming projections against embed server", () => {
       const pausedWith = async (answers: string[]) => {
         const state = await parallelInterruptGraph.getState(config);
         expect(state.values.answers).toEqual(answers);
-        expect(state.tasks.flatMap((task) => task.interrupts)).toHaveLength(2);
+        const interrupts = state.tasks.flatMap((task) => task.interrupts);
+        expect(interrupts).toHaveLength(2);
+        return interrupts.map((interrupt) => interrupt.id);
       };
 
       await thread.run.start({ input: { answers: [] } });
@@ -415,8 +417,33 @@ describe("SDK streaming projections against embed server", () => {
         input: { answers: ["edited"] },
         forkFrom: rootCheckpointId,
       });
-      await vi.waitFor(() => pausedWith(["edited"]), { timeout: 10_000 });
+      const forkedIds = await vi.waitFor(() => pausedWith(["edited"]), {
+        timeout: 10_000,
+      });
       await thread.close();
+
+      const late = new ThreadStream(
+        new ProtocolSseTransportAdapter({
+          apiUrl: serverUrl,
+          threadId: thread.threadId,
+        }),
+        { assistantId: "parallel_interrupt" }
+      );
+      const requested = await collectWithTimeout(
+        await late.subscribe({ channels: ["input"] }),
+        1000
+      );
+      await late.close();
+      expect(
+        requested
+          .filter((event) => event.method === "input.requested")
+          .map(
+            (event) =>
+              (event.params as { data: { interrupt_id: string } }).data
+                .interrupt_id
+          )
+          .sort()
+      ).toEqual([...forkedIds].sort());
     });
   });
 });
