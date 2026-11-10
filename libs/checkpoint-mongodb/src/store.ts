@@ -121,7 +121,9 @@ export type IndexConfig = {
   modality?: string;
   /**
    * Additional filter fields to declare in the vector search index, as `value.<field>`.
-   * Search filters on declared fields run inside $vectorSearch; others run as a $match afterwards.
+   * Search filters on declared fields run inside $vectorSearch. Others run as a $match over a
+   * widened candidate window (up to 10000 hits), so they are best-effort; declare fields here
+   * for exact filtered results.
    */
   filters?: string[];
 };
@@ -702,14 +704,24 @@ export class MongoDBStore extends BaseStore {
     filter: Record<string, any>
   ): Promise<SearchItem[]> {
     const path = this.indexConfig!.path ?? "embedding";
+    const indexedFields = new Set(this.indexConfig!.filters ?? []);
+    const preFilter: Record<string, any> = {};
+    const postFilter: Record<string, any> = {};
+    for (const [field, condition] of Object.entries(filter)) {
+      (indexedFields.has(field) ? preFilter : postFilter)[field] = condition;
+    }
     const vectorSearchStage: Record<string, any> = {
       $vectorSearch: {
         index: this.indexConfig!.name,
         path,
         // numCandidates should be 10-20x limit for good recall, capped at 10000.
         // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
-        numCandidates: Math.min((limit + offset) * 20, 10000),
-        limit: limit + offset,
+        numCandidates: Object.keys(postFilter).length > 0
+          ? 10000
+          : Math.min((limit + offset) * 20, 10000),
+        limit: Object.keys(postFilter).length > 0
+          ? Math.min(Math.max((limit + offset) * 20, limit + offset), 10000)
+          : limit + offset,
       },
     };
 
@@ -722,12 +734,6 @@ export class MongoDBStore extends BaseStore {
       vectorSearchStage.$vectorSearch.query = { text: query };
     }
 
-    const indexedFields = new Set(this.indexConfig!.filters ?? []);
-    const preFilter: Record<string, any> = {};
-    const postFilter: Record<string, any> = {};
-    for (const [field, condition] of Object.entries(filter)) {
-      (indexedFields.has(field) ? preFilter : postFilter)[field] = condition;
-    }
     if (namespacePrefix.length > 0) {
       preFilter.namespacePath = namespacePrefix.join("/");
     }

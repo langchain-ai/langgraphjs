@@ -242,6 +242,8 @@ describe("MongoDBStore", () => {
       const postIdx = pipeline.findIndex((stage: any) => stage.$match?.["value.status"]);
       expect(pipeline[postIdx].$match).toEqual({ "value.status": { $eq: "active" } });
       expect(postIdx).toBeLessThan(stages.indexOf("$skip"));
+      expect(pipeline[0].$vectorSearch.limit).toBe(240);
+      expect(pipeline[0].$vectorSearch.numCandidates).toBe(10000);
     });
 
     it("should reject slash labels on put but still allow deleting them", async () => {
