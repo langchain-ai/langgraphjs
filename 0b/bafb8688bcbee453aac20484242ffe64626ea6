@@ -1,0 +1,21 @@
+libs/langgraph-api/tests/cancellation.test.mts
+  s_f91e4eaec06732::t_2d57c2b67df28f 25-44
+libs/langgraph-api/src/utils/cancellation.mts
+  s_f91e4eaec06732::t_e41b4b91615a4c 17-26,29-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0bbafb8688bcbee453aac20484242ffe64626ea6",
+  "prompts": {},
+  "sessions": {
+    "s_f91e4eaec06732": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a834b05-af9e-40a6-ab46-8d3c718cb59c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Kiewan Villatel <kiewan@langchain.dev>"
+    }
+  }
+}
