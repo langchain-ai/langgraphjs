@@ -1,0 +1,28 @@
+libs/langgraph-api/tests/cancellation.test.mts
+  s_f91e4eaec06732::t_a258c3b90b9b71 1-36
+.changeset/cancelled-run-status-api.md
+  s_f91e4eaec06732::t_f9b59043010e41 1-5
+libs/langgraph-api/src/storage/ops.mts
+  s_f91e4eaec06732::t_6ee265fcb67b91 13
+  s_f91e4eaec06732::t_43415ad333bdc6 137-138
+libs/langgraph-api/src/utils/cancellation.mts
+  s_f91e4eaec06732::t_43415ad333bdc6 1-23
+libs/langgraph-api/src/queue.mts
+  s_f91e4eaec06732::t_43415ad333bdc6 13,101,179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97469163a602341a5884f9b7e5edcdea52ccd6af",
+  "prompts": {},
+  "sessions": {
+    "s_f91e4eaec06732": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a834b05-af9e-40a6-ab46-8d3c718cb59c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Kiewan Villatel <kiewan@langchain.dev>"
+    }
+  }
+}
