@@ -2317,6 +2317,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      '@vitest/browser-webdriverio':
+        specifier: ^4.1.11
+        version: 4.1.11(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(vite@8.3.5(@types/node@18.19.130)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))(vitest@4.1.12)(webdriverio@9.27.1)
       deepagents:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.11.5(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.0)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0))(openai@7.45.1(undici@6.29.0)(ws@8.21.0)(zod@4.6.6))(ws@8.21.0)(zod-to-json-schema@3.25.2(zod@4.6.6))
@@ -2338,6 +2341,12 @@ importers:
       vitest:
         specifier: ^4.1.12
         version: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@18.19.130)(@vitest/browser-playwright@4.1.12)(@vitest/browser-webdriverio@4.1.11)(jsdom@26.1.0)(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(vite@8.3.5(@types/node@18.19.130)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))
+      vitest-browser-react:
+        specifier: ^2.3.0
+        version: 2.3.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@4.1.12)
+      webdriverio:
+        specifier: ^9.27.1
+        version: 9.27.1
       ws:
         specifier: ^8.21.0
         version: 8.21.0
@@ -17360,7 +17369,6 @@ snapshots:
       - msw
       - utf-8-validate
       - vite
-    optional: true
 
   '@vitest/browser-webdriverio@4.1.11(msw@2.12.10(@types/node@20.19.37)(typescript@5.9.3))(vite@8.3.5(@types/node@20.19.37)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))(vitest@4.1.12)(webdriverio@9.27.1)':
     dependencies:
@@ -17460,7 +17468,6 @@ snapshots:
       - msw
       - utf-8-validate
       - vite
-    optional: true
 
   '@vitest/browser@4.1.12(msw@2.12.10(@types/node@20.19.37)(typescript@5.9.3))(vite@8.3.5(@types/node@20.19.37)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))(vitest@4.1.12)':
     dependencies:
@@ -23954,7 +23961,7 @@ snapshots:
     dependencies:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
-      vitest: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@25.4.0)(@vitest/browser-playwright@4.1.12)(@vitest/browser-webdriverio@4.1.11)(jsdom@26.1.0)(msw@2.12.10(@types/node@25.4.0)(typescript@5.9.3))(vite@8.3.5(@types/node@25.4.0)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))
+      vitest: 4.1.12(@opentelemetry/api@1.9.0)(@types/node@18.19.130)(@vitest/browser-playwright@4.1.12)(@vitest/browser-webdriverio@4.1.11)(jsdom@26.1.0)(msw@2.12.10(@types/node@18.19.130)(typescript@5.9.3))(vite@8.3.5(@types/node@18.19.130)(esbuild@0.28.2)(jiti@2.6.1)(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.21.0)(yaml@2.9.1))
     optionalDependencies:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
