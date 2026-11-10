@@ -895,11 +895,11 @@ export class MediaAssembler {
             : undefined,
         fetch: this.#fetch,
       });
+      handle.observeIndex(blockIndex);
+      handle.absorbBlock(block);
       if (mediaBlock.url != null && mediaBlock.data == null) {
         handle.enterUrlMode(mediaBlock.url);
       }
-      handle.observeIndex(blockIndex);
-      handle.absorbBlock(block);
       if (mediaBlock.data != null) {
         try {
           handle.pushBytes(base64ToBytes(mediaBlock.data));
