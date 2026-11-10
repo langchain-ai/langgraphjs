@@ -29,7 +29,7 @@ it("streams a reply", async () => {
     .toHaveTextContent("Not loading");
 });
 
-it("stop mid-stream cancels the run and keeps the text streamed so far", async () => {
+it("stop mid-stream cancels the run and shows what the server kept", async () => {
   let threadId = "";
   const screen = await render(
     <Stream
@@ -45,10 +45,10 @@ it("stop mid-stream cancels the run and keeps the text streamed so far", async (
   await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
   await screen.getByTestId("stop").click();
 
+  await expect.poll(() => messages(screen)).toEqual(["Hello"]);
   await expect
     .element(screen.getByTestId("loading"))
     .toHaveTextContent("Not loading");
-  await expect.element(screen.getByTestId("message-1")).toHaveTextContent("H");
   const [run] = await client.runs.list(threadId);
   await expect
     .poll(async () => (await client.runs.get(threadId, run.run_id)).status)

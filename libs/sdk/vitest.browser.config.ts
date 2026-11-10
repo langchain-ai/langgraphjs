@@ -12,7 +12,6 @@ export default defineConfig({
   test: {
     include: ["src/react/tests/**/*.test.tsx"],
     provide: { serverUrl },
-    retry: 1,
     testTimeout: 30_000,
     expect: { poll: { timeout: 10_000 } },
     browser: {
