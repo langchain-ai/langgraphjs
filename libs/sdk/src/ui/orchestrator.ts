@@ -227,12 +227,11 @@ export type StreamOrchestratorOptions<
 > = AnyStreamOptions<StateType, Bag> &
   StreamReconnectOptions & {
     /**
-     * Runs outlive their tab: they are created with `streamResumable` and
-     * `onDisconnect: "continue"`, and {@link StreamOrchestrator.stop} cancels
-     * them on the server. After each thread load, the thread's running run is
-     * joined, from the checkpoint the load showed, whichever tab started it. A
-     * new thread gets its id from the client, so `onThreadId` fires at once,
-     * and its first run creates it.
+     * Runs outlive their tab, unless this is `false`. They are created with
+     * `streamResumable` and `onDisconnect: "continue"`, each thread load joins
+     * the thread's running run from the checkpoint the load showed, whichever
+     * tab started it, and {@link StreamOrchestrator.stop} cancels the run on
+     * the server.
      */
     durableRuns?: boolean;
 
@@ -300,6 +299,8 @@ export class StreamOrchestrator<
 
   readonly #runMetadataStorage: RunMetadataStorage | null;
 
+  readonly #durable: boolean;
+
   readonly #callbackStreamModes: StreamMode[];
 
   readonly #trackedStreamModes: StreamMode[] = [];
@@ -318,11 +319,14 @@ export class StreamOrchestrator<
 
   #liveRuns = new Map<string, LiveRun>();
 
-  /** The run being streamed, whether this orchestrator created or joined it. */
+  /** The run being streamed, unless the app joined it: the run `stop()` cancels. */
   #streamingRunId: string | undefined;
 
   /** Pending while the create request of the run being submitted awaits its response. */
   #ownRun: Promise<string | undefined> | undefined;
+
+  /** `#ownRun` of the stream being streamed, which a later submit doesn't replace. */
+  #streamingOwnRun: Promise<string | undefined> | undefined;
 
   #hydration: Promise<void> = Promise.resolve();
 
@@ -363,6 +367,7 @@ export class StreamOrchestrator<
     this.#runMetadataStorage = resolveRunMetadataStorage(
       options.reconnectOnMount
     );
+    this.#durable = options.durableRuns !== false;
     this.#callbackStreamModes = resolveCallbackStreamModes(options);
 
     this.historyLimit =
@@ -517,11 +522,7 @@ export class StreamOrchestrator<
     threadId: string,
     states: ThreadState<StateType>[] | undefined
   ): Promise<void> {
-    if (
-      !this.#options.durableRuns ||
-      states == null ||
-      threadId !== this.#threadId
-    ) {
+    if (!this.#durable || states == null || threadId !== this.#threadId) {
       return;
     }
     const runs = await this.#accessors
@@ -532,9 +533,12 @@ export class StreamOrchestrator<
     const head = states.at(0);
     const runId = runs.at(0)?.run_id;
     if (runId != null) {
-      void this.joinStream(runId, "-1", {
-        checkpointId: head?.checkpoint?.checkpoint_id ?? undefined,
-      });
+      void this.#join(
+        runId,
+        "-1",
+        { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
+        true
+      );
     } else if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
       // The read caught a run mid-step that has ended since, so it misses
       // the run's last steps.
@@ -584,20 +588,6 @@ export class StreamOrchestrator<
       return data;
     } catch (err) {
       if (tid !== this.#threadId || readOptions.quiet) return undefined;
-      // A durable run's thread exists only once that run starts.
-      if (
-        this.#options.durableRuns &&
-        (err as { status?: unknown })?.status === 404
-      ) {
-        this.#history = {
-          data: [],
-          error: undefined,
-          isLoading: false,
-          mutate: this.#mutate,
-        };
-        this.#notify();
-        return [];
-      }
       this.#history = {
         ...this.#history,
         error: err,
@@ -1128,17 +1118,19 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Stop the currently active stream. With `durableRuns`, also cancel its
-   * run on the server, even a run whose id is still on its way, unless
-   * `cancel` is `false`. Otherwise, if reconnect metadata storage is
-   * configured, cancel the run stored there and clean up its entry.
+   * Stop the currently active stream and cancel its run on the server, even a
+   * run whose id is still on its way, unless `cancel` is `false`. A run joined
+   * through {@link joinStream} keeps going. With `durableRuns: false`, if
+   * reconnect metadata storage is configured, cancel the run stored there
+   * instead, and clean up its entry.
    */
   async stop(options?: { cancel?: boolean }): Promise<void> {
     const threadId = this.#threadId;
-    if (this.#options.durableRuns && options?.cancel !== false && threadId) {
+    if (this.#durable && options?.cancel !== false && threadId) {
       const runId =
         this.#streamingRunId ??
-        (await settleWithin(this.#ownRun, STOP_RUN_ID_WAIT_MS));
+        (this.#streamingOwnRun &&
+          (await settleWithin(this.#streamingOwnRun, STOP_RUN_ID_WAIT_MS)));
       if (runId) {
         void this.#accessors
           .getClient()
@@ -1158,7 +1150,7 @@ export class StreamOrchestrator<
           const runId = this.#runMetadataStorage.getItem(
             `lg:stream:${this.#threadId}`
           );
-          if (runId && !this.#options.durableRuns) {
+          if (runId && !this.#durable) {
             void this.#accessors.getClient().runs.cancel(this.#threadId, runId);
           }
           this.#runMetadataStorage.removeItem(`lg:stream:${this.#threadId}`);
@@ -1192,7 +1184,7 @@ export class StreamOrchestrator<
    *   Defaults to `"-1"` (start from the beginning).
    * @param joinOptions - Additional options for stream mode and event filtering.
    */
-  async joinStream(
+  joinStream(
     runId: string,
     lastEventId?: string,
     joinOptions?: {
@@ -1205,6 +1197,22 @@ export class StreamOrchestrator<
       /** See `checkpointId` on `client.runs.joinStream`. */
       checkpointId?: string;
     }
+  ): Promise<void> {
+    return this.#join(runId, lastEventId, joinOptions, false);
+  }
+
+  /**
+   * `own` marks a join `stop()` may cancel: the engine's queued and stored runs
+   * and the run it finds after a load. Apps call `joinStream()` to watch a run,
+   * so `stop()` leaves those runs going.
+   */
+  async #join(
+    runId: string,
+    lastEventId: string | undefined,
+    joinOptions: Parameters<
+      StreamOrchestrator<StateType, Bag>["joinStream"]
+    >[2],
+    own: boolean
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -1240,7 +1248,7 @@ export class StreamOrchestrator<
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
         run.signal = signal;
-        this.#streamingRunId = runId;
+        if (own) this.#streamingRunId = runId;
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -1345,16 +1353,13 @@ export class StreamOrchestrator<
 
     const client = this.#accessors.getClient();
     const assistantId = this.#accessors.getAssistantId();
-    const durable = this.#options.durableRuns === true;
-    if (durable && this.#threadId == null) {
-      this.#setThreadIdFromSubmit(submitOptions?.threadId ?? uuidv7());
-    }
 
     let settleOwnRun: (runId?: string) => void = () => {};
     const ownRun = new Promise<string | undefined>((resolve) => {
       settleOwnRun = (id) => {
         resolve(id);
         if (this.#ownRun === ownRun) this.#ownRun = undefined;
+        if (this.#streamingOwnRun === ownRun) this.#streamingOwnRun = undefined;
       };
     });
     this.#ownRun = ownRun;
@@ -1374,6 +1379,7 @@ export class StreamOrchestrator<
 
     const started = this.stream.start(
       async (signal) => {
+        this.#streamingOwnRun = ownRun;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
           this.#threadIdStreaming = usableThreadId;
@@ -1418,7 +1424,7 @@ export class StreamOrchestrator<
 
         const streamResumable =
           submitOptions?.streamResumable ??
-          (durable || !!this.#runMetadataStorage);
+          (this.#durable || !!this.#runMetadataStorage);
 
         return client.runs.stream(usableThreadId!, assistantId, {
           input: (optimistic?.dispatchInput ?? values) as Record<
@@ -1449,7 +1455,6 @@ export class StreamOrchestrator<
           streamSubgraphs: submitOptions?.streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
-          ifNotExists: durable ? "create" : undefined,
           ...this.#reconnectOptions(),
           onRunCreated: (params) => {
             callbackMeta = {
@@ -1539,7 +1544,7 @@ export class StreamOrchestrator<
         const sent =
           this.#options.queue === "local"
             ? this.submitDirect(next.values as StateType, next.options)
-            : this.joinStream(next.id).finally(() =>
+            : this.#join(next.id, undefined, undefined, true).finally(() =>
                 this.#unhide(next.options?.command)
               );
         void sent.finally(() => {
@@ -1764,7 +1769,7 @@ export class StreamOrchestrator<
         `lg:stream:${this.#threadId}`
       );
       if (runId) {
-        void this.joinStream(runId);
+        void this.#join(runId, undefined, undefined, true);
         return true;
       }
     }
@@ -1811,8 +1816,9 @@ export class StreamOrchestrator<
   /**
    * Load a thread. Another thread is switched to, as with
    * {@link switchThread}. The current one is read again, and when no run
-   * streams, the read replaces values left from earlier streams. With
-   * `durableRuns`, the thread's running run is joined after the read.
+   * streams, the read replaces values left from earlier streams. Unless
+   * `durableRuns` is `false`, the thread's running run is joined after the
+   * read.
    *
    * @returns {@link hydrationPromise}.
    */
@@ -1830,9 +1836,9 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Settles once the latest thread load is done: its state read and, with
-   * `durableRuns`, the running run's lookup. It never rejects: a failed read
-   * sets {@link error}.
+   * Settles once the latest thread load is done: its state read and, unless
+   * `durableRuns` is `false`, the running run's lookup. It never rejects: a
+   * failed read sets {@link error}.
    */
   get hydrationPromise(): Promise<void> {
     return this.#hydration;
