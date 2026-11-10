@@ -109,6 +109,12 @@ export class RunsClient<
       durability: payload?.durability,
     };
 
+    let runId: string | undefined;
+    const runCreated = (run: { run_id: string; thread_id?: string }) => {
+      runId = run.run_id;
+      payload?.onRunCreated?.(run);
+    };
+
     yield* this.streamWithRetry({
       endpoint:
         threadId == null
@@ -123,9 +129,22 @@ export class RunsClient<
       onReconnect: payload?.onReconnect,
       onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
+      fallbackReconnectPath: () =>
+        threadId != null && runId != null
+          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
+          : undefined,
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
-        if (runMetadata) payload?.onRunCreated?.(runMetadata);
+        if (runMetadata) runCreated(runMetadata);
+      },
+      // A CORS config that doesn't expose `Content-Location` hides the run id
+      // until the run's first event.
+      onEvent: ({ event, data }) => {
+        if (runId != null || event !== "metadata") return;
+        const id = (data as { run_id?: unknown } | null)?.run_id;
+        if (typeof id === "string") {
+          runCreated({ run_id: id, thread_id: threadId ?? undefined });
+        }
       },
     }) as TypedAsyncGenerator<
       TStreamMode,
@@ -486,11 +505,13 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
+    const endpoint =
+      threadId != null
+        ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
+        : `/runs/${encodePathSegment(runId)}/stream`;
     yield* this.streamWithRetry({
-      endpoint:
-        threadId != null
-          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
-          : `/runs/${encodePathSegment(runId)}/stream`,
+      endpoint,
+      fallbackReconnectPath: () => endpoint,
       method: "GET",
       signal: opts?.signal,
       idleReconnect: opts?.streamIdleReconnect,
