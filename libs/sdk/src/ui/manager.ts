@@ -506,6 +506,11 @@ export class StreamManager<
     return this.subagentManager.hasOpenSubagents();
   }
 
+  /** See `SubagentManager.bindNamespace`. */
+  bindSubagentNamespace(toolCallId: string, namespace: string[]): void {
+    this.subagentManager.bindNamespace(toolCallId, namespace);
+  }
+
   /** See `SubagentManager.closeOpenSubagents`. */
   closeOpenSubagents(error: string): void {
     this.subagentManager.closeOpenSubagents(error);

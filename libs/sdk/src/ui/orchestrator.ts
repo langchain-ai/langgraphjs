@@ -7,6 +7,7 @@ import type {
   ThreadTask,
   Interrupt,
   Config,
+  Run,
   ServerInfo,
 } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
@@ -28,6 +29,8 @@ import { PendingRunsTracker, type QueueEntry } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
 import { ChannelListeners, type ChannelEvent } from "./channels.js";
+import { ScopeRegistry, holdStream } from "./scoped.js";
+import { resolveSubagentNamespaces } from "./namespace-from-history.js";
 import {
   extractInterrupts,
   userFacingInterruptsFromThreadTasks,
@@ -170,6 +173,21 @@ function serverInfo(client: Client): Promise<ServerInfo | undefined> {
   return read;
 }
 
+const warnedClients = new WeakSet<Client>();
+
+/** Says once per client why subagent panels get every event of a run. */
+function warnInterim(client: Client, info: ServerInfo | undefined): void {
+  if (info?.flags?.stream_lifecycle === true || warnedClients.has(client)) {
+    return;
+  }
+  warnedClients.add(client);
+  console.warn(
+    info == null
+      ? "@langchain/langgraph-sdk: couldn't read the server's /info, so subagent panels get every event of each run until a read succeeds. A proxy in front of the server may need to route /info."
+      : "@langchain/langgraph-sdk: this server sends no subagent lifecycle events, so subagent panels get every event of each run. A newer Agent Server sends only what open panels show."
+  );
+}
+
 const isUnprocessable = (error: unknown) =>
   (error as { status?: unknown } | null)?.status === 422;
 
@@ -297,6 +315,18 @@ export type StreamOrchestratorOptions<
     queue?: "server" | "local";
 
     /**
+     * Stream each subagent only to the scopes acquired for it
+     * ({@link StreamOrchestrator.scopes}), not with its run, and keep its
+     * messages out of the main conversation, as `filterSubagentMessages`
+     * does. Runs then stream subgraphs unless a submit says otherwise, and on
+     * a server that filters by namespace (`/info` flags `stream_namespaces`
+     * and `stream_lifecycle`) a run's stream carries the main conversation
+     * and the subagents' lifecycle events. Read a subagent's messages from
+     * its scope: on such a server `subagents` has its status and result only.
+     */
+    scopedSubagents?: boolean;
+
+    /**
      * Show a submit's input at once, unless this is `false`: its messages,
      * with ids minted for the ones without, and its other keys. The run's
      * `values` then replace them. A submit with its own `optimisticValues`
@@ -401,6 +431,9 @@ export class StreamOrchestrator<
 
   readonly #channels = new ChannelListeners();
 
+  /** Subgraph scopes, such as subagent panels, that stream while held. */
+  readonly scopes: ScopeRegistry;
+
   /**
    * Create a new StreamOrchestrator.
    *
@@ -413,7 +446,10 @@ export class StreamOrchestrator<
     options: StreamOrchestratorOptions<StateType, Bag>,
     accessors: OrchestratorAccessors
   ) {
-    this.#options = options;
+    // Scoped subagents keep their messages out of the main conversation.
+    this.#options = options.scopedSubagents
+      ? { ...options, filterSubagentMessages: true }
+      : options;
     this.#accessors = accessors;
 
     this.#runMetadataStorage = resolveRunMetadataStorage(
@@ -421,8 +457,15 @@ export class StreamOrchestrator<
     );
     this.#durable = options.durableRuns !== false;
     this.#callbackStreamModes = resolveCallbackStreamModes(options);
-    if (options.filterSubagentMessages || options.onToolEvent != null) {
-      void serverInfo(accessors.getClient());
+    if (
+      options.filterSubagentMessages ||
+      options.scopedSubagents ||
+      options.onToolEvent != null
+    ) {
+      const client = accessors.getClient();
+      void serverInfo(client).then((info) => {
+        if (options.scopedSubagents) warnInterim(client, info);
+      });
     }
 
     this.historyLimit =
@@ -435,8 +478,25 @@ export class StreamOrchestrator<
     this.stream = new StreamManager<StateType, Bag>(this.messageManager, {
       throttle: options.throttle ?? false,
       subagentToolNames: options.subagentToolNames,
-      filterSubagentMessages: options.filterSubagentMessages,
+      filterSubagentMessages: this.#options.filterSubagentMessages,
       toMessage: options.toMessage ?? toMessageClass,
+    });
+
+    this.scopes = new ScopeRegistry({
+      client: () => this.#accessors.getClient(),
+      threadId: () => this.#threadId,
+      messagesKey: () => this.#accessors.getMessagesKey(),
+      reconnectOptions: () => this.#reconnectOptions(),
+      canFilter: () => this.#canFilter(),
+      rootMessageIds: () =>
+        new Set(this.messages.flatMap((message) => message.id ?? [])),
+      finished: (namespace) =>
+        [...this.stream.getSubagents().values()].some(
+          (subagent) =>
+            subagent.namespace.join("|") === namespace &&
+            (subagent.status === "complete" || subagent.status === "error")
+        ),
+      onEvent: (event, data) => this.#channels.emit(event, data),
     });
 
     this.pendingRuns = new PendingRunsTracker<
@@ -537,6 +597,7 @@ export class StreamOrchestrator<
   }
 
   #clearThreadState(): void {
+    this.scopes.clear();
     this.#handledHeadlessToolInterruptIds.clear();
     this.#answered.clear();
     this.#interruptNamespaces.clear();
@@ -592,7 +653,8 @@ export class StreamOrchestrator<
         runId,
         "-1",
         { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
-        true
+        true,
+        runs.at(0)
       );
     } else if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
       // The read caught a run mid-step that has ended since, so it misses
@@ -1138,7 +1200,8 @@ export class StreamOrchestrator<
     this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
 
     const tid = this.#threadId;
-    if (this.historyLimit !== false && tid) {
+    // Scopes read a subagent's history when its panel opens.
+    if (this.historyLimit !== false && tid && !this.#options.scopedSubagents) {
       const controller = new AbortController();
       void this.stream.fetchSubagentHistory(
         this.#accessors.getClient().threads,
@@ -1156,6 +1219,45 @@ export class StreamOrchestrator<
     }
 
     return null;
+  }
+
+  /**
+   * Find a subagent's namespace, so its scope can be acquired after a reload:
+   * the one bound while it streamed, else the one its `task` tool message
+   * records (`artifact.lc_subagent_checkpoint_ns`), else a match in one lean
+   * page of the thread's history. The subagent keeps the namespace found.
+   *
+   * @param toolCallId - The tool call ID that started the subagent.
+   * @returns Its namespace, or `undefined` if none was found.
+   */
+  async resolveSubagentNamespace(
+    toolCallId: string
+  ): Promise<string[] | undefined> {
+    const bound = this.getSubagent(toolCallId)?.namespace;
+    if (bound != null && bound.length > 0) return bound;
+    const threadId = this.#threadId;
+    if (threadId == null) return undefined;
+    const messagesKey = this.#accessors.getMessagesKey();
+    const toolMessage = this.messages.find(
+      (message) =>
+        message.type === "tool" &&
+        (message as { tool_call_id?: string }).tool_call_id === toolCallId
+    ) as { artifact?: { lc_subagent_checkpoint_ns?: unknown } } | undefined;
+    let namespace: string | undefined;
+    const stamped = toolMessage?.artifact?.lc_subagent_checkpoint_ns;
+    if (typeof stamped === "string") namespace = stamped;
+    namespace ??= (
+      await resolveSubagentNamespaces(
+        this.#accessors.getClient(),
+        threadId,
+        [toolCallId],
+        { messagesKey }
+      ).catch(() => undefined)
+    )?.get(toolCallId);
+    if (namespace == null || threadId !== this.#threadId) return undefined;
+    const segments = namespace.split("|");
+    this.stream.bindSubagentNamespace(toolCallId, segments);
+    return segments;
   }
 
   /**
@@ -1203,6 +1305,7 @@ export class StreamOrchestrator<
           .catch(() => undefined);
       }
     }
+    this.scopes.setRun(undefined);
     const shownHead = this.branchContext.threadHead;
     const read = planStopRead({
       history:
@@ -1269,7 +1372,8 @@ export class StreamOrchestrator<
   /**
    * `own` marks a join `stop()` may cancel: the engine's queued and stored runs
    * and the run it finds after a load. Apps call `joinStream()` to watch a run,
-   * so `stop()` leaves those runs going.
+   * so `stop()` leaves those runs going. `runInfo` is the run as a list
+   * returned it, so its options need no read.
    */
   async #join(
     runId: string,
@@ -1277,7 +1381,8 @@ export class StreamOrchestrator<
     joinOptions: Parameters<
       StreamOrchestrator<StateType, Bag>["joinStream"]
     >[2],
-    own: boolean
+    own: boolean,
+    runInfo?: Run
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -1309,16 +1414,23 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
 
+    let releaseStream: (() => void) | undefined;
     const run: LiveRun = { promise: Promise.resolve() };
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
         run.signal = signal;
+        releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
+        const mode = this.#options.scopedSubagents
+          ? await this.#joinMode(tid, runId, runInfo, signal)
+          : undefined;
+        this.scopes.setRun(runId, mode);
         const rawStream = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
           checkpointId: joinOptions?.checkpointId,
+          streamNamespaces: mode?.filtered ? [""] : undefined,
           ...this.#reconnectOptions(),
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
@@ -1345,6 +1457,8 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          releaseStream?.();
+          this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           void this.#reportRunEnd(tid, runId, watch, outcome);
         },
@@ -1447,8 +1561,10 @@ export class StreamOrchestrator<
         : undefined;
     const stopRun = new AbortController();
 
+    let releaseStream: (() => void) | undefined;
     const started = this.stream.start(
       async (signal) => {
+        releaseStream = holdStream();
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
@@ -1492,6 +1608,16 @@ export class StreamOrchestrator<
 
         const modes = this.#getRunStreamModes(submitOptions);
         const streamMode = Array.isArray(modes) ? modes : await modes;
+        const streamSubgraphs = this.#streamSubgraphs(submitOptions);
+        // The run's stream carries the main conversation only when the run
+        // tells which subagent is which (lifecycle) and publishes them.
+        const filtered =
+          this.#options.scopedSubagents === true &&
+          streamSubgraphs === true &&
+          streamMode.includes("lifecycle") &&
+          (await this.#canFilter());
+        // The 422 fallback goes without the filter.
+        let rootFiltered = filtered;
         const streamResumable =
           submitOptions?.streamResumable ??
           (this.#durable || !!this.#runMetadataStorage);
@@ -1538,7 +1664,7 @@ export class StreamOrchestrator<
           signal: request.signal,
 
           checkpoint,
-          streamSubgraphs: submitOptions?.streamSubgraphs,
+          streamSubgraphs,
           streamResumable,
           durability: submitOptions?.durability,
           ...this.#reconnectOptions(),
@@ -1558,6 +1684,10 @@ export class StreamOrchestrator<
             this.#liveRuns.set(runId, { promise: started, signal });
             this.#streamingRunId = runId;
             settleOwnRun(runId);
+            this.scopes.setRun(runId, {
+              subgraphs: streamSubgraphs === true,
+              filtered: rootFiltered,
+            });
 
             if (this.#runMetadataStorage) {
               rejoinKey = `lg:stream:${usableThreadId}`;
@@ -1567,16 +1697,23 @@ export class StreamOrchestrator<
             this.#options.onCreated?.(callbackMeta);
           },
         };
-        const runStream = (modes: StreamMode[]) =>
+        const runStream = (modes: StreamMode[], namespaces?: string[]) =>
           client.runs.stream(usableThreadId!, assistantId, {
             ...runOptions,
             streamMode: modes,
+            streamNamespaces: namespaces,
           }) as AsyncGenerator<
             EventStreamEvent<StateType, UpdateType, CustomType>
           >;
         const fallback = withoutRunEventModes(streamMode);
         return fallback.length < streamMode.length
-          ? retryUnprocessable(runStream(streamMode), () => runStream(fallback))
+          ? retryUnprocessable(
+              runStream(streamMode, filtered ? [""] : undefined),
+              () => {
+                rootFiltered = false;
+                return runStream(fallback);
+              }
+            )
           : runStream(streamMode);
       },
       {
@@ -1598,10 +1735,12 @@ export class StreamOrchestrator<
         },
         onFinish: () => {
           this.#threadIdStreaming = null;
+          releaseStream?.();
           settleOwnRun();
           this.#unhide(submitOptions?.command);
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) return;
+          this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           void this.#reportRunEnd(usableThreadId, runId, watch, outcome);
         },
@@ -1760,7 +1899,7 @@ export class StreamOrchestrator<
               strictResume: submitOptions?.strictResume,
               streamMode: modes,
               streamResumable: true,
-              streamSubgraphs: submitOptions?.streamSubgraphs,
+              streamSubgraphs: this.#streamSubgraphs(submitOptions),
               durability: submitOptions?.durability,
             });
           const fallback = withoutRunEventModes(streamMode);
@@ -1930,6 +2069,7 @@ export class StreamOrchestrator<
   dispose(): void {
     clearTimeout(this.#pendingDispose);
     this.#disposed = true;
+    this.scopes.dispose();
     this.#streamUnsub?.();
     this.#queueUnsub?.();
     this.#streamUnsub = null;
@@ -1980,6 +2120,56 @@ export class StreamOrchestrator<
    */
   get hydrationPromise(): Promise<void> {
     return this.#hydration;
+  }
+
+  /** Scoped subagents need their runs to publish subagent events. */
+  #streamSubgraphs(
+    submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
+  ): boolean | undefined {
+    return (
+      submitOptions?.streamSubgraphs ??
+      (this.#options.scopedSubagents ? true : undefined)
+    );
+  }
+
+  async #canFilter(): Promise<boolean> {
+    const info = await serverInfo(this.#accessors.getClient());
+    return info?.flags?.stream_namespaces === true;
+  }
+
+  /**
+   * How a joined run streams, from its own options: subgraphs (so panels have
+   * events to join) and lifecycle events (so the main conversation knows its
+   * subagents). Only with both, on a server with both flags, does its stream
+   * carry the main conversation alone.
+   */
+  async #joinMode(
+    threadId: string,
+    runId: string,
+    runInfo: Run | undefined,
+    signal: AbortSignal
+  ): Promise<{ filtered: boolean; subgraphs?: boolean }> {
+    const info = await serverInfo(this.#accessors.getClient());
+    if (
+      info?.flags?.stream_namespaces !== true ||
+      info.flags.stream_lifecycle !== true
+    ) {
+      return { filtered: false };
+    }
+    const kwargs = (
+      runInfo ??
+      (await this.#accessors
+        .getClient()
+        .runs.get(threadId, runId, { signal })
+        .catch(() => undefined))
+    )?.kwargs;
+    if (kwargs == null) return { filtered: false };
+    const modes = kwargs.stream_mode;
+    const subgraphs = kwargs.subgraphs === true;
+    const lifecycle = Array.isArray(modes)
+      ? modes.includes("lifecycle")
+      : modes === "lifecycle";
+    return { filtered: subgraphs && lifecycle, subgraphs };
   }
 
   #reconnectOptions() {

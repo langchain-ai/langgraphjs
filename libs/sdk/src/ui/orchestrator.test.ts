@@ -3521,4 +3521,307 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
   });
+
+  describe("scoped subagents", () => {
+    const flags = { stream_lifecycle: true, stream_namespaces: true };
+    function withFlags(serverFlags: Record<string, boolean> | undefined) {
+      const read = vi.fn(() =>
+        serverFlags == null
+          ? Promise.reject(new Error("no route"))
+          : Promise.resolve({ flags: serverFlags })
+      );
+      (client as unknown as { info: Mock }).info = read;
+      return read;
+    }
+    const streamed = (call = 0) =>
+      (client.runs.stream as Mock).mock.calls[call][2];
+    const joined = (call = 0) =>
+      (client.runs.joinStream as Mock).mock.calls[call][2];
+
+    it("a run it creates streams subgraphs, and on a filtering server only the main conversation", async () => {
+      withFlags(flags);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(streamed()).toMatchObject({
+        streamSubgraphs: true,
+        streamNamespaces: [""],
+      });
+      expect(streamed().streamMode).toContain("lifecycle");
+      orch.dispose();
+    });
+
+    it.each([
+      { name: "scopedSubagents off", options: {}, serverFlags: flags },
+      {
+        name: "a server without stream_namespaces",
+        options: { scopedSubagents: true },
+        serverFlags: { stream_lifecycle: true },
+      },
+      {
+        name: "a submit with streamSubgraphs false",
+        options: { scopedSubagents: true },
+        serverFlags: flags,
+        submit: { streamSubgraphs: false },
+      },
+    ])("with $name the run's stream asks for no namespace", async ({ options, serverFlags, submit }) => {
+      withFlags(serverFlags);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator(options);
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] }, submit);
+
+      expect(streamed().streamNamespaces).toBeUndefined();
+      orch.dispose();
+    });
+
+    it("the 422 retry drops the namespace filter too", async () => {
+      withFlags(flags);
+      (client.runs.stream as Mock).mockImplementation(
+        (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+          async *[Symbol.asyncIterator]() {
+            if ((payload as unknown as { streamMode: string[] }).streamMode.includes("lifecycle")) {
+              throw Object.assign(new Error("Unprocessable"), { status: 422 });
+            }
+            payload.onRunCreated?.({ run_id: "run-1" });
+            yield { event: "values", data: { messages: [] } };
+          },
+        })
+      );
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(streamed(0).streamNamespaces).toEqual([""]);
+      expect(streamed(1).streamNamespaces).toBeUndefined();
+      orch.dispose();
+    });
+
+    it.each([
+      { stream_mode: ["values", "lifecycle"], subgraphs: true, namespaces: [""] },
+      { stream_mode: ["values"], subgraphs: true, namespaces: undefined },
+      { stream_mode: ["values", "lifecycle"], subgraphs: false, namespaces: undefined },
+    ])(
+      "a joined run with stream_mode $stream_mode and subgraphs $subgraphs streams namespaces $namespaces",
+      async ({ stream_mode, subgraphs, namespaces }) => {
+        withFlags(flags);
+        (client.runs.list as Mock).mockResolvedValue([
+          { run_id: "run-9", kwargs: { stream_mode, subgraphs } },
+        ]);
+        mockJoinStream([], Promise.resolve());
+        const orch = orchestrator({ scopedSubagents: true });
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
+
+        expect(joined().streamNamespaces).toEqual(namespaces);
+        expect(client.runs.get).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
+    it("keeps subagent tokens out of the main conversation on a server that can't filter", async () => {
+      withFlags({ stream_lifecycle: true });
+      mockRunStream(
+        [
+          { event: "values", data: { messages: [message("m1")] } },
+          {
+            event: "messages|tools:a",
+            data: [{ id: "sub", type: "ai", content: "subagent" }, {}],
+          },
+        ],
+        { ended: Promise.resolve() }
+      );
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(streamed().streamNamespaces).toBeUndefined();
+      expect(orch.messages.map((m) => m.id)).toEqual(["m1"]);
+      orch.dispose();
+    });
+
+    it("a run queued on the server streams subgraphs too", async () => {
+      withFlags(flags);
+      const end = deferred();
+      mockRunStream(undefined, { ended: end.promise });
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      const first = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.submit({ messages: [] });
+
+      expect((client.runs.create as Mock).mock.calls[0][2]).toMatchObject({
+        streamSubgraphs: true,
+      });
+      end.resolve();
+      await first;
+      orch.dispose();
+    });
+
+    it("a run the app joins is read once for its options", async () => {
+      withFlags(flags);
+      (client.runs.get as Mock).mockResolvedValue({
+        status: "running",
+        kwargs: { stream_mode: ["lifecycle"], subgraphs: true },
+      });
+      mockJoinStream([], Promise.resolve());
+      const orch = orchestrator({ scopedSubagents: true, durableRuns: false });
+      orch.initThreadId("t1");
+
+      await orch.joinStream("run-7");
+
+      expect(client.runs.get).toHaveBeenCalledWith("t1", "run-7", {
+        signal: expect.any(AbortSignal),
+      });
+      expect(joined().streamNamespaces).toEqual([""]);
+      orch.dispose();
+    });
+
+    it("a held scope joins the engine's own run, filtered to its namespace", async () => {
+      withFlags(flags);
+      const end = deferred();
+      mockRunStream(undefined, { ended: end.promise });
+      mockJoinStream([
+        {
+          event: "messages|tools:a",
+          data: [{ id: "a1", type: "ai", content: "from a" }, {}],
+        },
+      ]);
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      const scope = orch.scopes.acquire(["tools:a"]);
+
+      const run = orch.submit({ messages: [] });
+      await vi.waitFor(() =>
+        expect(scope.getSnapshot().messages.map((m) => m.id)).toEqual(["a1"])
+      );
+
+      expect(joined()).toMatchObject({
+        lastEventId: "-1",
+        streamNamespaces: ["tools:a"],
+      });
+      end.resolve();
+      await run;
+      scope.release();
+      orch.dispose();
+    });
+
+    it("stop() ends the panels' join, also when the run goes on", async () => {
+      withFlags(flags);
+      mockRunStream();
+      mockJoinStream();
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      const scope = orch.scopes.acquire(["tools:a"]);
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
+
+      await orch.stop({ cancel: false });
+
+      expect(joined().signal.aborted).toBe(true);
+      scope.release();
+      orch.dispose();
+    });
+
+    it("leaves a reloaded subagent's history to its scope", async () => {
+      withFlags(flags);
+      const state = createThreadState(createSubagentStateValues());
+      (client.threads.getHistory as Mock).mockResolvedValue([state]);
+      const orch = orchestrator({
+        scopedSubagents: true,
+        fetchStateHistory: true,
+      });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.reconstructSubagentsIfNeeded()).toBeNull();
+
+      expect(orch.getSubagent("task-1")?.status).toBe("complete");
+      expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      orch.dispose();
+    });
+
+    it("warns once per client when the server can't filter subagents", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      withFlags({});
+      orchestrator({ scopedSubagents: true }).dispose();
+      orchestrator({ scopedSubagents: true }).dispose();
+      await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it("finds a reloaded subagent's namespace in its task tool message, and binds it", async () => {
+      withFlags(flags);
+      const values = createSubagentStateValues();
+      values.messages[2].artifact = { lc_subagent_checkpoint_ns: "tools:stamped" };
+      (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual([
+        "tools:stamped",
+      ]);
+      expect(orch.getSubagent("task-1")?.namespace).toEqual(["tools:stamped"]);
+      expect(client.threads.getHistory).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("finds a paused subagent's namespace in one lean page of the thread's history", async () => {
+      withFlags(flags);
+      const values = createSubagentStateValues();
+      const [, aiMessage] = values.messages;
+      values.messages.pop();
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState(values)
+      );
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        {
+          tasks: [
+            {
+              id: "pregel-1",
+              name: "tools",
+              path: ["__pregel_push", 0],
+              interrupts: [],
+            },
+          ],
+        },
+        {
+          tasks: [
+            {
+              id: "model-1",
+              name: "model",
+              path: ["__pregel_pull", "model"],
+              result: { messages: [aiMessage] },
+            },
+          ],
+        },
+      ]);
+      const orch = orchestrator({
+        filterSubagentMessages: true,
+        scopedSubagents: true,
+      });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual([
+        "tools:pregel-1",
+      ]);
+      expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      expect(orch.getSubagent("task-1")?.namespace).toEqual(["tools:pregel-1"]);
+      orch.dispose();
+    });
+  });
 });
