@@ -737,6 +737,7 @@ export function useStreamLGP<
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
+          submitOptions?.onError?.(error, callbackMeta);
         },
         onFinish() {
           threadIdStreamingRef.current = null;
