@@ -1,10 +1,53 @@
 import type { Event } from "@langchain/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { MediaAssembler } from "./media.js";
+import { MediaAssembler, type ImageMedia } from "./media.js";
 import { eventOf } from "./test/utils.js";
 
 describe("MediaAssembler", () => {
+  it.each(["blob", "stream"] as const)(
+    "records a lazy URL fetch failure through %s after message completion",
+    async (accessor) => {
+      let image!: ImageMedia;
+      const fetch = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
+      const assembler = new MediaAssembler({
+        fetch,
+        onImage: (handle) => {
+          image = handle;
+        },
+      });
+      assembler.consume(
+        eventOf("messages", { event: "message-start", id: "url-image" }) as Extract<
+          Event,
+          { method: "messages" }
+        >
+      );
+      assembler.consume(
+        eventOf("messages", {
+          event: "content-block-start",
+          index: 0,
+          content: { type: "image", url: "https://example.com/missing.png" },
+        }) as Extract<Event, { method: "messages" }>
+      );
+      assembler.consume(
+        eventOf("messages", { event: "message-finish", reason: "stop" }) as Extract<
+          Event,
+          { method: "messages" }
+        >
+      );
+      expect(fetch).not.toHaveBeenCalled();
+      const error = await (
+        accessor === "blob" ? image.blob : image.stream.getReader().read()
+      ).catch((reason) => reason);
+      expect(error).toMatchObject({
+        name: "MediaAssemblyError",
+        kind: "fetch-failed",
+        messageId: "url-image",
+      });
+      expect(image.error).toBe(error);
+    }
+  );
+
   it("assembles audio bytes from protocol data deltas", async () => {
     const audio: Array<{
       mimeType?: string;
