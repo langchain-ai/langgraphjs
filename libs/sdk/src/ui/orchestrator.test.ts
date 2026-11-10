@@ -2565,6 +2565,20 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("leaves the v3 marker off a run that sends context, which the server would refuse", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] }, { context: { user_id: "u1" } });
+
+      expect((client.runs.stream as Mock).mock.calls[0][2]).toMatchObject({
+        config: undefined,
+        context: { user_id: "u1" },
+      });
+      orch.dispose();
+    });
+
     it("passes the reconnect options to its run streams and joins", async () => {
       const reconnect = {
         maxReconnectAttempts: 2,

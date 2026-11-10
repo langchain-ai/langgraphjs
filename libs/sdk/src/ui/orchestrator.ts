@@ -89,9 +89,15 @@ function watchRunEvent(watch: RunWatch, event: string, data: unknown) {
 
 /**
  * Turns off the v3 streaming marker a thread keeps once a v3 client used it,
- * so the run streams the shape this engine reads.
+ * so the run streams the shape this engine reads. The Agent Server refuses a
+ * run with both `configurable` and `context`, and a `context` key would reach
+ * the graph's context schema, so a run with `context` goes without it.
  */
-function withV1Streaming(config: Config | undefined): Config {
+function withV1Streaming(
+  config: Config | undefined,
+  context: Record<string, unknown> | undefined
+): Config | undefined {
+  if (context != null && Object.keys(context).length > 0) return config;
   return {
     ...config,
     configurable: { ...config?.configurable, __event_streaming_v2: false },
@@ -1253,7 +1259,10 @@ export class StreamOrchestrator<
 
         return client.runs.stream(usableThreadId!, assistantId, {
           input: values as Record<string, unknown>,
-          config: withV1Streaming(submitOptions?.config),
+          config: withV1Streaming(
+            submitOptions?.config,
+            submitOptions?.context
+          ),
           context: submitOptions?.context,
           command: submitOptions?.command,
 
@@ -1415,7 +1424,10 @@ export class StreamOrchestrator<
           if (this.#ownRun) await this.#ownRun;
           const run = await client.runs.create(usableThreadId, assistantId, {
             input: values as Record<string, unknown>,
-            config: withV1Streaming(submitOptions?.config),
+            config: withV1Streaming(
+              submitOptions?.config,
+              submitOptions?.context
+            ),
             context: submitOptions?.context,
             command: submitOptions?.command,
             interruptBefore: submitOptions?.interruptBefore,
