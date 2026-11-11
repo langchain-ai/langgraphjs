@@ -8,4 +8,4 @@
 - It keeps one connection to the thread's `lifecycle` stream, closed while a run streams here, while the queue holds runs and while the page is hidden, and it resumes from the last event it saw. On a server without a thread stream it stays off after one request.
 - `watchThread: false` turns it off.
 
-Each thread load also lists the thread's queued runs, so a run queued before a reload shows in the queue again and streams when its turn comes. The queue now also moves on when a joined run ends.
+Each thread load also lists the thread's queued runs, so a run queued before a reload shows in the queue again and streams when its turn comes. Since another client may have queued them, a thread switch leaves them on the server, while `cancelQueueItem()` and `clearQueue()` still cancel them. The queue now also moves on when a joined run ends.

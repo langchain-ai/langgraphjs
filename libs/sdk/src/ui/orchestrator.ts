@@ -471,6 +471,9 @@ export class StreamOrchestrator<
   /** Interrupt ids answered by runs started elsewhere, by run. */
   #answeredBy = new Map<string, string[]>();
 
+  /** Queued runs a thread load listed, which another client may have queued. */
+  #listedRuns = new Set<string>();
+
   #onVisibilityChange = () => this.#syncWatcher();
 
   /**
@@ -736,6 +739,7 @@ export class StreamOrchestrator<
       if (resume != null && typeof resume === "object") {
         for (const id of Object.keys(resume)) this.#answered.add(id);
       }
+      this.#listedRuns.add(run.run_id);
       this.pendingRuns.add({
         id: run.run_id,
         values: run.kwargs?.input as Partial<StateType> | null | undefined,
@@ -2131,7 +2135,13 @@ export class StreamOrchestrator<
       const prevThreadId = this.#threadId;
       this.#threadId = newThreadId ?? undefined;
       this.#clearThreadState();
-      void this.#dropQueued(prevThreadId, this.pendingRuns.removeAll());
+      // A listed run may be another client's, so only cancelQueueItem() or
+      // clearQueue() cancels it.
+      const queued = this.pendingRuns
+        .removeAll()
+        .filter((entry) => !this.#listedRuns.has(entry.id));
+      this.#listedRuns.clear();
+      void this.#dropQueued(prevThreadId, queued);
 
       this.#fetchHistoryForThread(this.#threadId);
 

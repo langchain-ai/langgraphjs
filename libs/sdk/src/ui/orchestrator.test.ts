@@ -4309,6 +4309,34 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("a thread switch cancels the runs it queued itself, not the ones a load listed", async () => {
+      listRuns(
+        [{ run_id: "run-r" }],
+        [
+          {
+            run_id: "run-p1",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: { input: null },
+          },
+        ]
+      );
+      mockJoinStream();
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      await orch.submit({ messages: [message("mine")] });
+      expect(orch.queueEntries.map((entry) => entry.id)).toEqual([
+        "run-p1",
+        "run-1",
+      ]);
+
+      orch.switchThread("t2");
+
+      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-1");
+      orch.dispose();
+    });
+
     it("keeps the card of an answer queued before the reload hidden", async () => {
       listRuns(
         [{ run_id: "run-r" }],
