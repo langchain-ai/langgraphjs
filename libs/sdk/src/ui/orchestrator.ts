@@ -1411,8 +1411,10 @@ export class StreamOrchestrator<
           (this.#durable || !!this.#runMetadataStorage);
 
         // Only the response names a run that outlives its request, so after a
-        // stop that came before it the request stays open, for onRunCreated
-        // to cancel the run. Anything else closes the request with the stream.
+        // stop between sending the request and its response, the request
+        // stays open for onRunCreated to cancel the run. A stream stopped
+        // before this point has sent nothing, and anything else closes the
+        // request with the stream.
         const request = new AbortController();
         const closeRequest = () => {
           if (!stopRun.signal.aborted || runId != null || responded) {
@@ -1422,7 +1424,7 @@ export class StreamOrchestrator<
           const timer = setTimeout(() => request.abort(), STOP_RUN_ID_WAIT_MS);
           request.signal.addEventListener("abort", () => clearTimeout(timer));
         };
-        if (signal.aborted) closeRequest();
+        if (signal.aborted) request.abort();
         else signal.addEventListener("abort", closeRequest, { once: true });
 
         return client.runs.stream(usableThreadId!, assistantId, {

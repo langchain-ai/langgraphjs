@@ -2458,6 +2458,27 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("stop() before the run's request is sent sends none, also after a thread switch", async () => {
+      const thread = deferred();
+      (client.threads.create as Mock).mockReturnValueOnce(
+        thread.promise.then(() => ({ thread_id: "t-new" }))
+      );
+      mockRunStream(undefined, { created: new Promise(() => {}) });
+      const orch = orchestrator();
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+      orch.switchThread("t2");
+      await orch.stop();
+      thread.resolve();
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+      const request: AbortSignal = (client.runs.stream as Mock).mock.calls[0][2]
+        .signal;
+      expect(request.aborted).toBe(true);
+      orch.dispose();
+    });
+
     it("stop() before an id that never arrives stops at once and closes the request after 5 s", async () => {
       vi.useFakeTimers();
       try {
