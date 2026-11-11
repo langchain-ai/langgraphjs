@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import {
   StreamOrchestrator,
   type OrchestratorAccessors,
@@ -2389,6 +2397,13 @@ describe("StreamOrchestrator runs", () => {
     );
   }
 
+  function listRuns(running: unknown[], pending: unknown[] = []) {
+    (client.runs.list as Mock).mockImplementation(
+      (_threadId: string, options: { status: string }) =>
+        Promise.resolve(options.status === "running" ? running : pending)
+    );
+  }
+
   const message = (id: string) => ({ id, content: id, type: "human" });
 
   const streamInput = (call = 0) =>
@@ -2506,7 +2521,7 @@ describe("StreamOrchestrator runs", () => {
     });
 
     it("stop() cancels the run it found after a load", async () => {
-      (client.runs.list as Mock).mockResolvedValue([{ run_id: "run-9" }]);
+      listRuns([{ run_id: "run-9" }]);
       mockJoinStream();
       const orch = orchestrator();
       orch.initThreadId("t1");
@@ -2778,7 +2793,7 @@ describe("StreamOrchestrator runs", () => {
     });
 
     it("joins the thread's running run from the loaded checkpoint, naming no stream mode", async () => {
-      (client.runs.list as Mock).mockResolvedValue([{ run_id: "run-9" }]);
+      listRuns([{ run_id: "run-9" }]);
       mockJoinStream([], Promise.resolve());
       const orch = orchestrator();
 
@@ -3610,9 +3625,7 @@ describe("StreamOrchestrator runs", () => {
       "a joined run with stream_mode $stream_mode and subgraphs $subgraphs streams namespaces $namespaces",
       async ({ stream_mode, subgraphs, namespaces }) => {
         withFlags(flags);
-        (client.runs.list as Mock).mockResolvedValue([
-          { run_id: "run-9", kwargs: { stream_mode, subgraphs } },
-        ]);
+        listRuns([{ run_id: "run-9", kwargs: { stream_mode, subgraphs } }]);
         mockJoinStream([], Promise.resolve());
         const orch = orchestrator({ scopedSubagents: true });
 
@@ -3849,6 +3862,496 @@ describe("StreamOrchestrator runs", () => {
 
       await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual(["tools:pregel-1"]);
       expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 20 }));
+      orch.dispose();
+    });
+  });
+
+  describe("watchThread", () => {
+    type ThreadEvent = { id?: string; event: string; data: unknown };
+    type ThreadConnection = {
+      threadId: string;
+      lastEventId?: string;
+      signal: AbortSignal;
+      closed: boolean;
+      send(...events: ThreadEvent[]): void;
+      fail(error: unknown): void;
+    };
+
+    let connections: ThreadConnection[];
+
+    function mockThreadStream() {
+      connections = [];
+      (client.threads as unknown as Record<string, unknown>).joinStream = vi.fn(
+        (
+          threadId: string,
+          options: { lastEventId?: string; signal: AbortSignal }
+        ) => {
+          const queue: ThreadEvent[] = [];
+          let failure: unknown;
+          let wake = () => {};
+          const connection: ThreadConnection = {
+            threadId,
+            lastEventId: options.lastEventId,
+            signal: options.signal,
+            closed: false,
+            send: (...events) => {
+              queue.push(...events);
+              wake();
+            },
+            fail: (error) => {
+              failure = error;
+              wake();
+            },
+          };
+          connections.push(connection);
+          return (async function* () {
+            try {
+              for (;;) {
+                if (options.signal.aborted) {
+                  throw Object.assign(new Error("aborted"), {
+                    name: "AbortError",
+                  });
+                }
+                const next = queue.shift();
+                if (next != null) {
+                  yield next;
+                  continue;
+                }
+                if (failure != null) throw failure;
+                await new Promise<void>((resolve) => {
+                  wake = resolve;
+                  options.signal.addEventListener("abort", () => resolve());
+                });
+              }
+            } finally {
+              connection.closed = true;
+            }
+          })();
+        }
+      );
+    }
+
+    const open = () => {
+      const connection = connections.at(-1);
+      return connection != null &&
+        !connection.closed &&
+        !connection.signal.aborted
+        ? connection
+        : undefined;
+    };
+
+    const started = (runId: string, id?: string): ThreadEvent => ({
+      id,
+      event: "metadata",
+      data: { run_id: runId, attempt: 1 },
+    });
+
+    const done = (runId: string, id?: string): ThreadEvent => ({
+      id,
+      event: "metadata",
+      data: { status: "run_done", run_id: runId },
+    });
+
+    const httpError = (status: number) =>
+      Object.assign(new Error(`HTTP ${status}`), { status });
+
+    async function watching(
+      options?: Partial<StreamOrchestratorOptions<TestState>>
+    ) {
+      const orch = orchestrator(options);
+      orch.initThreadId("t1");
+      orch.activate();
+      await orch.hydrationPromise;
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      return orch;
+    }
+
+    beforeEach(() => {
+      mockThreadStream();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("joins a run started in another tab and shows it live", async () => {
+      (client.runs.get as Mock).mockResolvedValue({ status: "running" });
+      mockJoinStream([
+        { event: "values", data: { messages: [message("from-b")] } },
+      ]);
+      const orch = await watching();
+
+      open()!.send(started("run-b", "1-0"));
+
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("from-b")])
+      );
+      expect(client.runs.joinStream).toHaveBeenCalledWith(
+        "t1",
+        "run-b",
+        expect.objectContaining({ lastEventId: "-1", checkpointId: "cp1" })
+      );
+      expect(orch.isLoading).toBe(true);
+      expect(open()).toBeUndefined();
+      orch.dispose();
+    });
+
+    it("pauses while this tab's own run streams, then resumes from its last event and joins a run started meanwhile", async () => {
+      const ended = deferred();
+      mockRunStream(undefined, { ended: ended.promise });
+      (client.runs.get as Mock).mockResolvedValue({ status: "running" });
+      const orch = await watching();
+      open()!.send(done("run-old", "1-0"));
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(2)
+      );
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(open()).toBeUndefined());
+      mockJoinStream();
+      ended.resolve();
+
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      expect(open()!.lastEventId).toBe("1-0");
+      open()!.send(started("run-1", "2-0"), started("run-c", "3-0"));
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-c",
+          expect.anything()
+        )
+      );
+      expect(client.runs.joinStream).toHaveBeenCalledOnce();
+      orch.dispose();
+    });
+
+    it("reads the state once and joins nothing for a run that started and ended while the tab was hidden", async () => {
+      const page = Object.assign(new EventTarget(), {
+        visibilityState: "visible",
+      });
+      vi.stubGlobal("document", page);
+      (client.runs.get as Mock).mockResolvedValue({ status: "success" });
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      page.visibilityState = "hidden";
+      page.dispatchEvent(new Event("visibilitychange"));
+      expect(open()).toBeUndefined();
+      page.visibilityState = "visible";
+      page.dispatchEvent(new Event("visibilitychange"));
+      open()!.send(started("run-d", "1-0"), done("run-d", "2-0"));
+
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1)
+      );
+      await flushMicrotasks(10);
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1);
+      orch.dispose();
+    });
+
+    it("reads the state again when a run it never saw start ends", async () => {
+      (client.runs.get as Mock).mockReturnValue(new Promise(() => {}));
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      open()!.send(started("run-x", "1-0"), done("run-x", "2-0"));
+      open()!.send(done("run-y", "3-0"));
+
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 2)
+      );
+      orch.dispose();
+    });
+
+    it("reads the state at the end of a run whose lookup failed, not before", async () => {
+      (client.runs.get as Mock).mockRejectedValue(new Error("offline"));
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      open()!.send(started("run-x", "1-0"));
+      await vi.waitFor(() => expect(client.runs.get).toHaveBeenCalled());
+      await flushMicrotasks(10);
+      expect(client.threads.getState).toHaveBeenCalledTimes(reads);
+
+      open()!.send(done("run-x", "2-0"));
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1)
+      );
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("reads the state and looks for a running run after a gap", async () => {
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+      const lists = (client.runs.list as Mock).mock.calls.length;
+
+      open()!.send({ event: "gap", data: null });
+
+      await vi.waitFor(() =>
+        expect(client.runs.list).toHaveBeenCalledTimes(lists + 2)
+      );
+      expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1);
+      orch.dispose();
+    });
+
+    it("still joins a run whose lookup was in flight when the tab hid", async () => {
+      const page = Object.assign(new EventTarget(), {
+        visibilityState: "visible",
+      });
+      vi.stubGlobal("document", page);
+      let found!: (run: unknown) => void;
+      (client.runs.get as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          found = resolve;
+        })
+      );
+      mockJoinStream();
+      const orch = await watching();
+
+      open()!.send(started("run-e", "1-0"));
+      await vi.waitFor(() => expect(client.runs.get).toHaveBeenCalled());
+      page.visibilityState = "hidden";
+      page.dispatchEvent(new Event("visibilitychange"));
+      found({ status: "running" });
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-e",
+          expect.anything()
+        )
+      );
+      orch.dispose();
+    });
+
+    it("hides an interrupt answered in another tab before the answering run's first values, and shows it again when that run ends", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        next: ["review"],
+        tasks: [
+          {
+            id: "task-1",
+            name: "review",
+            interrupts: [{ id: "int-1", value: "approve?" }],
+          },
+        ],
+      });
+      (client.runs.get as Mock).mockReturnValue(new Promise(() => {}));
+      const orch = await watching();
+      expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+
+      open()!.send(started("run-f", "1-0"), {
+        id: "2-0",
+        event: "interrupts",
+        data: { run_id: "run-f", answered: ["int-1"] },
+      });
+      await vi.waitFor(() => expect(orch.interrupts).toEqual([]));
+
+      open()!.send(done("run-f", "3-0"));
+      await vi.waitFor(() =>
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"])
+      );
+      orch.dispose();
+    });
+
+    it("joins nothing when the thread switches during the run lookup", async () => {
+      let found!: (run: unknown) => void;
+      (client.runs.get as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          found = resolve;
+        })
+      );
+      const orch = await watching();
+
+      open()!.send(started("run-g", "1-0"));
+      await vi.waitFor(() => expect(client.runs.get).toHaveBeenCalled());
+      orch.switchThread("t2");
+      found({ status: "running" });
+      await flushMicrotasks(10);
+
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("stays off for the orchestrator after a 404, on every thread", async () => {
+      const orch = await watching();
+
+      open()!.fail(httpError(404));
+      await vi.waitFor(() => expect(open()).toBeUndefined());
+      await orch.hydrate("t2");
+      await flushMicrotasks(10);
+
+      expect(connections.map((c) => c.threadId)).toEqual(["t1"]);
+      orch.dispose();
+    });
+
+    it("stops for that thread only after another 4xx", async () => {
+      const orch = await watching();
+
+      open()!.fail(httpError(403));
+      await vi.waitFor(() => expect(open()).toBeUndefined());
+      await orch.hydrate();
+      await flushMicrotasks(10);
+      expect(connections).toHaveLength(1);
+
+      await orch.hydrate("t2");
+      await vi.waitFor(() => expect(open()?.threadId).toBe("t2"));
+      orch.dispose();
+    });
+
+    it("opens nothing on a thread no read found", async () => {
+      (client.threads.getState as Mock).mockRejectedValue(httpError(404));
+      const orch = orchestrator();
+      orch.initThreadId("t-missing");
+      orch.activate();
+      await orch.hydrationPromise;
+      await flushMicrotasks(10);
+
+      expect(connections).toEqual([]);
+      orch.dispose();
+    });
+
+    it.each([
+      { name: "without activate()", activate: false, watchThread: undefined },
+      { name: "with watchThread: false", activate: true, watchThread: false },
+    ])("opens no watcher $name", async ({ activate, watchThread }) => {
+      const orch = orchestrator({ watchThread });
+      orch.initThreadId("t1");
+      if (activate) orch.activate();
+      await orch.hydrationPromise;
+      await flushMicrotasks(10);
+
+      expect(connections).toEqual([]);
+      orch.dispose();
+    });
+
+    it("closes the watcher on dispose", async () => {
+      const orch = await watching();
+
+      orch.dispose();
+
+      expect(open()).toBeUndefined();
+    });
+
+    it("stop() cancels a run the watcher joined", async () => {
+      (client.runs.get as Mock).mockResolvedValue({ status: "running" });
+      mockJoinStream();
+      const orch = await watching();
+
+      open()!.send(started("run-h", "1-0"));
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      await orch.stop();
+
+      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith(
+        "t1",
+        "run-h"
+      );
+      orch.dispose();
+    });
+  });
+
+  describe("queued runs after a load", () => {
+    it("shows the thread's queued runs in order and streams them once the running run ends", async () => {
+      listRuns(
+        [{ run_id: "run-r" }],
+        [
+          {
+            run_id: "run-p2",
+            created_at: "2026-11-11T10:00:02Z",
+            kwargs: { input: { messages: [message("second")] } },
+          },
+          {
+            run_id: "run-p1",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: { input: { messages: [message("first")] } },
+          },
+        ]
+      );
+      const running = deferred();
+      (client.runs.joinStream as Mock).mockImplementation(
+        (_threadId: string, runId: string, payload: RunsStreamPayload) => ({
+          async *[Symbol.asyncIterator]() {
+            yield { event: "metadata", data: { run_id: runId } };
+            if (runId === "run-r") {
+              await openUntil(payload.signal, running.promise);
+            }
+          },
+        })
+      );
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(client.runs.list).toHaveBeenCalledWith("t1", {
+        status: "pending",
+        limit: 100,
+        select: ["run_id", "kwargs", "created_at"],
+      });
+      expect(orch.queueEntries.map((entry) => entry.id)).toEqual([
+        "run-p1",
+        "run-p2",
+      ]);
+      expect(orch.queueEntries[0].values).toEqual({
+        messages: [message("first")],
+      });
+
+      running.resolve();
+      await vi.waitFor(() => expect(orch.queueSize).toBe(0));
+      await vi.waitFor(() =>
+        expect(
+          (client.runs.joinStream as Mock).mock.calls.map(([, runId]) => runId)
+        ).toEqual(["run-r", "run-p1", "run-p2"])
+      );
+      orch.dispose();
+    });
+
+    it("keeps the card of an answer queued before the reload hidden", async () => {
+      listRuns(
+        [{ run_id: "run-r" }],
+        [
+          {
+            run_id: "run-answer",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: { input: null, command: { resume: { "int-1": "yes" } } },
+          },
+        ]
+      );
+      mockJoinStream([
+        {
+          event: "values",
+          data: {
+            messages: [],
+            __interrupt__: [{ id: "int-1", value: "approve?" }],
+          },
+        },
+      ]);
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await vi.waitFor(() => expect(orch.values).toHaveProperty("__interrupt__"));
+
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
+    it.each([
+      { name: "queue: local", options: { queue: "local" as const } },
+      { name: "durableRuns: false", options: { durableRuns: false } },
+    ])("lists no queued runs with $name", async ({ options }) => {
+      const orch = orchestrator(options);
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(client.runs.list).not.toHaveBeenCalledWith(
+        "t1",
+        expect.objectContaining({ status: "pending" })
+      );
       orch.dispose();
     });
   });
