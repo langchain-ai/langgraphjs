@@ -134,6 +134,100 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
   };
 };
 
+export type DeltaStage1Row = {
+  checkpoint_id: string;
+  parent_checkpoint_id: string | null;
+} & Record<`ver_${number}`, string | null> &
+  Record<`hb_${number}`, boolean>;
+
+export type DeltaStage2Row =
+  | {
+      _kind: "w";
+      checkpoint_id: string;
+      channel: string;
+      type: string;
+      blob: Uint8Array;
+      task_id: string;
+      task_path: string;
+      idx: number;
+    }
+  | { _kind: "b"; channel: string; type: string; blob: Uint8Array };
+
+/**
+ * Stage 1 of `PostgresSaver.getDeltaChannelHistory`, as Python's
+ * `_build_delta_stage1_sql`: one page of the thread's checkpoints, newest
+ * first, with each requested channel's version (`ver_i`) and whether a blob
+ * is stored at that version (`hb_i`). Parameters: the k channel names, then
+ * the thread id, namespace, cursor and page size.
+ *
+ * Pages run from the target down. The first page passes the target as the
+ * cursor with `includeCursor`, so it opens with the target's own row, whose
+ * parent starts the walk; each later page continues below the oldest row
+ * read. A checkpoint's ancestors normally have smaller ids (uuid6 is
+ * time-ordered, which `getTuple` also relies on to find the latest
+ * checkpoint), so pages skip rows newer than the target; when an ancestor
+ * sorts above it, `getDeltaChannelHistory` falls back to the base walk.
+ */
+export const getDeltaStage1SQL = (
+  schema: string,
+  channelCount: number,
+  includeCursor = false
+): string => {
+  const SCHEMA_TABLES = getTablesWithSchema(schema);
+  const cols = Array.from(
+    { length: channelCount },
+    (_, i) => `checkpoint -> 'channel_versions' ->> $${i + 1}::text AS ver_${i},
+      EXISTS (SELECT 1 FROM ${SCHEMA_TABLES.checkpoint_blobs} b${i}
+        WHERE b${i}.thread_id = checkpoints.thread_id
+          AND b${i}.checkpoint_ns = checkpoints.checkpoint_ns
+          AND b${i}.channel = $${i + 1}::text
+          AND b${i}.version = checkpoint -> 'channel_versions' ->> $${i + 1}::text
+          AND b${i}.type <> 'empty') AS hb_${i}`
+  );
+  const [thread, ns, cursor, limit] = [1, 2, 3, 4].map(
+    (i) => `$${channelCount + i}`
+  );
+  return `SELECT checkpoint_id, parent_checkpoint_id, ${cols.join(", ")}
+    FROM ${SCHEMA_TABLES.checkpoints} checkpoints
+    WHERE thread_id = ${thread} AND checkpoint_ns = ${ns}
+      AND checkpoint_id ${includeCursor ? "<=" : "<"} ${cursor}
+    ORDER BY checkpoint_id DESC LIMIT ${limit}`;
+};
+
+/**
+ * Stage 2 of `PostgresSaver.getDeltaChannelHistory`, as Python's
+ * `_build_delta_stage2_sql`: a `w` branch per channel with a chain, reading
+ * its writes on those checkpoints, then a `b` branch per seeded channel,
+ * reading its seed's blob. Parameters: the thread id and namespace, then the
+ * channel and its chain for each `w` branch, then the channel and its seed
+ * version for each `b` branch.
+ */
+export const getDeltaStage2SQL = (
+  schema: string,
+  chainCount: number,
+  seedCount: number
+): string => {
+  const SCHEMA_TABLES = getTablesWithSchema(schema);
+  const writes = Array.from(
+    { length: chainCount },
+    (_, i) => `SELECT 'w'::text AS _kind, checkpoint_id, channel, type, blob,
+        task_id, task_path, idx
+      FROM ${SCHEMA_TABLES.checkpoint_writes}
+      WHERE thread_id = $1 AND checkpoint_ns = $2
+        AND channel = $${3 + 2 * i} AND checkpoint_id = ANY($${4 + 2 * i})`
+  );
+  const seeds = Array.from({ length: seedCount }, (_, i) => {
+    const param = 3 + 2 * (chainCount + i);
+    return `SELECT 'b'::text AS _kind, NULL::text AS checkpoint_id, channel,
+        type, blob, NULL::text AS task_id, NULL::text AS task_path,
+        NULL::integer AS idx
+      FROM ${SCHEMA_TABLES.checkpoint_blobs}
+      WHERE thread_id = $1 AND checkpoint_ns = $2
+        AND channel = $${param} AND version = $${param + 1}`;
+  });
+  return [...writes, ...seeds].join(" UNION ALL ");
+};
+
 export const tableExistsSQL = (schema: string, table: string) => {
   const tableWithoutSchema = table.split(".")[1];
   return `SELECT EXISTS (
