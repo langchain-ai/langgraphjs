@@ -649,6 +649,9 @@ export class StreamManager<
 
       /** The stream replays the run from its first event. */
       isReplaying?: boolean;
+
+      /** Called with each event, before it is applied. */
+      onEvent?: (event: string, data: unknown) => void;
     }
   ) => {
     try {
@@ -744,7 +747,20 @@ export class StreamManager<
         ids.forEach((id) => applyMessage(id, { updateOnly: true }));
 
       let streamError: StreamError | undefined;
-      for await (const { event, data } of run) {
+      // A stop ends the wait for the first event at once, also when the
+      // request stays open to learn the run's id.
+      const events = run[Symbol.asyncIterator]();
+      const stopped = new Promise<undefined>((resolve) => {
+        if (abort.signal.aborted) resolve(undefined);
+        else abort.signal.addEventListener("abort", () => resolve(undefined));
+      });
+      for (
+        let result = await Promise.race([events.next(), stopped]);
+        result !== undefined && !result.done;
+        result = await events.next()
+      ) {
+        const { event, data } = result.value;
+        options.onEvent?.(event, data);
         if (event === "error") {
           streamError = new StreamError(data);
           break;
@@ -1012,6 +1028,7 @@ export class StreamManager<
           applyMessage(messageId);
         }
       }
+      void events.return?.(undefined)?.catch(() => undefined);
 
       this.messages.flush();
       if (streamError != null) throw streamError;
@@ -1087,6 +1104,9 @@ export class StreamManager<
 
       /** The stream replays the run from its first event. */
       isReplaying?: boolean;
+
+      /** Called with each event, before it is applied. */
+      onEvent?: (event: string, data: unknown) => void;
     },
     startOptions?: {
       /**
