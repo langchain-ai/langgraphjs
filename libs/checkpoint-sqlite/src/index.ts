@@ -370,6 +370,15 @@ CREATE TABLE IF NOT EXISTS writes (
       whereClause.push("checkpoint_ns = ?");
     }
 
+    // A `checkpoint_id` in the config names one checkpoint; `before` in the
+    // options is a strict upper bound on the page. MemorySaver and
+    // PostgresSaver both apply the former, so `list(config)` yields a single
+    // tuple there. Without this the whole thread history came back.
+    const configCheckpointId = config.configurable?.checkpoint_id;
+    if (configCheckpointId) {
+      whereClause.push("checkpoint_id = ?");
+    }
+
     if (before?.configurable?.checkpoint_id !== undefined) {
       whereClause.push("checkpoint_id < ?");
     }
@@ -398,6 +407,7 @@ CREATE TABLE IF NOT EXISTS writes (
     const args = [
       thread_id,
       checkpoint_ns,
+      configCheckpointId,
       before?.configurable?.checkpoint_id,
       ...Object.entries(sanitizedFilter).flatMap(([key, value]) => [
         `$.${key}`,

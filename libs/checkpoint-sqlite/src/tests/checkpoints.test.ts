@@ -9,6 +9,7 @@ import {
   uuid6,
 } from "@langchain/langgraph-checkpoint";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import type { CheckpointListOptions } from "@langchain/langgraph-checkpoint";
 import { SqliteSaver } from "../index.js";
 
 const checkpoint1: Checkpoint = {
@@ -359,5 +360,42 @@ describe("SqliteSaver", () => {
     expect(
       checkpointTuples[0].checkpoint.channel_versions[TASKS]
     ).toBeDefined();
+  });
+
+  it("lists only the checkpoint named by the config's checkpoint_id", async () => {
+    const saver = SqliteSaver.fromConnString(":memory:");
+    const metadata = { source: "update" as const, step: -1, parents: {} };
+
+    const first = await saver.put(
+      { configurable: { thread_id: "1", checkpoint_ns: "" } },
+      { ...emptyCheckpoint(), id: uuid6(0) },
+      metadata
+    );
+    const second = await saver.put(
+      first,
+      { ...emptyCheckpoint(), id: uuid6(1) },
+      metadata
+    );
+
+    const ids = async (
+      config: RunnableConfig,
+      options?: CheckpointListOptions
+    ) => {
+      const listed: string[] = [];
+      for await (const tuple of saver.list(config, options)) {
+        listed.push(tuple.checkpoint.id);
+      }
+      return listed;
+    };
+
+    // A checkpoint_id in the config names a single checkpoint, the way it does
+    // for MemorySaver and PostgresSaver; without this filter the whole thread
+    // history came back.
+    expect(await ids(first)).toEqual([first.configurable?.checkpoint_id]);
+    expect(await ids(second)).toEqual([second.configurable?.checkpoint_id]);
+
+    // `before` keeps its meaning as an upper bound on the page.
+    expect(await ids({ configurable: { thread_id: "1" } }, { before: second }))
+      .toEqual([first.configurable?.checkpoint_id]);
   });
 });
