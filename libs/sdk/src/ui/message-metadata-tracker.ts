@@ -387,36 +387,42 @@ const checkpointOf = (entry: HistoryEntry | undefined) =>
   entry?.checkpoint?.checkpoint_id ?? undefined;
 
 /**
- * Visits the thread's checkpoints from the newest along `parent_checkpoint`,
- * which skips other branches' checkpoints, reading the next page of older
- * ones, sized by `pages`, whenever a parent isn't read yet. Stops when `visit`
- * returns `true` or at the chain's first checkpoint, or else when the pages
- * run out or one comes back empty, which `limited` reports.
+ * Visits the thread's checkpoints from `start`, or else the newest, along
+ * `parent_checkpoint`, which skips other branches' checkpoints, reading the
+ * next page of older ones, sized by `pages`, whenever a checkpoint it needs
+ * isn't read yet. Stops when `visit` returns `true` or at the chain's first
+ * checkpoint, or else when the pages run out or one comes back empty, which
+ * `limited` reports.
  */
 async function walkChain(
   read: (limit: number, before?: string) => Promise<HistoryEntry[]>,
   pages: readonly number[],
-  visit: (entry: HistoryEntry) => boolean
+  visit: (entry: HistoryEntry) => boolean,
+  start?: string
 ): Promise<{ last?: HistoryEntry; limited: boolean }> {
   let page = await read(pages[0]);
   let loaded = 1;
   const byId = new Map(page.map((entry) => [checkpointOf(entry), entry]));
-  for (let entry = page.at(0); entry != null; ) {
-    if (visit(entry)) return { last: entry, limited: false };
-    const parentId = entry.parent_checkpoint?.checkpoint_id;
-    if (parentId == null) return { last: entry, limited: false };
-    let parent = byId.get(parentId);
-    while (parent == null && loaded < pages.length) {
+  const find = async (id: string) => {
+    while (!byId.has(id) && loaded < pages.length) {
       page = await read(pages[loaded], checkpointOf(page.at(-1)));
       if (page.length === 0) break;
       loaded += 1;
       for (const older of page) byId.set(checkpointOf(older), older);
-      parent = byId.get(parentId);
     }
+    return byId.get(id);
+  };
+
+  let entry = start == null ? page.at(0) : await find(start);
+  if (entry == null) return { limited: start != null };
+  for (;;) {
+    if (visit(entry)) return { last: entry, limited: false };
+    const parentId = entry.parent_checkpoint?.checkpoint_id;
+    if (parentId == null) return { last: entry, limited: false };
+    const parent = await find(parentId);
     if (parent == null) return { last: entry, limited: true };
     entry = parent;
   }
-  return { limited: false };
 }
 
 function messageIds(value: unknown): string[] {
@@ -429,7 +435,8 @@ function messageIds(value: unknown): string[] {
 
 /**
  * Where each of `targets` can be forked from: the checkpoint right before the
- * message first appeared, read back from the thread's newest checkpoint.
+ * message first appeared, read back from `head`, the checkpoint whose messages
+ * are shown, or else the thread's newest checkpoint.
  *
  * It reads what each step wrote (`tasks`), which holds each message once,
  * and takes a message's oldest write, since a graph that runs a subgraph as
@@ -449,7 +456,7 @@ export async function findForkPoints(
   read: HistoryReader,
   messagesKey: string,
   targets: ReadonlySet<string>,
-  seen: ReadonlySet<string> = new Set()
+  { seen = new Set(), head }: { seen?: ReadonlySet<string>; head?: string } = {}
 ): Promise<{ forkPoints: Map<string, string>; visited: string[] }> {
   const valuesKey: ThreadStateSelectField = `values.${messagesKey}`;
   const held = (entry: HistoryEntry | undefined) =>
@@ -483,7 +490,8 @@ export async function findForkPoints(
         }
       }
       return seen.has(id);
-    }
+    },
+    head
   );
 
   // Stopped short, the messages the oldest checkpoint read already holds
@@ -506,7 +514,7 @@ export async function findForkPoints(
     )
   );
   if (missing.size === 0) return { forkPoints, visited };
-  let head = true;
+  let first = true;
   await walkChain(
     (limit, before) =>
       read({
@@ -522,12 +530,13 @@ export async function findForkPoints(
         if (here.has(messageId)) continue;
         // The newest checkpoint without the message is the one before it
         // appeared, unless that is the head: then it isn't saved.
-        if (!head && id != null) forkPoints.set(messageId, id);
+        if (!first && id != null) forkPoints.set(messageId, id);
         missing.delete(messageId);
       }
-      head = false;
+      first = false;
       return missing.size === 0;
-    }
+    },
+    head
   );
   return { forkPoints, visited };
 }

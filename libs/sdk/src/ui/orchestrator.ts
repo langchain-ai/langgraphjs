@@ -1248,7 +1248,16 @@ export class StreamOrchestrator<
         }),
       this.#accessors.getMessagesKey(),
       targets,
-      this.#forkSeen
+      {
+        seen: this.#forkSeen,
+        // The shown messages are a run's values, or else those of the shown
+        // branch's head, which after `setBranch` isn't the newest checkpoint.
+        head:
+          this.stream.values == null
+            ? (this.branchContext.threadHead?.checkpoint?.checkpoint_id ??
+              undefined)
+            : undefined,
+      }
     ).then(
       ({ forkPoints, visited }) => {
         // A thread switch dropped the read.

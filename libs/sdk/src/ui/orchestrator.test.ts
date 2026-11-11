@@ -3267,12 +3267,15 @@ describe("StreamOrchestrator runs", () => {
       );
     }
 
-    function showState(messages: Record<string, string[]>) {
+    function showState(heads: Record<string, [string, ...string[]]>) {
       (client.threads.getState as Mock).mockImplementation(
-        async (threadId: string) =>
-          createThreadState({
-            messages: (messages[threadId] ?? []).map(message),
-          })
+        async (threadId: string) => {
+          const [checkpoint, ...ids] = heads[threadId];
+          return {
+            ...createThreadState({ messages: ids.map(message) }),
+            checkpoint: config(checkpoint),
+          };
+        }
       );
     }
 
@@ -3286,7 +3289,7 @@ describe("StreamOrchestrator runs", () => {
         step("c0", null, ["h1"]),
       ];
       serveHistory({ t1: history });
-      showState({ t1: ["h1", "a1"] });
+      showState({ t1: ["c2", "h1", "a1"] });
       const orch = orchestrator();
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -3302,7 +3305,7 @@ describe("StreamOrchestrator runs", () => {
         step("c4", "c3", ["a2"]),
         step("c3", "c2", ["h2"])
       );
-      showState({ t1: ["h1", "a1", "h2", "a2"] });
+      showState({ t1: ["c5", "h1", "a1", "h2", "a2"] });
       mockRunStream(
         [
           {
@@ -3323,11 +3326,68 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("places the fork points of a branch shown with setBranch while another is newer", async () => {
+      const state = (
+        id: string,
+        parent: string | null,
+        wrote: string[],
+        holds: string[]
+      ) => ({
+        ...step(id, parent, wrote),
+        values: { messages: holds.map(message) },
+        next: [],
+        metadata: undefined,
+        created_at: null,
+      });
+      const history = [
+        state("c4", "c3", [], ["h1", "b"]),
+        state("c3", "c0", ["b"], ["h1"]),
+        state("c2", "c1", [], ["h1", "a"]),
+        state("c1", "c0", ["a"], ["h1"]),
+        state("c0", null, ["h1"], []),
+      ];
+      (client.threads.getHistory as Mock).mockImplementation(
+        async (
+          _threadId: string,
+          options: {
+            limit: number;
+            select?: string[];
+            before?: { configurable: { checkpoint_id: string } };
+          }
+        ) => {
+          const before = options.before?.configurable.checkpoint_id;
+          const from =
+            before == null
+              ? 0
+              : history.findIndex((e) => e.checkpoint.checkpoint_id === before) +
+                1;
+          return history
+            .slice(from, from + options.limit)
+            .map(({ values, ...rest }) =>
+              options.select == null ? { values, ...rest } : rest
+            );
+        }
+      );
+      const orch = orchestrator({ fetchStateHistory: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.setBranch("c1");
+      expect(orch.messages.map(({ id }) => id)).toEqual(["h1", "a"]);
+
+      orch.trackMessageMetadata();
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "a")?.parentCheckpointId).toBe("c1")
+      );
+      expect(metadata(orch, "h1")?.parentCheckpointId).toBe("c0");
+      orch.dispose();
+    });
+
     it("reads no history while nothing tracks metadata, or when nothing is new", async () => {
       serveHistory({
         t1: [step("c1", "c0", ["a1"]), step("c0", null, ["h1"])],
       });
-      showState({ t1: ["h1", "a1"] });
+      showState({ t1: ["c1", "h1", "a1"] });
       const orch = orchestrator();
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -3356,7 +3416,7 @@ describe("StreamOrchestrator runs", () => {
               })
             : Promise.resolve([step("c9", null, ["m2"])])
       );
-      showState({ t1: ["m1"], t2: ["m2"] });
+      showState({ t1: ["c0", "m1"], t2: ["c9", "m2"] });
       const orch = orchestrator();
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -3389,7 +3449,7 @@ describe("StreamOrchestrator runs", () => {
         );
       });
       serveHistory({ t1: history });
-      showState({ t1: ["h1"] });
+      showState({ t1: ["c11", "h1"] });
       const orch = orchestrator();
       orch.initThreadId("t1");
       await orch.hydrationPromise;
@@ -3482,7 +3542,7 @@ describe("StreamOrchestrator runs", () => {
         })
       );
 
-      showState({ t1: ["h1"] });
+      showState({ t1: ["c0", "h1"] });
       await orch.hydrate();
 
       await vi.waitFor(() =>

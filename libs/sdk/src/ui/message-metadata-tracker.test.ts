@@ -392,8 +392,11 @@ function chain(length: number, wrote: Record<number, string[]>) {
 }
 
 describe("findForkPoints", () => {
-  const find = (read: HistoryReader, ids: string[], seen?: Set<string>) =>
-    findForkPoints(read, "messages", new Set(ids), seen);
+  const find = (
+    read: HistoryReader,
+    ids: string[],
+    options?: { seen?: Set<string>; head?: string }
+  ) => findForkPoints(read, "messages", new Set(ids), options);
 
   it("follows parent links past another branch that wrote the same message", async () => {
     const read = history([
@@ -498,7 +501,7 @@ describe("findForkPoints", () => {
     const { forkPoints, visited } = await find(
       read,
       ["h2", "a2"],
-      new Set(["c1"])
+      { seen: new Set(["c1"]) }
     );
 
     expect(forkPoints).toEqual(
@@ -508,6 +511,26 @@ describe("findForkPoints", () => {
       ])
     );
     expect(visited).toEqual(["c3", "c2", "c1"]);
+  });
+
+  it("reads back from the shown head when another branch is newer", async () => {
+    const read = history([
+      { id: "c4", parent: "c3" },
+      { id: "c3", parent: "c0", wrote: ["b"] },
+      { id: "c2", parent: "c1", holds: ["h1", "a", "u"] },
+      { id: "c1", parent: "c0", wrote: ["a"] },
+      { id: "c0", wrote: ["h1"] },
+    ]);
+
+    const { forkPoints } = await find(read, ["h1", "a", "u"], { head: "c2" });
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h1", "c0"],
+        ["a", "c1"],
+        ["u", "c1"],
+      ])
+    );
   });
 
   it("reads one page of steps from a server that ignores select", async () => {
