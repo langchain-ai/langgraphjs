@@ -7,6 +7,7 @@ import {
 import type { AnyStreamOptions } from "./types.js";
 import type { Client } from "../client.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
+import { HumanMessage } from "@langchain/core/messages";
 
 type TestState = {
   messages: Array<
@@ -2390,6 +2391,9 @@ describe("StreamOrchestrator runs", () => {
 
   const message = (id: string) => ({ id, content: id, type: "human" });
 
+  const streamInput = (call = 0) =>
+    (client.runs.stream as Mock).mock.calls[call][2].input;
+
   describe("durableRuns", () => {
     it.each([
       { durableRuns: undefined, streamResumable: true, onDisconnect: "continue" },
@@ -2821,6 +2825,376 @@ describe("StreamOrchestrator runs", () => {
       expect(client.threads.getState).toHaveBeenCalledTimes(2);
       orch.dispose();
     });
+  });
+
+  describe("respond()", () => {
+    const pendingState = (...ids: string[]) => ({
+      ...createThreadState({ messages: [] }),
+      next: ["review"],
+      tasks: [
+        {
+          id: "task-1",
+          name: "review",
+          interrupts: ids.map((id) => ({ id, value: { question: id } })),
+          checkpoint: null,
+          state: null,
+          error: null,
+        },
+      ],
+    });
+
+    function streamOptions(call = 0) {
+      return (client.runs.stream as Mock).mock.calls[call][2];
+    }
+
+    it("answers the newest interrupt shown, by id", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(
+        pendingState("i1", "i2")
+      );
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await orch.respond("yes");
+
+      expect(streamOptions()).toMatchObject({
+        command: { resume: { i2: "yes" } },
+        multitaskStrategy: "enqueue",
+        strictResume: true,
+      });
+      orch.dispose();
+    });
+
+    it("with strictResume false, asks for no strict check", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.respond("yes", { interruptId: "i1", strictResume: false });
+
+      expect(streamOptions()).toMatchObject({ strictResume: false });
+      orch.dispose();
+    });
+
+    it("respondAll() sends every answer in one run, with update messages as plain dicts", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.respondAll(
+        { i1: "a", i2: "b" },
+        { update: { messages: [new HumanMessage({ id: "h1", content: "hi" })] } }
+      );
+
+      expect(streamOptions().command).toEqual({
+        resume: { i1: "a", i2: "b" },
+        update: {
+          messages: [expect.objectContaining({ id: "h1", type: "human" })],
+        },
+        goto: undefined,
+      });
+      expect(streamOptions().command.update.messages[0]).not.toBeInstanceOf(
+        HumanMessage
+      );
+      orch.dispose();
+    });
+
+    it.each([
+      { name: "no thread", thread: undefined, error: "No active thread" },
+      { name: "no interrupt", thread: "t1", error: "No pending interrupt" },
+    ])("throws with $name to answer", async ({ thread, error }) => {
+      const orch = orchestrator();
+      orch.initThreadId(thread);
+      await orch.hydrationPromise;
+
+      await expect(orch.respond("yes")).rejects.toThrow(error);
+      expect(client.runs.stream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("resolves once its run is created, while the run still streams", async () => {
+      const created = deferred();
+      mockRunStream(undefined, { created: created.promise });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      let resolved = false;
+
+      const responded = orch
+        .respond("yes", { interruptId: "i1" })
+        .then(() => {
+          resolved = true;
+        });
+      await flushMicrotasks(10);
+      expect(resolved).toBe(false);
+
+      created.resolve();
+      await responded;
+      expect(orch.isLoading).toBe(true);
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("during a run waits in the queue and never interrupts it", async () => {
+      mockRunStream([
+        { event: "values", data: { messages: [], __interrupt__: [{ id: "i1" }] } },
+      ]);
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.interrupts).toHaveLength(1));
+
+      await orch.respond("ok");
+
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({
+          command: expect.objectContaining({ resume: { i1: "ok" } }),
+          multitaskStrategy: "enqueue",
+        })
+      );
+      expect(client.runs.stream).toHaveBeenCalledOnce();
+      expect(orch.isLoading).toBe(true);
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("hides an answered interrupt, and when the queued answer can't be sent, shows it again and rejects", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      let reject!: (error: Error) => void;
+      (client.runs.create as Mock).mockReturnValueOnce(
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        })
+      );
+      mockRunStream([
+        { event: "values", data: { messages: [], __interrupt__: [{ id: "i1" }] } },
+      ]);
+      const onError = vi.fn();
+      const orch = orchestrator({ onError });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.interrupts).toHaveLength(1));
+
+      const responded = orch.respond("ok");
+      expect(orch.interrupts).toEqual([]);
+      expect(orch.interrupt).toBeUndefined();
+
+      reject(new Error("busy"));
+      await expect(responded).rejects.toThrow("busy");
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1"]);
+      expect(onError).toHaveBeenCalled();
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("shows an answered interrupt again once its run ends with it pending", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(pendingState("i1"));
+      mockRunStream(
+        [{ event: "values", data: { messages: [], __interrupt__: [{ id: "i1" }] } }],
+        { ended: Promise.resolve() }
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await orch.respond("not yet");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1"]);
+      orch.dispose();
+    });
+
+    it("stop() cancels a run respond() started", async () => {
+      mockRunStream();
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.respond("yes", { interruptId: "i1" });
+      await orch.stop();
+
+      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-1");
+      orch.dispose();
+    });
+  });
+
+  describe("interrupt namespaces", () => {
+    it("come from the deepest updates event that raised the interrupt", async () => {
+      const raised = { __interrupt__: [{ id: "i1", value: "?" }] };
+      mockRunStream([
+        { event: "updates|tools:a|tools:b", data: raised },
+        { event: "updates|tools:a", data: raised },
+        { event: "values", data: { messages: [], ...raised } },
+      ]);
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      void orch.submit({ messages: [] });
+
+      await vi.waitFor(() =>
+        expect(orch.interrupts).toEqual([
+          expect.objectContaining({ id: "i1", namespace: ["tools:a", "tools:b"] }),
+        ])
+      );
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("come from the task's checkpoint for interrupts read from the state", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        next: ["tools"],
+        tasks: [
+          {
+            id: "task-1",
+            name: "tools",
+            interrupts: [{ id: "i1", value: "?" }],
+            checkpoint: { checkpoint_ns: "tools:abc" },
+            state: null,
+            error: null,
+          },
+        ],
+      });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.interrupts).toEqual([
+        expect.objectContaining({ id: "i1", namespace: ["tools:abc"] }),
+      ]);
+      orch.dispose();
+    });
+  });
+
+  describe("queue: local", () => {
+    it("keeps a submit made during a run and sends it once the run ends", async () => {
+      const ended = deferred();
+      mockRunStream(undefined, { ended: ended.promise });
+      const orch = orchestrator({ queue: "local" });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [message("first")] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.submit({ messages: [message("second")] });
+      expect(orch.queueEntries).toEqual([
+        expect.objectContaining({ values: { messages: [message("second")] } }),
+      ]);
+      expect(client.runs.create).not.toHaveBeenCalled();
+
+      ended.resolve();
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalledTimes(2));
+      expect(streamInput(1)).toMatchObject({ messages: [message("second")] });
+      expect(orch.queueSize).toBe(0);
+      orch.dispose();
+    });
+
+    it("cancels and clears entries without a request", async () => {
+      mockRunStream();
+      const orch = orchestrator({ queue: "local" });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      await orch.submit({ messages: [] });
+      await orch.submit({ messages: [] });
+
+      expect(await orch.cancelQueueItem(orch.queueEntries[0].id)).toBe(true);
+      await orch.clearQueue();
+
+      expect(orch.queueSize).toBe(0);
+      expect(client.runs.cancel).not.toHaveBeenCalled();
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("sends a submit with reject to the server, which refuses it", async () => {
+      mockRunStream();
+      const orch = orchestrator({ queue: "local" });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.submit({ messages: [] }, { multitaskStrategy: "reject" });
+
+      expect(orch.queueSize).toBe(1);
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t1",
+        "test-assistant",
+        expect.objectContaining({ multitaskStrategy: "reject" })
+      );
+      await orch.stop();
+      orch.dispose();
+    });
+  });
+
+  it("shows a submit's input at once and sends the ids it minted", async () => {
+    mockRunStream(undefined, { created: new Promise(() => {}) });
+    const orch = orchestrator();
+    orch.initThreadId("t1");
+    await orch.hydrationPromise;
+
+    void orch.submit({ messages: [{ type: "human", content: "hi" }] } as never);
+    await vi.waitFor(() => expect(orch.messages).toHaveLength(1));
+
+    const [shown] = orch.messageInstances;
+    expect(shown).toMatchObject({ content: "hi" });
+    expect(shown.id).toEqual(expect.any(String));
+    expect(streamInput().messages).toEqual([
+      expect.objectContaining({ type: "human", content: "hi", id: shown.id }),
+    ]);
+    orch.dispose();
+  });
+
+  it("a submit with its own optimisticValues shows only those and sends its input as it is", async () => {
+    mockRunStream(undefined, { created: new Promise(() => {}) });
+    const orch = orchestrator();
+    orch.initThreadId("t1");
+    await orch.hydrationPromise;
+    const input = { type: "human", content: "hi" };
+
+    void orch.submit({ messages: [input] } as never, {
+      optimisticValues: (prev: TestState) => ({
+        ...prev,
+        messages: [...(prev.messages ?? []), input],
+      }),
+    } as never);
+    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+    expect(orch.messages).toHaveLength(1);
+    expect(streamInput().messages).toEqual([input]);
+    orch.dispose();
+  });
+
+  it("with optimistic false, sends the input as it is and shows nothing early", async () => {
+    mockRunStream(undefined, { created: new Promise(() => {}) });
+    const orch = orchestrator({ optimistic: false });
+    orch.initThreadId("t1");
+    await orch.hydrationPromise;
+    const input = { type: "human", content: "hi" };
+
+    void orch.submit({ messages: [input] } as never);
+    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+    expect(orch.messages).toHaveLength(0);
+    expect(streamInput().messages).toEqual([input]);
+    orch.dispose();
+  });
+
+  it("a submit with interrupt during a run replaces its stream at once", async () => {
+    mockRunStream();
+    const orch = orchestrator();
+    orch.initThreadId("t1");
+    void orch.submit({ messages: [] });
+    await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+    void orch.submit({ messages: [] }, { multitaskStrategy: "interrupt" });
+
+    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalledTimes(2));
+    expect(
+      (client.runs.stream as Mock).mock.calls[0][2].signal.aborted
+    ).toBe(true);
+    await orch.stop();
+    orch.dispose();
   });
 
   describe("activate()", () => {

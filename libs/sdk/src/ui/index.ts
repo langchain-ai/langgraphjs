@@ -50,6 +50,7 @@ export {
 export {
   StreamOrchestrator,
   type OrchestratorAccessors,
+  type RespondOptions,
   type RunEndReason,
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";

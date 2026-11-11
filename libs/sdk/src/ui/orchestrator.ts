@@ -1,9 +1,10 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
 import { Client } from "../client.js";
-import type { ThreadState, Interrupt, Config } from "../schema.js";
+import type { ThreadState, ThreadTask, Interrupt, Config } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
-import type { StreamEvent } from "../types.js";
+import type { Command, StreamEvent } from "../types.js";
 import type { Message } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
@@ -17,7 +18,7 @@ import {
   ensureMessageInstances,
   ensureHistoryMessageInstances,
 } from "./messages.js";
-import { PendingRunsTracker } from "./queue.js";
+import { PendingRunsTracker, type QueueEntry } from "./queue.js";
 import { getBranchContext, getMessagesMetadataMap } from "./branching.js";
 import { StreamError } from "./errors.js";
 import {
@@ -35,6 +36,11 @@ import {
   planStopRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
+import { normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
+import {
+  prepareOptimisticInput,
+  serializeUpdateMessages,
+} from "./optimistic-input.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
   UseStreamThread,
@@ -91,6 +97,20 @@ function watchRunEvent(watch: RunWatch, event: string, data: unknown) {
   ) {
     watch.paused = true;
   }
+}
+
+/**
+ * The state's interrupts don't say where they were raised, so a subgraph
+ * task's checkpoint namespace stands in.
+ */
+function taskInterrupts(task: ThreadTask): Interrupt[] {
+  const namespace = task.checkpoint?.checkpoint_ns;
+  if (!namespace) return task.interrupts ?? [];
+  return (task.interrupts ?? []).map((interrupt) =>
+    interrupt.namespace != null
+      ? interrupt
+      : { ...interrupt, namespace: namespace.split("|") }
+  );
 }
 
 /**
@@ -203,7 +223,35 @@ export type StreamOrchestratorOptions<
 
     /** Idle-reconnect policy for run streams, as `client.runs.stream` takes it. */
     streamIdleReconnect?: IdleReconnectMode;
+
+    /**
+     * Where a submit made during a run waits: `"server"` (the default)
+     * creates the run in the server's queue, `"local"` keeps it here and
+     * sends it once the engine is idle.
+     */
+    queue?: "server" | "local";
+
+    /**
+     * Show a submit's input at once, unless this is `false`: its messages,
+     * with ids minted for the ones without, and its other keys. The run's
+     * `values` then replace them. A submit with its own `optimisticValues`
+     * shows only those.
+     */
+    optimistic?: boolean;
   };
+
+/** Options of {@link StreamOrchestrator.respond} and {@link StreamOrchestrator.respondAll}. */
+export interface RespondOptions<
+  ConfigurableType extends Record<string, unknown> = Record<string, unknown>,
+> extends Pick<
+  SubmitOptions<Record<string, unknown>, ConfigurableType>,
+  "config" | "metadata" | "strictResume"
+> {
+  /** A state update applied with the answer. */
+  update?: Command["update"];
+  /** The node to go to next. */
+  goto?: Command["goto"];
+}
 
 /**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
@@ -268,6 +316,11 @@ export class StreamOrchestrator<
   #hydration: Promise<void> = Promise.resolve();
 
   #pendingDispose: ReturnType<typeof setTimeout> | undefined;
+
+  /** Interrupts answered by a run that hasn't ended yet. */
+  #answered = new Set<string>();
+
+  #interruptNamespaces = new Map<string, string[]>();
 
   #listeners = new Set<() => void>();
 
@@ -393,8 +446,7 @@ export class StreamOrchestrator<
   setThreadId(newId: string | undefined): void {
     if (newId === this.#threadId) return;
     this.#threadId = newId;
-    this.#handledHeadlessToolInterruptIds.clear();
-    this.stream.clear();
+    this.#clearThreadState();
     this.#fetchHistoryForThread(newId);
     this.#notify();
   }
@@ -412,6 +464,13 @@ export class StreamOrchestrator<
     this.#handledHeadlessToolInterruptIds.clear();
     this.#options.onThreadId?.(newId);
     this.#notify();
+  }
+
+  #clearThreadState(): void {
+    this.#handledHeadlessToolInterruptIds.clear();
+    this.#answered.clear();
+    this.#interruptNamespaces.clear();
+    this.stream.clear();
   }
 
   #fetchHistoryForThread(threadId: string | undefined): void {
@@ -724,20 +783,22 @@ export class StreamOrchestrator<
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
     const v = this.values;
     if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
-      return userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
-        v.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
+      return this.#visible(
+        userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
+          v.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
+        )
       );
     }
 
     if (this.isLoading) return [];
 
     const allTasks = this.branchContext.threadHead?.tasks ?? [];
-    const allInterrupts = allTasks.flatMap((t) => t.interrupts ?? []);
+    const allInterrupts = allTasks.flatMap(taskInterrupts);
 
-    const taskInterrupts = userFacingInterruptsFromThreadTasks<
+    const userFacing = userFacingInterruptsFromThreadTasks<
       GetInterruptType<Bag>
     >(allInterrupts as Interrupt<GetInterruptType<Bag>>[]);
-    if (taskInterrupts != null) return taskInterrupts;
+    if (userFacing != null) return this.#visible(userFacing);
 
     const next = this.branchContext.threadHead?.next ?? [];
     if (!next.length || this.error != null) return [];
@@ -750,10 +811,29 @@ export class StreamOrchestrator<
    * delegates to {@link extractInterrupts}.
    */
   get interrupt(): Interrupt<GetInterruptType<Bag>> | undefined {
-    return extractInterrupts<GetInterruptType<Bag>>(this.values, {
+    const interrupt = extractInterrupts<GetInterruptType<Bag>>(this.values, {
       isLoading: this.isLoading,
       threadState: this.branchContext.threadHead,
       error: this.error,
+    });
+    return interrupt?.id != null && this.#answered.has(interrupt.id)
+      ? undefined
+      : interrupt;
+  }
+
+  #visible<T>(interrupts: Interrupt<T>[]): Interrupt<T>[] {
+    if (this.#answered.size === 0 && this.#interruptNamespaces.size === 0) {
+      return interrupts;
+    }
+    return interrupts.flatMap((interrupt) => {
+      if (interrupt.id == null) return [interrupt];
+      if (this.#answered.has(interrupt.id)) return [];
+      const namespace = this.#interruptNamespaces.get(interrupt.id);
+      return [
+        namespace == null || interrupt.namespace != null
+          ? interrupt
+          : { ...interrupt, namespace },
+      ];
     });
   }
 
@@ -861,24 +941,66 @@ export class StreamOrchestrator<
    * @returns `true` if the run was found and removed, `false` otherwise.
    */
   async cancelQueueItem(id: string): Promise<boolean> {
-    const tid = this.#threadId;
-    const removed = this.pendingRuns.remove(id);
-    if (removed && tid) {
-      await this.#accessors.getClient().runs.cancel(tid, id);
-    }
-    return removed;
+    const entry = this.pendingRuns.entries.find((e) => e.id === id);
+    if (entry == null || !this.pendingRuns.remove(id)) return false;
+    await this.#dropQueued(this.#threadId, [entry]);
+    return true;
   }
 
   /**
    * Remove all pending runs from the queue and cancel them on the server.
    */
   async clearQueue(): Promise<void> {
-    const tid = this.#threadId;
-    const removed = this.pendingRuns.removeAll();
-    if (tid && removed.length > 0) {
-      await Promise.all(
-        removed.map((e) => this.#accessors.getClient().runs.cancel(tid, e.id))
-      );
+    await this.#dropQueued(this.#threadId, this.pendingRuns.removeAll());
+  }
+
+  #dropQueued(
+    threadId: string | undefined,
+    entries: QueueEntry<
+      StateType,
+      SubmitOptions<StateType, GetConfigurableType<Bag>>
+    >[]
+  ): Promise<unknown> {
+    for (const entry of entries) this.#unhide(entry.options?.command);
+    if (threadId == null || this.#options.queue === "local") {
+      return Promise.resolve();
+    }
+    const client = this.#accessors.getClient();
+    return Promise.all(
+      entries.map((entry) => client.runs.cancel(threadId, entry.id))
+    );
+  }
+
+  #unhide(command: Command | undefined): void {
+    const resume = command?.resume;
+    if (
+      this.#answered.size === 0 ||
+      resume == null ||
+      typeof resume !== "object"
+    ) {
+      return;
+    }
+    let changed = false;
+    for (const id of Object.keys(resume)) {
+      changed = this.#answered.delete(id) || changed;
+    }
+    if (changed) this.#notify();
+  }
+
+  #watchEvent(watch: RunWatch, event: string, data: unknown): void {
+    watchRunEvent(watch, event, data);
+    if (!event.startsWith("updates|")) return;
+    const interrupts = (data as { __interrupt__?: unknown } | null)
+      ?.__interrupt__;
+    if (!Array.isArray(interrupts)) return;
+    const namespace = event.split("|").slice(1);
+    for (const { id } of interrupts as Interrupt[]) {
+      // Each graph above the one that raised it repeats the interrupt, so
+      // the deepest namespace wins.
+      const known = this.#interruptNamespaces.get(id ?? "")?.length ?? 0;
+      if (id != null && known < namespace.length) {
+        this.#interruptNamespaces.set(id, namespace);
+      }
     }
   }
 
@@ -1144,7 +1266,7 @@ export class StreamOrchestrator<
           void this.#reportRunEnd(tid, runId, watch, outcome);
         },
         isReplaying: lastEventId === "-1",
-        onEvent: (event, data) => watchRunEvent(watch, event, data),
+        onEvent: (event, data) => this.#watchEvent(watch, event, data),
       }
     );
 
@@ -1225,6 +1347,18 @@ export class StreamOrchestrator<
     this.#ownRun = ownRun;
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
+    const optimistic =
+      this.#options.optimistic !== false &&
+      submitOptions?.optimisticValues == null &&
+      values != null &&
+      typeof values === "object" &&
+      !Array.isArray(values)
+        ? prepareOptimisticInput(
+            values,
+            this.#accessors.getMessagesKey(),
+            uuidv7
+          )
+        : undefined;
     const stopRun = new AbortController();
 
     const started = this.stream.start(
@@ -1251,7 +1385,14 @@ export class StreamOrchestrator<
         const streamMode = this.#getRunStreamModes(submitOptions);
 
         this.stream.setStreamValues(() => {
-          const prev = { ...this.historyValues, ...this.stream.values };
+          const current = { ...this.historyValues, ...this.stream.values };
+          const prev =
+            optimistic == null
+              ? current
+              : this.#setMessages({ ...current, ...optimistic.extraValues }, [
+                  ...this.#getMessages(current),
+                  ...(optimistic.optimisticMessages as unknown as Message[]),
+                ]);
 
           if (submitOptions?.optimisticValues != null) {
             return {
@@ -1287,7 +1428,10 @@ export class StreamOrchestrator<
         else signal.addEventListener("abort", closeRequest, { once: true });
 
         return client.runs.stream(usableThreadId!, assistantId, {
-          input: values as Record<string, unknown>,
+          input: (optimistic?.dispatchInput ?? values) as Record<
+            string,
+            unknown
+          >,
           config: withV1Streaming(
             submitOptions?.config,
             submitOptions?.context
@@ -1361,6 +1505,7 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
           settleOwnRun();
+          this.#unhide(submitOptions?.command);
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) return;
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
@@ -1371,8 +1516,14 @@ export class StreamOrchestrator<
           // named it.
           responded = true;
           settleOwnRun();
-          watchRunEvent(watch, event, data);
+          this.#watchEvent(watch, event, data);
         },
+      },
+      {
+        abortPrevious:
+          (submitOptions?.multitaskStrategy === "interrupt" ||
+            submitOptions?.multitaskStrategy === "rollback") &&
+          this.stream.isLoading,
       }
     );
 
@@ -1400,7 +1551,13 @@ export class StreamOrchestrator<
       const next = this.pendingRuns.shift();
       if (next) {
         this.#submitting = true;
-        void this.#join(next.id, undefined, undefined, true).finally(() => {
+        const sent =
+          this.#options.queue === "local"
+            ? this.submitDirect(next.values as StateType, next.options)
+            : this.#join(next.id, undefined, undefined, true).finally(() =>
+                this.#unhide(next.options?.command)
+              );
+        void sent.finally(() => {
           this.#submitting = false;
           this.#drainQueue();
         });
@@ -1448,6 +1605,19 @@ export class StreamOrchestrator<
         return;
       }
 
+      if (
+        this.#options.queue === "local" &&
+        submitOptions?.multitaskStrategy !== "reject"
+      ) {
+        this.pendingRuns.add({
+          id: uuidv7(),
+          values: values as Partial<StateType> | null | undefined,
+          options: submitOptions,
+          createdAt: new Date(),
+        });
+        return;
+      }
+
       let usableThreadId: string | undefined = this.#threadId;
       if (!usableThreadId && this.#threadIdPromise) {
         usableThreadId = await this.#threadIdPromise;
@@ -1471,6 +1641,7 @@ export class StreamOrchestrator<
             interruptAfter: submitOptions?.interruptAfter,
             metadata: submitOptions?.metadata,
             multitaskStrategy: submitOptions?.multitaskStrategy ?? "enqueue",
+            strictResume: submitOptions?.strictResume,
             streamMode: this.#getRunStreamModes(submitOptions),
             streamResumable: true,
             streamSubgraphs: submitOptions?.streamSubgraphs,
@@ -1484,6 +1655,7 @@ export class StreamOrchestrator<
             createdAt: new Date(run.created_at),
           });
         } catch (error) {
+          this.#unhide(submitOptions?.command);
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         }
@@ -1501,6 +1673,79 @@ export class StreamOrchestrator<
   }
 
   /**
+   * Answer one interrupt: `options.interruptId`, or the newest one shown
+   * that isn't answered yet. See {@link respondAll}.
+   */
+  async respond(
+    value: unknown,
+    options: RespondOptions<GetConfigurableType<Bag>> & {
+      interruptId?: string;
+    } = {}
+  ): Promise<void> {
+    if (this.#threadId == null) {
+      throw new Error("No active thread to respond to.");
+    }
+    const interruptId =
+      options.interruptId ??
+      this.interrupts.filter((interrupt) => interrupt.id != null).at(-1)?.id;
+    if (interruptId == null) {
+      throw new Error("No pending interrupt to respond to.");
+    }
+    return this.respondAll({ [interruptId]: value }, options);
+  }
+
+  /**
+   * Answer interrupts by id, in one run. It starts at once when nothing
+   * streams, or waits in the queue behind the run in flight, never
+   * interrupting it. The answered interrupts are hidden until that run
+   * ends. Resolves once the run is created or queued, and rejects when it
+   * can't be sent. Unless `strictResume` is `false`, an answer to an
+   * interrupt that is no longer waiting fails its run instead of running
+   * the step again, and the interrupt shows again.
+   */
+  async respondAll(
+    responses: Record<string, unknown>,
+    options: RespondOptions<GetConfigurableType<Bag>> = {}
+  ): Promise<void> {
+    if (this.#threadId == null) {
+      throw new Error("No active thread to respond to.");
+    }
+    const ids = Object.keys(responses);
+    if (ids.length === 0) {
+      throw new Error("respondAll() requires at least one response.");
+    }
+    for (const id of ids) this.#answered.add(id);
+    this.#notify();
+
+    let failed: { error: unknown } | undefined;
+    const queued = this.stream.isLoading || this.#submitting;
+    const sent = this.submit(null as unknown as StateType, {
+      command: {
+        resume: Object.fromEntries(
+          ids.map((id) => [id, normalizeHitlResponseForServer(responses[id])])
+        ),
+        update:
+          options.update == null
+            ? options.update
+            : serializeUpdateMessages(
+                options.update,
+                this.#accessors.getMessagesKey()
+              ),
+        goto: options.goto,
+      },
+      config: options.config,
+      metadata: options.metadata,
+      strictResume: options.strictResume ?? true,
+      multitaskStrategy: "enqueue",
+      onError: (error) => {
+        failed ??= { error };
+      },
+    });
+    const created = queued ? sent : this.#ownRun;
+    if ((await created) == null && failed != null) throw failed.error;
+  }
+
+  /**
    * Switch to a different thread (or clear the current thread).
    * Clears the active stream, cancels all queued runs on the previous
    * thread, fetches history for the new thread, and notifies the
@@ -1513,16 +1758,8 @@ export class StreamOrchestrator<
     if (newThreadId !== current) {
       const prevThreadId = this.#threadId;
       this.#threadId = newThreadId ?? undefined;
-      this.#handledHeadlessToolInterruptIds.clear();
-      this.stream.clear();
-
-      const removed = this.pendingRuns.removeAll();
-      if (prevThreadId && removed.length > 0) {
-        const client = this.#accessors.getClient();
-        void Promise.all(
-          removed.map((e) => client.runs.cancel(prevThreadId, e.id))
-        );
-      }
+      this.#clearThreadState();
+      void this.#dropQueued(prevThreadId, this.pendingRuns.removeAll());
 
       this.#fetchHistoryForThread(this.#threadId);
 
