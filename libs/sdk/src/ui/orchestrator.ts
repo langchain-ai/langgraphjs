@@ -146,8 +146,9 @@ const withoutRunEventModes = (modes: StreamMode[]) =>
 const serverInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
 
 /**
- * What the server supports, from `/info`, read once per client. A server
- * that doesn't answer it in time supports none of it.
+ * What the server supports, from `/info`, read once per client. A read that
+ * fails or takes over 5 s counts as no support, and the next run that needs
+ * it reads again, apart from a 404: that server has no `/info`.
  */
 function serverInfo(client: Client): Promise<ServerInfo | undefined> {
   let read = serverInfoReads.get(client);
@@ -157,7 +158,12 @@ function serverInfo(client: Client): Promise<ServerInfo | undefined> {
     const timer = setTimeout(() => timeout.abort(), 5_000);
     read = Promise.resolve()
       .then(() => client.info({ signal: timeout.signal }))
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if ((error as { status?: unknown } | null)?.status !== 404) {
+          serverInfoReads.delete(client);
+        }
+        return undefined;
+      })
       .finally(() => clearTimeout(timer));
     serverInfoReads.set(client, read);
   }

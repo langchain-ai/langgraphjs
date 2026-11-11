@@ -3289,6 +3289,25 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it.each([
+      { status: undefined, again: true },
+      { status: 503, again: true },
+      { status: 404, again: false },
+    ])("a failed /info read with status $status is read again by the next run: $again", async ({ status, again }) => {
+      const read = withInfo(() => Promise.reject(Object.assign(new Error("failed"), { status })));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+      read.mockResolvedValue({ flags: { stream_lifecycle: true } });
+      await orch.submit({ messages: [] });
+
+      expect(read).toHaveBeenCalledTimes(again ? 2 : 1);
+      expect(sentModes(1).includes("lifecycle")).toBe(again);
+      orch.dispose();
+    });
+
     it("a submit's own streamMode goes as it is", async () => {
       withInfo(() => Promise.resolve({ flags: {} }));
       mockRunStream(undefined, { ended: Promise.resolve() });
