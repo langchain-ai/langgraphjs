@@ -50,6 +50,12 @@ export interface StreamWithRetryOptions {
    * handled like a dropped connection.
    */
   isRunActive?: (reconnectPath: string) => Promise<boolean>;
+
+  /**
+   * Where to reconnect when no response carried a readable `Location`
+   * header. Read when a reconnect or a run check is due.
+   */
+  fallbackReconnectPath?: () => string | undefined;
 }
 
 export interface StreamReconnectOptions extends Pick<
@@ -327,6 +333,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
           yield value;
         }
 
+        reconnectPath ??= options.fallbackReconnectPath?.();
         if (!reconnectPath || !(await options.isRunActive?.(reconnectPath))) {
           break;
         }
@@ -334,6 +341,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
         lastError = new Error("Stream closed before the run finished");
       } catch (error) {
         lastError = error;
+        reconnectPath ??= options.fallbackReconnectPath?.();
         // Error during streaming - attempt reconnect if we have a location header
         if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;
@@ -376,9 +384,18 @@ export async function* streamWithRetry<T extends { id?: string }>(
         delayMs: delay,
       });
 
-      await new Promise((resolve) => {
-        setTimeout(resolve, delay);
-      });
+      if (!options.signal?.aborted) {
+        await new Promise<void>((resolve) => {
+          const { signal } = options;
+          const timer = setTimeout(done, delay);
+          signal?.addEventListener("abort", done);
+          function done() {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", done);
+            resolve();
+          }
+        });
+      }
 
       continue;
     }

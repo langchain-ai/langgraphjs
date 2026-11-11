@@ -109,6 +109,13 @@ export class RunsClient<
       durability: payload?.durability,
     };
 
+    let runId: string | undefined;
+    let runPath: string | undefined;
+    const runCreated = (run: { run_id: string; thread_id?: string }) => {
+      runId = run.run_id;
+      payload?.onRunCreated?.(run);
+    };
+
     yield* this.streamWithRetry({
       endpoint:
         threadId == null
@@ -123,9 +130,30 @@ export class RunsClient<
       onReconnect: payload?.onReconnect,
       onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
+      // A run's join route is its `Content-Location` plus `/stream` on every
+      // server, threadless runs included. Only a resumable run's events are
+      // kept for a rejoin, so another run fails on a drop rather than skip
+      // what it missed.
+      fallbackReconnectPath: () => {
+        if (!payload?.streamResumable) return undefined;
+        if (runPath != null) return `${runPath}/stream`;
+        if (threadId == null || runId == null) return undefined;
+        return `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`;
+      },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
-        if (runMetadata) payload?.onRunCreated?.(runMetadata);
+        if (runMetadata == null) return;
+        runPath = response.headers.get("Content-Location") ?? undefined;
+        runCreated(runMetadata);
+      },
+      // A CORS config that doesn't expose `Content-Location` hides the run id
+      // until the run's first event.
+      onEvent: ({ event, data }) => {
+        if (runId != null || event !== "metadata") return;
+        const id = (data as { run_id?: unknown } | null)?.run_id;
+        if (typeof id === "string") {
+          runCreated({ run_id: id, thread_id: threadId ?? undefined });
+        }
       },
     }) as TypedAsyncGenerator<
       TStreamMode,
@@ -486,11 +514,13 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
+    const endpoint =
+      threadId != null
+        ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
+        : `/runs/${encodePathSegment(runId)}/stream`;
     yield* this.streamWithRetry({
-      endpoint:
-        threadId != null
-          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
-          : `/runs/${encodePathSegment(runId)}/stream`,
+      endpoint,
+      fallbackReconnectPath: () => endpoint,
       method: "GET",
       signal: opts?.signal,
       idleReconnect: opts?.streamIdleReconnect,
