@@ -44,6 +44,7 @@
  * arrives without a fresh checkpoint envelope doesn't reuse stale
  * metadata from a previous superstep.
  */
+import type { ThreadState, ThreadStateSelectField } from "../schema.js";
 import { StreamStore } from "./store.js";
 import { namespaceKey } from "./namespace.js";
 
@@ -262,6 +263,21 @@ export class MessageMetadataTracker {
   }
 
   /**
+   * Record a `parentCheckpointId` per message id in one store update,
+   * keeping one already recorded, as {@link recordMessages} does.
+   */
+  recordForkPoints(forkPoints: ReadonlyMap<string, string>): void {
+    let next: Map<string, MessageMetadata> | undefined;
+    for (const [id, parentCheckpointId] of forkPoints) {
+      const prev = (next ?? this.store.getSnapshot()).get(id);
+      if (prev?.parentCheckpointId != null) continue;
+      next ??= new Map(this.store.getSnapshot());
+      next.set(id, { ...prev, parentCheckpointId });
+    }
+    if (next != null) this.store.setState(() => next);
+  }
+
+  /**
    * Mark a set of message ids as optimistically `"pending"`.
    *
    * Called from {@link StreamController}'s optimistic submit path right
@@ -301,20 +317,19 @@ export class MessageMetadataTracker {
    * @param status - Terminal optimistic status (`"sent"` / `"failed"`).
    */
   resolvePending(ids: Iterable<string>, status: OptimisticStatus): void {
-    let changed = false;
-    const next = new Map(this.store.getSnapshot());
+    let next: Map<string, MessageMetadata> | undefined;
     for (const id of ids) {
       if (!this.#pendingOptimisticIds.has(id)) continue;
       this.#pendingOptimisticIds.delete(id);
+      next ??= new Map(this.store.getSnapshot());
       const prev = next.get(id);
       next.set(id, {
         parentCheckpointId: prev?.parentCheckpointId,
         ...prev,
         optimisticStatus: status,
       });
-      changed = true;
     }
-    if (changed) this.store.setState(() => next);
+    if (next != null) this.store.setState(() => next);
   }
 
   /**
@@ -348,4 +363,171 @@ export class MessageMetadataTracker {
     }
     if (changed) this.store.setState(() => next);
   }
+}
+
+/** A `/history` entry, as far as {@link findForkPoints} reads it. */
+export type HistoryEntry = Partial<
+  Pick<ThreadState, "checkpoint" | "parent_checkpoint" | "tasks" | "values">
+>;
+
+/** One `/history` read: `before` and `checkpoint` are checkpoint ids. */
+export type HistoryReader = (options: {
+  limit: number;
+  before?: string;
+  checkpoint?: string;
+  select: ThreadStateSelectField[];
+}) => Promise<HistoryEntry[]>;
+
+// The first pages are small: a read after a run needs only that run's steps,
+// and most messages the steps miss are in the newest two checkpoints.
+const STEP_PAGES = [10, 100, 100, 100, 100, 100];
+const MESSAGES_PAGES = [2, 10, 10];
+
+const checkpointOf = (entry: HistoryEntry | undefined) =>
+  entry?.checkpoint?.checkpoint_id ?? undefined;
+
+/**
+ * Visits the thread's checkpoints from the newest along `parent_checkpoint`,
+ * which skips other branches' checkpoints, reading the next page of older
+ * ones, sized by `pages`, whenever a parent isn't read yet. Stops when `visit`
+ * returns `true` or at the chain's first checkpoint, or else when the pages
+ * run out or one comes back empty, which `limited` reports.
+ */
+async function walkChain(
+  read: (limit: number, before?: string) => Promise<HistoryEntry[]>,
+  pages: readonly number[],
+  visit: (entry: HistoryEntry) => boolean
+): Promise<{ last?: HistoryEntry; limited: boolean }> {
+  let page = await read(pages[0]);
+  let loaded = 1;
+  const byId = new Map(page.map((entry) => [checkpointOf(entry), entry]));
+  for (let entry = page.at(0); entry != null; ) {
+    if (visit(entry)) return { last: entry, limited: false };
+    const parentId = entry.parent_checkpoint?.checkpoint_id;
+    if (parentId == null) return { last: entry, limited: false };
+    let parent = byId.get(parentId);
+    while (parent == null && loaded < pages.length) {
+      page = await read(pages[loaded], checkpointOf(page.at(-1)));
+      if (page.length === 0) break;
+      loaded += 1;
+      for (const older of page) byId.set(checkpointOf(older), older);
+      parent = byId.get(parentId);
+    }
+    if (parent == null) return { last: entry, limited: true };
+    entry = parent;
+  }
+  return { limited: false };
+}
+
+function messageIds(value: unknown): string[] {
+  const messages = Array.isArray(value) ? value : [value];
+  return messages.flatMap((message) => {
+    const { id, type } = (message ?? {}) as { id?: unknown; type?: unknown };
+    return typeof id === "string" && type !== "remove" ? [id] : [];
+  });
+}
+
+/**
+ * Where each of `targets` can be forked from: the checkpoint right before the
+ * message first appeared, read back from the thread's newest checkpoint.
+ *
+ * It reads what each step wrote (`tasks`), which holds each message once,
+ * and takes a message's oldest write, since a graph that runs a subgraph as
+ * a node writes every earlier message again each turn. It stops at a
+ * checkpoint in `seen`, which an earlier call read, at the chain's first
+ * checkpoint or after about 500 steps, and after the first page from a
+ * server that ignores `select` and sends whole states. Messages no step in
+ * that range wrote with their id, such as ones added with `updateState` or
+ * by a run that keeps no step writes (`durability: "exit"`), are placed from
+ * the messages of the newest checkpoints instead, as the parent of the oldest
+ * one that still holds them. Messages older than the range, or not saved,
+ * get none.
+ *
+ * Returns the fork points found and the checkpoints whose steps it read.
+ */
+export async function findForkPoints(
+  read: HistoryReader,
+  messagesKey: string,
+  targets: ReadonlySet<string>,
+  seen: ReadonlySet<string> = new Set()
+): Promise<{ forkPoints: Map<string, string>; visited: string[] }> {
+  const valuesKey: ThreadStateSelectField = `values.${messagesKey}`;
+  const held = (entry: HistoryEntry | undefined) =>
+    new Set(
+      messageIds((entry?.values as Record<string, unknown>)?.[messagesKey])
+    );
+
+  const forkPoints = new Map<string, string>();
+  const visited: string[] = [];
+  let wholeStates = false;
+  const steps = await walkChain(
+    async (limit, before) => {
+      if (wholeStates) return [];
+      const page = await read({
+        limit,
+        before,
+        select: ["checkpoint", "parent_checkpoint", "tasks"],
+      });
+      wholeStates = page.some((entry) => entry.values !== undefined);
+      return page;
+    },
+    STEP_PAGES,
+    (entry) => {
+      const id = checkpointOf(entry);
+      if (id == null) return false;
+      visited.push(id);
+      for (const task of entry.tasks ?? []) {
+        const writes = (task.result ?? {}) as Record<string, unknown>;
+        for (const messageId of messageIds(writes[messagesKey])) {
+          if (targets.has(messageId)) forkPoints.set(messageId, id);
+        }
+      }
+      return seen.has(id);
+    }
+  );
+
+  // Stopped short, the messages the oldest checkpoint read already holds
+  // were first written further back.
+  let older = new Set<string>();
+  const bottom = checkpointOf(steps.last);
+  if (steps.limited && bottom != null) {
+    const [entry] = await read({
+      limit: 1,
+      checkpoint: bottom,
+      select: ["checkpoint", valuesKey],
+    });
+    older = held(entry);
+    for (const messageId of older) forkPoints.delete(messageId);
+  }
+
+  const missing = new Set(
+    [...targets].filter(
+      (messageId) => !forkPoints.has(messageId) && !older.has(messageId)
+    )
+  );
+  if (missing.size === 0) return { forkPoints, visited };
+  let head = true;
+  await walkChain(
+    (limit, before) =>
+      read({
+        limit,
+        before,
+        select: ["checkpoint", "parent_checkpoint", valuesKey],
+      }),
+    MESSAGES_PAGES,
+    (entry) => {
+      const here = held(entry);
+      const id = checkpointOf(entry);
+      for (const messageId of missing) {
+        if (here.has(messageId)) continue;
+        // The newest checkpoint without the message is the one before it
+        // appeared, unless that is the head: then it isn't saved.
+        if (!head && id != null) forkPoints.set(messageId, id);
+        missing.delete(messageId);
+      }
+      head = false;
+      return missing.size === 0;
+    }
+  );
+  return { forkPoints, visited };
 }

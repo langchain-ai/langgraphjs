@@ -3175,7 +3175,7 @@ describe("StreamOrchestrator runs", () => {
     orch.dispose();
   });
 
-  it("a submit with its own optimisticValues shows only those and sends its input as it is", async () => {
+  it("a submit with its own optimisticValues shows only those and sends its input with an id", async () => {
     mockRunStream(undefined, { created: new Promise(() => {}) });
     const orch = orchestrator();
     orch.initThreadId("t1");
@@ -3191,11 +3191,13 @@ describe("StreamOrchestrator runs", () => {
     await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
 
     expect(orch.messages).toHaveLength(1);
-    expect(streamInput().messages).toEqual([input]);
+    expect(streamInput().messages).toMatchObject([
+      { ...input, id: expect.any(String) },
+    ]);
     orch.dispose();
   });
 
-  it("with optimistic false, sends the input as it is and shows nothing early", async () => {
+  it("with optimistic false, sends the input with an id and shows nothing early", async () => {
     mockRunStream(undefined, { created: new Promise(() => {}) });
     const orch = orchestrator({ optimistic: false });
     orch.initThreadId("t1");
@@ -3206,7 +3208,9 @@ describe("StreamOrchestrator runs", () => {
     await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
 
     expect(orch.messages).toHaveLength(0);
-    expect(streamInput().messages).toEqual([input]);
+    expect(streamInput().messages).toMatchObject([
+      { ...input, id: expect.any(String) },
+    ]);
     orch.dispose();
   });
 
@@ -3225,6 +3229,267 @@ describe("StreamOrchestrator runs", () => {
     ).toBe(true);
     await orch.stop();
     orch.dispose();
+  });
+
+  describe("message metadata", () => {
+    const config = (checkpoint_id: string) => ({
+      thread_id: "t1",
+      checkpoint_ns: "",
+      checkpoint_id,
+      checkpoint_map: null,
+    });
+    const step = (id: string, parent: string | null, wrote: string[]) => ({
+      checkpoint: config(id),
+      parent_checkpoint: parent == null ? null : config(parent),
+      tasks: [{ id: `task-${id}`, result: { messages: wrote.map(message) } }],
+    });
+    type Step = ReturnType<typeof step>;
+
+    function serveHistory(histories: Record<string, Step[]>) {
+      (client.threads.getHistory as Mock).mockImplementation(
+        async (
+          threadId: string,
+          options: {
+            limit: number;
+            before?: { configurable: { checkpoint_id: string } };
+          }
+        ) => {
+          const entries = histories[threadId] ?? [];
+          const before = options.before?.configurable.checkpoint_id;
+          const from =
+            before == null
+              ? 0
+              : entries.findIndex(
+                  (e) => e.checkpoint.checkpoint_id === before
+                ) + 1;
+          return entries.slice(from, from + options.limit);
+        }
+      );
+    }
+
+    function showState(messages: Record<string, string[]>) {
+      (client.threads.getState as Mock).mockImplementation(
+        async (threadId: string) =>
+          createThreadState({
+            messages: (messages[threadId] ?? []).map(message),
+          })
+      );
+    }
+
+    const metadata = (orch: StreamOrchestrator<TestState>, id: string) =>
+      orch.messageMetadataStore.getSnapshot().get(id);
+
+    it("places the shown messages' fork points after a load and after each run", async () => {
+      const history = [
+        step("c2", "c1", []),
+        step("c1", "c0", ["a1"]),
+        step("c0", null, ["h1"]),
+      ];
+      serveHistory({ t1: history });
+      showState({ t1: ["h1", "a1"] });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      const release = orch.trackMessageMetadata();
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "a1")?.parentCheckpointId).toBe("c1")
+      );
+      expect(metadata(orch, "h1")?.parentCheckpointId).toBe("c0");
+
+      history.unshift(
+        step("c5", "c4", []),
+        step("c4", "c3", ["a2"]),
+        step("c3", "c2", ["h2"])
+      );
+      showState({ t1: ["h1", "a1", "h2", "a2"] });
+      mockRunStream(
+        [
+          {
+            event: "values",
+            data: { messages: ["h1", "a1", "h2", "a2"].map(message) },
+          },
+        ],
+        { ended: Promise.resolve() }
+      );
+      await orch.submit({ messages: [message("h2")] });
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "a2")?.parentCheckpointId).toBe("c4")
+      );
+      expect(metadata(orch, "h2")?.parentCheckpointId).toBe("c3");
+      expect(client.threads.getHistory).toHaveBeenCalledTimes(2);
+      release();
+      orch.dispose();
+    });
+
+    it("reads no history while nothing tracks metadata, or when nothing is new", async () => {
+      serveHistory({
+        t1: [step("c1", "c0", ["a1"]), step("c0", null, ["h1"])],
+      });
+      showState({ t1: ["h1", "a1"] });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await flushMicrotasks();
+      expect(client.threads.getHistory).not.toHaveBeenCalled();
+
+      orch.trackMessageMetadata();
+      await vi.waitFor(() =>
+        expect(metadata(orch, "a1")?.parentCheckpointId).toBe("c1")
+      );
+      orch.trackMessageMetadata()();
+      await orch.hydrate();
+      await flushMicrotasks();
+
+      expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      orch.dispose();
+    });
+
+    it("drops the read of a thread it leaves and reads the new thread at once", async () => {
+      let finishFirstRead!: () => void;
+      (client.threads.getHistory as Mock).mockImplementation(
+        (threadId: string) =>
+          threadId === "t1"
+            ? new Promise((resolve) => {
+                finishFirstRead = () => resolve([step("c0", null, ["m1"])]);
+              })
+            : Promise.resolve([step("c9", null, ["m2"])])
+      );
+      showState({ t1: ["m1"], t2: ["m2"] });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.trackMessageMetadata();
+      await vi.waitFor(() =>
+        expect(client.threads.getHistory).toHaveBeenCalled()
+      );
+
+      orch.switchThread("t2");
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "m2")?.parentCheckpointId).toBe("c9")
+      );
+      expect(
+        (client.threads.getHistory as Mock).mock.calls[0][1].signal.aborted
+      ).toBe(true);
+      finishFirstRead();
+      await flushMicrotasks();
+      expect(metadata(orch, "m1")).toBeUndefined();
+      orch.dispose();
+    });
+
+    it("reads older pages until it finds a message's first write", async () => {
+      const history = Array.from({ length: 12 }, (_, index) => {
+        const n = 11 - index;
+        return step(
+          `c${n}`,
+          n === 0 ? null : `c${n - 1}`,
+          n === 0 ? ["h1"] : []
+        );
+      });
+      serveHistory({ t1: history });
+      showState({ t1: ["h1"] });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.trackMessageMetadata();
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "h1")?.parentCheckpointId).toBe("c0")
+      );
+      expect(client.threads.getHistory).toHaveBeenLastCalledWith(
+        "t1",
+        expect.objectContaining({
+          before: { configurable: { checkpoint_id: "c2" } },
+        })
+      );
+      orch.dispose();
+    });
+
+    it("sends messages the client can't read as they are", async () => {
+      mockRunStream(undefined, { created: new Promise(() => {}) });
+      const orch = orchestrator({ optimistic: false });
+      orch.initThreadId("t1");
+      const input = { messages: [{ type: "custom", content: "hi" }] };
+
+      void orch.submit(input as never);
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+      expect(streamInput()).toEqual(input);
+      orch.dispose();
+    });
+
+    it("sends a submit queued on the server with an id on each message", async () => {
+      mockRunStream();
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.submit({
+        messages: [{ type: "human", content: "next" }],
+      } as never);
+
+      expect(
+        (client.runs.create as Mock).mock.calls[0][2].input.messages
+      ).toEqual([
+        expect.objectContaining({ content: "next", id: expect.any(String) }),
+      ]);
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it("an optimistic message is pending until a values event of its run holds it", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [{ event: "values", data: { messages: [message("h1")] } }],
+        { ended: ended.promise }
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      const sent = orch.submit({ messages: [message("h1")] });
+      expect(metadata(orch, "h1")?.optimisticStatus).toBe("pending");
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "h1")?.optimisticStatus).toBe("sent")
+      );
+      expect(orch.isLoading).toBe(true);
+      ended.resolve();
+      await sent;
+      orch.dispose();
+    });
+
+    it("an optimistic message is failed when its run fails before that, until a reload that shows it saved", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      serveHistory({ t1: [step("c0", null, ["h1"])] });
+      mockRunStream(
+        [{ event: "error", data: { error: "ValueError", message: "boom" } }],
+        { ended: Promise.resolve() }
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.trackMessageMetadata();
+
+      await orch.submit({ messages: [message("h1")] });
+      await vi.waitFor(() =>
+        expect(metadata(orch, "h1")).toEqual({
+          parentCheckpointId: "c0",
+          optimisticStatus: "failed",
+        })
+      );
+
+      showState({ t1: ["h1"] });
+      await orch.hydrate();
+
+      await vi.waitFor(() =>
+        expect(metadata(orch, "h1")).toEqual({ parentCheckpointId: "c0" })
+      );
+      orch.dispose();
+    });
   });
 
   describe("activate()", () => {

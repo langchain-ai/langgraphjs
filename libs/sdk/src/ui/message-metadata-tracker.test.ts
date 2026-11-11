@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MessageMetadataTracker } from "./message-metadata-tracker.js";
+import type { ThreadStateSelectField } from "../schema.js";
+import {
+  MessageMetadataTracker,
+  findForkPoints,
+  type HistoryEntry,
+  type HistoryReader,
+} from "./message-metadata-tracker.js";
 
 describe("MessageMetadataTracker", () => {
   it("starts with an empty metadata map", () => {
@@ -219,6 +225,31 @@ describe("MessageMetadataTracker", () => {
     });
   });
 
+  it("records fork points in one update, keeping one already recorded", () => {
+    const tracker = new MessageMetadataTracker();
+    tracker.recordMessages([{ id: "a" }], { parentCheckpointId: "cp-a" });
+    tracker.markPending(["b"]);
+    const listener = vi.fn();
+    tracker.store.subscribe(listener);
+
+    tracker.recordForkPoints(
+      new Map([
+        ["a", "cp-new"],
+        ["b", "cp-b"],
+        ["c", "cp-c"],
+      ])
+    );
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(tracker.store.getSnapshot()).toEqual(
+      new Map([
+        ["a", { parentCheckpointId: "cp-a" }],
+        ["b", { parentCheckpointId: "cp-b", optimisticStatus: "pending" }],
+        ["c", { parentCheckpointId: "cp-c" }],
+      ])
+    );
+  });
+
   describe("optimistic status", () => {
     it("marks ids pending", () => {
       const tracker = new MessageMetadataTracker();
@@ -283,5 +314,210 @@ describe("MessageMetadataTracker", () => {
       expect(tracker.unpersistedOptimisticIds().size).toBe(0);
       expect(tracker.store.getSnapshot().size).toBe(0);
     });
+  });
+});
+
+type FakeCheckpoint = {
+  id: string;
+  parent?: string;
+  wrote?: string[];
+  holds?: string[];
+};
+
+function history(
+  checkpoints: FakeCheckpoint[],
+  { ignoresSelect = false } = {}
+) {
+  const byId = new Map(checkpoints.map((c) => [c.id, c]));
+  const held = (checkpoint: FakeCheckpoint): string[] => {
+    if (checkpoint.holds != null) return checkpoint.holds;
+    const parent = byId.get(checkpoint.parent ?? "");
+    return parent == null
+      ? []
+      : [...new Set([...held(parent), ...(parent.wrote ?? [])])];
+  };
+  const messages = (ids: string[]) =>
+    ids.map((id) => ({ id, type: "ai", content: id }));
+  const config = (id: string) => ({
+    thread_id: "t1",
+    checkpoint_ns: "",
+    checkpoint_id: id,
+    checkpoint_map: null,
+  });
+  const entry = (checkpoint: FakeCheckpoint): HistoryEntry => ({
+    checkpoint: config(checkpoint.id),
+    parent_checkpoint:
+      checkpoint.parent == null ? null : config(checkpoint.parent),
+    tasks: [
+      {
+        id: `task-${checkpoint.id}`,
+        name: "node",
+        error: null,
+        interrupts: [],
+        checkpoint: null,
+        state: null,
+        result: { messages: messages(checkpoint.wrote ?? []) },
+      },
+    ],
+    values: { messages: messages(held(checkpoint)) },
+  });
+  const project = (full: HistoryEntry, select: ThreadStateSelectField[]) =>
+    Object.fromEntries(
+      Object.entries(full).filter(
+        ([key]) =>
+          select.includes(key as ThreadStateSelectField) ||
+          (key === "values" && select.includes("values.messages"))
+      )
+    ) as HistoryEntry;
+
+  return vi.fn<HistoryReader>(async ({ limit, before, checkpoint, select }) => {
+    const at = (id: string) => checkpoints.findIndex((c) => c.id === id);
+    const from =
+      checkpoint != null ? at(checkpoint) : before != null ? at(before) + 1 : 0;
+    return checkpoints
+      .slice(from, from + limit)
+      .map((c) => (ignoresSelect ? entry(c) : project(entry(c), select)));
+  });
+}
+
+function chain(length: number, wrote: Record<number, string[]>) {
+  return Array.from({ length }, (_, index) => {
+    const step = length - 1 - index;
+    return {
+      id: `c${step}`,
+      parent: step === 0 ? undefined : `c${step - 1}`,
+      wrote: wrote[step],
+    };
+  });
+}
+
+describe("findForkPoints", () => {
+  const find = (read: HistoryReader, ids: string[], seen?: Set<string>) =>
+    findForkPoints(read, "messages", new Set(ids), seen);
+
+  it("follows parent links past another branch that wrote the same message", async () => {
+    const read = history([
+      { id: "c4", parent: "c3" },
+      { id: "c3", parent: "c1", wrote: ["h2"] },
+      { id: "c2", parent: "c1", wrote: ["h2"] },
+      { id: "c1", parent: "c0", wrote: ["a1"] },
+      { id: "c0", wrote: ["h1"] },
+    ]);
+
+    const { forkPoints } = await find(read, ["h1", "a1", "h2"]);
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h1", "c0"],
+        ["a1", "c1"],
+        ["h2", "c3"],
+      ])
+    );
+  });
+
+  it("takes a message's earliest write when a graph writes old messages again", async () => {
+    const read = history([
+      { id: "c4", parent: "c3" },
+      { id: "c3", parent: "c2", wrote: ["h1", "a1", "h2", "a2"] },
+      { id: "c2", parent: "c1", wrote: ["h2"] },
+      { id: "c1", parent: "c0", wrote: ["h1", "a1"] },
+      { id: "c0", wrote: ["h1"] },
+    ]);
+
+    const { forkPoints } = await find(read, ["h1", "a1", "h2", "a2"]);
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h1", "c0"],
+        ["a1", "c1"],
+        ["h2", "c2"],
+        ["a2", "c3"],
+      ])
+    );
+  });
+
+  it("stopped by the page limit, places none of the messages its oldest checkpoint holds", async () => {
+    const read = history(
+      chain(520, { 0: ["ancient"], 5: ["old"], 515: ["old", "new"] })
+    );
+
+    const { forkPoints } = await find(read, ["ancient", "old", "new"]);
+
+    expect(forkPoints).toEqual(new Map([["new", "c515"]]));
+    expect(read).toHaveBeenCalledTimes(7);
+    expect(read).toHaveBeenLastCalledWith({
+      limit: 1,
+      checkpoint: "c10",
+      select: ["checkpoint", "values.messages"],
+    });
+  });
+
+  it("places a message no step wrote, as one added with updateState, from the messages, and an unsaved one nowhere", async () => {
+    const read = history([
+      { id: "c3", parent: "c2", holds: ["h1", "a1", "u1"] },
+      { id: "c2", parent: "c1" },
+      { id: "c1", parent: "c0", wrote: ["a1"] },
+      { id: "c0", wrote: ["h1"] },
+    ]);
+
+    const { forkPoints } = await find(read, ["h1", "a1", "u1", "unsaved"]);
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h1", "c0"],
+        ["a1", "c1"],
+        ["u1", "c2"],
+      ])
+    );
+  });
+
+  it("places an exit-durability run's messages from the messages, and none in the first checkpoint", async () => {
+    const read = history([
+      { id: "c1", parent: "c0", holds: ["h1", "a1", "h2", "a2"] },
+      { id: "c0", holds: ["h1", "a1"] },
+    ]);
+
+    const { forkPoints } = await find(read, ["h1", "a1", "h2", "a2"]);
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h2", "c0"],
+        ["a2", "c0"],
+      ])
+    );
+  });
+
+  it("stops after a checkpoint an earlier read read, taking that checkpoint's writes", async () => {
+    const read = history([
+      { id: "c3", parent: "c2" },
+      { id: "c2", parent: "c1", wrote: ["a2"] },
+      { id: "c1", parent: "c0", wrote: ["h2"] },
+      { id: "c0", wrote: ["a2"] },
+    ]);
+
+    const { forkPoints, visited } = await find(
+      read,
+      ["h2", "a2"],
+      new Set(["c1"])
+    );
+
+    expect(forkPoints).toEqual(
+      new Map([
+        ["h2", "c1"],
+        ["a2", "c2"],
+      ])
+    );
+    expect(visited).toEqual(["c3", "c2", "c1"]);
+  });
+
+  it("reads one page of steps from a server that ignores select", async () => {
+    const read = history(chain(30, { 5: ["old"], 25: ["new"] }), {
+      ignoresSelect: true,
+    });
+
+    const { forkPoints } = await find(read, ["old", "new"]);
+
+    expect(forkPoints).toEqual(new Map([["new", "c25"]]));
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });
