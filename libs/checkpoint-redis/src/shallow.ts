@@ -659,6 +659,9 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       const writeDoc = await this.client.json.get(writeKey);
       if (writeDoc) writeDocs.push(writeDoc);
     }
+    if (this.ttlConfig?.refreshOnRead && this.ttlConfig?.defaultTTL) {
+      await this.applyTTL(...writeKeys, zsetKey);
+    }
     // Compute each document's key once, then sort on the cached keys.
     const keyed = writeDocs.map((doc: any) => ({
       key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),
