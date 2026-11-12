@@ -68,6 +68,7 @@ export {
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
+export type { StreamEngine } from "./engine.js";
 export type { Scope, ScopeRegistry, ScopeSnapshot } from "./scoped.js";
 export type {
   MessageMetadataMap,
