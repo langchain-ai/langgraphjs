@@ -783,14 +783,14 @@ export class StreamController<
           // and the replayed ones predate the seed and are skipped. A call
           // with no result yet is left to the live stream, as an open tab
           // would only show it once it starts.
-          const finishedToolCalls = seedToolCallsFromMessages(
+          const endedToolCalls = seedToolCallsFromMessages(
             ROOT_NAMESPACE,
             ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
-          ).filter((toolCall) => toolCall.status === "finished");
-          if (finishedToolCalls.length > 0) {
+          ).filter((toolCall) => toolCall.status !== "running");
+          if (endedToolCalls.length > 0) {
             this.rootStore.setState((s) => ({
               ...s,
-              toolCalls: finishedToolCalls.reduce(
+              toolCalls: endedToolCalls.reduce(
                 (toolCalls, toolCall) => upsertToolCall(toolCalls, toolCall),
                 s.toolCalls
               ),

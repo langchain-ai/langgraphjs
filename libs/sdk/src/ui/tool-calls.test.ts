@@ -1,7 +1,34 @@
-import { ToolMessage } from "@langchain/core/messages";
+import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { describe, expect, it } from "vitest";
 import type { AssembledToolCall } from "./tool-payload.js";
-import { reconcileToolCallsFromMessages, upsertToolCall } from "./tool-calls.js";
+import {
+  reconcileToolCallsFromMessages,
+  seedToolCallsFromMessages,
+  upsertToolCall,
+} from "./tool-calls.js";
+
+describe("seedToolCallsFromMessages", () => {
+  it("fails a call whose tool message has status error, with its text as the error", () => {
+    const toolCalls = seedToolCallsFromMessages(
+      [],
+      [
+        new AIMessage({
+          content: "",
+          tool_calls: [{ id: "call-1", name: "search", args: {} }],
+        }),
+        new ToolMessage({
+          content: "Error: boom",
+          tool_call_id: "call-1",
+          status: "error",
+        }),
+      ]
+    );
+
+    expect(toolCalls).toMatchObject([
+      { callId: "call-1", status: "error", error: "Error: boom", output: null },
+    ]);
+  });
+});
 
 describe("reconcileToolCallsFromMessages", () => {
   const runningCall: AssembledToolCall = {
@@ -43,6 +70,19 @@ describe("reconcileToolCallsFromMessages", () => {
         },
       },
     });
+  });
+
+  it("keeps the error of a call that already failed", () => {
+    const current = [runningCall];
+    const result = reconcileToolCallsFromMessages(current, [
+      new ToolMessage({
+        content: "Error: boom",
+        tool_call_id: "toolu_018cV6Rpn1Fc3PStvtyoB8cv",
+        status: "error",
+      }),
+    ]);
+
+    expect(result).toBe(current);
   });
 
   it("does not overwrite a finished tool call", () => {

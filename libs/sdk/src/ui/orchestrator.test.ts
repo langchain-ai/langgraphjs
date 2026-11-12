@@ -527,48 +527,63 @@ describe("StreamOrchestrator", () => {
       orch.dispose();
     });
 
-    it.each([
-      {
-        via: "joinStream",
-        run: (orch: StreamOrchestrator<TestState>) => orch.joinStream("run-1"),
-      },
-      {
-        via: "submit",
-        run: (orch: StreamOrchestrator<TestState>) =>
-          orch.submit({ messages: [] }, { command: { resume: "yes" } }),
-      },
-    ])(
-      "does not run a pending tool from a read that resolves after a run ends ($via)",
-      async ({ run }) => {
-        const toolImpl = weatherTool();
+    describe("a pending tool in a load that lands after a run starts", () => {
+      const answered = () =>
+        (async function* () {
+          yield { event: "values", data: { messages: [] } };
+        })();
+
+      function loadPendingTool() {
         let serveHead!: (state: unknown) => void;
         (client.threads.getState as Mock).mockReturnValueOnce(
           new Promise((resolve) => {
             serveHead = resolve;
           })
         );
-        const answered = () =>
-          (async function* () {
-            yield { event: "values", data: { messages: [] } };
-          })();
-        (client.runs.joinStream as Mock).mockImplementationOnce(answered);
-        (client.runs.stream as Mock).mockImplementationOnce(answered);
+        return () => serveHead(pendingToolState());
+      }
 
+      it("does not run when the load resolves after a joined run ends", async () => {
+        const toolImpl = weatherTool();
+        const serveHead = loadPendingTool();
+        (client.runs.joinStream as Mock).mockImplementationOnce(answered);
         const orch = new StreamOrchestrator<TestState>(
           createOptions({ tools: [toolImpl] }),
           accessors
         );
         orch.initThreadId("t1");
-        await run(orch);
-        serveHead(pendingToolState());
+
+        await orch.joinStream("run-1");
+        serveHead();
         await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
         await flushMicrotasks(20);
 
         expect(toolImpl.execute).not.toHaveBeenCalled();
-
         orch.dispose();
-      }
-    );
+      });
+
+      it("does not run when the load lands while a resume submit waits for it", async () => {
+        const toolImpl = weatherTool();
+        const serveHead = loadPendingTool();
+        (client.runs.stream as Mock).mockImplementationOnce(answered);
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({ tools: [toolImpl] }),
+          accessors
+        );
+        orch.initThreadId("t1");
+
+        const resumed = orch.submit(
+          { messages: [] },
+          { command: { resume: "yes" } }
+        );
+        serveHead();
+        await resumed;
+        await flushMicrotasks(20);
+
+        expect(toolImpl.execute).not.toHaveBeenCalled();
+        orch.dispose();
+      });
+    });
 
     it("does not run a pending tool from the read after stop()", async () => {
       const toolImpl = weatherTool();
@@ -796,6 +811,20 @@ describe("StreamOrchestrator", () => {
 
       expect(listener).not.toHaveBeenCalled();
 
+      orch.dispose();
+    });
+
+    it("a thread switch resets the selected branch", () => {
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions(),
+        accessors
+      );
+      orch.initThreadId("t1");
+      orch.setBranch("cp-1");
+
+      orch.switchThread("t2");
+
+      expect(orch.branch).toBe("");
       orch.dispose();
     });
   });
@@ -1347,6 +1376,7 @@ describe("StreamOrchestrator", () => {
         accessors
       );
       orch.initThreadId("t1");
+      await orch.hydrationPromise;
 
       const submitPromise = orch.submit({ messages: [] });
       await flushMicrotasks();
@@ -2840,6 +2870,235 @@ describe("StreamOrchestrator runs", () => {
       expect(client.threads.getState).toHaveBeenCalledTimes(2);
       orch.dispose();
     });
+
+    it("a thread switch shows the new thread loading, with nothing of the last one", async () => {
+      (client.threads.getState as Mock)
+        .mockResolvedValueOnce(createThreadState({ messages: [message("m1")] }))
+        .mockRejectedValueOnce(new Error("unavailable"))
+        .mockReturnValueOnce(new Promise(() => {}));
+      const orch = orchestrator({
+        initialValues: { messages: [message("intro")] },
+      });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await orch.hydrate();
+      expect(orch.messages).toEqual([message("m1")]);
+      expect(orch.error).toBeInstanceOf(Error);
+
+      void orch.hydrate("t2");
+
+      expect(orch.messages).toEqual([message("intro")]);
+      expect(orch.error).toBeUndefined();
+      expect(orch.isThreadLoading).toBe(true);
+      orch.dispose();
+    });
+  });
+
+  describe("a thread that doesn't exist yet", () => {
+    const notFound = () =>
+      Object.assign(new Error("HTTP 404: Thread not found"), { status: 404 });
+
+    async function loadMissing(options?: Partial<StreamOrchestratorOptions<TestState>>) {
+      (client.threads.getState as Mock).mockRejectedValueOnce(notFound());
+      const orch = orchestrator(options);
+      orch.initThreadId("t-new");
+      await orch.hydrationPromise;
+      return orch;
+    }
+
+    const streamedOn = (threadId: string) =>
+      expect(client.runs.stream).toHaveBeenCalledWith(
+        threadId,
+        "test-assistant",
+        expect.anything()
+      );
+
+    it("loads empty with no error, and its first submit creates it with its id before the run", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const onError = vi.fn();
+      const onThreadId = vi.fn();
+      const orch = await loadMissing({ onError, onThreadId });
+
+      expect(orch.messages).toEqual([]);
+      expect(orch.isThreadLoading).toBe(false);
+      expect(orch.error).toBeUndefined();
+      expect(client.runs.list).not.toHaveBeenCalled();
+
+      await orch.submit({ messages: [] }, { metadata: { from: "chat" } });
+      await orch.submit({ messages: [] });
+
+      expect(client.threads.create).toHaveBeenCalledExactlyOnceWith({
+        threadId: "t-new",
+        metadata: { from: "chat" },
+      });
+      streamedOn("t-new");
+      expect(
+        (client.threads.create as Mock).mock.invocationCallOrder[0]
+      ).toBeLessThan((client.runs.stream as Mock).mock.invocationCallOrder[0]);
+      expect(onError).not.toHaveBeenCalled();
+      expect(onThreadId).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("a submit right after switching to it waits for its load, then creates it", async () => {
+      let load!: (error: unknown) => void;
+      (client.threads.getState as Mock)
+        .mockResolvedValueOnce(createThreadState({ messages: [message("m1")] }))
+        .mockReturnValueOnce(
+          new Promise((_, reject) => {
+            load = reject;
+          })
+        );
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      void orch.hydrate("t-new");
+      const submitted = orch.submit({ messages: [] });
+      await flushMicrotasks(10);
+      expect(client.runs.stream).not.toHaveBeenCalled();
+
+      load(notFound());
+      await submitted;
+      expect(client.threads.create).toHaveBeenCalledExactlyOnceWith({
+        threadId: "t-new",
+        metadata: undefined,
+      });
+      streamedOn("t-new");
+      orch.dispose();
+    });
+
+    it("a submit made while the first one creates it is queued on the server once it exists", async () => {
+      let create!: () => void;
+      (client.threads.create as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          create = () => resolve({ thread_id: "t-new" });
+        })
+      );
+      (client.runs.create as Mock).mockResolvedValueOnce({
+        run_id: "run-2",
+        created_at: new Date().toISOString(),
+      });
+      mockRunStream();
+      mockJoinStream([], Promise.resolve());
+      const orch = await loadMissing();
+
+      void orch.submit({ messages: [] });
+      const queued = orch.submit({ messages: [] });
+      await flushMicrotasks(10);
+      expect(client.runs.create).not.toHaveBeenCalled();
+
+      create();
+      await queued;
+      expect(client.threads.create).toHaveBeenCalledOnce();
+      expect(client.runs.create).toHaveBeenCalledWith(
+        "t-new",
+        "test-assistant",
+        expect.anything()
+      );
+      orch.dispose();
+    });
+
+    it("a 409 on its creation shows the error, and the next submit runs on it", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const conflict = Object.assign(
+        new Error("HTTP 409: Thread already exists"),
+        { status: 409 }
+      );
+      (client.threads.create as Mock).mockRejectedValueOnce(conflict);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const onError = vi.fn();
+      const orch = await loadMissing({ onError });
+
+      await orch.submit({ messages: [] });
+      expect(orch.error).toBe(conflict);
+      expect(onError).toHaveBeenCalledWith(conflict, undefined);
+      expect(client.runs.stream).not.toHaveBeenCalled();
+
+      await orch.submit({ messages: [] });
+      expect(client.threads.create).toHaveBeenCalledOnce();
+      streamedOn("t-new");
+      orch.dispose();
+    });
+
+    it("a switch away while it is created shows nothing of the submit that creates it", async () => {
+      let create!: () => void;
+      (client.threads.create as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          create = () => resolve({ thread_id: "t-new" });
+        })
+      );
+      const orch = await loadMissing();
+      const submitted = orch.submit({ messages: [message("hi")] });
+      await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+
+      await orch.hydrate("t1");
+      create();
+      await submitted;
+
+      expect(orch.messages).toEqual([]);
+      expect(client.runs.stream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("switching back while it is created loads it again", async () => {
+      let create!: () => void;
+      (client.threads.create as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          create = () => resolve({ thread_id: "t-new" });
+        })
+      );
+      const orch = await loadMissing();
+      const submitted = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+      (client.threads.getState as Mock)
+        .mockResolvedValueOnce(createThreadState({ messages: [message("m1")] }))
+        .mockReturnValueOnce(new Promise(() => {}));
+
+      await orch.hydrate("t1");
+      void orch.hydrate("t-new");
+
+      expect(orch.messages).toEqual([]);
+      expect(orch.isThreadLoading).toBe(true);
+      expect(client.threads.getState).toHaveBeenLastCalledWith("t-new");
+      create();
+      await submitted;
+      orch.dispose();
+    });
+
+    it("isn't created once a read finds it, as after another client created it", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = await loadMissing();
+
+      await orch.hydrate();
+      await orch.submit({ messages: [] });
+
+      expect(client.threads.create).not.toHaveBeenCalled();
+      streamedOn("t-new");
+      orch.dispose();
+    });
+
+    it("hydrate() of a thread deleted since shows it empty, over what its last run streamed", async () => {
+      mockRunStream(
+        [{ event: "values", data: { messages: [message("streamed")] } }],
+        { ended: Promise.resolve() }
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await orch.submit({ messages: [] });
+      expect(orch.messages).toEqual([message("streamed")]);
+      const lookups = (client.runs.list as Mock).mock.calls.length;
+
+      (client.threads.getState as Mock).mockRejectedValueOnce(notFound());
+      await orch.hydrate();
+
+      expect(orch.messages).toEqual([]);
+      expect(orch.error).toBeUndefined();
+      expect(client.runs.list).toHaveBeenCalledTimes(lookups);
+      orch.dispose();
+    });
   });
 
   describe("respond()", () => {
@@ -3651,7 +3910,8 @@ describe("StreamOrchestrator runs", () => {
     ])("a failed /info read with status $status is read again by the next run: $again", async ({ status, again }) => {
       const read = withInfo(() => Promise.reject(Object.assign(new Error("failed"), { status })));
       mockRunStream(undefined, { ended: Promise.resolve() });
-      const orch = orchestrator({ filterSubagentMessages: true });
+      const orch = orchestrator();
+      orch.trackStreamMode("lifecycle");
       orch.initThreadId("t1");
 
       await orch.submit({ messages: [] });
@@ -4204,6 +4464,66 @@ describe("StreamOrchestrator runs", () => {
       expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 20 }));
       orch.dispose();
     });
+
+    describe("lookups asked at the same time", () => {
+      async function reloadedSubagent() {
+        withFlags(flags);
+        const values = createSubagentStateValues();
+        (client.threads.getState as Mock).mockResolvedValue(
+          createThreadState(values)
+        );
+        const orch = orchestrator({
+          filterSubagentMessages: true,
+          scopedSubagents: true,
+        });
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        orch.reconstructSubagentsIfNeeded();
+        return { orch, toolMessage: values.messages[2] };
+      }
+
+      it("read the history once for one subagent", async () => {
+        const { orch, toolMessage } = await reloadedSubagent();
+        (client.threads.getHistory as Mock).mockResolvedValue([
+          {
+            tasks: [
+              {
+                id: "pregel-1",
+                name: "tools",
+                path: ["__pregel_push", 0],
+                result: { messages: [toolMessage] },
+              },
+            ],
+          },
+        ]);
+
+        const found = await Promise.all([
+          orch.resolveSubagentNamespace("task-1"),
+          orch.resolveSubagentNamespace("task-1"),
+        ]);
+
+        expect(found).toEqual([["tools:pregel-1"], ["tools:pregel-1"]]);
+        expect(client.threads.getHistory).toHaveBeenCalledOnce();
+        orch.dispose();
+      });
+
+      it("aren't shared across a thread switch", async () => {
+        const { orch } = await reloadedSubagent();
+        (client.threads.getHistory as Mock).mockReturnValue(
+          new Promise(() => {})
+        );
+        const before = orch.resolveSubagentNamespace("task-1");
+
+        await orch.hydrate("t2");
+
+        expect(orch.resolveSubagentNamespace("task-1")).not.toBe(before);
+        expect(client.threads.getHistory).toHaveBeenLastCalledWith(
+          "t2",
+          expect.anything()
+        );
+        orch.dispose();
+      });
+    });
   });
 
   describe("watchThread", () => {
@@ -4594,6 +4914,45 @@ describe("StreamOrchestrator runs", () => {
       await flushMicrotasks(10);
 
       expect(connections).toEqual([]);
+      orch.dispose();
+    });
+
+    it("opens on a thread no read found once its first submit created it", async () => {
+      (client.threads.getState as Mock).mockRejectedValueOnce(httpError(404));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t-new");
+      orch.activate();
+      await orch.hydrationPromise;
+
+      await orch.submit({ messages: [] });
+
+      await vi.waitFor(() => expect(open()?.threadId).toBe("t-new"));
+      orch.dispose();
+    });
+
+    it("keeps watching the thread switched to while a missing one was created", async () => {
+      (client.threads.getState as Mock).mockRejectedValueOnce(httpError(404));
+      let create!: () => void;
+      (client.threads.create as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          create = () => resolve({ thread_id: "t-new" });
+        })
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t-new");
+      orch.activate();
+      await orch.hydrationPromise;
+      const submitted = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+      await orch.hydrate("t1");
+      await vi.waitFor(() => expect(open()?.threadId).toBe("t1"));
+
+      create();
+      await submitted;
+      await flushMicrotasks(10);
+
+      expect(open()?.threadId).toBe("t1");
       orch.dispose();
     });
 
