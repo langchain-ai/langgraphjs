@@ -1,13 +1,13 @@
 # `useSuspenseStream`
 
-`useSuspenseStream` hands the initial hydration phase to `<Suspense>` and any non-streaming error to the nearest Error Boundary. It is a slim v1-native port that wraps [`useStream`](./use-stream.md) and leans on `hydrationPromise` to integrate with React's concurrent machinery.
+`useSuspenseStream` is [`useStream`](./use-stream.md) for React Suspense: the component suspends while its thread loads, and a thread that fails to load goes to the nearest error boundary.
 
 ## Table of contents
 
 - [Basic usage](#basic-usage)
-- [Return shape](#return-shape)
+- [What it returns](#what-it-returns)
+- [Errors](#errors)
 - [Thread switches](#thread-switches)
-- [Differences from `useStream`](#differences-from-usestream)
 
 ## Basic usage
 
@@ -20,22 +20,23 @@ function App() {
   return (
     <ErrorBoundary fallback={<ErrorDisplay />}>
       <Suspense fallback={<Spinner />}>
-        <Chat />
+        <Chat threadId={threadId} />
       </Suspense>
     </ErrorBoundary>
   );
 }
 
-function Chat() {
+function Chat({ threadId }: { threadId: string | null }) {
   const { messages, submit, isStreaming } = useSuspenseStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
+    threadId,
   });
 
   return (
     <>
-      {messages.map((m, i) => (
-        <div key={m.id ?? i}>{String(m.content)}</div>
+      {messages.map((message, i) => (
+        <div key={message.id ?? i}>{message.text}</div>
       ))}
       {isStreaming && <TypingIndicator />}
     </>
@@ -43,27 +44,25 @@ function Chat() {
 }
 ```
 
-Behaviour:
+The thread is read once, also when the component suspends before it mounts.
 
-- **Initial hydration** suspends. `<Spinner />` renders until the first snapshot lands.
-- **Non-streaming errors** (hydration failures, transport setup errors) throw and route to the nearest Error Boundary.
-- **Streaming errors** still surface on `stream.error` so you can decide whether to re-throw or display inline.
+## What it returns
 
-## Return shape
+The same as `useStream`, with two differences:
 
-`useSuspenseStream` returns the same handle as `useStream`, with three differences:
+- no `isLoading`, `isThreadLoading` or `hydrationPromise`, since Suspense shows the load,
+- `isStreaming`, which is `true` while a run streams.
 
-| Change                                                     | Reason                                           |
-| ---------------------------------------------------------- | ------------------------------------------------ |
-| `isLoading`, `isThreadLoading`, `hydrationPromise` removed | Handled by `<Suspense>`.                         |
-| `isStreaming: boolean` added                               | Indicates whether tokens are currently arriving. |
-| `error` still present but non-streaming errors throw       | Routed to the nearest Error Boundary.            |
+The [selector hooks](./selectors.md) accept its result, as they accept `useStream`'s.
 
-All other fields (`values`, `messages`, `toolCalls`, `interrupt` / `interrupts`, `subagents`, `submit`, `stop`, `respond`, `getThread`, `client`, `assistantId`, …) work exactly as they do on `useStream`.
+## Errors
+
+- A thread that fails to load throws to the nearest error boundary.
+- A run that fails sets `error` and throws nothing, so the conversation stays on screen. To send it to the error boundary too, throw it yourself: `if (error) throw error;`.
 
 ## Thread switches
 
-Changing the `threadId` prop re-suspends the component while the new thread hydrates. The existing Error Boundary and Suspense fallback handle the transition naturally:
+A new `threadId` suspends the component again while that thread loads:
 
 ```tsx
 <Suspense fallback={<Spinner />}>
@@ -71,8 +70,4 @@ Changing the `threadId` prop re-suspends the component while the new thread hydr
 </Suspense>
 ```
 
-A fresh `hydrationPromise` is installed internally on every `threadId` change; the suspended render resumes once it settles.
-
-## Differences from `useStream`
-
-If you need manual control over hydration or don't want to involve React's concurrent machinery, use [`useStream`](./use-stream.md) and drive your own loading UI from `isLoading` / `isThreadLoading` / `error` / `hydrationPromise`.
+To drive your own loading UI instead, use [`useStream`](./use-stream.md) and its `isThreadLoading` and `hydrationPromise`.

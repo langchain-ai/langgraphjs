@@ -1,50 +1,38 @@
 # Submission queue
 
-`multitaskStrategy: "enqueue"` lets the user fire additional submits while another run is in flight. The queue is fully client-side — entries drain sequentially as the active run terminates — and is observable through the `useSubmissionQueue` companion hook.
+A message sent while a run streams waits in a queue, and runs when the current run ends. `useSubmissionQueue` lists what waits, so you can show it and let the user cancel it.
 
 ## Table of contents
 
+- [Where submits wait](#where-submits-wait)
 - [Multitask strategies](#multitask-strategies)
-- [Enqueueing runs](#enqueueing-runs)
 - [`useSubmissionQueue`](#usesubmissionqueue)
-- [Cancelling and clearing](#cancelling-and-clearing)
-- [Thread switches](#thread-switches)
+- [Reloads and thread switches](#reloads-and-thread-switches)
+
+## Where submits wait
+
+By default the queue is the server's: a submit made during a run creates a run in the server's queue, behind the current one. A queued message, and an answer given with `respond` during a run, survives a reload and shows in other tabs.
+
+`useStream({ queue: "local" })` keeps the queue in the page instead, as `@langchain/react` 1.x did: queued submits are sent one at a time once the current run ends, and a reload drops them.
 
 ## Multitask strategies
 
-Pass `multitaskStrategy` to `submit()` to control what happens when a submit lands while a run is already active:
+`submit(input, { multitaskStrategy })` says what to do with a run that is already streaming:
 
-| Strategy      | Behaviour                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------- |
-| `"rollback"`  | Default. Aborts the active run and immediately dispatches the new one.                                  |
-| `"reject"`    | Drops the new submit. The returned promise rejects.                                                     |
-| `"enqueue"`   | Appends the submit to the client-side queue. Entries drain sequentially once the active run terminates. |
-| `"interrupt"` | Currently falls back to `"rollback"` semantics client-side, pending server-side support.                |
+| Strategy             | What happens                                                                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| none, or `"enqueue"` | The new run waits in the queue and starts when the current run ends.                                                                      |
+| `"interrupt"`        | The server stops the current run mid-step, keeping the steps it finished, cancels the runs queued on the thread, and starts the new one. A tool call the agent had started can be left without its result. |
+| `"rollback"`         | Like `"interrupt"`, and the server also deletes the stopped run, as if it never ran.                                                       |
+| `"reject"`           | `submit` throws.                                                                                                                          |
 
-## Enqueueing runs
-
-```tsx
-import { HumanMessage } from "@langchain/core/messages";
-
-void stream.submit(
-  { messages: [new HumanMessage("follow-up")] },
-  { multitaskStrategy: "enqueue" },
-);
-```
-
-Nothing special happens on the return value — the promise resolves when the enqueued run eventually completes. You can fire several in a row; they dispatch in call order.
+`respond` and `respondAll` always wait in the queue, so an answer never cuts a run short.
 
 ## `useSubmissionQueue`
 
-Subscribe to the queue reactively from any component:
-
 ```tsx
-import {
-  useStream,
-  useSubmissionQueue,
-  type AnyStream,
-} from "@langchain/react";
 import { HumanMessage } from "@langchain/core/messages";
+import { useSubmissionQueue, type AnyStream } from "@langchain/react";
 
 function Composer({ stream }: { stream: AnyStream }) {
   const { entries, size, cancel, clear } = useSubmissionQueue(stream);
@@ -53,26 +41,23 @@ function Composer({ stream }: { stream: AnyStream }) {
     <>
       <button
         onClick={() =>
-          stream.submit(
-            { messages: [new HumanMessage("go")] },
-            { multitaskStrategy: "enqueue" },
-          )
+          void stream.submit({ messages: [new HumanMessage("go")] })
         }
       >
-        Queue turn
+        Send
       </button>
 
       {size > 0 && (
         <div>
-          <p>{size} queued</p>
+          <p>{size} waiting</p>
           <ol>
-            {entries.map((e) => (
-              <li key={e.id}>
-                pending… <button onClick={() => cancel(e.id)}>cancel</button>
+            {entries.map((entry) => (
+              <li key={entry.id}>
+                waiting <button onClick={() => void cancel(entry.id)}>cancel</button>
               </li>
             ))}
           </ol>
-          <button onClick={clear}>Clear queue</button>
+          <button onClick={() => void clear()}>Cancel all</button>
         </div>
       )}
     </>
@@ -80,22 +65,17 @@ function Composer({ stream }: { stream: AnyStream }) {
 }
 ```
 
-### Return shape
+| Field        | Type                                 | Description                                                  |
+| ------------ | ------------------------------------ | ------------------------------------------------------------ |
+| `entries`    | `readonly SubmissionQueueEntry[]`    | What waits, oldest first.                                    |
+| `size`       | `number`                             | `entries.length`.                                            |
+| `cancel(id)` | `(id: string) => Promise<boolean>`   | Removes one entry, and cancels its run when it waits on the server. `false` when there is no such entry. |
+| `clear()`    | `() => Promise<void>`                | Removes every entry, and cancels the runs that wait on the server. The current run goes on: stop it with `stream.stop()`. |
 
-| Field        | Type                              | Description                                     |
-| ------------ | --------------------------------- | ----------------------------------------------- |
-| `entries`    | `readonly SubmissionQueueEntry[]` | All pending entries, in dispatch order.         |
-| `size`       | `number`                          | Alias for `entries.length`.                     |
-| `cancel(id)` | `(id: string) => boolean`         | Removes one entry by id; returns `true` on hit. |
-| `clear()`    | `() => void`                      | Empties the queue.                              |
+Each entry has `id`, `values` (the input), `options` (the submit's options) and `createdAt`. With the server's queue, `runId` is the queued run's id, the same as `id`.
 
-Each `SubmissionQueueEntry` carries `{ id, input, options, enqueuedAt }` so you can render the queued input ahead of its dispatch.
+## Reloads and thread switches
 
-## Cancelling and clearing
-
-- `cancel(id)` removes a single entry. The run is never dispatched.
-- `clear()` empties the queue but does not affect the active run. Pair with `stream.stop()` if you also need to abort the in-flight work.
-
-## Thread switches
-
-Switching `threadId` clears the queue — entries were targeted at the previous thread, so dispatching them against the new one would be surprising. This mirrors the legacy `StreamOrchestrator` behaviour.
+- **A reload**, with the server's queue, lists the thread's pending runs again, oldest first, and each starts when its turn comes. Their `values` are the runs' input, and their `options` hold only a `command`, such as an answer's.
+- **A thread switch** drops what this page queued for the previous thread, and cancels those runs on the server. Runs a reload listed stay on the server, since another tab may have queued them.
+- **With `queue: "local"`**, a reload drops the queue.

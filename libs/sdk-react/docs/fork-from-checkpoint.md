@@ -1,32 +1,36 @@
-# Fork / edit from a checkpoint
+# Fork from a checkpoint
 
-The pre-v1 `branch` / `setBranch` / `experimental_branchTree` API is gone. Forking is now expressed as **"submit from the parent checkpoint of a specific message"**.
+To edit a message or retry an answer, submit again from the checkpoint right before that message: the new run replaces what came after it, and the thread keeps the old version as a branch.
 
 ## Table of contents
 
-- [Mental model](#mental-model)
-- [Example: edit a user turn](#example-edit-a-user-turn)
-- [Example: retry an AI turn](#example-retry-an-ai-turn)
+- [How it works](#how-it-works)
+- [When fork points arrive](#when-fork-points-arrive)
+- [Example: edit a user message](#example-edit-a-user-message)
+- [Example: retry the last answer](#example-retry-the-last-answer)
 - [Related](#related)
 
-## Mental model
+## How it works
 
 Two pieces work together:
 
-1. **`useMessageMetadata(stream, msgId)`** — returns `{ parentCheckpointId }` for the given message, or `undefined` until it loads. See [Companion selector hooks](./selectors.md#usemessagemetadata).
-2. **`submit(input, { forkFrom })`** — dispatches a new run whose initial checkpoint is `forkFrom`, replacing anything that happened after it on the thread.
+1. **`useMessageMetadata(stream, messageId)`** gives the message's `parentCheckpointId`: the checkpoint right before the message first appeared.
+2. **`submit(input, { forkFrom })`** starts a run from that checkpoint instead of the thread's latest.
 
-You pick a message, read its **parent** checkpoint, and submit from there with new input. The new turn becomes the canonical continuation of the thread — old messages after the fork point are superseded.
+## When fork points arrive
 
-## Example: edit a user turn
+Fork points are read from the thread's history, one small request, while a `useMessageMetadata` hook is mounted: when the thread loads and when each run ends. So:
+
+- a message that is still streaming has no `parentCheckpointId` yet,
+- a message more than about 500 steps back gets none.
+
+Disable the edit button while `parentCheckpointId` is missing, as the examples below do.
+
+## Example: edit a user message
 
 ```tsx
-import {
-  useStream,
-  useMessageMetadata,
-  type AnyStream,
-} from "@langchain/react";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
+import { useMessageMetadata, type AnyStream } from "@langchain/react";
 
 function EditButton({
   stream,
@@ -38,18 +42,14 @@ function EditButton({
   newContent: string;
 }) {
   const metadata = useMessageMetadata(stream, message.id);
+  const forkFrom = metadata?.parentCheckpointId;
 
   return (
     <button
-      disabled={!metadata?.parentCheckpointId}
-      onClick={() => {
-        const forkFrom = metadata?.parentCheckpointId;
-        if (!forkFrom) return;
-        void stream.submit(
-          { messages: [new HumanMessage(newContent)] },
-          { forkFrom },
-        );
-      }}
+      disabled={forkFrom == null}
+      onClick={() =>
+        void stream.submit({ messages: [new HumanMessage(newContent)] }, { forkFrom })
+      }
     >
       Save edit
     </button>
@@ -57,27 +57,24 @@ function EditButton({
 }
 ```
 
-## Example: retry an AI turn
+## Example: retry the last answer
 
-To retry the last AI turn, fork from the parent checkpoint of the **preceding human message** and re-submit the same input:
+To get a new answer to the last question, fork from the checkpoint before that question and send it again:
 
 ```tsx
 function Retry({ stream }: { stream: AnyStream }) {
   const lastHuman = [...stream.messages]
     .reverse()
-    .find((m) => m.type === "human");
+    .find((message) => message.getType() === "human");
   const metadata = useMessageMetadata(stream, lastHuman?.id);
+  const forkFrom = metadata?.parentCheckpointId;
 
   return (
     <button
-      disabled={!metadata?.parentCheckpointId || !lastHuman}
+      disabled={forkFrom == null || lastHuman == null}
       onClick={() => {
-        const forkFrom = metadata?.parentCheckpointId;
-        if (!forkFrom || !lastHuman) return;
-        void stream.submit(
-          { messages: [lastHuman] },
-          { forkFrom },
-        );
+        if (lastHuman == null) return;
+        void stream.submit({ messages: [lastHuman] }, { forkFrom });
       }}
     >
       Retry
@@ -88,5 +85,5 @@ function Retry({ stream }: { stream: AnyStream }) {
 
 ## Related
 
-- [`useStream` — `submit()` options](./use-stream.md#submit-options)
+- [`useStream`'s `submit()`](./use-stream.md#submit)
 - [`useMessageMetadata`](./selectors.md#usemessagemetadata)

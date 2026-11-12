@@ -1,44 +1,24 @@
-# React SDK docs
+# `@langchain/react` docs
 
-This folder contains guides for using `@langchain/react` to build
-LangGraph-powered React applications. The docs cover the core stream hooks,
-context sharing, selectors, transports, and interactive agent patterns such as
-interrupts, media, and subagents.
+Guides for building React apps on LangGraph agents with `@langchain/react`.
 
-## Core usage
+## Start here
 
-- [`use-stream.md`](./use-stream.md) explains the primary `useStream` hook,
-  including options, return values, submissions, stopping, and hydration.
-- [`context.md`](./context.md) covers `StreamProvider`, `useStreamContext`,
-  type inference, nested providers, and custom adapters.
-- [`suspense.md`](./suspense.md) describes `useSuspenseStream` and how it
-  differs from `useStream`.
-- [`type-safety.md`](./type-safety.md) explains agent-brand inference, custom
-  state types, stream prop drilling, and helper types.
+- [`use-stream.md`](./use-stream.md): the `useStream` hook, its options and return values, and `submit`, `stop`, `respond` and `hydrate`.
+- [`selectors.md`](./selectors.md): the selector hooks, for a subagent's or a subgraph's view, message metadata, the queue and raw events.
+- [`v2-migration.md`](./v2-migration.md): upgrading from `@langchain/react` 1.x.
 
-## Streaming features
+## Features
 
-- [`selectors.md`](./selectors.md) covers companion selector hooks for reading
-  root or scoped stream data.
-- [`submission-queue.md`](./submission-queue.md) explains multitask strategies,
-  queued runs, cancellation, and thread switches.
-- [`interrupts.md`](./interrupts.md) shows how to read, resume, and respond to
-  interrupts, including headless tools.
-- [`multimodal.md`](./multimodal.md) covers media handles, media hooks, and
-  audio/video helpers.
+- [`interrupts.md`](./interrupts.md): reading and answering interrupts, and headless tools.
+- [`submission-queue.md`](./submission-queue.md): messages sent during a run, multitask strategies and `useSubmissionQueue`.
+- [`subagents.md`](./subagents.md): subagent and subgraph snapshots, and showing what one says.
+- [`fork-from-checkpoint.md`](./fork-from-checkpoint.md): editing a message or retrying an answer.
+- [`suspense.md`](./suspense.md): `useSuspenseStream`.
+- [`context.md`](./context.md): `StreamProvider` and `useStreamContext`.
+- [`type-safety.md`](./type-safety.md): types from your agent, and the type helpers.
 
-## Agent workflows
+## Connecting
 
-- [`fork-from-checkpoint.md`](./fork-from-checkpoint.md) explains editing or
-  retrying from a checkpoint.
-- [`subagents.md`](./subagents.md) covers subagent discovery snapshots,
-  rendering subagent content, and subgraphs.
-
-## Connectivity
-
-- [`transports.md`](./transports.md) compares built-in SSE, WebSocket,
-  header-based auth, and custom adapters.
-- [`custom-transport.md`](./custom-transport.md) is the detailed guide for
-  pointing `useStream` at a custom backend — `HttpAgentServerAdapter`,
-  server-side protocol handling, lazy thread binding, and implementing
-  `AgentServerAdapter` directly.
+- [`transports.md`](./transports.md): the Agent Server, headers and auth.
+- [`custom-transport.md`](./custom-transport.md): pointing the hooks at your own backend.
