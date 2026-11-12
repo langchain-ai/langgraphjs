@@ -91,4 +91,45 @@ describe("_runWithRetry", () => {
     const sleepDelays = sleepSpy.mock.calls.map((call) => call[1]);
     expect(sleepDelays).toEqual([60]);
   });
+
+  it("returns a thrown string as the task error", async () => {
+    const invoke = vi.fn().mockRejectedValue("boom");
+
+    const task = makeTask(invoke, {
+      maxAttempts: 2,
+      initialInterval: 10,
+      jitter: false,
+      logWarning: false,
+    });
+
+    const resultPromise = _runWithRetry(task);
+    await vi.runAllTimersAsync();
+    const { error } = await resultPromise;
+
+    expect(error).toBe("boom");
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a thrown object without a message using the default retryOn", async () => {
+    const thrown = { status: 503 };
+    const invoke = vi
+      .fn()
+      .mockRejectedValueOnce(thrown)
+      .mockResolvedValueOnce("ok");
+
+    const task = makeTask(invoke, {
+      maxAttempts: 2,
+      initialInterval: 10,
+      jitter: false,
+      logWarning: false,
+    });
+
+    const resultPromise = _runWithRetry(task);
+    await vi.runAllTimersAsync();
+    const { result, error } = await resultPromise;
+
+    expect(error).toBeUndefined();
+    expect(result).toBe("ok");
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
 });
