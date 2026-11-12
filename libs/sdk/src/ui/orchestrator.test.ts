@@ -3104,6 +3104,21 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("sends nothing it queued once disposed", async () => {
+      mockRunStream();
+      const orch = orchestrator({ queue: "local" });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [message("first")] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      await orch.submit({ messages: [message("second")] });
+
+      orch.dispose();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      await flushMicrotasks(10);
+
+      expect(client.runs.stream).toHaveBeenCalledOnce();
+    });
+
     it("cancels and clears entries without a request", async () => {
       mockRunStream();
       const orch = orchestrator({ queue: "local" });
@@ -4097,6 +4112,30 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("joins a run started elsewhere without reading it again for its stream mode", async () => {
+      (client as unknown as { info: Mock }).info = vi.fn().mockResolvedValue({
+        flags: { stream_namespaces: true, stream_lifecycle: true },
+      });
+      (client.runs.get as Mock).mockResolvedValue({
+        status: "running",
+        kwargs: { stream_mode: ["values", "lifecycle"], subgraphs: true },
+      });
+      mockJoinStream();
+      const orch = await watching({ scopedSubagents: true });
+
+      open()!.send(started("run-b", "1-0"));
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-b",
+          expect.objectContaining({ streamNamespaces: [""] })
+        )
+      );
+      expect(client.runs.get).toHaveBeenCalledOnce();
+      orch.dispose();
+    });
+
     it("still joins a run whose lookup was in flight when the tab hid", async () => {
       const page = Object.assign(new EventTarget(), {
         visibilityState: "visible",
@@ -4176,6 +4215,25 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("joins nothing when the engine is disposed during the run lookup", async () => {
+      let lookedUp!: (run: unknown) => void;
+      (client.runs.get as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          lookedUp = resolve;
+        })
+      );
+      mockJoinStream();
+      const orch = await watching();
+      open()!.send(started("run-b", "1-0"));
+      await vi.waitFor(() => expect(client.runs.get).toHaveBeenCalled());
+
+      orch.dispose();
+      lookedUp({ status: "running" });
+      await flushMicrotasks(10);
+
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+    });
+
     it("stays off for the orchestrator after a 404, on every thread", async () => {
       const orch = await watching();
 
@@ -4228,6 +4286,47 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("holds one of the page's four streams while open", async () => {
+      vi.resetModules();
+      const fresh = await import("./orchestrator.js");
+      const { ScopeRegistry, holdStream } = await import("./scoped.js");
+      const orch = new fresh.StreamOrchestrator<TestState>(
+        createOptions(),
+        createAccessors(client)
+      );
+      orch.initThreadId("t1");
+      orch.activate();
+      await orch.hydrationPromise;
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      const held = [holdStream(), holdStream(), holdStream()];
+      const panelJoin = vi.fn(() => (async function* () {})());
+      const panels = new ScopeRegistry({
+        client: () =>
+          ({ runs: { joinStream: panelJoin } }) as unknown as Client,
+        threadId: () => "t9",
+        messagesKey: () => "messages",
+        reconnectOptions: () => ({}),
+        canFilter: async () => true,
+        rootMessageIds: () => new Set(),
+        finished: () => false,
+        onEvent: () => {},
+      });
+      try {
+        panels.setRun("run-x");
+        panels.acquire(["tools:a"]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(panelJoin).not.toHaveBeenCalled();
+
+        orch.dispose();
+
+        await vi.waitFor(() => expect(panelJoin).toHaveBeenCalledOnce());
+      } finally {
+        orch.dispose();
+        panels.dispose();
+        held.forEach((release) => release());
+      }
+    });
+
     it("closes the watcher on dispose", async () => {
       const orch = await watching();
 
@@ -4245,10 +4344,7 @@ describe("StreamOrchestrator runs", () => {
       await vi.waitFor(() => expect(orch.isLoading).toBe(true));
       await orch.stop();
 
-      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith(
-        "t1",
-        "run-h"
-      );
+      expect(client.runs.cancel).toHaveBeenCalledExactlyOnceWith("t1", "run-h");
       orch.dispose();
     });
   });
@@ -4337,6 +4433,66 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("streams a listed run in its own mode without reading it again", async () => {
+      (client as unknown as { info: Mock }).info = vi.fn().mockResolvedValue({
+        flags: { stream_namespaces: true, stream_lifecycle: true },
+      });
+      listRuns(
+        [],
+        [
+          {
+            run_id: "run-p1",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: {
+              input: null,
+              stream_mode: ["values", "lifecycle"],
+              subgraphs: true,
+            },
+          },
+        ]
+      );
+      mockJoinStream([], Promise.resolve());
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-p1",
+          expect.objectContaining({ streamNamespaces: [""] })
+        )
+      );
+      expect(client.runs.get).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("a disposed engine joins none of the queued runs", async () => {
+      listRuns(
+        [{ run_id: "run-r" }],
+        [
+          {
+            run_id: "run-p1",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: { input: null },
+          },
+        ]
+      );
+      mockJoinStream();
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      orch.dispose();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      await flushMicrotasks(10);
+
+      expect(
+        (client.runs.joinStream as Mock).mock.calls.map(([, runId]) => runId)
+      ).toEqual(["run-r"]);
+    });
+
     it("keeps the card of an answer queued before the reload hidden", async () => {
       listRuns(
         [{ run_id: "run-r" }],
@@ -4361,7 +4517,9 @@ describe("StreamOrchestrator runs", () => {
 
       orch.initThreadId("t1");
       await orch.hydrationPromise;
-      await vi.waitFor(() => expect(orch.values).toHaveProperty("__interrupt__"));
+      await vi.waitFor(() =>
+        expect(orch.values).toHaveProperty("__interrupt__")
+      );
 
       expect(orch.interrupts).toEqual([]);
       orch.dispose();

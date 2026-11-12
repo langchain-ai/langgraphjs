@@ -471,8 +471,11 @@ export class StreamOrchestrator<
   /** Interrupt ids answered by runs started elsewhere, by run. */
   #answeredBy = new Map<string, string[]>();
 
-  /** Queued runs a thread load listed, which another client may have queued. */
-  #listedRuns = new Set<string>();
+  /**
+   * Queued runs a thread load listed, which another client may have queued,
+   * as the list returned them.
+   */
+  #listedRuns = new Map<string, Run>();
 
   #onVisibilityChange = () => this.#syncWatcher();
 
@@ -739,7 +742,7 @@ export class StreamOrchestrator<
       if (resume != null && typeof resume === "object") {
         for (const id of Object.keys(resume)) this.#answered.add(id);
       }
-      this.#listedRuns.add(run.run_id);
+      this.#listedRuns.set(run.run_id, run);
       this.pendingRuns.add({
         id: run.run_id,
         values: run.kwargs?.input as Partial<StateType> | null | undefined,
@@ -1496,6 +1499,8 @@ export class StreamOrchestrator<
     // The run being submitted may be this one, known only once its create
     // request answers.
     if (this.#ownRun) await this.#ownRun;
+    // Lookups and loads can answer after a dispose.
+    if (this.#disposed) return;
     const live = this.#liveRuns.get(runId);
     if (live && !live.signal?.aborted) return live.promise;
 
@@ -1911,16 +1916,25 @@ export class StreamOrchestrator<
   }
 
   #drainQueue(): void {
-    if (!this.isLoading && !this.#submitting && this.pendingRuns.size > 0) {
+    if (
+      !this.#disposed &&
+      !this.isLoading &&
+      !this.#submitting &&
+      this.pendingRuns.size > 0
+    ) {
       const next = this.pendingRuns.shift();
       if (next) {
         this.#submitting = true;
         const sent =
           this.#options.queue === "local"
             ? this.submitDirect(next.values as StateType, next.options)
-            : this.#join(next.id, undefined, undefined, true).finally(() =>
-                this.#unhide(next.options?.command)
-              );
+            : this.#join(
+                next.id,
+                undefined,
+                undefined,
+                true,
+                this.#listedRuns.get(next.id)
+              ).finally(() => this.#unhide(next.options?.command));
         void sent.finally(() => {
           this.#submitting = false;
           this.#drainQueue();
@@ -2265,6 +2279,7 @@ export class StreamOrchestrator<
 
     const watch = { threadId, controller: new AbortController() };
     this.#watch = watch;
+    const releaseStream = holdStream();
     void followThread(
       this.#accessors.getClient(),
       threadId,
@@ -2272,6 +2287,7 @@ export class StreamOrchestrator<
       (event, data) => this.#onThreadEvent(threadId, event, data),
       watch.controller.signal
     ).then((end) => {
+      releaseStream();
       if (end === "unsupported") this.#watchOff = true;
       if (end === "refused") this.#watchRefused = threadId;
       // A failed watcher keeps its place, so it opens again only after the
@@ -2320,26 +2336,29 @@ export class StreamOrchestrator<
     void this.#accessors
       .getClient()
       .runs.get(threadId, runId)
-      .then(
-        (run) => run.status === "pending" || run.status === "running",
-        // Unknown, the run shows when its end reads the state.
-        () => undefined
-      )
-      .then((running) => {
+      // Unknown, the run shows when its end reads the state.
+      .catch(() => undefined)
+      .then((run) => {
         if (
-          running == null ||
+          run == null ||
           threadId !== this.#threadId ||
           this.#threadRuns.get(runId) !== "running"
         ) {
           return;
         }
-        if (!running) {
+        if (run.status !== "pending" && run.status !== "running") {
           this.#endRun(runId);
           void this.#reload(threadId, { quiet: true });
           return;
         }
         const head = this.#history.data?.at(0)?.checkpoint?.checkpoint_id;
-        void this.#join(runId, "-1", { checkpointId: head ?? undefined }, true);
+        void this.#join(
+          runId,
+          "-1",
+          { checkpointId: head ?? undefined },
+          true,
+          run
+        );
       });
   }
 
