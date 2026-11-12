@@ -2982,7 +2982,9 @@ export class StreamController<
         this.#settleParkedInterruptsPromise = undefined;
       }
     };
-    this.#settleParkedInterruptsPromise ??= makePromise();
+    // Defer the body so its `finally` runs after the assignment; an early
+    // return would otherwise leave a settled promise cached for later calls.
+    this.#settleParkedInterruptsPromise ??= Promise.resolve().then(makePromise);
     return this.#settleParkedInterruptsPromise;
   }
 
