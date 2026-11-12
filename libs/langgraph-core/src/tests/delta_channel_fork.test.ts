@@ -14,7 +14,7 @@ import { EphemeralValue } from "../channels/ephemeral_value.js";
 import { messagesDeltaReducer, type Messages } from "../graph/messages_reducer.js";
 import { Annotation } from "../graph/index.js";
 import { StateGraph } from "../graph/state.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Channel, RawPregel } from "./raw_pregel.js";
 import type { StateSnapshot } from "../pregel/types.js";
 import { START, END, INPUT, COPY, Command, Send } from "../constants.js";
 import { interrupt } from "../interrupt.js";
@@ -1085,7 +1085,7 @@ describe("updateState asNode inference (from langgraph#8548)", () => {
   const config = thread("t");
 
   const chainAfterADeltaChannel = () =>
-    new Pregel({
+    new RawPregel({
       nodes: {
         a: Channel.subscribeTo("inp")
           .pipe(() => ["a"])
@@ -1121,7 +1121,7 @@ describe("updateState asNode inference (from langgraph#8548)", () => {
   });
 
   it("updateState after a fork seal infers the subscriber that ran", async () => {
-    const graph = new Pregel({
+    const graph = new RawPregel({
       nodes: {
         a: Channel.subscribeTo("inp")
           .pipe(() => ["a"])
@@ -1156,7 +1156,7 @@ describe("updateState asNode inference (from langgraph#8548)", () => {
   });
 
   it("updateState after a fork seal infers the node whose read it advanced", async () => {
-    const graph = new Pregel({
+    const graph = new RawPregel({
       nodes: {
         a: Channel.subscribeTo("inp")
           .pipe(() => ["a"])
@@ -1237,7 +1237,7 @@ describe("updateState asNode inference (from langgraph#8548)", () => {
     const config = { configurable: { thread_id: "t" } };
 
     async function runOnce(reads: number[][]) {
-      const graph = new Pregel({
+      const graph = new RawPregel({
         nodes: {
           writer: Channel.subscribeTo("a")
             .pipe(() => [1])

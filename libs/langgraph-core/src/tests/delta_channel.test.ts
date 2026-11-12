@@ -20,7 +20,7 @@ import {
 import { DeltaChannel } from "../channels/delta.js";
 import { BinaryOperatorAggregate } from "../channels/binop.js";
 import { LastValue } from "../channels/last_value.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Channel, RawPregel } from "./raw_pregel.js";
 import {
   channelsFromCheckpoint,
   createCheckpoint,
@@ -64,7 +64,7 @@ const strListReducer = (state: string[], writes: string[][]): string[] => {
 
 const sorted = (values: number[]) => values.sort((a, b) => a - b);
 const deltaInputGraph = (snapshotFrequency?: number) =>
-  new Pregel({
+  new RawPregel({
     nodes: {
       n: Channel.subscribeTo("go")
         .pipe(() => [2])
@@ -864,7 +864,7 @@ describe("a DeltaChannel that was never written", () => {
   });
 
   it("keeps both inputs when a node update follows two updates as input", async () => {
-    const graph = new Pregel({
+    const graph = new RawPregel({
       nodes: {
         n: Channel.subscribeTo("go")
           .pipe(() => [0])
@@ -1501,7 +1501,7 @@ describe("DeltaChannel Overwrite parity (langgraph#8124, #8125)", () => {
 
     it("snapshots its DeltaChannel when the update is the input", async () => {
       const saver = new MemorySaver();
-      const graph = new Pregel({
+      const graph = new RawPregel({
         nodes: {
           n: Channel.subscribeTo("go")
             .pipe(() => [2])

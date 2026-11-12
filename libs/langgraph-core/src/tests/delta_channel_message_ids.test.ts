@@ -15,7 +15,7 @@ import { StateGraph } from "../graph/state.js";
 import { Command, Overwrite, START } from "../constants.js";
 import { DeltaChannel } from "../channels/delta.js";
 import { LastValue } from "../channels/last_value.js";
-import { Channel, Pregel } from "../pregel/index.js";
+import { Channel, RawPregel } from "./raw_pregel.js";
 import type { StateSnapshot } from "../pregel/types.js";
 
 async function messageIds(
@@ -135,7 +135,7 @@ describe("a message saved through updateState", () => {
 });
 
 function pregelGraph(seen: (string | undefined)[][]) {
-  return new Pregel({
+  return new RawPregel({
     nodes: {
       look: Channel.subscribeTo(["go"])
         .join(["messages"])
