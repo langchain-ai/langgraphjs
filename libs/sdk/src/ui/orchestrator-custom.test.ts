@@ -433,11 +433,14 @@ describe("CustomStreamOrchestrator", () => {
       void orch.submit({ messages: [] });
       await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
       orch.switchThread("t2");
+      const loading: boolean[] = [];
+      orch.subscribe(() => loading.push(orch.isLoading));
       open();
       await first;
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(transport.stream).toHaveBeenCalledTimes(1);
+      expect(loading).not.toContain(true);
 
       orch.dispose();
     });
@@ -457,6 +460,45 @@ describe("CustomStreamOrchestrator", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(transport.stream).toHaveBeenCalledTimes(1);
+
+      orch.dispose();
+    });
+
+    it("lists a submit made during a run until its turn, and drops it when cancelled", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const first = orch.submit({ messages: [human("h1", "one")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+
+      void orch.submit({ messages: [human("h2", "two")] });
+      expect(orch.queueEntries.map((entry) => entry.values)).toEqual([
+        { messages: [human("h2", "two")] },
+      ]);
+
+      expect(await orch.cancelQueueItem(orch.queueEntries[0].id)).toBe(true);
+      open();
+      await first;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(orch.queueEntries).toEqual([]);
+      expect(transport.stream).toHaveBeenCalledTimes(1);
+
+      orch.dispose();
+    });
+
+    it("starts a switched thread empty, without the first thread's initialValues", () => {
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          threadId: "t1",
+          initialValues: { messages: [human("h0", "earlier")] },
+        })
+      );
+
+      orch.switchThread("t2");
+
+      expect(orch.messages).toEqual([]);
 
       orch.dispose();
     });
@@ -557,6 +599,7 @@ describe("CustomStreamOrchestrator", () => {
 
       const answered = orch.respond("yes");
       expect(orch.interrupts).toEqual([]);
+      expect(orch.interrupt).toBeUndefined();
       await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
       expect(transport.stream.mock.calls[1][0].command).toEqual({
         resume: { i1: "yes" },

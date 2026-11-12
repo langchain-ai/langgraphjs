@@ -13,10 +13,7 @@ import {
   toMessageClass,
   ensureMessageInstances,
 } from "./messages.js";
-import {
-  extractInterrupts,
-  userFacingInterruptsFromValuesArray,
-} from "./interrupts.js";
+import { userFacingInterruptsFromValuesArray } from "./interrupts.js";
 import { normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import {
@@ -24,7 +21,7 @@ import {
   serializeUpdateMessages,
 } from "./optimistic-input.js";
 import type { RespondOptions } from "./orchestrator.js";
-import type { QueueEntry } from "./queue.js";
+import { PendingRunsTracker } from "./queue.js";
 import type { Scope, ScopeSnapshot } from "./scoped.js";
 import { StreamStore } from "./store.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
@@ -91,7 +88,7 @@ export class CustomStreamOrchestrator<
 
   readonly #channels = new ChannelListeners();
 
-  readonly #historyValues: StateType;
+  #historyValues: StateType;
 
   #threadId: string | null;
 
@@ -111,7 +108,14 @@ export class CustomStreamOrchestrator<
 
   readonly #answered = new Set<string>();
 
-  #waitingDropped = 0;
+  readonly #queue = new PendingRunsTracker<
+    StateType,
+    CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  >();
+
+  #tail: Promise<void> = Promise.resolve();
+
+  #turns = 0;
 
   /** Always `false`: a custom transport has no route to read a thread. */
   readonly isThreadLoading = false;
@@ -129,9 +133,6 @@ export class CustomStreamOrchestrator<
   readonly scopes = {
     acquire: (_namespace: readonly string[]): Scope => EMPTY_SCOPE,
   };
-
-  /** Empty: a submit made during a run waits in the stream, unlisted. */
-  readonly queueEntries: ReadonlyArray<QueueEntry<StateType>> = [];
 
   /** Empty: fork points come from the Agent Server's thread history. */
   readonly messageMetadataStore = new StreamStore<MessageMetadataMap>(
@@ -163,6 +164,7 @@ export class CustomStreamOrchestrator<
       this.#flushPendingHeadlessToolInterrupts();
       this.#notify();
     });
+    this.#queue.subscribe(() => this.#notify());
 
     const historyMessages = this.#getMessages(this.#historyValues);
     if (
@@ -241,9 +243,12 @@ export class CustomStreamOrchestrator<
     return this.#threadId ?? undefined;
   }
 
-  /** Show a thread. Nothing is read: a custom transport has no thread routes. */
+  /**
+   * Show a thread before any run, with `initialValues`. Nothing is read: a
+   * custom transport has no thread routes.
+   */
   initThreadId(threadId: string | undefined): void {
-    this.switchThread(threadId ?? null);
+    this.#threadId = threadId ?? null;
   }
 
   /** Rejects: a custom transport has no route to read a thread. */
@@ -278,13 +283,20 @@ export class CustomStreamOrchestrator<
     return () => {};
   }
 
-  /** Resolves to `false`: nothing waits in a list. */
-  async cancelQueueItem(_id: string): Promise<boolean> {
-    return false;
+  /** The submits made during a run, waiting for their turn, oldest first. */
+  get queueEntries() {
+    return this.#queue.entries;
   }
 
-  /** A no-op: nothing waits in a list. */
-  async clearQueue(): Promise<void> {}
+  /** Drop a waiting submit. Resolves to whether it was still waiting. */
+  async cancelQueueItem(id: string): Promise<boolean> {
+    return this.#queue.remove(id);
+  }
+
+  /** Drop every waiting submit. */
+  async clearQueue(): Promise<void> {
+    this.#queue.removeAll();
+  }
 
   #getMessages = (value: StateType): Message[] => {
     const messagesKey = this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
@@ -375,12 +387,9 @@ export class CustomStreamOrchestrator<
     ).filter(({ id }) => id == null || !this.#answered.has(id));
   }
 
-  /**
-   * The first active interrupt extracted from the current stream values,
-   * or `undefined` if there are no interrupts.
-   */
+  /** The first of {@link interrupts}. */
   get interrupt(): Interrupt<GetInterruptType<Bag>> | undefined {
-    return extractInterrupts<GetInterruptType<Bag>>(this.stream.values);
+    return this.interrupts[0];
   }
 
   /**
@@ -471,7 +480,7 @@ export class CustomStreamOrchestrator<
    * and its server sees the request aborted.
    */
   stop(_options?: { cancel?: boolean }): Promise<void> {
-    this.#waitingDropped += 1;
+    this.#queue.removeAll();
     return this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
@@ -480,14 +489,16 @@ export class CustomStreamOrchestrator<
   /**
    * Switch to a different thread. If the thread ID actually changed,
    * the current stream is cleared, the submits waiting behind it are
-   * dropped, and listeners are notified.
+   * dropped, and listeners are notified. The new thread starts empty:
+   * `initialValues` were the first thread's.
    *
    * @param newThreadId - The thread ID to switch to, or `null` to clear.
    */
   switchThread(newThreadId: string | null): void {
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
-      this.#waitingDropped += 1;
+      this.#historyValues = {} as StateType;
+      this.#queue.removeAll();
       this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
       this.#notify();
@@ -510,6 +521,35 @@ export class CustomStreamOrchestrator<
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> {
+    // Submits run one at a time. One made before the others finish is listed
+    // until its turn, so an app can show or cancel it.
+    const waiting =
+      this.#turns > 0
+        ? {
+            id: uuidv7(),
+            values: values as Partial<StateType> | null | undefined,
+            options: submitOptions,
+            createdAt: new Date(),
+          }
+        : undefined;
+    if (waiting != null) this.#queue.add(waiting);
+    this.#turns += 1;
+    const turn = this.#tail.then(() =>
+      waiting == null || this.#queue.remove(waiting.id)
+        ? this.#run(values, submitOptions)
+        : undefined
+    );
+    const done = () => {
+      this.#turns -= 1;
+    };
+    this.#tail = turn.then(done, done);
+    await turn;
+  }
+
+  async #run(
+    values: GetUpdateType<Bag, StateType> | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
@@ -519,15 +559,10 @@ export class CustomStreamOrchestrator<
       submitOptions?.optimisticValues == null
         ? input
         : undefined;
-    const waitingDropped = this.#waitingDropped;
     let usableThreadId: string | undefined;
 
     await this.stream.start(
       async (signal: AbortSignal) => {
-        if (waitingDropped !== this.#waitingDropped) {
-          return (async function* () {})();
-        }
-
         // Set as the run starts, so a submit waiting behind a run doesn't
         // change what that run shows.
         this.stream.setStreamValues(() => {
@@ -701,6 +736,7 @@ export class CustomStreamOrchestrator<
     this.#disposed = true;
     this.#streamUnsub?.();
     this.#streamUnsub = null;
+    this.#queue.removeAll();
     void this.stream.stop(this.#historyValues, {
       onStop: this.#options.onStop,
     });
