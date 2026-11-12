@@ -213,6 +213,28 @@ describe("Client streaming with retry", () => {
       expect(body).not.toHaveProperty("namespace");
     });
 
+    test("a run stream that asked for namespaces drops the others", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createSSEResponseBody([
+            { id: "1", event: "values", data: {} },
+            { id: "2", event: "messages|tools:a", data: [{}, {}] },
+            { id: "3", event: "messages", data: [{}, {}] },
+          ]),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      const events = await gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          input: {},
+          streamNamespaces: [""],
+        })
+      );
+
+      expect(events.map((e) => e.event)).toEqual(["values", "messages"]);
+    });
+
     test("passes streamMode including tools in request body", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];
 
@@ -572,6 +594,39 @@ describe("Client streaming with retry", () => {
 
       const [url] = mockFetch.mock.calls[0];
       expect(url.toString()).toContain("cancel_on_disconnect=1");
+    });
+
+    test("a join that asked for namespaces drops a subagent's events an older pod sent", async () => {
+      const chunks = [
+        { id: "1", event: "metadata", data: { run_id: "run-1" } },
+        { id: "2", event: "values", data: { messages: [] } },
+        { id: "3", event: "lifecycle|tools:a", data: { event: "started" } },
+        { id: "4", event: "messages|tools:a", data: [{}, {}] },
+        { id: "5", event: "values|tools:a", data: { messages: [] } },
+        { id: "6", event: "end", data: { status: "success" } },
+      ];
+      const respond = () =>
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      mockFetch.mockImplementation(() => Promise.resolve(respond()));
+
+      const chat = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", { streamNamespaces: [""] })
+      );
+      const panel = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          streamNamespaces: ["tools:a"],
+        })
+      );
+      const everything = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1")
+      );
+
+      expect(chat.map((e) => e.id)).toEqual(["1", "2", "3", "6"]);
+      expect(panel.map((e) => e.id)).toEqual(["1", "4", "5", "6"]);
+      expect(everything).toHaveLength(chunks.length);
     });
 
     test("sends streamNamespaces as repeated namespace params", async () => {

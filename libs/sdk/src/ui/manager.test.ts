@@ -453,6 +453,41 @@ describe("StreamManager", () => {
         { namespace: undefined, mutate: expect.any(Function) }
       );
     });
+
+    it("an unknown tool event kind never reaches onToolEvent", async () => {
+      const onToolEvent = vi.fn();
+      const onError = vi.fn();
+      const events = [
+        {
+          event: "tools" as const,
+          data: { event: "tool-started", tool_call_id: "call_1" },
+        },
+        { event: "tools" as const, data: null },
+        {
+          event: "tools" as const,
+          data: { event: "on_tool_start", name: "weather", input: {} },
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: { onToolEvent },
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(onToolEvent).toHaveBeenCalledTimes(1);
+      expect(onToolEvent.mock.calls[0][0]).toMatchObject({
+        event: "on_tool_start",
+      });
+    });
   });
 
   describe("multiple interrupts", () => {
