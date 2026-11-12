@@ -3489,6 +3489,29 @@ describe("StreamOrchestrator runs", () => {
     orch.dispose();
   });
 
+  it("a submit made while a new thread's create fails creates a thread itself", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let fail!: () => void;
+    (client.threads.create as Mock).mockReturnValueOnce(
+      new Promise((_, reject) => {
+        fail = () => reject(new Error("HTTP 500"));
+      })
+    );
+    mockRunStream(undefined, { ended: Promise.resolve() });
+    const orch = orchestrator();
+    const first = orch.submit({ messages: [message("a")] });
+    await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+
+    const second = orch.submit({ messages: [message("b")] });
+    fail();
+    await first;
+    await second;
+
+    expect(client.threads.create).toHaveBeenCalledTimes(2);
+    expect(client.runs.stream).toHaveBeenCalledOnce();
+    orch.dispose();
+  });
+
   it("a submit with its own optimisticValues shows only those and sends its input with an id", async () => {
     mockRunStream(undefined, { created: new Promise(() => {}) });
     const orch = orchestrator();

@@ -406,7 +406,7 @@ export class StreamOrchestrator<
 
   #threadId: string | undefined;
 
-  #threadIdPromise: Promise<string> | null = null;
+  #threadIdPromise: Promise<string | undefined> | null = null;
 
   #threadIdStreaming: string | null = null;
 
@@ -1882,7 +1882,12 @@ export class StreamOrchestrator<
             metadata: submitOptions?.metadata,
           });
 
-          this.#threadIdPromise = threadPromise.then((t) => t.thread_id);
+          // A failed create leaves no thread, so a submit made meanwhile
+          // creates one itself.
+          this.#threadIdPromise = threadPromise.then(
+            (t) => t.thread_id,
+            () => undefined
+          );
 
           const thread = await threadPromise;
 
