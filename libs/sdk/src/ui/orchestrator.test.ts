@@ -3024,6 +3024,25 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("shows its first submit's input before creating it", async () => {
+      let create!: () => void;
+      (client.threads.create as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          create = () => resolve({ thread_id: "t-new" });
+        })
+      );
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = await loadMissing();
+
+      const submitted = orch.submit({ messages: [message("hi")] });
+      await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+
+      expect(orch.messages.map(({ id }) => id)).toEqual(["hi"]);
+      create();
+      await submitted;
+      orch.dispose();
+    });
+
     it("a switch away while it is created shows nothing of the submit that creates it", async () => {
       let create!: () => void;
       (client.threads.create as Mock).mockReturnValueOnce(
@@ -3433,6 +3452,40 @@ describe("StreamOrchestrator runs", () => {
     expect(streamInput().messages).toEqual([
       expect.objectContaining({ type: "human", content: "hi", id: shown.id }),
     ]);
+    orch.dispose();
+  });
+
+  it("shows a new thread's first input before the thread is created", async () => {
+    let create!: () => void;
+    (client.threads.create as Mock).mockReturnValueOnce(
+      new Promise((resolve) => {
+        create = () => resolve({ thread_id: "new-thread-1" });
+      })
+    );
+    mockRunStream(undefined, { ended: Promise.resolve() });
+    const orch = orchestrator();
+
+    const submitted = orch.submit({ messages: [message("hi")] });
+    await vi.waitFor(() => expect(client.threads.create).toHaveBeenCalled());
+
+    expect(orch.messages.map(({ id }) => id)).toEqual(["hi"]);
+    create();
+    await submitted;
+    orch.dispose();
+  });
+
+  it("keeps a new thread's first input, marked failed, when its create fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    (client.threads.create as Mock).mockRejectedValueOnce(new Error("HTTP 500"));
+    const orch = orchestrator();
+
+    await orch.submit({ messages: [message("hi")] });
+
+    expect(orch.messages.map(({ id }) => id)).toEqual(["hi"]);
+    expect(
+      orch.messageMetadataStore.getSnapshot().get("hi")?.optimisticStatus
+    ).toBe("failed");
+    expect(orch.error).toBeInstanceOf(Error);
     orch.dispose();
   });
 
