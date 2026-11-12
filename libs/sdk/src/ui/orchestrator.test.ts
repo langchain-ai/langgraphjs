@@ -2930,6 +2930,7 @@ describe("StreamOrchestrator runs", () => {
       expect(client.threads.create).toHaveBeenCalledExactlyOnceWith({
         threadId: "t-new",
         metadata: { from: "chat" },
+        ifExists: "do_nothing",
       });
       streamedOn("t-new");
       expect(
@@ -2964,6 +2965,7 @@ describe("StreamOrchestrator runs", () => {
       expect(client.threads.create).toHaveBeenCalledExactlyOnceWith({
         threadId: "t-new",
         metadata: undefined,
+        ifExists: "do_nothing",
       });
       streamedOn("t-new");
       orch.dispose();
@@ -3000,24 +3002,24 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("a 409 on its creation shows the error, and the next submit runs on it", async () => {
+    it("a create the server refuses shows the error, and the next submit asks again", async () => {
       vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const conflict = Object.assign(
+      const refused = Object.assign(
         new Error("HTTP 409: Thread already exists"),
         { status: 409 }
       );
-      (client.threads.create as Mock).mockRejectedValueOnce(conflict);
+      (client.threads.create as Mock).mockRejectedValueOnce(refused);
       mockRunStream(undefined, { ended: Promise.resolve() });
       const onError = vi.fn();
       const orch = await loadMissing({ onError });
 
       await orch.submit({ messages: [] });
-      expect(orch.error).toBe(conflict);
-      expect(onError).toHaveBeenCalledWith(conflict, undefined);
+      expect(orch.error).toBe(refused);
+      expect(onError).toHaveBeenCalledWith(refused, undefined);
       expect(client.runs.stream).not.toHaveBeenCalled();
 
       await orch.submit({ messages: [] });
-      expect(client.threads.create).toHaveBeenCalledOnce();
+      expect(client.threads.create).toHaveBeenCalledTimes(2);
       streamedOn("t-new");
       orch.dispose();
     });

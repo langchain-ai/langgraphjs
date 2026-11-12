@@ -2082,9 +2082,9 @@ export class StreamOrchestrator<
 
   /**
    * Creates a thread a read found missing, with its id, before the first run
-   * on it, so the app's `threads.create` auth handler runs. A 409 means
-   * another client created it since: the error shows, and the next submit
-   * runs on it.
+   * on it, so the app's `threads.create` auth handler runs. If it exists by
+   * now, such as when another tab created it, the server returns it when
+   * this user's auth can read it, and refuses it otherwise.
    */
   async #createMissingThread(
     threadId: string,
@@ -2092,16 +2092,8 @@ export class StreamOrchestrator<
   ): Promise<void> {
     await this.#accessors
       .getClient()
-      .threads.create({ threadId, metadata })
-      .then(
-        () => this.#threadFound(threadId),
-        (error: unknown) => {
-          if ((error as { status?: unknown } | null)?.status === 409) {
-            this.#threadFound(threadId);
-          }
-          throw error;
-        }
-      );
+      .threads.create({ threadId, metadata, ifExists: "do_nothing" });
+    this.#threadFound(threadId);
   }
 
   /** A create can land after a switch, so only the current thread is marked. */
