@@ -7,7 +7,10 @@ import { isGraphBubbleUp, isParentCommand } from "../errors.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 import { runAttemptWithTimeout } from "./timeout.js";
 import { PregelExecutableTask, type PregelScratchpad } from "./types.js";
-import { getParentCheckpointNamespace } from "./utils/config.js";
+import {
+  getParentCheckpointNamespace,
+  recastCheckpointNamespace,
+} from "./utils/config.js";
 import { patchConfigurable, type RetryPolicy } from "./utils/index.js";
 
 export const DEFAULT_INITIAL_INTERVAL = 500;
@@ -133,7 +136,8 @@ export async function _runWithRetry<
       if (isParentCommand(error)) {
         const ns: string = config?.configurable?.checkpoint_ns;
         const cmd = error.command;
-        if (cmd.graph === ns) {
+        // a checkpointer: true subgraph runs without task ids in its namespace
+        if (cmd.graph === ns || cmd.graph === recastCheckpointNamespace(ns)) {
           // this command is for the current graph, handle it
           for (const writer of pregelTask.writers) {
             await writer.invoke(cmd, config);
