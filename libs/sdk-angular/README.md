@@ -114,7 +114,7 @@ In-depth guides live under [`docs/`](./docs):
 
 - [`inject-stream.md`](./docs/inject-stream.md) — options + return-shape reference
 - [`transports.md`](./docs/transports.md) — SSE, WebSocket, and custom `AgentServerAdapter`
-- [`custom-transport.md`](./docs/custom-transport.md) — implementing `AgentServerAdapter` against your own backend, with a worked walkthrough of [`examples/ui-react-transport`](../../examples/ui-react-transport)
+- [`custom-transport.md`](./docs/custom-transport.md) — implementing `AgentServerAdapter` against your own backend, with a worked walkthrough of [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport)
 - [`selectors.md`](./docs/selectors.md) — scoped reads (`injectMessages`, `injectValues`, media, channels, …)
 - [`interrupts.md`](./docs/interrupts.md) — handling and responding to interrupts
 - [`branching.md`](./docs/branching.md) — forking via `injectMessageMetadata` + `submit({ forkFrom })`

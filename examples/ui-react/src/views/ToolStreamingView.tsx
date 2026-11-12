@@ -8,7 +8,7 @@ import {
 } from "@langchain/react";
 
 import type { agent as toolStreamingAgentType } from "../agents/tool-streaming";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -31,12 +31,11 @@ interface ProgressPayload {
   completed?: string[];
 }
 
-export function ToolStreamingView({ transport }: { transport: Transport }) {
+export function ToolStreamingView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const stream = useStream<typeof toolStreamingAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -63,7 +62,6 @@ export function ToolStreamingView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Tool Streaming"
       description={
         <>

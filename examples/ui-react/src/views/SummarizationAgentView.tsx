@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { type InferStateType, useMessages, useStream } from "@langchain/react";
 
 import type { agent as summarizationAgentType } from "../agents/summarization-agent";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -22,17 +22,12 @@ const SUGGESTIONS = [
 const isSummaryText = (content: string) =>
   content.toLowerCase().includes("conversation summary");
 
-export function SummarizationAgentView({
-  transport,
-}: {
-  transport: Transport;
-}) {
+export function SummarizationAgentView() {
   const [threadId, setThreadId] = useState<string | null>(null);
 
   const stream = useStream<typeof summarizationAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -62,7 +57,6 @@ export function SummarizationAgentView({
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Summarization Middleware"
       description={
         <>

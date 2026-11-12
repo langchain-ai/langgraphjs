@@ -9,7 +9,7 @@ import {
 } from "@langchain/react";
 
 import type { agent as deepAgentType } from "../agents/deep-agent";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -31,7 +31,7 @@ type StreamState = DeepStream["values"];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GenericStream = UseStreamReturn<any, any, any>;
 
-export function DeepAgentView({ transport }: { transport: Transport }) {
+export function DeepAgentView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [expandedSubagentId, setExpandedSubagentId] = useState<string | null>(
     null
@@ -40,7 +40,6 @@ export function DeepAgentView({ transport }: { transport: Transport }) {
   const stream = useStream<typeof deepAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -67,7 +66,6 @@ export function DeepAgentView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Deep Agent"
       description={
         <>

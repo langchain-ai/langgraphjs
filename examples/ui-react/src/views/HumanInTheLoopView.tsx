@@ -4,7 +4,7 @@ import { useStream, type UseStreamReturn } from "@langchain/react";
 import type { HITLRequest, HITLResponse } from "langchain";
 
 import type { agent as hitlAgentType } from "../agents/human-in-the-loop";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import {
   Composer,
   HumanReviewPanel,
@@ -25,14 +25,13 @@ const SUGGESTIONS = [
 type HITLStream = UseStreamReturn<typeof hitlAgentType, HITLRequest>;
 type StreamState = HITLStream["values"];
 
-export function HumanInTheLoopView({ transport }: { transport: Transport }) {
+export function HumanInTheLoopView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const stream = useStream<typeof hitlAgentType, HITLRequest>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -80,7 +79,6 @@ export function HumanInTheLoopView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Human in the Loop"
       description={
         <>

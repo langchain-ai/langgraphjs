@@ -1,8 +1,6 @@
 import type { ComponentType } from "react";
 
-import type { Transport } from "./api";
 import { BranchingChatView } from "./views/BranchingChatView";
-import { CustomChannelView } from "./views/CustomChannelView";
 import { DeepAgentView } from "./views/DeepAgentView";
 import { FanOutView } from "./views/FanOutView";
 import { HeadlessToolsView } from "./views/HeadlessToolsView";
@@ -25,7 +23,7 @@ export interface ExampleDefinition {
   description: string;
   category: ExampleCategory;
   assistantId: string;
-  component: ComponentType<{ transport: Transport }>;
+  component: ComponentType;
 }
 
 export const CATEGORIES: Record<
@@ -130,14 +128,6 @@ export const EXAMPLES: ExampleDefinition[] = [
     category: "advanced",
     assistantId: "fan-out",
     component: FanOutView,
-  },
-  {
-    id: "custom-channel",
-    title: "Custom Stream Channel",
-    description: "Server-side transformer rendered from one custom channel.",
-    category: "advanced",
-    assistantId: "research-timeline",
-    component: CustomChannelView,
   },
 ];
 

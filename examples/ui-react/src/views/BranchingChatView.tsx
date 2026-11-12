@@ -4,7 +4,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { getBranchContext } from "@langchain/langgraph-sdk/ui";
 
 import type { agent as branchingAgentType } from "../agents/branching-chat";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -33,7 +33,7 @@ interface BranchMetadata {
   branchOptions?: string[];
 }
 
-export function BranchingChatView({ transport }: { transport: Transport }) {
+export function BranchingChatView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [branch, setBranch] = useState("");
@@ -42,7 +42,6 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
   const stream = useStream<typeof branchingAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -142,7 +141,6 @@ export function BranchingChatView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Branching Chat"
       description={
         <>

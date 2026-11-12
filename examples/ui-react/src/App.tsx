@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { API_URL, isTransport, type Transport } from "./api";
-import { TransportToggle } from "./components/TransportToggle";
+import { API_URL } from "./api";
 import {
   CATEGORIES,
   DEFAULT_EXAMPLE_ID,
@@ -11,38 +10,25 @@ import {
 } from "./examples";
 import langchainIcon from "./langchain-icon.svg";
 
-const DEFAULT_TRANSPORT: Transport = "sse";
-
-function getUrlSelection(): { exampleId: string; transport: Transport } {
-  if (typeof window === "undefined") {
-    return { exampleId: DEFAULT_EXAMPLE_ID, transport: DEFAULT_TRANSPORT };
-  }
-  const params = new URLSearchParams(window.location.search);
-  const exampleId = params.get("agent");
-  const transport = params.get("transport");
-  return {
-    exampleId: getExample(exampleId)?.id ?? DEFAULT_EXAMPLE_ID,
-    transport: isTransport(transport) ? transport : DEFAULT_TRANSPORT,
-  };
+function getUrlExampleId(): string {
+  if (typeof window === "undefined") return DEFAULT_EXAMPLE_ID;
+  const exampleId = new URLSearchParams(window.location.search).get("agent");
+  return getExample(exampleId)?.id ?? DEFAULT_EXAMPLE_ID;
 }
 
 export function App() {
-  const initial = getUrlSelection();
-  const [activeExampleId, setActiveExampleId] = useState(initial.exampleId);
-  const [transport, setTransport] = useState<Transport>(initial.transport);
+  const [activeExampleId, setActiveExampleId] = useState(getUrlExampleId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const activeExample = getExample(activeExampleId) ?? EXAMPLES[0];
-  const viewKey = `${activeExample.id}:${transport}`;
   const ActiveView = activeExample.component;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     url.searchParams.set("agent", activeExample.id);
-    url.searchParams.set("transport", transport);
     window.history.replaceState({}, "", url);
-  }, [activeExample.id, transport]);
+  }, [activeExample.id]);
 
   return (
     <div className="app-frame">
@@ -79,17 +65,16 @@ export function App() {
             <h1>React streaming examples</h1>
             <p className="app-subtitle">
               Production-grade examples for the v2 React streaming surface:
-              messages, tool calls, state values, custom channels, headless
-              tools, interrupts, subgraphs, and subagents.
+              messages, tool calls, state values, headless tools, interrupts,
+              subgraphs, and subagents.
             </p>
           </div>
           <div className="header-badges">
             <span className="header-badge">API: {API_URL}</span>
-            <TransportToggle transport={transport} onChange={setTransport} />
           </div>
         </header>
 
-        <ActiveView key={viewKey} transport={transport} />
+        <ActiveView key={activeExample.id} />
       </main>
     </div>
   );
