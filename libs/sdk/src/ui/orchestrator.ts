@@ -406,7 +406,7 @@ export class StreamOrchestrator<
 
   #threadId: string | undefined;
 
-  #threadIdPromise: Promise<string> | null = null;
+  #threadIdPromise: Promise<string | undefined> | null = null;
 
   #threadIdStreaming: string | null = null;
 
@@ -1838,33 +1838,12 @@ export class StreamOrchestrator<
         releaseStream = holdStream();
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
-        if (usableThreadId) {
-          // Only the thread's load tells whether it exists yet.
-          if (this.#history.isLoading) await this.#hydration;
-          if (this.#missingThreads.has(usableThreadId)) {
-            await this.#createMissingThread(
-              usableThreadId,
-              submitOptions?.metadata
-            );
-          }
-          // A stop or thread switch came meanwhile, so its input must not show.
-          if (signal.aborted) return (async function* () {})();
-          this.#threadIdStreaming = usableThreadId;
-        }
-        if (!usableThreadId) {
-          const threadPromise = client.threads.create({
-            threadId: submitOptions?.threadId,
-            metadata: submitOptions?.metadata,
-          });
+        // Only the thread's load tells whether it exists yet.
+        if (usableThreadId && this.#history.isLoading) await this.#hydration;
+        // A stop or thread switch came meanwhile, so its input must not show.
+        if (signal.aborted) return (async function* () {})();
 
-          this.#threadIdPromise = threadPromise.then((t) => t.thread_id);
-
-          const thread = await threadPromise;
-
-          usableThreadId = thread.thread_id;
-          this.#setThreadIdFromSubmit(usableThreadId);
-        }
-
+        // Before any thread create, so a new chat's input shows at once.
         this.stream.setStreamValues(() => {
           const current = { ...this.historyValues, ...this.stream.values };
           const prev =
@@ -1886,6 +1865,35 @@ export class StreamOrchestrator<
 
           return { ...prev };
         });
+
+        if (usableThreadId) {
+          if (this.#missingThreads.has(usableThreadId)) {
+            await this.#createMissingThread(
+              usableThreadId,
+              submitOptions?.metadata
+            );
+            if (signal.aborted) return (async function* () {})();
+          }
+          this.#threadIdStreaming = usableThreadId;
+        }
+        if (!usableThreadId) {
+          const threadPromise = client.threads.create({
+            threadId: submitOptions?.threadId,
+            metadata: submitOptions?.metadata,
+          });
+
+          // A failed create leaves no thread, so a submit made meanwhile
+          // creates one itself.
+          this.#threadIdPromise = threadPromise.then(
+            (t) => t.thread_id,
+            () => undefined
+          );
+
+          const thread = await threadPromise;
+
+          usableThreadId = thread.thread_id;
+          this.#setThreadIdFromSubmit(usableThreadId);
+        }
 
         const modes = this.#getRunStreamModes(submitOptions);
         const streamMode = Array.isArray(modes) ? modes : await modes;
