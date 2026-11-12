@@ -7,6 +7,7 @@ import type {
   ThreadTask,
   Interrupt,
   Config,
+  Metadata,
   Run,
   ServerInfo,
 } from "../schema.js";
@@ -430,6 +431,12 @@ export class StreamOrchestrator<
 
   #pendingDispose: ReturnType<typeof setTimeout> | undefined;
 
+  /** Threads a read found missing, which the next submit creates first. */
+  #missingThreads = new Set<string>();
+
+  /** Subagent namespace lookups in flight on the current thread, by tool call id. */
+  #namespaceLookups = new Map<string, Promise<string[] | undefined>>();
+
   /** Interrupts answered by a run that hasn't ended yet. */
   #answered = new Set<string>();
 
@@ -663,6 +670,8 @@ export class StreamOrchestrator<
   }
 
   #clearThreadState(): void {
+    this.#branch = "";
+    this.#namespaceLookups.clear();
     this.scopes.clear();
     this.#handledHeadlessToolInterruptIds.clear();
     this.#answered.clear();
@@ -688,7 +697,8 @@ export class StreamOrchestrator<
 
     if (threadId != null) {
       this.#history = {
-        ...this.#history,
+        data: undefined,
+        error: undefined,
         isLoading: true,
         mutate: this.#mutate,
       };
@@ -712,7 +722,12 @@ export class StreamOrchestrator<
     threadId: string,
     states: ThreadState<StateType>[] | undefined
   ): Promise<void> {
-    if (!this.#durable || states == null || threadId !== this.#threadId) {
+    if (
+      !this.#durable ||
+      states == null ||
+      threadId !== this.#threadId ||
+      this.#missingThreads.has(threadId)
+    ) {
       return;
     }
     const client = this.#accessors.getClient();
@@ -824,7 +839,7 @@ export class StreamOrchestrator<
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
       if (tid !== this.#threadId) return data;
-      this.#threadExists = tid;
+      this.#threadFound(tid);
       this.#history = {
         data,
         error: undefined,
@@ -841,6 +856,18 @@ export class StreamOrchestrator<
       return data;
     } catch (err) {
       if (tid !== this.#threadId || readOptions.quiet) return undefined;
+      // An id the app minted before its thread exists, or a deleted thread's.
+      if ((err as { status?: unknown } | null)?.status === 404) {
+        this.#missingThreads.add(tid);
+        this.#history = {
+          data: [],
+          error: undefined,
+          isLoading: false,
+          mutate: this.#mutate,
+        };
+        this.#notify();
+        return [];
+      }
       this.#history = {
         ...this.#history,
         error: err,
@@ -1453,12 +1480,25 @@ export class StreamOrchestrator<
    * records (`artifact.checkpoint_ns`), else a match in the thread's lean
    * history. A subagent with no tool message yet is running or paused, so
    * the newest two history entries hold its call and its task. The subagent
-   * keeps the namespace found.
+   * keeps the namespace found. Callers that ask at the same time share one
+   * lookup.
    *
    * @param toolCallId - The tool call ID that started the subagent.
    * @returns Its namespace, or `undefined` if none was found.
    */
-  async resolveSubagentNamespace(
+  resolveSubagentNamespace(toolCallId: string): Promise<string[] | undefined> {
+    const inFlight = this.#namespaceLookups.get(toolCallId);
+    if (inFlight != null) return inFlight;
+    const lookup = this.#lookUpSubagentNamespace(toolCallId).finally(() => {
+      if (this.#namespaceLookups.get(toolCallId) === lookup) {
+        this.#namespaceLookups.delete(toolCallId);
+      }
+    });
+    this.#namespaceLookups.set(toolCallId, lookup);
+    return lookup;
+  }
+
+  async #lookUpSubagentNamespace(
     toolCallId: string
   ): Promise<string[] | undefined> {
     const bound = this.getSubagent(toolCallId)?.namespace;
@@ -1799,6 +1839,16 @@ export class StreamOrchestrator<
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
         if (usableThreadId) {
+          // Only the thread's load tells whether it exists yet.
+          if (this.#history.isLoading) await this.#hydration;
+          if (this.#missingThreads.has(usableThreadId)) {
+            await this.#createMissingThread(
+              usableThreadId,
+              submitOptions?.metadata
+            );
+          }
+          // A stop or thread switch came meanwhile, so its input must not show.
+          if (signal.aborted) return (async function* () {})();
           this.#threadIdStreaming = usableThreadId;
         }
         if (!usableThreadId) {
@@ -2028,6 +2078,28 @@ export class StreamOrchestrator<
       // Messages the client can't read go as they are, for the server to judge.
       return undefined;
     }
+  }
+
+  /**
+   * Creates a thread a read found missing, with its id, before the first run
+   * on it, so the app's `threads.create` auth handler runs. If it exists by
+   * now, such as when another tab created it, the server returns it when
+   * this user's auth can read it, and refuses it otherwise.
+   */
+  async #createMissingThread(
+    threadId: string,
+    metadata: Metadata | undefined
+  ): Promise<void> {
+    await this.#accessors
+      .getClient()
+      .threads.create({ threadId, metadata, ifExists: "do_nothing" });
+    this.#threadFound(threadId);
+  }
+
+  /** A create can land after a switch, so only the current thread is marked. */
+  #threadFound(threadId: string): void {
+    this.#missingThreads.delete(threadId);
+    if (threadId === this.#threadId) this.#threadExists = threadId;
   }
 
   /**

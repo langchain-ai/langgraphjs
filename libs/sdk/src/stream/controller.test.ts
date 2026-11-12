@@ -2308,7 +2308,7 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("seeds root toolCalls with the finished calls of the hydrated messages", async () => {
+  it("seeds root toolCalls with the calls of the hydrated messages that have a result", async () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
@@ -2337,6 +2337,12 @@ describe("StreamController", () => {
                     type: "tool_call",
                   },
                   {
+                    id: "call-failed",
+                    name: "get_weather",
+                    args: { city: "la" },
+                    type: "tool_call",
+                  },
+                  {
                     id: "call-next",
                     name: "get_weather",
                     args: { city: "nyc" },
@@ -2349,6 +2355,13 @@ describe("StreamController", () => {
                 content: "sunny",
                 id: "tool-1",
                 tool_call_id: "call-done",
+              },
+              {
+                type: "tool",
+                content: "Error: no such city",
+                id: "tool-2",
+                tool_call_id: "call-failed",
+                status: "error",
               },
             ],
           },
@@ -2374,7 +2387,10 @@ describe("StreamController", () => {
       controller.rootStore
         .getSnapshot()
         .toolCalls.map((toolCall) => `${toolCall.callId}:${toolCall.status}`);
-    expect(callStatuses()).toEqual(["call-done:finished"]);
+    expect(callStatuses()).toEqual([
+      "call-done:finished",
+      "call-failed:error",
+    ]);
 
     await rootSubscription.started;
     rootSubscription.push(
@@ -2386,6 +2402,7 @@ describe("StreamController", () => {
     await waitForExpectation(() => {
       expect(callStatuses()).toEqual([
         "call-done:finished",
+        "call-failed:error",
         "call-next:running",
       ]);
     });

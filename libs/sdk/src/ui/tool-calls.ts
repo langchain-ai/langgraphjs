@@ -27,6 +27,8 @@ export function upsertToolCall(
  * Backfill unfinished tool-call handles from authoritative ToolMessages in a
  * values snapshot. This covers headless tools whose graph state contains the
  * result even when the `tools` channel omits a matching `tool-finished` event.
+ * A ToolMessage with `status: "error"` fails its call, with the message's
+ * text as `error`.
  */
 export function reconcileToolCallsFromMessages(
   toolCalls: readonly AssembledToolCall[],
@@ -45,6 +47,16 @@ export function reconcileToolCallsFromMessages(
     if (idx < 0) continue;
 
     const current = currentToolCalls[idx];
+    if (message.status === "error") {
+      if (current.status === "error") continue;
+      updated = upsertToolCall(currentToolCalls, {
+        ...current,
+        output: null,
+        status: "error",
+        error: message.text,
+      });
+      continue;
+    }
     if (current.status === "finished" && current.output != null) continue;
 
     const output = parseToolOutput(message.content);
