@@ -12,7 +12,7 @@ import type {
 } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Command, RunsStreamPayload, StreamEvent } from "../types.js";
-import type { Message } from "../types.messages.js";
+import type { Message, ToolMessage } from "../types.messages.js";
 import type { BagTemplate } from "../types.template.js";
 import type {
   IdleReconnectMode,
@@ -1224,8 +1224,10 @@ export class StreamOrchestrator<
   /**
    * Find a subagent's namespace, so its scope can be acquired after a reload:
    * the one bound while it streamed, else the one its `task` tool message
-   * records (`artifact.lc_subagent_checkpoint_ns`), else a match in one lean
-   * page of the thread's history. The subagent keeps the namespace found.
+   * records (`artifact.checkpoint_ns`), else a match in the thread's lean
+   * history. A subagent with no tool message yet is running or paused, so
+   * the newest two history entries hold its call and its task. The subagent
+   * keeps the namespace found.
    *
    * @param toolCallId - The tool call ID that started the subagent.
    * @returns Its namespace, or `undefined` if none was found.
@@ -1237,23 +1239,25 @@ export class StreamOrchestrator<
     if (bound != null && bound.length > 0) return bound;
     const threadId = this.#threadId;
     if (threadId == null) return undefined;
-    const messagesKey = this.#accessors.getMessagesKey();
     const toolMessage = this.messages.find(
-      (message) =>
-        message.type === "tool" &&
-        (message as { tool_call_id?: string }).tool_call_id === toolCallId
-    ) as { artifact?: { lc_subagent_checkpoint_ns?: unknown } } | undefined;
-    let namespace: string | undefined;
-    const stamped = toolMessage?.artifact?.lc_subagent_checkpoint_ns;
-    if (typeof stamped === "string") namespace = stamped;
-    namespace ??= (
-      await resolveSubagentNamespaces(
-        this.#accessors.getClient(),
-        threadId,
-        [toolCallId],
-        { messagesKey }
-      ).catch(() => undefined)
-    )?.get(toolCallId);
+      (message): message is ToolMessage =>
+        message.type === "tool" && message.tool_call_id === toolCallId
+    );
+    const stamped: unknown = toolMessage?.artifact?.checkpoint_ns;
+    const namespace =
+      typeof stamped === "string"
+        ? stamped
+        : (
+            await resolveSubagentNamespaces(
+              this.#accessors.getClient(),
+              threadId,
+              [toolCallId],
+              {
+                messagesKey: this.#accessors.getMessagesKey(),
+                limit: toolMessage == null ? 2 : undefined,
+              }
+            ).catch(() => undefined)
+          )?.get(toolCallId);
     if (namespace == null || threadId !== this.#threadId) return undefined;
     const segments = namespace.split("|");
     this.stream.bindSubagentNamespace(toolCallId, segments);

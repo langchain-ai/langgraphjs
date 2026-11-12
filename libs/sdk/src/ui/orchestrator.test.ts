@@ -3763,7 +3763,7 @@ describe("StreamOrchestrator runs", () => {
     it("finds a reloaded subagent's namespace in its task tool message, and binds it", async () => {
       withFlags(flags);
       const values = createSubagentStateValues();
-      values.messages[2].artifact = { lc_subagent_checkpoint_ns: "tools:stamped" };
+      values.messages[2].artifact = { checkpoint_ns: "tools:stamped" };
       (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
       const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
       orch.initThreadId("t1");
@@ -3778,7 +3778,7 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("finds a paused subagent's namespace in one lean page of the thread's history", async () => {
+    it("finds a paused subagent's namespace in the newest two history entries", async () => {
       withFlags(flags);
       const values = createSubagentStateValues();
       const [, aiMessage] = values.messages;
@@ -3820,7 +3820,35 @@ describe("StreamOrchestrator runs", () => {
         "tools:pregel-1",
       ]);
       expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 2 }));
       expect(orch.getSubagent("task-1")?.namespace).toEqual(["tools:pregel-1"]);
+      orch.dispose();
+    });
+
+    it("finds a finished subagent's namespace without the stamp in a deeper page of the history", async () => {
+      withFlags(flags);
+      const values = createSubagentStateValues();
+      const toolMessage = values.messages[2];
+      (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        {
+          tasks: [
+            {
+              id: "pregel-1",
+              name: "tools",
+              path: ["__pregel_push", 0],
+              result: { messages: [toolMessage] },
+            },
+          ],
+        },
+      ]);
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual(["tools:pregel-1"]);
+      expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 20 }));
       orch.dispose();
     });
   });
