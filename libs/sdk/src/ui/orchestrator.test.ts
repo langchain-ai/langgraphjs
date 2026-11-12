@@ -3220,4 +3220,305 @@ describe("StreamOrchestrator runs", () => {
       }
     });
   });
+
+  describe("lifecycle and tool events", () => {
+    function withInfo(info: () => Promise<unknown>) {
+      const read = vi.fn(info);
+      (client as unknown as { info: Mock }).info = read;
+      return read;
+    }
+    const lifecycleServer = () =>
+      withInfo(() => Promise.resolve({ flags: { stream_lifecycle: true } }));
+    const sentModes = (call = 0) =>
+      (client.runs.stream as Mock).mock.calls[call][2].streamMode;
+    const taskCall = {
+      id: "call_1",
+      name: "task",
+      args: { subagent_type: "researcher", description: "Research" },
+    };
+    const started = {
+      event: "lifecycle|tools:a",
+      data: { event: "started", namespace: ["tools:a"], tool_call_id: "call_1" },
+    };
+    const withTask = {
+      event: "updates",
+      data: {
+        model: {
+          messages: [{ id: "ai-1", type: "ai", content: "", tool_calls: [taskCall] }],
+        },
+      },
+    };
+
+    it("two engines on one client read /info once", async () => {
+      const read = lifecycleServer();
+      orchestrator({ filterSubagentMessages: true }).dispose();
+      orchestrator({ onToolEvent: vi.fn() }).dispose();
+      await flushMicrotasks();
+
+      expect(read).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      { flags: { stream_lifecycle: true }, sent: true },
+      { flags: {}, sent: false },
+    ])("asks for lifecycle and tools when the server's flags are $flags: $sent", async ({ flags, sent }) => {
+      withInfo(() => Promise.resolve({ flags }));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator({
+        filterSubagentMessages: true,
+        onToolEvent: vi.fn(),
+      });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(sentModes().includes("lifecycle")).toBe(sent);
+      expect(sentModes().includes("tools")).toBe(sent);
+      orch.dispose();
+    });
+
+    it("a failed /info read leaves lifecycle and tools out", async () => {
+      withInfo(() => Promise.reject(new Error("no route")));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(sentModes()).toEqual(["values", "updates"]);
+      orch.dispose();
+    });
+
+    it.each([
+      { status: undefined, again: true },
+      { status: 503, again: true },
+      { status: 404, again: false },
+    ])("a failed /info read with status $status is read again by the next run: $again", async ({ status, again }) => {
+      const read = withInfo(() => Promise.reject(Object.assign(new Error("failed"), { status })));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+      read.mockResolvedValue({ flags: { stream_lifecycle: true } });
+      await orch.submit({ messages: [] });
+
+      expect(read).toHaveBeenCalledTimes(again ? 2 : 1);
+      expect(sentModes(1).includes("lifecycle")).toBe(again);
+      orch.dispose();
+    });
+
+    it("a submit's own streamMode goes as it is", async () => {
+      withInfo(() => Promise.resolve({ flags: {} }));
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] }, { streamMode: ["tools"] });
+
+      expect(sentModes()).toContain("tools");
+      orch.dispose();
+    });
+
+    it("a 422 for lifecycle is retried once without lifecycle and tools", async () => {
+      lifecycleServer();
+      (client.runs.stream as Mock).mockImplementation(
+        (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+          async *[Symbol.asyncIterator]() {
+            if ((payload as unknown as { streamMode: string[] }).streamMode.includes("lifecycle")) {
+              throw Object.assign(new Error("Unprocessable"), { status: 422 });
+            }
+            payload.onRunCreated?.({ run_id: "run-1" });
+            yield { event: "values", data: { messages: [message("m1")] } };
+          },
+        })
+      );
+      const onError = vi.fn();
+      const orch = orchestrator({
+        filterSubagentMessages: true,
+        onToolEvent: vi.fn(),
+        onError,
+      });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      expect(client.runs.stream).toHaveBeenCalledTimes(2);
+      expect(sentModes(0)).toEqual(expect.arrayContaining(["lifecycle", "tools"]));
+      expect(sentModes(1)).toEqual(["values", "updates"]);
+      expect(onError).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("a queued run refused with a 422 is created again without lifecycle", async () => {
+      lifecycleServer();
+      const end = deferred();
+      mockRunStream(undefined, { ended: end.promise });
+      (client.runs.create as Mock)
+        .mockRejectedValueOnce(Object.assign(new Error("Unprocessable"), { status: 422 }))
+        .mockResolvedValueOnce({ run_id: "run-2", created_at: new Date().toISOString() });
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+      const first = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.submit({ messages: [] });
+
+      const modes = (client.runs.create as Mock).mock.calls.map((call) => call[2].streamMode);
+      expect(modes).toEqual([
+        expect.arrayContaining(["lifecycle"]),
+        ["values", "updates"],
+      ]);
+      expect(orch.queueEntries.map((entry) => entry.id)).toEqual(["run-2"]);
+      end.resolve();
+      await first;
+      orch.dispose();
+    });
+
+    it("a run cancelled mid-subagent closes it with an error", async () => {
+      lifecycleServer();
+      mockRunStream(
+        [withTask, started, { event: "error", data: { error: "UserInterrupt", message: "" } }],
+        { ended: Promise.resolve() }
+      );
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      await vi.waitFor(() =>
+        expect(orch.getSubagent("call_1")?.status).toBe("error")
+      );
+      orch.dispose();
+    });
+
+    it.each([
+      { name: "a stop that doesn't cancel", stop: { cancel: false } },
+      { name: "a dropped connection", drop: true },
+    ])("$name leaves the run's subagents running", async ({ stop, drop }) => {
+      lifecycleServer();
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      (client.runs.stream as Mock).mockImplementation(
+        (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+          async *[Symbol.asyncIterator]() {
+            payload.onRunCreated?.({ run_id: "run-1" });
+            yield withTask;
+            yield started;
+            if (drop) throw new TypeError("network error");
+            await openUntil(payload.signal);
+          },
+        })
+      );
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      const run = orch.submit({ messages: [] });
+      await vi.waitFor(() =>
+        expect(orch.getSubagent("call_1")?.status).toBe("running")
+      );
+      if (stop) await orch.stop(stop);
+      await run;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(orch.getSubagent("call_1")?.status).toBe("running");
+      expect(client.runs.cancel).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("stop() that cancels the run closes its subagents", async () => {
+      lifecycleServer();
+      mockRunStream([withTask, started]);
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() =>
+        expect(orch.getSubagent("call_1")?.status).toBe("running")
+      );
+      await orch.stop();
+
+      expect(orch.getSubagent("call_1")?.status).toBe("error");
+      expect(client.runs.cancel).toHaveBeenCalledWith("t1", "run-1");
+      orch.dispose();
+    });
+
+    it("a paused run leaves its subagent running", async () => {
+      lifecycleServer();
+      mockRunStream(
+        [
+          withTask,
+          started,
+          { event: "updates", data: { __interrupt__: [] } },
+          { event: "end", data: { status: "success" } },
+        ],
+        { ended: Promise.resolve() }
+      );
+      const onRunEnd = vi.fn();
+      const orch = orchestrator({ filterSubagentMessages: true, onRunEnd });
+      orch.initThreadId("t1");
+
+      await orch.submit({ messages: [] });
+
+      await vi.waitFor(() => expect(onRunEnd).toHaveBeenCalled());
+      expect(orch.getSubagent("call_1")?.status).toBe("running");
+      orch.dispose();
+    });
+
+    it("hands each event to channel listeners in the 1.x shape", async () => {
+      mockRunStream(
+        [
+          { event: "custom", data: { kind: "stats" } },
+          { event: "custom|tools:a", data: 2 },
+          { event: "end", data: { status: "success" } },
+        ],
+        { ended: Promise.resolve() }
+      );
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      const events: unknown[] = [];
+      orch.onChannelEvent((event) => events.push(event));
+
+      await orch.submit({ messages: [] });
+
+      expect(events).toEqual([
+        {
+          method: "custom",
+          params: { namespace: [], timestamp: expect.any(Number), data: { payload: { kind: "stats" } } },
+        },
+        {
+          method: "custom",
+          params: { namespace: ["tools:a"], timestamp: expect.any(Number), data: { payload: 2 } },
+        },
+        {
+          method: "lifecycle",
+          params: { namespace: [], timestamp: expect.any(Number), data: { event: "completed" } },
+        },
+      ]);
+      orch.dispose();
+    });
+
+    it("a throwing channel listener doesn't end the stream", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      mockRunStream(
+        [
+          { event: "custom", data: 1 },
+          { event: "values", data: { messages: [message("m1")] } },
+        ],
+        { ended: Promise.resolve() }
+      );
+      const onError = vi.fn();
+      const orch = orchestrator({ onError });
+      orch.initThreadId("t1");
+      orch.onChannelEvent(() => {
+        throw new Error("listener bug");
+      });
+
+      await orch.submit({ messages: [] });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(orch.error).toBeUndefined();
+      orch.dispose();
+    });
+  });
 });

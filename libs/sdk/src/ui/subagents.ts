@@ -409,6 +409,138 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
   }
 
   /**
+   * Bind a subagent's namespace to the `task` call that started it, on the
+   * server's word: a lifecycle event, the call id deepagents puts on the
+   * subagent's tokens, or its namespace read after a reload. It replaces any
+   * description match.
+   *
+   * @param toolCallId - The tool call ID that started the subagent
+   * @param namespace - The subagent's namespace, e.g. `["tools:<task id>"]`
+   */
+  bindNamespace(toolCallId: string, namespace: string[]): void {
+    let namespaceId: string | undefined;
+    for (const segment of namespace) {
+      if (segment.startsWith("tools:")) namespaceId = segment.slice(6);
+    }
+    if (namespaceId == null) return;
+    this.namespaceToToolCallId.set(namespaceId, toolCallId);
+    this.pendingMatches.delete(namespaceId);
+
+    const existing = this.subagents.get(toolCallId);
+    if (
+      existing != null &&
+      existing.namespace.join("|") !== namespace.join("|")
+    ) {
+      this.subagents.set(toolCallId, {
+        ...existing,
+        namespace,
+        parentId: extractParentIdFromNamespace(namespace),
+        depth: calculateDepthFromNamespace(namespace),
+      });
+      this.onSubagentChange?.();
+    }
+    this.flushPendingMessages(namespaceId);
+  }
+
+  /**
+   * Apply a subgraph's `lifecycle` event from the run's own stream: `started`
+   * binds the subagent and marks it running, and `failed` ends it with the
+   * error. A subagent completes with its tool message, and a pause leaves it
+   * running.
+   */
+  applyLifecycle(data: unknown): void {
+    const {
+      event,
+      namespace,
+      tool_call_id: toolCallId,
+      error,
+    } = (data ?? {}) as {
+      event?: string;
+      namespace?: unknown;
+      tool_call_id?: unknown;
+      error?: { message?: string };
+    };
+    if (typeof toolCallId !== "string" || !Array.isArray(namespace)) return;
+    if (event === "started") {
+      this.bindNamespace(toolCallId, namespace);
+      const existing = this.subagents.get(toolCallId);
+      // A replayed start of a finished subagent leaves it finished.
+      if (
+        existing != null &&
+        existing.status !== "complete" &&
+        existing.status !== "running"
+      ) {
+        this.subagents.set(toolCallId, {
+          ...existing,
+          status: "running",
+          error: null,
+          startedAt: existing.startedAt ?? new Date(),
+          completedAt: null,
+        });
+        this.onSubagentChange?.();
+      }
+    }
+    if (event === "failed") {
+      this.complete(toolCallId, error?.message ?? "", "error");
+    }
+  }
+
+  /** Whether this tool call started a subagent tracked here. */
+  hasSubagent(toolCallId: string): boolean {
+    return this.subagents.has(toolCallId);
+  }
+
+  /**
+   * Drop the subagents that never started and whose AI message isn't one of
+   * `messageIds`: a restarted run's cut attempt half-streamed that message.
+   */
+  dropPendingOutside(messageIds: Set<string>): void {
+    let changed = false;
+    for (const [toolCallId, subagent] of this.subagents) {
+      if (
+        subagent.status === "pending" &&
+        subagent.aiMessageId != null &&
+        !messageIds.has(subagent.aiMessageId)
+      ) {
+        this.subagents.delete(toolCallId);
+        changed = true;
+      }
+    }
+    if (changed) this.onSubagentChange?.();
+  }
+
+  /** Whether a subagent is still pending or running. */
+  hasOpenSubagents(): boolean {
+    for (const subagent of this.subagents.values()) {
+      if (subagent.status === "pending" || subagent.status === "running") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * End the subagents still pending or running with `error`, for a run that
+   * ended without them.
+   */
+  closeOpenSubagents(error: string): void {
+    let changed = false;
+    for (const [toolCallId, subagent] of this.subagents) {
+      if (subagent.status !== "pending" && subagent.status !== "running") {
+        continue;
+      }
+      this.subagents.set(toolCallId, {
+        ...subagent,
+        status: "error",
+        error,
+        completedAt: new Date(),
+      });
+      changed = true;
+    }
+    if (changed) this.onSubagentChange?.();
+  }
+
+  /**
    * Check if a tool call is a subagent invocation.
    */
   isSubagentToolCall(toolName: string): boolean {

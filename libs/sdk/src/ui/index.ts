@@ -29,6 +29,7 @@ export {
   normalizeHitlResponseForServer,
 } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
+export type { ChannelEvent } from "./channels.js";
 export {
   unique,
   findLast,
