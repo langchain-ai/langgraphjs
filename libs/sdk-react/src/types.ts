@@ -93,7 +93,9 @@ export interface AgentServerOptions<
   /**
    * Where a submit made during a run waits: in the server's queue (the
    * default), so it survives a reload and shows in other tabs, or in this
-   * tab with `"local"`.
+   * tab with `"local"`, as in 1.x. The server's queue creates the run with
+   * `POST /threads/{thread_id}/runs`, which a proxy in front of the server
+   * must forward too.
    */
   queue?: "local" | "server";
 }
