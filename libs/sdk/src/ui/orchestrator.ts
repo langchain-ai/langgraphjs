@@ -422,6 +422,8 @@ export class StreamOrchestrator<
 
   #hydration: Promise<void> = Promise.resolve();
 
+  #hydrating = false;
+
   #pendingDispose: ReturnType<typeof setTimeout> | undefined;
 
   /** Threads a read found missing, which the next submit creates first. */
@@ -696,8 +698,10 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       this.#notify();
-      this.#hydration = this.#mutate(threadId).then((states) =>
-        this.#joinActiveRun(threadId, states)
+      this.#startLoad(
+        this.#mutate(threadId).then((states) =>
+          this.#joinActiveRun(threadId, states)
+        )
       );
     } else {
       this.#history = {
@@ -706,9 +710,20 @@ export class StreamOrchestrator<
         isLoading: false,
         mutate: this.#mutate,
       };
-      this.#hydration = Promise.resolve();
+      this.#startLoad(Promise.resolve());
       this.#notify();
     }
+  }
+
+  /** Makes `load` the thread's load: {@link hydrationPromise} until it settles. */
+  #startLoad(load: Promise<void>): void {
+    const hydration = load.finally(() => {
+      if (this.#hydration !== hydration) return;
+      this.#hydrating = false;
+      this.#notify();
+    });
+    this.#hydration = hydration;
+    this.#hydrating = true;
   }
 
   async #joinActiveRun(
@@ -1085,7 +1100,8 @@ export class StreamOrchestrator<
     if (userFacing != null) return this.#visible(userFacing);
 
     const next = this.branchContext.threadHead?.next ?? [];
-    if (!next.length || this.error != null) return [];
+    // Until the load's run lookup ends, `next` may be a run still going.
+    if (!next.length || this.error != null || this.#hydrating) return [];
     return [{ when: "breakpoint" }];
   }
 
@@ -1100,6 +1116,7 @@ export class StreamOrchestrator<
       threadState: this.branchContext.threadHead,
       error: this.error,
     });
+    if (interrupt?.when === "breakpoint" && this.#hydrating) return undefined;
     return interrupt?.id != null && this.#answered.has(interrupt.id)
       ? undefined
       : interrupt;
@@ -2436,7 +2453,7 @@ export class StreamOrchestrator<
     if ((threadId ?? undefined) !== this.#threadId) {
       this.switchThread(threadId);
     } else if (threadId != null) {
-      this.#hydration = this.#reload(threadId, {}, true);
+      this.#startLoad(this.#reload(threadId, {}, true));
     }
     return this.#hydration;
   }

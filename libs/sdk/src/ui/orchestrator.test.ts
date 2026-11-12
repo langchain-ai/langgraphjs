@@ -2871,6 +2871,32 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("shows no breakpoint while a load looks for the thread's running run", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        next: ["agent"],
+      });
+      const lookup = deferred();
+      (client.runs.list as Mock).mockImplementation(
+        (_threadId: string, options: { status: string }) =>
+          options.status === "running"
+            ? lookup.promise.then(() => [])
+            : Promise.resolve([])
+      );
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+
+      expect(orch.interrupts).toEqual([]);
+      expect(orch.interrupt).toBeUndefined();
+
+      lookup.resolve();
+      await orch.hydrationPromise;
+      expect(orch.interrupts).toEqual([{ when: "breakpoint" }]);
+      orch.dispose();
+    });
+
     it("a thread switch shows the new thread loading, with nothing of the last one", async () => {
       (client.threads.getState as Mock)
         .mockResolvedValueOnce(createThreadState({ messages: [message("m1")] }))
