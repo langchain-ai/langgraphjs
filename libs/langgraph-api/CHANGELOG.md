@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 1.7.2
+
+### Patch Changes
+
+- [#3318](https://github.com/langchain-ai/langgraphjs/pull/3318) [`6dd190c`](https://github.com/langchain-ai/langgraphjs/commit/6dd190c558f9dc4012cdf6aaf142788ae7dbc444) Thanks [@eliornl](https://github.com/eliornl)! - A `run.start` that forks from a checkpoint (`forkFrom` in the SDK) now starts a new run from that checkpoint even while the thread waits on an interrupt. The dev server and the embed server took the fork's input as the answer to that interrupt, or refused it when several were pending, so editing a message while a run was paused dropped the edit.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.2
+
 ## 1.7.1
 
 ### Patch Changes
