@@ -19,6 +19,7 @@ import {
 import { ChainValues } from "@langchain/core/utils/types";
 
 import { isCommand, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import { isParentCommand } from "../errors.js";
 import {
   isOutsideStream,
   StreamChunk,
@@ -291,7 +292,12 @@ export class StreamMessagesHandler extends BaseCallbackHandler {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handleChainError(_err: any, runId: string) {
-    delete this.metadatas[runId];
+  handleChainError(err: any, runId: string) {
+    // A node routing to its parent graph ends by throwing its Command.
+    if (isParentCommand(err)) {
+      this.handleChainEnd(err.command, runId);
+    } else {
+      delete this.metadatas[runId];
+    }
   }
 }
