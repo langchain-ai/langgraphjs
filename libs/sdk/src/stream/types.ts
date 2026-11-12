@@ -542,29 +542,9 @@ export interface SubagentDiscoverySnapshot {
 }
 
 /**
- * Lightweight discovery record for a subgraph running inside the thread.
- */
-export interface SubgraphDiscoverySnapshot {
-  readonly id: string;
-  readonly namespace: readonly string[];
-  /**
-   * Name of the graph node that produced this subgraph invocation,
-   * parsed from the last namespace segment. LangGraph assigns every
-   * node invocation a checkpoint namespace shaped like
-   * `<node_name>:<uuid>`; this is the `<node_name>` half, letting
-   * callers key lookups on names they recognise from
-   * `addNode(name, …)` without parsing the namespace themselves.
-   */
-  readonly nodeName: string;
-  readonly status: "running" | "complete" | "error";
-  readonly startedAt: Date;
-  readonly completedAt: Date | null;
-}
-
-/**
  * Anything with a `namespace` can be passed to selector hooks as a
  * scope target. Both {@link SubagentDiscoverySnapshot} and
- * {@link SubgraphDiscoverySnapshot} satisfy this; callers can also
+ * `SubgraphDiscoverySnapshot` satisfy this; callers can also
  * hand-build `{ namespace: [...] }` objects.
  */
 export type Target = undefined | { readonly namespace: readonly string[] };

@@ -41,20 +41,47 @@
  * entering and its first inner node materializing — typically tens
  * of milliseconds.
  */
-import type { Event, LifecycleEvent, ValuesEvent } from "@langchain/protocol";
-import { StreamStore } from "../../ui/store.js";
-import type { SubgraphDiscoverySnapshot } from "../types.js";
+import { StreamStore } from "./store.js";
 import {
   isInternalWorkNamespace,
   isRootNamespace,
   namespaceKey,
-} from "../../ui/namespace.js";
+} from "./namespace.js";
+
+/**
+ * Lightweight discovery record for a subgraph running inside the thread.
+ */
+export interface SubgraphDiscoverySnapshot {
+  readonly id: string;
+  readonly namespace: readonly string[];
+  /**
+   * Name of the graph node that produced this subgraph invocation,
+   * parsed from the last namespace segment. LangGraph assigns every
+   * node invocation a checkpoint namespace shaped like
+   * `<node_name>:<uuid>`; this is the `<node_name>` half, letting
+   * callers key lookups on names they recognise from
+   * `addNode(name, …)` without parsing the namespace themselves.
+   */
+  readonly nodeName: string;
+  readonly status: "running" | "complete" | "error";
+  readonly startedAt: Date;
+  readonly completedAt: Date | null;
+}
 
 export type SubgraphMap = ReadonlyMap<string, SubgraphDiscoverySnapshot>;
 export type SubgraphByNodeMap = ReadonlyMap<
   string,
   readonly SubgraphDiscoverySnapshot[]
 >;
+
+/**
+ * The fields discovery reads, so both the engine's `ChannelEvent` and the
+ * protocol's `Event` can feed it.
+ */
+interface DiscoveryEvent {
+  method: string;
+  params: { namespace: readonly string[]; data: unknown };
+}
 
 /** Stable empty maps — reused on {@link SubgraphDiscovery.reset}. */
 const EMPTY_SUBGRAPH_MAP: SubgraphMap = new Map();
@@ -101,19 +128,18 @@ export class SubgraphDiscovery {
   #promoted = new Set<string>();
 
   /** Feed a single root event. Non-discovery events are ignored. */
-  push(event: Event): void {
+  push(event: DiscoveryEvent): void {
     if (event.method === "values") {
-      this.#onValuesEvent(event as ValuesEvent);
+      this.#onValuesEvent(event);
       return;
     }
     if (event.method !== "lifecycle") return;
-    const lifecycle = event as LifecycleEvent;
-    const namespace = lifecycle.params.namespace;
+    const namespace = event.params.namespace;
     // Root lifecycle events describe the main run; subgraph discovery
     // only cares about namespaced lifecycle events.
     if (isRootNamespace(namespace)) return;
     const id = namespaceKey(namespace);
-    const data = lifecycle.params.data as { event?: string };
+    const data = (event.params.data ?? {}) as { event?: string };
     const lastSegment = namespace[namespace.length - 1] ?? "";
     const nodeName = parseNodeName(lastSegment);
 
@@ -189,7 +215,7 @@ export class SubgraphDiscovery {
    * contains the host namespace, which is the important invariant for
    * scoped selectors.
    */
-  #onValuesEvent(event: ValuesEvent): void {
+  #onValuesEvent(event: DiscoveryEvent): void {
     const namespace = event.params.namespace;
     if (isRootNamespace(namespace)) return;
     if (isInternalWorkNamespace(namespace)) return;
