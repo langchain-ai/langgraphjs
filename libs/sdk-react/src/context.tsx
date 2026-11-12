@@ -3,35 +3,16 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import {
-  useStream,
-  type UseStreamOptions,
-  type UseStreamReturn,
-  type AgentServerOptions,
-  type CustomAdapterOptions,
-} from "./use-stream.js";
-import type { InferStateType } from "@langchain/langgraph-sdk/stream";
+import type { InferStateType } from "@langchain/langgraph-sdk/ui";
+import { useStream, type UseStreamReturn } from "./use-stream.js";
+import type { AgentServerOptions, UseStreamOptions } from "./types.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const StreamContext = createContext<any | null>(null);
 
-/**
- * Props for {@link StreamProvider} when talking to the default
- * LangGraph Platform agent server. Mirrors {@link AgentServerOptions}
- * plus `children`.
- */
+/** Props of {@link StreamProvider}: {@link AgentServerOptions} plus `children`. */
 export type StreamProviderProps<T = Record<string, unknown>> =
   AgentServerOptions<InferStateType<T>> & {
-    children: ReactNode;
-  };
-
-/**
- * Props for {@link StreamProvider} when wiring a custom
- * {@link AgentServerAdapter}. Mirrors {@link CustomAdapterOptions}
- * plus `children`.
- */
-export type StreamProviderCustomProps<T = Record<string, unknown>> =
-  CustomAdapterOptions<InferStateType<T>> & {
     children: ReactNode;
   };
 
@@ -81,7 +62,7 @@ export type StreamProviderCustomProps<T = Record<string, unknown>> =
  * ```
  */
 export function StreamProvider<T = Record<string, unknown>>(
-  props: StreamProviderProps<T> | StreamProviderCustomProps<T>
+  props: StreamProviderProps<T>
 ): ReactNode {
   const { children, ...options } = props;
   const stream = useStream<T>(options as UseStreamOptions<InferStateType<T>>);

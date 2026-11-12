@@ -11,95 +11,73 @@ export {
   useStream,
   STREAM_CONTROLLER,
   type AnyStream,
+  type StreamThread,
   type UseStreamResult,
   type UseStreamReturn,
-  type UseStreamOptions,
-  type AgentServerOptions,
-  type CustomAdapterOptions,
 } from "./use-stream.js";
-
-export { useProjection } from "./use-projection.js";
 
 export {
   useMessages,
   useToolCalls,
   useValues,
-  useExtension,
   useChannel,
   useChannelEffect,
-  useAudio,
-  useImages,
-  useVideo,
-  useFiles,
   useMessageMetadata,
   useSubmissionQueue,
-} from "./selectors.js";
-export type {
-  SelectorTarget,
-  UseChannelEffectOptions,
-  UseSubmissionQueueReturn,
-  SubmissionQueueEntry,
-  SubmissionQueueSnapshot,
+  type UseChannelOptions,
+  type UseChannelEffectOptions,
+  type UseSubmissionQueueReturn,
 } from "./selectors.js";
 
-export { useMediaURL } from "./use-media-url.js";
 export {
-  useAudioPlayer,
-  type AudioPlayerHandle,
-  type PlayerStatus,
-  type UseAudioPlayerOptions,
-} from "./use-audio-player.js";
-export {
-  useVideoPlayer,
-  type UseVideoPlayerOptions,
-  type VideoPlayerHandle,
-} from "./use-video-player.js";
+  subscribeScope,
+  getMessageMetadata,
+  type ScopeHandle,
+  type ScopeView,
+  type SelectorTarget,
+} from "./use-scoped.js";
 
-// Framework-agnostic types users reach for on the React side.
+export {
+  useSuspenseStream,
+  type UseSuspenseStreamReturn,
+} from "./suspense-stream.js";
+
+export {
+  StreamProvider,
+  useStreamContext,
+  type StreamProviderProps,
+} from "./context.js";
+
 export type {
-  AnyMediaHandle,
-  AssembledToolCall,
-  AssembledToolCallFromTool as ToolCallFromTool,
-  AudioMedia,
+  AgentServerOptions,
   Channel,
   Event,
-  FileMedia,
-  ImageMedia,
-  MediaAssemblyErrorKind,
-  MediaBase,
-  MediaBlockType,
-  SubagentDiscoverySnapshot,
-  SubgraphDiscoverySnapshot,
-  StreamSubmitOptions,
-  StreamStopOptions,
-  ToolCallStatus,
-  VideoMedia,
   MessageMetadata,
   MessageMetadataMap,
-} from "@langchain/langgraph-sdk/stream";
-export { MediaAssemblyError } from "@langchain/langgraph-sdk/stream";
+  RunCompletedInfo,
+  RunExecutionInfo,
+  RunExecutionReason,
+  StreamRespondAllOptions,
+  StreamRespondOptions,
+  StreamStopOptions,
+  StreamSubmitOptions,
+  SubagentDiscoverySnapshot,
+  SubmissionQueueEntry,
+  SubmissionQueueSnapshot,
+  UseStreamCommonOptions,
+  UseStreamOptions,
+} from "./types.js";
 
-// v1 type-inference helpers from the framework-agnostic stream module.
-// `InferStateType` / `InferToolCalls` / `InferSubagentStates` /
-// `WidenUpdateMessages` are the canonical names users reach for when
-// prop-drilling a stream handle across components (plan-types.md §4, §8).
 export type {
+  AcceptBaseMessages as WidenUpdateMessages,
+  AssembledToolCall,
+  AssembledToolCallFromTool as ToolCallFromTool,
+  InferAssembledToolCalls as InferToolCalls,
   InferStateType,
-  InferToolCalls,
   InferSubagentStates,
-  WidenUpdateMessages,
-  AgentServerAdapter,
-  InferToolOutput,
-} from "@langchain/langgraph-sdk/stream";
-export { HttpAgentServerAdapter } from "@langchain/langgraph-sdk";
-export type { HttpAgentServerAdapterOptions } from "@langchain/langgraph-sdk";
-export { useSuspenseStream } from "./suspense-stream.js";
-export type { UseSuspenseStreamReturn } from "./suspense-stream.js";
-export { StreamProvider, useStreamContext } from "./context.js";
-export type {
-  StreamProviderProps,
-  StreamProviderCustomProps,
-} from "./context.js";
+  SubgraphDiscoverySnapshot,
+  ToolCallStatus,
+} from "@langchain/langgraph-sdk/ui";
 
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
   _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
@@ -107,6 +85,7 @@ export type {
   ToolCallState,
   DefaultToolCall,
   ToolCallsFromTools,
+  InferToolOutput,
 } from "@langchain/langgraph-sdk";
 export type {
   HeadlessToolImplementation,

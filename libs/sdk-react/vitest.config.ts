@@ -9,14 +9,14 @@ export default defineConfig({
     globals: true,
     testTimeout: 5_000,
     retry: 1,
-    globalSetup: ["./src/tests/mock-server.ts"],
     browser: {
       enabled: true,
       connectTimeout: 120_000,
       provider: webdriverio(),
       instances: [{ browser: "chrome", headless: true }],
     },
-    include: ["src/**/*.test.tsx"],
+    // `src/tests` holds 1.x's browser suite, which speaks the v3 protocol.
+    include: ["src/*.test.tsx"],
     exclude: ["**/*.test-d.ts"],
     typecheck: {
       enabled: true,
