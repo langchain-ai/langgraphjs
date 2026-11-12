@@ -7,9 +7,8 @@ import {
 } from "@langchain/langgraph";
 
 /**
- * Emits both anonymous writer payloads and named writer events. Both paths
- * are exercised by the
- * `useChannel` and `useExtension` selector hook tests.
+ * Writes two anonymous payloads and a named one. The `useChannel` and
+ * `useChannelEffect` tests count all three on the raw `custom` channel.
  */
 const graph = new StateGraph(MessagesAnnotation)
   .addNode("agent", async (_state, runtime: Runtime) => {

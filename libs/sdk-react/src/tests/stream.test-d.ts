@@ -352,7 +352,7 @@ describe("SelectorTarget — every accepted shape", () => {
 
 describe("back-compat — explicit generics on selectors", () => {
   test("`useValues<T>(stream)` still compiles when T matches the stream state", () => {
-    // Legacy call shape from `tests/components/ExtensionSelectorsStream.tsx`.
+    // Legacy call shape from `tests/components/CustomChannelStream.tsx`.
     const values = useValues<BedtimeState>(stream);
     expectTypeOf(values).toEqualTypeOf<BedtimeState>();
   });
