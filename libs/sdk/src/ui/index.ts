@@ -1,6 +1,10 @@
 export type * from "./types.js";
 export type * from "./stream/index.js";
 export type {
+  AssembledToolCallFromTool,
+  InferAssembledToolCalls,
+} from "./types-inference.js";
+export type {
   ClassToolCallWithResult,
   ClassSubagentStreamInterface,
   WithClassMessages,
@@ -43,6 +47,14 @@ export {
   extractParentIdFromNamespace,
   isSubagentNamespace,
 } from "./subagents.js";
+export {
+  SubgraphDiscovery,
+  type SubgraphByNodeMap,
+  type SubgraphDiscoverySnapshot,
+  type SubgraphMap,
+} from "./subgraphs.js";
+export { seedToolCallsFromMessages } from "./tool-calls.js";
+export type { AssembledToolCall, ToolCallStatus } from "./tool-payload.js";
 export {
   PendingRunsTracker,
   type QueueEntry,

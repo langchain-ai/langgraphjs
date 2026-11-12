@@ -42,13 +42,12 @@ import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 import { StreamStore } from "../ui/store.js";
 import { ChannelRegistry } from "./channel-registry.js";
 import { ensureMessageInstances } from "../ui/message-coercion.js";
+import { SubagentDiscovery, type SubagentMap } from "./discovery/index.js";
 import {
-  SubagentDiscovery,
-  type SubagentMap,
   SubgraphDiscovery,
   type SubgraphMap,
   type SubgraphByNodeMap,
-} from "./discovery/index.js";
+} from "../ui/subgraphs.js";
 import {
   collectSubgraphHostNamespaces,
   DISCOVERY_HISTORY_SELECT,

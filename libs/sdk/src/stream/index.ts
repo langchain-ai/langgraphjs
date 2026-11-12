@@ -21,31 +21,37 @@ export type {
   AgentTypeConfigLike,
   CompiledSubAgentLike,
   DefaultSubagentStates,
-  DefaultToolCall,
   DeepAgentTypeConfigLike,
   ExtractAgentConfig,
   ExtractDeepAgentConfig,
   ExtractSubAgentMiddleware,
   InferAgentToolCalls,
-  InferBag,
   InferDeepAgentSubagents,
-  InferNodeNames,
-  InferStateType,
   InferSubagentByName,
   InferSubagentNames,
   InferSubagentState,
-  InferSubagentStates,
-  InferToolCalls,
-  AssembledToolCallFromTool,
-  InferToolOutput,
   IsAgentLike,
   IsDeepAgentLike,
   SubAgentLike,
   SubagentStateMap,
   SubagentToolCall,
+  AcceptBaseMessages as WidenUpdateMessages,
+} from "../ui/types.js";
+export type {
+  InferBag,
+  InferNodeNames,
+  InferStateType,
+  InferSubagentStates,
+} from "../ui/stream/index.js";
+export type {
+  AssembledToolCallFromTool,
+  InferAssembledToolCalls as InferToolCalls,
+} from "../ui/types-inference.js";
+export type {
+  DefaultToolCall,
+  InferToolOutput,
   ToolCallFromTool,
-  WidenUpdateMessages,
-} from "./types-inference.js";
+} from "../types.messages.js";
 
 export { StreamStore } from "../ui/store.js";
 export type { StoreListener } from "../ui/store.js";
@@ -60,12 +66,14 @@ export type {
   SubmissionQueueSnapshot,
 } from "./controller.js";
 
-export { SubagentDiscovery, SubgraphDiscovery } from "./discovery/index.js";
+export { SubagentDiscovery } from "./discovery/index.js";
+export type { SubagentMap } from "./discovery/index.js";
+export { SubgraphDiscovery } from "../ui/subgraphs.js";
 export type {
-  SubagentMap,
-  SubgraphMap,
   SubgraphByNodeMap,
-} from "./discovery/index.js";
+  SubgraphDiscoverySnapshot,
+  SubgraphMap,
+} from "../ui/subgraphs.js";
 
 export {
   messagesProjection,
@@ -111,7 +119,6 @@ export type {
   StreamStopOptions,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
-  SubgraphDiscoverySnapshot,
   Target,
   UseStreamCommonOptions,
   UseStreamOptions,
