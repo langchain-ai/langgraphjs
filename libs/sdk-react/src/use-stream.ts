@@ -105,8 +105,8 @@ export interface UseStreamReturn<
   /** Stop streaming the run here and leave it running: `stop({ cancel: false })`. */
   disconnect(): Promise<void>;
   /**
-   * Answer an interrupt: `options.interruptId`, or the newest one not
-   * answered yet. During a run the answer waits in the queue behind it.
+   * Answer an interrupt: `options.interruptId`, or the one {@link interrupt}
+   * shows. During a run the answer waits in the queue behind it.
    */
   respond(
     response: unknown,
@@ -354,7 +354,13 @@ function createBinding(
     stop: (stopOptions?: StreamStopOptions) => engine.stop(stopOptions),
     disconnect: () => engine.stop({ cancel: false }),
     respond: (response: unknown, respondOptions?: StreamRespondOptions) =>
-      engine.respond(response, respondOptions),
+      engine.respond(response, {
+        ...respondOptions,
+        // The one `interrupt` shows. `StreamOrchestrator` alone picks the newest.
+        interruptId:
+          respondOptions?.interruptId ??
+          engine.interrupts.find((interrupt) => interrupt.id != null)?.id,
+      }),
     respondAll: (
       responses: Record<string, unknown>,
       respondOptions?: StreamRespondAllOptions

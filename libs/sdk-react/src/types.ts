@@ -187,7 +187,7 @@ export interface StreamRespondAllOptions<
 export interface StreamRespondOptions<
   ConfigurableType extends object = Record<string, unknown>,
 > extends StreamRespondAllOptions<ConfigurableType> {
-  /** The interrupt to answer. Defaults to the newest one not answered yet. */
+  /** The interrupt to answer. Defaults to the one `interrupt` shows. */
   interruptId?: string;
   /** Accepted for compatibility. The interrupt's id identifies it. */
   namespace?: string[];

@@ -184,3 +184,26 @@ it("shows interrupts with a namespace, also through getThread()", async () => {
     { interruptId: "i1", namespace: [], payload: "approve?" },
   ]);
 });
+
+it("answers the interrupt `interrupt` shows when respond() names none", async () => {
+  const server = fakeServer({ t1: { messages: [] } });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.isThreadLoading).toBe(false);
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  server.runs[0].finish({
+    messages: [],
+    __interrupt__: [
+      { id: "a", value: "first?" },
+      { id: "b", value: "second?" },
+    ],
+  });
+  await expect.poll(() => result.current.interrupt?.id).toBe("a");
+
+  void result.current.respond("yes");
+
+  await expect.poll(() => server.runs.length).toBe(2);
+  expect(server.runs[1].payload.command).toMatchObject({ resume: { a: "yes" } });
+});
