@@ -1915,6 +1915,7 @@ export class CompiledStateGraph<
               : _getUpdates,
           trace: false,
           recurse: false,
+          bindContext: false,
         }),
       },
     ];
@@ -2186,6 +2187,7 @@ function _getControlBranch() {
     tags: [TAG_HIDDEN],
     trace: false,
     recurse: false,
+    bindContext: false,
     name: "<control_branch>",
   });
   return new Branch({
