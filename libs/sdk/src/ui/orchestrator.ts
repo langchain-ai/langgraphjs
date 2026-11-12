@@ -38,6 +38,7 @@ import {
   userFacingInterruptsFromValuesArray,
 } from "./interrupts.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
+import { STOP_RUN_ID_WAIT_MS } from "./constants.js";
 import {
   applyStopRead,
   hasPendingNodes,
@@ -87,13 +88,6 @@ interface LiveRun {
    */
   signal?: AbortSignal;
 }
-
-/**
- * A create request answers once its run exists, normally well within this.
- * Past it, a request kept open after a stop closes, and a run it still
- * creates keeps going.
- */
-const STOP_RUN_ID_WAIT_MS = 5_000;
 
 type RunOutcome = "success" | "aborted" | { error: unknown };
 

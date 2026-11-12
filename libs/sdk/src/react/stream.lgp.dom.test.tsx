@@ -1621,3 +1621,148 @@ describe("useStream (old engine) tool progress", () => {
     ]);
   });
 });
+
+describe("useStream (old engine) stop before the run id arrives", () => {
+  const storage = () => ({
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  });
+
+  it.each([
+    {
+      how: "stop()",
+      reconnectOnMount: storage,
+      abort: (view: View) => view.current.stop(),
+      cancelled: ["run-1"],
+    },
+    {
+      how: "stop() without reconnectOnMount",
+      reconnectOnMount: undefined,
+      abort: (view: View) => view.current.stop(),
+      cancelled: [],
+    },
+    {
+      how: "a submit that interrupts the run",
+      reconnectOnMount: storage,
+      abort: (view: View, client: TestClient) => {
+        mockRun(client, []);
+        return view.current.submit(
+          { messages: [] },
+          { multitaskStrategy: "interrupt" }
+        );
+      },
+      cancelled: [],
+    },
+  ])(
+    "$how before the run id arrives cancels $cancelled",
+    async ({ reconnectOnMount, abort, cancelled }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }));
+      const view = await renderStream(client, {
+        threadId: "t1",
+        reconnectOnMount,
+      });
+      let respond!: () => void;
+      const response = new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      client.runs.stream.mockImplementationOnce(
+        (
+          threadId: string,
+          _assistantId: string,
+          payload: {
+            signal: AbortSignal;
+            onRunCreated?: (params: {
+              run_id: string;
+              thread_id: string;
+            }) => void;
+          }
+        ) =>
+          (async function* () {
+            await new Promise<void>((resolve, reject) => {
+              void response.then(resolve);
+              payload.signal.addEventListener("abort", () =>
+                reject(Object.assign(new Error(), { name: "AbortError" }))
+              );
+            });
+            payload.onRunCreated?.({ run_id: "run-1", thread_id: threadId });
+            yield { event: "metadata", data: {} };
+          })()
+      );
+
+      const { running } = await startRun(view);
+      await act(async () => {
+        await abort(view, client);
+        await running;
+      });
+      await act(async () => respond());
+      await settle();
+
+      expect(client.runs.cancel.mock.calls).toEqual(
+        cancelled.map((runId) => ["t1", runId])
+      );
+    }
+  );
+
+  it.each([
+    {
+      how: "after the run id, before any event",
+      runId: "run-1",
+      events: [],
+      cancelled: ["run-1"],
+    },
+    {
+      how: "after an event, with no run id",
+      runId: undefined,
+      events: [{ event: "metadata", data: {} }],
+      cancelled: [],
+    },
+  ])(
+    "stop() $how closes the request at once",
+    async ({ runId, events, cancelled }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }));
+      const stored = new Map<string, string>();
+      const view = await renderStream(client, {
+        threadId: "t1",
+        reconnectOnMount: () => ({
+          getItem: (key: string) => stored.get(key) ?? null,
+          setItem: (key: string, value: string) => void stored.set(key, value),
+          removeItem: (key: string) => void stored.delete(key),
+        }),
+      });
+      let request!: AbortSignal;
+      client.runs.stream.mockImplementationOnce(
+        (
+          threadId: string,
+          _assistantId: string,
+          payload: {
+            signal: AbortSignal;
+            onRunCreated?: (params: {
+              run_id: string;
+              thread_id: string;
+            }) => void;
+          }
+        ) => {
+          request = payload.signal;
+          if (runId) payload.onRunCreated?.({ run_id: runId, thread_id: threadId });
+          return streamOf(events, payload.signal, true);
+        }
+      );
+
+      const { running } = await startRun(view);
+      await act(async () => {
+        await view.current.stop();
+      });
+      expect(request.aborted).toBe(true);
+
+      await act(async () => {
+        await running;
+      });
+      expect(client.runs.cancel.mock.calls).toEqual(
+        cancelled.map((id) => ["t1", id])
+      );
+    }
+  );
+});

@@ -40,7 +40,7 @@ import type {
 import type { UseStream, SubmitOptions } from "./types.js";
 
 import { Client, getClientConfigHash } from "../client.js";
-import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import { DEFAULT_MESSAGES_KEY, STOP_RUN_ID_WAIT_MS } from "../ui/constants.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";
@@ -219,6 +219,8 @@ export function useStreamLGP<
     if (typeof storage === "function") return storage();
     return null;
   }, []);
+  // Aborted by `stop()` alone, so a run can tell a stop from a thread switch.
+  const stopRunRef = useRef<AbortController | undefined>(undefined);
 
   const client = useMemo(
     () =>
@@ -506,6 +508,7 @@ export function useStreamLGP<
   })();
 
   const stop = async () => {
+    stopRunRef.current?.abort();
     const shownHead = latestThreadHeadRef.current;
     const read = planStopRead({
       history: historyLimit === true || typeof historyLimit === "number",
@@ -604,6 +607,7 @@ export function useStreamLGP<
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = targetThreadId;
+    let responded = false;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -612,6 +616,8 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
+        const stopRun = new AbortController();
+        stopRunRef.current = stopRun;
         stream.setStreamValues((values) => {
           const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
@@ -678,6 +684,26 @@ export function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
+        // Only the response names a run that outlives its request, so after a
+        // stop between sending the request and its response, the request
+        // stays open for onRunCreated to cancel the run.
+        const request = new AbortController();
+        const closeRequest = () => {
+          if (
+            !runMetadataStorage ||
+            !stopRun.signal.aborted ||
+            callbackMeta ||
+            responded
+          ) {
+            request.abort();
+            return;
+          }
+          const timer = setTimeout(() => request.abort(), STOP_RUN_ID_WAIT_MS);
+          request.signal.addEventListener("abort", () => clearTimeout(timer));
+        };
+        if (signal.aborted) request.abort();
+        else signal.addEventListener("abort", closeRequest, { once: true });
+
         return client.runs.stream(usableThreadId, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
@@ -694,7 +720,7 @@ export function useStreamLGP<
             submitOptions?.onDisconnect ??
             (streamResumable ? "continue" : "cancel"),
 
-          signal,
+          signal: request.signal,
 
           checkpoint,
           streamMode,
@@ -702,6 +728,13 @@ export function useStreamLGP<
           streamResumable,
           durability: submitOptions?.durability,
           onRunCreated(params) {
+            if (stopRun.signal.aborted) {
+              void client.runs
+                .cancel(usableThreadId!, params.run_id)
+                .catch(() => undefined);
+              request.abort();
+              return;
+            }
             callbackMeta = {
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
@@ -741,6 +774,10 @@ export function useStreamLGP<
         },
         onFinish() {
           threadIdStreamingRef.current = null;
+        },
+        // The run exists once it streams, even when no response named it.
+        onEvent() {
+          responded = true;
         },
       },
       { abortPrevious: shouldAbortPrevious }
