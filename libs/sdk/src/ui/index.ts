@@ -56,3 +56,4 @@ export {
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
+export type { Scope, ScopeRegistry, ScopeSnapshot } from "./scoped.js";
