@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { HumanMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
@@ -15,6 +15,7 @@ import { MemorySaver } from "../memory.js";
 import { uuid6 } from "../id.js";
 import { TASKS } from "../index.js";
 import type { CheckpointMetadata } from "../types.js";
+import { JsonPlusSerializer } from "../serde/jsonplus.js";
 
 const checkpoint1: Checkpoint = {
   v: 4,
@@ -133,6 +134,70 @@ describe("Base", () => {
 });
 
 describe("MemorySaver", () => {
+  it.each(["checkpoint", "metadata"])(
+    "returns no checkpoint after the first %s serialization fails",
+    async (failedPart) => {
+      const serde = new JsonPlusSerializer();
+      const serialize = serde.dumpsTyped.bind(serde);
+      const dumps = vi.spyOn(serde, "dumpsTyped");
+      if (failedPart === "metadata") dumps.mockImplementationOnce(serialize);
+      const failure = new Error("Serialization failed");
+      dumps.mockRejectedValueOnce(failure);
+
+      const saver = new MemorySaver(serde);
+      const config = {
+        configurable: { thread_id: "failed-first-put", checkpoint_ns: "child" },
+      };
+      const checkpoint = emptyCheckpoint();
+      const metadata: CheckpointMetadata = {
+        source: "input",
+        step: 0,
+        parents: {},
+      };
+
+      await expect(saver.put(config, checkpoint, metadata)).rejects.toBe(
+        failure
+      );
+      await expect(saver.getTuple(config)).resolves.toBeUndefined();
+      await expect(saver.get(config)).resolves.toBeUndefined();
+      const explicitConfig = {
+        configurable: { ...config.configurable, checkpoint_id: checkpoint.id },
+      };
+      await expect(saver.getTuple(explicitConfig)).resolves.toBeUndefined();
+      const history = [];
+      for await (const tuple of saver.list(config)) history.push(tuple);
+      expect(history).toEqual([]);
+
+      await saver.put(config, checkpoint, metadata);
+      expect((await saver.getTuple(config))?.checkpoint).toEqual(checkpoint);
+      expect((await saver.getTuple(explicitConfig))?.checkpoint).toEqual(
+        checkpoint
+      );
+    }
+  );
+
+  it("retains the previous checkpoint when a later put fails serialization", async () => {
+    const serde = new JsonPlusSerializer();
+    const saver = new MemorySaver(serde);
+    const config = { configurable: { thread_id: "failed-later-put" } };
+    const checkpoint = emptyCheckpoint();
+    const metadata: CheckpointMetadata = {
+      source: "input",
+      step: 0,
+      parents: {},
+    };
+    const savedConfig = await saver.put(config, checkpoint, metadata);
+
+    const failure = new Error("Serialization failed");
+    vi.spyOn(serde, "dumpsTyped").mockRejectedValueOnce(failure);
+    await expect(saver.put(config, emptyCheckpoint(), metadata)).rejects.toBe(
+      failure
+    );
+
+    expect((await saver.getTuple(config))?.checkpoint).toEqual(checkpoint);
+    expect((await saver.getTuple(savedConfig))?.checkpoint).toEqual(checkpoint);
+  });
+
   describe.each([
     { name: "custom IDs", ids: ["A", "Z", "a"] },
     { name: "UUID6 IDs", ids: [uuid6(0), uuid6(0), uuid6(0)] },
