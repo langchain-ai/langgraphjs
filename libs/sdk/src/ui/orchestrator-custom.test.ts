@@ -544,14 +544,16 @@ describe("CustomStreamOrchestrator", () => {
       orch.dispose();
     });
 
-    it("shows the input only when the server sends it, with optimistic false", async () => {
+    it("with optimistic false, sends the input as passed and shows it when the server does", async () => {
       const { transport, open } = gatedTransport();
       const orch = new CustomStreamOrchestrator<TestState>(
         createOptions({ transport, threadId: "t1", optimistic: false })
       );
-      const done = orch.submit({ messages: [human("h1", "hi")] });
+      const input = { messages: [{ type: "human", content: "hi" }] };
+      const done = orch.submit(input);
       await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
 
+      expect(transport.stream.mock.calls[0][0].input).toBe(input);
       expect(orch.messages).toEqual([]);
 
       open();
@@ -637,6 +639,57 @@ describe("CustomStreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it("answers the interrupt `interrupt` shows, with no id given", async () => {
+      const transport = createMockTransport([
+        {
+          event: "values",
+          data: {
+            messages: [],
+            __interrupt__: [
+              { id: "a", value: "first?" },
+              { id: "b", value: "second?" },
+            ],
+          },
+        },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      await orch.submit({ messages: [] });
+      expect(orch.interrupt?.id).toBe("a");
+
+      await orch.respond("yes");
+
+      expect(transport.stream.mock.calls[1][0].command.resume).toEqual({
+        a: "yes",
+      });
+      orch.dispose();
+    });
+
+    it("resolves an answer once its run starts", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      const answered = orch.respondAll({ i1: "yes" }).then(() => "resolved");
+      const later = new Promise((resolve) => setTimeout(resolve, 50, "pending"));
+
+      expect(await Promise.race([answered, later])).toBe("resolved");
+      open();
+      orch.dispose();
+    });
+
+    it("rejects an answer with no thread", async () => {
+      const orch = new CustomStreamOrchestrator<TestState>(createOptions());
+
+      await expect(orch.respondAll({ i1: "yes" })).rejects.toThrow(
+        "No active thread"
+      );
+
+      orch.dispose();
+    });
+
     it("respondAll sends every answer, update and goto in one resume command", async () => {
       const transport = createMockTransport();
       const orch = new CustomStreamOrchestrator<TestState>(
@@ -659,11 +712,17 @@ describe("CustomStreamOrchestrator", () => {
   });
 
   describe("as a binding's engine", () => {
-    it("rejects hydrate(), having no thread routes", async () => {
-      const orch = new CustomStreamOrchestrator<TestState>(createOptions());
+    it("hydrate() switches to another thread and resolves, reading nothing", async () => {
+      const transport = createMockTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
 
-      await expect(orch.hydrate()).rejects.toThrow("thread");
+      await orch.hydrate("t2");
+      await orch.hydrate();
 
+      expect(orch.threadId).toBe("t2");
+      expect(transport.stream).not.toHaveBeenCalled();
       orch.dispose();
     });
 

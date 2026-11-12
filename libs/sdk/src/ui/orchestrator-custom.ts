@@ -13,13 +13,14 @@ import {
   toMessageClass,
   ensureMessageInstances,
 } from "./messages.js";
-import { userFacingInterruptsFromValuesArray } from "./interrupts.js";
-import { normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
-import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import {
-  prepareOptimisticInput,
-  serializeUpdateMessages,
-} from "./optimistic-input.js";
+  resumeCommand,
+  userFacingInterruptsFromValuesArray,
+  valuesInterrupts,
+} from "./interrupts.js";
+import type { MessageMetadataMap } from "./message-metadata-tracker.js";
+import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import type { StreamEngine } from "./engine.js";
 import type { RespondOptions } from "./orchestrator.js";
 import { PendingRunsTracker } from "./queue.js";
 import type { Scope, ScopeSnapshot } from "./scoped.js";
@@ -79,7 +80,7 @@ function createCustomTransportThreadState<
 export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-> {
+> implements StreamEngine<StateType, Bag> {
   readonly stream: StreamManager<StateType, Bag>;
 
   readonly messageManager: MessageTupleManager;
@@ -88,7 +89,11 @@ export class CustomStreamOrchestrator<
 
   readonly #channels = new ChannelListeners();
 
-  #historyValues: StateType;
+  /**
+   * What a run's values start from: `initialValues` on the first thread, and
+   * nothing after a switch, since a custom transport reads no thread.
+   */
+  #baseValues: StateType;
 
   #threadId: string | null;
 
@@ -158,7 +163,7 @@ export class CustomStreamOrchestrator<
       toMessage: options.toMessage ?? toMessageClass,
     });
 
-    this.#historyValues = options.initialValues ?? ({} as StateType);
+    this.#baseValues = options.initialValues ?? ({} as StateType);
 
     this.#streamUnsub = this.stream.subscribe(() => {
       this.#flushPendingHeadlessToolInterrupts();
@@ -166,13 +171,13 @@ export class CustomStreamOrchestrator<
     });
     this.#queue.subscribe(() => this.#notify());
 
-    const historyMessages = this.#getMessages(this.#historyValues);
+    const initialMessages = this.#getMessages(this.#baseValues);
     if (
       options.filterSubagentMessages &&
       !this.stream.isLoading &&
-      historyMessages.length > 0
+      initialMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(historyMessages, {
+      this.stream.reconstructSubagents(initialMessages, {
         skipIfPopulated: true,
       });
     }
@@ -251,13 +256,14 @@ export class CustomStreamOrchestrator<
     this.#threadId = threadId ?? null;
   }
 
-  /** Rejects: a custom transport has no route to read a thread. */
-  hydrate(_threadId?: string | null): Promise<void> {
-    return Promise.reject(
-      new Error(
-        "hydrate() needs an Agent Server: a custom transport can't read a thread."
-      )
-    );
+  /**
+   * Switch to `threadId` when it's another thread. Nothing is read: a custom
+   * transport has no thread routes, so the thread shows empty until a run
+   * streams.
+   */
+  hydrate(threadId: string | null = this.#threadId): Promise<void> {
+    this.switchThread(threadId);
+    return Promise.resolve();
   }
 
   /**
@@ -312,7 +318,7 @@ export class CustomStreamOrchestrator<
 
   /** The latest run's values, or `initialValues` until a run streams. */
   get values(): StateType {
-    return this.stream.values ?? this.#historyValues;
+    return this.stream.values ?? this.#baseValues;
   }
 
   /**
@@ -378,13 +384,11 @@ export class CustomStreamOrchestrator<
    * answers.
    */
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
-    const { values } = this;
-    if (!("__interrupt__" in values) || !Array.isArray(values.__interrupt__)) {
-      return [];
-    }
-    return userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
-      values.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
-    ).filter(({ id }) => id == null || !this.#answered.has(id));
+    const fromValues = valuesInterrupts<GetInterruptType<Bag>>(this.values);
+    if (fromValues == null) return [];
+    return userFacingInterruptsFromValuesArray(fromValues).filter(
+      ({ id }) => id == null || !this.#answered.has(id)
+    );
   }
 
   /** The first of {@link interrupts}. */
@@ -463,13 +467,13 @@ export class CustomStreamOrchestrator<
    * This is a no-op if subagents are already populated.
    */
   reconstructSubagentsIfNeeded(): void {
-    const hvMessages = this.#getMessages(this.#historyValues);
+    const baseMessages = this.#getMessages(this.#baseValues);
     if (
       this.#options.filterSubagentMessages &&
       !this.stream.isLoading &&
-      hvMessages.length > 0
+      baseMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      this.stream.reconstructSubagents(baseMessages, { skipIfPopulated: true });
     }
   }
 
@@ -481,7 +485,7 @@ export class CustomStreamOrchestrator<
    */
   stop(_options?: { cancel?: boolean }): Promise<void> {
     this.#queue.removeAll();
-    return this.stream.stop(this.#historyValues, {
+    return this.stream.stop(this.#baseValues, {
       onStop: this.#options.onStop,
     });
   }
@@ -497,7 +501,7 @@ export class CustomStreamOrchestrator<
   switchThread(newThreadId: string | null): void {
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
-      this.#historyValues = {} as StateType;
+      this.#baseValues = {} as StateType;
       this.#queue.removeAll();
       this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
@@ -521,6 +525,14 @@ export class CustomStreamOrchestrator<
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> {
+    await this.#submit(values, submitOptions);
+  }
+
+  #submit(
+    values: GetUpdateType<Bag, StateType> | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    started?: () => void
+  ): Promise<void> {
     // Submits run one at a time. One made before the others finish is listed
     // until its turn, so an app can show or cancel it.
     const waiting =
@@ -536,28 +548,32 @@ export class CustomStreamOrchestrator<
     this.#turns += 1;
     const turn = this.#tail.then(() =>
       waiting == null || this.#queue.remove(waiting.id)
-        ? this.#run(values, submitOptions)
+        ? this.#run(values, submitOptions, started)
         : undefined
     );
     const done = () => {
       this.#turns -= 1;
     };
     this.#tail = turn.then(done, done);
-    await turn;
+    return turn;
   }
 
   async #run(
     values: GetUpdateType<Bag, StateType> | null | undefined,
-    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    started?: () => void
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
-    const input = this.#prepareInput(values);
-    const optimistic =
+    // Only input shown at once gets ids, so the server's copy replaces it.
+    const shown =
       this.#options.optimistic !== false &&
       submitOptions?.optimisticValues == null
-        ? input
+        ? prepareSubmitInput(
+            values,
+            this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
+          )
         : undefined;
     let usableThreadId: string | undefined;
 
@@ -565,23 +581,14 @@ export class CustomStreamOrchestrator<
       async (signal: AbortSignal) => {
         // Set as the run starts, so a submit waiting behind a run doesn't
         // change what that run shows.
-        this.stream.setStreamValues(() => {
-          const current = { ...this.#historyValues, ...this.stream.values };
-          const shown =
-            optimistic == null
-              ? current
-              : this.#setMessages({ ...current, ...optimistic.extraValues }, [
-                  ...this.#getMessages(current),
-                  ...(optimistic.optimisticMessages as unknown as Message[]),
-                ]);
-          if (submitOptions?.optimisticValues == null) return shown;
-          return {
-            ...shown,
-            ...(typeof submitOptions.optimisticValues === "function"
-              ? submitOptions.optimisticValues(shown)
-              : submitOptions.optimisticValues),
-          };
-        });
+        this.stream.setStreamValues(() =>
+          runStartValues(
+            { ...this.#baseValues, ...this.stream.values },
+            shown,
+            submitOptions?.optimisticValues,
+            { get: this.#getMessages, set: this.#setMessages }
+          )
+        );
 
         usableThreadId =
           this.#threadId ?? submitOptions?.threadId ?? crypto.randomUUID();
@@ -590,8 +597,8 @@ export class CustomStreamOrchestrator<
           this.#options.onThreadId?.(usableThreadId);
         }
 
-        return this.#options.transport.stream({
-          input: (input?.dispatchInput ?? values) as UpdateType,
+        const run = await this.#options.transport.stream({
+          input: (shown?.dispatchInput ?? values) as UpdateType,
           context: submitOptions?.context,
           command: submitOptions?.command,
           streamSubgraphs: submitOptions?.streamSubgraphs,
@@ -603,8 +610,10 @@ export class CustomStreamOrchestrator<
               ...submitOptions?.config?.configurable,
             } as unknown as GetConfigurableType<Bag>,
           },
-        }) as Promise<
-          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
+        });
+        started?.();
+        return run as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
         >;
       },
       {
@@ -649,8 +658,8 @@ export class CustomStreamOrchestrator<
   }
 
   /**
-   * Answer an interrupt: `options.interruptId`, or the newest one not
-   * answered yet. See {@link respondAll}.
+   * Answer an interrupt: `options.interruptId`, or the first one not
+   * answered yet, which {@link interrupt} shows. See {@link respondAll}.
    */
   respond(
     value: unknown,
@@ -660,7 +669,7 @@ export class CustomStreamOrchestrator<
   ): Promise<void> {
     const interruptId =
       options.interruptId ??
-      this.interrupts.filter((interrupt) => interrupt.id != null).at(-1)?.id;
+      this.interrupts.find((interrupt) => interrupt.id != null)?.id;
     if (interruptId == null) {
       return Promise.reject(new Error("No pending interrupt to respond to."));
     }
@@ -669,13 +678,18 @@ export class CustomStreamOrchestrator<
 
   /**
    * Answer interrupts by id in one run, sent through the transport as a
-   * resume command. It waits behind a run in flight, and the answered
-   * interrupts are hidden until it ends. Rejects when it can't be sent.
+   * resume command. It starts at once or waits behind the run in flight, and
+   * the answered interrupts are hidden until it ends. Resolves once the run
+   * starts, and rejects when it can't be sent. `strictResume` needs the Agent
+   * Server, which checks it.
    */
   async respondAll(
     responses: Record<string, unknown>,
     options: RespondOptions<GetConfigurableType<Bag>> = {}
   ): Promise<void> {
+    if (this.#threadId == null) {
+      throw new Error("No active thread to respond to.");
+    }
     const ids = Object.keys(responses);
     if (ids.length === 0) {
       throw new Error("respondAll() requires at least one response.");
@@ -684,47 +698,30 @@ export class CustomStreamOrchestrator<
     this.#notify();
 
     let failed: { error: unknown } | undefined;
-    try {
-      await this.submit(null, {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const ended = this.#submit(
+      null,
+      {
         config: options.config,
-        command: {
-          resume: Object.fromEntries(
-            ids.map((id) => [id, normalizeHitlResponseForServer(responses[id])])
-          ),
-          update:
-            options.update == null
-              ? options.update
-              : serializeUpdateMessages(
-                  options.update,
-                  this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
-                ),
-          goto: options.goto,
-        },
+        command: resumeCommand(
+          responses,
+          options,
+          this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
+        ),
         onError: (error) => {
           failed ??= { error };
         },
-      });
-    } finally {
+      },
+      started
+    ).finally(() => {
       for (const id of ids) this.#answered.delete(id);
       this.#notify();
-    }
+    });
+    await Promise.race([running, ended]);
     if (failed != null) throw failed.error;
-  }
-
-  #prepareInput(values: unknown) {
-    if (values == null || typeof values !== "object" || Array.isArray(values)) {
-      return undefined;
-    }
-    try {
-      return prepareOptimisticInput(
-        values as Record<string, unknown>,
-        this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY,
-        uuidv7
-      );
-    } catch {
-      // Messages the client can't read go as they are, for the server to judge.
-      return undefined;
-    }
   }
 
   /**
@@ -737,7 +734,7 @@ export class CustomStreamOrchestrator<
     this.#streamUnsub?.();
     this.#streamUnsub = null;
     this.#queue.removeAll();
-    void this.stream.stop(this.#historyValues, {
+    void this.stream.stop(this.#baseValues, {
       onStop: this.#options.onStop,
     });
   }

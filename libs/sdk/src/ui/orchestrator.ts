@@ -34,9 +34,12 @@ import { ScopeRegistry, holdStream } from "./scoped.js";
 import { resolveSubagentNamespaces } from "./namespace-from-history.js";
 import {
   extractInterrupts,
+  resumeCommand,
   userFacingInterruptsFromThreadTasks,
   userFacingInterruptsFromValuesArray,
+  valuesInterrupts,
 } from "./interrupts.js";
+import type { StreamEngine } from "./engine.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import {
   applyStopRead,
@@ -47,11 +50,7 @@ import {
   planStopRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import { normalizeHitlResponseForServer } from "./hitl-interrupt-payload.js";
-import {
-  prepareOptimisticInput,
-  serializeUpdateMessages,
-} from "./optimistic-input.js";
+import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
 import {
   MessageMetadataTracker,
   findForkPoints,
@@ -380,7 +379,7 @@ export interface RespondOptions<
 export class StreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-> {
+> implements StreamEngine<StateType, Bag> {
   readonly stream: StreamManager<StateType, Bag>;
 
   readonly messageManager: MessageTupleManager;
@@ -1076,13 +1075,9 @@ export class StreamOrchestrator<
    * there are pending next nodes but no explicit interrupt data.
    */
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
-    const v = this.values;
-    if (v != null && "__interrupt__" in v && Array.isArray(v.__interrupt__)) {
-      return this.#visible(
-        userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
-          v.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
-        )
-      );
+    const fromValues = valuesInterrupts<GetInterruptType<Bag>>(this.values);
+    if (fromValues != null) {
+      return this.#visible(userFacingInterruptsFromValuesArray(fromValues));
     }
 
     if (this.isLoading) return [];
@@ -1844,27 +1839,17 @@ export class StreamOrchestrator<
         if (signal.aborted) return (async function* () {})();
 
         // Before any thread create, so a new chat's input shows at once.
-        this.stream.setStreamValues(() => {
-          const current = { ...this.historyValues, ...this.stream.values };
-          const prev =
-            optimistic == null
-              ? current
-              : this.#setMessages({ ...current, ...optimistic.extraValues }, [
-                  ...this.#getMessages(current),
-                  ...(optimistic.optimisticMessages as unknown as Message[]),
-                ]);
-
-          if (submitOptions?.optimisticValues != null) {
-            return {
-              ...prev,
-              ...(typeof submitOptions.optimisticValues === "function"
-                ? submitOptions.optimisticValues(prev)
-                : submitOptions.optimisticValues),
-            };
-          }
-
-          return { ...prev };
-        });
+        this.stream.setStreamValues(() =>
+          runStartValues(
+            { ...this.historyValues, ...this.stream.values },
+            optimistic,
+            submitOptions?.optimisticValues,
+            {
+              get: (values) => this.#getMessages(values),
+              set: (values, messages) => this.#setMessages(values, messages),
+            }
+          )
+        );
 
         if (usableThreadId) {
           if (this.#missingThreads.has(usableThreadId)) {
@@ -2073,19 +2058,7 @@ export class StreamOrchestrator<
    * since the fork points are found by the ids the run's steps wrote.
    */
   #prepareInput(values: StateType | null | undefined) {
-    if (values == null || typeof values !== "object" || Array.isArray(values)) {
-      return undefined;
-    }
-    try {
-      return prepareOptimisticInput(
-        values,
-        this.#accessors.getMessagesKey(),
-        uuidv7
-      );
-    } catch {
-      // Messages the client can't read go as they are, for the server to judge.
-      return undefined;
-    }
+    return prepareSubmitInput(values, this.#accessors.getMessagesKey());
   }
 
   /**
@@ -2338,19 +2311,11 @@ export class StreamOrchestrator<
     let failed: { error: unknown } | undefined;
     const queued = this.stream.isLoading || this.#submitting;
     const sent = this.submit(null as unknown as StateType, {
-      command: {
-        resume: Object.fromEntries(
-          ids.map((id) => [id, normalizeHitlResponseForServer(responses[id])])
-        ),
-        update:
-          options.update == null
-            ? options.update
-            : serializeUpdateMessages(
-                options.update,
-                this.#accessors.getMessagesKey()
-              ),
-        goto: options.goto,
-      },
+      command: resumeCommand(
+        responses,
+        options,
+        this.#accessors.getMessagesKey()
+      ),
       config: options.config,
       metadata: options.metadata,
       strictResume: options.strictResume ?? true,
