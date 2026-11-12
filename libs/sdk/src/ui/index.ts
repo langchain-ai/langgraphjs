@@ -57,3 +57,7 @@ export {
 } from "./orchestrator.js";
 export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
 export type { Scope, ScopeRegistry, ScopeSnapshot } from "./scoped.js";
+export type {
+  MessageMetadataMap,
+  OptimisticStatus,
+} from "./message-metadata-tracker.js";
