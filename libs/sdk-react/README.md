@@ -6,7 +6,7 @@ React hooks for building AI applications with [Deep Agents](https://docs.langcha
 
 ## Highlights
 
-- **Runs survive reloads.** A run keeps going when the tab closes, and loading the thread joins it. Runs started in another tab or by a cron show as they stream.
+- **Runs survive reloads.** A run keeps going when the tab closes, and loading the thread joins it. On the Agent Server, runs started in another tab or by a cron show as they stream.
 - **Subagent panels on demand.** A subagent's messages stream only while a component that shows them is mounted.
 - **A queue, and answers that wait.** A message sent during a run waits in the server's queue, and an answer to an interrupt never cuts a run short.
 - **Types from your agent.** `useStream<typeof agent>()` types the state, the tool calls and the subagents.

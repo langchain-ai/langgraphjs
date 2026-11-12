@@ -71,6 +71,9 @@ export async function POST(request: Request): Promise<Response> {
 
 `request.signal` stops the run when the browser calls `stop()`. The checkpointer keeps each thread's state between requests, under `config.configurable.thread_id`.
 
+- The example trusts the `thread_id` the browser sends. Behind auth, check that the thread belongs to the caller before you run it.
+- A `goto` that holds sends arrives as plain `{ node, input }` objects. Turn them into `Send`s if your graph uses them.
+
 ## The stream
 
 The response is server-sent events, the format of the Agent Server's run streams: each event's name is a stream mode, and its data is JSON.

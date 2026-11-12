@@ -134,7 +134,7 @@ await stream.respond(
 );
 ```
 
-Options: `interruptId`, `config`, `metadata`, `update` and `goto` (applied with the answer, see [Interrupts](./interrupts.md#changing-state-while-answering)), and `strictResume`, on by default: an answer to an interrupt that is no longer waiting fails its run instead of being ignored. `namespace` is accepted and ignored.
+Options: `interruptId`, `config`, `metadata`, `update` and `goto` (applied with the answer, see [Interrupts](./interrupts.md#changing-state-while-answering)), and `strictResume`, on by default: on a server that checks answers (Agent Server 0.19 or later, with a Python graph), an answer to an interrupt that is no longer waiting fails its run instead of being ignored. `namespace` is accepted and ignored.
 
 ### `respondAll(responsesById, options?)`
 
