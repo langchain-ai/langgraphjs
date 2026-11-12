@@ -229,6 +229,38 @@ describe("Pregel AbortSignal", () => {
     }
   );
 
+  it("keeps the step timeout active while a parallel task retries", async () => {
+    const State = Annotation.Root({ fast: Annotation<boolean>() });
+    let attempts = 0;
+    const graph = new StateGraph(State)
+      .addNode(
+        "flakyNode",
+        async () => {
+          attempts += 1;
+          throw new Error("transient failure");
+        },
+        {
+          retryPolicy: {
+            maxAttempts: 3,
+            initialInterval: 230,
+            jitter: false,
+            logWarning: false,
+          },
+        }
+      )
+      .addNode("fastNode", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return { fast: true };
+      })
+      .addEdge(START, "flakyNode")
+      .addEdge(START, "fastNode")
+      .compile();
+    graph.stepTimeout = 75;
+
+    await expect(graph.invoke({})).rejects.toThrow(ABORT_ERROR_RE);
+    expect(attempts).toBe(1);
+  });
+
   it.each([
     "Single layer graph",
     "Subgraph called within node without config",
