@@ -45,13 +45,15 @@ function MessageMedia({ message }: { message: BaseMessage }) {
         : undefined);
     if (src == null) return null;
     return block.type === "image" ? (
-      <img key={i} src={src} />
+      <img key={i} src={src} alt="" />
     ) : (
       <audio key={i} controls src={src} />
     );
   });
 }
 ```
+
+Data that arrives as bytes (a `Uint8Array`) needs a URL of its own, such as `URL.createObjectURL(new Blob([block.data]))`.
 
 ### `useExtension`
 
