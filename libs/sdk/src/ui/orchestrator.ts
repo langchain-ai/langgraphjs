@@ -2556,7 +2556,14 @@ export class StreamOrchestrator<
   #onThreadEvent(threadId: string, event: string, data: unknown): void {
     if (threadId !== this.#threadId) return;
     if (event === "gap") {
-      this.#startLoad(this.#reload(threadId, { quiet: true }, true));
+      // A load still looking for its run keeps the head in doubt until both
+      // end, also when the gap's read fails and looks for none.
+      this.#startLoad(
+        Promise.all([
+          this.#hydration,
+          this.#reload(threadId, { quiet: true }, true),
+        ]).then(() => undefined)
+      );
       return;
     }
     const {

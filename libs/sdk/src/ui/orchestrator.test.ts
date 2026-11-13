@@ -5190,6 +5190,34 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("keeps hiding a loaded breakpoint when a gap's read fails before the load's lookup answers", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        next: ["agent"],
+      });
+      const lookup = deferred();
+      lookupUntil(lookup.promise);
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      orch.activate();
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      (client.threads.getState as Mock).mockRejectedValueOnce(
+        new Error("offline")
+      );
+
+      open()!.send({ event: "gap", data: null });
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(2)
+      );
+      await flushMicrotasks(20);
+      expect(orch.interrupts).toEqual([]);
+
+      lookup.resolve();
+      await orch.hydrationPromise;
+      expect(orch.interrupts).toEqual([{ when: "breakpoint" }]);
+      orch.dispose();
+    });
+
     it("shows no breakpoint from a gap's read while it looks for a running run", async () => {
       const orch = await watching();
       const lookup = deferred();
