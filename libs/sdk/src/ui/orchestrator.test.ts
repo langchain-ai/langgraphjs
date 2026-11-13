@@ -3083,23 +3083,30 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("an engine never activated still sends a submit made during its run once the run ends", async () => {
-      const ended = deferred();
-      mockRunStream(undefined, { ended: ended.promise });
-      const orch = inactive({ queue: "local" });
-      orch.initThreadId("t1");
-      await orch.hydrationPromise;
+    it.each([
+      { found: "nothing", running: [] },
+      { found: "a running run", running: [{ run_id: "run-9" }] },
+    ])(
+      "an engine never activated, whose load found $found, still sends a submit made during its run once the run ends",
+      async ({ running }) => {
+        listRuns(running);
+        const ended = deferred();
+        mockRunStream(undefined, { ended: ended.promise });
+        const orch = inactive({ queue: "local" });
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
 
-      void orch.submit({ messages: [] });
-      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
-      void orch.submit({ messages: [] });
-      ended.resolve();
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+        void orch.submit({ messages: [] });
+        ended.resolve();
 
-      await vi.waitFor(() =>
-        expect(client.runs.stream).toHaveBeenCalledTimes(2)
-      );
-      orch.dispose();
-    });
+        await vi.waitFor(() =>
+          expect(client.runs.stream).toHaveBeenCalledTimes(2)
+        );
+        orch.dispose();
+      }
+    );
 
     it("an engine never activated runs the tool calls its run's last read shows", async () => {
       const tool = weatherTool();
@@ -3176,6 +3183,81 @@ describe("StreamOrchestrator runs", () => {
       await vi.waitFor(() =>
         expect(client.runs.joinStream).toHaveBeenCalledOnce()
       );
+      orch.dispose();
+    });
+
+    it.each([
+      {
+        start: "a submit",
+        stream: (orch: StreamOrchestrator<TestState>) =>
+          void orch.submit({ messages: [] }),
+        runId: "run-1",
+      },
+      {
+        start: "a joinStream()",
+        stream: (orch: StreamOrchestrator<TestState>) =>
+          void orch.joinStream("run-2"),
+        runId: "run-2",
+      },
+    ])(
+      "$start before activate() drops the join a load held, so no older run replays over it",
+      async ({ stream, runId }) => {
+        listRuns([{ run_id: "run-9" }]);
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        mockRunStream(undefined, { ended: ended.promise });
+        const onRunEnd = vi.fn();
+        const orch = inactive({ onRunEnd });
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+
+        stream(orch);
+        orch.activate();
+        ended.resolve();
+
+        await vi.waitFor(() => expect(onRunEnd).toHaveBeenCalled());
+        await flushMicrotasks(20);
+        expect(onRunEnd).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ runId })
+        );
+        orch.dispose();
+      }
+    );
+
+    it("a submit before activate() drops the tool calls a load held", async () => {
+      const tool = weatherTool();
+      (client.threads.getState as Mock).mockResolvedValueOnce(toolHead);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = inactive({ tools: [tool] });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      const submitted = orch.submit({ messages: [] });
+      orch.activate();
+      await submitted;
+
+      await flushMicrotasks(20);
+      expect(tool.execute).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("activate(), its release and activate() again, as StrictMode runs effects, join a load's held run once and keep it", async () => {
+      listRuns([{ run_id: "run-9" }]);
+      const ended = deferred();
+      mockJoinStream([], ended.promise);
+      const orch = inactive();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      const release = orch.activate();
+      release();
+      orch.activate();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(client.runs.joinStream).toHaveBeenCalledOnce();
+      expect(orch.isLoading).toBe(true);
+      ended.resolve();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
       orch.dispose();
     });
 

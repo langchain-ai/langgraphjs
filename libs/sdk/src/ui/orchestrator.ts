@@ -466,7 +466,8 @@ export class StreamOrchestrator<
    * What a load found before the first {@link activate}, done when it comes:
    * bindings create engines during a render, and one from a render that
    * never commits must not join runs or run tools. The running run's join,
-   * and the head whose tool calls to run.
+   * and the head whose tool calls to run. A stream the engine starts first
+   * supersedes them.
    */
   #heldJoin: (() => void) | undefined;
 
@@ -675,9 +676,13 @@ export class StreamOrchestrator<
     this.#notify();
   }
 
-  #clearThreadState(): void {
+  #dropHeld(): void {
     this.#heldJoin = undefined;
     this.#heldTools = undefined;
+  }
+
+  #clearThreadState(): void {
+    this.#dropHeld();
     this.#branch = "";
     this.#namespaceLookups.clear();
     this.scopes.clear();
@@ -1751,6 +1756,7 @@ export class StreamOrchestrator<
 
     let releaseStream: (() => void) | undefined;
     const run: LiveRun = { promise: Promise.resolve() };
+    this.#dropHeld();
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
         run.signal = signal;
@@ -1895,6 +1901,7 @@ export class StreamOrchestrator<
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
+    this.#dropHeld();
     const started = this.stream.start(
       async (signal) => {
         releaseStream = holdStream();
@@ -2488,10 +2495,15 @@ export class StreamOrchestrator<
    * site's effect and return the result as the effect's cleanup. The
    * returned release disposes on the next macrotask, unless another
    * `activate()` comes first, as on StrictMode's remount. The thread watcher
-   * (`watchThread`) runs only between the first `activate()` and dispose. A
-   * thread load before the first `activate()` reads the thread and holds what
-   * it finds until then: the running run's join, the head's headless tool
-   * calls and the server's queued runs.
+   * (`watchThread`) runs only between the first `activate()` and dispose.
+   *
+   * An engine that loads threads needs it: a load before the first
+   * `activate()` reads the thread and holds what it finds until then, the
+   * running run's join, the head's headless tool calls and the server's
+   * queued runs. A running run held this way counts as {@link isLoading}, so
+   * the queue waits for it too. A stream the engine starts first, such as a
+   * submit from an effect that runs before the bind site's, drops what the
+   * load held.
    */
   activate(): () => void {
     clearTimeout(this.#pendingDispose);
@@ -2512,8 +2524,7 @@ export class StreamOrchestrator<
       this.#syncWatcher();
       const join = this.#heldJoin;
       const tools = this.#heldTools;
-      this.#heldJoin = undefined;
-      this.#heldTools = undefined;
+      this.#dropHeld();
       // The run answers the head's calls, and the queue drains when it ends.
       if (join != null) {
         join();
