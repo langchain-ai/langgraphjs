@@ -4063,6 +4063,37 @@ describe("StreamOrchestrator runs", () => {
     orch.dispose();
   });
 
+  it.each([
+    { name: "removes a key", before: {} },
+    { name: "puts back a key's value", before: { count: 1 } },
+  ])(
+    "a run that fails before sending values $name its input set, and keeps its message as failed",
+    async ({ before }) => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({ messages: [], ...before })
+      );
+      (client.runs.stream as Mock).mockReturnValue({
+        [Symbol.asyncIterator]: () => ({
+          next: () => Promise.reject(new Error("HTTP 404")),
+        }),
+      });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await orch.submit({ messages: [message("hi")], count: 2 });
+
+      const { messages, ...rest } = orch.values;
+      expect(rest).toStrictEqual(before);
+      expect(messages.map(({ id }) => id)).toEqual(["hi"]);
+      expect(
+        orch.messageMetadataStore.getSnapshot().get("hi")?.optimisticStatus
+      ).toBe("failed");
+      orch.dispose();
+    }
+  );
+
   it("a submit made while a new thread's create fails creates a thread itself", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     let fail!: () => void;
