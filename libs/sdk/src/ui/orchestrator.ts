@@ -176,7 +176,7 @@ function serverInfo(client: Client): Promise<ServerInfo | undefined> {
 
 const warnedClients = new WeakSet<Client>();
 
-/** Says once per client why subagent panels get every event of a run. */
+/** Says once per client why reading a subagent's messages streams every event of a run. */
 function warnInterim(client: Client, info: ServerInfo | undefined): void {
   if (info?.flags?.stream_lifecycle === true || warnedClients.has(client)) {
     return;
@@ -184,8 +184,8 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
   warnedClients.add(client);
   console.warn(
     info == null
-      ? "@langchain/langgraph-sdk: couldn't read the server's /info, so subagent panels get every event of each run until a read succeeds. A proxy in front of the server may need to route /info."
-      : "@langchain/langgraph-sdk: this server sends no subagent lifecycle events, so subagent panels get every event of each run. A newer Agent Server sends only what open panels show."
+      ? "@langchain/langgraph-sdk: couldn't read the server's /info, so reading a subagent's messages streams every event of each run until a read succeeds. A proxy in front of the server may need to route /info."
+      : "@langchain/langgraph-sdk: this server sends no subagent lifecycle events, so reading a subagent's messages streams every event of each run. A newer Agent Server sends only the subagents being read."
   );
 }
 
@@ -538,16 +538,6 @@ export class StreamOrchestrator<
     );
     this.#durable = options.durableRuns !== false;
     this.#callbackStreamModes = resolveCallbackStreamModes(options);
-    if (
-      options.filterSubagentMessages ||
-      options.scopedSubagents ||
-      options.onToolEvent != null
-    ) {
-      const client = accessors.getClient();
-      void serverInfo(client).then((info) => {
-        if (options.scopedSubagents) warnInterim(client, info);
-      });
-    }
 
     this.historyLimit =
       typeof options.fetchStateHistory === "object" &&
@@ -578,6 +568,11 @@ export class StreamOrchestrator<
             (subagent.status === "complete" || subagent.status === "error")
         ),
       onEvent: (event, data) => this.#channels.emit(event, data),
+      acquired: () => {
+        if (!this.#options.scopedSubagents) return;
+        const client = this.#accessors.getClient();
+        void serverInfo(client).then((info) => warnInterim(client, info));
+      },
     });
 
     this.pendingRuns = new PendingRunsTracker<
@@ -2506,6 +2501,14 @@ export class StreamOrchestrator<
         "visibilitychange",
         this.#onVisibilityChange
       );
+      if (
+        this.#options.filterSubagentMessages ||
+        this.#options.scopedSubagents ||
+        this.#options.onToolEvent != null
+      ) {
+        // Read ahead of the first run, which needs it to pick stream modes.
+        void serverInfo(this.#accessors.getClient());
+      }
       this.#syncWatcher();
       const join = this.#heldJoin;
       const tools = this.#heldTools;

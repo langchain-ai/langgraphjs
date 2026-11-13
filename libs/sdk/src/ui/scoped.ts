@@ -35,6 +35,8 @@ export interface ScopeHost {
   finished(namespace: string): boolean;
   /** Called with each join event the run's own stream doesn't carry. */
   onEvent(event: string, data: unknown): void;
+  /** Called when a namespace's scope is first held. */
+  acquired?(): void;
 }
 
 const MAX_OPEN_STREAMS = 4;
@@ -152,6 +154,7 @@ export class ScopeRegistry {
         this.#publish(created);
       };
       this.#scopes.set(key, scope);
+      this.#host.acquired?.();
       const run = this.#run;
       if (
         run == null ||

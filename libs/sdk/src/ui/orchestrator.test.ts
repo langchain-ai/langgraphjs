@@ -4933,14 +4933,38 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("warns once per client when the server can't filter subagents", async () => {
+    it("warns once per client, once a subagent's scope is held, when the server can't filter subagents", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       withFlags({});
-      orchestrator({ scopedSubagents: true }).dispose();
-      orchestrator({ scopedSubagents: true }).dispose();
+      const first = orchestrator({ scopedSubagents: true });
+      const second = orchestrator({ scopedSubagents: true });
+      await flushMicrotasks(10);
+      expect(warn).not.toHaveBeenCalled();
+
+      first.scopes.acquire(["tools:a"]).release();
+      second.scopes.acquire(["tools:b"]).release();
       await vi.waitFor(() => expect(warn).toHaveBeenCalled());
 
       expect(warn).toHaveBeenCalledOnce();
+      first.dispose();
+      second.dispose();
+    });
+
+    it("reads the server's /info only once activated", async () => {
+      withFlags(flags);
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ scopedSubagents: true }),
+        createAccessors(client)
+      );
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      expect((client as unknown as { info: Mock }).info).not.toHaveBeenCalled();
+
+      orch.activate();
+      await vi.waitFor(() =>
+        expect((client as unknown as { info: Mock }).info).toHaveBeenCalledOnce()
+      );
+      orch.dispose();
     });
 
     it("finds a reloaded subagent's namespace in its task tool message, and binds it", async () => {
