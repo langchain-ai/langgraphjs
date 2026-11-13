@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, onTestFinished, vi } from "vitest";
 import { CustomStreamOrchestrator } from "./orchestrator-custom.js";
 import type { AnyStreamCustomOptions } from "./types.js";
 
@@ -820,6 +820,111 @@ describe("CustomStreamOrchestrator", () => {
       await run;
 
       expect(onRunEnd).not.toHaveBeenCalled();
+    });
+
+    it("reports success for a resumed run whose stream sends no values", async () => {
+      const onRunEnd = vi.fn();
+      const transport = runsTransport(
+        { events: [metadata("r1"), interrupted] },
+        {
+          events: [
+            metadata("r2"),
+            { event: "updates", data: { agent: { messages: [] } } },
+          ],
+        }
+      );
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1", onRunEnd })
+      );
+
+      await orch.submit({ messages: [] });
+      await orch.respond("yes");
+      await vi.waitFor(() => expect(onRunEnd).toHaveBeenCalledTimes(2));
+
+      expect(onRunEnd.mock.calls[1]).toEqual([
+        { runId: "r2", reason: "success" },
+      ]);
+      orch.dispose();
+    });
+
+    it("reports an error, not a stop, when the transport times out on its own", async () => {
+      const onRunEnd = vi.fn();
+      const timeout = Object.assign(new Error("timed out"), {
+        name: "TimeoutError",
+      });
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport: { stream: vi.fn().mockRejectedValue(timeout) },
+          threadId: "t1",
+          onRunEnd,
+        })
+      );
+
+      await orch.submit({ messages: [] });
+
+      expect(onRunEnd.mock.calls).toEqual([
+        [{ runId: undefined, reason: "error" }],
+      ]);
+      orch.dispose();
+    });
+
+    it("reports an error for a stream that fails after a stop", async () => {
+      const onCreated = vi.fn();
+      const onRunEnd = vi.fn();
+      const transport = {
+        stream: vi.fn(async ({ signal }: { signal: AbortSignal }) =>
+          (async function* () {
+            yield metadata("r1");
+            await new Promise((resolve) =>
+              signal.addEventListener("abort", resolve)
+            );
+            throw new Error("connection closed");
+          })()
+        ),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1", onCreated, onRunEnd })
+      );
+      const run = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(onCreated).toHaveBeenCalled());
+
+      await orch.stop();
+      await run;
+
+      expect(onRunEnd.mock.calls).toEqual([[{ runId: "r1", reason: "error" }]]);
+      orch.dispose();
+    });
+
+    it("logs a callback that throws, and goes on with the run and the next one", async () => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      onTestFinished(() => logged.mockRestore());
+      const bug = new Error("app bug");
+      const onRunEnd = vi.fn(() => {
+        throw bug;
+      });
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport: createMockTransport([
+            metadata("r1"),
+            { event: "values", data: { messages: [] } },
+          ]),
+          threadId: "t1",
+          onCreated: () => {
+            throw bug;
+          },
+          onRunEnd,
+        })
+      );
+
+      await orch.submit({ messages: [] });
+      await orch.submit({ messages: [] });
+
+      expect(onRunEnd.mock.calls).toEqual([
+        [{ runId: "r1", reason: "success" }],
+        [{ runId: "r1", reason: "success" }],
+      ]);
+      expect(logged).toHaveBeenCalledWith(bug);
+      orch.dispose();
     });
 
     it("ends the subagents a failed or stopped run leaves open, and not an interrupted run's", async () => {

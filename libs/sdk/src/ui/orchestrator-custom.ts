@@ -21,7 +21,12 @@ import {
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
 import type { StreamEngine } from "./engine.js";
-import type { RespondOptions, RunEndReason } from "./orchestrator.js";
+import {
+  watchRunEvent,
+  type RespondOptions,
+  type RunEndReason,
+  type RunWatch,
+} from "./orchestrator.js";
 import { PendingRunsTracker } from "./queue.js";
 import type { Scope, ScopeSnapshot } from "./scoped.js";
 import { StreamStore } from "./store.js";
@@ -69,6 +74,19 @@ function createCustomTransportThreadState<
     },
     parent_checkpoint: null,
   };
+}
+
+/**
+ * Call an app's callback from a run's stream, logging what it throws: a throw
+ * in the event loop would end the run, and one in its cleanup would fail
+ * every later run.
+ */
+function callSafely(callback: () => void): void {
+  try {
+    callback();
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 /**
@@ -578,11 +596,13 @@ export class CustomStreamOrchestrator<
         : undefined;
     let usableThreadId: string | undefined;
     let runId: string | undefined;
-    // An aborted stream calls neither onSuccess nor onError.
-    let reason: RunEndReason = "stopped";
+    let runSignal: AbortSignal | undefined;
+    const watch: RunWatch = {};
+    let ended: RunEndReason | undefined;
 
     await this.stream.start(
       async (signal: AbortSignal) => {
+        runSignal = signal;
         // Set as the run starts, so a submit waiting behind a run doesn't
         // change what that run shows.
         this.stream.setStreamValues(() =>
@@ -626,9 +646,7 @@ export class CustomStreamOrchestrator<
         initialValues: {} as StateType,
         callbacks: this.#options,
         onSuccess: () => {
-          reason = valuesInterrupts(this.values)?.length
-            ? "interrupt"
-            : "success";
+          ended = watch.paused ? "interrupt" : "success";
           if (!usableThreadId) return undefined;
 
           this.#options.onFinish?.(
@@ -639,27 +657,35 @@ export class CustomStreamOrchestrator<
           return undefined;
         },
         onError: (error) => {
-          reason = "error";
+          ended = "error";
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
         onFinish: () => {
+          // StreamManager calls neither onSuccess nor onError for an abort,
+          // or for an AbortError or TimeoutError of the transport's own.
+          const reason = ended ?? (runSignal?.aborted ? "stopped" : "error");
           // As on an Agent Server: a subagent can't finish once its run has.
           if (reason === "error" || reason === "stopped") {
             this.stream.closeOpenSubagents(`The run ended: ${reason}`);
           }
-          if (!this.#disposed) this.#options.onRunEnd?.({ runId, reason });
+          if (!this.#disposed) {
+            callSafely(() => this.#options.onRunEnd?.({ runId, reason }));
+          }
         },
         onEvent: (event, data) => {
+          watchRunEvent(watch, event, data);
           // A run sends `metadata` once per attempt, with the same id.
           if (event === "metadata" && runId == null) {
             const { run_id: id } = (data ?? {}) as { run_id?: unknown };
             if (typeof id === "string") {
               runId = id;
-              this.#options.onCreated?.({
-                run_id: id,
-                thread_id: usableThreadId!,
-              });
+              callSafely(() =>
+                this.#options.onCreated?.({
+                  run_id: id,
+                  thread_id: usableThreadId!,
+                })
+              );
             }
           }
           this.#channels.emit(event, data);

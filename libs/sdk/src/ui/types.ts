@@ -1475,9 +1475,9 @@ export type AnyStreamCustomOptions<
    */
   optimistic?: boolean;
   /**
-   * Called when the stream of each run ends: `"interrupt"` when its values
-   * end with an interrupt, `"stopped"` when it's aborted, as by `stop()` or
-   * a thread switch. `runId` is the one its `metadata` event sent.
+   * Called when the stream of each run ends: `"interrupt"` when the stream
+   * sent an interrupt, `"stopped"` when it's aborted, as by `stop()` or a
+   * thread switch. `runId` is the one its `metadata` event sent.
    */
   onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
 };
