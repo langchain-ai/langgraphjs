@@ -5268,7 +5268,7 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("finds a reloaded subagent's namespace in its task tool message, and binds it", async () => {
+    it("takes a reloaded subagent's namespace from its task tool message at load", async () => {
       withFlags(flags);
       const values = createSubagentStateValues();
       values.messages[2].artifact = { checkpoint_ns: "tools:stamped" };
@@ -5278,11 +5278,29 @@ describe("StreamOrchestrator runs", () => {
       await orch.hydrationPromise;
       orch.reconstructSubagentsIfNeeded();
 
+      expect(orch.getSubagent("task-1")).toMatchObject({
+        namespace: ["tools:stamped"],
+        parentId: null,
+        depth: 1,
+      });
       await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual([
         "tools:stamped",
       ]);
-      expect(orch.getSubagent("task-1")?.namespace).toEqual(["tools:stamped"]);
       expect(client.threads.getHistory).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("gives a reloaded subagent depth 1 before its namespace is known", async () => {
+      withFlags(flags);
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState(createSubagentStateValues())
+      );
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      expect(orch.getSubagent("task-1")).toMatchObject({ namespace: [], depth: 1 });
       orch.dispose();
     });
 

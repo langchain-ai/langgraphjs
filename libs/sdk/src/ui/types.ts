@@ -321,7 +321,7 @@ export interface SubagentStreamInterface<
   /** Tool call ID of parent subagent (for nested subagents) */
   parentId: string | null;
 
-  /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
+  /** Nesting depth (1 = called by the main agent, 2 = called by a subagent, etc.) */
   depth: number;
 
   /** When the subagent started */
