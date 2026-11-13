@@ -73,7 +73,7 @@ const stream = useStream({ assistantId: "agent", client });
 
 A proxy in front of the Agent Server must forward the routes `useStream` calls:
 
-- `GET /info`: what the server supports. Without it, subagent panels get every event of each run, and a warning in the console says so.
+- `GET /info`: what the server supports. Without it, 2.0 acts as on an older server: subagent panels get every event of each run (a warning in the console says so), and tool events and strict answers are off.
 - `POST /threads`, `GET /threads/{thread_id}/state` and `POST /threads/{thread_id}/history`: creating and reading threads. History is read for fork points, and for subagent panels after a reload.
 - `POST /threads/{thread_id}/runs/stream`: each submit and answer.
 - `GET /threads/{thread_id}/runs/{run_id}/stream`: joining a run after a reload, from another tab, or for a subagent panel.
