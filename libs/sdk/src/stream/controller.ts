@@ -30,7 +30,11 @@ import type {
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type {
+  Interrupt,
+  ThreadState,
+  ThreadStateSelectField,
+} from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
@@ -167,6 +171,22 @@ function isThreadStateActive(
 }
 
 const ROOT_NAMESPACE: readonly string[] = [];
+
+/**
+ * Top-level thread-state fields the controller reads from `getState()`:
+ * `next` and `tasks` decide whether the thread is active and seed its
+ * interrupts, `created_at` filters replayed events, and `checkpoint`,
+ * `parent_checkpoint` and `metadata.step` place the seeded messages.
+ * Requested alongside the app's `stateKeys` whenever those are set.
+ */
+const HYDRATION_STATE_FIELDS: readonly ThreadStateSelectField[] = [
+  "next",
+  "tasks",
+  "checkpoint",
+  "parent_checkpoint",
+  "created_at",
+  "metadata",
+];
 
 /**
  * Channel set covered by the always-on root subscription. Exported so
@@ -605,12 +625,32 @@ export class StreamController<
   // ---------- public imperatives ----------
 
   /**
+   * `stateKeys` plus the messages key: the only `values` keys kept on
+   * `rootStore.values`. `undefined` when `stateKeys` is unset (full state).
+   */
+  get #keptStateKeys(): ReadonlySet<string> | undefined {
+    const { stateKeys } = this.#options;
+    if (stateKeys == null) return undefined;
+    return new Set([...stateKeys, this.#messagesKey]);
+  }
+
+  /**
    * Load thread state for hydration, preferring the active custom
-   * adapter's `getState()` when present.
+   * adapter's `getState()` when present. With `stateKeys` set, both are
+   * asked for only the fields the controller reads; without it, the call
+   * is made with no `select`.
    */
   async #fetchHydrationState(): Promise<ThreadState<StateType> | null> {
     const threadId = this.#currentThreadId;
     if (threadId == null) return null;
+    const keys = this.#keptStateKeys;
+    const select =
+      keys != null
+        ? [
+            ...HYDRATION_STATE_FIELDS,
+            ...[...keys].map((key): ThreadStateSelectField => `values.${key}`),
+          ]
+        : undefined;
 
     const transport = this.#options.transport;
     if (
@@ -618,10 +658,18 @@ export class StreamController<
       typeof transport === "object" &&
       typeof transport.getState === "function"
     ) {
-      return (await transport.getState<StateType>()) as ThreadState<StateType> | null;
+      const state =
+        select != null
+          ? await transport.getState<StateType>({ select })
+          : await transport.getState<StateType>();
+      return state as ThreadState<StateType> | null;
     }
 
-    return this.#options.client.threads.getState<StateType>(threadId);
+    return select != null
+      ? this.#options.client.threads.getState<StateType>(threadId, undefined, {
+          select,
+        })
+      : this.#options.client.threads.getState<StateType>(threadId);
   }
 
   /**
@@ -786,7 +834,10 @@ export class StreamController<
           const endedToolCalls = seedToolCallsFromMessages(
             ROOT_NAMESPACE,
             ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
-          ).filter((toolCall) => toolCall.status !== "running");
+          ).filter(
+            (toolCall) =>
+              toolCall.status === "finished" || toolCall.status === "error"
+          );
           if (endedToolCalls.length > 0) {
             this.rootStore.setState((s) => ({
               ...s,
@@ -2508,7 +2559,9 @@ export class StreamController<
       this.#messagesKey,
       () => uuidv7()
     );
-    const extraKeys = Object.keys(prepared.extraValues);
+    // Input keys outside `stateKeys` are still dispatched, just not shown.
+    const extraValues = this.#pickStateKeys(prepared.extraValues);
+    const extraKeys = Object.keys(extraValues);
     if (prepared.echoedIds.length === 0 && extraKeys.length === 0) {
       return undefined;
     }
@@ -2533,7 +2586,7 @@ export class StreamController<
     // "form hidden" and "resolved card shown").
     this.#rootMessages.appendOptimistic(
       prepared.optimisticMessages,
-      prepared.extraValues,
+      extraValues,
       { sync: true }
     );
     if (prepared.echoedIds.length > 0) {
@@ -2598,11 +2651,27 @@ export class StreamController<
     }
   }
 
+  /**
+   * Keep only the `stateKeys` (plus the messages key) of a `values`
+   * payload. Returns the payload unchanged when `stateKeys` is unset.
+   */
+  #pickStateKeys(values: Record<string, unknown>): Record<string, unknown> {
+    const keys = this.#keptStateKeys;
+    if (keys == null) return values;
+    const picked: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        picked[key] = values[key];
+      }
+    }
+    return picked;
+  }
+
   #applyValues(raw: unknown, checkpoint?: CheckpointEnvelope): void {
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
       return;
     }
-    const state = raw as Record<string, unknown>;
+    const state = this.#pickStateKeys(raw as Record<string, unknown>);
     // A root `values` snapshot landed: optimistic non-message keys are
     // now reconciled against server truth (see #settleOptimistic).
     this.#sawValuesForRun = true;

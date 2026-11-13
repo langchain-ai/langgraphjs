@@ -187,7 +187,7 @@ describe("ToolCallFromTool infers a streaming handle from a single tool", () => 
       expectTypeOf(toolCall.id).toEqualTypeOf<string>();
       expectTypeOf(toolCall.callId).toEqualTypeOf<string>();
       expectTypeOf(toolCall.status).toEqualTypeOf<
-        "running" | "finished" | "error"
+        "running" | "finished" | "error" | "incomplete"
       >();
       expectTypeOf(toolCall.error).toEqualTypeOf<string | undefined>();
       expectTypeOf(toolCall.output).toEqualTypeOf<string | null>();
@@ -209,7 +209,7 @@ describe("ToolCallFromTool infers a streaming handle from a single tool", () => 
       expectTypeOf(toolCall.id).toEqualTypeOf<string>();
       expectTypeOf(toolCall.callId).toEqualTypeOf<string>();
       expectTypeOf(toolCall.status).toEqualTypeOf<
-        "running" | "finished" | "error"
+        "running" | "finished" | "error" | "incomplete"
       >();
       expectTypeOf(toolCall.error).toEqualTypeOf<string | undefined>();
       expectTypeOf(toolCall.output).toEqualTypeOf<{ bar: string } | null>();
@@ -320,7 +320,7 @@ describe("stream.toolCalls() exposes assembled protocol tool calls", () => {
       expectTypeOf(tc.input).toEqualTypeOf<{ foo: string }>();
       expectTypeOf(tc.args).toEqualTypeOf<{ foo: string }>();
       expectTypeOf(tc.status).toEqualTypeOf<
-        "running" | "finished" | "error"
+        "running" | "finished" | "error" | "incomplete"
       >();
       expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
     } else {
@@ -331,7 +331,7 @@ describe("stream.toolCalls() exposes assembled protocol tool calls", () => {
       expectTypeOf(tc.input).toEqualTypeOf<{ location: string }>();
       expectTypeOf(tc.args).toEqualTypeOf<{ location: string }>();
       expectTypeOf(tc.status).toEqualTypeOf<
-        "running" | "finished" | "error"
+        "running" | "finished" | "error" | "incomplete"
       >();
       expectTypeOf(tc.error).toEqualTypeOf<string | undefined>();
       expectTypeOf(tc.output).toEqualTypeOf<string | null>();

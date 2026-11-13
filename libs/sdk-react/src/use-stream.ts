@@ -420,19 +420,7 @@ function createBinding(
         );
   engine.trackStreamMode("messages-tuple", "custom");
 
-  const hydrate = async (threadId?: string | null): Promise<void> => {
-    const before = engine.threadId;
-    const loaded = engine.hydrate(threadId);
-    // StreamOrchestrator calls it itself when it switches.
-    if (
-      transport != null &&
-      engine.threadId != null &&
-      engine.threadId !== before
-    ) {
-      latest.current.onThreadId?.(engine.threadId);
-    }
-    await loaded;
-  };
+  const hydrate = (threadId?: string | null) => engine.hydrate(threadId);
 
   const discovery = new SubgraphDiscovery();
   let discoveryThread = engine.threadId;

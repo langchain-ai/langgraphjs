@@ -16,6 +16,7 @@ import type {
   ProtocolTransportPaths,
 } from "./types.js";
 import type { TransportAdapter, EventStreamHandle } from "../transport.js";
+import type { ThreadStateSelectField } from "../../../schema.js";
 import {
   toAbsoluteUrl,
   isRecord,
@@ -143,9 +144,12 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
    *
    * Uses `GET`, matching `client.threads.getState()` and both LangGraph
    * Platform and Agent Protocol custom backends (`POST` is reserved for
-   * `updateState`).
+   * `updateState`). `options.select` goes out as repeated `select` query
+   * params, as `client.threads.getState()` sends it.
    */
-  async getState<StateType = unknown>(): Promise<{
+  async getState<StateType = unknown>(options?: {
+    select?: ThreadStateSelectField[];
+  }): Promise<{
     values: StateType;
     next?: unknown;
     tasks?: unknown;
@@ -154,6 +158,13 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
     parent_checkpoint?: { checkpoint_id?: string } | null;
   } | null> {
     const url = toAbsoluteUrl(this.apiUrl, this.stateUrl);
+    if (options?.select?.length) {
+      // Append to a detached copy: Chrome re-serializes the URL on every
+      // `url.searchParams.append`, which is quadratic in the field count.
+      const params = new URLSearchParams(url.search);
+      for (const field of options.select) params.append("select", field);
+      url.search = params.toString();
+    }
     let requestInit: RequestInit = {
       method: "GET",
       headers: mergeHeaders(this.defaultHeaders, {}),

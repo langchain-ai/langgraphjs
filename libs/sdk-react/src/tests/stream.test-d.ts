@@ -433,7 +433,7 @@ describe("InferToolCalls — typed streaming tool handles", () => {
       { query: string } | { id: string }
     >();
     expectTypeOf<SearchCall["status"]>().toEqualTypeOf<
-      "running" | "finished" | "error"
+      "running" | "finished" | "error" | "incomplete"
     >();
 
     type LookupCall = Extract<Calls, { name: "lookup" }>;

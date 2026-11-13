@@ -442,6 +442,19 @@ export interface StreamControllerOptions<
   /** Key inside `values` that holds the message array. Defaults to {@link DEFAULT_MESSAGES_KEY}. */
   messagesKey?: string;
   /**
+   * Keys of `values` to load and expose. When set, the thread-state read
+   * asks the server for only these keys plus the {@link messagesKey},
+   * along with the top-level fields the controller itself reads (`next`,
+   * `tasks`, `checkpoint`, `parent_checkpoint`, `created_at`,
+   * `metadata`). `root.values` then holds only these keys plus the
+   * messages key, from hydration, streamed `values` events and
+   * optimistic input alike, whether or not the server honoured the
+   * selection. `[]` keeps only the messages key.
+   *
+   * Unset (the default) loads and exposes the full state.
+   */
+  stateKeys?: readonly (keyof StateType & string)[];
+  /**
    * Optimistic UI for `submit()`. Defaults to `true`. See
    * {@link UseStreamCommonOptions.optimistic} for the full contract.
    */
