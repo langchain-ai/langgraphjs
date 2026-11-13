@@ -2663,6 +2663,49 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("calls onCreated for each run it queued as the run starts, after the run before it ended", async () => {
+      const firstEnded = deferred();
+      mockRunStream(undefined, { ended: firstEnded.promise });
+      mockJoinStream([], Promise.resolve());
+      const firstStatus = deferred();
+      (client.runs.get as Mock).mockImplementation(
+        async (_threadId: string, runId: string) => {
+          if (runId === "run-1") await firstStatus.promise;
+          return { status: "success" };
+        }
+      );
+      (client.runs.create as Mock)
+        .mockResolvedValueOnce({ run_id: "run-2", created_at: "2026-01-01" })
+        .mockResolvedValueOnce({ run_id: "run-3", created_at: "2026-01-02" });
+      const calls: string[] = [];
+      const orch = orchestrator({
+        onCreated: ({ run_id }) => calls.push(`created ${run_id}`),
+        onRunEnd: ({ runId, reason }) => calls.push(`ended ${runId} ${reason}`),
+      });
+      orch.initThreadId("t1");
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(calls).toEqual(["created run-1"]));
+      await orch.submit({ messages: [] });
+      await orch.submit({ messages: [] });
+      await orch.cancelQueueItem("run-3");
+      expect(calls).toEqual(["created run-1"]);
+
+      firstEnded.resolve();
+      await vi.waitFor(() => expect(orch.queueSize).toBe(0));
+      await flushMicrotasks(20);
+      firstStatus.resolve();
+      await vi.waitFor(() => expect(calls).toContain("ended run-2 success"));
+
+      expect(calls).toEqual([
+        "created run-1",
+        "ended run-1 success",
+        "created run-2",
+        "ended run-2 success",
+      ]);
+      orch.dispose();
+    });
+
     it("turns off the v3 marker on every run it creates", async () => {
       mockRunStream();
       const config = { configurable: { user_id: "u1" } };

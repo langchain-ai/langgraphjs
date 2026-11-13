@@ -420,6 +420,9 @@ export class StreamOrchestrator<
   /** Aborted by `stop()` to cancel the own run being streamed once its id arrives. */
   #stopOwnRun: AbortController | undefined;
 
+  /** Settles once the last run streamed here has called `onRunEnd`. */
+  #runEnd: Promise<void> = Promise.resolve();
+
   #hydration: Promise<void> = Promise.resolve();
 
   /**
@@ -1710,7 +1713,8 @@ export class StreamOrchestrator<
    * `own` marks a join `stop()` may cancel: the engine's queued and stored runs
    * and the run it finds after a load. Apps call `joinStream()` to watch a run,
    * so `stop()` leaves those runs going. `runInfo` is the run as a list
-   * returned it, so its options need no read.
+   * returned it, so its options need no read. `queuedHere` marks a run a
+   * submit of this engine queued, which gets `onCreated` as it starts.
    */
   async #join(
     runId: string,
@@ -1719,7 +1723,8 @@ export class StreamOrchestrator<
       StreamOrchestrator<StateType, Bag>["joinStream"]
     >[2],
     own: boolean,
-    runInfo?: Run
+    runInfo?: Run,
+    queuedHere = false
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -1762,6 +1767,14 @@ export class StreamOrchestrator<
         run.signal = signal;
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
+        if (queuedHere) {
+          // The run before it may still be reading how it ended.
+          await new Promise<void>((resolve) => {
+            void this.#runEnd.then(resolve, resolve);
+            signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+          this.#options.onCreated?.(callbackMeta);
+        }
         const mode = this.#options.scopedSubagents
           ? await this.#joinMode(tid, runId, runInfo, signal)
           : undefined;
@@ -1802,7 +1815,7 @@ export class StreamOrchestrator<
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
-          void this.#reportRunEnd(tid, runId, watch, outcome);
+          this.#runEnd = this.#reportRunEnd(tid, runId, watch, outcome);
           this.#drainQueue();
         },
         isReplaying: lastEventId === "-1",
@@ -2095,7 +2108,12 @@ export class StreamOrchestrator<
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
-          void this.#reportRunEnd(usableThreadId, runId, watch, outcome);
+          this.#runEnd = this.#reportRunEnd(
+            usableThreadId,
+            runId,
+            watch,
+            outcome
+          );
         },
         onEvent: (event, data) => {
           // The run exists once it streams, even when no response header
@@ -2198,6 +2216,7 @@ export class StreamOrchestrator<
       const next = this.pendingRuns.shift();
       if (next) {
         this.#submitting = true;
+        const listed = this.#listedRuns.get(next.id);
         const sent =
           this.#options.queue === "local"
             ? this.submitDirect(next.values as StateType, next.options)
@@ -2206,7 +2225,8 @@ export class StreamOrchestrator<
                 undefined,
                 undefined,
                 true,
-                this.#listedRuns.get(next.id)
+                listed,
+                listed == null
               ).finally(() => this.#unhide(next.options?.command));
         void sent.finally(() => {
           this.#submitting = false;
