@@ -63,7 +63,7 @@ The [selector hooks](./selectors.md) accept its result, as they accept `useStrea
 
 ## Server rendering
 
-A server render, in Next.js and the like, reads no thread, since the user's auth is in the browser. There `useSuspenseStream` throws an error whose `digest` is `"BAILOUT_TO_CLIENT_SIDE_RENDERING"`, Next.js's mark for rendering on the client: React renders the Suspense fallback on the server, and the component in the browser, which loads the thread. Next.js doesn't report that error. [`useStream`](./use-stream.md) throws nothing there: it shows the `threadId` it's given as loading.
+A server render, in Next.js and the like, reads no thread, since the user's auth is in the browser. There `useSuspenseStream` throws an error whose `digest` is `"BAILOUT_TO_CLIENT_SIDE_RENDERING"`, Next.js's mark for rendering on the client: React renders the Suspense fallback on the server, and the component in the browser, which loads the thread. Next.js doesn't report that error. [`useStream`](./use-stream.md) throws nothing there: it shows the `threadId` it's given as loading. With a [custom transport](./custom-transport.md) there is no thread to read, so both hooks render on the server as they do in the browser.
 
 With another framework, React reports the error twice: to the server render's `onError`, and to the browser's `onRecoverableError` when it hydrates the fallback. Skip it in both. The browser sees the `digest` only when the server's `onError` returns it:
 

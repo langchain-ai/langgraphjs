@@ -26,7 +26,7 @@ Point the hook at an Agent Server with `assistantId` and `apiUrl`, or `assistant
 | --------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `threadId`      | `string \| null`                                                                       | The thread to show. Changing it loads that thread. `null` starts a new thread on the next submit. An id the server doesn't know shows an empty thread, and the first submit creates it with that id. |
 | `onThreadId`    | `(threadId: string) => void`                                                           | Called with the id of each thread the stream moves to, including one a submit created.                                                                                                         |
-| `onCreated`     | `(info: { runId: string }) => void`                                                    | Called when the server accepts a run this hook started.                                                                                                                                         |
+| `onCreated`     | `(info: { runId: string }) => void`                                                    | Called when the server accepts a run this hook started. A custom transport needs a `metadata` event for it, see [The stream](./custom-transport.md#the-stream).                                                                                                                                         |
 | `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Called when a run's stream ends, with the reason.                                                                                                                                         |
 | `initialValues` | `StateType`                                                                            | Values to show before the thread's state is read.                                                                                                                                               |
 | `messagesKey`   | `string`                                                                               | The state key that holds the messages. Defaults to `"messages"`.                                                                                                                                |
@@ -53,6 +53,15 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `streamIdleReconnect`             | `number \| "auto"`                                       | Reconnect a stream that goes quiet for this many milliseconds. `0` turns it off.                                                  |
 | `transport`                       | `"sse"`                                                  | Server-sent events, the only built-in transport and the default.                                                                  |
 
+### Custom transport options
+
+| Option      | Type                  | Description                                                                                                                |
+| ----------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `transport` | `{ stream(payload) }` | Required. Sends each run to your backend, such as a `FetchStreamTransport`. See [Custom transports](./custom-transport.md). |
+| `queue`     | `"local"`             | A submit made during a run waits in the page, the only queue there is.                                                     |
+
+The Agent Server options don't compile next to a `transport`.
+
 ## Return values
 
 | Property                              | Type                                                        | Description                                                                                                         |
@@ -76,8 +85,8 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `respondAll(responsesById, options?)` | function                                                    | Answer several interrupts in one run.                                                                               |
 | `hydrate(threadId?)`                  | function                                                    | Load a thread, or read the current one again.                                                                       |
 | `getThread()`                         | function                                                    | Deprecated: `{ interrupts, onError }`. Use `interrupts` and `respond`.                                              |
-| `client`                              | `Client`                                                    | The client the hook uses.                                                                                           |
-| `assistantId`                         | `string`                                                    | The assistant the hook runs.                                                                                        |
+| `client`                              | `Client`                                                    | The client the hook uses. With a custom transport, a client with the default URL, which the hook doesn't use.       |
+| `assistantId`                         | `string`                                                    | The assistant the hook runs, or `""` with a custom transport.                                                       |
 
 The functions keep their identity across renders.
 

@@ -33,8 +33,8 @@ function Chat() {
 }
 ```
 
-- Create the transport once, outside the component or with `useMemo`: a new transport builds a new stream.
-- `assistantId` is optional, since your server picks the graph.
+- An inline transport works: each run goes through the transport of the latest render, and the conversation stays.
+- Leave out `assistantId`: your server picks the graph. The Agent Server's options (`apiUrl`, `client`, `fetch` and the others) don't compile next to a `transport`.
 - `FetchStreamTransport` also takes `defaultHeaders`, `fetch`, and `onRequest(url, init)` to change each request before it is sent.
 - `StreamProvider` takes a `transport` too.
 
@@ -88,15 +88,19 @@ The response is server-sent events, the format of the Agent Server's run streams
 
 Events from a subgraph carry its namespace after the mode, as in `values|node:1234`.
 
+A `metadata` event with the run's `run_id`, as the Agent Server sends first, calls `onCreated` and gives `onCompleted` the run's id. LangGraph JS's `graph.stream()` sends none, so `onCreated` isn't called and `onCompleted` comes without a `runId`.
+
 ## What needs an Agent Server
 
 A custom transport streams runs, and nothing else, so:
 
 - **Loading a thread:** there is no thread to read, so a conversation shows only what this page streamed. `hydrate(threadId)` switches to that thread without reading it, and `isThreadLoading` stays `false`.
-- **The queue:** a submit made during a run waits in the page and starts when the run ends. `useSubmissionQueue` lists it, and `cancel` and `clear` drop it. A thread switch or `stop()` drops it too.
+- **The queue:** a submit made during a run waits in the page and starts when the run ends, and `queue: "server"` throws. `useSubmissionQueue` lists it, and `cancel` and `clear` drop it. A thread switch or `stop()` drops it too.
+- **Submit options:** your transport gets a submit's `input`, `command` and `config`. `forkFrom`, `interruptBefore`, `interruptAfter` and `multitaskStrategy: "rollback"` need an Agent Server, so `submit()` rejects with them, and `metadata` isn't sent. `multitaskStrategy: "interrupt"` stops the run in flight and drops the queue, as the Agent Server does, then sends the submit.
 - **Answers:** `respond` and `respondAll` send the answer through your transport, as a run with a `command`, and resolve once that run starts. They need a thread, so answer after the first run. `strictResume` needs an Agent Server.
-- **Subagent panels:** `useMessages(stream, subagent)` and the other selector hooks return nothing for a target.
+- **Subagent panels:** `useMessages`, `useToolCalls` and `useValues` return nothing for a subagent or a subgraph, and a subagent's messages stay out of `messages`. `useChannel` and `useChannelEffect` still get a subgraph's events, when your server streams them.
 - **Fork points:** `useMessageMetadata` has no `parentCheckpointId`.
+- **`client` and `assistantId`:** `stream.client` is a client with the default URL, which the hook doesn't use, and `stream.assistantId` is `""`.
 
 ## Writing your own transport
 
