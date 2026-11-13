@@ -32,7 +32,26 @@ On an older server, 2.0 still works: subagent panels get every event of each run
 
 ### Media hooks
 
-`useAudio`, `useImages`, `useVideo`, `useFiles`, `useMediaURL`, `useAudioPlayer`, `useVideoPlayer`, `MediaAssemblyError` and the media and player types are gone. Images, audio and files a model returns are in its message's content, as the model sends them: read them from `message.content` or `message.contentBlocks`.
+`useAudio`, `useImages`, `useVideo`, `useFiles`, `useMediaURL`, `useAudioPlayer`, `useVideoPlayer`, `MediaAssemblyError` and the media and player types are gone. Images, audio and files a model returns are in its message's content, as the model sends them: read them from `message.content` or `message.contentBlocks` once the message is complete. For example, to play audio and show images:
+
+```tsx
+function MessageMedia({ message }: { message: BaseMessage }) {
+  return message.contentBlocks.map((block, i) => {
+    if (block.type !== "image" && block.type !== "audio") return null;
+    const src =
+      block.url ??
+      (typeof block.data === "string"
+        ? `data:${block.mimeType};base64,${block.data}`
+        : undefined);
+    if (src == null) return null;
+    return block.type === "image" ? (
+      <img key={i} src={src} />
+    ) : (
+      <audio key={i} controls src={src} />
+    );
+  });
+}
+```
 
 ### `useExtension`
 
@@ -195,6 +214,7 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 
 - Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions`.
 - `Channel` and `Event` are `@langchain/react`'s own types for 2.0's channels, not `@langchain/protocol`'s.
+- `stream[STREAM_CONTROLLER]` is internal, and holds 2.0's engine, a `StreamOrchestrator`, instead of 1.x's `StreamController`, so code that read its members, such as `registry`, has to change. Its `hydrate()` is the same as `stream.hydrate()`.
 - New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions`, `ScopeHandle`, `ScopeView` and `StreamThread`.
 
 ## Coming from 0.x

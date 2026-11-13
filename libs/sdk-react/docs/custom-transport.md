@@ -108,6 +108,8 @@ const transport = {
     input: unknown;
     command: unknown;
     config: unknown;
+    context?: unknown;
+    streamSubgraphs?: boolean;
     signal: AbortSignal;
   }) {
     // Send the run, and return an async iterable of events:
