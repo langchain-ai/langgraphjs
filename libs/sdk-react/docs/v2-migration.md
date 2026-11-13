@@ -192,6 +192,7 @@ Use the [selector hooks](./selectors.md).
 
 ### Channel events
 
+- A hook gets the events at its target's namespace, and the `lifecycle` events of the subagents and subgraphs the target starts. 1.x's hook on the main conversation also got the `values`, `updates` and `custom` events of its direct subgraphs and subagents. To get those, pass the subgraph or subagent as the target.
 - `messages` gives each message chunk as a `[chunk, metadata]` pair, as the Agent Server streams it, not 1.x's content-block events (`message-start`, `content-block-delta` and the rest).
 - `tools` keeps `tool-started`, `tool-finished` and `tool-error`, and `tool-progress` with `data` replaces `tool-output-delta`. Tool events need the server version under [Before you upgrade](#before-you-upgrade).
 - `lifecycle` has the events of subagents and subgraphs, and one event when a run ends: `completed`, `interrupted` or `failed`. No event says a run started.
