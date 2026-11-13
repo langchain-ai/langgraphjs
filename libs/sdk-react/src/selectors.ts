@@ -13,6 +13,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import {
   ensureMessageInstances,
   type AssembledToolCall,
+  type ChannelEvent,
   type InferAssembledToolCalls,
   type InferStateType,
 } from "@langchain/langgraph-sdk/ui";
@@ -136,20 +137,26 @@ export function useValues(
   return scopeKeyOf(target) == null ? stream.values : scoped;
 }
 
-function within(
-  namespace: readonly string[],
+/**
+ * Whether an event is the target's own. The subagents and subgraphs it starts
+ * stream one level below it, and only their `lifecycle` events count, so the
+ * main conversation sees them start and end.
+ */
+function isTargetEvent(
+  event: ChannelEvent,
   target: readonly string[]
 ): boolean {
+  const { namespace } = event.params;
+  const below = namespace.length - target.length;
   return (
-    namespace.length - target.length <= 1 &&
-    namespace.length >= target.length &&
+    (below === 0 || (below === 1 && event.method === "lifecycle")) &&
     target.every((segment, i) => namespace[i] === segment)
   );
 }
 
 /**
- * Calls `onEvent` with each event of `channels` at the target's namespace or
- * one level below it.
+ * Calls `onEvent` with each event of `channels` at the target's namespace, and
+ * with the `lifecycle` events one level below it.
  */
 function useChannelListener(
   stream: StreamLike,
@@ -175,10 +182,7 @@ function useChannelListener(
       const scope =
         namespace.length > 0 ? engine.scopes.acquire(namespace) : undefined;
       const off = engine.onChannelEvent((event) => {
-        if (
-          wanted.has(event.method) &&
-          within(event.params.namespace, namespace)
-        ) {
+        if (wanted.has(event.method) && isTargetEvent(event, namespace)) {
           latest.current(event as Event);
         }
       });
@@ -209,8 +213,9 @@ export interface UseChannelOptions {
 }
 
 /**
- * The events of `channels` at a target's namespace, or one level below it,
- * since the hook mounted. Cleared when the stream moves to another thread.
+ * The events of `channels` at a target's namespace since the hook mounted,
+ * and the `lifecycle` events of the subagents and subgraphs it starts.
+ * Cleared when the stream moves to another thread.
  * For messages, tool calls and values, prefer {@link useMessages},
  * {@link useToolCalls} and {@link useValues}. A `tools` channel adds that
  * stream mode to the runs that start after it mounts, so a run already

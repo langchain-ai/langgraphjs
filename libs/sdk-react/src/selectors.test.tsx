@@ -12,6 +12,7 @@ import {
 import { engineOf, subscribeScope } from "./use-scoped.js";
 import { useSuspenseStream } from "./suspense-stream.js";
 import { fakeServer } from "./test-client.js";
+import type { Event } from "./types.js";
 
 afterEach(() => cleanup());
 
@@ -172,6 +173,59 @@ it("keeps the last bufferSize channel events and clears them on a thread switch"
       )
     )
     .toEqual([4]);
+});
+
+it("gives a channel hook its target's own events, and the lifecycle events of the subagents it starts", async () => {
+  const server = fakeServer({ t1: { messages: [] } });
+  const { result } = await renderHook(() => {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+    });
+    return {
+      stream,
+      main: useChannel(stream, ["lifecycle", "tools"]),
+      subagent: useChannel(stream, ["tools"], ["tools:a"]),
+    };
+  });
+  await expect.poll(() => result.current.stream.isThreadLoading).toBe(false);
+  void result.current.stream.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  const [run] = server.runs;
+  const started = (name: string) => ({
+    event: "on_tool_start",
+    toolCallId: `call-${name}`,
+    name,
+    input: {},
+  });
+  run.send("tools", started("task"));
+  run.send("lifecycle|tools:a", {
+    event: "started",
+    namespace: ["tools:a"],
+    tool_call_id: "call-task",
+  });
+  run.send("tools|tools:a", started("search_web"));
+  run.send("tools|tools:a|tools:b", started("query_database"));
+  run.send("tools", { event: "on_tool_end", toolCallId: "call-task" });
+
+  const seen = (events: Event[]) =>
+    events.map(({ method, params }) => [
+      method,
+      params.namespace.join("|"),
+      (params.data as { event: string }).event,
+    ]);
+  await expect
+    .poll(() => seen(result.current.main).at(-1))
+    .toEqual(["tools", "", "tool-finished"]);
+  expect(seen(result.current.main)).toEqual([
+    ["tools", "", "tool-started"],
+    ["lifecycle", "tools:a", "started"],
+    ["tools", "", "tool-finished"],
+  ]);
+  expect(seen(result.current.subagent)).toEqual([
+    ["tools", "tools:a", "tool-started"],
+  ]);
 });
 
 it("stops calling onEvent once disabled", async () => {

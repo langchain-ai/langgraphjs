@@ -124,7 +124,7 @@ See [Fork from a checkpoint](./fork-from-checkpoint.md) for the full flow.
 
 ## `useChannel`
 
-`useChannel(stream, channels, target?, options?)` returns the events of `channels` since the hook mounted, at the target's namespace or one level below it, oldest first. It keeps at most `options.bufferSize` events (4096 by default) and drops them when the stream moves to another thread. `options.replay` is deprecated and does nothing.
+`useChannel(stream, channels, target?, options?)` returns the events of `channels` at the target's namespace since the hook mounted, oldest first: the main agent's for the main conversation, a subagent's for a subagent. `lifecycle` also has the events of the subagents and subgraphs the target starts. It keeps at most `options.bufferSize` events (4096 by default) and drops them when the stream moves to another thread. `options.replay` is deprecated and does nothing.
 
 ```tsx
 const events = useChannel(stream, ["custom"]);
