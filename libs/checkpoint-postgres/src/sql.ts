@@ -10,6 +10,7 @@ export interface SQL_STATEMENTS {
   DELETE_CHECKPOINTS_SQL: string;
   DELETE_CHECKPOINT_BLOBS_SQL: string;
   DELETE_CHECKPOINT_WRITES_SQL: string;
+  INSERT_CHECKPOINT_WRITES_BATCH_SQL: (rows: number) => string;
 }
 
 export type SQL_TYPES = {
@@ -62,6 +63,16 @@ export const getTablesWithSchema = (schema: string): TABLES => {
     return acc;
   }, {} as TABLES);
 };
+
+/** The most rows one batch statement takes: Postgres allows 65,535 parameters. */
+export const MAX_BATCH_ROWS = 16_000;
+
+/** `rows` VALUES tuples: the `shared` parameters, then four of its own each. */
+const batchValues = (rows: number, shared: string, first: number) =>
+  Array.from({ length: rows }, (_, i) => {
+    const p = first + i * 4;
+    return `(${shared}, $${p}, $${p + 1}, $${p + 2}, $${p + 3})`;
+  }).join(", ");
 
 export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
   const SCHEMA_TABLES = getTablesWithSchema(schema);
@@ -131,6 +142,13 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
     DELETE_CHECKPOINTS_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoints} WHERE thread_id = $1`,
     DELETE_CHECKPOINT_BLOBS_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_blobs} WHERE thread_id = $1`,
     DELETE_CHECKPOINT_WRITES_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_writes} WHERE thread_id = $1`,
+
+    // Rows go in order, so of two with the same key the first is kept, as
+    // with one statement per row.
+    INSERT_CHECKPOINT_WRITES_BATCH_SQL: (rows) =>
+      `INSERT INTO ${SCHEMA_TABLES.checkpoint_writes} (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, blob)
+  VALUES ${batchValues(rows, "$1, $2, $3, $4, $5", 6)}
+  ON CONFLICT (thread_id, checkpoint_ns, checkpoint_id, task_id, idx) DO NOTHING`,
   };
 };
 
