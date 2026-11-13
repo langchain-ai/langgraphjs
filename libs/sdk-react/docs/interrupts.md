@@ -44,7 +44,7 @@ return (
 
 ## Answering an interrupt
 
-`stream.respond(value)` answers the newest interrupt not answered yet. With several waiting, name the one with `interruptId`. Its id is enough for a nested interrupt too.
+`stream.respond(value)` answers the interrupt `stream.interrupt` shows. With several waiting, name the one with `interruptId`. Its id is enough for a nested interrupt too.
 
 ```tsx
 stream.interrupts.map((interrupt) => (

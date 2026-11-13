@@ -121,6 +121,12 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 - **2.0:** `respond` and `respondAll` ask for strict answers by default. On a server that supports them (the version under [Before you upgrade](#before-you-upgrade), with a Python graph), such an answer fails its run with an `UnknownInterruptError` and leaves the thread as it was.
 - **Back:** `respond(value, { strictResume: false })`.
 
+### `respond()` with no id answers `interrupt`
+
+- **1.x:** it answered the newest interrupt not answered yet, which wasn't always the one `stream.interrupt` showed.
+- **2.0:** it answers the one `stream.interrupt` shows.
+- **Back:** pass the `interruptId` of the interrupt to answer.
+
 ### `error` shows the thread's last error after a load
 
 - **1.x:** `error` held errors from this page's runs and loads.

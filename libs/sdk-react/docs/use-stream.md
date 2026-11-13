@@ -115,7 +115,7 @@ The functions keep their identity across renders.
 
 ### `respond(response, options?)`
 
-Answers one interrupt: `options.interruptId`, or the newest one not answered yet. The answer resolves the interrupt by its id, nested ones included. During a run, the answer waits in the queue behind it. `respond` resolves once the answer's run is created or queued.
+Answers one interrupt: `options.interruptId`, or the one `stream.interrupt` shows. The answer finds the interrupt by its id, nested ones included. During a run, the answer waits in the queue behind it. `respond` resolves once the answer's run is created or queued.
 
 ```tsx
 // One interrupt waiting:
