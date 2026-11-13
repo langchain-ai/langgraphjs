@@ -786,7 +786,10 @@ export class StreamController<
           const endedToolCalls = seedToolCallsFromMessages(
             ROOT_NAMESPACE,
             ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
-          ).filter((toolCall) => toolCall.status !== "running");
+          ).filter(
+            (toolCall) =>
+              toolCall.status === "finished" || toolCall.status === "error"
+          );
           if (endedToolCalls.length > 0) {
             this.rootStore.setState((s) => ({
               ...s,

@@ -2324,6 +2324,20 @@ describe("StreamController", () => {
         getState: vi.fn(async () => ({
           values: {
             messages: [
+              { type: "human", content: "time?", id: "human-0" },
+              {
+                type: "ai",
+                content: "",
+                id: "ai-0",
+                tool_calls: [
+                  {
+                    id: "call-stopped",
+                    name: "get_time",
+                    args: {},
+                    type: "tool_call",
+                  },
+                ],
+              },
               { type: "human", content: "weather?", id: "human-1" },
               {
                 type: "ai",
