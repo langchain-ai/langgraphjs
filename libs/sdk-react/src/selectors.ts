@@ -52,7 +52,7 @@ function useScope(
   target: SelectorTarget
 ): ScopeView | undefined {
   const engine = engineOf(stream);
-  const key = scopeKeyOf(target);
+  const key = scopeKeyOf(stream, target);
   const [held, setHeld] = useState<{ key: string; handle: ScopeHandle }>();
   // Keyed by `key`, not `target`: a new snapshot of the same subagent keeps its scope.
   useEffect(() => {
@@ -133,7 +133,7 @@ export function useValues(
       ? { ...values, [messagesKey]: ensureMessageInstances(messages) }
       : values;
   }, [values, messagesKey]);
-  return scopeKeyOf(target) == null ? stream.values : scoped;
+  return scopeKeyOf(stream, target) == null ? stream.values : scoped;
 }
 
 function within(
@@ -162,14 +162,14 @@ function useChannelListener(
   const latest = useRef(onEvent);
   latest.current = onEvent;
   const channelKey = [...channels].sort().join(",");
-  const key = scopeKeyOf(target);
+  const key = scopeKeyOf(stream, target);
   useEffect(() => {
     if (!enabled) return undefined;
     const wanted = new Set<string>(channelKey.split(","));
     if (wanted.has("tools")) engine.trackStreamMode("tools");
     let stop: (() => void) | undefined;
     let done = false;
-    void resolveNamespace(engine, target).then((namespace) => {
+    void resolveNamespace(stream, target).then((namespace) => {
       if (done || namespace == null) return;
       // A filtered run streams a subagent's events only to its scope.
       const scope =

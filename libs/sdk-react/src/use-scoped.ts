@@ -77,29 +77,38 @@ export function namespaceOf(target: SelectorTarget): readonly string[] {
 }
 
 /**
- * The tool call id of a subagent whose namespace isn't known yet: `useStream`
- * shows such a subagent at `["tools:<tool call id>"]`.
+ * The subagent a target at `["tools:<tool call id>"]` stands for: `useStream`
+ * shows a subagent there until its namespace is known, and an app may keep
+ * that namespace after. Given alone, it stands for one of the stream's
+ * subagents.
  */
-function unresolvedSubagent(target: SelectorTarget): string | undefined {
-  const { id } = (target ?? {}) as { id?: unknown };
+function placeholderSubagent(
+  stream: StreamLike,
+  target: SelectorTarget
+): SubagentDiscoverySnapshot | undefined {
   const namespace = namespaceOf(target);
-  return typeof id === "string" &&
-    namespace.length === 1 &&
-    namespace[0] === `tools:${id}`
-    ? id
-    : undefined;
+  if (namespace.length !== 1 || !namespace[0].startsWith("tools:")) {
+    return undefined;
+  }
+  const id = namespace[0].slice("tools:".length);
+  if (typeof (target as { id?: unknown }).id === "string") {
+    const subagent = target as SubagentDiscoverySnapshot;
+    return subagent.id === id ? subagent : undefined;
+  }
+  return stream.subagents.get(id);
 }
 
 /**
- * What identifies a target's scope, `undefined` for the main conversation. An
- * unresolved subagent's key changes with its status, so a lookup that found
+ * What identifies a target's scope, `undefined` for the main conversation. A
+ * placeholder's key changes with its subagent's status, so a lookup that found
  * nothing while it ran is made again once it ends.
  */
-export function scopeKeyOf(target: SelectorTarget): string | undefined {
-  const subagent = unresolvedSubagent(target);
-  if (subagent != null) {
-    return `subagent:${subagent}:${(target as SubagentDiscoverySnapshot).status}`;
-  }
+export function scopeKeyOf(
+  stream: StreamLike,
+  target: SelectorTarget
+): string | undefined {
+  const subagent = placeholderSubagent(stream, target);
+  if (subagent != null) return `subagent:${subagent.id}:${subagent.status}`;
   const namespace = namespaceOf(target);
   return namespace.length === 0 ? undefined : namespace.join("|");
 }
@@ -115,13 +124,13 @@ export function releaseLater(release: () => void): void {
 
 /** The target's namespace, looked up first for a subagent after a reload. */
 export async function resolveNamespace(
-  engine: StreamEngine,
+  stream: StreamLike,
   target: SelectorTarget
 ): Promise<readonly string[] | undefined> {
-  const subagent = unresolvedSubagent(target);
+  const subagent = placeholderSubagent(stream, target);
   return subagent == null
     ? namespaceOf(target)
-    : engine.resolveSubagentNamespace(subagent);
+    : engineOf(stream).resolveSubagentNamespace(subagent.id);
 }
 
 function rootScope(engine: StreamEngine): ScopeHandle {
@@ -157,7 +166,7 @@ export function subscribeScope(
   target: SelectorTarget
 ): ScopeHandle {
   const engine = engineOf(stream);
-  if (scopeKeyOf(target) == null) return rootScope(engine);
+  if (scopeKeyOf(stream, target) == null) return rootScope(engine);
 
   const listeners = new Set<() => void>();
   let scope: Scope | undefined;
@@ -168,7 +177,7 @@ export function subscribeScope(
     | { snapshot: ScopeSnapshot; toolCalls: ToolCalls; view: ScopeView }
     | undefined;
 
-  void resolveNamespace(engine, target).then((resolved) => {
+  void resolveNamespace(stream, target).then((resolved) => {
     if (released || resolved == null) return;
     namespace = resolved;
     scope = engine.scopes.acquire(resolved);
