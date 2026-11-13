@@ -119,7 +119,12 @@ export type IndexConfig = {
   model?: string;
   /** Modality for auto embedding (default: "text"). */
   modality?: string;
-  /** Additional filter fields to declare in the vector search index. */
+  /**
+   * Additional filter fields to declare in the vector search index, as `value.<field>`.
+   * Search filters on declared fields run inside $vectorSearch. Others run as a $match
+   * afterwards, re-querying with a wider window until the page fills; Atlas caps that
+   * window at 10000 hits, so declare fields here for exact results on large collections.
+   */
   filters?: string[];
 };
 
@@ -346,13 +351,6 @@ export class MongoDBStore extends BaseStore {
 
         // Validate namespace
         validateNamespace(namespace);
-        for (const label of namespace) {
-          if (label.includes("/")) {
-            throw new InvalidNamespaceError(
-              `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain slashes ('/').`
-            );
-          }
-        }
 
         // Handle delete
         if (value === null) {
@@ -362,6 +360,14 @@ export class MongoDBStore extends BaseStore {
             },
           });
           continue;
+        }
+
+        for (const label of namespace) {
+          if (label.includes("/")) {
+            throw new InvalidNamespaceError(
+              `Invalid namespace label '${label}' found in ${namespace}. Namespace labels cannot contain slashes ('/').`
+            );
+          }
         }
 
         // Build document
@@ -698,15 +704,14 @@ export class MongoDBStore extends BaseStore {
     filter: Record<string, any>
   ): Promise<SearchItem[]> {
     const path = this.indexConfig!.path ?? "embedding";
+    const indexedFields = new Set(this.indexConfig!.filters ?? []);
+    const preFilter: Record<string, any> = {};
+    const postFilter: Record<string, any> = {};
+    for (const [field, condition] of Object.entries(filter)) {
+      (indexedFields.has(field) ? preFilter : postFilter)[field] = condition;
+    }
     const vectorSearchStage: Record<string, any> = {
-      $vectorSearch: {
-        index: this.indexConfig!.name,
-        path,
-        // numCandidates should be 10-20x limit for good recall, capped at 10000.
-        // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
-        numCandidates: Math.min((limit + offset) * 20, 10000),
-        limit: limit + offset,
-      },
+      $vectorSearch: { index: this.indexConfig!.name, path },
     };
 
     if (this.embeddings) {
@@ -719,16 +724,13 @@ export class MongoDBStore extends BaseStore {
     }
 
     if (namespacePrefix.length > 0) {
-      filter.namespacePath = namespacePrefix.join("/");
+      preFilter.namespacePath = namespacePrefix.join("/");
     }
-    if (Object.keys(filter).length > 0) {
-      vectorSearchStage.$vectorSearch.filter = filter;
+    if (Object.keys(preFilter).length > 0) {
+      vectorSearchStage.$vectorSearch.filter = preFilter;
     }
 
-    const pipeline: Record<string, any>[] = [
-      vectorSearchStage,
-      { $addFields: { score: { $meta: "vectorSearchScore" } } },
-    ];
+    const pagePipeline: Record<string, any>[] = [];
 
     // The namespacePath filter above can match other namespaces, since
     // ["team/alice"] and ["team", "alice"] both store "team/alice".
@@ -738,23 +740,50 @@ export class MongoDBStore extends BaseStore {
       namespacePrefix.forEach((label, idx) => {
         namespaceMatch[`namespace.${idx}`] = { $eq: label };
       });
-      pipeline.push({ $match: namespaceMatch });
+      pagePipeline.push({ $match: namespaceMatch });
+    }
+    if (Object.keys(postFilter).length > 0) {
+      pagePipeline.push({ $match: postFilter });
     }
 
     // Strip the embedding field from manual mode results (vectors can be large)
     if (this.embeddings) {
-      pipeline.push({ $project: { [path]: 0 } });
+      pagePipeline.push({ $project: { [path]: 0 } });
     }
 
     if (offset > 0) {
-      pipeline.push({ $skip: offset });
+      pagePipeline.push({ $skip: offset });
     }
-    pipeline.push({ $limit: limit });
+    pagePipeline.push({ $limit: limit });
 
-    const docs = await this.db
-      .collection(this.collectionName)
-      .aggregate(pipeline)
-      .toArray();
+    // Matches after $vectorSearch drop hits from its capped window, so widen
+    // the window until the page is full or the index has no more hits.
+    const maxWindow = 10000;
+    let window = Math.min(limit + offset, maxWindow);
+    let docs: Record<string, any>[] = [];
+    for (;;) {
+      // numCandidates should be 10-20x limit for good recall, capped at 10000.
+      // See: https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/#fields
+      vectorSearchStage.$vectorSearch.numCandidates = Math.min(
+        window * 20,
+        maxWindow
+      );
+      vectorSearchStage.$vectorSearch.limit = window;
+      const [result] = await this.db
+        .collection(this.collectionName)
+        .aggregate([
+          vectorSearchStage,
+          { $addFields: { score: { $meta: "vectorSearchScore" } } },
+          { $facet: { hits: [{ $count: "n" }], page: pagePipeline } },
+        ])
+        .toArray();
+      docs = result?.page ?? [];
+      const hits = result?.hits?.[0]?.n ?? 0;
+      if (docs.length >= limit || hits < window || window >= maxWindow) {
+        break;
+      }
+      window = Math.min(window * 4, maxWindow);
+    }
 
     return docs.map((doc) => ({
       value: doc.value,

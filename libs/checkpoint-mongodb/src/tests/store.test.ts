@@ -5,6 +5,9 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
+const flattenFacet = (pipeline: any[]) =>
+  pipeline.flatMap((stage: any) => stage.$facet?.page ?? [stage]);
+
 describe("MongoDBStore", () => {
   let store: MongoDBStore;
   let mockClient: any;
@@ -211,6 +214,79 @@ describe("MongoDBStore", () => {
       });
     });
 
+    it("should only pre-filter $vectorSearch on declared index filter fields", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4", filters: ["value.kind"] },
+      });
+
+      const capturedPipelines: any[][] = [];
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        capturedPipelines.push(flattenFacet(pipeline));
+        return { toArray: vi.fn().mockResolvedValue([]) };
+      });
+
+      await storeAuto.batch([{
+        namespacePrefix: ["memories"],
+        query: "find something",
+        filter: { kind: "note", status: { $eq: "active" } },
+        limit: 10,
+        offset: 2,
+      }]);
+
+      const pipeline = capturedPipelines[0];
+      expect(pipeline[0].$vectorSearch.filter).toEqual({
+        "value.kind": "note",
+        namespacePath: "memories",
+      });
+      const stages = pipeline.map((stage: any) => Object.keys(stage)[0]);
+      const postIdx = pipeline.findIndex((stage: any) => stage.$match?.["value.status"]);
+      expect(pipeline[postIdx].$match).toEqual({ "value.status": { $eq: "active" } });
+      expect(postIdx).toBeLessThan(stages.indexOf("$skip"));
+    });
+
+    it("should widen the $vectorSearch window until post-filtered results fill the page", async () => {
+      const storeAuto = new MongoDBStore({
+        client: mockClient as any,
+        dbName: "test",
+        collectionName: "store",
+        indexConfig: { name: "test_index", model: "voyage-4" },
+      });
+
+      const limits: number[] = [];
+      const doc = { value: {}, key: "k", namespace: ["docs"] };
+      mockCollection.aggregate = vi.fn((pipeline: any[]) => {
+        const window = pipeline[0].$vectorSearch.limit;
+        limits.push(window);
+        const page = window >= 40 ? [doc, doc] : [doc];
+        return { toArray: vi.fn().mockResolvedValue([{ hits: [{ n: window }], page }]) };
+      });
+
+      const [results] = await storeAuto.batch([
+        { namespacePrefix: ["docs"], query: "q", filter: { status: "active" }, limit: 2, offset: 0 },
+      ]);
+
+      expect(limits).toEqual([2, 8, 32, 128]);
+      expect(results).toHaveLength(2);
+    });
+
+    it("should reject slash labels on put but still allow deleting them", async () => {
+      await expect(
+        store.batch([{ namespace: ["team/alice"], key: "k", value: { a: 1 } }])
+      ).rejects.toThrow(/slashes/);
+      await expect(
+        store.batch([{ namespace: ["team/alice"], key: "k", value: null }])
+      ).resolves.toBeDefined();
+    });
+
+    it("should throw on unsupported filter operators", async () => {
+      await expect(
+        store.batch([{ namespacePrefix: ["docs"], filter: { a: { $in: [1] } }, limit: 10, offset: 0 }])
+      ).rejects.toThrow(/Unsupported filter operator/);
+    });
+
     it("should throw when query is provided without indexConfig", async () => {
       await expect(
         store.batch([{ namespacePrefix: ["docs"], query: "find something", limit: 10, offset: 0 }])
@@ -231,7 +307,7 @@ describe("MongoDBStore", () => {
     it("should build prefix matchCondition pipeline", async () => {
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -256,7 +332,7 @@ describe("MongoDBStore", () => {
     it("should build suffix matchCondition pipeline", async () => {
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -281,7 +357,7 @@ describe("MongoDBStore", () => {
     it("should skip wildcard positions in matchCondition pipeline", async () => {
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -444,7 +520,7 @@ describe("MongoDBStore", () => {
 
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -471,7 +547,7 @@ describe("MongoDBStore", () => {
 
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -497,7 +573,7 @@ describe("MongoDBStore", () => {
 
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -531,7 +607,7 @@ describe("MongoDBStore", () => {
 
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
@@ -563,7 +639,7 @@ describe("MongoDBStore", () => {
 
       const capturedPipelines: any[][] = [];
       mockCollection.aggregate = vi.fn((pipeline: any[]) => {
-        capturedPipelines.push(pipeline);
+        capturedPipelines.push(flattenFacet(pipeline));
         return { toArray: vi.fn().mockResolvedValue([]) };
       });
 
