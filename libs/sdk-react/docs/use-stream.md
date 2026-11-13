@@ -76,7 +76,7 @@ const stream = useStream<typeof agent>({
 - The thread-state read sends `select` for `values.todos` and `values.messages`, plus the fields `useStream` needs itself (checkpoint, pending tasks and interrupts, `next`, creation time, step). The messages key (`messagesKey`) is always included; `stateKeys: []` loads only messages.
 - `stream.values` contains only `todos` and `messages`, after loading and while a run streams.
 - A server that doesn't support `select` on `GET /threads/{thread_id}/state` returns the full state. `stream.values` is narrowed the same way, so only the payload size differs.
-- A custom adapter's `getState` receives `{ select }`; it may forward it or ignore it.
+- A custom adapter's `getState` receives `{ select }`; it may forward it or ignore it. `HttpAgentServerAdapter` forwards it.
 - `stateKeys` is read once, when the hook is created, so an inline array is fine.
 
 ## Return values
