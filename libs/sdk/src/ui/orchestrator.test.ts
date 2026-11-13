@@ -6194,4 +6194,157 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
   });
+
+  describe("runs 1.x started", () => {
+    it.each([
+      {
+        server: "the Agent Server",
+        kwargs: { config: { configurable: { __event_streaming_v2: true } } },
+        frames: (messages: unknown[]) => [
+          {
+            event: "values",
+            data: {
+              type: "event",
+              method: "values",
+              params: { namespace: [], data: { messages }, interrupts: [] },
+              seq: 1,
+            },
+          },
+        ],
+      },
+      {
+        server: "the JS dev server",
+        kwargs: { __protocol_stream_run: true },
+        frames: (messages: unknown[]) => [
+          { event: "values", data: { messages } },
+          {
+            event: "messages|agent:task-1",
+            data: { event: "message-start", id: "reply" },
+          },
+          {
+            event: "updates",
+            data: { node: "agent", values: { messages: messages.slice(-1) } },
+          },
+        ],
+      },
+    ])(
+      "on $server, a page opened during 1.x's run keeps what it shows until that run and the one 1.x queued end, then shows the thread",
+      async ({ kwargs, frames }) => {
+        const [m1, a1, m2, a2] = ["m1", "a1", "m2", "a2"].map(message);
+        (client.threads.getState as Mock)
+          .mockResolvedValueOnce(createThreadState({ messages: [m1] }))
+          .mockResolvedValueOnce(createThreadState({ messages: [m1, a1] }))
+          .mockResolvedValueOnce(
+            createThreadState({ messages: [m1, a1, m2, a2] })
+          );
+        listRuns(
+          [{ run_id: "run-1", kwargs }],
+          [
+            {
+              run_id: "run-2",
+              created_at: "2026-11-13T10:00:00Z",
+              kwargs: { ...kwargs, input: { messages: [m2] } },
+            },
+          ]
+        );
+        const runs = {
+          "run-1": { streamed: [m1], last: [m1, a1], ended: deferred() },
+          "run-2": {
+            streamed: [m1, a1, m2],
+            last: [m1, a1, m2, a2],
+            ended: deferred(),
+          },
+        };
+        (client.runs.joinStream as Mock).mockImplementation(async function* (
+          _threadId: string,
+          runId: keyof typeof runs,
+          payload: RunsStreamPayload
+        ) {
+          const run = runs[runId];
+          yield { event: "metadata", data: { run_id: runId, attempt: 1 } };
+          yield* frames(run.streamed);
+          await openUntil(payload.signal, run.ended.promise);
+          yield* frames(run.last);
+          yield { event: "end", data: { run_id: runId, status: "success" } };
+        });
+        const orch = orchestrator();
+        const ids = () => orch.messages.map((m) => m.id);
+        const shown: { keys: string[]; ids: unknown[] }[] = [];
+        orch.subscribe(() =>
+          shown.push({ keys: Object.keys(orch.values), ids: ids() })
+        );
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        await flushMicrotasks(10);
+        expect(orch.isLoading, "loading during the first run").toBe(true);
+        expect(ids(), "during the first run").toEqual(["m1"]);
+
+        runs["run-1"].ended.resolve();
+        await vi.waitFor(() =>
+          expect(client.runs.joinStream).toHaveBeenCalledTimes(2)
+        );
+        await flushMicrotasks(10);
+        expect(orch.isLoading, "loading during the queued run").toBe(true);
+        expect(ids(), "during the queued run").toEqual(["m1", "a1"]);
+
+        runs["run-2"].ended.resolve();
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        expect(ids(), "after both runs").toEqual(["m1", "a1", "m2", "a2"]);
+        expect(
+          new Set(shown.flatMap((s) => s.keys)),
+          "the keys values ever had"
+        ).toEqual(new Set(["messages"]));
+        const counts = shown.map((s) => s.ids.length);
+        expect(counts, "messages shown at each notify").toEqual(
+          [...counts].sort((a, b) => a - b)
+        );
+        orch.dispose();
+      }
+    );
+
+    it("a subagent panel opened during 1.x's run reads its history instead of joining the run, and again when it ends", async () => {
+      (client as unknown as { info: Mock }).info = vi.fn().mockResolvedValue({
+        flags: { stream_lifecycle: true, stream_namespaces: true },
+      });
+      listRuns([
+        {
+          run_id: "run-1",
+          kwargs: {
+            stream_mode: ["values", "lifecycle"],
+            subgraphs: true,
+            config: { configurable: { __event_streaming_v2: true } },
+          },
+        },
+      ]);
+      const ended = deferred();
+      (client.runs.joinStream as Mock).mockImplementation(async function* (
+        _threadId: string,
+        runId: string,
+        payload: RunsStreamPayload
+      ) {
+        yield { event: "metadata", data: { run_id: runId, attempt: 1 } };
+        await openUntil(payload.signal, ended.promise);
+        yield { event: "end", data: { run_id: runId, status: "success" } };
+      });
+      (client.threads.getHistory as Mock)
+        .mockResolvedValueOnce([createThreadState({ messages: [message("s1")] })])
+        .mockResolvedValueOnce([
+          createThreadState({ messages: [message("s1"), message("s2")] }),
+        ]);
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      const panel = orch.scopes.acquire(["tools:a"]);
+      const ids = () => panel.getSnapshot().messages.map((m) => m.id);
+
+      await vi.waitFor(() => expect(ids()).toEqual(["s1"]));
+      ended.resolve();
+      await vi.waitFor(() => expect(ids()).toEqual(["s1", "s2"]));
+
+      expect(client.runs.joinStream).toHaveBeenCalledOnce();
+      panel.release();
+      orch.dispose();
+    });
+  });
 });
