@@ -20,7 +20,6 @@ interface Props {
   threadId?: string;
   submitInput?: StreamState;
   submitOptions?: StreamSubmitOptions<StreamState>;
-  transport?: "sse" | "websocket";
   onThreadId?: (threadId: string) => void;
   onCreated?: (info: RunExecutionInfo) => void;
 }
@@ -32,7 +31,6 @@ export function BasicStream({
   threadId,
   submitInput,
   submitOptions,
-  transport,
   onThreadId,
   onCreated,
 }: Props) {
@@ -41,7 +39,6 @@ export function BasicStream({
     apiUrl,
     client,
     threadId,
-    transport,
     onThreadId,
     onCreated,
   });

@@ -1,7 +1,8 @@
 /**
  * Svelte port: idle/finished threads must not open the always-on SSE
- * pumps on reconnect. See the React `stream.idle-pumps.test.tsx` for the
- * full rationale. A finished thread's cards seed from getState +
+ * pumps on reconnect. See the React `stream.idle-pumps.test.tsx`
+ * (https://github.com/langchain-ai/langgraphjs/blob/@langchain/react@1.2.13/libs/sdk-react/src/tests/stream.idle-pumps.test.tsx)
+ * for the full rationale. A finished thread's cards seed from getState +
  * getHistory, so hydrating it opens ZERO `/events`; the pumps come up on
  * submit.
  */
