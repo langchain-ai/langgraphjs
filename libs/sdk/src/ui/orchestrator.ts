@@ -2319,7 +2319,8 @@ export class StreamOrchestrator<
 
   /**
    * Answer one interrupt: `options.interruptId`, or the newest one shown
-   * that isn't answered yet. See {@link respondAll}.
+   * that isn't answered yet, once a thread load has looked for a run still
+   * going. See {@link respondAll}.
    */
   async respond(
     value: unknown,
@@ -2327,11 +2328,17 @@ export class StreamOrchestrator<
       interruptId?: string;
     } = {}
   ): Promise<void> {
-    if (this.#threadId == null) {
+    const threadId = this.#threadId;
+    if (threadId == null) {
       throw new Error("No active thread to respond to.");
     }
-    if (options.interruptId == null && this.#unconfirmedHead()) {
+    while (options.interruptId == null && this.#unconfirmedHead()) {
       await this.#hydration;
+      if (this.#disposed || this.#threadId !== threadId) {
+        throw new Error(
+          "The thread closed or changed while respond() waited for its interrupt."
+        );
+      }
     }
     const interruptId =
       options.interruptId ??
@@ -2549,7 +2556,7 @@ export class StreamOrchestrator<
   #onThreadEvent(threadId: string, event: string, data: unknown): void {
     if (threadId !== this.#threadId) return;
     if (event === "gap") {
-      void this.#reload(threadId, { quiet: true }, true);
+      this.#startLoad(this.#reload(threadId, { quiet: true }, true));
       return;
     }
     const {
