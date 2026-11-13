@@ -1489,7 +1489,6 @@ async function runDeploy(
     opts.apiKey,
     envVars
   );
-  const flags = await requireCliBuilds(client);
   let step = 1;
 
   const resolved = await resolveDeployment(
@@ -1504,6 +1503,7 @@ async function runDeploy(
   );
   deploymentId = resolved.deploymentId;
   step = resolved.step;
+  const flags = await requireCliBuilds(client);
 
   if (resolved.needsCreation) {
     const created = await createDeployment(client, step, {

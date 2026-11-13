@@ -152,8 +152,9 @@ describe("on a BYOC data plane", () => {
     await remoteDeploy();
 
     expect(gracefulExit).not.toHaveBeenCalled();
-    expect(calls.slice(0, 2).map((call) => call.route)).toEqual([
+    expect(calls.slice(0, 3).map((call) => call.route)).toEqual([
       DISCOVER,
+      `GET ${DATA_PLANE_HOST}/v2/deployments`,
       INFO,
     ]);
     expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
@@ -371,6 +372,28 @@ describe("with workspaces on different planes", () => {
     expect(routes.slice(0, 2)).toEqual([DISCOVER, controlPlaneList]);
     expect(routes[2]).toBe(`GET ${DATA_PLANE_HOST}/v2/deployments`);
     expect(calls[2].headers["x-tenant-id"]).toBe(WORKSPACE_ID);
+  });
+
+  it("checks and sizes a deploy on the data plane the control plane prompt picked", async () => {
+    promptAnswer.mockReturnValue(WORKSPACE_ID);
+    serve(DATA_PLANE_HOST, {
+      [DISCOVER]: () => json([SAAS_WORKSPACE, BYOC_WORKSPACE]),
+      [`GET ${CLOUD_HOST_URL}/v2/deployments`]: () =>
+        json({ detail: "API key requires workspace specification" }, 403),
+    });
+
+    await runDeployCli(
+      "--config",
+      harness.configPath,
+      "--name",
+      "my-app",
+      "--no-wait",
+      "--remote"
+    );
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.route)).toContain(INFO);
+    expect(createBody().source_config).toEqual({ resource_spec: {} });
   });
 
   it("keeps the control plane for a key that needs no workspace", async () => {
