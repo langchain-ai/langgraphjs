@@ -413,7 +413,12 @@ interface AgentServerAdapter {
   // `threadId: null` stream. Omit it to keep the adapter pinned to the
   // thread it was constructed with (the per-call id is then ignored).
   setThreadId?(threadId: string): void;
-  getState?<S = unknown>(): Promise<{
+  // `select` is passed when `useStream` has `stateKeys` set, in
+  // `client.threads.getState()`'s form (`"tasks"`, `"values.todos"`, …).
+  // Forward it or ignore it: the hook narrows `values` either way.
+  getState?<S = unknown>(options?: {
+    select?: ThreadStateSelectField[];
+  }): Promise<{
     values: S;
     checkpoint?: { checkpoint_id?: string } | null;
   } | null>;
