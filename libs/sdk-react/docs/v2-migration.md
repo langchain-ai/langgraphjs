@@ -159,10 +159,10 @@ Use the [selector hooks](./selectors.md).
 - **2.0:** it throws when the thread fails to load. A run's error stays in `error`, so the conversation stays on screen.
 - **Back:** `if (stream.error) throw stream.error;` in your component.
 
-### A server render reads nothing
+### A server render reads no thread
 
 - **1.x:** a server render, in Next.js and the like, read the thread on the server, without the user's cookies or auth.
-- **2.0:** it reads nothing. `useStream` shows the thread loading, `useSuspenseStream` renders its Suspense fallback, and the browser reads the thread after hydration.
+- **2.0:** it reads no thread. `useStream` shows the `threadId` it's given as loading, `useSuspenseStream` renders its Suspense fallback, and the browser reads the thread after hydration.
 
 ### `values.messages` streams token by token
 
