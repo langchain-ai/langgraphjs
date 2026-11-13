@@ -176,7 +176,7 @@ function serverInfo(client: Client): Promise<ServerInfo | undefined> {
 
 const warnedClients = new WeakSet<Client>();
 
-/** Says once per client why subagent panels get every event of a run. */
+/** Says once per client why reading a subagent's messages streams every event of a run. */
 function warnInterim(client: Client, info: ServerInfo | undefined): void {
   if (info?.flags?.stream_lifecycle === true || warnedClients.has(client)) {
     return;
@@ -184,8 +184,8 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
   warnedClients.add(client);
   console.warn(
     info == null
-      ? "@langchain/langgraph-sdk: couldn't read the server's /info, so subagent panels get every event of each run until a read succeeds. A proxy in front of the server may need to route /info."
-      : "@langchain/langgraph-sdk: this server sends no subagent lifecycle events, so subagent panels get every event of each run. A newer Agent Server sends only what open panels show."
+      ? "@langchain/langgraph-sdk: couldn't read the server's /info, so reading a subagent's messages streams every event of each run until a read succeeds. A proxy in front of the server may need to route /info."
+      : "@langchain/langgraph-sdk: this server sends no subagent lifecycle events, so reading a subagent's messages streams every event of each run. A newer Agent Server sends only the subagents being read."
   );
 }
 
@@ -462,6 +462,17 @@ export class StreamOrchestrator<
 
   #active = false;
 
+  /**
+   * What a load found before the first {@link activate}, done when it comes:
+   * bindings create engines during a render, and one from a render that
+   * never commits must not join runs or run tools. The running run's join,
+   * and the head whose tool calls to run. A stream the engine starts first
+   * supersedes them.
+   */
+  #heldJoin: (() => void) | undefined;
+
+  #heldTools: ThreadState<StateType> | undefined;
+
   #watch: { threadId: string; controller: AbortController } | undefined;
 
   /** Where the current thread's watcher resumes. */
@@ -528,16 +539,6 @@ export class StreamOrchestrator<
     );
     this.#durable = options.durableRuns !== false;
     this.#callbackStreamModes = resolveCallbackStreamModes(options);
-    if (
-      options.filterSubagentMessages ||
-      options.scopedSubagents ||
-      options.onToolEvent != null
-    ) {
-      const client = accessors.getClient();
-      void serverInfo(client).then((info) => {
-        if (options.scopedSubagents) warnInterim(client, info);
-      });
-    }
 
     this.historyLimit =
       typeof options.fetchStateHistory === "object" &&
@@ -568,6 +569,11 @@ export class StreamOrchestrator<
             (subagent.status === "complete" || subagent.status === "error")
         ),
       onEvent: (event, data) => this.#channels.emit(event, data),
+      acquired: () => {
+        if (!this.#options.scopedSubagents) return;
+        const client = this.#accessors.getClient();
+        void serverInfo(client).then((info) => warnInterim(client, info));
+      },
     });
 
     this.pendingRuns = new PendingRunsTracker<
@@ -670,7 +676,13 @@ export class StreamOrchestrator<
     this.#notify();
   }
 
+  #dropHeld(): void {
+    this.#heldJoin = undefined;
+    this.#heldTools = undefined;
+  }
+
   #clearThreadState(): void {
+    this.#dropHeld();
     this.#branch = "";
     this.#namespaceLookups.clear();
     this.scopes.clear();
@@ -737,7 +749,9 @@ export class StreamOrchestrator<
       this.#load = undefined;
       // No stream ran during the load, so no run has answered its calls since.
       if (current.idle && this.stream.epoch === current.epoch) {
-        this.#flushHeadToolCalls(this.#history.data?.at(0));
+        const head = this.#history.data?.at(0);
+        if (this.#active) this.#flushHeadToolCalls(head);
+        else this.#heldTools = head;
       }
       this.#notify();
     });
@@ -803,13 +817,16 @@ export class StreamOrchestrator<
     const runId = runs.at(0)?.run_id;
     if (runId != null) {
       // The queue drains when this join ends.
-      void this.#join(
-        runId,
-        "-1",
-        { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
-        true,
-        runs.at(0)
-      );
+      const join = () =>
+        void this.#join(
+          runId,
+          "-1",
+          { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
+          true,
+          runs.at(0)
+        );
+      if (this.#active) join();
+      else this.#heldJoin = join;
       return;
     }
     if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
@@ -817,7 +834,7 @@ export class StreamOrchestrator<
       // the run's last steps.
       await this.#mutate(threadId, { quiet: true });
     }
-    this.#drainQueue();
+    if (this.#active) this.#drainQueue();
   }
 
   /** Adds the server's queued runs this queue doesn't hold yet, oldest first. */
@@ -1073,10 +1090,11 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Whether the stream is currently active and receiving events.
+   * Whether the stream is currently active and receiving events, or a load
+   * found a running run that the first {@link activate} joins.
    */
   get isLoading(): boolean {
-    return this.stream.isLoading;
+    return this.stream.isLoading || this.#heldJoin != null;
   }
 
   /**
@@ -1738,6 +1756,7 @@ export class StreamOrchestrator<
 
     let releaseStream: (() => void) | undefined;
     const run: LiveRun = { promise: Promise.resolve() };
+    this.#dropHeld();
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
         run.signal = signal;
@@ -1882,6 +1901,7 @@ export class StreamOrchestrator<
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
+    this.#dropHeld();
     const started = this.stream.start(
       async (signal) => {
         releaseStream = holdStream();
@@ -2318,7 +2338,7 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Answer one interrupt: `options.interruptId`, or the newest one shown
+   * Answer one interrupt: `options.interruptId`, or the first one shown
    * that isn't answered yet, once a thread load has looked for a run still
    * going. See {@link respondAll}.
    */
@@ -2342,7 +2362,7 @@ export class StreamOrchestrator<
     }
     const interruptId =
       options.interruptId ??
-      this.interrupts.filter((interrupt) => interrupt.id != null).at(-1)?.id;
+      this.interrupts.find((interrupt) => interrupt.id != null)?.id;
     if (interruptId == null) {
       throw new Error("No pending interrupt to respond to.");
     }
@@ -2476,6 +2496,14 @@ export class StreamOrchestrator<
    * returned release disposes on the next macrotask, unless another
    * `activate()` comes first, as on StrictMode's remount. The thread watcher
    * (`watchThread`) runs only between the first `activate()` and dispose.
+   *
+   * An engine that loads threads needs it: a load before the first
+   * `activate()` reads the thread and holds what it finds until then, the
+   * running run's join, the head's headless tool calls and the server's
+   * queued runs. A running run held this way counts as {@link isLoading}, so
+   * the queue waits for it too. A stream the engine starts first, such as a
+   * submit from an effect that runs before the bind site's, drops what the
+   * load held.
    */
   activate(): () => void {
     clearTimeout(this.#pendingDispose);
@@ -2485,7 +2513,25 @@ export class StreamOrchestrator<
         "visibilitychange",
         this.#onVisibilityChange
       );
+      if (
+        this.#options.filterSubagentMessages ||
+        this.#options.scopedSubagents ||
+        this.#options.onToolEvent != null
+      ) {
+        // Read ahead of the first run, which needs it to pick stream modes.
+        void serverInfo(this.#accessors.getClient());
+      }
       this.#syncWatcher();
+      const join = this.#heldJoin;
+      const tools = this.#heldTools;
+      this.#dropHeld();
+      // The run answers the head's calls, and the queue drains when it ends.
+      if (join != null) {
+        join();
+      } else {
+        if (tools != null) this.#flushHeadToolCalls(tools);
+        this.#drainQueue();
+      }
     }
     return () => {
       if (this.#disposed) return;
