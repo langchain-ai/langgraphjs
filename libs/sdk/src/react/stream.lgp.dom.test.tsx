@@ -1516,6 +1516,24 @@ describe("useStream (old engine) thread state after stop", () => {
     }
   );
 
+  it("stop() right after a submit shows none of its input and sends nothing", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const view = await renderStream(client, { threadId: "t1" });
+
+    await act(async () => {
+      const running = view.current.submit(
+        { messages: [message("h1")] },
+        { optimisticValues: { count: 1 } }
+      );
+      await view.current.stop();
+      await running;
+    });
+
+    expect(view.current.values).toEqual({ messages: [message("h0")] });
+    expect(client.runs.stream).not.toHaveBeenCalled();
+  });
+
   it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
     "stop does not overwrite a run queued before it (fetchStateHistory: $fetchStateHistory)",
     async ({ fetchStateHistory }) => {
