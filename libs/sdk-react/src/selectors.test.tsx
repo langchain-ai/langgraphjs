@@ -9,7 +9,7 @@ import {
   useMessages,
   useSubmissionQueue,
 } from "./selectors.js";
-import { subscribeScope } from "./use-scoped.js";
+import { engineOf, subscribeScope } from "./use-scoped.js";
 import { useSuspenseStream } from "./suspense-stream.js";
 import { fakeServer } from "./test-client.js";
 
@@ -275,4 +275,10 @@ it("suspends until the first load, reading the thread once, and works with the s
   );
   await expect.element(screen.getByText("1 message")).toBeVisible();
   expect(server.calls.filter((call) => call === "getState t1")).toHaveLength(1);
+});
+
+it("says what to pass when a selector hook gets something that isn't a stream", () => {
+  expect(() => engineOf({} as never)).toThrow(
+    "pass the selector hooks the result of useStream or useSuspenseStream"
+  );
 });

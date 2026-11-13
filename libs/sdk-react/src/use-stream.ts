@@ -19,7 +19,6 @@ import {
   type AssembledToolCall,
   type InferAssembledToolCalls,
   type InferStateType,
-  type InferSubagentStates,
   type SubagentStreamInterface,
   type SubgraphByNodeMap,
   type SubgraphMap,
@@ -57,7 +56,6 @@ export interface UseStreamReturn<
   InterruptType = unknown,
   ConfigurableType extends object = Record<string, unknown>,
   StateType extends object = InferStateType<T>,
-  SubagentStates = InferSubagentStates<T>,
 > {
   /**
    * The thread's state: the running run's latest values, or the state last
@@ -80,16 +78,12 @@ export interface UseStreamReturn<
   readonly isThreadLoading: boolean;
   /** Settles once the latest thread load is done. It never rejects. */
   readonly hydrationPromise: Promise<void>;
+  /** The last run's or thread read's error, until the next run starts or read succeeds. */
   readonly error: unknown;
   /** The thread shown, or `null` until a submit creates one. */
   readonly threadId: string | null;
   /** Subagents the runs started, by the id of their `task` tool call. */
-  readonly subagents: ReadonlyMap<
-    keyof SubagentStates & string extends never
-      ? string
-      : keyof SubagentStates & string,
-    SubagentDiscoverySnapshot
-  >;
+  readonly subagents: ReadonlyMap<string, SubagentDiscoverySnapshot>;
   /** Subgraphs the runs entered, by namespace. */
   readonly subgraphs: SubgraphMap;
   /** {@link subgraphs} by the graph node that started them. */
@@ -123,7 +117,9 @@ export interface UseStreamReturn<
    */
   hydrate(threadId?: string | null): Promise<void>;
 
+  /** The client every request goes through. */
   readonly client: Client;
+  /** The assistant runs start with. */
   readonly assistantId: string;
 
   /** @deprecated Read {@link interrupts} and answer with {@link respond}. */
@@ -200,8 +196,12 @@ export interface StreamBinding {
   readonly queue: "local" | "server";
   /** Whether a render that used it committed. */
   committed: boolean;
+  /** Read the thread, once: at the first client snapshot or effect. */
+  start(): void;
   subscribe(listener: () => void): () => void;
   getSnapshot(): UseStreamReturn;
+  /** What a server render, and the hydration of its HTML, show: the thread loading. */
+  getServerSnapshot(): UseStreamReturn;
 }
 
 const bindings = new WeakMap<StreamOrchestrator, StreamBinding>();
@@ -315,8 +315,6 @@ function createBinding(
     }
   );
   engine.trackStreamMode("messages-tuple", "custom");
-  // Started during render, so a Suspense boundary has a load to wait for.
-  engine.initThreadId(options.threadId ?? undefined);
 
   const discovery = new SubgraphDiscovery();
   let discoveryThread = engine.threadId;
@@ -410,11 +408,73 @@ function createBinding(
     return instance;
   };
 
+  let started = false;
   let parts: unknown[] = [];
   let snapshot: UseStreamReturn | undefined;
+  let serverSnapshot: UseStreamReturn | undefined;
   let shownValues: unknown;
   let toolCalls: ToolCalls | undefined;
   let subagents: ReadonlyMap<string, SubagentDiscoverySnapshot> = new Map();
+
+  const build = (): UseStreamReturn => {
+    const next = [
+      engine.getSnapshot(),
+      discovery.snapshot,
+      discovery.byNodeSnapshot,
+    ];
+    if (snapshot != null && next.every((part, i) => part === parts[i])) {
+      return snapshot;
+    }
+    parts = next;
+    const previous = snapshot;
+    const instances = engine.messages.map(toInstance);
+    // Kept while unchanged, so a flip of `isLoading` alone leaves `values`
+    // and `messages` as they were.
+    const messages =
+      previous != null && sameItems(previous.messages, instances)
+        ? previous.messages
+        : instances;
+    const values = engine.values;
+    const messagesKey = messagesKeyOf(latest.current);
+    toolCalls = toolCallsOf(messages, [], toolCalls);
+    subagents = subagentsOf(engine.subagents, subagents);
+    // Only ones `respond()` can answer: the engine's
+    // `{ when: "breakpoint" }` placeholder has no id.
+    const shown = engine.interrupts.filter((interrupt) => interrupt.id != null);
+    const interrupts =
+      shown.length === 0
+        ? NO_INTERRUPTS
+        : shown.map((interrupt) =>
+            interrupt.namespace == null
+              ? { ...interrupt, namespace: [] }
+              : interrupt
+          );
+    snapshot = {
+      values: !Array.isArray(values[messagesKey])
+        ? values
+        : values === shownValues && previous?.values[messagesKey] === messages
+          ? previous.values
+          : { ...values, [messagesKey]: messages },
+      messages,
+      toolCalls: toolCalls.toolCalls,
+      interrupts,
+      interrupt: interrupts[0],
+      isLoading: engine.isLoading,
+      isThreadLoading: engine.isThreadLoading,
+      hydrationPromise: engine.hydrationPromise,
+      error: engine.error,
+      threadId: engine.threadId ?? null,
+      subagents,
+      subgraphs: discovery.snapshot,
+      subgraphsByNode: discovery.byNodeSnapshot,
+      ...actions,
+      client,
+      assistantId,
+      [STREAM_CONTROLLER]: engine,
+    } as UseStreamReturn;
+    shownValues = values;
+    return snapshot;
+  };
 
   const binding: StreamBinding = {
     deps,
@@ -433,66 +493,26 @@ function createBinding(
       ];
       return () => unsubscribe.forEach((off) => off());
     },
+    start() {
+      if (started) return;
+      started = true;
+      engine.initThreadId(options.threadId ?? undefined);
+    },
     getSnapshot() {
-      const next = [
-        engine.getSnapshot(),
-        discovery.snapshot,
-        discovery.byNodeSnapshot,
-      ];
-      if (snapshot != null && next.every((part, i) => part === parts[i])) {
-        return snapshot;
-      }
-      parts = next;
-      const previous = snapshot;
-      const instances = engine.messages.map(toInstance);
-      // Kept while unchanged, so a flip of `isLoading` alone leaves `values`
-      // and `messages` as they were.
-      const messages =
-        previous != null && sameItems(previous.messages, instances)
-          ? previous.messages
-          : instances;
-      const values = engine.values;
-      const messagesKey = messagesKeyOf(latest.current);
-      toolCalls = toolCallsOf(messages, [], toolCalls);
-      subagents = subagentsOf(engine.subagents, subagents);
-      // Only ones `respond()` can answer: the engine's
-      // `{ when: "breakpoint" }` placeholder has no id.
-      const shown = engine.interrupts.filter(
-        (interrupt) => interrupt.id != null
-      );
-      const interrupts =
-        shown.length === 0
-          ? NO_INTERRUPTS
-          : shown.map((interrupt) =>
-              interrupt.namespace == null
-                ? { ...interrupt, namespace: [] }
-                : interrupt
-            );
-      snapshot = {
-        values: !Array.isArray(values[messagesKey])
-          ? values
-          : values === shownValues && previous?.values[messagesKey] === messages
-            ? previous.values
-            : { ...values, [messagesKey]: messages },
-        messages,
-        toolCalls: toolCalls.toolCalls,
-        interrupts,
-        interrupt: interrupts[0],
-        isLoading: engine.isLoading,
-        isThreadLoading: engine.isThreadLoading,
-        hydrationPromise: engine.hydrationPromise,
-        error: engine.error,
-        threadId: engine.threadId ?? null,
-        subagents,
-        subgraphs: discovery.snapshot,
-        subgraphsByNode: discovery.byNodeSnapshot,
-        ...actions,
-        client,
-        assistantId,
-        [STREAM_CONTROLLER]: engine,
-      } as UseStreamReturn;
-      shownValues = values;
-      return snapshot;
+      // During the first client render, so a Suspense boundary has a load to
+      // wait for. A server render takes the server snapshot and reads
+      // nothing: the user's auth is in the browser.
+      binding.start();
+      return build();
+    },
+    getServerSnapshot() {
+      const threadId = options.threadId ?? null;
+      serverSnapshot ??= {
+        ...build(),
+        threadId,
+        isThreadLoading: threadId != null,
+      };
+      return serverSnapshot;
     },
   };
   bindings.set(engine, binding);
@@ -582,9 +602,11 @@ export function useStreamBinding(
   }, [binding, engine]);
 
   useEffect(() => {
+    // After hydration this effect comes before the first client snapshot.
+    binding.start();
     const threadId = options.threadId ?? null;
     if (threadId !== (engine.threadId ?? null)) void engine.hydrate(threadId);
-  }, [engine, options.threadId]);
+  }, [binding, engine, options.threadId]);
 
   useEffect(() => {
     tools.splice(0, tools.length, ...(options.tools ?? []));
@@ -593,7 +615,7 @@ export function useStreamBinding(
   const stream = useSyncExternalStore(
     binding.subscribe,
     binding.getSnapshot,
-    binding.getSnapshot
+    binding.getServerSnapshot
   );
 
   // A loaded thread's subagents come from its messages' `task` calls. The
@@ -618,9 +640,14 @@ export function useStreamBinding(
  * subgraph's own messages with the selector hooks:
  *
  * ```tsx
- * const stream = useStream({ assistantId: "deep-agent", apiUrl });
+ * function Chat() {
+ *   const stream = useStream({ assistantId: "deep-agent", apiUrl });
+ *   return [...stream.subagents.values()].map((subagent) => (
+ *     <SubagentCard key={subagent.id} stream={stream} subagent={subagent} />
+ *   ));
+ * }
  *
- * function SubagentCard({ subagent }) {
+ * function SubagentCard({ stream, subagent }) {
  *   const messages = useMessages(stream, subagent);
  *   return <Feed messages={messages} />;
  * }

@@ -77,9 +77,16 @@ export interface AgentServerOptions<
       | "onConnected"
       | "streamIdleReconnect"
     > {
+  /** The assistant, or graph, that runs on the thread. */
   assistantId: string;
+  /**
+   * The client for every request. Without it, the hook builds one from
+   * `apiUrl`, `apiKey`, `callerOptions` and `defaultHeaders`.
+   */
   client?: Client;
+  /** The Agent Server's URL. */
   apiUrl?: ApiUrlType;
+  /** Sent as the `x-api-key` header. */
   apiKey?: ApiKeyType;
   /**
    * Compared by entry: an object with the same values keeps the client, and
@@ -99,9 +106,10 @@ export interface AgentServerOptions<
   /**
    * Where a submit made during a run waits: in the server's queue (the
    * default), so it survives a reload and shows in other tabs, or in this
-   * tab with `"local"`, as in 1.x. The server's queue creates the run with
+   * tab with `"local"`. The server's queue creates the run with
    * `POST /threads/{thread_id}/runs`, which a proxy in front of the server
-   * must forward too.
+   * must forward too. 1.x stopped the run in flight instead, which
+   * `submit()` still does with `multitaskStrategy: "interrupt"`.
    */
   queue?: "local" | "server";
 }
@@ -131,7 +139,7 @@ export interface StreamSubmitOptions<
   forkFrom?: string;
   /**
    * What to do with a run already in flight on the thread. With none, the
-   * new run waits in the queue behind it.
+   * new run waits in the queue behind it, where 1.x used `"interrupt"`.
    *
    * - `"enqueue"`: wait in the queue.
    * - `"interrupt"`: stop the run in flight, keeping the steps it finished.
@@ -139,7 +147,7 @@ export interface StreamSubmitOptions<
    * - `"reject"`: throw.
    */
   multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
-  /** Accepted for compatibility. A run is stopped with `stop()`. */
+  /** @deprecated Has no effect. A run is stopped with `stop()`. */
   signal?: AbortSignal;
   /**
    * Submit to this thread instead, loading it first. Later submits stay on
@@ -153,6 +161,7 @@ export interface StreamSubmitOptions<
   command?: Command;
   interruptBefore?: "*" | string[];
   interruptAfter?: "*" | string[];
+  /** @internal Type-only: carries the state type. */
   _stateType?: StateType;
 }
 
@@ -195,7 +204,7 @@ export interface StreamRespondOptions<
 > extends StreamRespondAllOptions<ConfigurableType> {
   /** The interrupt to answer. Defaults to the one `interrupt` shows. */
   interruptId?: string;
-  /** Accepted for compatibility. The interrupt's id identifies it. */
+  /** @deprecated Has no effect. The interrupt's id identifies it. */
   namespace?: string[];
 }
 
@@ -232,7 +241,11 @@ export interface SubmissionQueueEntry<
   /** The run's id, when it waits in the server's queue. */
   readonly runId?: string;
   readonly values: Partial<StateType> | null | undefined;
-  readonly options?: StreamSubmitOptions<StateType>;
+  /** The submit's options, without `forkFrom` and `threadId`, which only start it. */
+  readonly options?: Omit<
+    StreamSubmitOptions<StateType>,
+    "forkFrom" | "threadId"
+  >;
   readonly createdAt: Date;
 }
 

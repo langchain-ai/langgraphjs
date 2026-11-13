@@ -4,7 +4,7 @@
  * `useValues`) and into the public `AnyStream` escape-hatch type
  * WITHOUT an `as AnyStream` cast.
  */
-import { describe, test } from "vitest";
+import { describe, expectTypeOf, test } from "vitest";
 import { createDeepAgent } from "deepagents";
 
 import {
@@ -34,6 +34,12 @@ describe("selector hooks accept concrete stream without cast", () => {
     const snapshot = [...stream.subagents.values()][0];
     useMessages(stream, snapshot);
     useToolCalls(stream, snapshot);
+  });
+
+  test("subagents are keyed by their task tool call id", () => {
+    const stream = useStream<typeof agent>({ assistantId: "deep-agent" });
+
+    expectTypeOf(stream.subagents.get).parameter(0).toEqualTypeOf<string>();
   });
 
   test("concrete handle is assignable to AnyStream", () => {

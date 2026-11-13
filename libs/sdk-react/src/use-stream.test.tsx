@@ -1,6 +1,8 @@
 import { StrictMode, Suspense, useState } from "react";
 import { StreamOrchestrator } from "@langchain/langgraph-sdk/ui";
 import { afterEach, expect, it, vi } from "vitest";
+import { hydrateRoot } from "react-dom/client";
+import { renderToReadableStream, renderToString } from "react-dom/server";
 import { cleanup, render, renderHook } from "vitest-browser-react";
 import { useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
@@ -314,4 +316,54 @@ it("calls an onConnected first passed on a later render", async () => {
   connected({ kind: "initial", attempt: 0 });
 
   expect(onConnected).toHaveBeenCalledOnce();
+});
+
+it("renders on the server without reading the thread, which shows loading", () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  function Chat() {
+    const stream = useStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    return <span>{stream.isThreadLoading ? `loading ${stream.threadId}` : "shown"}</span>;
+  }
+
+  expect(renderToString(<Chat />)).toContain("loading t1");
+  expect(server.calls).toEqual([]);
+});
+
+it("streams useSuspenseStream's fallback from the server without reading the thread", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  function Chat() {
+    useSuspenseStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    return <span>chat</span>;
+  }
+
+  const html = await renderToReadableStream(
+    <Suspense fallback={<span>fallback</span>}>
+      <Chat />
+    </Suspense>,
+    { onError: () => undefined }
+  );
+  await html.allReady;
+
+  expect(await new Response(html).text()).toContain("fallback");
+  expect(server.calls).toEqual([]);
+});
+
+it("hydrates the server's HTML as it is, then reads the thread in the browser", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  function Chat() {
+    const stream = useStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    return <span>{stream.isThreadLoading ? "loading" : `${stream.messages.length} message`}</span>;
+  }
+  const container = document.createElement("div");
+  container.innerHTML = renderToString(<Chat />);
+  document.body.append(container);
+  const recoverable = vi.fn();
+
+  const root = hydrateRoot(container, <Chat />, { onRecoverableError: recoverable });
+  await expect.poll(() => container.textContent).toBe("1 message");
+
+  expect(recoverable).not.toHaveBeenCalled();
+  expect(server.calls).toEqual(["getState t1"]);
+  root.unmount();
+  container.remove();
 });

@@ -6,6 +6,7 @@ import type { InferStateType } from "@langchain/langgraph-sdk/ui";
 import {
   suspendedBindings,
   useStreamBinding,
+  type AnyStream,
   type UseStreamReturn,
 } from "./use-stream.js";
 import type { UseStreamOptions } from "./types.js";
@@ -24,6 +25,14 @@ export type UseSuspenseStreamReturn<
 > & {
   /** Whether a run is streaming. */
   isStreaming: boolean;
+};
+
+/** Any {@link useSuspenseStream} result, its state widened as {@link AnyStream}'s is. */
+export type AnySuspenseStream = Omit<
+  AnyStream,
+  "isLoading" | "isThreadLoading" | "hydrationPromise"
+> & {
+  readonly isStreaming: boolean;
 };
 
 /**
@@ -55,6 +64,13 @@ export function useSuspenseStream<
     key
   );
   if (stream.isThreadLoading) {
+    // The server snapshot reads nothing, so there's no load to wait for:
+    // React renders the fallback instead, and this hook in the browser.
+    if (stream === binding.getServerSnapshot()) {
+      throw new Error(
+        "@langchain/react: useSuspenseStream reads its thread in the browser, so the server renders the Suspense fallback."
+      );
+    }
     if (key != null && !binding.committed) {
       suspendedBindings.set(key, binding);
       // A render that never retries, its tree unmounted, leaves the binding:

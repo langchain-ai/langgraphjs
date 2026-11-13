@@ -13,11 +13,14 @@ import {
   type AnyStream,
   type ToolCalls,
 } from "./use-stream.js";
-import type { UseSuspenseStreamReturn } from "./suspense-stream.js";
+import type { AnySuspenseStream } from "./suspense-stream.js";
 import type { SubagentDiscoverySnapshot } from "./types.js";
 
-/** A stream from `useStream` or `useSuspenseStream`, as the selector hooks take it. */
-export type StreamLike = AnyStream | UseSuspenseStreamReturn<any, any, any>;
+/**
+ * A stream from `useStream` or `useSuspenseStream`, as the selector hooks
+ * take it, also for a helper component that passes one on.
+ */
+export type StreamLike = AnyStream | AnySuspenseStream;
 
 /**
  * What a selector hook reads: the main conversation (none, or `[]`), a
@@ -52,6 +55,19 @@ export const EMPTY_VIEW: ScopeView = {
   toolCalls: [],
   values: undefined,
 };
+
+/** The engine behind a stream, with a clear error for anything else. */
+export function engineOf(stream: StreamLike): StreamOrchestrator {
+  const engine = (stream as Partial<StreamLike> | null | undefined)?.[
+    STREAM_CONTROLLER
+  ];
+  if (engine == null) {
+    throw new Error(
+      "@langchain/react: pass the selector hooks the result of useStream or useSuspenseStream."
+    );
+  }
+  return engine;
+}
 
 export function namespaceOf(target: SelectorTarget): readonly string[] {
   if (target == null) return [];
@@ -140,7 +156,7 @@ export function subscribeScope(
   stream: StreamLike,
   target: SelectorTarget
 ): ScopeHandle {
-  const engine = stream[STREAM_CONTROLLER];
+  const engine = engineOf(stream);
   if (scopeKeyOf(target) == null) return rootScope(engine);
 
   const listeners = new Set<() => void>();

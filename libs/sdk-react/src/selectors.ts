@@ -16,13 +16,10 @@ import {
   type InferAssembledToolCalls,
   type InferStateType,
 } from "@langchain/langgraph-sdk/ui";
-import {
-  STREAM_CONTROLLER,
-  bindingOf,
-  type UseStreamReturn,
-} from "./use-stream.js";
+import { bindingOf } from "./use-stream.js";
 import {
   EMPTY_VIEW,
+  engineOf,
   releaseLater,
   resolveNamespace,
   scopeKeyOf,
@@ -36,15 +33,15 @@ import type {
   Channel,
   Event,
   MessageMetadata,
-  StreamSubmitOptions,
+  SubmissionQueueEntry,
   SubmissionQueueSnapshot,
 } from "./types.js";
 
-type StreamHandle<StateType extends object> = UseStreamReturn<
-  StateType,
-  any,
-  any
->;
+/** The state a stream's `values` holds, from its type. */
+type StateOf<Stream extends StreamLike> =
+  NonNullable<Stream["~stateType"]> extends infer State extends object
+    ? State
+    : Record<string, unknown>;
 
 const EMPTY_EVENTS: Event[] = [];
 const NOT_SUBSCRIBED = () => () => {};
@@ -54,7 +51,7 @@ function useScope(
   stream: StreamLike,
   target: SelectorTarget
 ): ScopeView | undefined {
-  const engine = stream[STREAM_CONTROLLER];
+  const engine = engineOf(stream);
   const key = scopeKeyOf(target);
   const [held, setHeld] = useState<{ key: string; handle: ScopeHandle }>();
   // Keyed by `key`, not `target`: a new snapshot of the same subagent keeps its scope.
@@ -114,9 +111,9 @@ export function useToolCalls(
  * `useValues<SubagentState>(stream, subagent)`. Its messages are
  * `BaseMessage` instances.
  */
-export function useValues<StateType extends object>(
-  stream: StreamHandle<StateType>
-): StateType;
+export function useValues<Stream extends StreamLike>(
+  stream: Stream
+): StateOf<Stream>;
 export function useValues<T>(stream: StreamLike): InferStateType<T>;
 export function useValues<T = unknown>(
   stream: StreamLike,
@@ -161,7 +158,7 @@ function useChannelListener(
   enabled: boolean,
   onEvent: (event: Event) => void
 ): void {
-  const engine = stream[STREAM_CONTROLLER];
+  const engine = engineOf(stream);
   const latest = useRef(onEvent);
   latest.current = onEvent;
   const channelKey = [...channels].sort().join(",");
@@ -231,7 +228,7 @@ export function useChannel(
     events: EMPTY_EVENTS,
   });
   useChannelListener(stream, channels, target, true, (event) => {
-    const threadId = stream[STREAM_CONTROLLER].threadId ?? null;
+    const threadId = engineOf(stream).threadId ?? null;
     setBuffer((previous) => {
       const events = previous.threadId === threadId ? previous.events : [];
       return {
@@ -309,7 +306,7 @@ export function useMessageMetadata(
   stream: StreamLike,
   messageId: string | undefined
 ): MessageMetadata | undefined {
-  const engine = stream[STREAM_CONTROLLER];
+  const engine = engineOf(stream);
   useEffect(() => engine.trackMessageMetadata(), [engine]);
   const { subscribe, getSnapshot } = engine.messageMetadataStore;
   const metadata = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -328,16 +325,13 @@ export interface UseSubmissionQueueReturn<
 }
 
 /** The submits waiting for the run in flight, oldest first. */
-export function useSubmissionQueue<StateType extends object>(
-  stream: StreamHandle<StateType>
-): UseSubmissionQueueReturn<StateType>;
-export function useSubmissionQueue(
-  stream: StreamLike
-): UseSubmissionQueueReturn;
+export function useSubmissionQueue<Stream extends StreamLike>(
+  stream: Stream
+): UseSubmissionQueueReturn<StateOf<Stream>>;
 export function useSubmissionQueue(
   stream: StreamLike
 ): UseSubmissionQueueReturn {
-  const engine = stream[STREAM_CONTROLLER];
+  const engine = engineOf(stream);
   const binding = bindingOf(engine);
   // The engine changes its queue in place, so the ids tell when it changed.
   const queuedIds = () => engine.queueEntries.map(({ id }) => id).join(" ");
@@ -347,7 +341,7 @@ export function useSubmissionQueue(
       id: entry.id,
       runId: binding.queue === "server" ? entry.id : undefined,
       values: entry.values,
-      options: entry.options as StreamSubmitOptions | undefined,
+      options: entry.options as SubmissionQueueEntry["options"],
       createdAt: entry.createdAt,
     }));
     return {

@@ -49,7 +49,7 @@ export type StreamProviderProps<T = Record<string, unknown>> =
  * }
  * ```
  *
- * Multiple providers can be nested for multi-agent scenarios:
+ * Sibling providers give parts of the page their own agent:
  *
  * @example
  * ```tsx
@@ -95,7 +95,9 @@ export function StreamProvider<T = Record<string, unknown>>(
  */
 export function useStreamContext<
   T = Record<string, unknown>,
->(): UseStreamReturn<T> {
+  InterruptType = unknown,
+  ConfigurableType extends object = Record<string, unknown>,
+>(): UseStreamReturn<T, InterruptType, ConfigurableType> {
   const context = useContext(StreamContext);
   if (context === null) {
     throw new Error(
@@ -103,5 +105,5 @@ export function useStreamContext<
         "Wrap your component tree with <StreamProvider> or use useStream() directly."
     );
   }
-  return context as UseStreamReturn<T>;
+  return context as UseStreamReturn<T, InterruptType, ConfigurableType>;
 }

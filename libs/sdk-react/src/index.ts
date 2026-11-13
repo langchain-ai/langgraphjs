@@ -29,7 +29,7 @@ export {
   type UseSubmissionQueueReturn,
 } from "./selectors.js";
 
-export { type ScopeView, type SelectorTarget } from "./use-scoped.js";
+export { type SelectorTarget, type StreamLike } from "./use-scoped.js";
 
 export {
   useSuspenseStream,
