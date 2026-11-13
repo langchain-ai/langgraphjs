@@ -291,12 +291,19 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       "checkpoint_ns",
       config.configurable?.checkpoint_ns
     );
+    const checkpoint_id = getStringConfigValue(
+      "checkpoint_id",
+      config.configurable?.checkpoint_id
+    );
 
     if (thread_id) {
       query.thread_id = thread_id;
     }
     if (checkpoint_ns !== undefined) {
       query.checkpoint_ns = checkpoint_ns;
+    }
+    if (checkpoint_id !== undefined) {
+      query.checkpoint_id = checkpoint_id;
     }
 
     if (filter) {
@@ -316,8 +323,14 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         "checkpoint_id",
         before.configurable?.checkpoint_id
       );
-      query.checkpoint_id = { $lt: before_checkpoint_id };
+      query.checkpoint_id = {
+        ...(checkpoint_id !== undefined ? { $eq: checkpoint_id } : {}),
+        $lt: before_checkpoint_id,
+      };
     }
+
+    // MongoDB treats limit(0) as unlimited, unlike the saver contract.
+    if (limit === 0) return;
 
     let result = this.db
       .collection(this.checkpointCollectionName)

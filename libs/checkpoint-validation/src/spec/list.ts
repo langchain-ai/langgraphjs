@@ -77,6 +77,22 @@ export function listTests<T extends BaseCheckpointSaver>(
       await initializer.destroyCheckpointer?.(checkpointer);
     });
 
+    it_skipForSomeModules(initializer.checkpointerName, {
+      "@langchain/langgraph-checkpoint-sqlite":
+        "SQLite ignores limit: 0 (langgraphjs#3234)",
+    })("should return no checkpoints for a zero limit", async () => {
+      for (const { tuple } of generatedTuples) {
+        const { thread_id, checkpoint_ns } = tuple.config.configurable!;
+        const config = { configurable: { thread_id, checkpoint_ns } };
+        expect(await toArray(checkpointer.list(config, { limit: 0 }))).toEqual(
+          []
+        );
+        expect(
+          await toArray(checkpointer.list(config, { limit: 1 }))
+        ).toHaveLength(1);
+      }
+    });
+
     it("should return pending writes in writesSortKey order", async () => {
       // Same fixture as the getTuple ordering test, read through list().
       const tid = uuid6(3);

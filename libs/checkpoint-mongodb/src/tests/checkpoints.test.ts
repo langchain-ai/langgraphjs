@@ -642,6 +642,28 @@ describe("MongoDBSaver", () => {
       );
     });
 
+    it.each([undefined, 0])(
+      "should reject object checkpoint_id in list with limit=%s",
+      async (limit) => {
+        const client = createMockClient();
+        const saver = new MongoDBSaver({
+          client: client as unknown as MongoClient,
+        });
+        const generator = saver.list(
+          {
+            configurable: {
+              thread_id: "safe-thread",
+              checkpoint_id: { $gt: "" },
+            },
+          } as never,
+          { limit }
+        );
+        await expect(generator.next()).rejects.toThrow(
+          'Invalid configurable.checkpoint_id: expected a string'
+        );
+      }
+    );
+
     it("should reject non-string thread_id in put", async () => {
       const client = createMockClient();
       const saver = new MongoDBSaver({
