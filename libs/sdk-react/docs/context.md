@@ -1,13 +1,12 @@
-# `StreamProvider` / `useStreamContext`
+# `StreamProvider` and `useStreamContext`
 
-Share a single `useStream` instance across a subtree without prop drilling. `StreamProvider` accepts the same option shape as [`useStream`](./use-stream.md); `useStreamContext` reads the bound stream from any descendant.
+Share one `useStream` across a component tree without passing it down. `StreamProvider` takes the same options as [`useStream`](./use-stream.md), and `useStreamContext` reads its stream from any component below it.
 
 ## Table of contents
 
 - [Basic usage](#basic-usage)
 - [Type inference](#type-inference)
-- [Nested providers (multi-agent layouts)](#nested-providers-multi-agent-layouts)
-- [Custom adapters through `StreamProvider`](#custom-adapters-through-streamprovider)
+- [Several providers](#several-providers)
 
 ## Basic usage
 
@@ -29,13 +28,13 @@ function ChatHeader() {
   return (
     <header>
       {isLoading && <span>Thinking...</span>}
-      {error != null && <span>Error occurred</span>}
+      {error != null && <span>Something went wrong</span>}
     </header>
   );
 }
 ```
 
-`StreamProvider` internally mounts `useStream` and publishes the handle on context. Companion selector hooks (`useMessages`, `useToolCalls`, etc.) work against the handle you pull from `useStreamContext`:
+The [selector hooks](./selectors.md) take the stream `useStreamContext` returns:
 
 ```tsx
 import { useMessages, useStreamContext } from "@langchain/react";
@@ -43,28 +42,32 @@ import { useMessages, useStreamContext } from "@langchain/react";
 function MessageList() {
   const stream = useStreamContext();
   const messages = useMessages(stream);
-  return messages.map((m) => <Bubble key={m.id} msg={m} />);
+  return messages.map((message, i) => (
+    <div key={message.id ?? i}>{message.text}</div>
+  ));
 }
 ```
 
+`useStreamContext` throws outside a `StreamProvider`.
+
 ## Type inference
 
-Pass the agent brand to `useStreamContext` to flow state / tool-call / subagent inference through:
+Pass your agent's type to `useStreamContext` to type the stream:
 
 ```tsx
 import type { agent } from "./agent";
 
 function Dashboard() {
   const stream = useStreamContext<typeof agent>();
-  // stream.values, stream.toolCalls, stream.subagents are all typed
+  // stream.values, stream.toolCalls and stream.subagents are typed
 }
 ```
 
-This is equivalent to calling `useStream<typeof agent>()` directly. See [Type safety](./type-safety.md) for the full inference story.
+It types the stream as `useStream<typeof agent>()` would. See [Type safety](./type-safety.md).
 
-## Nested providers (multi-agent layouts)
+## Several providers
 
-`StreamProvider` works like any other React context provider — nesting is fine, and the innermost provider wins for descendants:
+Providers nest like any React context: each component reads the closest one above it.
 
 ```tsx
 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
@@ -77,23 +80,4 @@ This is equivalent to calling `useStream<typeof agent>()` directly. See [Type sa
 </div>
 ```
 
-Each panel's descendants see its own stream handle.
-
-## Custom adapters through `StreamProvider`
-
-`StreamProvider` accepts the same discriminated option bag as `useStream`, so the custom-adapter branch is available here too:
-
-```tsx
-import { StreamProvider, HttpAgentServerAdapter } from "@langchain/react";
-
-const transport = new HttpAgentServerAdapter({
-  apiUrl: "/api/chat",
-  threadId: "thread-123",
-});
-
-<StreamProvider transport={transport}>
-  <App />
-</StreamProvider>;
-```
-
-See [Transports](./transports.md) for details on the custom-adapter branch.
+A provider can also take a custom `transport` instead of `apiUrl`: see [Custom transports](./custom-transport.md).

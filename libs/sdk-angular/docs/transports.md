@@ -100,7 +100,7 @@ export class ChatComponent {
 Subclass `HttpAgentServerAdapter` for header injection / auth /
 observability, or implement `AgentServerAdapter` directly for transports
 that are not HTTP/SSE shaped. The [**custom transports**](./custom-transport.md)
-guide walks through the current `examples/ui-react-transport` setup,
+guide walks through the [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport) setup,
 where the UI uses `HttpAgentServerAdapter` and the Hono backend
 implements `/commands` and `/stream` with a `LocalThreadSession`.
 

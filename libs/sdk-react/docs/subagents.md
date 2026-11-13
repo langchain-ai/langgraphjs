@@ -1,55 +1,54 @@
-# Subagents & subgraphs
+# Subagents and subgraphs
 
-Subagents and subgraphs are discovered **eagerly** but streamed **lazily**. The root hook keeps cheap identity snapshots on `stream.subagents`, `stream.subgraphs`, and `stream.subgraphsByNode`. To render a subagent's content, pass its snapshot into a companion selector hook — the subscription is scoped to the subagent's namespace and reference-counted.
+`useStream` lists the subagents and subgraphs a thread's runs start, at no extra cost. To show what one of them says, pass it to a [selector hook](./selectors.md): its events stream only while a component that shows it is mounted.
 
 ## Table of contents
 
-- [Discovery snapshots](#discovery-snapshots)
-- [Rendering subagent content](#rendering-subagent-content)
+- [Snapshots](#snapshots)
+- [Showing a subagent](#showing-a-subagent)
+- [How a panel streams](#how-a-panel-streams)
 - [Subgraphs](#subgraphs)
 - [Related](#related)
 
-## Discovery snapshots
+## Snapshots
 
-Subagent / subgraph identity is always available from the root:
+`stream.subagents` maps the id of each `task` tool call that started a subagent to a snapshot:
 
 ```ts
 interface SubagentDiscoverySnapshot {
-  readonly id: string; // tool-call id that spawned it
-  readonly name: string; // "researcher", "writer", …
+  readonly id: string; // the `task` tool call's id
+  readonly name: string; // the subagent type, such as "researcher"
   readonly namespace: readonly string[];
-  readonly parentId: string | null;
-  readonly depth: number;
-  readonly status: "pending" | "running" | "complete" | "error";
+  readonly parentId: string | null; // the subagent that started it, or null
+  readonly depth: number; // 0 when the main agent started it
+  readonly status: "running" | "complete" | "error";
+  readonly taskInput: string | undefined; // the task it was given
+  readonly output: unknown; // its result, once complete
+  readonly error: string | undefined;
+  readonly startedAt: Date;
+  readonly completedAt: Date | null;
 }
 ```
 
-Subgraph snapshots carry the same metadata plus the producing node id:
+`stream.subgraphs` maps each subgraph's id to a snapshot, and `stream.subgraphsByNode` groups them by the graph node that started them:
 
 ```ts
 interface SubgraphDiscoverySnapshot {
   readonly id: string;
   readonly namespace: readonly string[];
-  readonly nodeId: string;
-  readonly status: "pending" | "running" | "complete" | "error";
+  readonly nodeName: string; // the node, as named in addNode(name, ...)
+  readonly status: "running" | "complete" | "error";
+  readonly startedAt: Date;
+  readonly completedAt: Date | null;
 }
 ```
 
-The root hook exposes three discovery maps:
+The snapshots carry no messages or values. Read those with the selector hooks.
 
-- `stream.subagents: ReadonlyMap<string, SubagentDiscoverySnapshot>`
-- `stream.subgraphs: ReadonlyMap<string, SubgraphDiscoverySnapshot>`
-- `stream.subgraphsByNode: ReadonlyMap<string, readonly SubgraphDiscoverySnapshot[]>`
-
-They update live as the server emits discovery events, without opening per-subagent subscriptions.
-
-## Rendering subagent content
-
-Pass the snapshot as the `target` argument to any selector hook. Messages, tool calls, and values stream only for the subagents that are actively rendered:
+## Showing a subagent
 
 ```tsx
 import {
-  useStream,
   useMessages,
   useToolCalls,
   useValues,
@@ -59,11 +58,11 @@ import {
 
 function Researchers({ stream }: { stream: AnyStream }) {
   const researchers = [...stream.subagents.values()].filter(
-    (s) => s.name === "researcher",
+    (subagent) => subagent.name === "researcher"
   );
 
-  return researchers.map((s) => (
-    <SubagentCard key={s.id} stream={stream} subagent={s} />
+  return researchers.map((subagent) => (
+    <SubagentCard key={subagent.id} stream={stream} subagent={subagent} />
   ));
 }
 
@@ -81,29 +80,39 @@ function SubagentCard({
   return (
     <section>
       <header>
-        {subagent.name} — {subagent.status}
+        {subagent.name}: {subagent.status}
       </header>
-      {messages.map((m) => (
-        <Bubble key={m.id} msg={m} />
+      {messages.map((message) => (
+        <Bubble key={message.id} message={message} />
       ))}
     </section>
   );
 }
 ```
 
-Subscriptions open on mount and close when the last consumer for a given `(channel, namespace)` tuple unmounts. Components that don't render a subagent's content never pay for its wire traffic.
+## How a panel streams
+
+- **On Agent Server 0.19 or later**, the run's own stream carries the main conversation and the subagents' status, and the open panels of a run share one more connection that carries only their subagents. A subagent nobody shows costs nothing.
+- **On an older server**, the run streams every event of every subagent, and the panels read from it. A warning in the browser console says so once.
+- **After a reload**, the first hook on a subagent looks up its namespace, from its `task` tool message or one small history read, then streams it as above. A subagent that finished shows its messages from the thread's history. If its namespace can't be found, its hooks return nothing, and its snapshot still has its status and output.
 
 ## Subgraphs
 
-Subgraph snapshots work the same way. The `subgraphsByNode` map is handy for laying out nested-graph visualisations:
+Subgraphs work the same way. `subgraphsByNode` helps lay out nested graphs:
 
 ```tsx
+import {
+  useValues,
+  type AnyStream,
+  type SubgraphDiscoverySnapshot,
+} from "@langchain/react";
+
 function NestedGraphView({ stream }: { stream: AnyStream }) {
-  return [...stream.subgraphsByNode].map(([nodeId, subgraphs]) => (
-    <div key={nodeId}>
-      <h3>{nodeId}</h3>
-      {subgraphs.map((sg) => (
-        <SubgraphCard key={sg.id} stream={stream} subgraph={sg} />
+  return [...stream.subgraphsByNode].map(([nodeName, subgraphs]) => (
+    <div key={nodeName}>
+      <h3>{nodeName}</h3>
+      {subgraphs.map((subgraph) => (
+        <SubgraphCard key={subgraph.id} stream={stream} subgraph={subgraph} />
       ))}
     </div>
   ));
@@ -121,7 +130,9 @@ function SubgraphCard({
 }
 ```
 
+A subgraph shows once a run streams its events, so after a reload `subgraphs` starts empty and fills as runs stream.
+
 ## Related
 
-- [Companion selector hooks](./selectors.md)
-- [Type safety — agent-brand inference](./type-safety.md)
+- [Selector hooks](./selectors.md)
+- [Type safety](./type-safety.md)

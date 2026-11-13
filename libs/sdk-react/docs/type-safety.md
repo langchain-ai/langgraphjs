@@ -1,17 +1,15 @@
 # Type safety
 
-`@langchain/react` is designed around **agent-brand inference**: pass `typeof agent` to the hook and get typed state, tool calls, and (for DeepAgents) subagent state maps back. Plain state generics still work for graphs that aren't built with the agent helpers.
+Pass your agent's or graph's type to `useStream` and the stream is typed from it: its state, its tool calls and, for a deep agent, its subagents. Plain state types work too.
 
 ## Table of contents
 
-- [Agent-brand inference](#agent-brand-inference)
-- [Custom state types](#custom-state-types)
-- [Prop-drilling the stream](#prop-drilling-the-stream)
+- [Inference from an agent](#inference-from-an-agent)
+- [Plain state types](#plain-state-types)
+- [Passing the stream down](#passing-the-stream-down)
 - [Type helpers](#type-helpers)
 
-## Agent-brand inference
-
-Pass `typeof agent` to infer state, tool-call union, and (for DeepAgents) subagent state map:
+## Inference from an agent
 
 ```tsx
 import type { agent } from "./agent";
@@ -23,23 +21,22 @@ function Chat() {
     apiUrl: "http://localhost:2024",
   });
 
-  // stream.values is inferred
-  // stream.toolCalls is a discriminated union of your tools
-  // stream.subagents carries per-subagent state types
+  // stream.values is the agent's state.
+  // stream.toolCalls is a union of the agent's tool calls.
 }
 ```
 
-The same inference works on `useStreamContext<typeof agent>()` and on the companion selector hooks when you pass a scoped target:
+The same works for `useStreamContext<typeof agent>()` and for `useToolCalls`:
 
 ```tsx
-const messages = useMessages(stream); // BaseMessage[]
-const tools = useToolCalls<typeof agent>(stream);
-const state = useValues<typeof agent>(stream);
+const toolCalls = useToolCalls<typeof agent>(stream);
 ```
 
-## Custom state types
+`stream.values` and `useValues(stream)` are the agent's state.
 
-For plain state shapes, pass the state directly. The second and third generic slots are `InterruptType` and `ConfigurableType`:
+## Plain state types
+
+For a graph without an agent type, pass the state. The second and third type parameters are the interrupts' value and the `configurable` config:
 
 ```tsx
 import { useStream } from "@langchain/react";
@@ -56,15 +53,17 @@ const stream = useStream<MyState, { question: string }>({
 });
 ```
 
-## Prop-drilling the stream
+## Passing the stream down
 
-Two type aliases cover the two common prop shapes:
-
-- **`UseStreamReturn<T>`** — fully-resolved return type. Use for `{ stream: UseStreamReturn<typeof agent> }` props when the child needs typed access to state / tool calls.
-- **`AnyStream`** — type-erased handle. Use when the child only forwards `stream` into selector hooks and doesn't care about the underlying state shape.
+- **`UseStreamReturn<T>`** is the stream typed for `T`. Use it when the child reads the typed state or tool calls.
+- **`StreamLike`** accepts any `useStream` or `useSuspenseStream` result. Use it when the child only passes the stream to selector hooks.
 
 ```tsx
-import type { AnyStream, UseStreamReturn } from "@langchain/react";
+import type {
+  StreamLike,
+  SubgraphDiscoverySnapshot,
+  UseStreamReturn,
+} from "@langchain/react";
 import type { agent } from "./agent";
 
 function ChatPanel({ stream }: { stream: UseStreamReturn<typeof agent> }) {
@@ -75,23 +74,24 @@ function SubgraphCard({
   stream,
   subgraph,
 }: {
-  stream: AnyStream;
+  stream: StreamLike;
   subgraph: SubgraphDiscoverySnapshot;
 }) {
-  // stream is only used to feed selector hooks — no generic required
+  // stream only feeds the selector hooks, so it needs no type parameter
 }
 ```
 
 ## Type helpers
 
-| Helper                                                                                           | Use                                                                                        |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `InferStateType<T>`                                                                              | Unwraps a compiled graph / agent brand / agent tool array into its state shape.            |
-| `InferToolCalls<T>`                                                                              | Derives a discriminated union of tool-call shapes.                                         |
-| `InferSubagentStates<T>`                                                                         | `{ name: State, … }` map derived from a DeepAgent brand.                                   |
-| `WidenUpdateMessages<T>`                                                                         | Widens `messages` so both wire-format and `BaseMessage` instances typecheck in `submit()`. |
-| `StreamSubmitOptions<State, Configurable>`                                                       | Options shape accepted by `submit()`.                                                      |
-| `AgentServerAdapter` / `HttpAgentServerAdapter`                                                  | Custom-transport interface + convenience class.                                            |
-| `SelectorTarget` / `SubagentDiscoverySnapshot` / `SubgraphDiscoverySnapshot`                     | For components that render scoped views.                                                   |
-| `AssembledToolCall`, `ToolCallStatus`                                                            | For rendering tool-call UI.                                                                |
-| `MessageMetadata`, `UseSubmissionQueueReturn`, `SubmissionQueueEntry`, `SubmissionQueueSnapshot` | Companion-hook return shapes.                                                              |
+| Helper                                                                                           | Use                                                                                            |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `InferStateType<T>`                                                                              | The state of a compiled graph or agent.                                                        |
+| `InferToolCalls<T>`                                                                              | The union of the tool calls of an agent or a list of tools.                                    |
+| `InferSubagentStates<T>`                                                                         | A deep agent's subagents and their states, by name.                                            |
+| `WidenUpdateMessages<T>`                                                                         | Lets `submit()` take messages as plain objects or `BaseMessage` instances.                     |
+| `StreamSubmitOptions`, `StreamStopOptions`, `StreamRespondOptions`, `StreamRespondAllOptions`    | The options of `submit()`, `stop()`, `respond()` and `respondAll()`.                          |
+| `RunExecutionInfo`, `RunCompletedInfo`                                                           | What `onCreated` and `onCompleted` get.                                                        |
+| `SelectorTarget`, `SubagentDiscoverySnapshot`, `SubgraphDiscoverySnapshot`                       | For components that show a subagent or a subgraph.                                             |
+| `AssembledToolCall`, `ToolCallStatus`                                                            | For tool call UI.                                                                              |
+| `MessageMetadata`, `UseSubmissionQueueReturn`, `SubmissionQueueEntry`, `SubmissionQueueSnapshot` | What the selector hooks return.                                                                |
+| `Channel`, `Event`                                                                               | `useChannel`'s channels and events.                                                            |

@@ -3,7 +3,7 @@ import { render } from "vitest-browser-react";
 
 import { DeepAgentStream } from "./components/DeepAgentStream.js";
 import { SubgraphDiscoveryStream } from "./components/SubgraphDiscoveryStream.js";
-import { ExtensionSelectorsStream } from "./components/ExtensionSelectorsStream.js";
+import { CustomChannelStream } from "./components/CustomChannelStream.js";
 import { ChannelEffectStream } from "./components/ChannelEffectStream.js";
 import { apiUrl, cleanupRender } from "./test-utils.js";
 
@@ -133,7 +133,7 @@ it("ignores leaf function nodes and only promotes subgraph hosts", async () => {
 });
 
 it("captures anonymous writer events on the raw custom channel", async () => {
-  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+  const screen = await render(<CustomChannelStream apiUrl={apiUrl} />);
 
   try {
     await screen.getByTestId("submit").click();
@@ -156,7 +156,7 @@ it("captures anonymous writer events on the raw custom channel", async () => {
 
 it("honours useChannel bufferSize for raw custom events", async () => {
   const screen = await render(
-    <ExtensionSelectorsStream apiUrl={apiUrl} customBufferSize={1} />,
+    <CustomChannelStream apiUrl={apiUrl} customBufferSize={1} />,
   );
 
   try {
@@ -176,28 +176,8 @@ it("honours useChannel bufferSize for raw custom events", async () => {
   }
 });
 
-it("unwraps named custom event payloads through useExtension", async () => {
-  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
-
-  try {
-    await screen.getByTestId("submit").click();
-
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 10_000 })
-      .toHaveTextContent("Not loading");
-    await expect
-      .element(screen.getByTestId("extension-label"))
-      .toHaveTextContent("answering");
-    await expect
-      .element(screen.getByTestId("extension-json"))
-      .toHaveTextContent('{"label":"answering"}');
-  } finally {
-    await cleanupRender(screen);
-  }
-});
-
 it("continues useChannel subscriptions across serial submits", async () => {
-  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+  const screen = await render(<CustomChannelStream apiUrl={apiUrl} />);
 
   try {
     await screen.getByTestId("submit").click();
@@ -217,32 +197,6 @@ it("continues useChannel subscriptions across serial submits", async () => {
     await expect
       .element(screen.getByTestId("custom-event-count"))
       .toHaveTextContent("6");
-  } finally {
-    await cleanupRender(screen);
-  }
-});
-
-it("continues useExtension subscriptions across serial submits", async () => {
-  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
-
-  try {
-    await screen.getByTestId("submit").click();
-
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 10_000 })
-      .toHaveTextContent("Not loading");
-    await expect
-      .element(screen.getByTestId("extension-count"))
-      .toHaveTextContent("1");
-
-    await screen.getByTestId("submit").click();
-
-    await expect
-      .element(screen.getByTestId("loading"), { timeout: 10_000 })
-      .toHaveTextContent("Not loading");
-    await expect
-      .element(screen.getByTestId("extension-count"))
-      .toHaveTextContent("2");
   } finally {
     await cleanupRender(screen);
   }
@@ -317,7 +271,7 @@ it("does not deliver useChannelEffect events when disabled", async () => {
 });
 
 it("exposes the latest thread values via useValues", async () => {
-  const screen = await render(<ExtensionSelectorsStream apiUrl={apiUrl} />);
+  const screen = await render(<CustomChannelStream apiUrl={apiUrl} />);
 
   try {
     await screen.getByTestId("submit").click();

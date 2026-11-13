@@ -5,10 +5,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import {
-  createNodeWebSocket,
-  type NodeWebSocket,
-} from "@hono/node-ws";
-import {
   createEmbedServer,
   type ThreadSaver,
 } from "@langchain/langgraph-api/experimental/embed";
@@ -99,7 +95,6 @@ const graphs: Record<string, AnyPregel> = {
 };
 
 let httpServer: Server | null = null;
-let webSocketServer: NodeWebSocket["wss"] | null = null;
 
 export async function setup({ provide }: TestProject) {
   const app = new Hono();
@@ -107,16 +102,10 @@ export async function setup({ provide }: TestProject) {
     "*",
     cors({ origin: "*", exposeHeaders: ["Content-Location"] }),
   );
-  const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
-    app,
-  });
-  webSocketServer = wss;
-
   const embedApp = createEmbedServer({
     graph: graphs,
     checkpointer,
     threads,
-    upgradeWebSocket,
   });
   app.route("/", embedApp);
 
@@ -126,22 +115,10 @@ export async function setup({ provide }: TestProject) {
       provide("protocolV2ServerUrl", url);
       resolve();
     }) as Server;
-    injectWebSocket(httpServer);
   });
 }
 
 export async function teardown() {
-  for (const client of webSocketServer?.clients ?? []) {
-    client.terminate();
-  }
-  await new Promise<void>((resolve) => {
-    if (webSocketServer == null) {
-      resolve();
-      return;
-    }
-    webSocketServer.close(() => resolve());
-  });
-  webSocketServer = null;
   httpServer?.closeAllConnections();
   await new Promise<void>((resolve) => {
     if (httpServer == null) {

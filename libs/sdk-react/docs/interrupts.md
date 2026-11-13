@@ -1,26 +1,26 @@
-# Interrupts & headless tools
+# Interrupts and headless tools
 
-Interrupts pause graph execution and wait for input. `@langchain/react` surfaces them on the root hook, lets you resume them imperatively, and can auto-resolve tool-interrupts via registered headless tool implementations.
+An interrupt pauses a run to ask for input, such as an approval. `useStream` shows the interrupts waiting, answers them, and can answer tool calls itself, in the browser, through headless tools.
 
 ## Table of contents
 
 - [Reading interrupts](#reading-interrupts)
-- [Resuming an interrupt](#resuming-an-interrupt)
-- [Multiple pending interrupts](#multiple-pending-interrupts)
-- [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)
-- [`respond(response, options?)`](#respondresponse-options)
-- [`respondAll(responsesById, options?)`](#respondallresponsesbyid-options)
+- [Answering an interrupt](#answering-an-interrupt)
+- [Several interrupts at once](#several-interrupts-at-once)
+- [Changing state while answering](#changing-state-while-answering)
+- [Late answers](#late-answers)
+- [Breakpoints](#breakpoints)
 - [Headless tools](#headless-tools)
 - [Lower-level helpers](#lower-level-helpers)
 
 ## Reading interrupts
 
-The root hook exposes the latest interrupt and the full list:
+`stream.interrupts` lists the interrupts waiting for an answer, nested ones included: one raised inside a subagent or a subgraph shows too. Each has its `id`, its `value` and its `namespace`, which is `[]` for the main graph. `stream.interrupt` is the first. Tool calls your [headless tools](#headless-tools) answer don't show.
 
 ```tsx
 const stream = useStream<
   { messages: BaseMessage[] },
-  { question: string } // InterruptType
+  { question: string } // the interrupt's value
 >({
   assistantId: "agent",
   apiUrl: "http://localhost:2024",
@@ -28,244 +28,134 @@ const stream = useStream<
 
 return (
   <>
-    {stream.messages.map((msg, i) => (
-      <div key={msg.id ?? i}>{String(msg.content)}</div>
+    {stream.messages.map((message, i) => (
+      <div key={message.id ?? i}>{message.text}</div>
     ))}
 
-    {stream.interrupt && (
+    {stream.interrupt?.value && (
       <div>
         <p>{stream.interrupt.value.question}</p>
-        <button onClick={() => void stream.respond("Approved")}>
-          Approve
-        </button>
+        <button onClick={() => void stream.respond("Approved")}>Approve</button>
       </div>
     )}
   </>
 );
 ```
 
-`stream.interrupt` is `stream.interrupts[0]` — the most recent **root** interrupt mirrored for UI convenience. It is not always the interrupt `respond()` would pick when `target` is omitted (see below).
+## Answering an interrupt
 
-## Resuming an interrupt
-
-Call `stream.respond(value)` when exactly one interrupt is pending:
+`stream.respond(value)` answers the interrupt `stream.interrupt` shows. With several waiting, name the one with `interruptId`. Its id is enough for a nested interrupt too.
 
 ```tsx
-void stream.respond({ approved: true });
-```
-
-When more than one interrupt can be active, pass an explicit target (see [Multiple pending interrupts](#multiple-pending-interrupts) and [Subgraph interrupts and namespace](#subgraph-interrupts-and-namespace)).
-
-## Multiple pending interrupts
-
-When `options.interruptId` is omitted, `respond()` walks `stream.getThread()?.interrupts` from **newest to oldest** and resumes the first entry whose `interruptId` has not already been resolved by a prior `respond()` call.
-
-That list includes root **and** subgraph interrupts. It is **not** the same as `stream.interrupt` / `stream.interrupts[0]`, which only mirror root-namespace interrupts.
-
-| Surface | What it contains | Use for |
-| ------- | ---------------- | ------- |
-| `stream.interrupts` | Root-namespace interrupts (`{ id, value }`) | Rendering root HITL UI |
-| `stream.getThread()?.interrupts` | All protocol interrupts (`{ interruptId, payload, namespace }`) | Targeting nested / all interrupts |
-
-When several root interrupts are pending, target by id:
-
-```tsx
-stream.interrupts.map((intr) => (
+stream.interrupts.map((interrupt) => (
   <button
-    key={intr.id}
+    key={interrupt.id}
     onClick={() =>
-      void stream.respond({ approved: true }, { interruptId: intr.id! })
+      void stream.respond({ approved: true }, { interruptId: interrupt.id })
     }
   >
-    Approve {intr.id}
+    Approve
   </button>
 ));
 ```
 
-When `namespace` is omitted, `respond()` looks it up from `getThread()?.interrupts` by `interruptId` (falling back to root `[]` only if the id is unknown). An explicit `namespace` overrides the lookup.
+- The interrupt hides as soon as you answer, and shows again if the run that resumes fails.
+- During a run, the answer waits in the queue behind it and never interrupts it.
+- `respond` resolves once the answer's run is created or queued, and rejects when it can't be sent.
+- `config` and `metadata` go onto the run that resumes, as with `submit()`.
+- An interrupt answered in another tab disappears here too: at once on Agent Server 0.19 or later, else at the next read of the thread's state.
 
-## Subgraph interrupts and namespace
+## Several interrupts at once
 
-Interrupts raised inside a subagent or nested graph carry a **non-empty** protocol `namespace` tuple (for example `["task:research"]`). The server validates that tuple when you resume.
-
-Those entries appear on `stream.getThread()?.interrupts` but may **not** appear on `stream.interrupts`. Passing `{ interruptId }` is enough — the SDK resolves `namespace` from the thread stream:
-
-```tsx
-const thread = stream.getThread();
-
-return (
-  <>
-    {thread?.interrupts.map((entry) => (
-      <div key={entry.interruptId}>
-        <p>{JSON.stringify(entry.payload)}</p>
-        <p>
-          namespace: {entry.namespace.length === 0 ? "(root)" : entry.namespace.join(" › ")}
-        </p>
-        <button
-          onClick={() =>
-            void stream.respond(buildResponse(entry.payload), {
-              interruptId: entry.interruptId,
-            })
-          }
-        >
-          Resume
-        </button>
-      </div>
-    ))}
-  </>
-);
-```
-
-Each entry mirrors an `input.requested` event: `{ interruptId, payload, namespace }`.
-
-## `respond(response, options?)`
-
-Signature:
+When a run pauses on several interrupts at the same checkpoint, such as parallel approvals, answer them in one run with `respondAll`. Answering them one by one with `respond` doesn't work: the first answer starts a run, and the others have nothing left to resume.
 
 ```tsx
-stream.respond(
-  response: unknown,
-  options?: {
-    interruptId?: string;
-    namespace?: string[];
-    update?: Record<string, unknown> | [string, unknown][];
-    goto?: string | { node: string; input?: unknown } | (string | { node: string; input?: unknown })[];
-    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
-    metadata?: Record<string, unknown>;
-  },
-): Promise<void>
-```
-
-| `options.interruptId` | Behavior |
-| --------------------- | -------- |
-| Omitted | Newest unresolved entry in `getThread()?.interrupts`. Safe when one interrupt is pending. |
-| `interruptId` set | Resume that id; `namespace` resolved from `getThread()?.interrupts` (root `[]` if unknown). |
-| `interruptId` + `namespace` | Resume that id in the given namespace (overrides the lookup). |
-
-`options.config` / `options.metadata` are folded into the run that services the resume — the same `config` / `metadata` you'd pass to `submit()`. Use them to carry model/user config or run metadata (e.g. trigger source) onto a HITL resume.
-
-```tsx
-// Single pending interrupt — omit target:
-await stream.respond({ approved: true });
-
-// Specific root interrupt:
-await stream.respond({ approved: true }, { interruptId: myInterrupt.id! });
-
-// Subgraph interrupt — namespace from getThread():
-await stream.respond(
-  { approved: true },
-  { interruptId: entry.interruptId, namespace: entry.namespace },
-);
-
-// Resume carrying run config + metadata:
-await stream.respond({ approved: true }, {
-  config: { configurable: { model: "gpt-4o" } },
-  metadata: { source: "ui" },
+await stream.respondAll({
+  [interruptA.id!]: { approved: true },
+  [interruptB.id!]: { approved: false },
 });
+
+// The same answer to every interrupt waiting:
+await stream.respondAll(
+  Object.fromEntries(
+    stream.interrupts.map((interrupt) => [interrupt.id!, { approved: true }])
+  )
+);
 ```
 
-### Changing state while resuming
+## Changing state while answering
 
-Pass `options.update` to apply a state update in the **same superstep** as the resume — it maps to LangGraph's `Command(resume, update)`. The resumed run produces a single checkpoint reflecting both the resume value and the update: no separate `updateState` write, no intermediate checkpoint, no flicker.
-
-The canonical use case is a HITL flow where the UI pushes the interrupt card (e.g. an `AIMessage`) into state at the moment it answers the interrupt, so the card is committed before the resumed tool runs and stays rendered without the backend re-emitting it.
-
-`update` accepts a state-keys object (shallow-merged via the graph's channel reducers) or a list of `[key, value]` entries. Messages under the configured `messagesKey` may be plain dicts **or** `@langchain/core` `BaseMessage` instances — instances are serialized to dicts before transport, exactly like `submit()`.
+`update` applies a state update in the same step as the answer, as LangGraph's `Command(update=...)` does: one checkpoint holds both, with no separate write and no flicker. A typical use is a card that pushes its own message into the conversation when the user answers it. Messages can be plain objects or `BaseMessage` instances.
 
 ```tsx
 import { AIMessage } from "@langchain/core/messages";
 
-// Approve the interrupt AND push a message into state in one atomic resume:
 await stream.respond(
   { approved: true },
-  { update: { messages: [new AIMessage("Approved by reviewer.")] } },
-);
-
-// Equivalent with a plain message dict:
-await stream.respond(
-  { approved: true },
-  { update: { messages: [{ type: "ai", content: "Approved by reviewer." }] } },
+  { update: { messages: [new AIMessage("Approved by the reviewer.")] } }
 );
 ```
 
-You can also pass `options.goto` to apply a directed jump (`Command(goto=...)`) in the same superstep — a target node name, a `Send` (`{ node, input }`), or a list mixing the two for fan-out.
+`goto` sends the run to a node next, as `Command(goto=...)` does: a node name, a `Send` (`{ node, input }`), or a list of them.
 
-### `respondAll(responsesById, options?)`
+## Late answers
 
-When a run pauses on **several interrupts at the same checkpoint** (e.g. parallel tool-authorization prompts), resume them in one command with `respondAll`. Sequential `respond()` calls would fail — the first resume starts a run, leaving the rest with no interrupted run to respond to.
+An answer to an interrupt that is no longer waiting, because another tab answered it or the id is wrong, fails its run with an `UnknownInterruptError` and leaves the thread as it was. That needs a server that checks answers (Agent Server 0.19 or later, with a Python graph). Pass `strictResume: false` to have the server ignore such an answer instead.
 
-```tsx
-stream.respondAll(
-  responsesById: Record<string, unknown>, // interruptId -> response payload
-  options?: {
-    config?: { configurable?: Record<string, unknown>; [key: string]: unknown };
-    metadata?: Record<string, unknown>;
-  },
-): Promise<void>
-```
+## Breakpoints
 
-`responsesById` maps each pending `interruptId` to its response, so different interrupts can receive different payloads. Namespaces are resolved internally from `getThread()?.interrupts`, so you only supply ids. `options.config` / `options.metadata` are folded into the single run that services the batched resume.
-
-```tsx
-// Distinct payloads per interrupt:
-await stream.respondAll({
-  [interruptA.id]: { approved: true },
-  [interruptB.id]: { approved: false },
-});
-
-// Same payload to every pending interrupt:
-await stream.respondAll(
-  Object.fromEntries(stream.interrupts.map((i) => [i.id!, { approved: true }])),
-);
-```
+A thread paused at a breakpoint (`interruptBefore` or `interruptAfter`) shows no interrupt, since there is nothing to answer. `submit(null)` continues the run.
 
 ## Headless tools
 
-Register tool implementations on the hook and the SDK will auto-resume matching interrupts with the handler's return value. The user never sees the tool interrupt — it resolves transparently:
+A headless tool is a tool the agent calls and the browser runs: reading the location, the clipboard or browser storage. Define it without an implementation, give it to your agent, and implement it in the browser:
 
 ```tsx
-import { useStream } from "@langchain/react";
-import { tool } from "@langchain/core/tools";
+import { tool } from "langchain";
 import { z } from "zod";
+import { useStream } from "@langchain/react";
 
-const getCurrentLocation = tool(
-  async () => ({
-    latitude: 47.61,
-    longitude: -122.33,
-  }),
-  {
-    name: "get_current_location",
-    description: "Get the user's current location",
-    schema: z.object({}),
-  },
-);
-
-const stream = useStream({
-  assistantId: "deep-agent",
-  apiUrl: "http://localhost:2024",
-  tools: [getCurrentLocation],
-  onTool: (event) => {
-    if (event.type === "error") console.error(event.error);
-  },
+// Shared with the agent, which calls it without running it.
+export const getLocation = tool({
+  name: "get_location",
+  description: "Get the user's current location",
+  schema: z.object({}),
 });
+
+function Chat() {
+  const stream = useStream({
+    assistantId: "agent",
+    apiUrl: "http://localhost:2024",
+    tools: [
+      getLocation.implement(async () => {
+        const position = await new Promise<GeolocationPosition>(
+          (resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject)
+        );
+        const { latitude, longitude } = position.coords;
+        return { latitude, longitude };
+      }),
+    ],
+    onTool: (event) => {
+      if (event.phase === "error") console.error(event.error);
+    },
+  });
+  // ...
+}
 ```
 
-`onTool` lifecycle events:
+When the agent calls the tool, the run pauses on an interrupt. `useStream` runs the implementation and answers the interrupt with its result, so the user never sees it. `onTool` gets an event when the tool starts, succeeds or fails (`event.phase` is `"start"`, `"success"` or `"error"`), with its `name`, `args`, `result` or `error`, and `duration`.
 
-| `event.type` | Description                                        |
-| ------------ | -------------------------------------------------- |
-| `start`      | The SDK matched an interrupt to a registered tool. |
-| `success`    | Tool returned a value; the run is about to resume. |
-| `error`      | Tool threw; the error is surfaced to the server.   |
-
-Dedupe is automatic: the same interrupt observed twice (for example under `<StrictMode>`) is invoked once.
+Each call runs once, also under `<StrictMode>`, and a call left waiting runs when the thread loads again.
 
 ## Lower-level helpers
 
-For advanced composition (custom interrupt routers, background workers, tests) the SDK also exports:
+For custom interrupt handling, `@langchain/react` exports the functions `useStream` uses for headless tools:
 
-- `flushPendingHeadlessToolInterrupts(stream)`
-- `findHeadlessTool(stream, name)`
-- `handleHeadlessToolInterrupt(stream, interrupt, tool)`
+- `findHeadlessTool(tools, name)` finds a tool's implementation.
+- `executeHeadlessTool(implementation, args, onTool?)` runs one and reports to `onTool`.
+- `handleHeadlessToolInterrupt(interrupt, tools, onTool?)` runs the tool an interrupt asks for, and returns `{ toolCallId, value }`.
+- `headlessToolResumeCommand(result)` turns that result into the command that answers the interrupt.
+- `isHeadlessToolInterrupt(value)`, `parseHeadlessToolInterruptPayload(value)` and `filterOutHeadlessToolInterrupts(interrupts)` tell headless tool calls from other interrupts.
 
-These are the same primitives `useStream` uses internally to service `tools` / `onTool`. Reach for them when you need to process interrupts outside of the default auto-resume pipeline.
+`getThread()` is deprecated: it returns `{ interrupts, onError }`, each interrupt as `{ interruptId, namespace, payload }`. Use `stream.interrupts` and `stream.respond` instead.
