@@ -440,6 +440,7 @@ describe("StreamOrchestrator", () => {
         accessors
       );
 
+      orch.activate();
       orch.initThreadId("t1");
 
       await vi.waitFor(() => {
@@ -461,6 +462,7 @@ describe("StreamOrchestrator", () => {
         createOptions({ tools: [toolImpl] }),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
 
       await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
@@ -509,6 +511,7 @@ describe("StreamOrchestrator", () => {
         createOptions({ tools: [toolImpl] }),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
       const join = orch.joinStream("run-1");
       serveHead(pendingToolState());
@@ -551,6 +554,7 @@ describe("StreamOrchestrator", () => {
           createOptions({ tools: [toolImpl] }),
           accessors
         );
+        orch.activate();
         orch.initThreadId("t1");
 
         await orch.joinStream("run-1");
@@ -570,6 +574,7 @@ describe("StreamOrchestrator", () => {
           createOptions({ tools: [toolImpl] }),
           accessors
         );
+        orch.activate();
         orch.initThreadId("t1");
 
         const resumed = orch.submit(
@@ -594,6 +599,7 @@ describe("StreamOrchestrator", () => {
         createOptions({ fetchStateHistory: true, tools: [toolImpl] }),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
       await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
       (client.runs.joinStream as Mock).mockImplementationOnce(
@@ -647,6 +653,7 @@ describe("StreamOrchestrator", () => {
         createOptions({ tools: [toolImpl] }),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
       await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
       let finishRead!: (state: unknown) => void;
@@ -702,6 +709,7 @@ describe("StreamOrchestrator", () => {
           createOptions({ tools: [toolImpl] }),
           accessors
         );
+        orch.activate();
         orch.initThreadId("t1");
         await vi.waitFor(() => expect(toolImpl.execute).toHaveBeenCalled());
         (client.threads.getState as Mock).mockResolvedValue(
@@ -745,6 +753,7 @@ describe("StreamOrchestrator", () => {
         createOptions({ tools: [toolImpl] }),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
       await vi.waitFor(() => expect(toolImpl.execute).toHaveBeenCalled());
       orch.switchThread("t2");
@@ -1492,6 +1501,7 @@ describe("StreamOrchestrator", () => {
         createOptions(options),
         accessors
       );
+      orch.activate();
       orch.initThreadId("t1");
       await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
       return orch;
@@ -1733,6 +1743,7 @@ describe("StreamOrchestrator", () => {
         createOptions(options),
         accessors
       );
+      orch.activate();
       orch.initThreadId(threadId);
       await vi.waitFor(() => expect(orch.historyData.isLoading).toBe(false));
       return orch;
@@ -2376,10 +2387,12 @@ describe("StreamOrchestrator runs", () => {
   });
 
   function orchestrator(options?: Partial<StreamOrchestratorOptions<TestState>>) {
-    return new StreamOrchestrator<TestState>(
+    const orch = new StreamOrchestrator<TestState>(
       createOptions(options),
       createAccessors(client)
     );
+    orch.activate();
+    return orch;
   }
 
   function deferred() {
@@ -3042,6 +3055,95 @@ describe("StreamOrchestrator runs", () => {
       execute: vi.fn().mockResolvedValue("sunny"),
     });
 
+    function inactive(options?: Partial<StreamOrchestratorOptions<TestState>>) {
+      return new StreamOrchestrator<TestState>(
+        createOptions(options),
+        createAccessors(client)
+      );
+    }
+
+    it("a load before activate() joins its running run only once activated, running none of its calls", async () => {
+      const tool = weatherTool();
+      (client.threads.getState as Mock).mockResolvedValueOnce(toolHead);
+      listRuns([{ run_id: "run-9" }]);
+      mockJoinStream([], Promise.resolve());
+      const orch = inactive({ tools: [tool] });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await flushMicrotasks(20);
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      expect(orch.isLoading).toBe(true);
+
+      orch.activate();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      await flushMicrotasks(20);
+      expect(client.runs.joinStream).toHaveBeenCalledOnce();
+      expect(tool.execute).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("a thread switch before activate() drops the join a load held", async () => {
+      (client.threads.getState as Mock).mockResolvedValueOnce(breakpointHead);
+      listRuns([{ run_id: "run-9" }]);
+      mockJoinStream([], Promise.resolve());
+      const orch = inactive();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      listRuns([]);
+
+      orch.switchThread("t2");
+      await orch.hydrationPromise;
+      orch.activate();
+      await flushMicrotasks(20);
+
+      expect(orch.isLoading).toBe(false);
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("a load before activate() runs its head's tool calls only once activated", async () => {
+      const tool = weatherTool();
+      (client.threads.getState as Mock).mockResolvedValue(toolHead);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = inactive({ tools: [tool] });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await flushMicrotasks(20);
+      expect(tool.execute).not.toHaveBeenCalled();
+
+      orch.activate();
+      await vi.waitFor(() => expect(tool.execute).toHaveBeenCalledOnce());
+      orch.dispose();
+    });
+
+    it("a load before activate() streams the server's queued runs only once activated", async () => {
+      listRuns(
+        [],
+        [
+          {
+            run_id: "run-p1",
+            created_at: "2026-11-11T10:00:01Z",
+            kwargs: { input: { messages: [message("first")] } },
+          },
+        ]
+      );
+      mockJoinStream([], Promise.resolve());
+      const orch = inactive();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      await flushMicrotasks(20);
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      orch.activate();
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledOnce()
+      );
+      orch.dispose();
+    });
+
     it("runs no pending tool from a load that joins the run answering it", async () => {
       const tool = weatherTool();
       (client.threads.getState as Mock).mockResolvedValueOnce(toolHead);
@@ -3497,7 +3599,7 @@ describe("StreamOrchestrator runs", () => {
       return (client.runs.stream as Mock).mock.calls[call][2];
     }
 
-    it("answers the newest interrupt shown, by id", async () => {
+    it("answers the first interrupt shown, by id", async () => {
       (client.threads.getState as Mock).mockResolvedValue(
         pendingState("i1", "i2")
       );
@@ -3509,7 +3611,7 @@ describe("StreamOrchestrator runs", () => {
       await orch.respond("yes");
 
       expect(streamOptions()).toMatchObject({
-        command: { resume: { i2: "yes" } },
+        command: { resume: { i1: "yes" } },
         multitaskStrategy: "enqueue",
         strictResume: true,
       });
@@ -5445,7 +5547,10 @@ describe("StreamOrchestrator runs", () => {
       { name: "without activate()", activate: false, watchThread: undefined },
       { name: "with watchThread: false", activate: true, watchThread: false },
     ])("opens no watcher $name", async ({ activate, watchThread }) => {
-      const orch = orchestrator({ watchThread });
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ watchThread }),
+        createAccessors(client)
+      );
       orch.initThreadId("t1");
       if (activate) orch.activate();
       await orch.hydrationPromise;

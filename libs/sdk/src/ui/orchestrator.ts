@@ -462,6 +462,16 @@ export class StreamOrchestrator<
 
   #active = false;
 
+  /**
+   * What a load found before the first {@link activate}, done when it comes:
+   * bindings create engines during a render, and one from a render that
+   * never commits must not join runs or run tools. The running run's join,
+   * and the head whose tool calls to run.
+   */
+  #heldJoin: (() => void) | undefined;
+
+  #heldTools: ThreadState<StateType> | undefined;
+
   #watch: { threadId: string; controller: AbortController } | undefined;
 
   /** Where the current thread's watcher resumes. */
@@ -671,6 +681,8 @@ export class StreamOrchestrator<
   }
 
   #clearThreadState(): void {
+    this.#heldJoin = undefined;
+    this.#heldTools = undefined;
     this.#branch = "";
     this.#namespaceLookups.clear();
     this.scopes.clear();
@@ -803,13 +815,16 @@ export class StreamOrchestrator<
     const runId = runs.at(0)?.run_id;
     if (runId != null) {
       // The queue drains when this join ends.
-      void this.#join(
-        runId,
-        "-1",
-        { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
-        true,
-        runs.at(0)
-      );
+      const join = () =>
+        void this.#join(
+          runId,
+          "-1",
+          { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
+          true,
+          runs.at(0)
+        );
+      if (this.#active) join();
+      else this.#heldJoin = join;
       return;
     }
     if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
@@ -1073,10 +1088,11 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Whether the stream is currently active and receiving events.
+   * Whether the stream is currently active and receiving events, or a load
+   * found a running run that the first {@link activate} joins.
    */
   get isLoading(): boolean {
-    return this.stream.isLoading;
+    return this.stream.isLoading || this.#heldJoin != null;
   }
 
   /**
@@ -2170,6 +2186,7 @@ export class StreamOrchestrator<
 
   #drainQueue(): void {
     if (
+      this.#active &&
       !this.#disposed &&
       !this.isLoading &&
       !this.#submitting &&
@@ -2318,7 +2335,7 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Answer one interrupt: `options.interruptId`, or the newest one shown
+   * Answer one interrupt: `options.interruptId`, or the first one shown
    * that isn't answered yet, once a thread load has looked for a run still
    * going. See {@link respondAll}.
    */
@@ -2342,7 +2359,7 @@ export class StreamOrchestrator<
     }
     const interruptId =
       options.interruptId ??
-      this.interrupts.filter((interrupt) => interrupt.id != null).at(-1)?.id;
+      this.interrupts.find((interrupt) => interrupt.id != null)?.id;
     if (interruptId == null) {
       throw new Error("No pending interrupt to respond to.");
     }
@@ -2486,6 +2503,17 @@ export class StreamOrchestrator<
         this.#onVisibilityChange
       );
       this.#syncWatcher();
+      const join = this.#heldJoin;
+      const tools = this.#heldTools;
+      this.#heldJoin = undefined;
+      this.#heldTools = undefined;
+      // The run answers the head's calls, and the queue drains when it ends.
+      if (join != null) {
+        join();
+      } else {
+        if (tools != null) this.#flushHeadToolCalls(tools);
+        this.#drainQueue();
+      }
     }
     return () => {
       if (this.#disposed) return;
@@ -2772,6 +2800,10 @@ export class StreamOrchestrator<
   }
 
   #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
+    if (!this.#active) {
+      this.#heldTools = head;
+      return;
+    }
     // Thread state values never carry `__interrupt__`; a pending call is in
     // the head's tasks.
     this.#flushPendingHeadlessToolInterrupts({
