@@ -516,7 +516,7 @@ export function flushPendingHeadlessToolInterrupts(
   if (pending.length === 0) return;
 
   defer(() => {
-    void (async () => {
+    const resume = (async () => {
       const results = await Promise.all(
         pending.map(async ({ interruptId, headlessInterrupt, toolCallId }) => {
           const result = await handleHeadlessToolInterrupt(
@@ -535,5 +535,26 @@ export function flushPendingHeadlessToolInterrupts(
         options.resumeSubmit(headlessToolsBatchResumeCommand(results))
       );
     })();
+
+    // A rejected `resumeSubmit` — for example when the server rejects the
+    // resume with a protocol error such as `no_such_interrupt` because the
+    // targeted interrupt has not been committed to the durable thread row
+    // yet — must not be swallowed as an unhandled promise rejection.
+    // Otherwise the headless-tool result is silently dropped and the caller
+    // believes the submission succeeded. Surface it through `onTool` so the
+    // application can react (retry, notify the user, etc.).
+    // See https://github.com/langchain-ai/langgraph/issues/9164
+    void resume.catch((err) => {
+      // oxlint-disable-next-line no-instanceof/no-instanceof
+      const error = err instanceof Error ? err : new Error(String(err));
+      for (const { headlessInterrupt } of pending) {
+        options.onTool?.({
+          phase: "error",
+          name: headlessInterrupt.toolCall.name,
+          args: headlessInterrupt.toolCall.args,
+          error,
+        });
+      }
+    });
   });
 }

@@ -331,6 +331,52 @@ describe("headless tool resume helpers", () => {
     });
   });
 
+  it("surfaces a rejected resume submission through onTool instead of dropping it", async () => {
+    const handled = new Set<string>();
+    const error = new Error(
+      "Unknown or already-consumed interrupt: 4b704fd4b473bfd68df40c9979bffe1b"
+    );
+    const resumeSubmit = vi.fn().mockRejectedValue(error);
+    const onTool = vi.fn();
+
+    flushPendingHeadlessToolInterrupts(
+      {
+        __interrupt__: [
+          {
+            id: "4b704fd4b473bfd68df40c9979bffe1b",
+            value: {
+              type: "tool",
+              toolCall: {
+                id: "toolu_01A",
+                name: "memory_put",
+                args: { key: "user_name", value: "Alex" },
+              },
+            },
+          },
+        ],
+      },
+      [
+        {
+          tool: { name: "memory_put" },
+          execute: async () => ({ success: true }),
+        },
+      ],
+      handled,
+      { resumeSubmit, onTool }
+    );
+
+    await flushMicrotasks(8);
+
+    expect(resumeSubmit).toHaveBeenCalledTimes(1);
+    expect(onTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "error",
+        name: "memory_put",
+        error,
+      })
+    );
+  });
+
   it("coalesces staggered flush triggers into one batch resume", async () => {
     const handled = new Set<string>();
     const resumeSubmit = vi.fn().mockResolvedValue(undefined);
