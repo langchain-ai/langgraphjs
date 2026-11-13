@@ -13,7 +13,7 @@
 import type { Channel, Event } from "@langchain/protocol";
 import { inferChannel } from "../../client/stream/subscription.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
-import { isRootNamespace, namespaceKey } from "../namespace.js";
+import { isRootNamespace, namespaceKey } from "../../ui/namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 /** Max events retained per raw subscription. Older events are dropped. */

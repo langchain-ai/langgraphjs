@@ -6,6 +6,40 @@ import type { ThreadState, Checkpoint } from "./storage/types.mjs";
 import { runnableConfigToCheckpoint } from "./utils/runnableConfig.mjs";
 import { serializeError } from "./utils/serde.mjs";
 
+/**
+ * Keep the fields of a thread state that `select` names, as the Python
+ * Agent Server does. `values.<key>` keeps one key of the values.
+ */
+export const selectThreadState = (
+  state: ThreadState,
+  select: string[] | undefined
+): Partial<ThreadState> => {
+  if (!select?.length) return state;
+
+  const selected: Partial<ThreadState> = Object.fromEntries(
+    Object.entries(state).filter(([key]) => select.includes(key))
+  );
+  const valueKeys = select
+    .filter((field) => field.startsWith("values."))
+    .map((field) => field.slice("values.".length));
+
+  const { values } = state;
+  if (
+    !select.includes("values") &&
+    valueKeys.length > 0 &&
+    typeof values === "object" &&
+    values != null &&
+    !Array.isArray(values)
+  ) {
+    selected.values = Object.fromEntries(
+      valueKeys
+        .filter((key) => Object.hasOwn(values, key))
+        .map((key) => [key, values[key]])
+    );
+  }
+  return selected;
+};
+
 const isStateSnapshot = (
   state: StateSnapshot | LangGraphRunnableConfig
 ): state is StateSnapshot => {

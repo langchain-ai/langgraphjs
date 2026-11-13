@@ -4,10 +4,10 @@ import type { Event, MessagesEvent } from "@langchain/protocol";
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
 import { RootMessageProjection } from "./root-message-projection.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import { SubagentDiscovery } from "./discovery/index.js";
 import type { RootSnapshot } from "./types.js";
-import { ensureMessageInstances } from "./message-coercion.js";
+import { ensureMessageInstances } from "../ui/message-coercion.js";
 
 interface State {
   messages?: unknown;
@@ -899,6 +899,32 @@ describe("RootMessageProjection", () => {
       expect(snap.messages[0]).toBe(human);
       expect(snap.messages[1].id).toBe("a1");
       expect(snap.messages[1].text).toContain("more");
+    });
+
+    it("treats a lower step as a replay unless its checkpoint is newer, as after a fork", async () => {
+      const { store, projection } = makeProjection();
+      const ids = () => store.getSnapshot().messages.map((m) => m.id);
+      const h1 = new HumanMessage({ id: "h1", content: "first" });
+      const a1 = new AIMessage({ id: "a1", content: "echo: first" });
+
+      projection.applyValues({ messages: [h1, a1] } as State, [h1, a1], {
+        step: 6,
+        checkpointId: "cp-a6",
+      });
+      projection.applyValues({ messages: [h1] } as State, [h1], {
+        step: 5,
+        checkpointId: "cp-a5",
+      });
+      await drainFlush();
+      expect(ids()).toEqual(["h1", "a1"]);
+
+      const edited = new HumanMessage({ id: "h1-edited", content: "edited" });
+      projection.applyValues({ messages: [edited] } as State, [edited], {
+        step: 1,
+        checkpointId: "cp-b1",
+      });
+      await drainFlush();
+      expect(ids()).toEqual(["h1-edited"]);
     });
   });
 

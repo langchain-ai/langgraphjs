@@ -810,6 +810,111 @@ describe("threads copy", () => {
     expect(filteredHistory.at(-1)?.values.messages.length).toBe(4);
   });
 
+  it.concurrent("history before a checkpoint config", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory(thread.thread_id);
+    const page = await client.threads.getHistory(thread.thread_id, {
+      before: {
+        configurable: { checkpoint_id: history[1].checkpoint.checkpoint_id },
+      },
+    });
+
+    expect(page.map((state) => state.checkpoint.checkpoint_id)).toEqual(
+      history.slice(2).map((state) => state.checkpoint.checkpoint_id)
+    );
+
+    // Deprecated: a checkpoint ID string, until 2.0.0.
+    const legacy = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ before: history[1].checkpoint.checkpoint_id }),
+      }
+    ).then((res) => res.json());
+    expect(legacy).toEqual(page);
+  });
+
+  it.concurrent("history with select", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const history = await client.threads.getHistory<AgentState>(
+      thread.thread_id,
+      { select: ["values.messages", "tasks"] }
+    );
+
+    expect(history).toHaveLength(5);
+    for (const state of history) {
+      expect(Object.keys(state).sort()).toEqual(["tasks", "values"]);
+      expect(Object.keys(state.values)).toEqual(["messages"]);
+    }
+    expect(history[0].values.messages).toHaveLength(4);
+
+    const query = "select=values.messages&select=tasks";
+    const getHistory = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?${query}`
+    ).then((res) => res.json());
+    expect(getHistory).toEqual(history);
+
+    const full = await client.threads.getHistory<AgentState>(thread.thread_id);
+    expect(Object.keys(full[0].values).length).toBeGreaterThan(1);
+
+    // An empty select returns full entries.
+    expect(
+      await client.threads.getHistory(thread.thread_id, { select: [] })
+    ).toEqual(full);
+
+    // `values` keeps every key, even next to `values.<key>`.
+    const allValues = await client.threads.getHistory(thread.thread_id, {
+      select: ["values", "values.messages"],
+    });
+    expect(allValues).toEqual(full.map(({ values }) => ({ values })));
+
+    // A key the state doesn't have is left out.
+    const missing = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.missing"],
+    });
+    expect(missing).toEqual(full.map(() => ({ values: {} })));
+
+    // GET with a single field.
+    const single = await fetch(
+      `${API_URL}/threads/${thread.thread_id}/history?select=next`
+    ).then((res) => res.json());
+    expect(single).toEqual(full.map(({ next }) => ({ next })));
+  });
+
+  it.concurrent("history with select when values aren't an object", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "functional", { input: "foo" })
+    );
+
+    const history = await client.threads.getHistory(thread.thread_id, {
+      select: ["values.messages", "next"],
+    });
+
+    expect(history.length).toBeGreaterThan(0);
+    for (const state of history) expect(Object.keys(state)).toEqual(["next"]);
+  });
+
+  it.concurrent("history rejects an invalid select field", async () => {
+    for (const field of ["files", "values.", "values.a.b"]) {
+      await expect(
+        client.threads.getHistory(randomUUID(), { select: [field as never] })
+      ).rejects.toThrow("HTTP 400");
+    }
+  });
+
   it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();
@@ -1266,14 +1371,38 @@ describe("runs", () => {
 
     const events = await join(thread.thread_id);
     expect(events.map((i) => i.event)).toContain("values");
-    expect(await join(otherThread.thread_id)).toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(otherThread.thread_id)).rejects.toThrow("HTTP 404");
 
     await client.runs.delete(thread.thread_id, run.run_id);
-    expect(await join(thread.thread_id), "after delete").toEqual([
-      { event: "error", data: "Run not found" },
-    ]);
+    await expect(join(thread.thread_id), "after delete").rejects.toThrow(
+      "HTTP 404"
+    );
+  });
+
+  it.concurrent("join of a run on another thread or of a deleted run gets a 404", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const otherThread = await client.threads.create();
+    const run = await client.runs.create(
+      thread.thread_id,
+      assistant.assistant_id,
+      {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      }
+    );
+    await client.runs.join(thread.thread_id, run.run_id);
+
+    await expect(
+      client.runs.join(otherThread.thread_id, run.run_id),
+      "on another thread"
+    ).rejects.toThrow("HTTP 404");
+
+    await client.runs.delete(thread.thread_id, run.run_id);
+    await expect(
+      client.runs.join(thread.thread_id, run.run_id),
+      "deleted"
+    ).rejects.toThrow("HTTP 404");
   });
 
   it.concurrent(
@@ -1619,6 +1748,15 @@ describe("runs", () => {
 
       const threads = await client.threads.search({ metadata: { marker } });
       expect(threads.length > 0).toBe(threadLeft);
+
+      // The run writes the store key the shared state tests read; let it end.
+      await vi.waitFor(
+        async () =>
+          expect(
+            await client.threads.search({ metadata: { marker } })
+          ).toHaveLength(0),
+        { timeout: 10_000 }
+      );
     }
   );
 
@@ -1655,6 +1793,50 @@ describe("runs", () => {
     expect(
       (await client.runs.get(pending.thread_id, other.run_id)).status
     ).toBe("success");
+  });
+
+  it("keeps the interrupts a resume by id answers out of its run stream", async () => {
+    const thread = await client.threads.create();
+    const context = { tenant: "t", interrupt: true };
+    const first = await client.runs.wait(thread.thread_id, "factory_context", {
+      input: {},
+      context,
+    });
+    const [{ id }] = first.__interrupt__;
+
+    const events = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, "factory_context", {
+          command: { resume: { [id]: "continue" } },
+          context,
+        })
+      ),
+      "success"
+    );
+
+    expect(events.map(({ event }) => event)).not.toContain("interrupts");
+  });
+
+  it.concurrent("a plain run after a fork continues from the forked branch", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    const send = (content: string, checkpointId?: string) =>
+      client.runs.wait(thread.thread_id, assistant.assistant_id, {
+        input: { messages: [{ type: "human", content }] },
+        config: globalConfig,
+        checkpointId,
+      });
+
+    await send("first");
+    const history = await client.threads.getHistory(thread.thread_id);
+    await send("edited", history.at(-1)?.checkpoint.checkpoint_id);
+    const values = (await send("second")) as AgentState;
+
+    expect(
+      values.messages
+        .filter((message) => message.type === "human")
+        .map((message) => message.content)
+    ).toEqual(["edited", "second"]);
   });
 });
 
@@ -2344,6 +2526,43 @@ describe("subgraphs", () => {
 
     expect(stream.at(-1)?.event).toBe("values");
     expect(stream.at(-1)?.data.messages.length).toBe(4);
+  });
+
+  it.concurrent("refuses a stale answer only when the run sets strict_resume", async () => {
+    const assistant = await client.assistants.create({ graphId: "agent" });
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, assistant.assistant_id, {
+      input: {
+        messages: [{ role: "human", content: "SF", id: "initial-message" }],
+        interrupt: true,
+      },
+      config: globalConfig,
+    });
+
+    const answerStaleCard = async (strictResume: boolean) => {
+      const response = await fetch(
+        new URL(`/threads/${thread.thread_id}/runs`, API_URL),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assistant_id: assistant.assistant_id,
+            command: { resume: { ["0".repeat(32)]: "yes" } },
+            config: globalConfig,
+            strict_resume: strictResume,
+          }),
+        }
+      );
+      const { run_id } = await response.json();
+      await client.runs.join(thread.thread_id, run_id);
+      return (await client.runs.get(thread.thread_id, run_id)).status;
+    };
+
+    expect(await answerStaleCard(true)).toBe("error");
+    expect((await client.threads.get(thread.thread_id)).status).toBe(
+      "interrupted"
+    );
+    expect(await answerStaleCard(false)).toBe("success");
   });
 });
 
@@ -3558,4 +3777,128 @@ describe("graph factory config", () => {
       },
     });
   });
+});
+
+describe("subagent lifecycle", () => {
+  type LifecycleData = {
+    event: string;
+    namespace: string[];
+    tool_call_id?: string;
+    error?: unknown;
+  };
+  const lifecycleOf = (chunks: { event: string; data: unknown }[]) =>
+    chunks.filter((c) => c.event.startsWith("lifecycle|"));
+
+  it("is reported in /info", async () => {
+    const res = await fetch(new URL("/info", API_URL));
+    expect((await res.json()).flags.stream_lifecycle).toBe(true);
+  });
+
+  it.concurrent.each([false, true])(
+    "sends started and completed per subagent, with stream_subgraphs %s",
+    async (streamSubgraphs) => {
+      const thread = await client.threads.create();
+      const chunks = await gatherIterator(
+        client.runs.stream(thread.thread_id, "subagents", {
+          input: { results: [] },
+          streamMode: ["values", "lifecycle"] as any,
+          streamSubgraphs,
+        })
+      );
+
+      const byCall: Record<string, string[]> = {};
+      for (const chunk of lifecycleOf(chunks)) {
+        const data = chunk.data as LifecycleData;
+        expect(chunk.event).toBe(`lifecycle|${data.namespace.join("|")}`);
+        (byCall[data.tool_call_id ?? ""] ??= []).push(data.event);
+      }
+      expect(byCall).toEqual({
+        call_weather: ["started", "completed"],
+        call_news: ["started", "completed"],
+      });
+    }
+  );
+
+  it.concurrent("a failing subagent ends failed with its error", async () => {
+    const thread = await client.threads.create();
+    const chunks = await gatherIterator(
+      client.runs.stream(thread.thread_id, "subagents", {
+        input: { results: [], topics: ["fail"] },
+        streamMode: ["lifecycle"] as any,
+      })
+    );
+
+    expect(lifecycleOf(chunks).map((c) => c.data)).toEqual([
+      expect.objectContaining({ event: "started", tool_call_id: "call_fail" }),
+      expect.objectContaining({
+        event: "failed",
+        tool_call_id: "call_fail",
+        error: { error: "Error", message: "connect to db://admin:hunter2" },
+      }),
+    ]);
+  });
+
+  it.concurrent(
+    "a subagent that asks for approval is interrupted, then starts again",
+    async () => {
+      const thread = await client.threads.create();
+      const eventsOf = (chunks: { event: string; data: unknown }[]) =>
+        lifecycleOf(chunks)
+          .map((c) => {
+            const data = c.data as LifecycleData;
+            return `${data.tool_call_id} ${data.event}`;
+          })
+          .sort();
+
+      const paused = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["weather"], askApproval: true },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+      const resumed = eventsOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            command: { resume: "yes" },
+            streamMode: ["lifecycle"] as any,
+          })
+        )
+      );
+
+      expect(paused).toEqual([
+        "call_weather interrupted",
+        "call_weather started",
+      ]);
+      expect(resumed).toEqual([
+        "call_weather completed",
+        "call_weather started",
+      ]);
+    }
+  );
+
+  it.concurrent.each([
+    [false, ["started", "failed", "started", "completed"]],
+    [true, ["started", "completed"]],
+  ])(
+    "a retried subagent ends completed, with stream_subgraphs %s",
+    async (streamSubgraphs, expected) => {
+      const thread = await client.threads.create();
+      const lifecycle = lifecycleOf(
+        await gatherIterator(
+          client.runs.stream(thread.thread_id, "subagents", {
+            input: { results: [], topics: ["flaky"] },
+            streamMode: ["lifecycle"] as any,
+            streamSubgraphs,
+          })
+        )
+      );
+
+      expect(lifecycle.map((c) => (c.data as LifecycleData).event)).toEqual(
+        expected
+      );
+      expect(new Set(lifecycle.map((c) => c.event)).size).toBe(1);
+    }
+  );
 });

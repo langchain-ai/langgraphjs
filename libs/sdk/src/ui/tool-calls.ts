@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { ToolMessage } from "@langchain/core/messages";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
-import { parseToolOutput } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "./tool-payload.js";
+import { parseToolOutput } from "./tool-payload.js";
 
 /**
  * Insert or replace an assembled tool call by call id.
@@ -27,6 +27,8 @@ export function upsertToolCall(
  * Backfill unfinished tool-call handles from authoritative ToolMessages in a
  * values snapshot. This covers headless tools whose graph state contains the
  * result even when the `tools` channel omits a matching `tool-finished` event.
+ * A ToolMessage with `status: "error"` fails its call, with the message's
+ * text as `error`.
  */
 export function reconcileToolCallsFromMessages(
   toolCalls: readonly AssembledToolCall[],
@@ -45,6 +47,16 @@ export function reconcileToolCallsFromMessages(
     if (idx < 0) continue;
 
     const current = currentToolCalls[idx];
+    if (message.status === "error") {
+      if (current.status === "error") continue;
+      updated = upsertToolCall(currentToolCalls, {
+        ...current,
+        output: null,
+        status: "error",
+        error: message.text,
+      });
+      continue;
+    }
     if (current.status === "finished" && current.output != null) continue;
 
     const output = parseToolOutput(message.content);

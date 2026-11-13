@@ -83,6 +83,7 @@ export function inferChannel(event: Event): Channel | undefined {
     case "lifecycle":
       return "lifecycle";
     case "input.requested":
+    case "input.answered":
       return "input";
     case "tasks":
       return "tasks";

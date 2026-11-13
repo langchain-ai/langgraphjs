@@ -11,6 +11,7 @@ import {
   streamWithRetry,
   idleReconnectStream,
   type IdleReconnectMode,
+  type StreamWithRetryOptions,
   StreamRequestParams,
   DEFAULT_IDLE_RECONNECT,
 } from "../utils/stream.js";
@@ -440,12 +441,13 @@ export class BaseClient {
     json?: unknown;
     maxRetries?: number;
     idleReconnect?: IdleReconnectMode;
-    onReconnect?: (options: {
-      attempt: number;
-      lastEventId?: string;
-      cause: unknown;
-    }) => void;
+    reconnectDelayMs?: StreamWithRetryOptions["reconnectDelayMs"];
+    onReconnect?: StreamWithRetryOptions["onReconnect"];
+    onConnected?: StreamWithRetryOptions["onConnected"];
+    fallbackReconnectPath?: StreamWithRetryOptions["fallbackReconnectPath"];
     onInitialResponse?: (response: Response) => void | Promise<void>;
+    onEvent?: (event: T) => void;
+    keep?: (event: T) => boolean;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
@@ -546,12 +548,16 @@ export class BaseClient {
 
     for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
+      reconnectDelayMs: config.reconnectDelayMs,
       signal: config.signal,
       onReconnect: config.onReconnect,
+      onConnected: config.onConnected,
+      fallbackReconnectPath: config.fallbackReconnectPath,
       isRunActive,
     })) {
       if (part.event === "end" || part.event === "error") runEnded = true;
-      if (!isSSEControlPart(part)) {
+      if (!isSSEControlPart(part) && (config.keep?.(part) ?? true)) {
+        config.onEvent?.(part);
         yield part.id === "" ? { ...part, id: undefined } : part;
       }
     }

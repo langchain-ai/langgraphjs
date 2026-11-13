@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Channel, Event } from "@langchain/protocol";
 
-import { StreamStore } from "../store.js";
+import { StreamStore } from "../../ui/store.js";
 import type { RootEventBus, ThreadStream } from "../types.js";
 import { channelProjection } from "./channel.js";
 

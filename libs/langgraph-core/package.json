@@ -1,6 +1,6 @@
 {
   "name": "@langchain/langgraph",
-  "version": "1.7.0",
+  "version": "1.7.4",
   "description": "LangGraph",
   "type": "module",
   "engines": {
@@ -31,7 +31,7 @@
   "dependencies": {
     "@langchain/langgraph-checkpoint": "workspace:^",
     "@langchain/langgraph-sdk": "workspace:~",
-    "@langchain/protocol": "^0.0.20",
+    "@langchain/protocol": "^0.0.21",
     "@standard-schema/spec": "1.1.0"
   },
   "peerDependencies": {

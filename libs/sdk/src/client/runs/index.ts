@@ -13,13 +13,17 @@ import type {
   StreamEvent,
 } from "../../types.js";
 import type { StreamMode, TypedAsyncGenerator } from "../../types.stream.js";
-import type { IdleReconnectMode } from "../../utils/stream.js";
+import type {
+  IdleReconnectMode,
+  StreamReconnectOptions,
+} from "../../utils/stream.js";
 
 import {
   BaseClient,
   getRunMetadataFromResponse,
   encodePathSegment,
 } from "../base.js";
+import { inNamespaces } from "./namespaces.js";
 
 export class RunsClient<
   TStateType = DefaultValues,
@@ -96,6 +100,7 @@ export class RunsClient<
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
       on_disconnect: payload?.onDisconnect,
@@ -103,6 +108,13 @@ export class RunsClient<
       if_not_exists: payload?.ifNotExists,
       checkpoint_during: payload?.checkpointDuring,
       durability: payload?.durability,
+    };
+
+    let runId: string | undefined;
+    let runPath: string | undefined;
+    const runCreated = (run: { run_id: string; thread_id?: string }) => {
+      runId = run.run_id;
+      payload?.onRunCreated?.(run);
     };
 
     yield* this.streamWithRetry({
@@ -114,10 +126,36 @@ export class RunsClient<
       json,
       signal: payload?.signal,
       idleReconnect: payload?.streamIdleReconnect,
+      maxRetries: payload?.maxReconnectAttempts,
+      reconnectDelayMs: payload?.reconnectDelayMs,
+      onReconnect: payload?.onReconnect,
+      onConnected: payload?.onConnected,
       params: { namespace: payload?.streamNamespaces },
+      keep: inNamespaces(payload?.streamNamespaces),
+      // A run's join route is its `Content-Location` plus `/stream` on every
+      // server, threadless runs included. Only a resumable run's events are
+      // kept for a rejoin, so another run fails on a drop rather than skip
+      // what it missed.
+      fallbackReconnectPath: () => {
+        if (!payload?.streamResumable) return undefined;
+        if (runPath != null) return `${runPath}/stream`;
+        if (threadId == null || runId == null) return undefined;
+        return `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`;
+      },
       onInitialResponse: (response) => {
         const runMetadata = getRunMetadataFromResponse(response);
-        if (runMetadata) payload?.onRunCreated?.(runMetadata);
+        if (runMetadata == null) return;
+        runPath = response.headers.get("Content-Location") ?? undefined;
+        runCreated(runMetadata);
+      },
+      // A CORS config that doesn't expose `Content-Location` hides the run id
+      // until the run's first event.
+      onEvent: ({ event, data }) => {
+        if (runId != null || event !== "metadata") return;
+        const id = (data as { run_id?: unknown } | null)?.run_id;
+        if (typeof id === "string") {
+          runCreated({ run_id: id, thread_id: threadId ?? undefined });
+        }
       },
     }) as TypedAsyncGenerator<
       TStreamMode,
@@ -157,6 +195,7 @@ export class RunsClient<
       webhook: payload?.webhook,
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       after_seconds: payload?.afterSeconds,
       if_not_exists: payload?.ifNotExists,
@@ -250,6 +289,7 @@ export class RunsClient<
       checkpoint: payload?.checkpoint,
       checkpoint_id: payload?.checkpointId,
       webhook: payload?.webhook,
+      strict_resume: payload?.strictResume,
       multitask_strategy: payload?.multitaskStrategy,
       on_completion: payload?.onCompletion,
       on_disconnect: payload?.onDisconnect,
@@ -430,15 +470,24 @@ export class RunsClient<
     threadId: string | undefined | null,
     runId: string,
     options?:
-      | {
+      | ({
           signal?: AbortSignal;
           cancelOnDisconnect?: boolean;
           lastEventId?: string;
+          /**
+           * The checkpoint whose state the caller already shows, such as the
+           * thread's head. Servers that support it send only the run's events
+           * after this checkpoint, or the whole run when it is not one of the
+           * run's; other servers ignore it. Send it with `lastEventId: "-1"`, so
+           * those servers replay the whole run instead of only new events. A
+           * `lastEventId` other than `"-1"` takes precedence.
+           */
+          checkpointId?: string;
           streamMode?: StreamMode | StreamMode[];
           /**
            * Stream only these namespaces of the run (`""` is the root graph), each
            * without the subagents it starts. Servers without the `stream_namespaces`
-           * flag in `/info` ignore it and send every event.
+           * flag in `/info` send every event, and the client drops the others.
            */
           streamNamespaces?: string[];
           /**
@@ -455,7 +504,7 @@ export class RunsClient<
            * - `0`: disables it.
            */
           streamIdleReconnect?: IdleReconnectMode;
-        }
+        } & StreamReconnectOptions)
       | AbortSignal
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): AsyncGenerator<{ id?: string; event: StreamEvent; data: any }> {
@@ -467,14 +516,20 @@ export class RunsClient<
         ? { signal: options }
         : options;
 
+    const endpoint =
+      threadId != null
+        ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
+        : `/runs/${encodePathSegment(runId)}/stream`;
     yield* this.streamWithRetry({
-      endpoint:
-        threadId != null
-          ? `/threads/${encodePathSegment(threadId)}/runs/${encodePathSegment(runId)}/stream`
-          : `/runs/${encodePathSegment(runId)}/stream`,
+      endpoint,
+      fallbackReconnectPath: () => endpoint,
       method: "GET",
       signal: opts?.signal,
       idleReconnect: opts?.streamIdleReconnect,
+      maxRetries: opts?.maxReconnectAttempts,
+      reconnectDelayMs: opts?.reconnectDelayMs,
+      onReconnect: opts?.onReconnect,
+      onConnected: opts?.onConnected,
       headers: opts?.lastEventId
         ? { "Last-Event-ID": opts.lastEventId }
         : undefined,
@@ -482,7 +537,9 @@ export class RunsClient<
         cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0",
         stream_mode: opts?.streamMode,
         namespace: opts?.streamNamespaces,
+        checkpoint_id: opts?.checkpointId,
       },
+      keep: inNamespaces(opts?.streamNamespaces),
     });
   }
 

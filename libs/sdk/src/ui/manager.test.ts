@@ -118,6 +118,89 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("messages the loaded state already holds", () => {
+    it("updates a resent message in place instead of appending a copy", async () => {
+      const events = [
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-a", type: "ai", content: "sunny" }, {}],
+        },
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-b", type: "ai", content: "no news" }, {}],
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: {
+          messages: [
+            { id: "human-1", type: "human", content: "weather and news?" },
+            { id: "ai-a", type: "ai", content: "sunny" },
+          ],
+        },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+      });
+
+      expect(streamManager.values?.messages.map((m) => m.id)).toEqual([
+        "human-1",
+        "ai-a",
+        "ai-b",
+      ]);
+    });
+
+    it("updates a streamed message where a values event moved it", async () => {
+      const events = [
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-a", type: "ai", content: "sun" }, {}],
+        },
+        {
+          event: "values" as const,
+          data: {
+            messages: [
+              { id: "ai-a", type: "ai", content: "sun" },
+              { id: "human-1", type: "human", content: "weather?" },
+            ],
+          },
+        },
+        {
+          event: "messages" as const,
+          data: [{ id: "ai-a", type: "ai", content: "ny" }, {}],
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: {
+          messages: [{ id: "human-1", type: "human", content: "weather?" }],
+        },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+      });
+
+      expect(
+        streamManager.values?.messages.map((m) => [m.id, m.content])
+      ).toEqual([
+        ["ai-a", "sunny"],
+        ["human-1", "weather?"],
+      ]);
+    });
+  });
+
   describe("setStreamValues callback with null", () => {
     it("should handle callback receiving null prev value", () => {
       // Direct test of setStreamValues with callback when state.values is null
@@ -369,6 +452,41 @@ describe("StreamManager", () => {
         },
         { namespace: undefined, mutate: expect.any(Function) }
       );
+    });
+
+    it("an unknown tool event kind never reaches onToolEvent", async () => {
+      const onToolEvent = vi.fn();
+      const onError = vi.fn();
+      const events = [
+        {
+          event: "tools" as const,
+          data: { event: "tool-started", tool_call_id: "call_1" },
+        },
+        { event: "tools" as const, data: null },
+        {
+          event: "tools" as const,
+          data: { event: "on_tool_start", name: "weather", input: {} },
+        },
+      ];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: { onToolEvent },
+        onSuccess: () => null,
+        onError,
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(onToolEvent).toHaveBeenCalledTimes(1);
+      expect(onToolEvent.mock.calls[0][0]).toMatchObject({
+        event: "on_tool_start",
+      });
     });
   });
 
@@ -1845,6 +1963,68 @@ describe("StreamManager", () => {
   });
 
   describe("fetchSubagentHistory namespace resolution", () => {
+    type FetchThreads = Parameters<StreamManager<TestState>["fetchSubagentHistory"]>[0];
+
+    /**
+     * A discovery page entry shaped like a `select: ["checkpoint", "tasks"]`
+     * response: no `values`, so matching reads only task results.
+     */
+    function entry(id: string, tasks: unknown[]) {
+      return { checkpoint: { checkpoint_id: id, thread_id: "t" }, tasks };
+    }
+
+    /** A node task (not a Send) that wrote `messages`. */
+    function nodeTask(name: string, messages: unknown[]) {
+      return {
+        id: `${name}-uuid`,
+        name,
+        path: ["__pregel_pull", name],
+        result: { messages },
+        checkpoint: null,
+      };
+    }
+
+    function sendTask(
+      id: string,
+      index: number,
+      opts: { name?: string; path?: unknown[]; messages?: unknown[] } = {}
+    ) {
+      return {
+        id,
+        name: opts.name ?? "tools",
+        path: opts.path ?? ["__pregel_push", index, false],
+        ...(opts.messages ? { result: { messages: opts.messages } } : {}),
+        checkpoint: null,
+      };
+    }
+
+    /**
+     * A `getHistory` mock: the discovery page for the root namespace, and
+     * one entry of `values.messages` per subagent namespace.
+     */
+    function historyMock(
+      page: unknown[],
+      byNamespace: Record<string, unknown[]>
+    ) {
+      return vi.fn(
+        async (
+          _threadId: string,
+          opts?: { checkpoint?: { checkpoint_ns?: string } }
+        ) => {
+          const ns = opts?.checkpoint?.checkpoint_ns;
+          if (ns) {
+            return byNamespace[ns] ? [{ values: { messages: byNamespace[ns] } }] : [];
+          }
+          return page;
+        }
+      );
+    }
+
+    const contentsOf = (sm: StreamManager<TestState>, toolCallId: string) =>
+      (sm.getSubagent(toolCallId)?.messages ?? []).map(
+        (m) => (m as { content?: unknown }).content
+      );
+
     it("does not bind a delegation to a newer turn's push tasks", async () => {
       const sm = new StreamManager<TestState>(messageManager, {
         throttle: false,
@@ -1874,40 +2054,16 @@ describe("StreamManager", () => {
         [delegation] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
       );
 
-      const getHistory = vi.fn(
-        async (
-          _threadId: string,
-          opts?: { checkpoint?: { checkpoint_ns?: string } }
-        ) => {
-          if (opts?.checkpoint?.checkpoint_ns) {
-            return [
-              {
-                values: {
-                  messages: [{ type: "ai", id: "ai-ls", content: "ls output" }],
-                },
-              },
-            ];
-          }
-          return [
-            {
-              values: { messages: [delegation, regularToolCall] },
-              tasks: [
-                {
-                  id: "uuid-ls",
-                  name: "tools",
-                  path: ["__pregel_push", 0],
-                  checkpoint: null,
-                },
-              ],
-            },
-          ];
-        }
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-ls", 0)]),
+          entry("cp-model", [nodeTask("model", [regularToolCall])]),
+        ],
+        { "tools:uuid-ls": [{ type: "ai", id: "ai-ls", content: "ls output" }] }
       );
 
       await sm.fetchSubagentHistory(
-        { getHistory } as unknown as Parameters<
-          typeof sm.fetchSubagentHistory
-        >[0],
+        { getHistory } as unknown as FetchThreads,
         "thread-1"
       );
 
@@ -1916,25 +2072,16 @@ describe("StreamManager", () => {
 
     it("prefers a completed task's direct mapping over a newer pending checkpoint's positional guess", async () => {
       /**
-       * Regression test: the most recent checkpoint is a still-pending (e.g.
-       * interrupted) PUSH task. That head checkpoint has no task result, so it
-       * cannot produce a direct tool_call_id mapping — but its accumulated
-       * `values.messages` still contains the AI message whose subagent tool
-       * call already completed in an OLDER checkpoint.
-       *
-       * The positional fallback, run against the head checkpoint, would align
-       * that stale AI tool call to the head's unrelated pending push task and
-       * stop — never reaching the older checkpoint whose task result holds the
-       * correct namespace. Direct mappings must take precedence across the
-       * whole history, not just the first checkpoint that yields any mapping.
+       * Regression test: the newest checkpoint holds a still-pending (e.g.
+       * interrupted) Send whose index points at "call-real", but "call-real"
+       * was answered by an older, completed Send. The match by id from that
+       * older Send's result must win over the index guess.
        */
       const sm = new StreamManager<TestState>(messageManager, {
         throttle: false,
         subagentToolNames: ["task"],
       });
 
-      // AI message whose subagent tool call ("call-real") completed in an
-      // OLDER checkpoint. Registers a pending subagent with empty messages.
       const aiMessage = {
         type: "ai",
         id: "ai-completed",
@@ -1956,86 +2103,44 @@ describe("StreamManager", () => {
       );
       expect(sm.getSubagent("call-real")?.messages).toHaveLength(0);
 
-      // Main history is newest-first:
-      //   [0] head    — pending push task, no result; stale AI message in values
-      //   [1] older   — completed push task; result maps call-real -> task:uuid-real
-      const mainHistory = [
-        {
-          values: { messages: [aiMessage] },
-          tasks: [
-            {
-              id: "uuid-pending",
+      // Newest first:
+      //   [0] pending Send at index 0, no result
+      //   [1] the AIMessage it would index into
+      //   [2] completed Send; its result maps call-real -> task:uuid-real
+      const getHistory = historyMock(
+        [
+          entry("cp-pending", [
+            sendTask("uuid-pending", 0, { name: "task" }),
+          ]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+          entry("cp-done", [
+            sendTask("uuid-real", 0, {
               name: "task",
-              path: ["__pregel_push", 0],
-              checkpoint: null,
-            },
-          ],
-        },
-        {
-          values: { messages: [aiMessage] },
-          tasks: [
-            {
-              id: "uuid-real",
-              name: "task",
-              path: ["__pregel_push", 0],
-              checkpoint: null,
-              result: {
-                messages: [
-                  {
-                    type: "tool",
-                    tool_call_id: "call-real",
-                    content: "ok",
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      ];
-
-      const byNamespace: Record<string, Array<{ values: unknown }>> = {
-        // Correct namespace, derived from the completed task result.
-        "task:uuid-real": [
-          {
-            values: {
               messages: [
-                { type: "human", id: "h-real", content: "Research the real topic" },
-                { type: "ai", id: "ai-real", content: "Correct research result" },
+                { type: "tool", tool_call_id: "call-real", content: "ok" },
               ],
-            },
-          },
+            }),
+          ]),
         ],
-        // Wrong namespace, returned only if the positional fallback mis-maps.
-        "task:uuid-pending": [
-          {
-            values: {
-              messages: [{ type: "ai", id: "ai-stale", content: "Stale pending result" }],
-            },
-          },
-        ],
-      };
-
-      const getHistory = vi.fn(
-        async (
-          _threadId: string,
-          opts?: { checkpoint?: { checkpoint_ns?: string } }
-        ) => {
-          const ns = opts?.checkpoint?.checkpoint_ns;
-          if (ns) return byNamespace[ns] ?? [];
-          return mainHistory;
+        {
+          // Correct namespace, derived from the completed task result.
+          "task:uuid-real": [
+            { type: "human", id: "h-real", content: "Research the real topic" },
+            { type: "ai", id: "ai-real", content: "Correct research result" },
+          ],
+          // Wrong namespace, returned only if the index guess wins.
+          "task:uuid-pending": [
+            { type: "ai", id: "ai-stale", content: "Stale pending result" },
+          ],
         }
       );
 
       await sm.fetchSubagentHistory(
-        { getHistory } as unknown as Parameters<
-          typeof sm.fetchSubagentHistory
-        >[0],
+        { getHistory } as unknown as FetchThreads,
         "thread-1"
       );
 
-      const contents = (sm.getSubagent("call-real")?.messages ?? []).map(
-        (m) => (m as { content?: unknown }).content
-      );
+      const contents = contentsOf(sm, "call-real");
       expect(contents).toContain("Correct research result");
       expect(contents).not.toContain("Stale pending result");
     });
@@ -2071,71 +2176,48 @@ describe("StreamManager", () => {
             },
           ],
         };
-        const messages = [
-          aiMessage,
-          ...rejected.map((id) => ({
-            type: "tool",
-            id: `tool-${id}`,
-            tool_call_id: id,
-            status: "error",
-            content: "User rejected the tool call.",
-          })),
-        ];
+        const rejections = rejected.map((id) => ({
+          type: "tool",
+          id: `tool-${id}`,
+          tool_call_id: id,
+          status: "error",
+          content: "User rejected the tool call.",
+        }));
         sm.reconstructSubagents(
-          messages as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+          [aiMessage, ...rejections] as unknown as Parameters<
+            typeof sm.reconstructSubagents
+          >[0]
         );
 
-        const byNamespace: Record<string, Array<{ values: unknown }>> = {
-          "tools:uuid-task": [
-            {
-              values: {
-                messages: [
-                  { type: "ai", id: "ai-sub", content: "Subagent progress" },
-                ],
-              },
-            },
+        // Newest first: the Sends, the HITL step that wrote the rejections
+        // (if any), then the model step that wrote the AIMessage.
+        const getHistory = historyMock(
+          [
+            entry(
+              "cp-sends",
+              sends.map((id, index) => sendTask(id, index))
+            ),
+            ...(rejections.length > 0
+              ? [entry("cp-hitl", [nodeTask("review", rejections)])]
+              : []),
+            entry("cp-model", [nodeTask("model", [aiMessage])]),
           ],
-          "tools:uuid-search": [
-            {
-              values: {
-                messages: [
-                  { type: "ai", id: "ai-search", content: "Search state" },
-                ],
-              },
-            },
-          ],
-        };
-        const getHistory = vi.fn(
-          async (
-            _threadId: string,
-            opts?: { checkpoint?: { checkpoint_ns?: string } }
-          ) => {
-            const ns = opts?.checkpoint?.checkpoint_ns;
-            if (ns) return byNamespace[ns] ?? [];
-            return [
-              {
-                values: { messages },
-                tasks: sends.map((id, index) => ({
-                  id,
-                  name: "tools",
-                  path: ["__pregel_push", index, false],
-                  checkpoint: null,
-                })),
-              },
-            ];
+          {
+            "tools:uuid-task": [
+              { type: "ai", id: "ai-sub", content: "Subagent progress" },
+            ],
+            "tools:uuid-search": [
+              { type: "ai", id: "ai-search", content: "Search state" },
+            ],
           }
         );
 
         await sm.fetchSubagentHistory(
-          { getHistory } as unknown as Parameters<
-            typeof sm.fetchSubagentHistory
-          >[0],
+          { getHistory } as unknown as FetchThreads,
           "thread-1"
         );
 
-        const contents = (sm.getSubagent("call-task")?.messages ?? []).map(
-          (m) => (m as { content?: unknown }).content
-        );
+        const contents = contentsOf(sm, "call-task");
         expect(contents).toContain("Subagent progress");
         expect(contents).not.toContain("Search state");
       }
@@ -2160,9 +2242,9 @@ describe("StreamManager", () => {
     ])(
       "positional fallback recognizes Send shapes correctly: $label",
       async ({ path, maps }) => {
-        // Pending head checkpoint with one push-shaped task and a subagent
-        // tool call; a namespace payload exists for the task's namespace, so
-        // a successful positional mapping is observable via getSubagent.
+        // A pending Send-shaped task and the subagent call it would index
+        // into; a namespace payload exists for the task's namespace, so a
+        // successful match is observable via getSubagent.
         const aiMessage = {
           type: "ai",
           id: "ai-shape",
@@ -2175,26 +2257,6 @@ describe("StreamManager", () => {
             },
           ],
         };
-        const mainHistory = [
-          {
-            values: { messages: [aiMessage] },
-            next: [],
-            checkpoint: { checkpoint_id: "cp-shape", thread_id: "t" },
-            metadata: {},
-            parent_checkpoint: null,
-            tasks: [
-              {
-                id: "uuid-shape",
-                name: "task",
-                path,
-                error: null,
-                interrupts: [],
-                checkpoint: null,
-                state: null,
-              },
-            ],
-          },
-        ];
         const sm = new StreamManager<TestState>(messageManager, {
           throttle: false,
           subagentToolNames: ["task"],
@@ -2205,39 +2267,22 @@ describe("StreamManager", () => {
             typeof sm.reconstructSubagents
           >[0]
         );
-        const getHistory = vi.fn(
-          async (
-            _threadId: string,
-            opts?: { checkpoint?: { checkpoint_ns?: string } }
-          ) => {
-            const ns = opts?.checkpoint?.checkpoint_ns;
-            if (ns === "task:uuid-shape") {
-              return [
-                {
-                  values: {
-                    messages: [{ type: "human", content: "shape payload" }],
-                  },
-                },
-              ];
-            }
-            return mainHistory;
-          }
+        const getHistory = historyMock(
+          [
+            entry("cp-shape", [sendTask("uuid-shape", 0, { name: "task", path })]),
+            entry("cp-model", [nodeTask("model", [aiMessage])]),
+          ],
+          { "task:uuid-shape": [{ type: "human", content: "shape payload" }] }
         );
         await sm.fetchSubagentHistory(
-          { getHistory } as unknown as Parameters<
-            typeof sm.fetchSubagentHistory
-          >[0],
+          { getHistory } as unknown as FetchThreads,
           "thread-shape"
         );
 
         const subagent = sm.getSubagent("call-shape");
         if (maps) {
           expect(subagent).toBeDefined();
-          expect(
-            (subagent?.messages ?? []).map(
-              (m) => (m as { content?: unknown }).content
-            )
-          ).toContain("shape payload");
+          expect(contentsOf(sm, "call-shape")).toContain("shape payload");
         } else {
           // A handler task is not a Send: no positional mapping, no fetch of
           // the task namespace.
@@ -2245,5 +2290,345 @@ describe("StreamManager", () => {
         }
       }
     );
+
+    it("matches by index for custom subagentToolNames", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["delegate"],
+      });
+      const aiMessage = {
+        type: "ai",
+        id: "ai-delegate",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-delegate",
+            name: "delegate",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-delegate", 0)]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+        ],
+        {
+          "tools:uuid-delegate": [
+            { type: "ai", id: "ai-sub", content: "Delegated progress" },
+          ],
+        }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as FetchThreads,
+        "thread-1"
+      );
+
+      expect(contentsOf(sm, "call-delegate")).toContain("Delegated progress");
+    });
+
+    it("requests the discovery page with select but loads subagent messages in full", async () => {
+      const sm = new StreamManager<TestState>(messageManager, {
+        throttle: false,
+        subagentToolNames: ["task"],
+      });
+      const aiMessage = {
+        type: "ai",
+        id: "ai-1",
+        content: "",
+        tool_calls: [
+          {
+            id: "call-1",
+            name: "task",
+            args: { subagent_type: "researcher", description: "Research" },
+          },
+        ],
+      };
+      sm.reconstructSubagents(
+        [aiMessage] as unknown as Parameters<typeof sm.reconstructSubagents>[0]
+      );
+      const getHistory = historyMock(
+        [
+          entry("cp-sends", [sendTask("uuid-1", 0)]),
+          entry("cp-model", [nodeTask("model", [aiMessage])]),
+        ],
+        { "tools:uuid-1": [{ type: "ai", id: "ai-sub", content: "progress" }] }
+      );
+
+      await sm.fetchSubagentHistory(
+        { getHistory } as unknown as FetchThreads,
+        "thread-1"
+      );
+
+      expect(getHistory.mock.calls.map(([, options]) => options)).toEqual([
+        { limit: 20, select: ["checkpoint", "tasks"], signal: undefined },
+        {
+          checkpoint: { checkpoint_ns: "tools:uuid-1" },
+          limit: 1,
+          signal: undefined,
+        },
+      ]);
+    });
+  });
+
+  describe("subagents bound by tool call id", () => {
+    const task = (id: string, description: string) => ({
+      id,
+      name: "task",
+      args: { subagent_type: "researcher", description },
+    });
+    const human = (id: string, content: string) => ({
+      id,
+      type: "human",
+      content,
+    });
+    const ai = (id: string, content: string) => ({ id, type: "ai", content });
+
+    async function run(
+      manager: StreamManager<TestState>,
+      events: Array<{ event: string; data: unknown }>
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+      });
+    }
+
+    function subagentManager() {
+      return new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+      });
+    }
+
+    it("parallel subagents with the same task text bind by tool call id", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            {
+              ...ai("ai-1", ""),
+              tool_calls: [task("call_1", "Same task"), task("call_2", "Same task")],
+            },
+            {},
+          ],
+        },
+        {
+          event: "lifecycle|tools:b",
+          data: { event: "started", namespace: ["tools:b"], tool_call_id: "call_2" },
+        },
+        {
+          event: "lifecycle|tools:a",
+          data: { event: "started", namespace: ["tools:a"], tool_call_id: "call_1" },
+        },
+        { event: "values|tools:b", data: { messages: [human("h-b", "Same task")] } },
+        { event: "messages|tools:b", data: [ai("from-b", "b"), {}] },
+        { event: "values|tools:a", data: { messages: [human("h-a", "Same task")] } },
+        { event: "messages|tools:a", data: [ai("from-a", "a"), {}] },
+      ]);
+
+      expect(manager.getSubagent("call_1")?.namespace).toEqual(["tools:a"]);
+      expect(manager.getSubagent("call_2")?.namespace).toEqual(["tools:b"]);
+      expect(manager.getSubagent("call_1")?.messages.map((m) => m.id)).toEqual(["from-a"]);
+      expect(manager.getSubagent("call_2")?.messages.map((m) => m.id)).toEqual(["from-b"]);
+    });
+
+    it("binds a subagent from the tool call id deepagents puts on its tokens", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            {
+              ...ai("ai-1", ""),
+              tool_calls: [task("call_1", "Same task"), task("call_2", "Same task")],
+            },
+            {},
+          ],
+        },
+        {
+          event: "messages|tools:b",
+          data: [ai("from-b", "b"), { lc_subagent_tool_call_id: "call_2" }],
+        },
+      ]);
+
+      expect(manager.getSubagent("call_2")?.status).toBe("running");
+      expect(manager.getSubagent("call_2")?.messages.map((m) => m.id)).toEqual(["from-b"]);
+      expect(manager.getSubagent("call_1")?.messages).toEqual([]);
+    });
+
+    it("a graph a tool runs inside a subagent leaves the subagent's namespace alone", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            { ...ai("ai-1", ""), tool_calls: [task("call_1", "Research")] },
+            {},
+          ],
+        },
+        {
+          event: "messages|tools:a",
+          data: [ai("own", "a"), { lc_subagent_tool_call_id: "call_1" }],
+        },
+        {
+          event: "messages|tools:a|tools:s",
+          data: [ai("tool-graph", "s"), { lc_subagent_tool_call_id: "call_1" }],
+        },
+        {
+          event: "messages|tools:a|tools:b",
+          data: [ai("nested", "b"), { lc_subagent_tool_call_id: "call_nested" }],
+        },
+      ]);
+
+      expect(manager.getSubagent("call_1")).toMatchObject({
+        namespace: ["tools:a"],
+        parentId: null,
+        depth: 1,
+      });
+    });
+
+    it("a failed lifecycle event ends the subagent with its error, and a retry starts it again", async () => {
+      const manager = subagentManager();
+      const lifecycle = (event: string) => ({
+        event: "lifecycle|tools:a",
+        data: {
+          event,
+          namespace: ["tools:a"],
+          tool_call_id: "call_1",
+          error: { error: "Error", message: "boom" },
+        },
+      });
+      await run(manager, [
+        { event: "messages", data: [{ ...ai("ai-1", ""), tool_calls: [task("call_1", "x")] }, {}] },
+        lifecycle("started"),
+        lifecycle("failed"),
+      ]);
+      expect(manager.getSubagent("call_1")).toMatchObject({ status: "error", error: "boom" });
+
+      await run(manager, [lifecycle("started")]);
+      expect(manager.getSubagent("call_1")).toMatchObject({ status: "running", error: null });
+    });
+  });
+
+  describe("a restarted run", () => {
+    const tuple = (id: string, content: string) => [
+      { id, type: "ai", content },
+      {},
+    ];
+
+    async function run(
+      manager: StreamManager<TestState>,
+      events: Array<{ event: string; data: unknown }>,
+      isReplaying = false
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (manager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+        isReplaying,
+      });
+    }
+
+    const finished = { id: "done", type: "human", content: "hi" };
+
+    it("drops the cut attempt's message and keeps finished steps", async () => {
+      await run(streamManager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "values", data: { messages: [finished] } },
+        { event: "messages", data: tuple("cut", "Hel") },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+        { event: "messages", data: tuple("again", "Hello") },
+      ]);
+
+      expect(streamManager.values?.messages).toEqual([
+        finished,
+        expect.objectContaining({ id: "again", content: "Hello" }),
+      ]);
+    });
+
+    it("drops the subagent card its cut attempt started", async () => {
+      const manager = new StreamManager<TestState>(new MessageTupleManager(), {
+        throttle: false,
+        filterSubagentMessages: true,
+      });
+      const withTask = (id: string, callId: string) => ({
+        id,
+        type: "ai",
+        content: "",
+        tool_calls: [
+          {
+            id: callId,
+            name: "task",
+            args: { subagent_type: "researcher", description: "x" },
+          },
+        ],
+      });
+      await run(manager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "values", data: { messages: [finished, withTask("kept", "call_kept")] } },
+        { event: "messages", data: [withTask("cut", "call_cut"), {}] },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+      ]);
+
+      expect(manager.getSubagent("call_cut")).toBeUndefined();
+    });
+
+    it("a message sent again by the new attempt starts over", async () => {
+      await run(streamManager, [
+        { event: "metadata", data: { run_id: "r", attempt: 1 } },
+        { event: "messages", data: tuple("same", "Hel") },
+        { event: "metadata", data: { run_id: "r", attempt: 2 } },
+        { event: "messages", data: tuple("same", "Hello") },
+      ]);
+
+      expect(streamManager.values?.messages).toEqual([
+        expect.objectContaining({ id: "same", content: "Hello" }),
+      ]);
+    });
+
+    it("a replay that holds a restart resets once", async () => {
+      await run(streamManager, [{ event: "messages", data: tuple("cut", "Hel") }]);
+      await run(
+        streamManager,
+        [
+          { event: "metadata", data: { run_id: "r", attempt: 1 } },
+          { event: "values", data: { messages: [finished] } },
+          { event: "messages", data: tuple("cut", "Hel") },
+          { event: "metadata", data: { run_id: "r", attempt: 2 } },
+          { event: "messages", data: tuple("again", "Hello") },
+        ],
+        true
+      );
+
+      expect(streamManager.values?.messages).toEqual([
+        finished,
+        expect.objectContaining({ id: "again", content: "Hello" }),
+      ]);
+    });
   });
 });
