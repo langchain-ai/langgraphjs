@@ -2332,12 +2332,17 @@ export class StreamOrchestrator<
             return create(fallback);
           });
 
-          this.pendingRuns.add({
+          const entry = {
             id: run.run_id,
             values: values as Partial<StateType> | null | undefined,
             options: submitOptions,
             createdAt: new Date(run.created_at),
-          });
+          };
+          if (drops !== this.#queueDrops) {
+            void this.#dropQueued(usableThreadId, [entry]);
+            return;
+          }
+          this.pendingRuns.add(entry);
           // The run before it may have ended while it waited.
           this.#drainQueue();
         } catch (error) {

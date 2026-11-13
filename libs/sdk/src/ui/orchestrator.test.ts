@@ -2692,28 +2692,44 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("never creates a submit still waiting to be queued when the queue is cleared", async () => {
-      mockRunStream();
-      const firstCreate = deferred();
-      (client.runs.create as Mock).mockImplementationOnce(async () => {
-        await firstCreate.promise;
-        return { run_id: "run-2", created_at: "2026-01-01" };
-      });
-      const orch = orchestrator();
-      orch.initThreadId("t1");
-      void orch.submit({ messages: [] });
-      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+    it.each([
+      {
+        name: "clearQueue()",
+        drop: (orch: StreamOrchestrator<TestState>) => orch.clearQueue(),
+      },
+      {
+        name: "a thread switch",
+        drop: (orch: StreamOrchestrator<TestState>) => orch.switchThread("t2"),
+      },
+    ])(
+      "$name cancels a queued run whose create was in flight and never creates the ones waiting",
+      async ({ drop }) => {
+        mockRunStream();
+        mockJoinStream([], Promise.resolve());
+        const firstCreate = deferred();
+        (client.runs.create as Mock).mockImplementationOnce(async () => {
+          await firstCreate.promise;
+          return { run_id: "run-2", created_at: "2026-01-01" };
+        });
+        const orch = orchestrator();
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(true));
 
-      const queued = [1, 2].map(() => orch.submit({ messages: [] }));
-      await vi.waitFor(() => expect(client.runs.create).toHaveBeenCalled());
-      await orch.clearQueue();
-      firstCreate.resolve();
-      await Promise.all(queued);
+        const queued = [1, 2].map(() => orch.submit({ messages: [] }));
+        await vi.waitFor(() => expect(client.runs.create).toHaveBeenCalled());
+        await drop(orch);
+        firstCreate.resolve();
+        await Promise.all(queued);
 
-      expect(client.runs.create).toHaveBeenCalledOnce();
-      await orch.stop();
-      orch.dispose();
-    });
+        expect(client.runs.create).toHaveBeenCalledOnce();
+        expect(client.runs.cancel).toHaveBeenCalledWith("t1", "run-2");
+        expect(orch.queueEntries).toEqual([]);
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        await orch.stop();
+        orch.dispose();
+      }
+    );
 
     it("streams a queued run whose create returns after the run before it ended", async () => {
       const firstEnded = deferred();
