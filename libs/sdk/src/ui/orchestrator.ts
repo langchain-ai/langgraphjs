@@ -51,7 +51,13 @@ import {
   planStopRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import {
+  prepareSubmitInput,
+  restoreKeys,
+  runStartValues,
+  snapshotKeys,
+  type OptimisticKeySnapshot,
+} from "./optimistic-input.js";
 import {
   MessageMetadataTracker,
   findForkPoints,
@@ -1908,6 +1914,8 @@ export class StreamOrchestrator<
         : undefined;
     const unsent = new Set(optimistic?.echoedIds);
     if (unsent.size > 0) this.#metadata.markPending(unsent);
+    let shownKeys: OptimisticKeySnapshot[] = [];
+    let sentValues = false;
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -1923,17 +1931,19 @@ export class StreamOrchestrator<
         if (signal.aborted) return (async function* () {})();
 
         // Before any thread create, so a new chat's input shows at once.
-        this.stream.setStreamValues(() =>
-          runStartValues(
-            { ...this.historyValues, ...this.stream.values },
+        this.stream.setStreamValues(() => {
+          const current = { ...this.historyValues, ...this.stream.values };
+          shownKeys = snapshotKeys(current, optimistic);
+          return runStartValues(
+            current,
             optimistic,
             submitOptions?.optimisticValues,
             {
               get: (values) => this.#getMessages(values),
               set: (values, messages) => this.#setMessages(values, messages),
             }
-          )
-        );
+          );
+        });
 
         if (usableThreadId) {
           if (this.#missingThreads.has(usableThreadId)) {
@@ -2100,6 +2110,13 @@ export class StreamOrchestrator<
             unsent,
             outcome === "success" ? "sent" : "failed"
           );
+          // Keys the input showed stay only if the run's values held them. A
+          // stop leaves them to its read of the thread.
+          if (outcome !== "aborted" && !sentValues && shownKeys.length > 0) {
+            this.stream.setStreamValues(
+              (values) => values && restoreKeys(values, shownKeys)
+            );
+          }
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) {
             if (outcome === "aborted" && !this.#disposed) {
@@ -2119,6 +2136,7 @@ export class StreamOrchestrator<
           settleOwnRun();
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
+          if (event === "values") sentValues = true;
           if (event === "values" && unsent.size > 0) {
             const saved = this.#getMessages((data ?? {}) as StateType).flatMap(
               ({ id }) => (id != null && unsent.delete(id) ? [id] : [])
