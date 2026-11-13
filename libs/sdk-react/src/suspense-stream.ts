@@ -57,12 +57,13 @@ export function useSuspenseStream<
   if (stream.isThreadLoading) {
     if (key != null && !binding.committed) {
       suspendedBindings.set(key, binding);
-      // A render that never retries (its tree unmounted) leaves the binding,
-      // whose state would be stale for a later mount.
+      // A render that never retries, its tree unmounted, leaves the binding:
+      // stale for a later mount, and an engine that never activates.
       void stream.hydrationPromise.then(() =>
         setTimeout(() => {
           if (suspendedBindings.get(key) === binding) {
             suspendedBindings.delete(key);
+            binding.engine.dispose();
           }
         }, 1_000)
       );

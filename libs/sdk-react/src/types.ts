@@ -81,7 +81,13 @@ export interface AgentServerOptions<
   client?: Client;
   apiUrl?: ApiUrlType;
   apiKey?: ApiKeyType;
+  /**
+   * Compared by entry: an object with the same values keeps the client, and
+   * a function in it, or a new value, builds a new client and reads the
+   * thread again.
+   */
   callerOptions?: ClientConfig["callerOptions"];
+  /** Compared by entry: headers with the same values keep the client. */
   defaultHeaders?: ClientConfig["defaultHeaders"];
   /** The wire transport: server-sent events. */
   transport?: "sse";

@@ -1,7 +1,9 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, Suspense, useState } from "react";
+import { StreamOrchestrator } from "@langchain/langgraph-sdk/ui";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, renderHook } from "vitest-browser-react";
+import { cleanup, render, renderHook } from "vitest-browser-react";
 import { useStream } from "./use-stream.js";
+import { useSuspenseStream } from "./suspense-stream.js";
 import { fakeServer } from "./test-client.js";
 
 afterEach(() => cleanup());
@@ -206,4 +208,86 @@ it("answers the interrupt `interrupt` shows when respond() names none", async ()
 
   await expect.poll(() => server.runs.length).toBe(2);
   expect(server.runs[1].payload.command).toMatchObject({ resume: { a: "yes" } });
+});
+
+it("shows no interrupt for a head with pending nodes and none to answer", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  server.next.set("t1", ["agent"]);
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.messages.length).toBe(1);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(result.current.interrupts).toEqual([]);
+  expect(result.current.interrupt).toBeUndefined();
+});
+
+it("reads the thread once while inline defaultHeaders and callerOptions keep their entries", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  const reads = () =>
+    server.calls.filter((call) => call === "getState t1").length;
+  const { result, rerender } = await renderHook(
+    (props?: { team: string }) =>
+      useStream({
+        assistantId: "agent",
+        client: server.client,
+        threadId: "t1",
+        defaultHeaders: { "x-team": props?.team ?? "a" },
+        callerOptions: { maxRetries: 2 },
+      }),
+    { initialProps: { team: "a" } }
+  );
+  await expect.poll(() => result.current.messages.length).toBe(1);
+  await rerender({ team: "a" });
+  await rerender({ team: "a" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(reads()).toBe(1);
+
+  await rerender({ team: "b" });
+  await expect.poll(reads).toBe(2);
+});
+
+it("keeps values and messages when a reload changes neither", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.messages.length).toBe(1);
+  const { values, messages } = result.current;
+
+  await result.current.hydrate();
+  await expect
+    .poll(() => server.calls.filter((call) => call === "getState t1"))
+    .toHaveLength(2);
+
+  expect(result.current.values).toBe(values);
+  expect(result.current.messages).toBe(messages);
+});
+
+it("disposes the engine of a suspended render whose tree unmounts", async () => {
+  const dispose = vi.spyOn(StreamOrchestrator.prototype, "dispose");
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  const getState = server.client.threads.getState.bind(server.client.threads);
+  let answer!: () => void;
+  server.client.threads.getState = ((threadId: string) =>
+    new Promise<void>((resolve) => {
+      answer = resolve;
+    }).then(() => getState(threadId))) as typeof getState;
+  function Chat() {
+    useSuspenseStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    return <span>chat</span>;
+  }
+  const screen = await render(
+    <Suspense fallback={<span>loading</span>}>
+      <Chat />
+    </Suspense>
+  );
+  await expect.element(screen.getByText("loading")).toBeVisible();
+
+  screen.unmount();
+  answer();
+
+  await expect.poll(() => dispose.mock.calls.length, { timeout: 3_000 }).toBe(1);
+  dispose.mockRestore();
 });

@@ -21,13 +21,14 @@ const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 export function fakeServer(threads: Record<string, Values> = {}) {
   const state = new Map(Object.entries(threads));
   const history = new Map<string, Values>();
+  const next = new Map<string, string[]>();
   const runs: FakeRun[] = [];
   const calls: string[] = [];
   let ids = 0;
 
   const threadState = (threadId: string) => ({
     values: state.get(threadId),
-    next: [],
+    next: next.get(threadId) ?? [],
     tasks: [],
     checkpoint: {
       thread_id: threadId,
@@ -142,5 +143,7 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     runs,
     /** Values a subgraph's history read returns, by namespace. */
     history,
+    /** A thread's pending nodes, by thread id. */
+    next,
   };
 }

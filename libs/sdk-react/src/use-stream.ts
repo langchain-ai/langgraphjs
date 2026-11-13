@@ -159,6 +159,10 @@ export interface ToolCalls {
   readonly toolCalls: AssembledToolCall[];
 }
 
+function sameItems(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((item, i) => item === b[i]);
+}
+
 /**
  * Tool calls are rebuilt only when a message with tool calls or results
  * changes, so they keep their identity while text streams.
@@ -173,10 +177,7 @@ export function toolCallsOf(
       message.getType() === "tool" ||
       ((message as AIMessage).tool_calls?.length ?? 0) > 0
   );
-  if (
-    previous?.sources.length === sources.length &&
-    previous.sources.every((source, i) => source === sources[i])
-  ) {
+  if (previous != null && sameItems(previous.sources, sources)) {
     return previous;
   }
   return {
@@ -230,11 +231,19 @@ function depsOf(options: UseStreamOptions): unknown[] {
     options.client,
     options.apiUrl,
     options.apiKey,
-    options.callerOptions,
-    options.defaultHeaders,
     options.fetch != null,
     options.assistantId,
+    // By entry, so an inline object keeps the client while its values do.
+    ...entriesOf(options.callerOptions),
+    ...entriesOf(options.defaultHeaders),
   ];
+}
+
+/** Its entries after their count, so two objects' entries can't run together. */
+function entriesOf(value: object | undefined): unknown[] {
+  return value == null
+    ? [value]
+    : [Object.keys(value).length, ...Object.entries(value).flat()];
 }
 
 function createBinding(
@@ -405,6 +414,7 @@ function createBinding(
 
   let parts: unknown[] = [];
   let snapshot: UseStreamReturn | undefined;
+  let shownValues: unknown;
   let toolCalls: ToolCalls | undefined;
   let subagents: ReadonlyMap<string, SubagentDiscoverySnapshot> = new Map();
 
@@ -435,12 +445,23 @@ function createBinding(
         return snapshot;
       }
       parts = next;
-      const messages = engine.messages.map(toInstance);
+      const previous = snapshot;
+      const instances = engine.messages.map(toInstance);
+      // Kept while unchanged, so a flip of `isLoading` alone leaves `values`
+      // and `messages` as they were.
+      const messages =
+        previous != null && sameItems(previous.messages, instances)
+          ? previous.messages
+          : instances;
       const values = engine.values;
       const messagesKey = messagesKeyOf(latest.current);
       toolCalls = toolCallsOf(messages, [], toolCalls);
       subagents = subagentsOf(engine.subagents, subagents);
-      const shown = engine.interrupts;
+      // Only ones `respond()` can answer: the engine's
+      // `{ when: "breakpoint" }` placeholder has no id.
+      const shown = engine.interrupts.filter(
+        (interrupt) => interrupt.id != null
+      );
       const interrupts =
         shown.length === 0
           ? NO_INTERRUPTS
@@ -450,9 +471,11 @@ function createBinding(
                 : interrupt
             );
       snapshot = {
-        values: Array.isArray(values[messagesKey])
-          ? { ...values, [messagesKey]: messages }
-          : values,
+        values: !Array.isArray(values[messagesKey])
+          ? values
+          : values === shownValues && previous?.values[messagesKey] === messages
+            ? previous.values
+            : { ...values, [messagesKey]: messages },
         messages,
         toolCalls: toolCalls.toolCalls,
         interrupts,
@@ -470,6 +493,7 @@ function createBinding(
         assistantId,
         [STREAM_CONTROLLER]: engine,
       } as UseStreamReturn;
+      shownValues = values;
       return snapshot;
     },
   };

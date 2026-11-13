@@ -204,7 +204,10 @@ export interface UseChannelOptions {
    * @default 4096
    */
   bufferSize?: number;
-  /** Accepted for compatibility: the buffer collects events from when the hook mounts. */
+  /**
+   * @deprecated Has no effect. The buffer collects events from when the hook
+   * mounts, where 1.x also replayed the run's earlier events.
+   */
   replay?: boolean;
 }
 
@@ -212,7 +215,9 @@ export interface UseChannelOptions {
  * The events of `channels` at a target's namespace, or one level below it,
  * since the hook mounted. Cleared when the stream moves to another thread.
  * For messages, tool calls and values, prefer {@link useMessages},
- * {@link useToolCalls} and {@link useValues}.
+ * {@link useToolCalls} and {@link useValues}. A `tools` channel adds that
+ * stream mode to the runs that start after it mounts, so a run already
+ * streaming sends it no tool events.
  */
 export function useChannel(
   stream: StreamLike,
@@ -254,16 +259,20 @@ export interface UseChannelEffectOptions {
    * @default true
    */
   enabled?: boolean;
-  /** Accepted for compatibility: events arrive from when the hook mounts. */
+  /**
+   * @deprecated Has no effect. Events arrive from when the hook mounts,
+   * where 1.x also replayed the run's earlier events.
+   */
   replay?: boolean;
-  /** Accepted for compatibility. */
+  /** @deprecated Has no effect. */
   bufferSize?: number;
 }
 
 /**
  * Calls `onEvent` with each event of `channels`, for side effects such as
  * analytics. The callbacks may change between renders without
- * resubscribing.
+ * resubscribing. A `tools` channel adds that stream mode to the runs that
+ * start after it mounts, so a run already streaming sends it no tool events.
  */
 export function useChannelEffect(
   stream: StreamLike,

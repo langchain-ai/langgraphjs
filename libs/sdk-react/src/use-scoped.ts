@@ -14,7 +14,7 @@ import {
   type ToolCalls,
 } from "./use-stream.js";
 import type { UseSuspenseStreamReturn } from "./suspense-stream.js";
-import type { MessageMetadata, SubagentDiscoverySnapshot } from "./types.js";
+import type { SubagentDiscoverySnapshot } from "./types.js";
 
 /** A stream from `useStream` or `useSuspenseStream`, as the selector hooks take it. */
 export type StreamLike = AnyStream | UseSuspenseStreamReturn<any, any, any>;
@@ -197,23 +197,4 @@ export function subscribeScope(
       scope?.release();
     },
   };
-}
-
-const tracked = new WeakSet<StreamOrchestrator>();
-
-/**
- * Read a message's metadata: `parentCheckpointId`, the checkpoint to fork
- * from to edit it, and `optimisticStatus`. The first call turns fork points
- * on for the stream's life. They arrive when a run ends.
- */
-export function getMessageMetadata(
-  stream: StreamLike,
-  messageId: string
-): MessageMetadata | undefined {
-  const engine = stream[STREAM_CONTROLLER];
-  if (!tracked.has(engine)) {
-    tracked.add(engine);
-    engine.trackMessageMetadata();
-  }
-  return engine.messageMetadataStore.getSnapshot().get(messageId);
 }
