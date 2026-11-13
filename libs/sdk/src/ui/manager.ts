@@ -30,6 +30,7 @@ import {
   isSubagentNamespace,
 } from "./subagents.js";
 import type { SubagentStreamInterface } from "./types.js";
+import { pickKeys } from "./state-keys.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -199,13 +200,13 @@ export interface StreamManagerOptions {
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
 
   /**
-   * Narrows the root values before they are shown: every write of the
-   * stream's values goes through it, whether from a `values` event, a
-   * `messages` event, a callback's `mutate` or a stop.
+   * The only root values keys shown. Every write of the stream's values
+   * keeps only these, whether from a `values` event, a `messages` event, a
+   * callback's `mutate` or a stop. Unset shows every key.
    *
-   * @internal The orchestrators' `stateKeys`.
+   * @internal The engines' `stateKeys`.
    */
-  pickValues?: <V extends Record<string, unknown>>(values: V) => V;
+  keepKeys?: ReadonlySet<string>;
 }
 
 export class StreamManager<
@@ -226,7 +227,7 @@ export class StreamManager<
 
   private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
 
-  private pickValues: <V extends Record<string, unknown>>(values: V) => V;
+  private keepKeys: ReadonlySet<string> | undefined;
 
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -253,7 +254,7 @@ export class StreamManager<
     this.throttle = options.throttle;
     this.filterSubagentMessages = options.filterSubagentMessages ?? false;
     this.toMessage = options.toMessage ?? toMessageDict;
-    this.pickValues = options.pickValues ?? ((values) => values);
+    this.keepKeys = options.keepKeys;
     this.subagentManager = new SubagentManager({
       subagentToolNames: options.subagentToolNames,
       onSubagentChange: () => this.bumpVersion(),
@@ -593,7 +594,8 @@ export class StreamManager<
     const nextValues =
       typeof values === "function" ? values(prevValues, prevKind) : values;
     this.setState({
-      values: nextValues != null ? [this.pickValues(nextValues), kind] : null,
+      values:
+        nextValues != null ? [pickKeys(nextValues, this.keepKeys), kind] : null,
     });
   };
 

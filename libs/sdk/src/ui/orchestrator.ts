@@ -44,9 +44,10 @@ import type { StreamEngine } from "./engine.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import { STOP_RUN_ID_WAIT_MS } from "./constants.js";
 import {
-  pickStateKeys,
-  pickStateKeysOfStates,
-  stateKeysSelect,
+  pickKeys,
+  pickKeysOfStates,
+  stateKeysOf,
+  type StateKeys,
 } from "./state-keys.js";
 import {
   applyStopRead,
@@ -413,6 +414,9 @@ export class StreamOrchestrator<
 
   readonly #accessors: OrchestratorAccessors;
 
+  /** `stateKeys` with the messages key when the orchestrator was created. */
+  readonly #stateKeys: StateKeys | undefined;
+
   readonly historyLimit: boolean | number;
 
   readonly #runMetadataStorage: RunMetadataStorage | null;
@@ -555,16 +559,19 @@ export class StreamOrchestrator<
     accessors: OrchestratorAccessors
   ) {
     this.#accessors = accessors;
+    this.#stateKeys = stateKeysOf(
+      options.stateKeys,
+      accessors.getMessagesKey()
+    );
     // Scoped subagents keep their messages out of the main conversation.
     this.#options = {
       ...options,
       ...(options.scopedSubagents ? { filterSubagentMessages: true } : {}),
-      ...(options.initialValues != null && options.stateKeys != null
+      ...(options.initialValues != null
         ? {
-            initialValues: pickStateKeys(
+            initialValues: pickKeys(
               options.initialValues,
-              options.stateKeys,
-              accessors.getMessagesKey()
+              this.#stateKeys?.kept
             ),
           }
         : {}),
@@ -588,12 +595,7 @@ export class StreamOrchestrator<
       subagentToolNames: options.subagentToolNames,
       filterSubagentMessages: this.#options.filterSubagentMessages,
       toMessage: options.toMessage ?? toMessageClass,
-      pickValues: (values) =>
-        pickStateKeys(
-          values,
-          options.stateKeys,
-          this.#accessors.getMessagesKey()
-        ),
+      keepKeys: this.#stateKeys?.kept,
     });
 
     this.scopes = new ScopeRegistry({
@@ -941,16 +943,13 @@ export class StreamOrchestrator<
     const idle = !this.stream.isLoading;
     const epoch = this.stream.epoch;
     try {
-      const { stateKeys } = this.#options;
-      const messagesKey = this.#accessors.getMessagesKey();
       // Narrowed here too, for a server that ignores `select`.
-      const fetched = pickStateKeysOfStates(
+      const fetched = pickKeysOfStates(
         await fetchHistory<StateType>(this.#accessors.getClient(), tid, {
           limit: this.historyLimit,
-          select: stateKeysSelect(stateKeys, messagesKey),
+          select: this.#stateKeys?.select,
         }),
-        stateKeys,
-        messagesKey
+        this.#stateKeys?.kept
       );
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.

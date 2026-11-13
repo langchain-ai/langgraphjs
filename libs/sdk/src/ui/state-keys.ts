@@ -19,39 +19,38 @@ const THREAD_STATE_FIELDS: readonly ThreadStateSelectField[] = [
   "metadata",
 ];
 
-/**
- * The root `values` keys shown: `stateKeys`, the messages key, and
- * `__interrupt__`, which a run's `values` events carry. `undefined` when
- * `stateKeys` is unset, so every key shows.
- */
-function keptKeys(
-  stateKeys: readonly string[] | undefined,
-  messagesKey: string
-): ReadonlySet<string> | undefined {
-  if (stateKeys == null) return undefined;
-  return new Set([...stateKeys, messagesKey, "__interrupt__"]);
+/** What `stateKeys` loads and shows. Built once, when an engine is created. */
+export interface StateKeys {
+  /**
+   * The root `values` keys shown: `stateKeys`, the messages key, and
+   * `__interrupt__`, which a run's `values` events carry.
+   */
+  readonly kept: ReadonlySet<string>;
+  /** The `select` of a thread load. */
+  readonly select: ThreadStateSelectField[];
 }
 
-/** The `select` of a thread load, or `undefined` to read the full state. */
-export function stateKeysSelect(
+/** `stateKeys` with the messages key, or `undefined` when it is unset. */
+export function stateKeysOf(
   stateKeys: readonly string[] | undefined,
   messagesKey: string
-): ThreadStateSelectField[] | undefined {
+): StateKeys | undefined {
   if (stateKeys == null) return undefined;
   const keys = new Set([...stateKeys, messagesKey]);
-  return [
-    ...THREAD_STATE_FIELDS,
-    ...[...keys].map((key): ThreadStateSelectField => `values.${key}`),
-  ];
+  return {
+    kept: new Set([...keys, "__interrupt__"]),
+    select: [
+      ...THREAD_STATE_FIELDS,
+      ...[...keys].map((key): ThreadStateSelectField => `values.${key}`),
+    ],
+  };
 }
 
-/** `values` with only the keys `stateKeys` shows. Unchanged when it is unset. */
-export function pickStateKeys<V extends Record<string, unknown>>(
+/** `values` with only the `kept` keys. Unchanged without `kept`. */
+export function pickKeys<V extends Record<string, unknown>>(
   values: V,
-  stateKeys: readonly string[] | undefined,
-  messagesKey: string
+  kept: ReadonlySet<string> | undefined
 ): V {
-  const kept = keptKeys(stateKeys, messagesKey);
   if (kept == null) return values;
   const picked: Record<string, unknown> = {};
   for (const key of kept) {
@@ -62,19 +61,15 @@ export function pickStateKeys<V extends Record<string, unknown>>(
   return picked as V;
 }
 
-/** Thread states whose `values` keep only the keys `stateKeys` shows. */
-export function pickStateKeysOfStates<V extends Record<string, unknown>>(
+/** Thread states whose `values` keep only the `kept` keys. */
+export function pickKeysOfStates<V extends Record<string, unknown>>(
   states: ThreadState<V>[],
-  stateKeys: readonly string[] | undefined,
-  messagesKey: string
+  kept: ReadonlySet<string> | undefined
 ): ThreadState<V>[] {
-  if (stateKeys == null) return states;
+  if (kept == null) return states;
   return states.map((state) =>
     state.values == null
       ? state
-      : {
-          ...state,
-          values: pickStateKeys(state.values, stateKeys, messagesKey),
-        }
+      : { ...state, values: pickKeys(state.values, kept) }
   );
 }

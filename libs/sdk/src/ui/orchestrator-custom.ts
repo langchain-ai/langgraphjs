@@ -20,7 +20,7 @@ import {
 } from "./interrupts.js";
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
-import { pickStateKeys } from "./state-keys.js";
+import { pickKeys, stateKeysOf } from "./state-keys.js";
 import type { StreamEngine } from "./engine.js";
 import {
   watchRunEvent,
@@ -174,20 +174,19 @@ export class CustomStreamOrchestrator<
 
     this.#threadId = options.threadId ?? null;
 
+    const kept = stateKeysOf(options.stateKeys, this.#messagesKey)?.kept;
     this.messageManager = new MessageTupleManager();
     this.stream = new StreamManager<StateType, Bag>(this.messageManager, {
       throttle: options.throttle ?? false,
       subagentToolNames: options.subagentToolNames,
       filterSubagentMessages: options.filterSubagentMessages,
       toMessage: options.toMessage ?? toMessageClass,
-      pickValues: (values) =>
-        pickStateKeys(values, options.stateKeys, this.#messagesKey),
+      keepKeys: kept,
     });
 
-    this.#baseValues = pickStateKeys(
+    this.#baseValues = pickKeys(
       options.initialValues ?? ({} as StateType),
-      options.stateKeys,
-      this.#messagesKey
+      kept
     );
 
     this.#streamUnsub = this.stream.subscribe(() => {
