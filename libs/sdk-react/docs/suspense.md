@@ -7,6 +7,7 @@
 - [Basic usage](#basic-usage)
 - [What it returns](#what-it-returns)
 - [Errors](#errors)
+- [Server rendering](#server-rendering)
 - [Thread switches](#thread-switches)
 
 ## Basic usage
@@ -59,6 +60,34 @@ The [selector hooks](./selectors.md) accept its result, as they accept `useStrea
 
 - A thread that fails to load throws to the nearest error boundary.
 - A run that fails sets `error` and throws nothing, so the conversation stays on screen. To send it to the error boundary too, throw it yourself: `if (error) throw error;`.
+
+## Server rendering
+
+A server render, in Next.js and the like, reads no thread, since the user's auth is in the browser. There `useSuspenseStream` throws an error whose `digest` is `"BAILOUT_TO_CLIENT_SIDE_RENDERING"`, Next.js's mark for rendering on the client: React renders the Suspense fallback on the server, and the component in the browser, which loads the thread. Next.js doesn't report that error. [`useStream`](./use-stream.md) throws nothing there: it shows the `threadId` it's given as loading.
+
+With another framework, React reports the error twice: to the server render's `onError`, and to the browser's `onRecoverableError` when it hydrates the fallback. Skip it in both. The browser sees the `digest` only when the server's `onError` returns it:
+
+```tsx
+const CLIENT_RENDERING = "BAILOUT_TO_CLIENT_SIDE_RENDERING";
+const digestOf = (error: unknown) =>
+  (error as { digest?: unknown } | null)?.digest;
+
+// On the server
+const html = await renderToReadableStream(<App />, {
+  onError(error) {
+    if (digestOf(error) === CLIENT_RENDERING) return CLIENT_RENDERING;
+    console.error(error);
+    return undefined;
+  },
+});
+
+// In the browser
+hydrateRoot(document, <App />, {
+  onRecoverableError(error) {
+    if (digestOf(error) !== CLIENT_RENDERING) console.error(error);
+  },
+});
+```
 
 ## Thread switches
 

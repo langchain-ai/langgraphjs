@@ -162,7 +162,7 @@ Use the [selector hooks](./selectors.md).
 ### A server render reads no thread
 
 - **1.x:** a server render, in Next.js and the like, read the thread on the server, without the user's cookies or auth.
-- **2.0:** it reads no thread. `useStream` shows the `threadId` it's given as loading, `useSuspenseStream` renders its Suspense fallback, and the browser reads the thread after hydration.
+- **2.0:** it reads no thread. `useStream` shows the `threadId` it's given as loading, and `useSuspenseStream` renders its Suspense fallback through an error that Next.js doesn't report (see [Server rendering](./suspense.md#server-rendering)). The browser reads the thread after hydration.
 
 ### `values.messages` streams token by token
 
