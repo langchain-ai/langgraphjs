@@ -23,7 +23,7 @@ interface SubagentDiscoverySnapshot {
   readonly depth: number; // 1 when the main agent started it
   readonly status: "running" | "complete" | "error";
   readonly taskInput: string | undefined; // the task it was given
-  readonly output: unknown; // its result, once complete
+  readonly output: unknown; // its result as text, once complete
   readonly error: string | undefined;
   readonly startedAt: Date;
   readonly completedAt: Date | null;
@@ -94,7 +94,7 @@ function SubagentCard({
 
 - **On Agent Server 0.19 or later**, the run's own stream carries the main conversation and the subagents' status, and the open panels of a run share one more connection that carries only their subagents. A subagent nobody shows costs nothing.
 - **On an older server**, the run streams every event of every subagent, and the panels read from it. A warning in the browser console says so once.
-- **After a reload**, the first hook on a subagent looks up its namespace, from its `task` tool message or one small history read, then streams it as above. A subagent that finished shows its messages from the thread's history. If its namespace can't be found, its hooks return nothing, and its snapshot still has its status and output.
+- **After a reload**, a subagent's `namespace` is the one its `task` tool message records, or `["tools:<tool call id>"]` until the first hook on it finds the real one with one small history read. The hook then streams it as above. A subagent that finished shows its messages from the thread's history. If its namespace can't be found, its hooks return nothing, and its snapshot still has its status and output.
 
 ## Subgraphs
 
@@ -130,7 +130,7 @@ function SubgraphCard({
 }
 ```
 
-A subgraph shows once a run streams its events, so after a reload `subgraphs` starts empty and fills as runs stream.
+A subgraph shows once a run streams its events, so after a reload `subgraphs` starts empty and fills as runs stream. A subgraph's panel leaves out the messages the main conversation also shows, so for a subgraph that shares `messages` with its parent, a panel opened after it ran can be empty.
 
 ## Related
 
