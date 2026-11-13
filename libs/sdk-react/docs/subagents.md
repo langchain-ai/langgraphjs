@@ -20,7 +20,7 @@ interface SubagentDiscoverySnapshot {
   readonly name: string; // the subagent type, such as "researcher"
   readonly namespace: readonly string[];
   readonly parentId: string | null; // the subagent that started it, or null
-  readonly depth: number; // 0 when the main agent started it
+  readonly depth: number; // 1 when the main agent started it
   readonly status: "running" | "complete" | "error";
   readonly taskInput: string | undefined; // the task it was given
   readonly output: unknown; // its result, once complete

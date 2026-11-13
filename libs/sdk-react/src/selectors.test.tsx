@@ -79,6 +79,70 @@ it("reads a reloaded subagent's messages once, from the namespace its tool messa
   ).toHaveLength(1);
 });
 
+it("looks up a reloaded subagent's namespace for a hook given only the namespace useStream shows", async () => {
+  const toolMessage = {
+    id: "tm1",
+    type: "tool",
+    name: "task",
+    tool_call_id: "call-1",
+    content: "done",
+  };
+  const server = fakeServer({
+    t1: {
+      messages: [
+        human("h1", "research tires"),
+        {
+          ...ai("a1", ""),
+          tool_calls: [
+            {
+              id: "call-1",
+              name: "task",
+              args: { subagent_type: "researcher", description: "look" },
+            },
+          ],
+        },
+        toolMessage,
+      ],
+    },
+  });
+  server.threadHistory.set("t1", [
+    {
+      tasks: [
+        {
+          id: "abc",
+          name: "tools",
+          path: ["__pregel_push", 0],
+          result: { messages: [toolMessage] },
+        },
+      ],
+    },
+  ]);
+  server.history.set("tools:abc", {
+    messages: [human("s1", "look"), ai("s2", "found it")],
+  });
+  const { result } = await renderHook(() => {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+    });
+    const namespace = stream.subagents.get("call-1")?.namespace;
+    return {
+      namespace,
+      messages: useMessages(stream, namespace && { namespace }),
+    };
+  });
+
+  await expect
+    .poll(() => result.current.messages.map((message) => message.content))
+    .toEqual(["look", "found it"]);
+  expect(result.current.namespace).toEqual(["tools:abc"]);
+  await tick();
+  expect(server.calls.filter((call) => call.startsWith("getHistory"))).toEqual(
+    ["getHistory t1", "getHistory t1 tools:abc"]
+  );
+});
+
 it("releases every scope a subagent panel held once it unmounts", async () => {
   const server = subagentThread();
   const stream = await renderHook(() =>

@@ -249,12 +249,12 @@ export interface SubagentDiscoverySnapshot {
   readonly name: string;
   /**
    * Namespace of its events. `["tools:<id>"]` until it's known, which the
-   * selector hooks resolve.
+   * selector hooks resolve, also when given only this namespace.
    */
   readonly namespace: readonly string[];
   /** Id of the subagent that started it, or `null` when the main agent did. */
   readonly parentId: string | null;
-  /** Nesting depth: 0 when the main agent started it. */
+  /** Nesting depth: 1 when the main agent started it. */
   readonly depth: number;
   readonly status: "running" | "complete" | "error";
   /** The task description it was given. */

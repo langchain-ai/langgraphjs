@@ -22,6 +22,7 @@ const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 export function fakeServer(threads: Record<string, Values> = {}) {
   const state = new Map(Object.entries(threads));
   const history = new Map<string, Values>();
+  const threadHistory = new Map<string, unknown[]>();
   const next = new Map<string, string[]>();
   const running = new Map<string, string>();
   const runs: FakeRun[] = [];
@@ -106,7 +107,8 @@ export function fakeServer(threads: Record<string, Values> = {}) {
       ) {
         const namespace = options?.checkpoint?.checkpoint_ns;
         calls.push(`getHistory ${threadId}${namespace ? ` ${namespace}` : ""}`);
-        const values = namespace == null ? undefined : history.get(namespace);
+        if (namespace == null) return threadHistory.get(threadId) ?? [];
+        const values = history.get(namespace);
         return values == null ? [] : [{ ...threadState(threadId), values }];
       },
       // No thread stream, as on the JS dev server.
@@ -163,6 +165,8 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     runs,
     /** Values a subgraph's history read returns, by namespace. */
     history,
+    /** The entries a thread's own history read returns, by thread id. */
+    threadHistory,
     /** A thread's pending nodes, by thread id. */
     next,
     /** The id of a thread's running run, which a thread load finds, by thread id. */
