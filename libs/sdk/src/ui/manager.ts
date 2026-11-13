@@ -223,6 +223,12 @@ export class StreamManager<
 
   #epoch = 0;
 
+  /**
+   * The running stream's values at its last root `values` event, or when its
+   * run began. `undefined` before that.
+   */
+  #attemptValues: StateType | null | undefined;
+
   private state: {
     isLoading: boolean;
     values: [values: StateType, kind: "stream" | "stop"] | null;
@@ -680,6 +686,7 @@ export class StreamManager<
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
       this.#epoch += 1;
+      this.#attemptValues = undefined;
       this.setState({ isLoading: true, error: undefined });
       // clear() and stop() replace abortRef, so the run keeps its own.
       this.abortRef = abort;
@@ -693,7 +700,7 @@ export class StreamManager<
       // A run sends `metadata` once per attempt, so one after other events
       // starts a new attempt: what the cut one streamed since its last root
       // `values` goes, and messages it sends again start over.
-      let attemptValues = this.values;
+      this.#attemptValues = this.values;
       let sawEvent = false;
 
       // Subagent messages kept in the main stream (`filterSubagentMessages` off)
@@ -796,11 +803,11 @@ export class StreamManager<
         if (event === "metadata" && sawEvent) {
           this.messages.startReplay();
           this.subagentManager.startReplay();
-          this.setStreamValues(attemptValues);
+          this.setStreamValues(this.#attemptValues);
           this.subagentManager.dropPendingOutside(
             new Set(
               options
-                .getMessages(attemptValues ?? options.initialValues)
+                .getMessages(this.#attemptValues ?? options.initialValues)
                 .flatMap((message) => message.id ?? [])
             )
           );
@@ -1030,7 +1037,7 @@ export class StreamManager<
                 return data as StateType;
               });
             }
-            attemptValues = this.values;
+            this.#attemptValues = this.values;
           }
         }
 
@@ -1206,18 +1213,21 @@ export class StreamManager<
         ) => void;
       }) => void;
       /**
-       * Reads what the server kept after the stop cut a stream off. Resolve
-       * to its head's values to show them, `null` to clear the stream values
-       * so the history values show, or `undefined` to keep the stopped
-       * stream's values, as a rejection does. `onStop`'s updates are applied
-       * again on top, and the result is dropped if a stream began or
-       * `clear()` ran in the meantime.
+       * The values to show once the stop cut a stream off, such as what the
+       * server kept. It gets what the stream showed without what it streamed
+       * since its last root `values` event, `null` if it showed nothing.
+       * Resolve to `null` to clear the stream values so the history values
+       * show, or `undefined` to keep the stopped stream's values, as a
+       * rejection does. `onStop`'s updates are applied again on top, and the
+       * result is dropped if a stream began or `clear()` ran in the meantime.
        */
-      read?: () => Promise<StateType | null | undefined>;
+      read?: (shown: StateType | null) => Promise<StateType | null | undefined>;
     }
   ): Promise<void> => {
     const wasLoading = this.isLoading;
     const epoch = this.#epoch;
+    const shown =
+      this.#attemptValues === undefined ? this.values : this.#attemptValues;
     this.abortRef.abort();
     this.abortRef = new AbortController();
 
@@ -1235,7 +1245,7 @@ export class StreamManager<
     if (!wasLoading || options.read == null) return;
     let head: StateType | null | undefined;
     try {
-      head = await options.read();
+      head = await options.read(shown);
     } catch {
       return;
     }

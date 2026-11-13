@@ -1699,18 +1699,28 @@ export class StreamOrchestrator<
         }
         this.#options.onStop?.(args);
       },
-      // A cancelled run skips `onSuccess`, so the buffer still holds what it
-      // streamed, including a message chunk the server never saved.
+      // A cancelled run skips `onSuccess`, so the stop reads the head itself.
+      // The server saves a step's messages when the step ends, so the messages
+      // the page showed that it didn't save, such as the run's input, stay
+      // after the saved ones. A reply the stop cut off goes.
       read:
         threadId == null || this.#disposed
           ? undefined
-          : async () => {
+          : async (shown) => {
               const newHistory = await this.#mutate(threadId, {
                 ...read,
                 map: (states) => applyStopRead(states, shownHead),
               });
               if (newHistory == null) return undefined;
-              return newHistory.at(0)?.values ?? null;
+              const head = newHistory.at(0)?.values ?? null;
+              const base = head ?? this.historyValues;
+              const saved = this.#getMessages(base);
+              const ids = new Set(saved.map((message) => message.id));
+              const unsaved = (
+                shown == null ? [] : this.#getMessages(shown)
+              ).filter((message) => message.id != null && !ids.has(message.id));
+              if (unsaved.length === 0) return head;
+              return this.#setMessages(base, [...saved, ...unsaved]);
             },
     });
   }

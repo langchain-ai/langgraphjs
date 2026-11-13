@@ -1351,14 +1351,12 @@ describe("StreamOrchestrator", () => {
     });
 
     it("reconciles the stream buffer against server state after a cancel", async () => {
-      const partialValues: TestState = {
-        messages: [{ id: "m1", content: "partial", type: "ai" }],
-      };
+      const partial = { id: "m1", content: "partial", type: "ai" };
 
       let submitSignal: AbortSignal | undefined;
       const mockStream = {
         async *[Symbol.asyncIterator]() {
-          yield { event: "values" as const, data: partialValues };
+          yield { event: "messages" as const, data: [partial, {}] };
           // Hang until the run is aborted, like a real in-flight fetch would.
           await new Promise<never>((_resolve, reject) => {
             submitSignal?.addEventListener("abort", () => {
@@ -1391,7 +1389,7 @@ describe("StreamOrchestrator", () => {
       await flushMicrotasks();
 
       // The in-flight chunk is optimistically visible while streaming.
-      expect(orch.messages).toEqual(partialValues.messages);
+      expect(orch.messages.map(({ id }) => id)).toEqual(["m1"]);
 
       await orch.stop();
       await flushMicrotasks();
@@ -1786,6 +1784,33 @@ describe("StreamOrchestrator", () => {
 
         expect(orch.messages).toEqual(saved);
         await running;
+        orch.dispose();
+      }
+    );
+
+    it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+      "stop keeps an input the server didn't save until the next run, and drops the reply it cut off (fetchStateHistory: $fetchStateHistory)",
+      async ({ fetchStateHistory }) => {
+        const ids = () => orch.messages.map(({ id }) => id);
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ fetchStateHistory });
+
+        mockRun(
+          [{ event: "messages", data: [{ ...message("a1", "ai"), content: "Hel" }, {}] }],
+          { hang: true }
+        );
+        const running = orch.submit({ messages: [message("h1")] });
+        await vi.waitFor(() => expect(ids()).toEqual(["h0", "h1", "a1"]));
+        await orch.stop();
+
+        expect(ids()).toEqual(["h0", "h1"]);
+        await running;
+        const next = [message("h0"), message("h2")];
+        serve(stateWith({ messages: next }));
+        mockRun([{ event: "values", data: { messages: next } }]);
+        await orch.submit({ messages: [message("h2")] });
+
+        expect(orch.messages).toEqual(next);
         orch.dispose();
       }
     );

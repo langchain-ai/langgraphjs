@@ -273,6 +273,34 @@ describe("CustomStreamOrchestrator", () => {
 
       orch.dispose();
     });
+
+    it("keeps the run's input and drops the reply it cut off", async () => {
+      const transport = {
+        stream: vi.fn().mockImplementation(async ({ signal }) =>
+          (async function* () {
+            yield {
+              event: "messages",
+              data: [{ id: "a1", type: "ai", content: "Hel" }, {}],
+            };
+            await new Promise((resolve) =>
+              signal.addEventListener("abort", resolve)
+            );
+          })()
+        ),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const ids = () => orch.messages.map(({ id }) => id);
+
+      const running = orch.submit({ messages: [human("h1", "hi")] });
+      await vi.waitFor(() => expect(ids()).toEqual(["h1", "a1"]));
+      await orch.stop();
+      await running;
+
+      expect(ids()).toEqual(["h1"]);
+      orch.dispose();
+    });
   });
 
   describe("submit", () => {

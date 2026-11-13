@@ -1271,14 +1271,18 @@ describe("StreamManager", () => {
     }) => mutate((prev) => ({ count: (prev.count ?? 0) + 10 }));
     let manager: StreamManager<State>;
 
-    const startRunningStream = async () => {
+    const startRunningStream = async (
+      events: Array<{ event: string; data: unknown }> = [
+        { event: "values", data: streamed },
+      ]
+    ) => {
       let shown!: () => void;
       const started = new Promise<void>((resolve) => {
         shown = resolve;
       });
       void manager.start(async (signal) => {
         async function* gen() {
-          yield { event: "values" as const, data: streamed };
+          yield* events;
           shown();
           await new Promise<void>((resolve) => {
             signal.addEventListener("abort", () => resolve(), { once: true });
@@ -1379,6 +1383,46 @@ describe("StreamManager", () => {
       await manager.stop(history, { read });
 
       expect(read).not.toHaveBeenCalled();
+    });
+
+    it("gives the read the stream's values without what it streamed since its last root values", async () => {
+      const human = { type: "human", id: "h1", content: "hi" } as Message;
+      await startRunningStream([
+        { event: "values", data: { messages: [human] } },
+        { event: "messages", data: [{ type: "ai", id: "a1", content: "He" }, {}] },
+      ]);
+      const read = vi.fn(async () => undefined);
+
+      await manager.stop(history, { read });
+
+      expect(read).toHaveBeenCalledWith({ messages: [human] });
+    });
+
+    it("gives the read the input shown before the run began, not an earlier stream's values", async () => {
+      await manager.start(
+        async () =>
+          createMockStream([{ event: "values" as const, data: streamed }]) as never,
+        options
+      );
+      const input: State = { messages: [], count: 5 };
+      let showInput!: () => void;
+      const inputShown = new Promise<void>((resolve) => {
+        showInput = resolve;
+      });
+      void manager.start(async (signal) => {
+        manager.setStreamValues(input);
+        showInput();
+        await new Promise((resolve) =>
+          signal.addEventListener("abort", resolve, { once: true })
+        );
+        return createMockStream([]) as never;
+      }, options);
+      await inputShown;
+      const read = vi.fn(async () => undefined);
+
+      await manager.stop(history, { read });
+
+      expect(read).toHaveBeenCalledWith(input);
     });
   });
 
