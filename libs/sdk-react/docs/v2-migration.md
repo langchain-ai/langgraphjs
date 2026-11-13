@@ -68,7 +68,7 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 
 ### Custom adapters
 
-`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions` are gone. A custom backend passes `transport: { stream(payload) }` and returns the same stream the Agent Server sends. See [Custom transports](./custom-transport.md).
+`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions` are gone. A custom backend passes `transport: { stream(payload) }`, to `useStream` or `StreamProvider`, and returns the same stream the Agent Server sends. See [Custom transports](./custom-transport.md).
 
 ### `getThread()`
 

@@ -6,6 +6,7 @@
 
 - [Agent Server](#agent-server)
 - [Headers and auth](#headers-and-auth)
+- [Behind a proxy](#behind-a-proxy)
 - [Custom transports](#custom-transports)
 - [Related](#related)
 
@@ -67,6 +68,17 @@ const client = new Client({
 
 const stream = useStream({ assistantId: "agent", client });
 ```
+
+## Behind a proxy
+
+A proxy in front of the Agent Server must forward the routes `useStream` calls:
+
+- `GET /info`: what the server supports. Without it, subagent panels get every event of each run, and a warning in the console says so.
+- `POST /threads`, `GET /threads/{thread_id}/state` and `POST /threads/{thread_id}/history`: creating and reading threads. History is read for fork points, and for subagent panels after a reload.
+- `POST /threads/{thread_id}/runs/stream`: each submit and answer.
+- `GET /threads/{thread_id}/runs/{run_id}/stream`: joining a run after a reload, from another tab, or for a subagent panel.
+- `POST` and `GET /threads/{thread_id}/runs`, `GET /threads/{thread_id}/runs/{run_id}` and `POST /threads/{thread_id}/runs/{run_id}/cancel`: the server's queue, finding the running run, how a run ended, and `stop()`.
+- `GET /threads/{thread_id}/stream`: following runs started elsewhere.
 
 ## Custom transports
 

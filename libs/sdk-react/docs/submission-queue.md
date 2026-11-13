@@ -11,7 +11,7 @@ A message sent while a run streams waits in a queue, and runs when the current r
 
 ## Where submits wait
 
-By default the queue is the server's: a submit made during a run creates a run in the server's queue, behind the current one. A queued message, and an answer given with `respond` during a run, survives a reload and shows in other tabs. The server's queue creates its runs with `POST /threads/{thread_id}/runs`, so a proxy in front of the server must forward that route too.
+By default the queue is the server's: a submit made during a run creates a run in the server's queue, behind the current one. A queued message, and an answer given with `respond` during a run, survives a reload and shows in other tabs. The server's queue creates its runs with `POST /threads/{thread_id}/runs`, so a proxy in front of the server must forward that route, with the others `useStream` calls (see [Behind a proxy](./transports.md#behind-a-proxy)).
 
 `useStream({ queue: "local" })` keeps the queue in the page instead, as `@langchain/react` 1.x did: queued submits are sent one at a time once the current run ends, and a reload drops them.
 
