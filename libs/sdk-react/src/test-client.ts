@@ -1,4 +1,5 @@
 import type { Client } from "@langchain/langgraph-sdk";
+import type { UseStreamTransportPayload } from "@langchain/langgraph-sdk/ui";
 
 type Values = Record<string, unknown>;
 
@@ -146,8 +147,18 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     info: async () => ({ flags: { stream_lifecycle: true } }),
   };
 
+  const transport = {
+    async stream(payload: UseStreamTransportPayload) {
+      const threadId = payload.config?.configurable?.thread_id as string;
+      calls.push(`transport ${threadId}`);
+      return startRun(threadId, { ...payload });
+    },
+  };
+
   return {
     client: client as unknown as Client,
+    /** A custom transport that starts the same runs, and reads no thread. */
+    transport,
     calls,
     runs,
     /** Values a subgraph's history read returns, by namespace. */

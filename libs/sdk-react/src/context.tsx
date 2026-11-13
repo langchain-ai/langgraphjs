@@ -5,7 +5,11 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { InferStateType } from "@langchain/langgraph-sdk/ui";
 import { useStream, type UseStreamReturn } from "./use-stream.js";
-import type { AgentServerOptions, UseStreamOptions } from "./types.js";
+import type {
+  AgentServerOptions,
+  CustomTransportOptions,
+  UseStreamOptions,
+} from "./types.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const StreamContext = createContext<any | null>(null);
@@ -13,6 +17,15 @@ const StreamContext = createContext<any | null>(null);
 /** Props of {@link StreamProvider}: {@link AgentServerOptions} plus `children`. */
 export type StreamProviderProps<T = Record<string, unknown>> =
   AgentServerOptions<InferStateType<T>> & {
+    children: ReactNode;
+  };
+
+/**
+ * Props of {@link StreamProvider} with a custom transport:
+ * {@link CustomTransportOptions} plus `children`.
+ */
+export type StreamProviderCustomProps<T = Record<string, unknown>> =
+  CustomTransportOptions<InferStateType<T>> & {
     children: ReactNode;
   };
 
@@ -62,7 +75,7 @@ export type StreamProviderProps<T = Record<string, unknown>> =
  * ```
  */
 export function StreamProvider<T = Record<string, unknown>>(
-  props: StreamProviderProps<T>
+  props: StreamProviderProps<T> | StreamProviderCustomProps<T>
 ): ReactNode {
   const { children, ...options } = props;
   const stream = useStream<T>(options as UseStreamOptions<InferStateType<T>>);

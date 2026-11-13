@@ -89,7 +89,7 @@ Use the [selector hooks](./selectors.md).
 
 ### Custom adapters
 
-`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions`, `CustomAdapterOptions` and `StreamProviderCustomProps` are gone. A custom backend passes `transport: { stream(payload) }`, to `useStream` or `StreamProvider`, and returns the same stream the Agent Server sends. See [Custom transports](./custom-transport.md).
+`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions` are gone. A custom backend passes `transport: { stream(payload) }`, to `useStream` or `StreamProvider`, and returns the same stream the Agent Server sends. `CustomTransportOptions` types those options, and `StreamProviderCustomProps` the provider's. See [Custom transports](./custom-transport.md).
 
 ### `getThread()`
 
@@ -222,12 +222,12 @@ Use the [selector hooks](./selectors.md).
 
 ## Types
 
-- Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions`, `CustomAdapterOptions` and `StreamProviderCustomProps`.
+- Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions`. `StreamProviderCustomProps` stays, for a custom `transport` instead of an adapter.
 - `stream.subagents` is keyed by `string`, the `task` tool call's id, as it was at runtime in 1.x, whose types said the keys were subagent names. To find a subagent by name, read its `name` field.
 - `submit()`'s `signal` and `respond()`'s `namespace` are deprecated and do nothing. Stop a run with `stop()`. An interrupt's `interruptId` is enough to answer it.
 - `Channel` and `Event` are `@langchain/react`'s own types for 2.0's channels, not `@langchain/protocol`'s.
-- `stream[STREAM_CONTROLLER]` is internal, and holds 2.0's engine, a `StreamOrchestrator`, instead of 1.x's `StreamController`, so code that read its members, such as `registry`, has to change. Its `hydrate()` is the same as `stream.hydrate()`.
-- New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions`, `StreamLike` and `StreamThread`.
+- `stream[STREAM_CONTROLLER]` is internal, and holds 2.0's engine, a `StreamOrchestrator` (a `CustomStreamOrchestrator` with a custom transport), instead of 1.x's `StreamController`, so code that read its members, such as `registry`, has to change. Its `hydrate()` is the same as `stream.hydrate()`.
+- New: `CustomTransportOptions`, `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions`, `StreamLike` and `StreamThread`.
 
 ## Coming from 0.x
 

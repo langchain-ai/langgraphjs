@@ -3,7 +3,7 @@ import type {
   AssembledToolCall,
   Scope,
   ScopeSnapshot,
-  StreamOrchestrator,
+  StreamEngine,
   SubgraphDiscoverySnapshot,
 } from "@langchain/langgraph-sdk/ui";
 import {
@@ -57,7 +57,7 @@ export const EMPTY_VIEW: ScopeView = {
 };
 
 /** The engine behind a stream, with a clear error for anything else. */
-export function engineOf(stream: StreamLike): StreamOrchestrator {
+export function engineOf(stream: StreamLike): StreamEngine {
   const engine = (stream as Partial<StreamLike> | null | undefined)?.[
     STREAM_CONTROLLER
   ];
@@ -115,7 +115,7 @@ export function releaseLater(release: () => void): void {
 
 /** The target's namespace, looked up first for a subagent after a reload. */
 export async function resolveNamespace(
-  engine: StreamOrchestrator,
+  engine: StreamEngine,
   target: SelectorTarget
 ): Promise<readonly string[] | undefined> {
   const subagent = unresolvedSubagent(target);
@@ -124,7 +124,7 @@ export async function resolveNamespace(
     : engine.resolveSubagentNamespace(subagent);
 }
 
-function rootScope(engine: StreamOrchestrator): ScopeHandle {
+function rootScope(engine: StreamEngine): ScopeHandle {
   const binding = bindingOf(engine);
   let cache: { stream: AnyStream; view: ScopeView } | undefined;
   return {
