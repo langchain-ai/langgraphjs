@@ -616,6 +616,9 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
+        // A stop or thread switch came before it began, so its input must
+        // not show.
+        if (signal.aborted) return (async function* () {})();
         const stopRun = new AbortController();
         stopRunRef.current = stopRun;
         stream.setStreamValues((values) => {
