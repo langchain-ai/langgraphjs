@@ -63,9 +63,17 @@ afterEach(async () => {
 async function run(...args: string[]) {
   await import("../src/cli/deploy.mjs");
   const { builder } = await import("../src/cli/utils/builder.mjs");
-  await builder.parseAsync(["deploy", ...args, "--api-key", "test-key"], {
-    from: "user",
-  });
+  await builder.parseAsync(
+    [
+      "deploy",
+      ...args,
+      "--api-key",
+      "test-key",
+      "--host-url",
+      "https://api.host.langchain.com",
+    ],
+    { from: "user" }
+  );
 }
 
 // `sent` is the upload's headers apart from Content-Length.

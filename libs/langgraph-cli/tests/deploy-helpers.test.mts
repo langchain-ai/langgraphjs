@@ -10,6 +10,8 @@ import {
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
   isPathWithin,
+  langsmithApiUrl,
+  langsmithDashboardUrl,
   levelColor,
   normalizeImageTag,
   normalizeName,
@@ -174,19 +176,42 @@ describe("smithDashboardBaseUrl", () => {
   });
 });
 
+describe("langsmithApiUrl", () => {
+  it.each([
+    [undefined, "https://api.smith.langchain.com"],
+    ["https://eu.api.smith.langchain.com/", "https://eu.api.smith.langchain.com"],
+    ["https://smith.example.com/api/v1", "https://smith.example.com"],
+  ])("maps %s to %s", (endpoint, expected) => {
+    expect(langsmithApiUrl(endpoint)).toBe(expected);
+  });
+});
+
+describe("langsmithDashboardUrl", () => {
+  it.each([
+    [undefined, "https://smith.langchain.com"],
+    ["https://eu.api.smith.langchain.com", "https://eu.smith.langchain.com"],
+    ["https://xapi.smith.langchain.com", "https://smith.langchain.com"],
+    ["https://smith.example.com/api/v1", "https://smith.example.com"],
+  ])("maps %s to %s", (endpoint, expected) => {
+    expect(langsmithDashboardUrl(endpoint)).toBe(expected);
+  });
+});
+
 describe("getDeploymentStatusUrl", () => {
   it("builds the dashboard url when tenant_id present", () => {
     expect(
       getDeploymentStatusUrl(
         { tenant_id: "tenant-1" },
         "dep-1",
-        "https://api.host.langchain.com"
+        "https://eu.smith.langchain.com"
       )
-    ).toBe("https://smith.langchain.com/o/tenant-1/host/deployments/dep-1");
+    ).toBe("https://eu.smith.langchain.com/o/tenant-1/host/deployments/dep-1");
   });
 
   it("returns null without a tenant_id", () => {
-    expect(getDeploymentStatusUrl({}, "dep-1")).toBeNull();
+    expect(
+      getDeploymentStatusUrl({}, "dep-1", "https://smith.langchain.com")
+    ).toBeNull();
   });
 });
 
