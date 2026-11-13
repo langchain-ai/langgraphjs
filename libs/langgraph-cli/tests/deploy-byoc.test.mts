@@ -201,7 +201,21 @@ describe("on a BYOC data plane", () => {
 
     expect(gracefulExit).toHaveBeenCalledWith(1);
     expect(output).toContain(c.expected);
-    expect(calls.map((call) => call.route)).toEqual([DISCOVER, INFO]);
+    expect(createBody()).toBeUndefined();
+  });
+
+  it("redeploys an existing prod deployment without dedicated support", async () => {
+    serve({
+      [DISCOVER]: () => json([BYOC_WORKSPACE]),
+      [INFO]: () =>
+        json({ instance_flags: { deployments_cli_builds_supported: true } }),
+      "GET /v2/deployments/dep-1": () => json({ id: "dep-1" }),
+    });
+
+    await remoteDeploy("--deployment-id", "dep-1", "--deployment-type", "prod");
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(createBody()).toBeUndefined();
   });
 
   it("names both external image flags without CLI builds", async () => {

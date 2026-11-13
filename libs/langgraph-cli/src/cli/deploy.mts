@@ -36,6 +36,7 @@ import {
   HostBackendError,
   LangSmithApiClient,
   type DeploymentAgent,
+  type InstanceFlags,
   type Secret,
   type Workspace,
 } from "./utils/host-backend.mjs";
@@ -404,18 +405,23 @@ async function discoverTarget(
   };
 }
 
+async function requireCliBuilds(
+  client: HostBackendClient
+): Promise<InstanceFlags | null> {
+  const flags = await client.instanceFlags();
+  if (flags && !flags.cliBuilds) throw new Error(CLI_BUILDS_UNSUPPORTED);
+  return flags;
+}
+
 /**
  * The `source_config` for a new deployment built by this CLI. A data plane
- * sizes it by `resource_spec` and must support CLI builds and, for `prod`,
- * dedicated deployments.
+ * sizes it by `resource_spec` and needs dedicated support for `prod`.
  */
-async function internalSourceConfig(
-  client: HostBackendClient,
+function newDeploymentSourceConfig(
+  flags: InstanceFlags | null,
   deploymentType: string
-): Promise<Record<string, unknown>> {
-  const flags = await client.instanceFlags();
+): Record<string, unknown> {
   if (!flags) return { deployment_type: deploymentType };
-  if (!flags.cliBuilds) throw new Error(CLI_BUILDS_UNSUPPORTED);
   if (deploymentType === "dev") return { resource_spec: {} };
   if (!flags.dedicated) {
     throw new Error(
@@ -1427,7 +1433,7 @@ async function runDeploy(
     opts.apiKey,
     envVars
   );
-  const sourceConfig = await internalSourceConfig(client, opts.deploymentType);
+  const flags = await requireCliBuilds(client);
   let step = 1;
 
   const resolved = await resolveDeployment(
@@ -1447,7 +1453,7 @@ async function runDeploy(
     const created = await createDeployment(client, step, {
       name,
       agent,
-      sourceConfig,
+      sourceConfig: newDeploymentSourceConfig(flags, opts.deploymentType),
       source: useRemoteBuild ? "internal_source" : "internal_docker",
       secrets,
     });
