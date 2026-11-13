@@ -147,6 +147,24 @@ function withV1Streaming(
   };
 }
 
+/**
+ * Whether a run streams v3 frames, as runs `@langchain/react` 1.x starts do,
+ * also when joined. Only its own `metadata`, `error` and `end` events have
+ * the shape this engine reads, so its state and its subagents' are read from
+ * the thread instead. The JS dev server marks such a run in its kwargs, the
+ * Agent Server in its config.
+ */
+function streamsV3(run: Run | undefined): boolean {
+  const kwargs = run?.kwargs;
+  return (
+    kwargs?.__protocol_stream_run === true ||
+    (kwargs?.config as Config | undefined)?.configurable
+      ?.__event_streaming_v2 === true
+  );
+}
+
+const V3_READABLE_EVENTS = new Set(["metadata", "error", "end"]);
+
 /** Run events that only servers with `stream_lifecycle` send on run routes. */
 const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
 
@@ -1765,9 +1783,11 @@ export class StreamOrchestrator<
       run_id: runId,
     };
 
+    const v3 = streamsV3(runInfo);
     const includeImplicitBranch =
       this.historyLimit === true || typeof this.historyLimit === "number";
     const shouldRefetchJoin =
+      v3 ||
       includeImplicitBranch ||
       onFinishRequiresThreadState(this.#options.onFinish);
 
@@ -1789,11 +1809,13 @@ export class StreamOrchestrator<
           await this.#runEnd.catch(() => undefined);
           if (!this.#disposed) this.#options.onCreated?.(callbackMeta);
         }
-        const mode = this.#options.scopedSubagents
-          ? await this.#joinMode(tid, runId, runInfo, signal)
-          : undefined;
+        const mode = v3
+          ? { filtered: false, subgraphs: false }
+          : this.#options.scopedSubagents
+            ? await this.#joinMode(tid, runId, runInfo, signal)
+            : undefined;
         this.scopes.setRun(runId, mode);
-        const rawStream = client.runs.joinStream(tid, runId, {
+        const joined = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
@@ -1803,6 +1825,9 @@ export class StreamOrchestrator<
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
+        const rawStream = v3
+          ? filterStream(joined, ({ event }) => V3_READABLE_EVENTS.has(event))
+          : joined;
 
         return joinOptions?.filter != null
           ? filterStream(rawStream, joinOptions.filter)
