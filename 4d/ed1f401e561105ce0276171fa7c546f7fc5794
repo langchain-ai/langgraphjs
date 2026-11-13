@@ -1,0 +1,25 @@
+.changeset/byoc-cli-deploy.md
+  s_9929d82d7a093b::t_05044593c13e6f 5
+libs/langgraph-cli/src/cli/deploy.mts
+  s_9929d82d7a093b::t_41d7bba665b30d 377-389,391-393,402-410,412-414,416-417,419-427,429-435,458,464
+libs/langgraph-cli/src/cli/utils/host-backend.mts
+  s_9929d82d7a093b::t_93ba16c7f25799 107,279-282,285-289,297,304-305,315,321,326-331,339-340
+libs/langgraph-cli/tests/deploy-byoc.test.mts
+  s_9929d82d7a093b::t_e3b7dfc60f860c 357,359,362-363,370-373,376,383-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ded1f401e561105ce0276171fa7c546f7fc5794",
+  "prompts": {},
+  "sessions": {
+    "s_9929d82d7a093b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "eea50cb2-d32f-4abf-98b0-ea2c15e7cc89",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "syachamaneni-lc <sreekara.yachamaneni@langchain.dev>"
+    }
+  }
+}
