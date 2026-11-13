@@ -2504,10 +2504,11 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("stop() before the run's id arrives stops at once and cancels the run once it does", async () => {
+    it("stop() before the run's id arrives ends it stopped at once and cancels the run once the id does", async () => {
       const created = deferred();
       mockRunStream(undefined, { created: created.promise });
-      const orch = orchestrator();
+      const onRunEnd = vi.fn();
+      const orch = orchestrator({ onRunEnd });
       orch.initThreadId("t1");
 
       void orch.submit({ messages: [] });
@@ -2523,8 +2524,35 @@ describe("StreamOrchestrator runs", () => {
           "run-1"
         )
       );
+      expect(onRunEnd.mock.calls).toEqual([[{ reason: "stopped" }]]);
       orch.dispose();
     });
+
+    it.each([
+      { name: "a new thread", threadId: undefined },
+      { name: "a thread", threadId: "t1" },
+    ])(
+      "stop() right after a submit on $name sends nothing, ends it stopped, and the next submit runs",
+      async ({ threadId }) => {
+        mockRunStream(undefined, { ended: Promise.resolve() });
+        const onRunEnd = vi.fn();
+        const orch = orchestrator({ onRunEnd });
+        orch.initThreadId(threadId);
+
+        const submitted = orch.submit({ messages: [] });
+        await orch.stop();
+        await submitted;
+
+        expect(client.threads.create).not.toHaveBeenCalled();
+        expect(client.runs.stream).not.toHaveBeenCalled();
+        expect(orch.isLoading).toBe(false);
+        expect(onRunEnd.mock.calls).toEqual([[{ reason: "stopped" }]]);
+
+        await orch.submit({ messages: [] });
+        expect(client.runs.stream).toHaveBeenCalledOnce();
+        orch.dispose();
+      }
+    );
 
     it("stop() before the run's request is sent sends none, also after a thread switch", async () => {
       const thread = deferred();
