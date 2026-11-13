@@ -10,8 +10,11 @@ export type ToolCallStatus =
   | "error"
   /**
    * No result, and no run streams that could give one: the run stopped,
-   * failed, or waits on an interrupt. A run that resumes the call makes it
-   * `"running"` again.
+   * failed, or waits on an interrupt. Check the stream's `interrupts` to tell
+   * a call waiting on an approval from one whose run ended. A run that
+   * resumes the call makes it `"running"` again. Only calls built from
+   * messages (`seedToolCallsFromMessages`) get it, never calls assembled from
+   * `tools` events.
    */
   | "incomplete";
 

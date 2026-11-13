@@ -51,12 +51,12 @@ describe("seedToolCallsFromMessages", () => {
 
   it("marks a call incomplete once a later message closed its turn, even while a run streams", () => {
     const later = [...oneOfTwoAnswered, new HumanMessage("try again")];
-    expect(
-      seedToolCallsFromMessages([], later, { isLoading: true })
-    ).toMatchObject([
-      { callId: "call-1", status: "finished" },
-      { callId: "call-2", status: "incomplete" },
-    ]);
+    for (const options of [{ isLoading: true }, undefined]) {
+      expect(seedToolCallsFromMessages([], later, options)).toMatchObject([
+        { callId: "call-1", status: "finished" },
+        { callId: "call-2", status: "incomplete" },
+      ]);
+    }
   });
 
   it("keeps a call with no result running while a run streams, or when isLoading is left out", () => {
