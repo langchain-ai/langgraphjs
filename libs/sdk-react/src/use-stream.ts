@@ -38,19 +38,45 @@ import {
   type SubgraphByNodeMap,
   type SubgraphDiscoverySnapshot,
   type SubgraphMap,
-  type UseStreamOptions as StreamUseStreamOptions,
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
 
+/** Options `@langchain/react` adds to both transport branches. */
+interface StateKeysOptions<StateType extends object> {
+  /**
+   * The `values` keys your UI reads. When set, opening a thread asks the
+   * server for only these keys plus the messages key ({@link messagesKey},
+   * `"messages"` by default), which is always included. `useStream` also
+   * loads the thread fields it needs itself (checkpoint, pending tasks
+   * and interrupts, `next`, creation time, step), so branching,
+   * interrupts and `isLoading` keep working.
+   *
+   * `stream.values` then contains only these keys plus the messages key,
+   * both after loading and while a run streams. A server that doesn't
+   * support selecting state keys (`select` on `GET
+   * /threads/{thread_id}/state`) returns the full state; `stream.values`
+   * is narrowed the same way. `[]` keeps only the messages key.
+   *
+   * Unset (the default) loads and exposes the full state. Read once, when
+   * the hook is created, so passing a new array on each render is fine.
+   *
+   * @example
+   * ```ts
+   * useStream({ assistantId, threadId, stateKeys: ["todos"] });
+   * ```
+   */
+  stateKeys?: readonly (keyof StateType & string)[];
+}
+
 export type AgentServerOptions<StateType extends object> =
-  StreamAgentServerOptions<StateType>;
+  StreamAgentServerOptions<StateType> & StateKeysOptions<StateType>;
 
 export type CustomAdapterOptions<StateType extends object> =
-  StreamCustomAdapterOptions<StateType>;
+  StreamCustomAdapterOptions<StateType> & StateKeysOptions<StateType>;
 
 export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
-> = StreamUseStreamOptions<StateType>;
+> = AgentServerOptions<StateType> | CustomAdapterOptions<StateType>;
 
 /**
  * Private field on the hook return that carries the
@@ -508,6 +534,7 @@ export function useStream<
     onCompleted?: (info: RunCompletedInfo) => void;
     initialValues?: StateType;
     messagesKey?: string;
+    stateKeys?: readonly (keyof StateType & string)[];
     optimistic?: boolean;
   }
   const asBag = options as OptionsBag;
@@ -621,6 +648,7 @@ export function useStream<
         onCompleted: options.onCompleted,
         initialValues: options.initialValues,
         messagesKey: options.messagesKey,
+        stateKeys: asBag.stateKeys,
         optimistic: asBag.optimistic,
       }),
     };
