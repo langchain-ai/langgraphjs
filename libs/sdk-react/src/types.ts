@@ -47,6 +47,14 @@ export interface UseStreamCommonOptions<
   initialValues?: StateType;
   /** State key holding the message array. Defaults to `"messages"`. */
   messagesKey?: string;
+  /**
+   * The state keys the UI reads. Opening a thread then loads only these and
+   * the {@link messagesKey}, and `values` keeps only them, whether or not the
+   * server honours the narrowed read. `[]` keeps only the messages. Unset
+   * loads the full state. Read when the stream is created.
+   */
+  // `NoInfer`: without a state type, the keys mustn't become the state.
+  stateKeys?: readonly NoInfer<keyof StateType & string>[];
   /** Headless tool implementations, run when the agent interrupts to call one. */
   tools?: AnyHeadlessToolImplementation[];
   /** Called with the lifecycle events of the {@link tools} that run. */

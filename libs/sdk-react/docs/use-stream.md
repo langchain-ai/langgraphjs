@@ -7,6 +7,7 @@ The root hook of `@langchain/react`. Mount it once per thread. It loads the thre
 - [Options](#options)
   - [Common options](#common-options)
   - [Agent Server options](#agent-server-options)
+  - [Loading only some state keys](#loading-only-some-state-keys)
 - [Return values](#return-values)
 - [`submit()`](#submit)
 - [Stopping, answering and loading](#stopping-answering-and-loading)
@@ -30,6 +31,7 @@ Point the hook at an Agent Server with `assistantId` and `apiUrl`, or `assistant
 | `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Called when a run's stream ends, with the reason.                                                                                                                                         |
 | `initialValues` | `StateType`                                                                            | Values to show before the thread's state is read.                                                                                                                                               |
 | `messagesKey`   | `string`                                                                               | The state key that holds the messages. Defaults to `"messages"`.                                                                                                                                |
+| `stateKeys`     | `readonly (keyof StateType & string)[]`                                                | The state keys your UI reads. Opening a thread loads only these and the messages key, and `values` keeps only them. Unset loads the full state. See [Loading only some state keys](#loading-only-some-state-keys). |
 | `tools`         | `HeadlessToolImplementation[]`                                                         | Tools that run in the browser when the agent interrupts to call one. See [Interrupts](./interrupts.md#headless-tools).                                                                         |
 | `onTool`        | `OnToolCallback`                                                                       | Called with the lifecycle events of those tools.                                                                                                                                                |
 | `optimistic`    | `boolean`                                                                              | Show a submit's input at once, before the server answers. Defaults to `true`.                                                                                                                   |
@@ -61,6 +63,27 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `queue`     | `"local"`             | A submit made during a run waits in the page, the only queue there is.                                                     |
 
 The Agent Server options don't compile next to a `transport`.
+
+### Loading only some state keys
+
+Opening a thread loads its whole state. When your UI reads only a few keys, list them in `stateKeys`:
+
+```tsx
+const stream = useStream<typeof agent>({
+  assistantId: "agent",
+  threadId,
+  stateKeys: ["todos"],
+});
+```
+
+- The thread's state is read with `select` for `values.todos` and `values.messages`, plus the fields the hook reads itself: the checkpoint and its parent, `next`, `tasks` (interrupts and task errors), `metadata` and creation time.
+- The messages key (`messagesKey`) is always loaded. `stateKeys: []` loads only the messages.
+- `values` and `useValues(stream)` keep only `todos`, `messages` and a run's pending interrupts: after the thread loads, while a run streams, in a submit's optimistic values and in `initialValues`. A server that ignores `select`, such as the JS Agent Server or Python `langgraph-api` before 0.19, returns the full state, and `values` is narrowed the same way.
+- The type of `values` stays the full state, so reading a key you didn't list compiles but gives `undefined`.
+- A submit still sends every input key to the run. Keys you didn't list just don't show.
+- Subagents' and subgraphs' values, through the [selector hooks](./selectors.md) with a target, are not narrowed.
+- With a custom transport nothing is loaded, and only the streamed and optimistic values are narrowed.
+- `stateKeys` is read once, when the stream is created, so an inline array is fine.
 
 ## Return values
 

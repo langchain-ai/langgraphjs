@@ -197,6 +197,15 @@ export interface StreamManagerOptions {
    * Framework SDKs pass `toMessageClass` (identity) to keep class instances.
    */
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+
+  /**
+   * Narrows the root values before they are shown: every write of the
+   * stream's values goes through it, whether from a `values` event, a
+   * `messages` event, a callback's `mutate` or a stop.
+   *
+   * @internal The orchestrators' `stateKeys`.
+   */
+  pickValues?: <V extends Record<string, unknown>>(values: V) => V;
 }
 
 export class StreamManager<
@@ -216,6 +225,8 @@ export class StreamManager<
   private filterSubagentMessages: boolean;
 
   private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
+
+  private pickValues: <V extends Record<string, unknown>>(values: V) => V;
 
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -242,6 +253,7 @@ export class StreamManager<
     this.throttle = options.throttle;
     this.filterSubagentMessages = options.filterSubagentMessages ?? false;
     this.toMessage = options.toMessage ?? toMessageDict;
+    this.pickValues = options.pickValues ?? ((values) => values);
     this.subagentManager = new SubagentManager({
       subagentToolNames: options.subagentToolNames,
       onSubagentChange: () => this.bumpVersion(),
@@ -577,14 +589,12 @@ export class StreamManager<
       | ((prev: StateType | null, kind: "stream" | "stop") => StateType | null),
     kind: "stream" | "stop" = "stream"
   ) => {
-    if (typeof values === "function") {
-      const [prevValues, prevKind] = this.state.values ?? [null, "stream"];
-      const nextValues = values(prevValues, prevKind);
-      this.setState({ values: nextValues != null ? [nextValues, kind] : null });
-    } else {
-      const nextValues = values != null ? [values, kind] : null;
-      this.setState({ values: nextValues as [StateType, "stream" | "stop"] });
-    }
+    const [prevValues, prevKind] = this.state.values ?? [null, "stream"];
+    const nextValues =
+      typeof values === "function" ? values(prevValues, prevKind) : values;
+    this.setState({
+      values: nextValues != null ? [this.pickValues(nextValues), kind] : null,
+    });
   };
 
   private getMutateFn = (kind: "stream" | "stop", historyValues: StateType) => {

@@ -596,6 +596,50 @@ describe("UseStreamOptions — the Agent Server's options", () => {
   });
 });
 
+describe("UseStreamOptions — stateKeys", () => {
+  test("takes the state's keys, also as a readonly tuple", () => {
+    useStream<BedtimeState>({ assistantId: "agent", stateKeys: ["theme"] });
+    useStream<BedtimeState>({
+      assistantId: "agent",
+      stateKeys: ["theme", "paragraphs"] as const,
+    });
+    useStream<BedtimeState>({ assistantId: "agent", stateKeys: [] });
+  });
+
+  test("rejects a key the state doesn't have", () => {
+    useStream<BedtimeState>({
+      assistantId: "agent",
+      // @ts-expect-error `colour` isn't a key of BedtimeState
+      stateKeys: ["colour"],
+    });
+  });
+
+  test("takes any string when the state type is unknown, without inferring the state from it", () => {
+    const s = useStream({ assistantId: "agent", stateKeys: ["todos"] });
+    expectTypeOf(s.values).toEqualTypeOf<Record<string, unknown>>();
+    expectTypeOf(s.submit).toBeCallableWith({ messages: [], files: [] });
+  });
+
+  test("works with a custom transport too", () => {
+    expectTypeOf<{
+      transport: CustomTransportOptions<BedtimeState>["transport"];
+      stateKeys: ["theme"];
+    }>().toExtend<UseStreamOptions<BedtimeState>>();
+    expectTypeOf<{
+      transport: CustomTransportOptions<BedtimeState>["transport"];
+      stateKeys: ["colour"];
+    }>().not.toExtend<UseStreamOptions<BedtimeState>>();
+  });
+
+  test("leaves the type of values whole", () => {
+    const s = useStream<BedtimeState>({
+      assistantId: "agent",
+      stateKeys: ["theme"],
+    });
+    expectTypeOf(s.values).toEqualTypeOf<BedtimeState>();
+  });
+});
+
 describe("UseStreamOptions — a custom transport's options", () => {
   type Transport = CustomTransportOptions<BedtimeState>["transport"];
 

@@ -1105,4 +1105,38 @@ describe("CustomStreamOrchestrator", () => {
       expect(listener).not.toHaveBeenCalled();
     });
   });
+
+  describe("stateKeys", () => {
+    it("narrows initialValues, optimistic values and a run's streamed values", async () => {
+      const { transport, open } = gatedTransport([
+        {
+          event: "values",
+          data: { messages: [human("h1", "hi")], count: 2, files: ["a.txt"] },
+        },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          stateKeys: ["count"],
+          initialValues: { messages: [], count: 0, files: [] } as TestState,
+        })
+      );
+      expect(orch.values).toEqual({ messages: [], count: 0 });
+
+      const run = orch.submit({
+        messages: [human("h1", "hi")],
+        files: ["b.txt"],
+      } as TestState);
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalled());
+      expect(transport.stream.mock.calls[0][0].input).toMatchObject({
+        files: ["b.txt"],
+      });
+      expect(Object.keys(orch.values).sort()).toEqual(["count", "messages"]);
+
+      open();
+      await run;
+      expect(orch.values).toEqual({ messages: [human("h1", "hi")], count: 2 });
+      orch.dispose();
+    });
+  });
 });

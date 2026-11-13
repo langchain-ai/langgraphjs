@@ -8,6 +8,7 @@ import {
   useMessageMetadata,
   useMessages,
   useSubmissionQueue,
+  useValues,
 } from "./selectors.js";
 import { engineOf, subscribeScope } from "./use-scoped.js";
 import { useSuspenseStream } from "./suspense-stream.js";
@@ -281,4 +282,26 @@ it("says what to pass when a selector hook gets something that isn't a stream", 
   expect(() => engineOf({} as never)).toThrow(
     "pass the selector hooks the result of useStream or useSuspenseStream"
   );
+});
+
+it("doesn't narrow a subagent's values to the root's stateKeys", async () => {
+  const server = subagentThread();
+  server.history.set("tools:abc", {
+    messages: [human("s1", "look")],
+    notes: ["tires"],
+  });
+  const { result } = await renderHook(() => {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: [],
+    });
+    return useValues<{ notes?: string[] }>(
+      stream,
+      stream.subagents.get("call-1")
+    );
+  });
+
+  await expect.poll(() => result.current?.notes).toEqual(["tires"]);
 });

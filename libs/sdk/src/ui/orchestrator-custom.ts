@@ -20,6 +20,7 @@ import {
 } from "./interrupts.js";
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import { pickStateKeys } from "./state-keys.js";
 import type { StreamEngine } from "./engine.js";
 import {
   watchRunEvent,
@@ -179,9 +180,15 @@ export class CustomStreamOrchestrator<
       subagentToolNames: options.subagentToolNames,
       filterSubagentMessages: options.filterSubagentMessages,
       toMessage: options.toMessage ?? toMessageClass,
+      pickValues: (values) =>
+        pickStateKeys(values, options.stateKeys, this.#messagesKey),
     });
 
-    this.#baseValues = options.initialValues ?? ({} as StateType);
+    this.#baseValues = pickStateKeys(
+      options.initialValues ?? ({} as StateType),
+      options.stateKeys,
+      this.#messagesKey
+    );
 
     this.#streamUnsub = this.stream.subscribe(() => {
       this.#flushPendingHeadlessToolInterrupts();
@@ -322,14 +329,18 @@ export class CustomStreamOrchestrator<
   }
 
   #getMessages = (value: StateType): Message[] => {
-    const messagesKey = this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
+    const messagesKey = this.#messagesKey;
     return Array.isArray(value[messagesKey])
       ? (value[messagesKey] as Message[])
       : [];
   };
 
+  get #messagesKey(): string {
+    return this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
+  }
+
   #setMessages = (current: StateType, messages: Message[]): StateType => {
-    const messagesKey = this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY;
+    const messagesKey = this.#messagesKey;
     return { ...current, [messagesKey]: messages };
   };
 
@@ -589,10 +600,7 @@ export class CustomStreamOrchestrator<
     const shown =
       this.#options.optimistic !== false &&
       submitOptions?.optimisticValues == null
-        ? prepareSubmitInput(
-            values,
-            this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
-          )
+        ? prepareSubmitInput(values, this.#messagesKey)
         : undefined;
     let usableThreadId: string | undefined;
     let runId: string | undefined;
@@ -760,11 +768,7 @@ export class CustomStreamOrchestrator<
       null,
       {
         config: options.config,
-        command: resumeCommand(
-          responses,
-          options,
-          this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
-        ),
+        command: resumeCommand(responses, options, this.#messagesKey),
         onError: (error) => {
           failed ??= { error };
         },
