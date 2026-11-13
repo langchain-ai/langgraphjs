@@ -89,7 +89,7 @@ Use the [selector hooks](./selectors.md).
 
 ### Custom adapters
 
-`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions` are gone. A custom backend passes `transport: { stream(payload) }`, to `useStream` or `StreamProvider`, and returns the same stream the Agent Server sends. See [Custom transports](./custom-transport.md).
+`AgentServerAdapter`, `HttpAgentServerAdapter`, `HttpAgentServerAdapterOptions`, `CustomAdapterOptions` and `StreamProviderCustomProps` are gone. A custom backend passes `transport: { stream(payload) }`, to `useStream` or `StreamProvider`, and returns the same stream the Agent Server sends. See [Custom transports](./custom-transport.md).
 
 ### `getThread()`
 
@@ -103,14 +103,14 @@ Use the [selector hooks](./selectors.md).
 
 ### A message sent during a run waits
 
-- **1.x:** a submit while a run streamed interrupted that run.
-- **2.0:** it waits in the queue and runs when the current run ends. Nothing is cut short, and the message shows in `useSubmissionQueue` until its run starts.
+- **1.x:** a submit while a run streamed stopped that run and started the new one: its default `multitaskStrategy` was `"interrupt"`.
+- **2.0:** it waits in a queue, the server's by default or this tab's with `queue: "local"`, and runs when the current run ends. Nothing is cut short, and the message shows in `useSubmissionQueue` until its run starts.
 - **Back:** pass `multitaskStrategy: "interrupt"` on that submit. The server then stops the current run mid-step and cancels the runs queued on the thread. A tool call the agent had started can be left without its result.
 
 ### The queue lives on the server
 
-- **1.x:** a queued submit waited in the page.
-- **2.0:** it is a run in the server's queue, so a queued message, and an answer given during a run, survives a reload and shows in other tabs. `cancel()` and `clear()` cancel those runs. After a reload, the queue lists the thread's pending runs.
+- **1.x:** a submit queued with `multitaskStrategy: "enqueue"` waited in the page, unless you set `queue: "server"`.
+- **2.0:** a queued submit is a run in the server's queue, so a queued message, and an answer given during a run, survives a reload and shows in other tabs. `cancel()` and `clear()` cancel those runs. After a reload, the queue lists the thread's pending runs.
 - **Back:** `useStream({ queue: "local" })`.
 
 ### `stop()` also cancels runs this page didn't start
@@ -159,6 +159,11 @@ Use the [selector hooks](./selectors.md).
 - **2.0:** it throws when the thread fails to load. A run's error stays in `error`, so the conversation stays on screen.
 - **Back:** `if (stream.error) throw stream.error;` in your component.
 
+### A server render reads nothing
+
+- **1.x:** a server render, in Next.js and the like, read the thread on the server, without the user's cookies or auth.
+- **2.0:** it reads nothing. `useStream` shows the thread loading, `useSuspenseStream` renders its Suspense fallback, and the browser reads the thread after hydration.
+
 ### `values.messages` streams token by token
 
 - **1.x:** `values[messagesKey]` changed once per step, while `messages` streamed tokens.
@@ -192,13 +197,16 @@ Use the [selector hooks](./selectors.md).
 - `lifecycle` has the events of subagents and subgraphs, and one event when a run ends: `completed`, `interrupted` or `failed`. No event says a run started.
 - `custom` gives `{ payload }`, where `payload` is what the graph wrote.
 - `params.timestamp` is when the page received the event.
+- Events have no `type`, `event_id` or `seq`, and `params` has no `node`. A `messages` event's metadata names the node as `langgraph_node`.
 - In `useChannelEffect`, an `onEvent` that throws is logged with `console.error` when there is no `onError`. 1.x dropped it.
 
 ## What's new
 
 - `stream.hydrate(threadId?)` loads a thread, or reads the current one again, and joins its running run.
 - `submit()` takes `command`, `interruptBefore` and `interruptAfter`.
-- The selector hooks accept a `useSuspenseStream` result.
+- The selector hooks accept a `useSuspenseStream` result, and `StreamLike` types a helper that takes either kind of stream.
+- With a typed agent (`useStream<typeof agent>`), `useValues` and `useSubmissionQueue` give the agent's state. 1.x typed it as the agent itself.
+- `useStreamContext` takes the interrupt and `configurable` types, as `useStream` does.
 - Callbacks (`onThreadId`, `onCreated`, `onCompleted`, `onTool` and the reconnect callbacks) are read from the latest render, so they see current state. 1.x kept the first render's.
 - `submit`, `stop`, `respond` and the stream's other functions keep their identity across renders.
 - `defaultHeaders` and `callerOptions` are compared by entry, so an inline object keeps the client while its values stay the same. 1.x built a new client for each new object. A function written inline in `callerOptions` still builds one on every render.
@@ -214,10 +222,12 @@ Use the [selector hooks](./selectors.md).
 
 ## Types
 
-- Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions`.
+- Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions`, `CustomAdapterOptions` and `StreamProviderCustomProps`.
+- `stream.subagents` is keyed by `string`, the `task` tool call's id, as it was at runtime in 1.x, whose types said the keys were subagent names. To find a subagent by name, read its `name` field.
+- `submit()`'s `signal` and `respond()`'s `namespace` are deprecated and do nothing. Stop a run with `stop()`. An interrupt's `interruptId` is enough to answer it.
 - `Channel` and `Event` are `@langchain/react`'s own types for 2.0's channels, not `@langchain/protocol`'s.
 - `stream[STREAM_CONTROLLER]` is internal, and holds 2.0's engine, a `StreamOrchestrator`, instead of 1.x's `StreamController`, so code that read its members, such as `registry`, has to change. Its `hydrate()` is the same as `stream.hydrate()`.
-- New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions` and `StreamThread`.
+- New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions`, `StreamLike` and `StreamThread`.
 
 ## Coming from 0.x
 

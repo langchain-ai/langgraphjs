@@ -32,7 +32,7 @@ The same works for `useStreamContext<typeof agent>()` and for `useToolCalls`:
 const toolCalls = useToolCalls<typeof agent>(stream);
 ```
 
-For the main conversation's state, read `stream.values`, which is typed from the agent.
+`stream.values` and `useValues(stream)` are the agent's state.
 
 ## Plain state types
 
@@ -56,11 +56,11 @@ const stream = useStream<MyState, { question: string }>({
 ## Passing the stream down
 
 - **`UseStreamReturn<T>`** is the stream typed for `T`. Use it when the child reads the typed state or tool calls.
-- **`AnyStream`** accepts any stream. Use it when the child only passes the stream to selector hooks.
+- **`StreamLike`** accepts any `useStream` or `useSuspenseStream` result. Use it when the child only passes the stream to selector hooks.
 
 ```tsx
 import type {
-  AnyStream,
+  StreamLike,
   SubgraphDiscoverySnapshot,
   UseStreamReturn,
 } from "@langchain/react";
@@ -74,7 +74,7 @@ function SubgraphCard({
   stream,
   subgraph,
 }: {
-  stream: AnyStream;
+  stream: StreamLike;
   subgraph: SubgraphDiscoverySnapshot;
 }) {
   // stream only feeds the selector hooks, so it needs no type parameter
