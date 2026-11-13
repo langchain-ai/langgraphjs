@@ -749,7 +749,9 @@ export class StreamOrchestrator<
       this.#load = undefined;
       // No stream ran during the load, so no run has answered its calls since.
       if (current.idle && this.stream.epoch === current.epoch) {
-        this.#flushHeadToolCalls(this.#history.data?.at(0));
+        const head = this.#history.data?.at(0);
+        if (this.#active) this.#flushHeadToolCalls(head);
+        else this.#heldTools = head;
       }
       this.#notify();
     });
@@ -832,7 +834,7 @@ export class StreamOrchestrator<
       // the run's last steps.
       await this.#mutate(threadId, { quiet: true });
     }
-    this.#drainQueue();
+    if (this.#active) this.#drainQueue();
   }
 
   /** Adds the server's queued runs this queue doesn't hold yet, oldest first. */
@@ -2186,7 +2188,6 @@ export class StreamOrchestrator<
 
   #drainQueue(): void {
     if (
-      this.#active &&
       !this.#disposed &&
       !this.isLoading &&
       !this.#submitting &&
@@ -2492,7 +2493,10 @@ export class StreamOrchestrator<
    * site's effect and return the result as the effect's cleanup. The
    * returned release disposes on the next macrotask, unless another
    * `activate()` comes first, as on StrictMode's remount. The thread watcher
-   * (`watchThread`) runs only between the first `activate()` and dispose.
+   * (`watchThread`) runs only between the first `activate()` and dispose. A
+   * thread load before the first `activate()` reads the thread and holds what
+   * it finds until then: the running run's join, the head's headless tool
+   * calls and the server's queued runs.
    */
   activate(): () => void {
     clearTimeout(this.#pendingDispose);
@@ -2800,10 +2804,6 @@ export class StreamOrchestrator<
   }
 
   #flushHeadToolCalls(head: ThreadState<StateType> | undefined): void {
-    if (!this.#active) {
-      this.#heldTools = head;
-      return;
-    }
     // Thread state values never carry `__interrupt__`; a pending call is in
     // the head's tasks.
     this.#flushPendingHeadlessToolInterrupts({

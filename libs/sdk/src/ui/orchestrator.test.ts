@@ -3083,6 +3083,41 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("an engine never activated still sends a submit made during its run once the run ends", async () => {
+      const ended = deferred();
+      mockRunStream(undefined, { ended: ended.promise });
+      const orch = inactive({ queue: "local" });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      void orch.submit({ messages: [] });
+      ended.resolve();
+
+      await vi.waitFor(() =>
+        expect(client.runs.stream).toHaveBeenCalledTimes(2)
+      );
+      orch.dispose();
+    });
+
+    it("an engine never activated runs the tool calls its run's last read shows", async () => {
+      const tool = weatherTool();
+      (client.threads.getState as Mock)
+        .mockResolvedValueOnce(breakpointHead)
+        .mockResolvedValueOnce(breakpointHead)
+        .mockResolvedValue(toolHead);
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = inactive({ tools: [tool] });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await orch.submit({ messages: [] });
+
+      await vi.waitFor(() => expect(tool.execute).toHaveBeenCalledOnce());
+      orch.dispose();
+    });
+
     it("a thread switch before activate() drops the join a load held", async () => {
       (client.threads.getState as Mock).mockResolvedValueOnce(breakpointHead);
       listRuns([{ run_id: "run-9" }]);
