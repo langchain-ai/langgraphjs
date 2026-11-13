@@ -19,7 +19,13 @@ import {
   valuesInterrupts,
 } from "./interrupts.js";
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
-import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import {
+  prepareSubmitInput,
+  restoreKeys,
+  runStartValues,
+  snapshotKeys,
+  type OptimisticKeySnapshot,
+} from "./optimistic-input.js";
 import type { StreamEngine } from "./engine.js";
 import {
   watchRunEvent,
@@ -599,20 +605,24 @@ export class CustomStreamOrchestrator<
     let runSignal: AbortSignal | undefined;
     const watch: RunWatch = {};
     let ended: RunEndReason | undefined;
+    let shownKeys: OptimisticKeySnapshot[] = [];
+    let sentValues = false;
 
     await this.stream.start(
       async (signal: AbortSignal) => {
         runSignal = signal;
         // Set as the run starts, so a submit waiting behind a run doesn't
         // change what that run shows.
-        this.stream.setStreamValues(() =>
-          runStartValues(
-            { ...this.#baseValues, ...this.stream.values },
+        this.stream.setStreamValues(() => {
+          const current = { ...this.#baseValues, ...this.stream.values };
+          shownKeys = snapshotKeys(current, shown);
+          return runStartValues(
+            current,
             shown,
             submitOptions?.optimisticValues,
             { get: this.#getMessages, set: this.#setMessages }
-          )
-        );
+          );
+        });
 
         usableThreadId =
           this.#threadId ?? submitOptions?.threadId ?? crypto.randomUUID();
@@ -665,6 +675,13 @@ export class CustomStreamOrchestrator<
           // StreamManager calls neither onSuccess nor onError for an abort,
           // or for an AbortError or TimeoutError of the transport's own.
           const reason = ended ?? (runSignal?.aborted ? "stopped" : "error");
+          // A run that ends without values almost always ended before saving
+          // its input. A stopped one may have saved it.
+          if (reason !== "stopped" && !sentValues && shownKeys.length > 0) {
+            this.stream.setStreamValues(
+              (current) => current && restoreKeys(current, shownKeys)
+            );
+          }
           // As on an Agent Server: a subagent can't finish once its run has.
           if (reason === "error" || reason === "stopped") {
             this.stream.closeOpenSubagents(`The run ended: ${reason}`);
@@ -675,6 +692,7 @@ export class CustomStreamOrchestrator<
         },
         onEvent: (event, data) => {
           watchRunEvent(watch, event, data);
+          if (event === "values") sentValues = true;
           // A run sends `metadata` once per attempt, with the same id.
           if (event === "metadata" && runId == null) {
             const { run_id: id } = (data ?? {}) as { run_id?: unknown };
