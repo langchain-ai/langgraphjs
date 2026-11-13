@@ -1277,6 +1277,23 @@ export class FileSystemThreads implements ThreadsRepo {
   };
 }
 
+// Each run picks its own start checkpoint. Kept on the thread, a fork's
+// checkpoint_id would make every later run on that thread fork from it again.
+const RUN_ONLY_CONFIGURABLE_KEYS = [
+  "checkpoint_id",
+  "checkpoint_ns",
+  "checkpoint_map",
+  "run_id",
+];
+
+const threadConfigurable = (
+  ...sources: RunnableConfig["configurable"][]
+): NonNullable<RunnableConfig["configurable"]> => {
+  const configurable = Object.assign({}, ...sources);
+  for (const key of RUN_ONLY_CONFIGURABLE_KEYS) delete configurable[key];
+  return configurable;
+};
+
 export class FileSystemRuns implements RunsRepo {
   private readonly conn: FileSystemPersistence<Store>;
   private readonly threads: FileSystemThreads;
@@ -1444,8 +1461,7 @@ export class FileSystemRuns implements RunsRepo {
             ...metadata,
           },
           config: Object.assign({}, assistant.config, config, {
-            configurable: Object.assign(
-              {},
+            configurable: threadConfigurable(
               assistant.config?.configurable,
               config?.configurable
             ),
@@ -1468,8 +1484,7 @@ export class FileSystemRuns implements RunsRepo {
             existingThread.config,
             config,
             {
-              configurable: Object.assign(
-                {},
+              configurable: threadConfigurable(
                 assistant.config?.configurable,
                 existingThread?.config?.configurable,
                 config?.configurable
@@ -1499,7 +1514,7 @@ export class FileSystemRuns implements RunsRepo {
       const configurable = Object.assign(
         {},
         assistant.config?.configurable,
-        existingThread?.config?.configurable,
+        threadConfigurable(existingThread?.config?.configurable),
         config?.configurable,
         {
           run_id: runId,
@@ -1521,13 +1536,21 @@ export class FileSystemRuns implements RunsRepo {
         metadata
       );
 
+      // A run that cancels the runs in flight replaces them, so refusing its
+      // answer would stop the agent mid-turn: it never resumes strictly.
+      const { strict_resume: strictResume, ...runKwargs } = kwargs;
+      const cancelsInflight =
+        (multitaskStrategy === "interrupt" ||
+          multitaskStrategy === "rollback") &&
+        inflightRuns.length > 0;
+
       const newRun: Run = {
         run_id: runId,
         thread_id: threadId!,
         assistant_id: assistantId,
         metadata: mergedMetadata,
         status: status,
-        kwargs: Object.assign({}, kwargs, {
+        kwargs: Object.assign({}, runKwargs, {
           config: Object.assign(
             {},
             assistant.config,
@@ -1539,10 +1562,7 @@ export class FileSystemRuns implements RunsRepo {
             typeof assistant.context !== "object" && assistant.context != null
               ? (assistant.context ?? kwargs.context)
               : Object.assign({}, assistant.context, kwargs.context),
-          cancels_inflight:
-            (multitaskStrategy === "interrupt" ||
-              multitaskStrategy === "rollback") &&
-            inflightRuns.length > 0,
+          ...(strictResume && !cancelsInflight ? { strict_resume: true } : {}),
         }),
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),
@@ -1649,8 +1669,8 @@ export class FileSystemRuns implements RunsRepo {
   }
 
   async join(runId: string, threadId: string, auth: AuthContext | undefined) {
-    // check if thread exists
-    await this.threads.get(threadId, auth);
+    const run = await this.get(runId, threadId, auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
 
     const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;

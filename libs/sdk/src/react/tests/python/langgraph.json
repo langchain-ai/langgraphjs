@@ -1,0 +1,11 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./graphs.py:agent",
+    "parentAgent": "./graphs.py:parent_agent",
+    "interruptAgent": "./graphs.py:interrupt_agent",
+    "removeMessageAgent": "./graphs.py:remove_message_agent",
+    "errorAgent": "./graphs.py:error_agent",
+    "deepAgent": "./graphs.py:deep_agent"
+  }
+}

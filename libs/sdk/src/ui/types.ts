@@ -1338,6 +1338,12 @@ export interface SubmitOptions<
   interruptAfter?: "*" | string[];
   metadata?: Metadata;
   multitaskStrategy?: MultitaskStrategy;
+  /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it.
+   */
+  strictResume?: boolean;
   onCompletion?: OnCompletionBehavior;
   onDisconnect?: DisconnectMode;
   feedbackKeys?: string[];
@@ -1461,6 +1467,12 @@ export type AnyStreamCustomOptions<
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
   tools?: AnyHeadlessToolImplementation[];
   onTool?: OnToolCallback;
+  /**
+   * Show a submit's input at once, unless this is `false`: its messages,
+   * with ids minted for the ones without, and its other keys. A submit with
+   * its own `optimisticValues` shows only those.
+   */
+  optimistic?: boolean;
 };
 
 export type CustomSubmitOptions<

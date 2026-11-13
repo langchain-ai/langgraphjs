@@ -1,7 +1,10 @@
 import type { LangChainTracer } from "@langchain/core/tracers/tracer_langchain";
 import { Checkpoint, Config, Metadata } from "./schema.js";
 import { StreamMode } from "./types.stream.js";
-import type { IdleReconnectMode } from "./utils/stream.js";
+import type {
+  IdleReconnectMode,
+  StreamReconnectOptions,
+} from "./utils/stream.js";
 
 export type ServerRuntime<Context = unknown> =
   | {
@@ -167,6 +170,14 @@ export interface RunsInvokePayload {
   command?: Command;
 
   /**
+   * Refuse a resume that answers an interrupt that isn't waiting, instead of
+   * ignoring the answer: the run fails with `UnknownInterruptError` and the
+   * thread stays as it was. A server without strict resume ignores it; the
+   * Agent Server reports it in `/info`.
+   */
+  strictResume?: boolean;
+
+  /**
    * Callback when a run is created.
    */
   onRunCreated?: (params: { run_id: string; thread_id?: string }) => void;
@@ -181,7 +192,8 @@ export interface RunsInvokePayload {
 export interface RunsStreamPayload<
   TStreamMode extends StreamMode | StreamMode[] = [],
   TSubgraphs extends boolean = false,
-> extends RunsInvokePayload {
+>
+  extends RunsInvokePayload, StreamReconnectOptions {
   /**
    * One of `"values"`, `"messages"`, `"messages-tuple"`, `"updates"`, `"events"`, `"debug"`, `"custom"`.
    */
@@ -195,7 +207,7 @@ export interface RunsStreamPayload<
   /**
    * Stream only these namespaces of the run (`""` is the root graph), each
    * without the subagents it starts. Servers without the `stream_namespaces`
-   * flag in `/info` ignore it and send every event.
+   * flag in `/info` send every event, and the client drops the others.
    */
   streamNamespaces?: string[];
 
@@ -326,7 +338,10 @@ export interface CronsUpdatePayload extends RunsInvokePayload {
   enabled?: boolean;
 }
 
-export interface RunsWaitPayload extends RunsStreamPayload {
+export interface RunsWaitPayload extends Omit<
+  RunsStreamPayload,
+  keyof StreamReconnectOptions
+> {
   /**
    * Raise errors returned by the run. Default is `true`.
    */

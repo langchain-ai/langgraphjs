@@ -11,6 +11,22 @@ export interface RunCommand {
   resume?: unknown;
 }
 
+// LangGraph resumes interrupts by id only when every key of the resume map
+// has this shape; any other key makes the whole map one answer.
+const INTERRUPT_ID_RE = /^[0-9a-f]{32}$/;
+
+/**
+ * Whether LangGraph resumes `value` per interrupt rather than as one answer.
+ */
+export const isKeyedByInterruptId = (
+  value: unknown
+): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value != null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length > 0 &&
+  Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
+
 export const getLangGraphCommand = (command: RunCommand) => {
   const goto =
     command.goto != null && !Array.isArray(command.goto)

@@ -1,5 +1,42 @@
 # @langchain/langgraph
 
+## 1.7.4
+
+### Patch Changes
+
+- Updated dependencies [[`c3c2c56`](https://github.com/langchain-ai/langgraphjs/commit/c3c2c56b6b1eaaa2f2338cded1f2ff501169e646), [`7c28214`](https://github.com/langchain-ai/langgraphjs/commit/7c28214376f5bc7bb88903130e066f08dec7ea21), [`f9bad09`](https://github.com/langchain-ai/langgraphjs/commit/f9bad0936380e2cabb9614ad3220bfe6f01ea98e), [`3f15c7c`](https://github.com/langchain-ai/langgraphjs/commit/3f15c7cddf8832c841cdbd0db74f7218f747f1cf), [`c354854`](https://github.com/langchain-ai/langgraphjs/commit/c354854a9afd835837dad53d8443be944e9c400a), [`13c9590`](https://github.com/langchain-ai/langgraphjs/commit/13c9590a75bad3d0f653b22ec8dca5c344014d8d), [`bd2c46c`](https://github.com/langchain-ai/langgraphjs/commit/bd2c46c3a8167f1e71357ca59a26f9944d49ed44), [`6aec378`](https://github.com/langchain-ai/langgraphjs/commit/6aec378fdc74450f225482f61d865ad0951ce082), [`bbbc710`](https://github.com/langchain-ai/langgraphjs/commit/bbbc710910925151c9764e0041b5ef16490073b1), [`1adb1ec`](https://github.com/langchain-ai/langgraphjs/commit/1adb1ec6f6ae9ec7e4a7e66131309007211c2992), [`737e53b`](https://github.com/langchain-ai/langgraphjs/commit/737e53b1d8f613e8844764b0f2f7c012e548a15c), [`eb174a8`](https://github.com/langchain-ai/langgraphjs/commit/eb174a85b006c3b71626c9fb1edd2b4fdbd2cbbe), [`679a50f`](https://github.com/langchain-ai/langgraphjs/commit/679a50ff435cd1deb8482415c60d3a86e1e66f3a), [`75297cb`](https://github.com/langchain-ai/langgraphjs/commit/75297cbffc1eeb95ec183d82decf7c3f324cc54d), [`e2e196e`](https://github.com/langchain-ai/langgraphjs/commit/e2e196e9122bd56abfa2279c93763453da6e8b76), [`d685e95`](https://github.com/langchain-ai/langgraphjs/commit/d685e95fbd025de69d7a51bce5b45e7ead724b61), [`c8a9c7d`](https://github.com/langchain-ai/langgraphjs/commit/c8a9c7de5f2c57362094815ab3024e133834ee91)]:
+  - @langchain/langgraph-sdk@1.16.0
+
+## 1.7.3
+
+### Patch Changes
+
+- [#3308](https://github.com/langchain-ai/langgraphjs/pull/3308) [`c6874b4`](https://github.com/langchain-ai/langgraphjs/commit/c6874b4095a5c3d2d12512cb90999d9e4f36eeb0) Thanks [@richardscarrott](https://github.com/richardscarrott)! - match whole namespace segments in `getSubgraphs` and `getSubgraphsAsync`, so a `namespace` such as `research_review` no longer also yields `research|review`, and yield a namespace's subgraph once when a node declares several `subgraphs`
+
+- [#3090](https://github.com/langchain-ai/langgraphjs/pull/3090) [`3944b75`](https://github.com/langchain-ai/langgraphjs/commit/3944b75c9344ce5703c12d8144c6b9168057da59) Thanks [@OsamaAnsar](https://github.com/OsamaAnsar)! - Stop the run when a consumer breaks out of a `for await` loop over `graph.stream()` or `graph.streamEvents()`, or cancels the stream's reader. Only an explicit `stream.cancel()` aborted the run before; breaking out of the loop left the remaining nodes running in the background.
+
+## 1.7.2
+
+### Patch Changes
+
+- [#3258](https://github.com/langchain-ai/langgraphjs/pull/3258) [`585b78b`](https://github.com/langchain-ai/langgraphjs/commit/585b78bbc8249014c6d092ff0e38699679b33034) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `getState` and `getStateHistory` report the `result` of a task that was interrupted and then resumed. The task's interrupt write stays on the checkpoint after it finishes, and that hid the result, so a node with human-in-the-loop never showed what it returned in history. A task that failed after writing some output now reports that output as its `result` too, as in Python. A task still paused at an interrupt keeps `result: undefined`.
+- Updated dependencies [[`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9), [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95), [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5)]:
+  - @langchain/langgraph-sdk@1.15.0
+
+## 1.7.1
+
+### Patch Changes
+
+- [#3241](https://github.com/langchain-ai/langgraphjs/pull/3241) [`49f86a7`](https://github.com/langchain-ai/langgraphjs/commit/49f86a7a3baa401281de836e5fa713185655e9b3) Thanks [@eliornl](https://github.com/eliornl)! - feat(langgraph): add `isUnknownInterruptError`, which matches the error by name like `isGraphInterrupt`, so it also recognizes an `UnknownInterruptError` thrown by another copy of `@langchain/langgraph`
+
+- [#3247](https://github.com/langchain-ai/langgraphjs/pull/3247) [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a) Thanks [@eliornl](https://github.com/eliornl)! - chore: depend on @langchain/protocol 0.0.21, which types `input.answered`, and map `input.answered` to the `input` channel in `inferChannel`. `input` subscribers now get `input.answered` as well as `input.requested`, so code that reads `data.interrupt_id` should check `event.method` first.
+
+- [#3218](https://github.com/langchain-ai/langgraphjs/pull/3218) [`ad73c37`](https://github.com/langchain-ai/langgraphjs/commit/ad73c37142bc5f7bec3b78819edd7ab72874c13e) Thanks [@eliornl](https://github.com/eliornl)! - Task results in the `tasks` and `debug` stream modes carry the task's `error` (`null` when it succeeded), as they do in Python, so a failed task no longer looks completed.
+
+- [#3226](https://github.com/langchain-ai/langgraphjs/pull/3226) [`429accb`](https://github.com/langchain-ai/langgraphjs/commit/429accb738ab24d7b96f281d8ee0861f5e98e571) Thanks [@eliornl](https://github.com/eliornl)! - docs(langgraph): `UnknownInterruptError` says each `interrupt()` call in a task has its own id
+- Updated dependencies [[`c7861c1`](https://github.com/langchain-ai/langgraphjs/commit/c7861c127acf981a01b1745690018f942e1226ba), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa), [`ebf99fe`](https://github.com/langchain-ai/langgraphjs/commit/ebf99fe6a403cb119d36d117cfc82b9111c8111b), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`fe93dbe`](https://github.com/langchain-ai/langgraphjs/commit/fe93dbed0ea371a0a9b6c7fdf33fa458ff1900fa)]:
+  - @langchain/langgraph-sdk@1.14.0
+
 ## 1.7.0
 
 ### Minor Changes

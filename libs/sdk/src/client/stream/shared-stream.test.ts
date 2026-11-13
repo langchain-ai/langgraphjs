@@ -39,6 +39,30 @@ describe("ThreadStream (SSE shared stream)", () => {
     await thread.close();
   });
 
+  it("reopens the lifecycle watcher after the transport gave up on it", async () => {
+    const transport = new MockSseTransport();
+    const thread = new ThreadStream(transport, { assistantId: "a" });
+
+    thread.startLifecycleWatcher();
+    await flush();
+    thread.startLifecycleWatcher();
+    await flush();
+    expect(transport.totalStreamCount).toBe(1);
+
+    transport.failStream(0, new Error("reconnect attempts exhausted"));
+    await flush();
+    thread.startLifecycleWatcher();
+    await flush();
+
+    expect(transport.totalStreamCount).toBe(2);
+    expect(transport.activeStreamCount).toBe(1);
+    expect(new Set(transport.lastFilter!.channels)).toEqual(
+      new Set(["lifecycle", "input"])
+    );
+
+    await thread.close();
+  });
+
   it("rotates when a subscribe widens the channel union", async () => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });

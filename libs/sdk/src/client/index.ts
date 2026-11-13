@@ -1,11 +1,17 @@
-import { DefaultValues } from "../schema.js";
-import { type ClientConfig } from "./base.js";
+import type { DefaultValues, ServerInfo } from "../schema.js";
+import { BaseClient, type ClientConfig } from "./base.js";
 import { AssistantsClient } from "./assistants/index.js";
 import { ThreadsClient } from "./threads/index.js";
 import { RunsClient } from "./runs/index.js";
 import { CronsClient } from "./crons/index.js";
 import { StoreClient } from "./store/index.js";
 import { UiClient } from "./ui-internal/index.js";
+
+class InfoClient extends BaseClient {
+  get(options?: { signal?: AbortSignal }): Promise<ServerInfo> {
+    return this.fetch<ServerInfo>("/info", { signal: options?.signal });
+  }
+}
 
 export class Client<
   TStateType = DefaultValues,
@@ -48,6 +54,8 @@ export class Client<
    */
   private "~configHash": string | undefined;
 
+  private "~info": InfoClient;
+
   constructor(config?: ClientConfig) {
     this["~configHash"] = (() =>
       JSON.stringify({
@@ -74,6 +82,15 @@ export class Client<
     this.crons = new CronsClient(config);
     this.store = new StoreClient(config);
     this["~ui"] = new UiClient(config);
+    this["~info"] = new InfoClient(config);
+  }
+
+  /**
+   * Read the server's version and the features it supports (`flags`) from
+   * `GET /info`. Each call sends a request, and a failed request throws.
+   */
+  info(options?: { signal?: AbortSignal }): Promise<ServerInfo> {
+    return this["~info"].get(options);
   }
 }
 

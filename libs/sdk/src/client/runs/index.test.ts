@@ -174,3 +174,39 @@ describe("runs.list", () => {
     expect(url.searchParams.get("status")).toBe("pending");
   });
 });
+
+describe("runs strictResume", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends strict_resume from create, wait and stream only when set", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) =>
+      String(url).endsWith("/runs/stream")
+        ? new Response("event: end\ndata: {}\n\n", {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : new Response("{}", {
+            headers: { "content-type": "application/json" },
+          })
+    ) as unknown as MockFetch;
+    overrideFetchImplementation(fetchMock);
+    const client = new Client({ apiKey: "test-api-key" });
+
+    await client.runs.create("thread_abc", "agent", { strictResume: true });
+    await client.runs.wait("thread_abc", "agent", { strictResume: true });
+    const chunks = [];
+    for await (const chunk of client.runs.stream("thread_abc", "agent", {
+      strictResume: true,
+    })) {
+      chunks.push(chunk);
+    }
+    await client.runs.create("thread_abc", "agent");
+
+    expect(
+      fetchMock.mock.calls.map(
+        ([, init]) => JSON.parse(String(init?.body)).strict_resume
+      )
+    ).toEqual([true, true, true, undefined]);
+  });
+});

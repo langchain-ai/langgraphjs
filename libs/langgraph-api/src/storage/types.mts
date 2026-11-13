@@ -60,7 +60,8 @@ export type StreamMode =
   | "debug"
   | "tasks"
   | "checkpoints"
-  | "tools";
+  | "tools"
+  | "lifecycle";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
@@ -123,7 +124,7 @@ export interface RunKwargs {
   resumable?: boolean;
 
   temporary?: boolean;
-  cancels_inflight?: boolean;
+  strict_resume?: boolean;
 
   // TODO: implement webhook
   webhook?: unknown;

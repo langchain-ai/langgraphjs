@@ -1,4 +1,4 @@
-import { inferChannel, isPrefixMatch } from "@langchain/langgraph/stream";
+import { isPrefixMatch } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import type { AuthContext } from "../auth/index.mjs";
 import { getAssistantId } from "../graph/load.mjs";
@@ -9,7 +9,7 @@ import type {
   StreamMode,
   MultitaskStrategy,
 } from "../storage/types.mjs";
-import type { RunCommand } from "../command.mjs";
+import { isKeyedByInterruptId, type RunCommand } from "../command.mjs";
 import type {
   EventSinkEntry,
   EventSinkFilter,
@@ -26,7 +26,7 @@ import type {
 } from "./types.mjs";
 import { applyAuthToRunConfig } from "../utils/run-auth.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./constants.mjs";
-import { RunProtocolSession } from "./session/index.mjs";
+import { eventChannel, RunProtocolSession } from "./session/index.mjs";
 
 type ServiceBindings = {
   runs: RunsRepo;
@@ -50,18 +50,6 @@ const DEFAULT_RUN_STREAM_MODES: StreamMode[] = [
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-// LangGraph resumes interrupts by id only when every key of the resume map
-// has this shape; any other key makes the whole map one answer.
-const INTERRUPT_ID_RE = /^[0-9a-f]{32}$/;
-
-/**
- * Whether LangGraph resumes `value` per interrupt rather than as one answer.
- */
-export const isKeyedByInterruptId = (value: unknown): boolean =>
-  isRecord(value) &&
-  Object.keys(value).length > 0 &&
-  Object.keys(value).every((key) => INTERRUPT_ID_RE.test(key));
 
 // Concurrency strategies accepted on `run.start`, matching the four values
 // the SDK's `multitaskStrategy` option can take.
@@ -92,6 +80,33 @@ export const normalizeMultitaskStrategy = (
 };
 
 /**
+ * The strategy a `run.start` names: `multitask_strategy`, the protocol's
+ * spelling, or `multitaskStrategy`, the only one older SDKs send.
+ */
+export const multitaskStrategyFromRunStart = (
+  params: Record<string, unknown>
+): MultitaskStrategy | undefined =>
+  normalizeMultitaskStrategy(
+    "multitask_strategy" in params
+      ? params.multitask_strategy
+      : params.multitaskStrategy
+  );
+
+/**
+ * The checkpoint a `run.start` forks from: its non-empty
+ * `config.configurable.checkpoint_id`.
+ */
+export const forkCheckpointId = (config: unknown): string | undefined => {
+  const checkpointId =
+    isRecord(config) && isRecord(config.configurable)
+      ? config.configurable.checkpoint_id
+      : undefined;
+  return typeof checkpointId === "string" && checkpointId.length > 0
+    ? checkpointId
+    : undefined;
+};
+
+/**
  * `run.start` params after normalization. Extends the stock protocol
  * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
  * server honors per-run (see {@link normalizeMultitaskStrategy}).
@@ -118,6 +133,11 @@ type NormalizedRunStart = RunStartParams & {
    * `input.respond` (resume) path.
    */
   goto?: RunCommand["goto"];
+  /**
+   * The run's `strict_resume`: a resume that names an interrupt that isn't
+   * pending is refused.
+   */
+  strict_resume?: boolean;
 };
 
 const normalizeRunStart = (value: unknown): NormalizedRunStart => {
@@ -128,7 +148,8 @@ const normalizeRunStart = (value: unknown): NormalizedRunStart => {
       input: value.input,
       config: isRecord(value.config) ? value.config : undefined,
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
-      multitaskStrategy: normalizeMultitaskStrategy(value.multitaskStrategy),
+      multitaskStrategy: multitaskStrategyFromRunStart(value),
+      strict_resume: value.strict_resume === true,
     };
   }
   return {
@@ -328,8 +349,12 @@ export class ProtocolService {
         `Thread ${record.threadId} is bound to assistant ${record.assistantId}; cannot run ${params.assistant_id}.`
       );
     }
+    // A fork starts a new run from its checkpoint whatever the thread's
+    // latest one waits on, so only a plain run.start can resume.
     const pendingInterrupts =
-      params.input != null ? await this.pendingInterruptCount(record, auth) : 0;
+      params.input != null && forkCheckpointId(params.config) == null
+        ? await this.pendingInterruptCount(record, auth)
+        : 0;
     // One answer can't say which of several pending interrupts it is for:
     // LangGraph fails the run, or picks one when they share a subgraph task.
     // While a run is in flight the count can still change, so it keeps
@@ -479,6 +504,7 @@ export class ProtocolService {
         goto,
         config: isRecord(rawParams.config) ? rawParams.config : undefined,
         metadata: isRecord(rawParams.metadata) ? rawParams.metadata : undefined,
+        strict_resume: rawParams.strict_resume === true,
       },
       true,
       auth
@@ -561,6 +587,7 @@ export class ProtocolService {
         temporary: false,
         subgraphs: runPayload.stream_subgraphs,
         resumable: runPayload.stream_resumable,
+        ...(params.strict_resume ? { strict_resume: true } : {}),
         [PROTOCOL_STREAM_RUN_KEY]: true,
       },
       {
@@ -895,7 +922,7 @@ export function matchesSinkFilter(
 
   // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
   // `custom` filter still matches via the prefix check below.
-  const channel = inferChannel(event);
+  const channel = eventChannel(event);
   if (channel == null) return false;
 
   const channelMatched =

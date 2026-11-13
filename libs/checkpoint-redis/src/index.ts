@@ -1148,23 +1148,26 @@ export class RedisSaver extends BaseCheckpointSaver {
   }
 
   private async ensureIndexes(): Promise<void> {
-    for (const schema of SCHEMAS) {
-      try {
-        // Try to create the index
-        await this.client.ft.create(schema.index, schema.schema as any, {
-          ON: "JSON",
-          PREFIX: schema.prefix,
-        });
-      } catch (error: any) {
-        // Ignore if index already exists
-        if (!error.message?.includes("Index already exists")) {
-          console.error(
-            `Failed to create index ${schema.index}:`,
-            error.message
-          );
+    // Runs before every write, so send all the commands at once: one round trip.
+    await Promise.all(
+      SCHEMAS.map(async (schema) => {
+        try {
+          // Try to create the index
+          await this.client.ft.create(schema.index, schema.schema as any, {
+            ON: "JSON",
+            PREFIX: schema.prefix,
+          });
+        } catch (error: any) {
+          // Ignore if index already exists
+          if (!error.message?.includes("Index already exists")) {
+            console.error(
+              `Failed to create index ${schema.index}:`,
+              error.message
+            );
+          }
         }
-      }
-    }
+      })
+    );
   }
 }
 

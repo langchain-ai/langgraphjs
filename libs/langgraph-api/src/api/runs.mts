@@ -35,6 +35,8 @@ async function* joinWithEnd(
     options,
     auth
   )) {
+    // The interrupts a run answers are for the protocol's thread clients.
+    if (event.event === "interrupts") continue;
     yield event;
     if (event.event === "end") return;
   }
@@ -114,6 +116,7 @@ const createValidRun = async (
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
       resumable: run.stream_resumable ?? false,
+      ...(run.strict_resume ? { strict_resume: true } : {}),
     },
     {
       threadId,
@@ -475,6 +478,9 @@ api.get(
     const { thread_id, run_id } = c.req.valid("param");
     const { cancel_on_disconnect, stream_mode } = c.req.valid("query");
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
+
+    const run = await runs().get(run_id, thread_id, c.var.auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
 
     return streamSSE(c, async (stream) => {
       const signal = cancel_on_disconnect

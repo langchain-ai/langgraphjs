@@ -3,7 +3,7 @@ import { CustomStreamOrchestrator } from "./orchestrator-custom.js";
 import type { AnyStreamCustomOptions } from "./types.js";
 
 type TestState = {
-  messages: Array<{ id: string; content: string; type: string }>;
+  messages: Array<{ id?: string; content: string; type: string }>;
   count?: number;
 };
 
@@ -15,9 +15,32 @@ async function* createMockStream<T>(events: T[]): AsyncGenerator<T> {
 
 function createMockTransport(events: unknown[] = []) {
   return {
-    stream: vi.fn().mockResolvedValue(createMockStream(events)),
+    stream: vi.fn().mockImplementation(async () => createMockStream(events)),
   };
 }
+
+/** Each run streams its events once `open()` releases it, oldest first. */
+function gatedTransport(...runs: unknown[][]) {
+  const opens: Array<() => void> = [];
+  const transport = {
+    stream: vi.fn().mockImplementation(async () => {
+      const events = runs.shift() ?? [];
+      const gate = new Promise<void>((resolve) => opens.push(resolve));
+      return (async function* () {
+        await gate;
+        yield* events;
+      })();
+    }),
+  };
+  return { transport, open: () => opens.shift()?.() };
+}
+
+const human = (id: string, content: string) => ({ id, type: "human", content });
+
+const sentThreads = (transport: { stream: ReturnType<typeof vi.fn> }) =>
+  transport.stream.mock.calls.map(
+    ([payload]) => payload.config.configurable.thread_id
+  );
 
 function createOptions(
   overrides?: Partial<AnyStreamCustomOptions<TestState>>
@@ -46,7 +69,7 @@ describe("CustomStreamOrchestrator", () => {
       orch.dispose();
     });
 
-    it("respects initialValues option", () => {
+    it("shows initialValues until a run streams", () => {
       const initial: TestState = {
         messages: [{ id: "1", content: "hi", type: "human" }],
       };
@@ -54,8 +77,8 @@ describe("CustomStreamOrchestrator", () => {
         createOptions({ initialValues: initial })
       );
 
-      // Before streaming, values come from stream (null) so returns {}
-      expect(orch.values).toEqual({});
+      expect(orch.values).toEqual(initial);
+      expect(orch.messages).toHaveLength(1);
 
       orch.dispose();
     });
@@ -362,6 +385,360 @@ describe("CustomStreamOrchestrator", () => {
       expect(setStreamValuesSpy).toHaveBeenCalled();
 
       orch.dispose();
+    });
+
+    it("stays on the thread its first submit created", async () => {
+      const transport = createMockTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport })
+      );
+
+      await orch.submit({ messages: [] });
+      await orch.submit({ messages: [] });
+
+      const [first, second] = sentThreads(transport);
+      expect(second).toBe(first);
+      expect(orch.threadId).toBe(first);
+
+      orch.dispose();
+    });
+
+    it("sends a submit made during a new chat's first run to that chat's thread", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport })
+      );
+
+      const first = orch.submit({ messages: [] });
+      const second = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      open();
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      open();
+      await Promise.all([first, second]);
+
+      const [a, b] = sentThreads(transport);
+      expect(b).toBe(a);
+
+      orch.dispose();
+    });
+
+    it("drops a submit waiting behind a run when the thread switches", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      const first = orch.submit({ messages: [] });
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      orch.switchThread("t2");
+      const loading: boolean[] = [];
+      orch.subscribe(() => loading.push(orch.isLoading));
+      open();
+      await first;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(transport.stream).toHaveBeenCalledTimes(1);
+      expect(loading).not.toContain(true);
+
+      orch.dispose();
+    });
+
+    it("drops a submit waiting behind a run when the run is stopped", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      const first = orch.submit({ messages: [] });
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      await orch.stop();
+      open();
+      await first;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(transport.stream).toHaveBeenCalledTimes(1);
+
+      orch.dispose();
+    });
+
+    it("lists a submit made during a run until its turn, and drops it when cancelled", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const first = orch.submit({ messages: [human("h1", "one")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+
+      void orch.submit({ messages: [human("h2", "two")] });
+      expect(orch.queueEntries.map((entry) => entry.values)).toEqual([
+        { messages: [human("h2", "two")] },
+      ]);
+
+      expect(await orch.cancelQueueItem(orch.queueEntries[0].id)).toBe(true);
+      open();
+      await first;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(orch.queueEntries).toEqual([]);
+      expect(transport.stream).toHaveBeenCalledTimes(1);
+
+      orch.dispose();
+    });
+
+    it("starts a switched thread empty, without the first thread's initialValues", () => {
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          threadId: "t1",
+          initialValues: { messages: [human("h0", "earlier")] },
+        })
+      );
+
+      orch.switchThread("t2");
+
+      expect(orch.messages).toEqual([]);
+
+      orch.dispose();
+    });
+
+    it("keeps the messages shown and adds its input at once", async () => {
+      const { transport, open } = gatedTransport([
+        { event: "values", data: { messages: [human("h1", "hi")] } },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const done = orch.submit({ messages: [human("h1", "hi")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      open();
+      await done;
+
+      void orch.submit({ messages: [human("h2", "again")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+
+      expect(orch.messages.map((message) => message.id)).toEqual(["h1", "h2"]);
+
+      open();
+      orch.dispose();
+    });
+
+    it("leaves a run in flight as shown until a submit waiting behind it starts", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const first = orch.submit({ messages: [human("h1", "one")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+
+      const second = orch.submit({ messages: [human("h2", "two")] });
+      expect(orch.messages.map((message) => message.id)).toEqual(["h1"]);
+
+      open();
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      expect(orch.messages.map((message) => message.id)).toEqual(["h1", "h2"]);
+
+      open();
+      await Promise.all([first, second]);
+      orch.dispose();
+    });
+
+    it("with optimistic false, sends the input as passed and shows it when the server does", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1", optimistic: false })
+      );
+      const input = { messages: [{ type: "human", content: "hi" }] };
+      const done = orch.submit(input);
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+
+      expect(transport.stream.mock.calls[0][0].input).toBe(input);
+      expect(orch.messages).toEqual([]);
+
+      open();
+      await done;
+      orch.dispose();
+    });
+
+    it("sends the input's messages with the ids they're shown with", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const done = orch.submit({ messages: [{ type: "human", content: "hi" }] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+
+      const [sent] = transport.stream.mock.calls[0][0].input.messages;
+      expect(sent.id).toEqual(expect.any(String));
+      expect(orch.messages[0].id).toBe(sent.id);
+
+      open();
+      await done;
+      orch.dispose();
+    });
+  });
+
+  describe("respond", () => {
+    const interrupted = {
+      event: "values",
+      data: { messages: [], __interrupt__: [{ id: "i1", value: "approve?" }] },
+    };
+
+    it("resumes the newest interrupt, hidden until its run ends", async () => {
+      const { transport, open } = gatedTransport(
+        [interrupted],
+        [{ event: "values", data: { messages: [] } }]
+      );
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      const asked = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      open();
+      await asked;
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1"]);
+
+      const answered = orch.respond("yes");
+      expect(orch.interrupts).toEqual([]);
+      expect(orch.interrupt).toBeUndefined();
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      expect(transport.stream.mock.calls[1][0].command).toEqual({
+        resume: { i1: "yes" },
+      });
+
+      open();
+      await answered;
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
+    it("rejects and shows the interrupt again when the answer can't be sent", async () => {
+      const transport = {
+        stream: vi
+          .fn()
+          .mockImplementationOnce(async () => createMockStream([interrupted]))
+          .mockRejectedValueOnce(new Error("offline")),
+      };
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      await orch.submit({ messages: [] });
+
+      await expect(orch.respond("yes")).rejects.toThrow("offline");
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1"]);
+
+      orch.dispose();
+    });
+
+    it("rejects when no interrupt waits", async () => {
+      const orch = new CustomStreamOrchestrator<TestState>(createOptions());
+
+      await expect(orch.respond("yes")).rejects.toThrow("No pending interrupt");
+
+      orch.dispose();
+    });
+
+    it("answers the interrupt `interrupt` shows, with no id given", async () => {
+      const transport = createMockTransport([
+        {
+          event: "values",
+          data: {
+            messages: [],
+            __interrupt__: [
+              { id: "a", value: "first?" },
+              { id: "b", value: "second?" },
+            ],
+          },
+        },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+      await orch.submit({ messages: [] });
+      expect(orch.interrupt?.id).toBe("a");
+
+      await orch.respond("yes");
+
+      expect(transport.stream.mock.calls[1][0].command.resume).toEqual({
+        a: "yes",
+      });
+      orch.dispose();
+    });
+
+    it("resolves an answer once its run starts", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      const answered = orch.respondAll({ i1: "yes" }).then(() => "resolved");
+      const later = new Promise((resolve) => setTimeout(resolve, 50, "pending"));
+
+      expect(await Promise.race([answered, later])).toBe("resolved");
+      open();
+      orch.dispose();
+    });
+
+    it("rejects an answer with no thread", async () => {
+      const orch = new CustomStreamOrchestrator<TestState>(createOptions());
+
+      await expect(orch.respondAll({ i1: "yes" })).rejects.toThrow(
+        "No active thread"
+      );
+
+      orch.dispose();
+    });
+
+    it("respondAll sends every answer, update and goto in one resume command", async () => {
+      const transport = createMockTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      await orch.respondAll(
+        { i1: "yes", i2: "no" },
+        { update: { count: 1 }, goto: "next" }
+      );
+
+      expect(transport.stream.mock.calls[0][0].command).toEqual({
+        resume: { i1: "yes", i2: "no" },
+        update: { count: 1 },
+        goto: "next",
+      });
+
+      orch.dispose();
+    });
+  });
+
+  describe("as a binding's engine", () => {
+    it("hydrate() switches to another thread and resolves, reading nothing", async () => {
+      const transport = createMockTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1" })
+      );
+
+      await orch.hydrate("t2");
+      await orch.hydrate();
+
+      expect(orch.threadId).toBe("t2");
+      expect(transport.stream).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("disposes a tick after activate()'s cleanup, unless activated again", async () => {
+      const orch = new CustomStreamOrchestrator<TestState>(createOptions());
+      const stop = vi.spyOn(orch.stream, "stop").mockResolvedValue(undefined);
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      orch.activate()();
+      orch.activate();
+      await tick();
+      expect(stop).not.toHaveBeenCalled();
+
+      orch.activate()();
+      await tick();
+      expect(stop).toHaveBeenCalled();
     });
   });
 
