@@ -27,7 +27,6 @@ import {
   type UseStreamTransport,
 } from "@langchain/langgraph-sdk/ui";
 import type {
-  RunExecutionReason,
   StreamRespondAllOptions,
   StreamRespondOptions,
   StreamStopOptions,
@@ -276,69 +275,6 @@ function entriesOf(value: object | undefined): unknown[] {
     : [Object.keys(value).length, ...Object.entries(value).flat()];
 }
 
-/**
- * The engine of a custom transport, which tells how a run ended only through
- * callbacks. Its runs go one at a time, each with one transport call.
- */
-function createCustomEngine(
-  transport: UseStreamTransport,
-  options: UseStreamOptions,
-  latest: { current: UseStreamOptions },
-  tools: AnyHeadlessToolImplementation[],
-  reportError: (error: unknown) => void
-): CustomStreamOrchestrator {
-  let run: { id?: string; reason?: RunExecutionReason } | undefined;
-  const complete = () => {
-    if (run == null) return;
-    const { id, reason = "stopped" } = run;
-    run = undefined;
-    // As on an Agent Server: a subagent can't finish once its run has.
-    if (reason === "error" || reason === "stopped") {
-      engine.stream.closeOpenSubagents(`The run ended: ${reason}`);
-    }
-    latest.current.onCompleted?.({ runId: id, reason });
-  };
-  const engine = new CustomStreamOrchestrator({
-    transport: {
-      stream: (payload) => {
-        // A notification of the run before can still be on its way.
-        complete();
-        run = {};
-        return (customTransportOf(latest.current) ?? transport).stream(payload);
-      },
-    },
-    initialValues: options.initialValues,
-    messagesKey: options.messagesKey,
-    optimistic: options.optimistic,
-    tools,
-    onTool: (event) => latest.current.onTool?.(event),
-    onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
-    // Sent once per attempt of a run, so only a new id is a new run.
-    onMetadataEvent: ({ run_id: runId }) => {
-      if (run == null || runId == null || runId === run.id) return;
-      run.id = runId;
-      latest.current.onCreated?.({ runId });
-    },
-    onFinish: ({ values }) => {
-      if (run == null) return;
-      const pending = (values as { __interrupt__?: unknown }).__interrupt__;
-      run.reason =
-        Array.isArray(pending) && pending.length > 0 ? "interrupt" : "success";
-    },
-    onError: (error) => {
-      if (run != null) run.reason = "error";
-      reportError(error);
-    },
-    subagentToolNames: ["task"],
-    filterSubagentMessages: true,
-    throttle: true,
-  });
-  engine.subscribe(() => {
-    if (!engine.isLoading) complete();
-  });
-  return engine;
-}
-
 function createBinding(
   options: UseStreamOptions,
   deps: readonly unknown[]
@@ -388,7 +324,24 @@ function createBinding(
   };
   const engine: StreamEngine & { dispose(): void } =
     transport != null
-      ? createCustomEngine(transport, options, latest, tools, reportError)
+      ? new CustomStreamOrchestrator({
+          transport: {
+            stream: (payload) =>
+              (customTransportOf(latest.current) ?? transport).stream(payload),
+          },
+          initialValues: options.initialValues,
+          messagesKey: options.messagesKey,
+          optimistic: options.optimistic,
+          onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
+          onCreated: (run) => latest.current.onCreated?.({ runId: run.run_id }),
+          onRunEnd: (run) => latest.current.onCompleted?.(run),
+          onError: reportError,
+          tools,
+          onTool: (event) => latest.current.onTool?.(event),
+          subagentToolNames: ["task"],
+          filterSubagentMessages: true,
+          throttle: true,
+        })
       : new StreamOrchestrator(
           {
             assistantId,
