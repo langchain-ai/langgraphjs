@@ -420,6 +420,12 @@ export class StreamOrchestrator<
   /** Aborted by `stop()` to cancel the own run being streamed once its id arrives. */
   #stopOwnRun: AbortController | undefined;
 
+  /** Settles once the last submit queued on the server is created, or not. */
+  #queueing: Promise<void> = Promise.resolve();
+
+  /** Bumped when the queue is emptied, which drops the submits still waiting to join it. */
+  #queueDrops = 0;
+
   #hydration: Promise<void> = Promise.resolve();
 
   /**
@@ -1403,6 +1409,7 @@ export class StreamOrchestrator<
    * Remove all pending runs from the queue and cancel them on the server.
    */
   async clearQueue(): Promise<void> {
+    this.#queueDrops += 1;
     await this.#dropQueued(this.#threadId, this.pendingRuns.removeAll());
   }
 
@@ -2276,11 +2283,23 @@ export class StreamOrchestrator<
       if (usableThreadId) {
         const client = this.#accessors.getClient();
         const assistantId = this.#accessors.getAssistantId();
+        const turn = this.#queueing;
+        let done!: () => void;
+        this.#queueing = new Promise<void>((resolve) => {
+          done = resolve;
+        });
+        const drops = this.#queueDrops;
         try {
+          // The server runs queued runs in the order their creates reach it.
+          await turn;
           // Sent before the run being submitted reaches the server, it would
           // run first.
           if (this.#ownRun) await this.#ownRun;
           const streamMode = await this.#getRunStreamModes(submitOptions);
+          if (drops !== this.#queueDrops) {
+            this.#unhide(submitOptions?.command);
+            return;
+          }
           const input = (this.#prepareInput(values)?.dispatchInput ??
             values) as Record<string, unknown>;
           const create = (modes: StreamMode[]) =>
@@ -2319,10 +2338,14 @@ export class StreamOrchestrator<
             options: submitOptions,
             createdAt: new Date(run.created_at),
           });
+          // The run before it may have ended while it waited.
+          this.#drainQueue();
         } catch (error) {
           this.#unhide(submitOptions?.command);
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
+        } finally {
+          done();
         }
         return;
       }
@@ -2431,6 +2454,7 @@ export class StreamOrchestrator<
       const queued = this.pendingRuns
         .removeAll()
         .filter((entry) => !this.#listedRuns.has(entry.id));
+      this.#queueDrops += 1;
       this.#listedRuns.clear();
       void this.#dropQueued(prevThreadId, queued);
 
