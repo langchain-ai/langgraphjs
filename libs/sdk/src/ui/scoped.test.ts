@@ -405,6 +405,26 @@ describe("ScopeRegistry", () => {
     expect(client.runs.joinStream).not.toHaveBeenCalled();
   });
 
+  it("leaves out of a panel the main conversation's messages its host names for that namespace", async () => {
+    const { registry, client } = setup(undefined, {
+      rootMessageIds: (namespace) =>
+        new Set(namespace === "tools:a" ? ["parent"] : []),
+    });
+    (client.threads.getHistory as Mock).mockResolvedValue([
+      { values: { messages: [human("parent"), human("own")] } },
+    ]);
+
+    const subagent = registry.acquire(["tools:a"]);
+    const subgraph = registry.acquire(["child:1"]);
+
+    await vi.waitFor(() =>
+      expect(ids(subagent.getSnapshot().messages)).toEqual(["own"])
+    );
+    await vi.waitFor(() =>
+      expect(ids(subgraph.getSnapshot().messages)).toEqual(["parent", "own"])
+    );
+  });
+
   it("a 400 stops panel reads for the thread", async () => {
     const { registry, client } = setup();
     (client.threads.getHistory as Mock).mockRejectedValue(

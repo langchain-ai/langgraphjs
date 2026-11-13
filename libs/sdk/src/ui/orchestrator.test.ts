@@ -5268,6 +5268,38 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("a subgraph's panel shows the messages it shares with the main conversation, and a subagent's leaves them out", async () => {
+      withFlags(flags);
+      const values = createSubagentStateValues();
+      values.messages[2].artifact = { checkpoint_ns: "tools:sub" };
+      (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+      (client.threads.getHistory as Mock).mockImplementation(
+        async (_threadId: string, { checkpoint }: { checkpoint: { checkpoint_ns: string } }) => [
+          createThreadState({
+            messages: [
+              { id: "m1", content: "research tires", type: "human" },
+              { id: `${checkpoint.checkpoint_ns} reply`, content: "", type: "ai" },
+            ],
+          }),
+        ]
+      );
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      const subgraph = orch.scopes.acquire(["child:1"]);
+      const subagent = orch.scopes.acquire(["tools:sub"]);
+      const ids = (scope: typeof subgraph) =>
+        scope.getSnapshot().messages.map((m) => m.id);
+
+      await vi.waitFor(() => expect(ids(subgraph)).toEqual(["m1", "child:1 reply"]));
+      await vi.waitFor(() => expect(ids(subagent)).toEqual(["tools:sub reply"]));
+      subgraph.release();
+      subagent.release();
+      orch.dispose();
+    });
+
     it("takes a reloaded subagent's namespace from its task tool message at load", async () => {
       withFlags(flags);
       const values = createSubagentStateValues();
