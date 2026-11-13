@@ -354,29 +354,35 @@ describe("with workspaces on different planes", () => {
     expectHostCalls(OTHER_DATA_PLANE_HOST, OTHER_BYOC_WORKSPACE.id);
   });
 
-  it("follows the prompted workspace to its data plane", async () => {
+  it("follows the workspace prompted for by the control plane to its data plane", async () => {
     promptAnswer.mockReturnValue(WORKSPACE_ID);
+    const controlPlaneList = `GET ${CLOUD_HOST_URL}/v2/deployments`;
     serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([SAAS_WORKSPACE, BYOC_WORKSPACE]),
+      [controlPlaneList]: () =>
+        json({ detail: "API key requires workspace specification" }, 403),
     });
 
     await runDeployCli("list");
 
     expect(gracefulExit).not.toHaveBeenCalled();
     expect(harness.output).toContain("requires a workspace ID");
-    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
+    const routes = calls.map((call) => call.route);
+    expect(routes.slice(0, 2)).toEqual([DISCOVER, controlPlaneList]);
+    expect(routes[2]).toBe(`GET ${DATA_PLANE_HOST}/v2/deployments`);
+    expect(calls[2].headers["x-tenant-id"]).toBe(WORKSPACE_ID);
   });
 
-  it("asks for LANGSMITH_TENANT_ID without input", async () => {
+  it("keeps the control plane for a key that needs no workspace", async () => {
     serve(CLOUD_HOST_URL, {
       [DISCOVER]: () => json([SAAS_WORKSPACE, BYOC_WORKSPACE]),
     });
 
     await remoteDeploy();
 
-    expect(gracefulExit).toHaveBeenCalledWith(1);
-    expect(harness.output).toContain("Set LANGSMITH_TENANT_ID");
-    expect(calls.map((call) => call.route)).toEqual([DISCOVER]);
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.route)).not.toContain(INFO);
+    expectHostCalls(CLOUD_HOST_URL);
   });
 });
 

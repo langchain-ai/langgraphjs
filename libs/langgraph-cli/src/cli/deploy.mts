@@ -374,14 +374,24 @@ async function createHostBackendClient(
     );
 
   if (hostUrl) return new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
-  const target = await discoverTarget(
-    langsmithEndpoint,
+  const workspaces = await listWorkspaces(langsmithEndpoint, resolvedApiKey);
+  const target = discoverTarget(workspaces, tenantId);
+  if (target.dataPlaneUrl) {
+    return newDataPlaneClient(target.dataPlaneUrl, target.tenantId);
+  }
+  const routeToDataPlane = (workspaceId: string) => {
+    const dataPlaneUrl = findWorkspace(workspaces, workspaceId)?.dataPlaneUrl;
+    return dataPlaneUrl
+      ? newDataPlaneClient(requireSecureDataPlane(dataPlaneUrl), workspaceId)
+      : undefined;
+  };
+  return new HostBackendClient(
+    DEFAULT_HOST_URL,
     resolvedApiKey,
-    tenantId
+    target.tenantId,
+    undefined,
+    routeToDataPlane
   );
-  return target.dataPlaneUrl
-    ? newDataPlaneClient(target.dataPlaneUrl, target.tenantId)
-    : new HostBackendClient(DEFAULT_HOST_URL, resolvedApiKey, target.tenantId);
 }
 
 interface HostTarget {
@@ -389,41 +399,40 @@ interface HostTarget {
   dataPlaneUrl?: string;
 }
 
-/**
- * Find the data plane of the API key's workspace. Workspaces on different
- * planes need a workspace ID, from `tenantId` or a prompt. Without a data
- * plane (LangSmith cloud or a failed lookup), keep the default control plane.
- */
-async function discoverTarget(
-  langsmithEndpoint: string | undefined,
-  apiKey: string,
-  tenantId: string | undefined
-): Promise<HostTarget> {
-  const workspaces = await listWorkspaces(langsmithEndpoint, apiKey);
-  if (!workspaces.length) return { tenantId };
-  const dataPlaneUrls = new Set(workspaces.map((w) => w.dataPlaneUrl));
-  const workspaceId =
-    tenantId ??
-    (dataPlaneUrls.size > 1 ? await promptWorkspaceId() : undefined);
-  if (workspaceId === undefined) {
-    const [dataPlaneUrl] = dataPlaneUrls;
-    if (!dataPlaneUrl) return {};
-    return dataPlaneTarget(
-      dataPlaneUrl,
-      workspaces.length === 1 ? workspaces[0].id : undefined
-    );
-  }
-  const workspace = workspaces.find(
+function findWorkspace(
+  workspaces: Workspace[],
+  workspaceId: string
+): Workspace | undefined {
+  return workspaces.find(
     (w) => w.id.toLowerCase() === workspaceId.toLowerCase()
   );
-  if (!workspace) {
-    throw new Error(
-      `This API key has no access to workspace ${workspaceId}. Check LANGSMITH_TENANT_ID.`
-    );
+}
+
+/**
+ * The data plane of the API key's workspace, when `tenantId` or all of the
+ * key's workspaces name one. Otherwise keep the default control plane, which
+ * asks for a workspace when the key is org-scoped.
+ */
+function discoverTarget(
+  workspaces: Workspace[],
+  tenantId: string | undefined
+): HostTarget {
+  if (tenantId !== undefined && workspaces.length) {
+    const workspace = findWorkspace(workspaces, tenantId);
+    if (!workspace) {
+      throw new Error(
+        `This API key has no access to workspace ${tenantId}. Check LANGSMITH_TENANT_ID.`
+      );
+    }
+    workspaces = [workspace];
   }
-  return workspace.dataPlaneUrl
-    ? dataPlaneTarget(workspace.dataPlaneUrl, workspace.id)
-    : { tenantId: workspace.id };
+  const dataPlaneUrls = new Set(workspaces.map((w) => w.dataPlaneUrl));
+  const [dataPlaneUrl] = dataPlaneUrls;
+  if (dataPlaneUrls.size !== 1 || !dataPlaneUrl) return { tenantId };
+  return {
+    tenantId: workspaces.length === 1 ? workspaces[0].id : undefined,
+    dataPlaneUrl: requireSecureDataPlane(dataPlaneUrl),
+  };
 }
 
 async function listWorkspaces(
@@ -446,13 +455,13 @@ async function listWorkspaces(
   }
 }
 
-function dataPlaneTarget(dataPlaneUrl: string, tenantId?: string): HostTarget {
+function requireSecureDataPlane(dataPlaneUrl: string): string {
   if (!isSecureOrLocalUrl(dataPlaneUrl)) {
     throw new Error(
       `Refusing to send your API key to ${dataPlaneUrl}: a data plane URL must use https.`
     );
   }
-  return { tenantId, dataPlaneUrl };
+  return dataPlaneUrl;
 }
 
 async function requireCliBuilds(

@@ -104,7 +104,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
  */
 class JsonClient {
   /** The normalized base URL (trailing slashes stripped). */
-  readonly baseUrl: string;
+  baseUrl: string;
 
   /** Headers sent with every request. */
   protected readonly headers: Record<string, string>;
@@ -276,9 +276,17 @@ export class LangSmithApiClient extends JsonClient {
 /**
  * Minimal JSON HTTP client for the host backend deployment service.
  */
+export type WorkspaceRouter = (
+  workspaceId: string
+) => HostBackendClient | undefined;
+
 export class HostBackendClient extends JsonClient {
   /** The LangSmith UI that shows this host backend's deployments. */
-  readonly dashboardUrl: string;
+  dashboardUrl: string;
+
+  protected dataPlane?: LangSmithApiClient;
+
+  private readonly router?: WorkspaceRouter;
 
   /**
    * @param baseUrl - Host backend base URL, e.g. `https://api.host.langchain.com`.
@@ -286,13 +294,15 @@ export class HostBackendClient extends JsonClient {
    * @param tenantId - Optional workspace/tenant ID sent as `X-Tenant-ID`.
    * @param dashboardUrl - The LangSmith UI for status links. Defaults to the
    * one that matches `baseUrl`.
+   * @param router - Finds the host backend of a workspace chosen later.
    * @throws {@link HostBackendError} if `baseUrl` is empty.
    */
   constructor(
     baseUrl: string,
     apiKey: string,
     tenantId?: string,
-    dashboardUrl = smithDashboardBaseUrl(baseUrl)
+    dashboardUrl = smithDashboardBaseUrl(baseUrl),
+    router?: WorkspaceRouter
   ) {
     if (!baseUrl) {
       throw new HostBackendError("Host backend URL is required");
@@ -302,16 +312,23 @@ export class HostBackendClient extends JsonClient {
       this.headers["X-Tenant-ID"] = tenantId;
     }
     this.dashboardUrl = dashboardUrl;
+    this.router = router;
   }
 
   /**
    * Set or override the tenant (workspace) header on this client. Used after
    * an org-scoped API key prompts for a workspace ID, so subsequent requests
-   * are tenant-aware.
+   * are tenant-aware and go to that workspace's data plane, if it has one.
    *
    * @param tenantId - Workspace/tenant ID to send as `X-Tenant-ID`.
    */
   setTenantId(tenantId: string): void {
+    const workspaceHost = this.router?.(tenantId);
+    if (workspaceHost) {
+      this.baseUrl = workspaceHost.baseUrl;
+      this.dashboardUrl = workspaceHost.dashboardUrl;
+      this.dataPlane = workspaceHost.dataPlane;
+    }
     this.headers["X-Tenant-ID"] = tenantId;
   }
 
@@ -319,8 +336,8 @@ export class HostBackendClient extends JsonClient {
    * Deployment capabilities of the data plane this host backend runs on, or
    * `null` when it is not on one.
    */
-  instanceFlags(): Promise<InstanceFlags | null> {
-    return Promise.resolve(null);
+  async instanceFlags(): Promise<InstanceFlags | null> {
+    return this.dataPlane ? this.dataPlane.getInstanceFlags() : null;
   }
 
   /**
@@ -590,8 +607,6 @@ export class HostBackendClient extends JsonClient {
  * Host backend on a LangSmith data plane (BYOC), reached at `<dp>/api-host`.
  */
 export class DataPlaneClient extends HostBackendClient {
-  private readonly dataPlane: LangSmithApiClient;
-
   /**
    * @param dataPlaneUrl - The workspace's data plane URL.
    * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
@@ -611,9 +626,5 @@ export class DataPlaneClient extends HostBackendClient {
       dashboardUrl
     );
     this.dataPlane = new LangSmithApiClient(dataPlaneUrl, apiKey);
-  }
-
-  override instanceFlags(): Promise<InstanceFlags> {
-    return this.dataPlane.getInstanceFlags();
   }
 }
