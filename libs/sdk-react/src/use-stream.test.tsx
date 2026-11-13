@@ -6,7 +6,7 @@ import { renderToReadableStream, renderToString } from "react-dom/server";
 import { cleanup, render, renderHook } from "vitest-browser-react";
 import { STREAM_CONTROLLER, useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
-import { useSubmissionQueue } from "./selectors.js";
+import { useSubmissionQueue, useValues } from "./selectors.js";
 import { StreamProvider, useStreamContext } from "./context.js";
 import { fakeServer } from "./test-client.js";
 import type { StreamSubmitOptions } from "./types.js";
@@ -698,4 +698,95 @@ it("renders a custom transport's thread on the server, since there is nothing to
       </Suspense>
     )
   ).toContain("chat");
+});
+
+it("shows only stateKeys and the messages key from a server that ignores select, reading the thread once", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "hi")], todos: ["a"], files: ["x.txt"] },
+  });
+  const { result, rerender } = await renderHook(() => {
+    // A new array on every render, as an inline literal is.
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: ["todos"],
+    });
+    return { stream, values: useValues(stream) };
+  });
+  await expect.poll(() => result.current.stream.messages.length).toBe(1);
+  await rerender();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(Object.keys(result.current.stream.values).sort()).toEqual([
+    "messages",
+    "todos",
+  ]);
+  expect(result.current.values).toBe(result.current.stream.values);
+  expect(server.calls.filter((call) => call.startsWith("getState"))).toEqual([
+    "getState t1",
+  ]);
+});
+
+it("keeps stateKeys' shape while a run streams, sends unlisted input, and shows its interrupts", async () => {
+  const server = fakeServer({ t1: { messages: [] } });
+  const { result } = await renderHook(() =>
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: [],
+    })
+  );
+  await expect.poll(() => result.current.isThreadLoading).toBe(false);
+
+  void result.current.submit({ messages: [human("h1", "hi")], files: ["x"] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  expect(server.runs[0].payload.input).toMatchObject({ files: ["x"] });
+  expect(Object.keys(result.current.values)).toEqual(["messages"]);
+
+  server.runs[0].send("values", { messages: [human("h1", "hi")], step: 1 });
+  server.runs[0].send("values", {
+    __interrupt__: [{ id: "i1", value: "approve?" }],
+  });
+  await expect.poll(() => result.current.interrupt?.id).toBe("i1");
+  expect(result.current.values).not.toHaveProperty("step");
+  expect(result.current.values).not.toHaveProperty("files");
+});
+
+it("joins a thread's running run from a load narrowed by stateKeys", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  server.running.set("t1", "run-9");
+  const { result } = await renderHook(() =>
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: [],
+    })
+  );
+
+  await expect
+    .poll(() => server.calls.filter((call) => call.startsWith("joinStream")))
+    .toEqual(["joinStream t1 run-9"]);
+  expect(result.current.messages.map((message) => message.content)).toEqual([
+    "hi",
+  ]);
+});
+
+it("narrows a custom transport's streamed values to stateKeys", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() =>
+    useStream({ transport: server.transport, stateKeys: ["todos"] })
+  );
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+
+  server.runs[0].finish({ messages: [human("h1", "hi")], todos: [], step: 1 });
+
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  expect(Object.keys(result.current.values).sort()).toEqual([
+    "messages",
+    "todos",
+  ]);
 });

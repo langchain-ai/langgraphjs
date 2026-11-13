@@ -10,6 +10,7 @@ import type {
   Metadata,
   Run,
   ServerInfo,
+  ThreadStateSelectField,
 } from "../schema.js";
 import type { StreamMode } from "../types.stream.js";
 import type { Command, RunsStreamPayload, StreamEvent } from "../types.js";
@@ -42,6 +43,12 @@ import {
 import type { StreamEngine } from "./engine.js";
 import { unique, filterStream, onFinishRequiresThreadState } from "./utils.js";
 import { STOP_RUN_ID_WAIT_MS } from "./constants.js";
+import {
+  pickKeys,
+  pickKeysOfStates,
+  stateKeysOf,
+  type StateKeys,
+} from "./state-keys.js";
 import {
   applyStopRead,
   hasPendingNodes,
@@ -224,17 +231,25 @@ async function* retryUnprocessable<T>(
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
   threadId: string,
-  options?: { limit?: boolean | number }
+  options?: { limit?: boolean | number; select?: ThreadStateSelectField[] }
 ) {
+  const select = options?.select;
   if (options?.limit === false) {
-    return client.threads.getState<StateType>(threadId).then((state) => {
+    const state =
+      select == null
+        ? client.threads.getState<StateType>(threadId)
+        : client.threads.getState<StateType>(threadId, undefined, { select });
+    return state.then((state) => {
       if (state.checkpoint == null) return [];
       return [state];
     });
   }
 
   const limit = typeof options?.limit === "number" ? options.limit : 10;
-  return client.threads.getHistory<StateType>(threadId, { limit });
+  return client.threads.getHistory<StateType>(
+    threadId,
+    select == null ? { limit } : { limit, select }
+  );
 }
 
 /**
@@ -345,6 +360,18 @@ export type StreamOrchestratorOptions<
      * server without a thread stream.
      */
     watchThread?: boolean;
+
+    /**
+     * The root `values` keys to load and show. The thread load asks for only
+     * these and the messages key, with the thread-state fields the
+     * orchestrator reads itself, and every root `values` shown (the head,
+     * each history entry, a run's streamed values and a submit's optimistic
+     * values) keeps only these, the messages key and `__interrupt__`, whether
+     * or not the server honoured the `select`. `[]` keeps only the messages
+     * key. Unset loads and shows the full state. Read once, at construction.
+     * Subagent and subgraph scopes are not narrowed.
+     */
+    stateKeys?: readonly (keyof StateType & string)[];
   };
 
 /** Options of {@link StreamOrchestrator.respond} and {@link StreamOrchestrator.respondAll}. */
@@ -386,6 +413,9 @@ export class StreamOrchestrator<
   readonly #options: StreamOrchestratorOptions<StateType, Bag>;
 
   readonly #accessors: OrchestratorAccessors;
+
+  /** `stateKeys` with the messages key when the orchestrator was created. */
+  readonly #stateKeys: StateKeys | undefined;
 
   readonly historyLimit: boolean | number;
 
@@ -528,11 +558,24 @@ export class StreamOrchestrator<
     options: StreamOrchestratorOptions<StateType, Bag>,
     accessors: OrchestratorAccessors
   ) {
-    // Scoped subagents keep their messages out of the main conversation.
-    this.#options = options.scopedSubagents
-      ? { ...options, filterSubagentMessages: true }
-      : options;
     this.#accessors = accessors;
+    this.#stateKeys = stateKeysOf(
+      options.stateKeys,
+      accessors.getMessagesKey()
+    );
+    // Scoped subagents keep their messages out of the main conversation.
+    this.#options = {
+      ...options,
+      ...(options.scopedSubagents ? { filterSubagentMessages: true } : {}),
+      ...(options.initialValues != null
+        ? {
+            initialValues: pickKeys(
+              options.initialValues,
+              this.#stateKeys?.kept
+            ),
+          }
+        : {}),
+    };
 
     this.#runMetadataStorage = resolveRunMetadataStorage(
       options.reconnectOnMount
@@ -552,6 +595,7 @@ export class StreamOrchestrator<
       subagentToolNames: options.subagentToolNames,
       filterSubagentMessages: this.#options.filterSubagentMessages,
       toMessage: options.toMessage ?? toMessageClass,
+      keepKeys: this.#stateKeys?.kept,
     });
 
     this.scopes = new ScopeRegistry({
@@ -899,10 +943,13 @@ export class StreamOrchestrator<
     const idle = !this.stream.isLoading;
     const epoch = this.stream.epoch;
     try {
-      const fetched = await fetchHistory<StateType>(
-        this.#accessors.getClient(),
-        tid,
-        { limit: this.historyLimit }
+      // Narrowed here too, for a server that ignores `select`.
+      const fetched = pickKeysOfStates(
+        await fetchHistory<StateType>(this.#accessors.getClient(), tid, {
+          limit: this.historyLimit,
+          select: this.#stateKeys?.select,
+        }),
+        this.#stateKeys?.kept
       );
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
