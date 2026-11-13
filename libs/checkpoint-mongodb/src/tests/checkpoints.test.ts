@@ -97,7 +97,12 @@ describe("MongoDBSaver", () => {
       expect(errors).toEqual([]);
       expect(collectionMock).toHaveBeenCalledWith("checkpoints");
       expect(collectionMock).toHaveBeenCalledWith("checkpoint_writes");
-      expect(createIndexMock).toHaveBeenCalledTimes(2);
+      expect(createIndexMock).toHaveBeenCalledTimes(3);
+      expect(collectionMock).toHaveBeenCalledWith("checkpoints_blobs");
+      expect(createIndexMock).toHaveBeenCalledWith(
+        { thread_id: 1, checkpoint_ns: 1, channel: 1, version: 1, value_hash: 1 },
+        { name: "thread_ns_channel_version_idx", unique: true }
+      );
       expect(createIndexMock).toHaveBeenCalledWith(
         { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
         { name: "thread_ns_checkpoint_idx" }
@@ -129,8 +134,8 @@ describe("MongoDBSaver", () => {
 
       expect(mockCollection).toHaveBeenCalledWith("checkpoints");
       expect(mockCollection).toHaveBeenCalledWith("checkpoint_writes");
-      // 2 compound indexes + 2 TTL indexes
-      expect(mockCreateIndex).toHaveBeenCalledTimes(4);
+      // 3 compound indexes + 3 TTL indexes
+      expect(mockCreateIndex).toHaveBeenCalledTimes(6);
       expect(mockCreateIndex).toHaveBeenCalledWith(
         { thread_id: 1, checkpoint_ns: 1, checkpoint_id: -1 },
         { name: "thread_ns_checkpoint_idx" }
@@ -159,8 +164,8 @@ describe("MongoDBSaver", () => {
 
       await saver.setup();
 
-      // Only the 2 compound indexes, no TTL index.
-      expect(mockCreateIndex).toHaveBeenCalledTimes(2);
+      // Only the 3 compound indexes, no TTL index.
+      expect(mockCreateIndex).toHaveBeenCalledTimes(3);
       expect(mockCreateIndex).not.toHaveBeenCalledWith(
         { upserted_at: 1 },
         expect.anything()
@@ -208,8 +213,8 @@ describe("MongoDBSaver", () => {
       });
 
       const errors = await saver.setup();
-      // 2 compound + 2 TTL index creations all fail.
-      expect(errors).toHaveLength(4);
+      // 3 compound + 3 TTL index creations all fail.
+      expect(errors).toHaveLength(6);
       expect(errors[0].message).toBe("Index creation failed");
     });
   });
