@@ -90,14 +90,14 @@ interface LiveRun {
 
 type RunOutcome = "success" | "aborted" | { error: unknown };
 
-interface RunWatch {
+export interface RunWatch {
   /** The status in the run's `end` event, from servers that send one. */
   status?: string;
   /** A root `values` or `updates` event carried `__interrupt__`. */
   paused?: boolean;
 }
 
-function watchRunEvent(watch: RunWatch, event: string, data: unknown) {
+export function watchRunEvent(watch: RunWatch, event: string, data: unknown) {
   if (event === "end") {
     watch.status = (data as { status?: string } | null)?.status;
   } else if (

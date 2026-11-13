@@ -38,6 +38,7 @@ import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
+import type { RunEndReason } from "./orchestrator.js";
 
 /**
  * Represents a tool call that initiated a subagent.
@@ -1473,6 +1474,12 @@ export type AnyStreamCustomOptions<
    * its own `optimisticValues` shows only those.
    */
   optimistic?: boolean;
+  /**
+   * Called when the stream of each run ends: `"interrupt"` when the stream
+   * sent an interrupt, `"stopped"` when it's aborted, as by `stop()` or a
+   * thread switch. `runId` is the one its `metadata` event sent.
+   */
+  onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
 };
 
 export type CustomSubmitOptions<
