@@ -422,7 +422,13 @@ export class StreamOrchestrator<
 
   #hydration: Promise<void> = Promise.resolve();
 
-  #hydrating = false;
+  /**
+   * The thread load in flight: the head shown when it began, and the stream
+   * epoch and whether a stream ran then.
+   */
+  #load:
+    | { shownBefore: string | undefined; epoch: number; idle: boolean }
+    | undefined;
 
   #pendingDispose: ReturnType<typeof setTimeout> | undefined;
 
@@ -717,13 +723,45 @@ export class StreamOrchestrator<
 
   /** Makes `load` the thread's load: {@link hydrationPromise} until it settles. */
   #startLoad(load: Promise<void>): void {
-    const hydration = load.finally(() => {
-      if (this.#hydration !== hydration) return;
-      this.#hydrating = false;
+    const current = {
+      // The head on screen, unless an earlier load still has it in doubt.
+      shownBefore: this.#unconfirmedHead()
+        ? this.#load?.shownBefore
+        : this.#headId(),
+      epoch: this.stream.epoch,
+      idle: !this.stream.isLoading,
+    };
+    this.#load = current;
+    this.#hydration = load.finally(() => {
+      if (this.#load !== current) return;
+      this.#load = undefined;
+      // No stream ran during the load, so no run has answered its calls since.
+      if (current.idle && this.stream.epoch === current.epoch) {
+        this.#flushHeadToolCalls(this.#history.data?.at(0));
+      }
       this.#notify();
     });
-    this.#hydration = hydration;
-    this.#hydrating = true;
+  }
+
+  /**
+   * The head shown came from a thread load that hasn't ruled out a run still
+   * going on it, so its `next` and interrupts may be that run's. The head
+   * shown when the load began stays trusted, and a stream begun since then
+   * reads its own head.
+   */
+  #unconfirmedHead(): boolean {
+    const load = this.#load;
+    return (
+      load != null &&
+      load.epoch === this.stream.epoch &&
+      this.#headId() !== load.shownBefore
+    );
+  }
+
+  #headId(): string | undefined {
+    return (
+      this.branchContext.threadHead?.checkpoint?.checkpoint_id ?? undefined
+    );
   }
 
   async #joinActiveRun(
@@ -739,9 +777,13 @@ export class StreamOrchestrator<
       return;
     }
     const client = this.#accessors.getClient();
+    // A lookup that hangs would hold the load, and with it the head's
+    // interrupts, for good. Not AbortSignal.timeout, which React Native lacks.
+    const lookup = new AbortController();
+    const timer = setTimeout(() => lookup.abort(), 10_000);
     const [runs, pending] = await Promise.all([
       client.runs
-        .list(threadId, { status: "running", limit: 1 })
+        .list(threadId, { status: "running", limit: 1, signal: lookup.signal })
         .catch(() => undefined),
       this.#options.queue === "local"
         ? undefined
@@ -750,9 +792,10 @@ export class StreamOrchestrator<
               status: "pending",
               limit: 100,
               select: ["run_id", "kwargs", "created_at"],
+              signal: lookup.signal,
             })
             .catch(() => undefined),
-    ]);
+    ]).finally(() => clearTimeout(timer));
     if (threadId !== this.#threadId) return;
     if (pending != null) this.#queueListedRuns(pending);
     if (runs == null) return;
@@ -855,9 +898,10 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       // A read issued while a run streamed, or before one began, can show a
-      // call that run answered; `#finishRun` runs the calls in the head read
-      // after a run.
-      if (idle && epoch === this.stream.epoch) {
+      // call that run answered, so `#finishRun` runs the calls in the head
+      // read after a run. A load runs its head's calls when it ends, in
+      // `#startLoad`, once it has ruled out such a run.
+      if (idle && epoch === this.stream.epoch && !this.#unconfirmedHead()) {
         this.#flushHeadToolCalls(data?.at(0));
       }
       this.#notify();
@@ -1079,8 +1123,9 @@ export class StreamOrchestrator<
 
   /**
    * All active interrupts for the current thread state.
-   * Returns an empty array when the stream is loading or no interrupts
-   * are present. Falls back to a `{ when: "breakpoint" }` sentinel when
+   * Returns an empty array when the stream is loading, while a thread load
+   * looks for a run still going, or when no interrupts are present. Falls
+   * back to a `{ when: "breakpoint" }` sentinel when
    * there are pending next nodes but no explicit interrupt data.
    */
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
@@ -1089,7 +1134,7 @@ export class StreamOrchestrator<
       return this.#visible(userFacingInterruptsFromValuesArray(fromValues));
     }
 
-    if (this.isLoading) return [];
+    if (this.isLoading || this.#unconfirmedHead()) return [];
 
     const allTasks = this.branchContext.threadHead?.tasks ?? [];
     const allInterrupts = allTasks.flatMap(taskInterrupts);
@@ -1100,8 +1145,7 @@ export class StreamOrchestrator<
     if (userFacing != null) return this.#visible(userFacing);
 
     const next = this.branchContext.threadHead?.next ?? [];
-    // Until the load's run lookup ends, `next` may be a run still going.
-    if (!next.length || this.error != null || this.#hydrating) return [];
+    if (!next.length || this.error != null) return [];
     return [{ when: "breakpoint" }];
   }
 
@@ -1112,11 +1156,10 @@ export class StreamOrchestrator<
    */
   get interrupt(): Interrupt<GetInterruptType<Bag>> | undefined {
     const interrupt = extractInterrupts<GetInterruptType<Bag>>(this.values, {
-      isLoading: this.isLoading,
+      isLoading: this.isLoading || this.#unconfirmedHead(),
       threadState: this.branchContext.threadHead,
       error: this.error,
     });
-    if (interrupt?.when === "breakpoint" && this.#hydrating) return undefined;
     return interrupt?.id != null && this.#answered.has(interrupt.id)
       ? undefined
       : interrupt;
@@ -2286,6 +2329,9 @@ export class StreamOrchestrator<
   ): Promise<void> {
     if (this.#threadId == null) {
       throw new Error("No active thread to respond to.");
+    }
+    if (options.interruptId == null && this.#unconfirmedHead()) {
+      await this.#hydration;
     }
     const interruptId =
       options.interruptId ??
