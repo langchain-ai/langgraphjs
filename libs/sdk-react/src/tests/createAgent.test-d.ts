@@ -8,10 +8,16 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages";
 
 import {
   useMessageMetadata,
+  useMessages,
   useStream,
+  useStreamContext,
+  useSubmissionQueue,
+  useSuspenseStream,
   useToolCalls,
+  useValues,
   type AssembledToolCall,
   type InferToolCalls,
+  type StreamLike,
   type ToolCallFromTool,
 } from "../index.js";
 
@@ -656,5 +662,44 @@ describe("realistic usage patterns with createAgent", () => {
     });
 
     expectTypeOf(stream.toolCalls).toBeArray();
+  });
+});
+
+describe("a typed agent's stream in the selector hooks", () => {
+  test("useValues and useSubmissionQueue type the agent's state", () => {
+    const stream = useStream<typeof agentWithCustomState>({
+      assistantId: "agent",
+    });
+
+    expectTypeOf(useValues(stream).sessionId).toEqualTypeOf<string>();
+    expectTypeOf(
+      useSubmissionQueue(stream).entries[0].values!
+    ).toHaveProperty("sessionId");
+  });
+
+  test("a useSuspenseStream result goes into the hooks and a StreamLike helper", () => {
+    const stream = useSuspenseStream<typeof agentWithCustomState>({
+      assistantId: "agent",
+    });
+    const panel = (handle: StreamLike) => useMessages(handle);
+
+    useMessages(stream);
+    useToolCalls(stream);
+    panel(stream);
+    panel(useStream<typeof agentWithCustomState>({ assistantId: "agent" }));
+    expectTypeOf(useValues(stream).sessionId).toEqualTypeOf<string>();
+  });
+
+  test("useStreamContext takes the interrupt and configurable types", () => {
+    const stream = useStreamContext<
+      typeof agentWithCustomState,
+      { question: string },
+      { userId: string }
+    >();
+
+    expectTypeOf(stream.interrupt?.value).toEqualTypeOf<
+      { question: string } | undefined
+    >();
+    expectTypeOf(stream.values.sessionId).toEqualTypeOf<string>();
   });
 });

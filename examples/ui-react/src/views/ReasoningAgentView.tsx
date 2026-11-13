@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useMessages, useStream } from "@langchain/react";
 
 import type { agent as reasoningAgentType } from "../agents/reasoning-agent";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -19,12 +19,11 @@ const SUGGESTIONS = [
   "A train travels 60 miles at 30 mph and returns at 60 mph. What is the average speed?",
 ];
 
-export function ReasoningAgentView({ transport }: { transport: Transport }) {
+export function ReasoningAgentView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const stream = useStream<typeof reasoningAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -50,7 +49,6 @@ export function ReasoningAgentView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Reasoning Agent"
       description={
         <>

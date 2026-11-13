@@ -9,7 +9,7 @@ import {
 import { HumanMessage } from "langchain";
 
 import type { agent as nestedStateGraphType } from "../agents/nested-stategraph";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -25,13 +25,12 @@ const SUGGESTIONS = [
   "Research the current state of ephemeral dev agents and rank the risks.",
 ];
 
-export function NestedStateGraphView({ transport }: { transport: Transport }) {
+export function NestedStateGraphView() {
   const [threadId, setThreadId] = useState<string | null>(null);
 
   const stream = useStream<typeof nestedStateGraphType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -56,7 +55,6 @@ export function NestedStateGraphView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Nested StateGraph"
       description={
         <>

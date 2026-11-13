@@ -91,7 +91,7 @@ In-depth guides live in [`docs/`](./docs):
   `AgentServerAdapter` implementations.
 - [Custom transports](./docs/custom-transport.md) — implementing
   `AgentServerAdapter` against your own backend, with a worked
-  walkthrough of [`examples/ui-react-transport`](../../examples/ui-react-transport).
+  walkthrough of [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport).
 - [Interrupts & headless tools](./docs/interrupts.md) — pausing a
   run, responding to interrupts, registering browser-side tools.
 - [Forking from a message](./docs/forking.md) — edit / retry flows

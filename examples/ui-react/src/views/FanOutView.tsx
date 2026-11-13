@@ -9,7 +9,7 @@ import {
 } from "@langchain/react";
 
 import type { agent as fanOutAgentType } from "../agents/fan-out";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -36,7 +36,7 @@ type GenericStream = UseStreamReturn<any, any, any>;
 
 type StatusFilter = "all" | "running" | "complete" | "error";
 
-export function FanOutView({ transport }: { transport: Transport }) {
+export function FanOutView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [modalSubagentId, setModalSubagentId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -46,7 +46,6 @@ export function FanOutView({ transport }: { transport: Transport }) {
   >({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
   });
@@ -98,7 +97,6 @@ export function FanOutView({ transport }: { transport: Transport }) {
       <ViewShell
         assistantId={ASSISTANT_ID}
         threadId={threadId}
-        transport={transport}
         title="Fan-Out (100+ workers)"
         description={
           <>
@@ -194,7 +192,6 @@ export function FanOutView({ transport }: { transport: Transport }) {
               title="Run Snapshot"
               value={{
                 assistantId: ASSISTANT_ID,
-                transport,
                 threadId,
                 loading: stream.isLoading,
                 rootMessages: stream.messages.length,

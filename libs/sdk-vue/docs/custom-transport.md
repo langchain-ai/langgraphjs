@@ -5,7 +5,7 @@ that implements the Agent Streaming Protocol. The most important
 distinction is whether you need a **custom browser transport**, or
 just a **custom backend**.
 
-The [`examples/ui-react-transport`](../../../examples/ui-react-transport)
+The [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport)
 example now demonstrates the recommended custom-backend path:
 
 - The UI uses the stock `HttpAgentServerAdapter`.
@@ -472,4 +472,4 @@ If your backend can expose command and stream endpoints, prefer
 - [API reference](./api-reference.md)
 - [Sharing a stream](./sharing-streams.md)
 - [Selectors and `useExtension`](./selectors.md)
-- [`examples/ui-react-transport`](../../../examples/ui-react-transport)
+- [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport)

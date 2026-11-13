@@ -5,5 +5,4 @@ export * from "./MessageFeed";
 export * from "./ProtocolPlayground.types";
 export * from "./ReattachPanel";
 export * from "./RecentEvents";
-export * from "./TransportToggle";
 export * from "./ViewShell";

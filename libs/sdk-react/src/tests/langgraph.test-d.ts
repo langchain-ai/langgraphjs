@@ -458,7 +458,7 @@ describe("graph: core stream properties", () => {
     expectTypeOf(stream.respond("ok")).toEqualTypeOf<Promise<void>>();
   });
 
-  test("getThread returns optional ThreadStream", () => {
+  test("getThread returns the deprecated thread view, or undefined", () => {
     const stream = useStream<typeof researchGraph>({
       assistantId: "graph",
     });

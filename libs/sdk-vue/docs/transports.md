@@ -98,7 +98,7 @@ function onSubmit() {
 </template>
 ```
 
-The [`examples/ui-react-transport`](../../../examples/ui-react-transport)
+The [`examples/ui-react-transport`](https://github.com/langchain-ai/langgraphjs/tree/@langchain/react@1.2.13/examples/ui-react-transport)
 app uses this shape: the UI uses `HttpAgentServerAdapter`, while the
 Hono backend implements `/commands` and `/stream` with a
 `LocalThreadSession`.

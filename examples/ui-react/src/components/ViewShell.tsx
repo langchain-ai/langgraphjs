@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { API_URL, TRANSPORT_LABEL, type Transport } from "../api";
+import { API_URL } from "../api";
 
 /**
  * Common hero header used by every agent view. Keeps the metadata
@@ -9,7 +9,6 @@ import { API_URL, TRANSPORT_LABEL, type Transport } from "../api";
 export function ViewShell({
   assistantId,
   threadId,
-  transport,
   title,
   description,
   error,
@@ -17,7 +16,6 @@ export function ViewShell({
 }: {
   assistantId: string;
   threadId: string | null;
-  transport: Transport;
   title: string;
   description: ReactNode;
   error?: unknown;
@@ -39,10 +37,6 @@ export function ViewShell({
           <div>
             <dt>API</dt>
             <dd>{API_URL}</dd>
-          </div>
-          <div>
-            <dt>Transport</dt>
-            <dd>{TRANSPORT_LABEL[transport]}</dd>
           </div>
           <div>
             <dt>Thread</dt>

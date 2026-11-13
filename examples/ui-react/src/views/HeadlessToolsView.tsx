@@ -3,7 +3,7 @@ import { useStream } from "@langchain/react";
 import type { ToolEvent } from "@langchain/langgraph-sdk";
 
 import type { agent as headlessAgentType } from "../agents/headless-tools";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import {
   Composer,
   JsonPanel,
@@ -28,7 +28,7 @@ const SUGGESTIONS = [
   "Forget memories tagged preference.",
 ];
 
-export function HeadlessToolsView({ transport }: { transport: Transport }) {
+export function HeadlessToolsView() {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
@@ -36,7 +36,6 @@ export function HeadlessToolsView({ transport }: { transport: Transport }) {
   const stream = useStream<typeof headlessAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId: setThreadId,
     tools: toolImplementations,
@@ -74,7 +73,6 @@ export function HeadlessToolsView({ transport }: { transport: Transport }) {
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="Headless Tools"
       description={
         <>

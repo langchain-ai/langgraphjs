@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type InferStateType, useMessages, useStream } from "@langchain/react";
 
 import type { agent as reactAgentType } from "../agents/react-agent";
-import { API_URL, type Transport } from "../api";
+import { API_URL } from "../api";
 import { Composer } from "../components/Composer";
 import { JsonPanel } from "../components/JsonPanel";
 import { MessageFeed } from "../components/MessageFeed";
@@ -23,7 +23,7 @@ const SUGGESTIONS = [
   "Use the calculator to add 12345 and 67890, then explain when you'd use this in code.",
 ];
 
-export function ReactAgentView({ transport }: { transport: Transport }) {
+export function ReactAgentView() {
   const [threadId, setThreadId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(THREAD_ID_STORAGE_KEY);
@@ -61,7 +61,6 @@ export function ReactAgentView({ transport }: { transport: Transport }) {
       key={remountKey}
       threadId={threadId}
       onThreadId={setThreadId}
-      transport={transport}
       onRemountHook={remountHook}
       onReloadPage={reloadPage}
       onClearThread={clearThread}
@@ -72,14 +71,12 @@ export function ReactAgentView({ transport }: { transport: Transport }) {
 function InnerView({
   threadId,
   onThreadId,
-  transport,
   onRemountHook,
   onReloadPage,
   onClearThread,
 }: {
   threadId: string | null;
   onThreadId: (threadId: string) => void;
-  transport: Transport;
   onRemountHook: () => void;
   onReloadPage: () => void;
   onClearThread: () => void;
@@ -87,7 +84,6 @@ function InnerView({
   const stream = useStream<typeof reactAgentType>({
     assistantId: ASSISTANT_ID,
     apiUrl: API_URL,
-    transport,
     threadId,
     onThreadId,
   });
@@ -122,7 +118,6 @@ function InnerView({
     <ViewShell
       assistantId={ASSISTANT_ID}
       threadId={threadId}
-      transport={transport}
       title="ReAct Agent"
       description={
         <>
