@@ -454,13 +454,6 @@ export function smithDashboardBaseUrl(
   return "https://smith.langchain.com";
 }
 
-function isCloudHostBackend(hostname: string): boolean {
-  return (
-    hostname === CLOUD_HOST_BACKEND_HOST ||
-    hostname.endsWith(`.${CLOUD_HOST_BACKEND_HOST}`)
-  );
-}
-
 /** Whether an API key may be sent to `url`: https, or http on localhost. */
 export function isSecureOrLocalUrl(url: string): boolean {
   const { protocol, hostname } = new URL(url);
@@ -468,22 +461,6 @@ export function isSecureOrLocalUrl(url: string): boolean {
     protocol === "https:" ||
     (protocol === "http:" && LOCAL_HOSTNAMES.has(hostname))
   );
-}
-
-/**
- * The data plane root of a `--host-url` that points at a data plane's host
- * backend (`<root>/api-host` off LangSmith cloud), or `undefined`.
- */
-export function dataPlaneRootUrl(hostUrl: string): string | undefined {
-  const url = new URL(hostUrl);
-  const path = url.pathname.replace(/\/+$/, "");
-  if (
-    isCloudHostBackend(url.hostname) ||
-    !path.endsWith(DATA_PLANE_HOST_PATH)
-  ) {
-    return undefined;
-  }
-  return `${url.origin}${path.slice(0, -DATA_PLANE_HOST_PATH.length)}`;
 }
 
 /**

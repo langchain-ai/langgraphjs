@@ -47,7 +47,6 @@ import {
   DEFAULT_HOST_URL,
   DEPLOYMENT_NAME_ENV,
   TERMINAL_STATUSES,
-  dataPlaneRootUrl,
   envWithoutDeploymentName,
   findDeploymentIdByName,
   formatDeploymentsTable,
@@ -74,6 +73,11 @@ let emitter = new Emitter(false);
 let noInput = false;
 
 const SOURCE_REJECTED_PREFIX = "'source' must be";
+const RESOURCE_SPEC_REQUIRED_MARKER =
+  "'source_config.resource_spec' is required";
+const HOST_URL_ON_A_DATA_PLANE =
+  "If --host-url or LANGGRAPH_HOST_URL points at a BYOC data plane, drop it " +
+  "so 'langgraphjs deploy' finds the data plane from your API key.";
 const CLI_BUILDS_UNSUPPORTED =
   "This LangSmith data plane does not build images for 'langgraphjs deploy'. " +
   "Push the image to a registry you manage and deploy it with the Python " +
@@ -84,6 +88,19 @@ const DISCOVERY_TRANSPORT = { retries: 0, timeoutMs: 5_000 };
 // ---------------------------------------------------------------------------
 // Small utilities
 // ---------------------------------------------------------------------------
+
+function createErrorHint(error: unknown): string | undefined {
+  if (!(error instanceof HostBackendError) || error.statusCode !== 400) {
+    return undefined;
+  }
+  if (error.detail?.startsWith(SOURCE_REJECTED_PREFIX)) {
+    return CLI_BUILDS_UNSUPPORTED;
+  }
+  if (error.detail?.includes(RESOURCE_SPEC_REQUIRED_MARKER)) {
+    return HOST_URL_ON_A_DATA_PLANE;
+  }
+  return undefined;
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -356,12 +373,7 @@ async function createHostBackendClient(
       langsmithDashboardUrl(langsmithEndpoint, dataPlaneUrl)
     );
 
-  if (hostUrl) {
-    const dataPlaneUrl = dataPlaneRootUrl(hostUrl);
-    return dataPlaneUrl
-      ? newDataPlaneClient(dataPlaneUrl, tenantId)
-      : new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
-  }
+  if (hostUrl) return new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
   const target = await discoverTarget(
     langsmithEndpoint,
     resolvedApiKey,
@@ -658,13 +670,10 @@ async function createDeployment(
         409
       );
     }
-    if (
-      error instanceof HostBackendError &&
-      error.statusCode === 400 &&
-      error.detail?.startsWith(SOURCE_REJECTED_PREFIX)
-    ) {
+    const hint = createErrorHint(error);
+    if (hint && error instanceof HostBackendError) {
       throw new HostBackendError(
-        `${error.message}\n${CLI_BUILDS_UNSUPPORTED}`,
+        `${error.message}\n${hint}`,
         error.statusCode,
         error.detail
       );

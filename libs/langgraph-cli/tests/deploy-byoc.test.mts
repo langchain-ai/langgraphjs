@@ -324,14 +324,19 @@ describe("on a BYOC data plane", () => {
     expect(createBody().source_config).toEqual({ deployment_type: "dev" });
   });
 
-  it("checks a data plane named by --host-url", async () => {
+  it("hints at dropping --host-url when a data plane asks for resource_spec", async () => {
+    const detail =
+      "'source_config.resource_spec' is required for 'external_docker' source, and for every source on BYOC data planes, and must be 'null' for all other sources.";
+    serve(DATA_PLANE_HOST, {
+      "POST /v2/deployments": () => json({ detail }, 400),
+    });
+
     await remoteDeploy("--host-url", DATA_PLANE_HOST);
 
-    expect(gracefulExit).not.toHaveBeenCalled();
-    expect(calls[0].route).toBe(INFO);
-    expect(calls.map((call) => call.route)).not.toContain(DISCOVER);
-    expectHostCalls(DATA_PLANE_HOST);
-    expect(createBody().source_config).toEqual({ resource_spec: {} });
+    expect(gracefulExit).toHaveBeenCalledWith(1);
+    expect(calls.map((call) => call.route)).not.toContain(INFO);
+    expect(harness.output).toContain(detail);
+    expect(harness.output).toContain("drop it so 'langgraphjs deploy' finds");
   });
 });
 
