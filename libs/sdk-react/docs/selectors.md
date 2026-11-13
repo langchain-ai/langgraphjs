@@ -22,7 +22,7 @@ A selector hook's `target` is one of:
 - a `SubgraphDiscoverySnapshot` from `stream.subgraphs` or `stream.subgraphsByNode`,
 - a namespace, as `{ namespace: [...] }` or as the array itself.
 
-While a hook holds a target, that target's events stream to it. On Agent Server 0.19 or later, the open panels of a run share one connection that carries only their subagents. On an older server they read from the run's own stream. When the last hook on a target unmounts, its view is released. After a reload, the first hook on a subagent looks up its namespace with one small history read.
+While a hook holds a target, that target's events stream to it. On Agent Server 0.19 or later, the open panels of a run share one connection that carries only their subagents. On an older server they read from the run's own stream. When the last hook on a target unmounts, its view is released. After a reload, the first hook on a subagent whose `task` tool message doesn't record its namespace looks it up with one small history read.
 
 ## The hooks
 

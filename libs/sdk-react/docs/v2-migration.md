@@ -103,7 +103,7 @@ Use the [selector hooks](./selectors.md).
 
 ### A message sent during a run waits
 
-- **1.x:** a submit while a run streamed stopped that run and started the new one: its default `multitaskStrategy` was `"interrupt"`.
+- **1.x:** a submit while a run streamed asked the server to stop that run and start the new one: its default `multitaskStrategy` was `"interrupt"`.
 - **2.0:** it waits in a queue, the server's by default or this tab's with `queue: "local"`, and runs when the current run ends. Nothing is cut short, and the message shows in `useSubmissionQueue` until its run starts.
 - **Back:** pass `multitaskStrategy: "interrupt"` on that submit. The server then stops the current run mid-step and cancels the runs queued on the thread. A tool call the agent had started can be left without its result.
 
@@ -118,6 +118,11 @@ Use the [selector hooks](./selectors.md).
 - **1.x:** `stop()` cancelled only a run started in this page.
 - **2.0:** it cancels the run this page shows, also after a reload, or when another tab or a cron started it.
 - **Back:** `disconnect()` stops showing the run and leaves it running.
+
+### `stop()` shows what the server saved
+
+- **1.x:** after `stop()`, the page kept what it showed until a reload.
+- **2.0:** it reads the thread and shows what the server saved, as a reload would. A reply cut off mid-step disappears, since a step's messages are saved when the step ends. On the JS dev server, a run stopped in its first step saves nothing, so its input message goes too.
 
 ### New threads are created before their first run
 
@@ -138,7 +143,7 @@ Use the [selector hooks](./selectors.md).
 
 ### A late answer fails
 
-- **1.x:** an answer to an interrupt that is no longer waiting (answered in another tab, or a wrong id) was ignored, unless you set `strictResume: true`.
+- **1.x:** an answer to an interrupt that is no longer waiting (answered in another tab, or a wrong id) started no run. The Agent Server rejected it, and `respond()` failed with its error. The JS dev server ignored it.
 - **2.0:** `respond` and `respondAll` ask for strict answers by default. On a server that supports them (the version under [Before you upgrade](#before-you-upgrade), with a Python graph), such an answer fails its run with an `UnknownInterruptError` and leaves the thread as it was.
 - **Back:** `respond(value, { strictResume: false })`.
 
@@ -148,10 +153,20 @@ Use the [selector hooks](./selectors.md).
 - **2.0:** it answers the one `stream.interrupt` shows.
 - **Back:** pass the `interruptId` of the interrupt to answer.
 
+### A nested interrupt's `namespace` after a load
+
+- **1.x:** after a load, `getThread().interrupts` gave a nested interrupt's whole namespace.
+- **2.0:** after a load, a nested interrupt's `namespace` names only its top subgraph, in `getThread().interrupts` and `stream.interrupts`. While a run streams, it is the whole one. Answers go by `interruptId`, so this matters only to code that reads the namespace.
+
 ### `error` shows the thread's last error after a load
 
 - **1.x:** `error` held errors from this page's runs and loads.
 - **2.0:** it also shows the error of the thread's last step when a thread loads, so a thread whose last run failed shows the error after a reload. A run stopped from another tab reads as failed too. The error stays until a later run's state replaces it.
+
+### `getThread().onError` also fires for failed runs
+
+- **1.x:** it fired only when the stream itself failed, as when reconnecting gave up.
+- **2.0:** it also fires when a run fails.
 
 ### `useSuspenseStream` throws only a failed load
 
@@ -167,7 +182,18 @@ Use the [selector hooks](./selectors.md).
 ### `values.messages` streams token by token
 
 - **1.x:** `values[messagesKey]` changed once per step, while `messages` streamed tokens.
-- **2.0:** `values[messagesKey]` holds the same token-streamed messages as `messages`.
+- **2.0:** `values[messagesKey]` holds the same token-streamed messages as `messages`. So `values` is a new object on every token: an effect or a memo should depend on the fields it uses, such as `values.todos`, not on `values`.
+
+### `values` has only the graph's keys
+
+- **1.x:** `values` had an empty `messages` key for a graph without one.
+- **2.0:** it holds only the graph's own keys.
+- **Back:** read `stream.messages`, which is `[]` for such a graph.
+
+### A streaming message's `content` is the server's
+
+- **1.x:** a message's `content` was an array of content blocks while it streamed, built from 1.x's events, and what the server saved after a reload. In a JS graph, runs 1.x started also made a model that streams return content blocks to the node that called it.
+- **2.0:** `content` is what the server streams and saves, while it streams and after a reload, so a plain text reply's is a string. In runs 2.0 starts, a model called in a JS graph's node returns its usual content. `message.text` gives the same text on both.
 
 ### Fork points arrive after a run
 
@@ -178,6 +204,21 @@ Use the [selector hooks](./selectors.md).
 
 - **1.x:** `subgraphs` and `subgraphsByNode` were rebuilt from history on load.
 - **2.0:** they start empty after a reload and fill as runs stream them.
+
+### Subgraph panels leave out the main conversation's messages
+
+- **1.x:** a panel on a subgraph showed all its messages, read from the thread's history.
+- **2.0:** it leaves out the messages the main conversation also shows. A subgraph that shares `messages` with its parent hands its messages back to it when it ends, so a panel opened after that can be empty.
+
+### A subagent's `output` is its text
+
+- **1.x:** a finished subagent's `output` was the `task` tool's result as the server sent it, in a shape that differed by server.
+- **2.0:** it is the text of its `task` tool message, what the subagent answered. For the state or files a subagent wrote, read `useValues(stream, subagent)`.
+
+### A subagent's `namespace` after a reload
+
+- **1.x:** after a reload, each subagent showed its own namespace.
+- **2.0:** a subagent's `namespace` is its own when its `task` tool message records it, as deepagents does from 0.7.36 in Python and 1.16.5 in JS. Otherwise it is `["tools:<tool call id>"]` until the real one is known, which the first hook given that subagent looks up. Hooks given the subagent or its `namespace` work either way, and `depth` is right from the start. To key a list, use `subagent.id`, which doesn't change.
 
 ### Runs started elsewhere
 
@@ -193,7 +234,7 @@ Use the [selector hooks](./selectors.md).
 
 ### Channel events
 
-- A hook gets the events at its target's namespace, and the `lifecycle` events of the subagents and subgraphs the target starts. 1.x's hook on the main conversation also got the `values`, `updates` and `custom` events of its direct subgraphs and subagents. To get those, pass the subgraph or subagent as the target.
+- A hook gets the events at its target's namespace, and the `lifecycle` events of the subagents and subgraphs the target starts. 1.x's hook on the main conversation also got the `values`, `updates` and `custom` events of its direct subgraphs and subagents, and, with a Python graph, their `messages` and `tools` events too. To get those, pass the subgraph or subagent as the target.
 - `messages` gives each message chunk as a `[chunk, metadata]` pair, as the Agent Server streams it, not 1.x's content-block events (`message-start`, `content-block-delta` and the rest).
 - `tools` keeps `tool-started`, `tool-finished` and `tool-error`, and `tool-progress` with `data` replaces `tool-output-delta`. Tool events need the server version under [Before you upgrade](#before-you-upgrade).
 - `lifecycle` has the events of subagents and subgraphs, and one event when a run ends: `completed`, `interrupted` or `failed`. No event says a run started.
@@ -204,12 +245,13 @@ Use the [selector hooks](./selectors.md).
 
 ## What's new
 
-- `stream.hydrate(threadId?)` loads a thread, or reads the current one again, and joins its running run.
+- `stream.hydrate(threadId?)` loads a thread, or reads the current one again, and joins its running run. Reading the current one again leaves `isThreadLoading` `false`, so the thread stays on screen. 1.x's `stream[STREAM_CONTROLLER].hydrate()` set it while it read.
 - `submit()` takes `command`, `interruptBefore` and `interruptAfter`.
 - The selector hooks accept a `useSuspenseStream` result, and `StreamLike` types a helper that takes either kind of stream.
 - With a typed agent (`useStream<typeof agent>`), `useValues` and `useSubmissionQueue` give the agent's state. 1.x typed it as the agent itself.
 - `useStreamContext` takes the interrupt and `configurable` types, as `useStream` does.
 - Callbacks (`onThreadId`, `onCreated`, `onCompleted`, `onTool` and the reconnect callbacks) are read from the latest render, so they see current state. 1.x kept the first render's.
+- `onCompleted` gets the `runId` of a run the hook joined, such as one still running after a reload. 1.x's had none.
 - `submit`, `stop`, `respond` and the stream's other functions keep their identity across renders.
 - `defaultHeaders` and `callerOptions` are compared by entry, so an inline object keeps the client while its values stay the same. 1.x built a new client for each new object. A function written inline in `callerOptions` still builds one on every render.
 
@@ -217,7 +259,7 @@ Use the [selector hooks](./selectors.md).
 
 - The hooks, their names and arguments, and `StreamProvider` and `useStreamContext`.
 - `useSubmissionQueue`'s entries, `cancel` and `clear`.
-- The subagent snapshots in `stream.subagents`, and their fields.
+- The fields of the subagent snapshots in `stream.subagents`. Only what `output` holds, and `namespace` after a reload, changed (see [What works differently](#what-works-differently)).
 - Headless tools (`tools` and `onTool`).
 - Nested interrupts show in `interrupts`.
 - Runs keep going when the tab closes, and a reload joins the running run.

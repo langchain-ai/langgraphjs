@@ -15,7 +15,7 @@ An interrupt pauses a run to ask for input, such as an approval. `useStream` sho
 
 ## Reading interrupts
 
-`stream.interrupts` lists the interrupts waiting for an answer, nested ones included: one raised inside a subagent or a subgraph shows too. Each has its `id`, its `value` and its `namespace`, which is `[]` for the main graph. `stream.interrupt` is the first. Tool calls your [headless tools](#headless-tools) answer don't show.
+`stream.interrupts` lists the interrupts waiting for an answer, nested ones included: one raised inside a subagent or a subgraph shows too. Each has its `id`, its `value` and its `namespace`, which is `[]` for the main graph. After a load, a nested one's `namespace` names only its top subgraph. `stream.interrupt` is the first. Tool calls your [headless tools](#headless-tools) answer don't show.
 
 ```tsx
 const stream = useStream<
