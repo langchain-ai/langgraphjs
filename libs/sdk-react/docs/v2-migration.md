@@ -119,11 +119,6 @@ Use the [selector hooks](./selectors.md).
 - **2.0:** it cancels the run this page shows, also after a reload, or when another tab or a cron started it.
 - **Back:** `disconnect()` stops showing the run and leaves it running.
 
-### `stop()` shows what the server saved
-
-- **1.x:** after `stop()`, the page kept what it showed until a reload.
-- **2.0:** it reads the thread and shows what the server saved, as a reload would. A reply cut off mid-step disappears, since a step's messages are saved when the step ends. On the JS dev server, a run stopped in its first step saves nothing, so its input message goes too.
-
 ### New threads are created before their first run
 
 - **1.x:** the first submit made a thread id in the browser, `onThreadId` fired at once, and the run created the thread.
@@ -205,10 +200,10 @@ Use the [selector hooks](./selectors.md).
 - **1.x:** `subgraphs` and `subgraphsByNode` were rebuilt from history on load.
 - **2.0:** they start empty after a reload and fill as runs stream them.
 
-### Subgraph panels leave out the main conversation's messages
+### A fork-mode subagent's panel leaves out the main conversation's messages
 
-- **1.x:** a panel on a subgraph showed all its messages, read from the thread's history.
-- **2.0:** it leaves out the messages the main conversation also shows. A subgraph that shares `messages` with its parent hands its messages back to it when it ends, so a panel opened after that can be empty.
+- **1.x:** a panel on a deep agents subagent with `mode="fork"` also showed the main conversation's messages, which the subagent starts from.
+- **2.0:** it shows only the subagent's own messages. A subgraph's panel shows all its messages, as in 1.x.
 
 ### A subagent's `output` is its text
 

@@ -113,7 +113,7 @@ The functions keep their identity across renders.
 
 ### `stop()` and `disconnect()`
 
-`stream.stop()` stops the run this page shows and cancels it on the server, whether this page started it or joined it after a reload or from another tab. Then the page shows what the server saved, so a reply cut off mid-step disappears. With no run, it does nothing.
+`stream.stop()` stops the run this page shows and cancels it on the server, whether this page started it or joined it after a reload or from another tab. A reply it cut off mid-step disappears. The other messages the page showed stay, also those the server didn't save yet, until the next run, a reload or a thread switch. With no run, it does nothing.
 
 ```tsx
 <button onClick={() => void stream.stop()} disabled={!stream.isLoading}>

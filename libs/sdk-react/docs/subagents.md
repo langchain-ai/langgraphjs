@@ -130,7 +130,7 @@ function SubgraphCard({
 }
 ```
 
-A subgraph shows once a run streams its events, so after a reload `subgraphs` starts empty and fills as runs stream. A subgraph's panel leaves out the messages the main conversation also shows, so for a subgraph that shares `messages` with its parent, a panel opened after it ran can be empty.
+A subgraph shows once a run streams its events, so after a reload `subgraphs` starts empty and fills as runs stream. A subgraph's panel shows all its messages, also those it shares with its parent. A subagent's panel leaves out the main conversation's messages, which a deep agents subagent with `mode="fork"` starts from.
 
 ## Related
 
