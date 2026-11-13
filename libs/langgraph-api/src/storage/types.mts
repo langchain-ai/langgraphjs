@@ -60,7 +60,8 @@ export type StreamMode =
   | "debug"
   | "tasks"
   | "checkpoints"
-  | "tools";
+  | "tools"
+  | "lifecycle";
 
 export type MultitaskStrategy = "reject" | "rollback" | "interrupt" | "enqueue";
 
@@ -123,6 +124,7 @@ export interface RunKwargs {
   resumable?: boolean;
 
   temporary?: boolean;
+  strict_resume?: boolean;
 
   // TODO: implement webhook
   webhook?: unknown;
@@ -302,6 +304,7 @@ export interface RunsStreamRepo {
       signal?: AbortSignal;
       cancelOnDisconnect?: boolean;
       lastEventId: string | undefined;
+      checkRunAccess?: boolean;
     },
     auth: AuthContext | undefined
   ): AsyncGenerator<{ id?: string; event: string; data: unknown }>;

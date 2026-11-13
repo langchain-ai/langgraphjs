@@ -13,7 +13,7 @@ import { MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
 
 import { PROTOCOL_STREAM_RUN_KEY } from "../src/protocol/constants.mjs";
-import { streamState } from "../src/stream.mjs";
+import { matchesStreamMode, streamState } from "../src/stream.mjs";
 import type { Run } from "../src/storage/types.mjs";
 import { omitUndefined } from "../src/utils/runnableConfig.mjs";
 import { gatherIterator } from "./utils.mjs";
@@ -102,6 +102,47 @@ describe("omitUndefined", () => {
 });
 
 describe("streamState", () => {
+  const streamEventsOf = (kwargs: Partial<Run["kwargs"]>) => {
+    const run = createRun({ kwargs: { ...createRun().kwargs, ...kwargs } });
+    return gatherIterator(
+      streamState(run, {
+        attempt: 1,
+        getGraph: async () =>
+          ({
+            async *streamEvents() {
+              yield* [];
+            },
+          }) as never,
+      })
+    );
+  };
+
+  it("names the interrupts a resume by id answers right after metadata", async () => {
+    const [idA, idB] = ["a".repeat(32), "b".repeat(32)];
+    const events = await streamEventsOf({
+      command: { resume: { [idB]: "no", [idA]: "yes" } },
+    });
+
+    expect(events[1]).toEqual({
+      event: "interrupts",
+      data: { run_id: createRun().run_id, answered: [idA, idB] },
+    });
+  });
+
+  it.each([
+    ["a plain resume", { command: { resume: "yes" } }],
+    ["an input", { input: {} }],
+  ])("names no interrupts for %s", async (_name, kwargs) => {
+    const events = await streamEventsOf(kwargs);
+
+    expect(events.map(({ event }) => event)).not.toContain("interrupts");
+  });
+
+  it("never passes the interrupts a run answers to a run stream", () => {
+    expect(matchesStreamMode("interrupts", [])).toBe(false);
+    expect(matchesStreamMode("interrupts", ["values"])).toBe(false);
+  });
+
   it("omits recursionLimit from streamEvents options when the run config omits it", async () => {
     const run = createRun();
     let seenOptions: Record<string, unknown> | undefined;
@@ -509,6 +550,48 @@ describe("streamState", () => {
       ["msg_0", "Hi"],
       ["msg_1", "Bye"],
     ]);
+  });
+
+  it("skips model calls tagged nostream or langsmith:nostream in the messages and events modes", async () => {
+    const model = new IdOnFirstChunkChatModel({
+      responses: ["tagged nostream", "tagged langsmith:nostream", "untagged"],
+    });
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("agent", async (state) => {
+        await model.invoke(state.messages, { tags: ["nostream"] });
+        await model.invoke(state.messages, { tags: ["langsmith:nostream"] });
+        return { messages: [await model.invoke(state.messages)] };
+      })
+      .addEdge(START, "agent")
+      .compile();
+    const run = createRun({
+      kwargs: {
+        input: { messages: [{ type: "human", content: "hey" }] },
+        config: { configurable: { graph_id: "agent" } },
+        stream_mode: ["messages", "events"],
+        subgraphs: false,
+        resumable: true,
+      },
+    });
+
+    const chunks: Array<{ event: string; data: any }> = await gatherIterator(
+      streamState(run, { attempt: 1, getGraph: async () => graph as never })
+    );
+
+    const lastPartials = Object.fromEntries(
+      chunks
+        .filter((c) => c.event === "messages/partial")
+        .map((c) => [c.data[0].id, c.data[0].content])
+    );
+    expect(lastPartials).toEqual({ msg_2: "untagged" });
+    expect(
+      chunks
+        .filter(
+          (c) => c.event === "events" && c.data.event === "on_chat_model_stream"
+        )
+        .map((c) => c.data.data.chunk.content)
+        .join("")
+    ).toBe("untagged");
   });
 
   it("sends messages/complete for the root graph's messages when subgraphs are on", async () => {

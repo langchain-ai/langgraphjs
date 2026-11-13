@@ -225,17 +225,14 @@ describe("ProtocolSseTransportAdapter thread binding", () => {
 });
 
 describe("ProtocolSseTransportAdapter AsyncCaller", () => {
-  it("retries transient command failures when asyncCaller is provided", async () => {
-    let attempts = 0;
-    const fetchImpl = vi.fn(() => {
-      attempts += 1;
-      if (attempts < 3) {
-        return Promise.resolve(
-          new Response("unavailable", { status: 503, statusText: "Unavailable" })
-        );
-      }
-      return Promise.resolve(protocolSuccessResponse());
-    }) as typeof fetch;
+  it("does not retry a command that got a 5xx, since commands are POSTs", async () => {
+    // A command such as `run.start` may have taken effect before the 5xx,
+    // and sending it again could repeat it.
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response("unavailable", { status: 503, statusText: "Unavailable" })
+      )
+    ) as typeof fetch;
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",
@@ -244,14 +241,49 @@ describe("ProtocolSseTransportAdapter AsyncCaller", () => {
       asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
     });
 
-    await transport.send({
-      id: 1,
-      method: "state.get",
-      params: { namespace: [] },
+    await expect(
+      transport.send({
+        id: 1,
+        method: "state.get",
+        params: { namespace: [] },
+      })
+    ).rejects.toThrow(/HTTP 503/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a command whose connection was refused", async () => {
+    vi.useFakeTimers();
+    const refused = Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(refused)
+      .mockResolvedValueOnce(protocolSuccessResponse()) as typeof fetch;
+
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: "http://localhost:8123",
+      threadId: THREAD_ID,
+      fetch: fetchImpl,
+      asyncCaller: new AsyncCaller({ maxRetries: 4, maxConcurrency: 1 }),
     });
 
-    expect(attempts).toBe(3);
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    try {
+      const sent = transport.send({
+        id: 1,
+        method: "state.get",
+        params: { namespace: [] },
+      });
+      await vi.runAllTimersAsync();
+      await sent;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry non-retryable status codes when asyncCaller is provided", async () => {
@@ -303,7 +335,7 @@ describe("ProtocolSseTransportAdapter AsyncCaller", () => {
     }) as unknown as typeof fetch;
 
     const asyncCaller = new AsyncCaller({ maxRetries: 0, maxConcurrency: 1 });
-    const callSpy = vi.spyOn(asyncCaller, "call");
+    const callSpy = vi.spyOn(asyncCaller, "callWithOptions");
 
     const transport = new ProtocolSseTransportAdapter({
       apiUrl: "http://localhost:8123",

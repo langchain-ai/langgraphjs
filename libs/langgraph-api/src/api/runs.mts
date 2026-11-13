@@ -9,7 +9,7 @@ import { getAssistantId } from "../graph/load.mjs";
 import { logError, logger } from "../logging.mjs";
 import * as schemas from "../schemas.mjs";
 import { runs, threads } from "../storage/context.mjs";
-import type { Run, RunKwargs } from "../storage/types.mjs";
+import type { Run, RunKwargs, RunsStreamRepo } from "../storage/types.mjs";
 import { matchesStreamMode } from "../stream.mjs";
 import {
   getDisconnectAbortSignal,
@@ -23,6 +23,28 @@ import {
 import { serialiseAsDict } from "../utils/serde.mjs";
 
 const api = new Hono();
+
+// Ends a run stream with `end` and the run's final status. A stateless run's
+// worker sends its own `end`, since the run is deleted with its thread.
+async function* joinWithEnd(
+  ...[runId, threadId, options, auth]: Parameters<RunsStreamRepo["join"]>
+) {
+  for await (const event of runs().stream.join(
+    runId,
+    threadId,
+    options,
+    auth
+  )) {
+    // The interrupts a run answers are for the protocol's thread clients.
+    if (event.event === "interrupts") continue;
+    yield event;
+    if (event.event === "end") return;
+  }
+  const run = await runs().get(runId, threadId, auth);
+  if (run != null && run.status !== "pending" && run.status !== "running") {
+    yield { event: "end", data: { run_id: run.run_id, status: run.status } };
+  }
+}
 
 const createValidRun = async (
   threadId: string | undefined,
@@ -94,6 +116,7 @@ const createValidRun = async (
         threadId == null && (run.on_completion ?? "delete") === "delete",
       subgraphs: run.stream_subgraphs ?? false,
       resumable: run.stream_resumable ?? false,
+      ...(run.strict_resume ? { strict_resume: true } : {}),
     },
     {
       threadId,
@@ -196,13 +219,13 @@ api.post("/runs/stream", zValidator("json", schemas.RunCreate), async (c) => {
         : undefined;
 
     try {
-      for await (const { event, data } of runs().stream.join(
+      for await (const { event, data } of joinWithEnd(
         run.run_id,
         undefined,
         {
           signal: cancelOnDisconnect,
           cancelOnDisconnect: cancelOnDisconnect != null,
-          lastEventId: run.kwargs.resumable ? "-1" : undefined,
+          lastEventId: "-1",
           ignore404: true,
         },
         c.var.auth
@@ -232,7 +255,7 @@ api.get(
         : undefined;
 
       try {
-        for await (const { id, event, data } of runs().stream.join(
+        for await (const { id, event, data } of joinWithEnd(
           run_id,
           undefined,
           {
@@ -240,6 +263,7 @@ api.get(
             cancelOnDisconnect: cancelOnDisconnect != null,
             lastEventId,
             ignore404: true,
+            checkRunAccess: true,
           },
           c.var.auth
         )) {
@@ -359,13 +383,13 @@ api.post(
           : undefined;
 
       try {
-        for await (const { id, event, data } of runs().stream.join(
+        for await (const { id, event, data } of joinWithEnd(
           run.run_id,
           thread_id,
           {
             signal: cancelOnDisconnect,
             cancelOnDisconnect: cancelOnDisconnect != null,
-            lastEventId: run.kwargs.resumable ? "-1" : undefined,
+            lastEventId: "-1",
           },
           c.var.auth
         )) {
@@ -455,12 +479,15 @@ api.get(
     const { cancel_on_disconnect, stream_mode } = c.req.valid("query");
     const lastEventId = c.req.header("Last-Event-ID") || undefined;
 
+    const run = await runs().get(run_id, thread_id, c.var.auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
+
     return streamSSE(c, async (stream) => {
       const signal = cancel_on_disconnect
         ? getDisconnectAbortSignal(c, stream)
         : undefined;
 
-      for await (const { id, event, data } of runs().stream.join(
+      for await (const { id, event, data } of joinWithEnd(
         run_id,
         thread_id,
         {

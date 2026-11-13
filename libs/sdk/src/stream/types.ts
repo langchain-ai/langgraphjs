@@ -13,7 +13,7 @@ import type {
   ThreadStream,
   ThreadStreamOptions,
 } from "../client/stream/index.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 import type {
   AgentServerAdapter,
   TransportAdapter,
@@ -25,8 +25,8 @@ import type {
   OnToolCallback,
 } from "../headless-tools.js";
 import type { Channel, Event, Goto } from "@langchain/protocol";
-import { DEFAULT_MESSAGES_KEY } from "./constants.js";
-import type { StreamStore } from "./store.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import type { StreamStore } from "../ui/store.js";
 
 export {
   DEFAULT_IDLE_RECONNECT,
@@ -106,6 +106,15 @@ export interface StreamRespondAllOptions<
    * (`{ node, input }`), or a list mixing the two for fan-out.
    */
   goto?: Goto;
+  /**
+   * Refuse the answer when an interrupt it names is no longer waiting
+   * (answered in another tab, or a wrong id) instead of ignoring it. The
+   * refused resume runs nothing: `error` becomes an `Error` named
+   * `"UnknownInterruptError"` with `reason`, `interruptIds` and `pendingIds`,
+   * and the interrupts still waiting show again. A server without strict
+   * resume ignores the option; the Agent Server reports it in `/info`.
+   */
+  strictResume?: boolean;
 }
 
 /**
@@ -461,20 +470,19 @@ export interface StreamSubmitOptions<
   /**
    * Behaviour when a run is already in-flight on the thread.
    *
-   * - `"rollback"` (default) — abort the active run client-side and
-   *   start the new one immediately.
-   * - `"interrupt"` — server-side cancel of the in-flight run, then
-   *   start the new one.
+   * - `"interrupt"` (default) — cancel the active run on the server,
+   *   keeping the steps it completed, and start the new one.
+   * - `"rollback"` — like `"interrupt"`, but the server also deletes
+   *   the active run and its checkpoints, as if it never ran.
    * - `"enqueue"` — do NOT abort the active run; the new submission
    *   lands in {@link StreamController.queueStore} and is forwarded
    *   once the current run terminates.
    * - `"reject"` — error out client-side when a run is already in
    *   flight.
    *
-   * `"rollback"`, `"reject"`, and `"enqueue"` are honoured client-side.
-   * `"interrupt"` is accepted on the type surface but currently falls
-   * through to `"rollback"` behaviour pending the matching server-side
-   * cancel work.
+   * When the thread shows no run in flight, only a strategy passed here
+   * is sent, so by default the server queues the new run behind a run
+   * this client has not seen.
    */
   multitaskStrategy?: "rollback" | "interrupt" | "enqueue" | "reject";
   signal?: AbortSignal;
@@ -534,29 +542,9 @@ export interface SubagentDiscoverySnapshot {
 }
 
 /**
- * Lightweight discovery record for a subgraph running inside the thread.
- */
-export interface SubgraphDiscoverySnapshot {
-  readonly id: string;
-  readonly namespace: readonly string[];
-  /**
-   * Name of the graph node that produced this subgraph invocation,
-   * parsed from the last namespace segment. LangGraph assigns every
-   * node invocation a checkpoint namespace shaped like
-   * `<node_name>:<uuid>`; this is the `<node_name>` half, letting
-   * callers key lookups on names they recognise from
-   * `addNode(name, …)` without parsing the namespace themselves.
-   */
-  readonly nodeName: string;
-  readonly status: "running" | "complete" | "error";
-  readonly startedAt: Date;
-  readonly completedAt: Date | null;
-}
-
-/**
  * Anything with a `namespace` can be passed to selector hooks as a
  * scope target. Both {@link SubagentDiscoverySnapshot} and
- * {@link SubgraphDiscoverySnapshot} satisfy this; callers can also
+ * `SubgraphDiscoverySnapshot` satisfy this; callers can also
  * hand-build `{ namespace: [...] }` objects.
  */
 export type Target = undefined | { readonly namespace: readonly string[] };

@@ -30,6 +30,8 @@ import {
   createEmbedServer,
   type ThreadSaver,
 } from "../../src/experimental/embed.mjs";
+import { replayQueuedEvents } from "../../src/experimental/embed/protocol.mjs";
+import type { ProtocolEvent } from "../../src/protocol/types.mjs";
 import { graph as agent } from "../graphs/agent.mjs";
 import { graph as agentWithToolsGraph } from "../graphs/agent_with_tools.mjs";
 import { graph as agentWithStatsGraph } from "../graphs/agent_with_stats.mjs";
@@ -394,5 +396,73 @@ describe("SDK streaming projections against embed server", () => {
       // claim the root as its parent and this assertion would fail.
       expect(childrenOfRoot.length).toBeGreaterThanOrEqual(2);
     });
+
+    it("starts a new run while the thread waits on interrupts", async () => {
+      const thread = createThread("parallel_interrupt");
+      const config = { configurable: { thread_id: thread.threadId } };
+      const pausedWith = async (answers: string[]) => {
+        const state = await parallelInterruptGraph.getState(config);
+        expect(state.values.answers).toEqual(answers);
+        const interrupts = state.tasks.flatMap((task) => task.interrupts);
+        expect(interrupts).toHaveLength(2);
+        return interrupts.map((interrupt) => interrupt.id);
+      };
+
+      await thread.run.start({ input: { answers: [] } });
+      await vi.waitFor(() => pausedWith([]), { timeout: 10_000 });
+      let rootCheckpointId: string | undefined;
+      for await (const tuple of checkpointer.list(config)) {
+        rootCheckpointId = tuple.checkpoint.id;
+      }
+
+      await thread.run.start({
+        input: { answers: ["edited"] },
+        forkFrom: rootCheckpointId,
+      });
+      const forkedIds = await vi.waitFor(() => pausedWith(["edited"]), {
+        timeout: 10_000,
+      });
+      await thread.close();
+
+      const late = new ThreadStream(
+        new ProtocolSseTransportAdapter({
+          apiUrl: serverUrl,
+          threadId: thread.threadId,
+        }),
+        { assistantId: "parallel_interrupt" }
+      );
+      const requested = await collectWithTimeout(
+        await late.subscribe({ channels: ["input"] }),
+        1000
+      );
+      await late.close();
+      expect(
+        requested
+          .filter((event) => event.method === "input.requested")
+          .map(
+            (event) =>
+              (event.params as { data: { interrupt_id: string } }).data
+                .interrupt_id
+          )
+          .sort()
+      ).toEqual([...forkedIds].sort());
+    });
+  });
+});
+
+describe("replayQueuedEvents", () => {
+  it("moves on to the buffer a new run swaps in mid-replay", async () => {
+    const [first, second, third] = [1, 2, 3].map(
+      (seq) => ({ seq }) as unknown as ProtocolEvent
+    );
+    const thread = { queuedEvents: [first, second] };
+    const written: ProtocolEvent[] = [];
+
+    await replayQueuedEvents(thread, async (event) => {
+      written.push(event);
+      if (event === first) thread.queuedEvents = [third];
+    });
+
+    expect(written).toEqual([first, third]);
   });
 });
