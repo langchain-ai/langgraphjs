@@ -21,7 +21,7 @@ import {
 import type { MessageMetadataMap } from "./message-metadata-tracker.js";
 import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
 import type { StreamEngine } from "./engine.js";
-import type { RespondOptions } from "./orchestrator.js";
+import type { RespondOptions, RunEndReason } from "./orchestrator.js";
 import { PendingRunsTracker } from "./queue.js";
 import type { Scope, ScopeSnapshot } from "./scoped.js";
 import { StreamStore } from "./store.js";
@@ -230,9 +230,8 @@ export class CustomStreamOrchestrator<
   }
 
   /**
-   * Synchronize the external thread ID with the orchestrator.
-   * If the ID has changed, the current stream is cleared and listeners
-   * are notified.
+   * Synchronize the external thread ID with the orchestrator, as
+   * {@link switchThread} does.
    *
    * @param newId - The new thread ID, or `null` to clear.
    */
@@ -493,8 +492,9 @@ export class CustomStreamOrchestrator<
   /**
    * Switch to a different thread. If the thread ID actually changed,
    * the current stream is cleared, the submits waiting behind it are
-   * dropped, and listeners are notified. The new thread starts empty:
-   * `initialValues` were the first thread's.
+   * dropped, `onThreadId` is called unless the new ID is `null`, and
+   * listeners are notified. The new thread starts empty: `initialValues`
+   * were the first thread's.
    *
    * @param newThreadId - The thread ID to switch to, or `null` to clear.
    */
@@ -505,6 +505,7 @@ export class CustomStreamOrchestrator<
       this.#queue.removeAll();
       this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
+      if (newThreadId != null) this.#options.onThreadId?.(newThreadId);
       this.#notify();
     }
   }
@@ -576,6 +577,9 @@ export class CustomStreamOrchestrator<
           )
         : undefined;
     let usableThreadId: string | undefined;
+    let runId: string | undefined;
+    // An aborted stream calls neither onSuccess nor onError.
+    let reason: RunEndReason = "stopped";
 
     await this.stream.start(
       async (signal: AbortSignal) => {
@@ -622,6 +626,9 @@ export class CustomStreamOrchestrator<
         initialValues: {} as StateType,
         callbacks: this.#options,
         onSuccess: () => {
+          reason = valuesInterrupts(this.values)?.length
+            ? "interrupt"
+            : "success";
           if (!usableThreadId) return undefined;
 
           this.#options.onFinish?.(
@@ -632,10 +639,31 @@ export class CustomStreamOrchestrator<
           return undefined;
         },
         onError: (error) => {
+          reason = "error";
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         },
-        onEvent: (event, data) => this.#channels.emit(event, data),
+        onFinish: () => {
+          // As on an Agent Server: a subagent can't finish once its run has.
+          if (reason === "error" || reason === "stopped") {
+            this.stream.closeOpenSubagents(`The run ended: ${reason}`);
+          }
+          if (!this.#disposed) this.#options.onRunEnd?.({ runId, reason });
+        },
+        onEvent: (event, data) => {
+          // A run sends `metadata` once per attempt, with the same id.
+          if (event === "metadata" && runId == null) {
+            const { run_id: id } = (data ?? {}) as { run_id?: unknown };
+            if (typeof id === "string") {
+              runId = id;
+              this.#options.onCreated?.({
+                run_id: id,
+                thread_id: usableThreadId!,
+              });
+            }
+          }
+          this.#channels.emit(event, data);
+        },
       }
     );
   }
