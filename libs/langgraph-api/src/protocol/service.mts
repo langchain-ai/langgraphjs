@@ -93,6 +93,20 @@ export const multitaskStrategyFromRunStart = (
   );
 
 /**
+ * The checkpoint a `run.start` forks from: its non-empty
+ * `config.configurable.checkpoint_id`.
+ */
+export const forkCheckpointId = (config: unknown): string | undefined => {
+  const checkpointId =
+    isRecord(config) && isRecord(config.configurable)
+      ? config.configurable.checkpoint_id
+      : undefined;
+  return typeof checkpointId === "string" && checkpointId.length > 0
+    ? checkpointId
+    : undefined;
+};
+
+/**
  * `run.start` params after normalization. Extends the stock protocol
  * `RunStartParams` with the SDK's `multitaskStrategy` option, which the
  * server honors per-run (see {@link normalizeMultitaskStrategy}).
@@ -335,8 +349,12 @@ export class ProtocolService {
         `Thread ${record.threadId} is bound to assistant ${record.assistantId}; cannot run ${params.assistant_id}.`
       );
     }
+    // A fork starts a new run from its checkpoint whatever the thread's
+    // latest one waits on, so only a plain run.start can resume.
     const pendingInterrupts =
-      params.input != null ? await this.pendingInterruptCount(record, auth) : 0;
+      params.input != null && forkCheckpointId(params.config) == null
+        ? await this.pendingInterruptCount(record, auth)
+        : 0;
     // One answer can't say which of several pending interrupts it is for:
     // LangGraph fails the run, or picks one when they share a subgraph task.
     // While a run is in flight the count can still change, so it keeps

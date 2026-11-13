@@ -1,0 +1,680 @@
+[
+  {
+    "values": {
+      "messages": [
+        {
+          "content": "go both ",
+          "additional_kwargs": {},
+          "response_metadata": {},
+          "type": "human",
+          "name": null,
+          "id": "4b26047d-386f-4a72-8f15-5476afb80161"
+        },
+        {
+          "content": "",
+          "additional_kwargs": {
+            "invalid_tool_calls": [],
+            "usage_metadata": null
+          },
+          "response_metadata": {},
+          "type": "ai",
+          "name": null,
+          "id": "lc_run--01a1b03d-84b3-76a9-8bc6-519f8de52f0b-0",
+          "tool_calls": [
+            {
+              "name": "search",
+              "args": {
+                "query": "x"
+              },
+              "id": "call_s",
+              "type": "tool_call"
+            },
+            {
+              "name": "task",
+              "args": {
+                "description": "RESEARCHER: research x PAUSE",
+                "subagent_type": "researcher"
+              },
+              "id": "call_r",
+              "type": "tool_call"
+            },
+            {
+              "name": "task",
+              "args": {
+                "description": "WRITER: write about x",
+                "subagent_type": "writer"
+              },
+              "id": "call_w",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "usage_metadata": null
+        },
+        {
+          "content": "User rejected the tool call for `search` with reason: no search",
+          "additional_kwargs": {},
+          "response_metadata": {},
+          "type": "tool",
+          "name": "search",
+          "id": "b6ff3a15-d7c9-4fd7-8510-7d73cf4047b3",
+          "tool_call_id": "call_s",
+          "artifact": null,
+          "status": "error"
+        }
+      ],
+      "files": {},
+      "hitl_edited_tool_calls": {}
+    },
+    "next": [
+      "tools",
+      "tools"
+    ],
+    "tasks": [
+      {
+        "id": "70e5d9bb-9946-317c-8846-1210c2295ba6",
+        "name": "tools",
+        "path": [
+          "__pregel_push",
+          0,
+          false
+        ],
+        "error": null,
+        "interrupts": [
+          {
+            "id": "b39fcf4562778904b30737979ea3b715",
+            "value": "scope?"
+          }
+        ],
+        "checkpoint": null,
+        "state": null,
+        "result": null
+      },
+      {
+        "id": "508a729a-bb51-0ad9-a63a-aa3cb09453e0",
+        "name": "tools",
+        "path": [
+          "__pregel_push",
+          1,
+          false
+        ],
+        "error": null,
+        "interrupts": [
+          {
+            "id": "7f6172ec78a28cf9ac82432db06c1cc8",
+            "value": "tone?"
+          }
+        ],
+        "checkpoint": null,
+        "state": null,
+        "result": null
+      }
+    ],
+    "metadata": {
+      "graph_id": "agent",
+      "assistant_id": "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
+      "user_id": "",
+      "ls_integration": "deepagents",
+      "lc_versions": {
+        "deepagents": "0.7.32"
+      },
+      "lc_agent_name": null,
+      "created_by": "system",
+      "run_attempt": 1,
+      "langgraph_version": "1.2.20",
+      "langgraph_api_version": "0.18.0rc3",
+      "langgraph_plan": "enterprise",
+      "langgraph_host": "self-hosted",
+      "langgraph_api_url": "http://127.0.0.1:2088",
+      "run_id": "01a1b03d-84c3-7797-bacb-70d7e2b1f7a5",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "source": "loop",
+      "step": 3,
+      "parents": {},
+      "counters_since_delta_snapshot": {
+        "messages": [
+          3,
+          5
+        ],
+        "files": [
+          0,
+          5
+        ]
+      },
+      "langgraph_auth_user_id": "",
+      "langgraph_request_id": "1af30b7a-a320-4b19-b4e7-f8180ce4b3d3"
+    },
+    "created_at": "2026-11-06T09:43:05.131143+00:00",
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-72bd-6df0-8003-4af63c48cfe2",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "parent_checkpoint": {
+      "checkpoint_id": "1f1d9c67-6912-6396-8002-7c5334145a5c",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "interrupts": [
+      {
+        "id": "b39fcf4562778904b30737979ea3b715",
+        "value": "scope?"
+      },
+      {
+        "id": "7f6172ec78a28cf9ac82432db06c1cc8",
+        "value": "tone?"
+      }
+    ],
+    "checkpoint_id": "1f1d9c67-72bd-6df0-8003-4af63c48cfe2",
+    "parent_checkpoint_id": "1f1d9c67-6912-6396-8002-7c5334145a5c"
+  },
+  {
+    "values": {
+      "messages": [
+        {
+          "content": "go both ",
+          "additional_kwargs": {},
+          "response_metadata": {},
+          "type": "human",
+          "name": null,
+          "id": "4b26047d-386f-4a72-8f15-5476afb80161"
+        },
+        {
+          "content": "",
+          "additional_kwargs": {
+            "invalid_tool_calls": [],
+            "usage_metadata": null
+          },
+          "response_metadata": {},
+          "type": "ai",
+          "name": null,
+          "id": "lc_run--01a1b03d-84b3-76a9-8bc6-519f8de52f0b-0",
+          "tool_calls": [
+            {
+              "name": "search",
+              "args": {
+                "query": "x"
+              },
+              "id": "call_s",
+              "type": "tool_call"
+            },
+            {
+              "name": "task",
+              "args": {
+                "description": "RESEARCHER: research x PAUSE",
+                "subagent_type": "researcher"
+              },
+              "id": "call_r",
+              "type": "tool_call"
+            },
+            {
+              "name": "task",
+              "args": {
+                "description": "WRITER: write about x",
+                "subagent_type": "writer"
+              },
+              "id": "call_w",
+              "type": "tool_call"
+            }
+          ],
+          "invalid_tool_calls": [],
+          "usage_metadata": null
+        }
+      ],
+      "files": {}
+    },
+    "next": [
+      "HumanInTheLoopMiddleware.after_model"
+    ],
+    "tasks": [
+      {
+        "id": "40c87504-9940-38d9-edfd-dd6e5f000a36",
+        "name": "HumanInTheLoopMiddleware.after_model",
+        "path": [
+          "__pregel_pull",
+          "HumanInTheLoopMiddleware.after_model"
+        ],
+        "error": null,
+        "interrupts": [
+          {
+            "id": "604bd787aa4011c125df1d289233b03d",
+            "value": {
+              "action_requests": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "description": "Tool execution requires approval\n\nTool: search\nArgs: {'query': 'x'}"
+                }
+              ],
+              "review_configs": [
+                {
+                  "action_name": "search",
+                  "allowed_decisions": [
+                    "approve",
+                    "edit",
+                    "reject",
+                    "respond"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "ai",
+              "name": null,
+              "id": "lc_run--01a1b03d-84b3-76a9-8bc6-519f8de52f0b-0",
+              "tool_calls": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "id": "call_s",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "RESEARCHER: research x PAUSE",
+                    "subagent_type": "researcher"
+                  },
+                  "id": "call_r",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "WRITER: write about x",
+                    "subagent_type": "writer"
+                  },
+                  "id": "call_w",
+                  "type": "tool_call"
+                }
+              ],
+              "invalid_tool_calls": [],
+              "usage_metadata": null
+            },
+            {
+              "content": "User rejected the tool call for `search` with reason: no search",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "tool",
+              "name": "search",
+              "id": "b6ff3a15-d7c9-4fd7-8510-7d73cf4047b3",
+              "tool_call_id": "call_s",
+              "artifact": null,
+              "status": "error"
+            }
+          ],
+          "hitl_edited_tool_calls": {}
+        }
+      }
+    ],
+    "metadata": {
+      "graph_id": "agent",
+      "assistant_id": "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
+      "user_id": "",
+      "ls_integration": "deepagents",
+      "lc_versions": {
+        "deepagents": "0.7.32"
+      },
+      "lc_agent_name": null,
+      "created_by": "system",
+      "run_attempt": 1,
+      "langgraph_version": "1.2.20",
+      "langgraph_api_version": "0.18.0rc3",
+      "langgraph_plan": "enterprise",
+      "langgraph_host": "self-hosted",
+      "langgraph_api_url": "http://127.0.0.1:2088",
+      "run_id": "01a1b03d-81bc-77b7-9991-7db84e2dcc89",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "source": "loop",
+      "step": 2,
+      "parents": {},
+      "counters_since_delta_snapshot": {
+        "messages": [
+          2,
+          4
+        ],
+        "files": [
+          0,
+          4
+        ]
+      },
+      "langgraph_auth_user_id": "",
+      "langgraph_request_id": "05ceb318-ce94-44ab-99ab-2ab6105abc21"
+    },
+    "created_at": "2026-11-06T09:43:04.117123+00:00",
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-6912-6396-8002-7c5334145a5c",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "parent_checkpoint": {
+      "checkpoint_id": "1f1d9c67-6902-6450-8001-e22175ae1ab9",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "interrupts": [
+      {
+        "id": "604bd787aa4011c125df1d289233b03d",
+        "value": {
+          "action_requests": [
+            {
+              "name": "search",
+              "args": {
+                "query": "x"
+              },
+              "description": "Tool execution requires approval\n\nTool: search\nArgs: {'query': 'x'}"
+            }
+          ],
+          "review_configs": [
+            {
+              "action_name": "search",
+              "allowed_decisions": [
+                "approve",
+                "edit",
+                "reject",
+                "respond"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "checkpoint_id": "1f1d9c67-6912-6396-8002-7c5334145a5c",
+    "parent_checkpoint_id": "1f1d9c67-6902-6450-8001-e22175ae1ab9"
+  },
+  {
+    "values": {
+      "messages": [
+        {
+          "content": "go both ",
+          "additional_kwargs": {},
+          "response_metadata": {},
+          "type": "human",
+          "name": null,
+          "id": "4b26047d-386f-4a72-8f15-5476afb80161"
+        }
+      ],
+      "files": {}
+    },
+    "next": [
+      "model"
+    ],
+    "tasks": [
+      {
+        "id": "cef6fd81-8235-1e7c-e648-3e93767e7d35",
+        "name": "model",
+        "path": [
+          "__pregel_pull",
+          "model"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "ai",
+              "name": null,
+              "id": "lc_run--01a1b03d-84b3-76a9-8bc6-519f8de52f0b-0",
+              "tool_calls": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "id": "call_s",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "RESEARCHER: research x PAUSE",
+                    "subagent_type": "researcher"
+                  },
+                  "id": "call_r",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "WRITER: write about x",
+                    "subagent_type": "writer"
+                  },
+                  "id": "call_w",
+                  "type": "tool_call"
+                }
+              ],
+              "invalid_tool_calls": [],
+              "usage_metadata": null
+            }
+          ]
+        }
+      }
+    ],
+    "metadata": {
+      "graph_id": "agent",
+      "assistant_id": "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
+      "user_id": "",
+      "ls_integration": "deepagents",
+      "lc_versions": {
+        "deepagents": "0.7.32"
+      },
+      "lc_agent_name": null,
+      "created_by": "system",
+      "run_attempt": 1,
+      "langgraph_version": "1.2.20",
+      "langgraph_api_version": "0.18.0rc3",
+      "langgraph_plan": "enterprise",
+      "langgraph_host": "self-hosted",
+      "langgraph_api_url": "http://127.0.0.1:2088",
+      "run_id": "01a1b03d-81bc-77b7-9991-7db84e2dcc89",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "source": "loop",
+      "step": 1,
+      "parents": {},
+      "counters_since_delta_snapshot": {
+        "messages": [
+          1,
+          3
+        ],
+        "files": [
+          0,
+          3
+        ]
+      },
+      "langgraph_auth_user_id": "",
+      "langgraph_request_id": "05ceb318-ce94-44ab-99ab-2ab6105abc21"
+    },
+    "created_at": "2026-11-06T09:43:04.110587+00:00",
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-6902-6450-8001-e22175ae1ab9",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "parent_checkpoint": {
+      "checkpoint_id": "1f1d9c67-68fe-6422-8000-9ab9540e1655",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "interrupts": [],
+    "checkpoint_id": "1f1d9c67-6902-6450-8001-e22175ae1ab9",
+    "parent_checkpoint_id": "1f1d9c67-68fe-6422-8000-9ab9540e1655"
+  },
+  {
+    "values": {
+      "messages": [
+        {
+          "content": "go both ",
+          "additional_kwargs": {},
+          "response_metadata": {},
+          "type": "human",
+          "name": null,
+          "id": "4b26047d-386f-4a72-8f15-5476afb80161"
+        }
+      ],
+      "files": {}
+    },
+    "next": [
+      "PatchToolCallsMiddleware.before_agent"
+    ],
+    "tasks": [
+      {
+        "id": "000bc83f-b893-c0e6-19a9-c8c5293f3fda",
+        "name": "PatchToolCallsMiddleware.before_agent",
+        "path": [
+          "__pregel_pull",
+          "PatchToolCallsMiddleware.before_agent"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {}
+      }
+    ],
+    "metadata": {
+      "graph_id": "agent",
+      "assistant_id": "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
+      "user_id": "",
+      "ls_integration": "deepagents",
+      "lc_versions": {
+        "deepagents": "0.7.32"
+      },
+      "lc_agent_name": null,
+      "created_by": "system",
+      "run_attempt": 1,
+      "langgraph_version": "1.2.20",
+      "langgraph_api_version": "0.18.0rc3",
+      "langgraph_plan": "enterprise",
+      "langgraph_host": "self-hosted",
+      "langgraph_api_url": "http://127.0.0.1:2088",
+      "run_id": "01a1b03d-81bc-77b7-9991-7db84e2dcc89",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "source": "loop",
+      "step": 0,
+      "parents": {},
+      "counters_since_delta_snapshot": {
+        "messages": [
+          1,
+          2
+        ],
+        "files": [
+          0,
+          2
+        ]
+      },
+      "langgraph_auth_user_id": "",
+      "langgraph_request_id": "05ceb318-ce94-44ab-99ab-2ab6105abc21"
+    },
+    "created_at": "2026-11-06T09:43:04.108945+00:00",
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-68fe-6422-8000-9ab9540e1655",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "parent_checkpoint": {
+      "checkpoint_id": "1f1d9c67-68fc-62f8-bfff-1aadaa73c986",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "interrupts": [],
+    "checkpoint_id": "1f1d9c67-68fe-6422-8000-9ab9540e1655",
+    "parent_checkpoint_id": "1f1d9c67-68fc-62f8-bfff-1aadaa73c986"
+  },
+  {
+    "values": {
+      "messages": [],
+      "files": {}
+    },
+    "next": [
+      "__start__"
+    ],
+    "tasks": [
+      {
+        "id": "37a97d4f-1b1f-dd35-e7cb-1e44e52b08c3",
+        "name": "__start__",
+        "path": [
+          "__pregel_pull",
+          "__start__"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "go both ",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "human",
+              "name": null,
+              "id": "4b26047d-386f-4a72-8f15-5476afb80161"
+            }
+          ]
+        }
+      }
+    ],
+    "metadata": {
+      "graph_id": "agent",
+      "assistant_id": "fe096781-5601-53d2-b2f6-0d3403f7e9ca",
+      "user_id": "",
+      "ls_integration": "deepagents",
+      "lc_versions": {
+        "deepagents": "0.7.32"
+      },
+      "lc_agent_name": null,
+      "created_by": "system",
+      "run_attempt": 1,
+      "langgraph_version": "1.2.20",
+      "langgraph_api_version": "0.18.0rc3",
+      "langgraph_plan": "enterprise",
+      "langgraph_host": "self-hosted",
+      "langgraph_api_url": "http://127.0.0.1:2088",
+      "run_id": "01a1b03d-81bc-77b7-9991-7db84e2dcc89",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "source": "input",
+      "step": -1,
+      "parents": {},
+      "counters_since_delta_snapshot": {
+        "messages": [
+          0,
+          1
+        ],
+        "files": [
+          0,
+          1
+        ]
+      },
+      "langgraph_auth_user_id": "",
+      "langgraph_request_id": "05ceb318-ce94-44ab-99ab-2ab6105abc21"
+    },
+    "created_at": "2026-11-06T09:43:04.108096+00:00",
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-68fc-62f8-bfff-1aadaa73c986",
+      "thread_id": "01a1b03d-81b8-77be-b4a9-14f0fe40487d",
+      "checkpoint_ns": ""
+    },
+    "parent_checkpoint": null,
+    "interrupts": [],
+    "checkpoint_id": "1f1d9c67-68fc-62f8-bfff-1aadaa73c986",
+    "parent_checkpoint_id": null
+  }
+]

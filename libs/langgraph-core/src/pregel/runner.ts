@@ -293,14 +293,14 @@ export class PregelRunner {
     const { retryPolicy, maxConcurrency, signals } = options ?? {};
 
     const barrier = createPromiseBarrier();
-    const executingTasksMap: Record<
+    const executingTasksMap: Map<
       string,
       Promise<{
         task: PregelExecutableTask<string, string>;
         result?: unknown;
         error?: Error;
       }>
-    > = {};
+    > = new Map();
 
     const thisCall = {
       executingTasksMap,
@@ -341,18 +341,18 @@ export class PregelRunner {
       : undefined;
 
     while (
-      (startedTasksCount === 0 || Object.keys(executingTasksMap).length > 0) &&
+      (startedTasksCount === 0 || executingTasksMap.size > 0) &&
       tasks.length
     ) {
       for (
         ;
-        Object.values(executingTasksMap).length <
-          (maxConcurrency ?? tasks.length) && startedTasksCount < tasks.length;
+        executingTasksMap.size < (maxConcurrency ?? tasks.length) &&
+        startedTasksCount < tasks.length;
         startedTasksCount += 1
       ) {
         const task = tasks[startedTasksCount];
 
-        executingTasksMap[task.id] = _runWithRetry(
+        const running = _runWithRetry(
           task,
           retryPolicy,
           { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, task) },
@@ -364,10 +364,11 @@ export class PregelRunner {
             signalAborted: signals?.composedAbortSignal?.aborted,
           };
         });
+        executingTasksMap.set(task.id, running);
       }
 
       const settledTask = await Promise.race([
-        ...Object.values(executingTasksMap),
+        ...executingTasksMap.values(),
         ...(abortPromise ? [abortPromise] : []),
         barrier.wait,
       ]);
@@ -395,7 +396,7 @@ export class PregelRunner {
           settledError
         );
         if (handlerTask !== undefined) {
-          executingTasksMap[handlerTask.id] = _runWithRetry(
+          const running = _runWithRetry(
             handlerTask,
             retryPolicy,
             { [CONFIG_KEY_CALL]: call?.bind(thisCall, this, handlerTask) },
@@ -407,6 +408,7 @@ export class PregelRunner {
               signalAborted: signals?.composedAbortSignal?.aborted,
             };
           });
+          executingTasksMap.set(handlerTask.id, running);
           barrier.next();
         }
       }
@@ -418,7 +420,7 @@ export class PregelRunner {
         timeoutOrCancelSignal.dispose?.();
       }
 
-      delete executingTasksMap[(settledTask as SettledPregelTask).task.id];
+      executingTasksMap.delete((settledTask as SettledPregelTask).task.id);
     }
   }
 
@@ -493,7 +495,7 @@ export class PregelRunner {
 
 async function call(
   this: {
-    executingTasksMap: Record<
+    executingTasksMap: Map<
       string,
       Promise<{
         task: PregelExecutableTask<string, string>;
@@ -555,7 +557,7 @@ async function call(
   if (!nextTask) return undefined;
 
   // Check if this task is already running
-  const existingPromise = this.executingTasksMap[nextTask.id];
+  const existingPromise = this.executingTasksMap.get(nextTask.id);
 
   if (existingPromise !== undefined) {
     // If the parent task was retried, the next task might already be running
@@ -603,7 +605,7 @@ async function call(
       [CONFIG_KEY_CALL]: call.bind(this, runner, nextTask),
     });
 
-    this.executingTasksMap[nextTask.id] = prom;
+    this.executingTasksMap.set(nextTask.id, prom);
     this.barrier.next();
 
     return prom.then(({ result, error }) => {

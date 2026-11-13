@@ -8,10 +8,7 @@ import {
   SubscriptionHandle,
   ThreadStream,
 } from "./index.js";
-import {
-  ToolCallAssembler,
-  parseToolOutput,
-} from "./handles/tools.js";
+import { ToolCallAssembler } from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
   MockSseTransport,
@@ -374,6 +371,54 @@ describe("ThreadStream", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ status: 404 });
 
+    await thread.close();
+  });
+
+  it("reopens the WebSocket lifecycle watcher after the event stream failed", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(watcherSubscribes()).toBe(1);
+
+    transport.failEvents(new Error("Protocol WebSocket closed"));
+    await new Promise((r) => setTimeout(r, 0));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(2);
+    await thread.close();
+  });
+
+  it("keeps one WebSocket lifecycle watcher across a run's terminal", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const watcherSubscribes = () =>
+      transport.sentCommands.filter(
+        (command) => command.method === "subscription.subscribe"
+      ).length;
+
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+    transport.pushEvent(
+      eventOf(
+        "lifecycle",
+        { event: "completed" },
+        { namespace: [], seq: 1, eventId: "terminal-1" }
+      )
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    thread.startLifecycleWatcher();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(watcherSubscribes()).toBe(1);
     await thread.close();
   });
 
@@ -852,16 +897,6 @@ describe("ToolCallAssembler", () => {
 
     expect(started!.output).toBe("Weather in SF: sunny");
     await expect(started!.outputPromise).resolves.toBe("Weather in SF: sunny");
-  });
-
-  it("parseToolOutput returns null for empty ToolMessage content", () => {
-    expect(
-      parseToolOutput({
-        type: "tool",
-        content: "",
-        tool_call_id: "tc",
-      })
-    ).toBeNull();
   });
 
   it("assembles tool-started into a mutable handle with dual views", async () => {

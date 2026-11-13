@@ -1,5 +1,23 @@
 # @langchain/langgraph-api
 
+## 1.7.2
+
+### Patch Changes
+
+- [#3318](https://github.com/langchain-ai/langgraphjs/pull/3318) [`6dd190c`](https://github.com/langchain-ai/langgraphjs/commit/6dd190c558f9dc4012cdf6aaf142788ae7dbc444) Thanks [@eliornl](https://github.com/eliornl)! - A `run.start` that forks from a checkpoint (`forkFrom` in the SDK) now starts a new run from that checkpoint even while the thread waits on an interrupt. The dev server and the embed server took the fork's input as the answer to that interrupt, or refused it when several were pending, so editing a message while a run was paused dropped the edit.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.2
+
+## 1.7.1
+
+### Patch Changes
+
+- [#3309](https://github.com/langchain-ai/langgraphjs/pull/3309) [`904126c`](https://github.com/langchain-ai/langgraphjs/commit/904126cef1dcc758ac7dd13d330f8595deeed65b) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `POST /threads/:thread_id/history` takes `before` as a checkpoint config, as the SDK sends it and the Python Agent Server takes it, so paging with `getHistory({ before })` no longer fails with HTTP 400. A checkpoint ID string still works but is deprecated and will be removed in 2.0.0: send `{ configurable: { checkpoint_id } }` instead.
+
+- [#3310](https://github.com/langchain-ai/langgraphjs/pull/3310) [`c5ad00f`](https://github.com/langchain-ai/langgraphjs/commit/c5ad00f399d4f815376c88d4ef3e9bcd6fe81c54) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `GET` and `POST /threads/:thread_id/history` honor `select`, as the Python Agent Server does: each state keeps only the fields named, and `values.<key>` keeps one key of the values. An unknown field is rejected with HTTP 400.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.7.1
+
 ## 1.7.0
 
 ### Minor Changes

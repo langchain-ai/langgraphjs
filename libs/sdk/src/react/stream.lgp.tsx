@@ -40,7 +40,7 @@ import type {
 import type { UseStream, SubmitOptions } from "./types.js";
 
 import { Client, getClientConfigHash } from "../client.js";
-import { DEFAULT_MESSAGES_KEY } from "../stream/constants.js";
+import { DEFAULT_MESSAGES_KEY, STOP_RUN_ID_WAIT_MS } from "../ui/constants.js";
 import { type Message } from "../types.messages.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import type { Interrupt, ThreadState } from "../schema.js";
@@ -66,6 +66,8 @@ function getFetchHistoryKey(
 ) {
   return [getClientConfigHash(client), threadId, limit].join(":");
 }
+
+const noopSubscribe = () => () => {};
 
 function fetchHistory<StateType extends Record<string, unknown>>(
   client: Client,
@@ -93,6 +95,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
     onError?: (error: unknown, run?: RunCallbackMeta) => void;
   }
 ): UseStreamThread<StateType> & {
+  isFetched: boolean;
   read: (
     threadId: string,
     readOptions: HistoryReadOptions<StateType>
@@ -189,6 +192,7 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
   }, [fetcher, key]);
 
   return {
+    isFetched: state.key === key && !state.isLoading,
     data: state.data,
     error: state.error,
     isLoading: state.isLoading,
@@ -215,6 +219,8 @@ export function useStreamLGP<
     if (typeof storage === "function") return storage();
     return null;
   }, []);
+  // Aborted by `stop()` alone, so a run can tell a stop from a thread switch.
+  const stopRunRef = useRef<AbortController | undefined>(undefined);
 
   const client = useMemo(
     () =>
@@ -293,6 +299,8 @@ export function useStreamLGP<
 
   const threadIdRef = useRef<string | null>(threadId);
   const threadIdStreamingRef = useRef<string | null>(null);
+  // State, since a ref change renders nothing.
+  const [rejoinQueued, setRejoinQueued] = useState(false);
 
   // Cancel the stream if thread ID has changed
   useEffect(() => {
@@ -500,6 +508,7 @@ export function useStreamLGP<
   })();
 
   const stop = async () => {
+    stopRunRef.current?.abort();
     const shownHead = latestThreadHeadRef.current;
     const read = planStopRead({
       history: historyLimit === true || typeof historyLimit === "number",
@@ -598,6 +607,7 @@ export function useStreamLGP<
     let callbackMeta: RunCallbackMeta | undefined;
     let rejoinKey: `lg:stream:${string}` | undefined;
     let usableThreadId = targetThreadId;
+    let responded = false;
 
     const shouldAbortPrevious =
       (submitOptions?.multitaskStrategy === "interrupt" ||
@@ -606,6 +616,8 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
+        const stopRun = new AbortController();
+        stopRunRef.current = stopRun;
         stream.setStreamValues((values) => {
           const prev = { ...historyValues, ...values };
           if (submitOptions?.optimisticValues != null) {
@@ -672,6 +684,26 @@ export function useStreamLGP<
         const streamResumable =
           submitOptions?.streamResumable ?? !!runMetadataStorage;
 
+        // Only the response names a run that outlives its request, so after a
+        // stop between sending the request and its response, the request
+        // stays open for onRunCreated to cancel the run.
+        const request = new AbortController();
+        const closeRequest = () => {
+          if (
+            !runMetadataStorage ||
+            !stopRun.signal.aborted ||
+            callbackMeta ||
+            responded
+          ) {
+            request.abort();
+            return;
+          }
+          const timer = setTimeout(() => request.abort(), STOP_RUN_ID_WAIT_MS);
+          request.signal.addEventListener("abort", () => clearTimeout(timer));
+        };
+        if (signal.aborted) request.abort();
+        else signal.addEventListener("abort", closeRequest, { once: true });
+
         return client.runs.stream(usableThreadId, options.assistantId, {
           input: values as Record<string, unknown>,
           config: submitOptions?.config,
@@ -688,7 +720,7 @@ export function useStreamLGP<
             submitOptions?.onDisconnect ??
             (streamResumable ? "continue" : "cancel"),
 
-          signal,
+          signal: request.signal,
 
           checkpoint,
           streamMode,
@@ -696,6 +728,13 @@ export function useStreamLGP<
           streamResumable,
           durability: submitOptions?.durability,
           onRunCreated(params) {
+            if (stopRun.signal.aborted) {
+              void client.runs
+                .cancel(usableThreadId!, params.run_id)
+                .catch(() => undefined);
+              request.abort();
+              return;
+            }
             callbackMeta = {
               run_id: params.run_id,
               thread_id: params.thread_id ?? usableThreadId!,
@@ -731,9 +770,14 @@ export function useStreamLGP<
         },
         onError(error) {
           options.onError?.(error, callbackMeta);
+          submitOptions?.onError?.(error, callbackMeta);
         },
         onFinish() {
           threadIdStreamingRef.current = null;
+        },
+        // The run exists once it streams, even when no response named it.
+        onEvent() {
+          responded = true;
         },
       },
       { abortPrevious: shouldAbortPrevious }
@@ -755,6 +799,7 @@ export function useStreamLGP<
         event: StreamEvent;
         data: unknown;
       }) => boolean;
+      checkpointId?: string;
     }
   ) => {
     setToolProgressMap(new Map());
@@ -777,10 +822,12 @@ export function useStreamLGP<
     await stream.start(
       async (signal: AbortSignal) => {
         threadIdStreamingRef.current = threadId;
+        setRejoinQueued(false);
         const stream = client.runs.joinStream(threadId, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
+          checkpointId: joinOptions?.checkpointId,
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
@@ -816,13 +863,36 @@ export function useStreamLGP<
     );
   };
 
+  // null on the server so hydration matches
+  const storedRunId = useSyncExternalStore(
+    noopSubscribe,
+    () => runMetadataStorage?.getItem(`lg:stream:${threadId}`) ?? null,
+    () => null
+  );
+
   const reconnectKey = useMemo(() => {
-    if (!runMetadataStorage || stream.isLoading) return undefined;
-    if (typeof window === "undefined") return undefined;
-    const runId = runMetadataStorage?.getItem(`lg:stream:${threadId}`);
-    if (!runId) return undefined;
-    return { runId, threadId };
-  }, [runMetadataStorage, stream.isLoading, threadId]);
+    if (!storedRunId || stream.isLoading) return undefined;
+    const checkpoint = branchContext.threadHead?.checkpoint;
+    const loaded =
+      options.thread == null
+        ? builtInHistory.isFetched
+        : !history.isLoading &&
+          (checkpoint?.thread_id == null || checkpoint.thread_id === threadId);
+    return {
+      runId: storedRunId,
+      threadId,
+      loaded,
+      checkpointId: checkpoint?.checkpoint_id ?? undefined,
+    };
+  }, [
+    storedRunId,
+    stream.isLoading,
+    history.isLoading,
+    options.thread,
+    builtInHistory.isFetched,
+    branchContext.threadHead,
+    threadId,
+  ]);
 
   const shouldReconnect = !!runMetadataStorage;
   const reconnectRef = useRef({ threadId, shouldReconnect });
@@ -838,11 +908,23 @@ export function useStreamLGP<
   }, [threadId, shouldReconnect]);
 
   useEffect(() => {
-    if (reconnectKey && reconnectRef.current.shouldReconnect) {
+    if (reconnectKey?.loaded && reconnectRef.current.shouldReconnect) {
       reconnectRef.current.shouldReconnect = false;
-      void joinStreamRef.current?.(reconnectKey.runId);
+      setRejoinQueued(true);
+      void joinStreamRef
+        .current?.(reconnectKey.runId, undefined, {
+          checkpointId: reconnectKey.checkpointId,
+        })
+        .finally(() => setRejoinQueued(false));
     }
   }, [reconnectKey]);
+
+  // Loading until the rejoin starts, unless the thread's state won't load.
+  const rejoinPending =
+    (reconnectKey != null &&
+      reconnectRef.current.shouldReconnect &&
+      (reconnectKey.loaded || history.isLoading)) ||
+    rejoinQueued;
 
   const error = stream.error ?? historyError ?? history.error;
   const values = stream.values ?? historyValues;
@@ -851,13 +933,14 @@ export function useStreamLGP<
   const handledThreadIdRef = useRef(threadId);
 
   // Thread state values never carry `__interrupt__`; a pending call is in the
-  // head's tasks. A run still streaming, such as one rejoined after a reload,
-  // may be answering it, and on the render that switches threads the head can
-  // still be the previous thread's.
+  // head's tasks. A run still streaming or about to be rejoined, such as after
+  // a reload, may be answering it, and on the render that switches threads the
+  // head can still be the previous thread's.
   const threadHead = branchContext.threadHead;
   const pendingToolValues =
     stream.values == null &&
     !stream.isLoading &&
+    !rejoinPending &&
     threadHead?.checkpoint?.thread_id === threadId
       ? {
           __interrupt__: threadHead.tasks?.flatMap(
@@ -920,7 +1003,7 @@ export function useStreamLGP<
     assistantId: options.assistantId,
 
     error,
-    isLoading: stream.isLoading,
+    isLoading: stream.isLoading || rejoinPending,
 
     stop,
     submit,
@@ -965,7 +1048,7 @@ export function useStreamLGP<
       }
 
       // If we're deferring to old interrupt detection logic, don't show the interrupt if the stream is loading
-      if (stream.isLoading) return [];
+      if (stream.isLoading || rejoinPending) return [];
 
       // Collect interrupts from ALL tasks (not just the last one)
       const allTasks = branchContext.threadHead?.tasks ?? [];

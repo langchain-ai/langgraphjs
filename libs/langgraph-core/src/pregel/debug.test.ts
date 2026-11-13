@@ -3,7 +3,7 @@ import { wrap, tasksWithWrites, _readChannels, mapDebugTasks } from "./debug.js"
 import { BaseChannel } from "../channels/base.js";
 import { LastValue } from "../channels/last_value.js";
 import { EmptyChannelError } from "../errors.js";
-import { ERROR, INTERRUPT, PULL } from "../constants.js";
+import { ERROR, INTERRUPT, PULL, RESUME } from "../constants.js";
 import type { PregelExecutableTask } from "./types.js";
 import type { LangGraphRunnableConfig } from "./runnable_types.js";
 
@@ -310,6 +310,54 @@ describe("tasksWithWrites", () => {
         result: undefined,
       },
     ]);
+  });
+
+  // A task's result is read from its output writes. Control writes
+  // (INTERRUPT, RESUME, ERROR) stay in the log after the task finishes.
+  it.each<[string, Array<[string, unknown]>, unknown]>([
+    [
+      "was interrupted, then resumed and finished",
+      [
+        [INTERRUPT, [{ value: "approve?" }]],
+        [RESUME, ["yes"]],
+        ["answer", "yes"],
+      ],
+      { answer: "yes" },
+    ],
+    ["is paused at an interrupt", [[INTERRUPT, [{ value: "approve?" }]]], undefined],
+    [
+      "is paused at a second interrupt after answering the first",
+      [
+        [RESUME, ["yes"]],
+        [INTERRUPT, [{ value: "really?" }]],
+      ],
+      undefined,
+    ],
+    [
+      "failed after writing some output",
+      [
+        ["answer", "partial"],
+        [ERROR, { message: "boom" }],
+      ],
+      { answer: "partial" },
+    ],
+    ["failed without writing output", [[ERROR, { message: "boom" }]], undefined],
+  ])("reports the result of a task that %s", (_label, writes, expected) => {
+    const tasks = [
+      {
+        id: "task1",
+        name: "ask",
+        path: [PULL, "ask"] as [typeof PULL, string],
+        interrupts: [],
+      },
+    ];
+    const pendingWrites = writes.map(
+      ([channel, value]): [string, string, unknown] => ["task1", channel, value]
+    );
+
+    const [task] = tasksWithWrites(tasks, pendingWrites, undefined, ["answer"]);
+
+    expect(task.result).toEqual(expected);
   });
 });
 

@@ -9,7 +9,7 @@ import {
   type SubmissionQueueEntry,
   type SubmissionQueueSnapshot,
 } from "./queue-adapter.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import type { StreamSubmitOptions } from "./types.js";
 
 /** `runs.list()`'s `Run` type doesn't declare `kwargs` by default; it's an opt-in `select` field. */

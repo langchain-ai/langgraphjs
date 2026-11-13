@@ -34,40 +34,40 @@ import type { Interrupt, ThreadState } from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
-import { StreamStore } from "./store.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import { StreamStore } from "../ui/store.js";
 import { ChannelRegistry } from "./channel-registry.js";
-import { ensureMessageInstances } from "./message-coercion.js";
+import { ensureMessageInstances } from "../ui/message-coercion.js";
+import { SubagentDiscovery, type SubagentMap } from "./discovery/index.js";
 import {
-  SubagentDiscovery,
-  type SubagentMap,
   SubgraphDiscovery,
   type SubgraphMap,
   type SubgraphByNodeMap,
-} from "./discovery/index.js";
+} from "../ui/subgraphs.js";
 import {
   collectSubgraphHostNamespaces,
+  DISCOVERY_HISTORY_SELECT,
   getHistoryPage,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
-} from "./discovery/namespace-from-history.js";
+} from "../ui/namespace-from-history.js";
 import type { SubagentDiscoverySnapshot } from "./types.js";
 import {
   isInternalWorkNamespace,
   isLegacySubagentNamespace,
   isRootNamespace,
   namespaceKey,
-} from "./namespace.js";
+} from "../ui/namespace.js";
 import {
   MessageMetadataTracker,
   type CheckpointEnvelope,
   type MessageMetadata,
   type MessageMetadataMap,
-} from "./message-metadata-tracker.js";
+} from "../ui/message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import { toRefusal } from "./refusal.js";
@@ -75,7 +75,7 @@ import {
   prepareOptimisticInput,
   serializeUpdateMessages,
   type OptimisticHandle,
-} from "./optimistic-input.js";
+} from "../ui/optimistic-input.js";
 import {
   EMPTY_QUEUE,
   SubmitCoordinator,
@@ -87,7 +87,7 @@ import {
   reconcileToolCallsFromMessages,
   seedToolCallsFromMessages,
   upsertToolCall,
-} from "./tool-calls.js";
+} from "../ui/tool-calls.js";
 import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
@@ -199,6 +199,12 @@ type RunBoundaryCommand =
 interface ResolvedInterrupt {
   interruptId: string;
   namespace: string[];
+}
+
+interface ResumedRun {
+  answeredIds: readonly string[];
+  runId?: string;
+  stopped?: boolean;
 }
 
 export type {
@@ -376,6 +382,11 @@ export class StreamController<
   readonly #rootBus: RootEventBus;
   #activeRunId: string | undefined;
   /**
+   * Run the latest `respond()` / `respondAll()` started. `input.respond`
+   * returns no run id, so the id comes from the run's root `running` event.
+   */
+  #resumedRun: ResumedRun | undefined;
+  /**
    * Run id `run.start` returned for the in-flight local `submit()`. Kept
    * apart from {@link #activeRunId}, which a rolled-back submit's late
    * response can still overwrite.
@@ -461,6 +472,7 @@ export class StreamController<
       // `submit()` settles `isLoading` itself, so skipping a pending
       // event here can't leave the flag stuck.
       ignore: (event) => this.#submittedRunMatch(event) != null,
+      runId: (event) => synthesizedEventRunId(event.event_id),
     });
     this.messageMetadataStore = this.#messageMetadata.store;
     this.queueStore = new StreamStore<SubmissionQueueSnapshot<StateType>>(
@@ -700,6 +712,7 @@ export class StreamController<
     // with `threadActive` where it's used, to decide whether to seed
     // `isLoading`.
     let hasActiveInterrupts = false;
+    const lifecycleEventsBeforeRead = this.#lifecycleLoading.handled;
     try {
       const state = await this.#fetchHydrationState();
       // The await above yields. If the thread id changed or was cleared while
@@ -770,14 +783,14 @@ export class StreamController<
           // and the replayed ones predate the seed and are skipped. A call
           // with no result yet is left to the live stream, as an open tab
           // would only show it once it starts.
-          const finishedToolCalls = seedToolCallsFromMessages(
+          const endedToolCalls = seedToolCallsFromMessages(
             ROOT_NAMESPACE,
             ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
-          ).filter((toolCall) => toolCall.status === "finished");
-          if (finishedToolCalls.length > 0) {
+          ).filter((toolCall) => toolCall.status !== "running");
+          if (endedToolCalls.length > 0) {
             this.rootStore.setState((s) => ({
               ...s,
-              toolCalls: finishedToolCalls.reduce(
+              toolCalls: endedToolCalls.reduce(
                 (toolCalls, toolCall) => upsertToolCall(toolCalls, toolCall),
                 s.toolCalls
               ),
@@ -785,24 +798,21 @@ export class StreamController<
           }
 
           /**
-           * An idle (finished) thread defers its root SSE pump; the first
-           * `submit()` brings it up and the transport replays the finished
-           * run from `seq=0`. Seal the seeded message ids so that replay's
+           * The root SSE pump replays the thread from `seq=0` when it
+           * starts: on the first `submit()` of an idle thread, or below for
+           * a running one. Seal the seeded message ids so that replay's
            * `messages` channel deltas can't downgrade the already-complete
-           * tail to empty partials (a visible "messages replay"). Only safe
-           * for idle threads, where every seeded message is final — an
-           * active thread's tail may still be streaming and must keep
-           * receiving deltas. New ids from the next run are never sealed,
-           * and the seal lifts once a newer checkpoint advances the
-           * timeline.
+           * messages to empty partials (a visible "messages replay").
+           * Messages in a checkpoint are final, even while a run goes on:
+           * the one it's streaming isn't in the checkpoint yet. New ids are
+           * never sealed, and the seal lifts once a newer checkpoint
+           * advances the timeline.
            */
-          if (!threadActive) {
-            const sealedIds = (seedMessages as Array<{ id?: unknown }>)
-              .map((message) => message?.id)
-              .filter((id): id is string => typeof id === "string");
-            if (sealedIds.length > 0) {
-              this.#rootMessages.sealMessageIds(sealedIds);
-            }
+          const sealedIds = (seedMessages as Array<{ id?: unknown }>)
+            .map((message) => message?.id)
+            .filter((id): id is string => typeof id === "string");
+          if (sealedIds.length > 0) {
+            this.#rootMessages.sealMessageIds(sealedIds);
           }
         }
       }
@@ -818,6 +828,10 @@ export class StreamController<
         this.#rootMessages.dropMessages(unpersisted);
         this.#messageMetadata.forget(unpersisted);
       }
+      // Commit the seed now, not a macrotask later: `isThreadLoading` and
+      // `isLoading` change synchronously below, and would otherwise show
+      // with the messages from before.
+      this.#rootMessages.flush();
       /**
        * Sync the visible interrupt list to the server's authoritative
        * `state.tasks[].interrupts`. Without this, SSE replay of past
@@ -909,11 +923,13 @@ export class StreamController<
      * the depth-1 content pump just to replay a completed run and idle
      * forever is pure waste. When idle we take the deferred path: the
      * pump (and watcher) come up on the first local `submit()` via
-     * {@link #startDeferredRootPump}, exactly like a self-created thread.
+     * {@link #startDeferredRootPump}, exactly like a self-created thread,
+     * or on a later hydrate that finds the thread active.
      * The transport replays from `seq=0` on the deferred subscribe, so
      * nothing is missed.
      */
     const thread = this.#ensureThread(hydratedThreadId, !threadActive);
+    if (threadActive) this.#startDeferredRootPump();
 
     /**
      * Picks up runs pending from before this page load, or another tab.
@@ -949,8 +965,15 @@ export class StreamController<
        * it. Excludes a thread merely parked at an interrupt — that's
        * waiting on a human, not "loading", matching
        * `LifecycleLoadingTracker`'s own `interrupted → isLoading = false`.
+       * Also skipped when a lifecycle event arrived during the read: the
+       * stream is then newer than the checkpoint, which may show a run
+       * that has since ended.
        */
-      if (threadActive && !hasActiveInterrupts) {
+      if (
+        threadActive &&
+        !hasActiveInterrupts &&
+        this.#lifecycleLoading.handled === lifecycleEventsBeforeRead
+      ) {
         this.rootStore.setState((s) =>
           s.isLoading ? s : { ...s, isLoading: true }
         );
@@ -991,11 +1014,10 @@ export class StreamController<
     try {
       const history = await getHistoryPage(this.#options.client, threadId, {
         limit: 20,
+        select: DISCOVERY_HISTORY_SELECT,
       });
       // A thread swap (or dispose) during the fetch invalidates this seed.
       if (this.#disposed || this.#currentThreadId !== threadId) return;
-
-      this.#primeScopedHistorySeedsFromHistory(threadId, history);
 
       const hosts = collectSubgraphHostNamespaces(history);
       this.#subgraphs.seedFromHistory(hosts);
@@ -1004,11 +1026,9 @@ export class StreamController<
         .filter(namespaceIsDefaultOnly)
         .map((entry) => entry.id);
       if (defaultOnlyIds.length > 0) {
-        const map = mapSubagentNamespaces(
-          history,
-          defaultOnlyIds,
-          this.#messagesKey
-        );
+        const map = mapSubagentNamespaces(history, defaultOnlyIds, {
+          messagesKey: this.#messagesKey,
+        });
         for (const [id, segment] of map) {
           this.#subagents.applyExecutionNamespace(id, segment);
         }
@@ -1188,9 +1208,8 @@ export class StreamController<
    * `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` often
    * mount together. Both need the same namespace-specific history page, so the
    * controller keeps an in-flight promise per `threadId + checkpoint_ns`.
-   * The cache may already be primed by the hydrate-time discovery history page;
-   * otherwise this method performs a narrow `checkpoint_ns` read and derives
-   * both projection snapshots from that one response:
+   * This method performs a narrow `checkpoint_ns` read and derives both
+   * projection snapshots from that one response:
    *
    * - `messages` are coerced with the stream-local message coercion rules, so
    *   serialized `content_blocks` and tool-call metadata hydrate correctly.
@@ -1237,54 +1256,6 @@ export class StreamController<
   }
 
   /**
-   * Reuse the hydrate-time discovery history page as scoped projection data
-   * when it already contains checkpoint values for a namespace.
-   *
-   * The discovery read is required to resolve subagent execution namespaces and
-   * subgraph hosts. That same page often includes the latest values for those
-   * namespaces, so priming `#scopedHistorySeeds` here lets later
-   * `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` mounts
-   * hydrate from memory instead of issuing an immediate second `getHistory`
-   * request. If a namespace is not present in the bounded page,
-   * `#getScopedHistorySeed` still falls back to a targeted `checkpoint_ns`
-   * history read.
-   */
-  #primeScopedHistorySeedsFromHistory(
-    threadId: string,
-    history: Array<{
-      checkpoint?: { checkpoint_ns?: unknown };
-      values?: unknown;
-    }>
-  ): void {
-    for (const state of history) {
-      const checkpointNs = state.checkpoint?.checkpoint_ns;
-      if (typeof checkpointNs !== "string" || checkpointNs.length === 0) {
-        continue;
-      }
-      const namespace = checkpointNs
-        .split(NAMESPACE_SEPARATOR)
-        .filter((segment) => segment.length > 0);
-      if (namespace.length === 0) continue;
-      const key = `${threadId}|${namespaceKey(namespace)}`;
-      if (this.#scopedHistorySeeds.has(key)) continue;
-      const values = state.values;
-      if (values == null || typeof values !== "object") continue;
-      const messages = extractAndCoerceMessagesWithFallback(
-        values as Record<string, unknown>,
-        this.#messagesKey
-      );
-      if (messages == null) continue;
-      this.#scopedHistorySeeds.set(
-        key,
-        Promise.resolve({
-          messages,
-          toolCalls: seedToolCallsFromMessages(namespace, messages),
-        })
-      );
-    }
-  }
-
-  /**
    * Submit input to the active thread.
    *
    * To resume a pending interrupt, use {@link respond} instead.
@@ -1308,8 +1279,8 @@ export class StreamController<
   async stop(options?: StreamStopOptions): Promise<void> {
     const shouldCancel = options?.cancel ?? true;
     if (shouldCancel) {
-      const threadId = this.#currentThreadId;
-      const runId = this.#activeRunId;
+      const resumed = this.#resumedRun;
+      const runId = this.#activeRunId ?? resumed?.runId;
       if (runId != null && this.rootStore.getSnapshot().isLoading) {
         // Drop the partial reply now rather than on the server's terminal.
         const dropped = this.#rootMessages.closeRun({
@@ -1318,15 +1289,20 @@ export class StreamController<
         });
         if (dropped.size > 0) this.#messageMetadata.forget(dropped);
       }
-      if (threadId != null && runId != null) {
-        try {
-          await this.#options.client.runs.cancel(threadId, runId);
-        } catch {
-          /* server cancel failures must not block client disconnect */
-        }
-      }
+      if (resumed != null) resumed.stopped = true;
+      if (runId != null) await this.#cancelRun(runId);
     }
     await this.#submitter.stop();
+  }
+
+  async #cancelRun(runId: string): Promise<void> {
+    const threadId = this.#currentThreadId;
+    if (threadId == null) return;
+    try {
+      await this.#options.client.runs.cancel(threadId, runId);
+    } catch {
+      /* server cancel failures must not block client disconnect */
+    }
   }
 
   /**
@@ -1508,6 +1484,8 @@ export class StreamController<
       options?.update,
       prepared
     );
+    const resumed: ResumedRun = { answeredIds: [resolved.interruptId] };
+    this.#resumedRun = resumed;
 
     try {
       // Route through the coordinator so a resumed run that fails (e.g. a
@@ -1541,6 +1519,7 @@ export class StreamController<
         this.#markInterruptResolvedInRootStore(resolved.interruptId);
       }, prepared?.handle);
     } catch (error) {
+      if (this.#resumedRun === resumed) this.#resumedRun = undefined;
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1618,6 +1597,10 @@ export class StreamController<
       options?.update,
       prepared
     );
+    const resumed: ResumedRun = {
+      answeredIds: responses.map((entry) => entry.interrupt_id),
+    };
+    this.#resumedRun = resumed;
 
     try {
       // See `respond()` — route through the coordinator so the single run
@@ -1647,6 +1630,7 @@ export class StreamController<
         }
       }, prepared?.handle);
     } catch (error) {
+      if (this.#resumedRun === resumed) this.#resumedRun = undefined;
       this.#discardPendingInterruptEvents();
       if (this.#disposed && isAbortLikeError(error)) {
         return;
@@ -1906,6 +1890,7 @@ export class StreamController<
     this.#subgraphs.reset();
     this.#scopedHistorySeeds.clear();
     this.#activeRunId = undefined;
+    this.#resumedRun = undefined;
     this.#localRunDepth = 0;
     this.#messageMetadata.reset();
     // Drop the hydrate-window allowlist — the next thread's hydrate
@@ -2162,6 +2147,7 @@ export class StreamController<
     }
     this.#subgraphs.push(event);
     this.#lifecycleLoading.handle(event);
+    this.#observeResumedRun(event);
 
     /**
      * `input.requested` events (including HITL inside a subagent /
@@ -2176,6 +2162,48 @@ export class StreamController<
     this.#forgetAnsweredInterrupts(event);
     this.#restoreRefusedInterrupts(event);
     this.#settleParkedInterruptsOnTerminal(event);
+  }
+
+  /**
+   * Learn the id of the run a `respond()` started. Once `stop()` was called,
+   * cancel the run when it starts, and when it ends re-read the interrupts
+   * it answered: a cancel can leave them waiting again.
+   */
+  #observeResumedRun(event: Event): void {
+    const resumed = this.#resumedRun;
+    if (
+      resumed == null ||
+      event.method !== "lifecycle" ||
+      !isRootNamespace(event.params.namespace)
+    ) {
+      return;
+    }
+    const status = (event as LifecycleEvent).params.data?.event;
+    const runId = synthesizedEventRunId(event.event_id);
+    if (resumed.runId == null) {
+      if (status === "running" && runId != null) {
+        // A run submit() started is not the resumed one: that one never ran
+        // (the new run's strategy cancelled it), or the two can't be told
+        // apart yet.
+        if (runId === this.#submittedRunId || this.#submittedRunIdPending) {
+          this.#resumedRun = undefined;
+          return;
+        }
+        resumed.runId = runId;
+        if (resumed.stopped) void this.#cancelRun(runId);
+        return;
+      }
+      // Before the resumed run starts, an `interrupted` is the late terminal
+      // of the run it resumes.
+      if (status !== "completed" && status !== "failed") return;
+    } else if (runId !== resumed.runId || status === "running") {
+      return;
+    }
+    this.#resumedRun = undefined;
+    if (resumed.stopped) {
+      for (const id of resumed.answeredIds) this.#resolvedInterrupts.delete(id);
+      void this.#reconcilePendingInterruptsFromServer();
+    }
   }
 
   /**
@@ -2611,6 +2639,7 @@ export class StreamController<
     }
     this.#rootMessages.applyValues(nextValues, nextMessages, {
       step: checkpoint?.step,
+      checkpointId: checkpoint?.id,
     });
     if (nextMessages.length > 0) {
       // Any optimistic message the server just echoed is now

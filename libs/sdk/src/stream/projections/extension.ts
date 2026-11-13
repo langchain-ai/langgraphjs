@@ -8,7 +8,7 @@
  */
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
 import type { Event } from "@langchain/protocol";
-import { namespaceKey } from "../namespace.js";
+import { namespaceKey } from "../../ui/namespace.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 export function extensionProjection<T = unknown>(

@@ -89,6 +89,21 @@ export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
 /** Special channel reserved for cases when a task exits without any writes */
 export const NO_WRITES = "__no_writes__";
+
+/**
+ * Whether a write to `channel` is output the task produced, rather than a
+ * control write describing what happened to it (an error, an interrupt, or the
+ * answer to one).
+ */
+export function isTaskOutput(channel: string): boolean {
+  return (
+    channel !== ERROR &&
+    channel !== ERROR_SOURCE_NODE &&
+    channel !== INTERRUPT &&
+    channel !== RESUME
+  );
+}
+
 /**
  * `versions_seen` key recording which entries a snapshot-only version bump
  * advanced, and the versions those nodes really read.
