@@ -94,7 +94,7 @@ A custom transport streams runs, and nothing else, so:
 
 - **Loading a thread:** there is no thread to read, so a conversation shows only what this page streamed. `hydrate(threadId)` switches to that thread without reading it, and `isThreadLoading` stays `false`.
 - **The queue:** a submit made during a run waits in the page and starts when the run ends. `useSubmissionQueue` lists it, and `cancel` and `clear` drop it. A thread switch or `stop()` drops it too.
-- **Answers:** `respond` and `respondAll` send the answer through your transport, as a run with a `command`. `strictResume` needs an Agent Server.
+- **Answers:** `respond` and `respondAll` send the answer through your transport, as a run with a `command`, and resolve once that run starts. They need a thread, so answer after the first run. `strictResume` needs an Agent Server.
 - **Subagent panels:** `useMessages(stream, subagent)` and the other selector hooks return nothing for a target.
 - **Fork points:** `useMessageMetadata` has no `parentCheckpointId`.
 
