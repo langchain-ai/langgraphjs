@@ -103,6 +103,22 @@ function _parseKey(key: string) {
   return { threadId, checkpointNamespace, checkpointId };
 }
 
+// Type tags are appended so persisted records from older releases remain readable.
+type StoredCheckpoint = [
+  checkpoint: Uint8Array,
+  metadata: Uint8Array,
+  parentId: string | undefined,
+  checkpointType?: string,
+  metadataType?: string,
+];
+type StoredWrite = [
+  taskId: string,
+  channel: string,
+  value: Uint8Array,
+  taskPath?: string,
+  type?: string,
+];
+
 export class MemorySaver extends BaseCheckpointSaver {
   // thread ID ->  checkpoint namespace -> checkpoint ID -> checkpoint mapping
   //
@@ -111,21 +127,17 @@ export class MemorySaver extends BaseCheckpointSaver {
   // even if a malicious key bypassed `assertSafeStorageKey` it could not reach
   // `Object.prototype`. The guard remains the primary control; this is the
   // structural safety net.
-  storage: Record<
-    string,
-    Record<string, Record<string, [Uint8Array, Uint8Array, string | undefined]>>
-  > = Object.create(null);
+  storage: Record<string, Record<string, Record<string, StoredCheckpoint>>> =
+    Object.create(null);
 
-  // Each stored write is `[taskId, channel, serializedValue, taskPath?]`,
-  // keyed by `${taskId},${idx}`. The optional 4th element is append-only:
-  // records persisted before task paths existed (e.g. a `langgraph-api`
+  // Each stored write is `[taskId, channel, serializedValue, taskPath?, type?]`,
+  // keyed by `${taskId},${idx}`. Optional elements are appended for backwards
+  // compatibility; a missing type means json.
+  // Records persisted before task paths existed (e.g. a `langgraph-api`
   // `.langgraphjs_api.checkpointer.json` file written by an older version)
   // have 3 elements and read back with path `""`, which sorts first, by
   // task id.
-  writes: Record<
-    string,
-    Record<string, [string, string, Uint8Array, string?]>
-  > = Object.create(null);
+  writes: Record<string, Record<string, StoredWrite>> = Object.create(null);
 
   constructor(serde?: SerializerProtocol) {
     super(serde);
@@ -145,8 +157,8 @@ export class MemorySaver extends BaseCheckpointSaver {
       Object.values(this.writes[parentKey] ?? {})
         .filter(([_taskId, channel]) => channel === TASKS)
         .map(
-          async ([_taskId, _channel, writes]) =>
-            await this.serde.loadsTyped("json", writes)
+          async ([_taskId, _channel, writes, , type]) =>
+            await this.serde.loadsTyped(type ?? "json", writes)
         )
     );
 
@@ -174,7 +186,7 @@ export class MemorySaver extends BaseCheckpointSaver {
     threadId: string | undefined,
     checkpointNs: string,
     checkpointId: string
-  ): [string, number, [string, string, Uint8Array, string?]][] {
+  ): [string, number, StoredWrite][] {
     const stored =
       threadId === undefined
         ? undefined
@@ -187,11 +199,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       const idx = Number(keyStr.slice(comma + 1));
       return {
         key: writesSortKey(record[3] ?? "", taskId, idx),
-        entry: [taskId, idx, record] as [
-          string,
-          number,
-          [string, string, Uint8Array, string?],
-        ],
+        entry: [taskId, idx, record] as [string, number, StoredWrite],
       };
     });
     keyed.sort((a, b) => compareWritesSortKeys(a.key, b.key));
@@ -200,15 +208,15 @@ export class MemorySaver extends BaseCheckpointSaver {
 
   /** Deserialize `_orderedWrites` records into public pending writes. */
   private async _deserializeOrderedWrites(
-    ordered: [string, number, [string, string, Uint8Array, string?]][]
+    ordered: [string, number, StoredWrite][]
   ): Promise<CheckpointPendingWrite[]> {
     return Promise.all(
       ordered.map(
-        async ([, , [taskId, channel, value]]) =>
+        async ([, , [taskId, channel, value, , type]]) =>
           [
             taskId,
             channel,
-            await this.serde.loadsTyped("json", value),
+            await this.serde.loadsTyped(type ?? "json", value),
           ] as CheckpointPendingWrite
       )
     );
@@ -236,9 +244,15 @@ export class MemorySaver extends BaseCheckpointSaver {
     if (checkpoint_id) {
       const saved = this.storage[thread_id]?.[checkpoint_ns]?.[checkpoint_id];
       if (saved !== undefined) {
-        const [checkpoint, metadata, parentCheckpointId] = saved;
+        const [
+          checkpoint,
+          metadata,
+          parentCheckpointId,
+          checkpointType,
+          metadataType,
+        ] = saved;
         const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
-          "json",
+          checkpointType ?? "json",
           checkpoint
         );
 
@@ -258,7 +272,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           config,
           checkpoint: deserializedCheckpoint,
           metadata: (await this.serde.loadsTyped(
-            "json",
+            metadataType ?? "json",
             metadata
           )) as CheckpointMetadata,
           pendingWrites,
@@ -280,9 +294,15 @@ export class MemorySaver extends BaseCheckpointSaver {
         // eslint-disable-next-line prefer-destructuring
         checkpoint_id = Object.keys(checkpoints).sort().reverse()[0];
         const saved = checkpoints[checkpoint_id];
-        const [checkpoint, metadata, parentCheckpointId] = saved;
+        const [
+          checkpoint,
+          metadata,
+          parentCheckpointId,
+          checkpointType,
+          metadataType,
+        ] = saved;
         const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
-          "json",
+          checkpointType ?? "json",
           checkpoint
         );
 
@@ -308,7 +328,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           },
           checkpoint: deserializedCheckpoint,
           metadata: (await this.serde.loadsTyped(
-            "json",
+            metadataType ?? "json",
             metadata
           )) as CheckpointMetadata,
           pendingWrites,
@@ -373,7 +393,13 @@ export class MemorySaver extends BaseCheckpointSaver {
 
         for (const [
           checkpointId,
-          [checkpoint, metadataStr, parentCheckpointId],
+          [
+            checkpoint,
+            metadataStr,
+            parentCheckpointId,
+            checkpointType,
+            metadataType,
+          ],
         ] of sortedCheckpoints) {
           // Filter by checkpoint ID from config
           if (configCheckpointId && checkpointId !== configCheckpointId) {
@@ -391,7 +417,7 @@ export class MemorySaver extends BaseCheckpointSaver {
 
           // Parse metadata
           const metadata = (await this.serde.loadsTyped(
-            "json",
+            metadataType ?? "json",
             metadataStr
           )) as CheckpointMetadata;
 
@@ -416,7 +442,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           );
 
           const deserializedCheckpoint = await this.serde.loadsTyped(
-            "json",
+            checkpointType ?? "json",
             checkpoint
           );
 
@@ -488,16 +514,20 @@ export class MemorySaver extends BaseCheckpointSaver {
       this.storage[threadId][checkpointNamespace] = Object.create(null);
     }
 
-    const [[, serializedCheckpoint], [, serializedMetadata]] =
-      await Promise.all([
-        this.serde.dumpsTyped(preparedCheckpoint),
-        this.serde.dumpsTyped(metadata),
-      ]);
+    const [
+      [checkpointType, serializedCheckpoint],
+      [metadataType, serializedMetadata],
+    ] = await Promise.all([
+      this.serde.dumpsTyped(preparedCheckpoint),
+      this.serde.dumpsTyped(metadata),
+    ]);
 
     this.storage[threadId][checkpointNamespace][checkpoint.id] = [
       serializedCheckpoint,
       serializedMetadata,
       config.configurable?.checkpoint_id, // parent
+      checkpointType,
+      metadataType,
     ];
 
     return {
@@ -544,7 +574,7 @@ export class MemorySaver extends BaseCheckpointSaver {
 
     await Promise.all(
       writes.map(async ([channel, value], idx) => {
-        const [, serializedValue] = await this.serde.dumpsTyped(value);
+        const [type, serializedValue] = await this.serde.dumpsTyped(value);
         const innerKey: [string, number] = [
           taskId,
           WRITES_IDX_MAP[channel] || idx,
@@ -558,6 +588,7 @@ export class MemorySaver extends BaseCheckpointSaver {
           channel,
           serializedValue,
           taskPath ?? "",
+          type,
         ];
       })
     );
@@ -627,7 +658,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       const entry = nsStorage[cpId];
       const ckpt: Checkpoint | undefined =
         entry !== undefined
-          ? await this.serde.loadsTyped("json", entry[0])
+          ? await this.serde.loadsTyped(entry[3] ?? "json", entry[0])
           : undefined;
 
       const blobValueByCh: Record<string, unknown> = {};
@@ -650,7 +681,7 @@ export class MemorySaver extends BaseCheckpointSaver {
       // oldest→newest checkpoints with each checkpoint's writes ascending.
       const stepWrites = this._orderedWrites(threadId, checkpointNs, cpId);
       for (let i = stepWrites.length - 1; i >= 0; i -= 1) {
-        const [tid, ch, serialized] = stepWrites[i][2];
+        const [tid, ch, serialized, , type] = stepWrites[i][2];
         if (!remaining.has(ch)) continue;
         // Collect on-path writes regardless of seed type. A plain (pre-delta
         // migration) blob is the settled value AT that ancestor; its own
@@ -660,7 +691,7 @@ export class MemorySaver extends BaseCheckpointSaver {
         collectedByCh[ch].push([
           tid,
           ch,
-          await this.serde.loadsTyped("json", serialized),
+          await this.serde.loadsTyped(type ?? "json", serialized),
         ]);
       }
 
