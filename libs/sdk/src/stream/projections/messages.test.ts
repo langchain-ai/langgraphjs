@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Channel, Event } from "@langchain/protocol";
+import type { Channel, Event, SubscribeParams } from "@langchain/protocol";
 import type { AIMessageChunk, BaseMessage } from "@langchain/core/messages";
 
+import { matchesSubscription } from "../../client/stream/subscription.js";
 import { ChannelRegistry } from "../channel-registry.js";
 import { StreamStore } from "../../ui/store.js";
 import type { RootEventBus, ThreadStream } from "../types.js";
@@ -27,13 +28,16 @@ function makeThread() {
   const queue: Event[] = [];
   let wake: (() => void) | undefined;
   const thread = {
-    subscribe: vi.fn(async () => ({
+    subscribe: vi.fn(async (params: SubscribeParams) => ({
       isPaused: false,
       async unsubscribe() {},
       async waitForResume() {},
       async *[Symbol.asyncIterator]() {
         while (true) {
-          while (queue.length > 0) yield queue.shift()!;
+          while (queue.length > 0) {
+            const event = queue.shift()!;
+            if (matchesSubscription(event, params)) yield event;
+          }
           await new Promise<void>((resolve) => {
             wake = resolve;
           });
@@ -56,11 +60,11 @@ function rootLifecycle(event: string): Event {
   } as unknown as Event;
 }
 
-function messages(data: Record<string, unknown>): Event {
+function messages(data: Record<string, unknown>, namespace = NS): Event {
   return {
     type: "event",
     method: "messages",
-    params: { namespace: NS, node: "agent", timestamp: 0, data },
+    params: { namespace, node: "agent", timestamp: 0, data },
   } as unknown as Event;
 }
 
@@ -73,12 +77,12 @@ const delta = (text: string) =>
   });
 const finish = () => messages({ event: "message-finish", reason: "stop" });
 
-function values(ids: string[]): Event {
+function values(ids: string[], namespace = NS): Event {
   return {
     type: "event",
     method: "values",
     params: {
-      namespace: NS,
+      namespace,
       timestamp: 0,
       data: {
         messages: ids.map((id) => ({ type: "ai", id, content: id })),
@@ -177,6 +181,36 @@ describe("messagesProjection (scoped) run boundaries", () => {
     expect(ids()).toEqual(["other"]);
 
     unsubscribe();
+    await runtime.dispose();
+  });
+});
+
+describe("messagesProjection (scoped) namespace isolation", () => {
+  it.each([
+    ["a first level", ["tools:parent"]],
+    ["a second level", ["tools:parent", "tools:child"]],
+  ])("applies only its own events at %s namespace", async (_, ns) => {
+    const { thread, push } = makeThread();
+    const projection = messagesProjection(ns);
+    const store = new StreamStore<BaseMessage[]>(projection.initial);
+    const runtime = projection.open({ thread, store, rootBus: makeRootBus() });
+    const ids = () => store.getSnapshot().map((m) => m.id);
+    const tools = [...ns, "tools:call"];
+
+    push(values(["p1", "p2"], ns));
+    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2"]));
+
+    push(
+      values(["c1"], tools),
+      messages({ event: "message-start", id: "c2" }, [...tools, "model_request:y"]),
+      messages({ event: "message-start", id: "p3" }, [...ns, "model_request:x"]),
+      messages({ event: "message-start", id: "p4", role: "tool" }, tools)
+    );
+    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3", "p4"]));
+
+    push(values(["p1", "p2", "p3", "p4", "p5"], ns));
+    await vi.waitFor(() => expect(ids()).toEqual(["p1", "p2", "p3", "p4", "p5"]));
+
     await runtime.dispose();
   });
 });

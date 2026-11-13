@@ -61,6 +61,7 @@ export function valuesProjection<T = unknown>(
       return openProjectionSubscription({
         thread,
         channels: ["values"],
+        depth: 0,
         namespace: ns,
         onEvent(event) {
           if (event.method !== "values") return;
