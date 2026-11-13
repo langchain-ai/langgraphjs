@@ -73,16 +73,26 @@ export function reconcileToolCallsFromMessages(
 }
 
 /**
- * Build completed scoped tool-call handles from an authoritative
- * `values.messages` snapshot. Used when an idle thread hydrates card panels
- * from checkpoint history instead of replaying scoped `/events`.
+ * Build scoped tool-call handles from an authoritative `values.messages`
+ * snapshot. Used when an idle thread hydrates card panels from checkpoint
+ * history instead of replaying scoped `/events`.
+ *
+ * A call with no ToolMessage is `"running"`. With `options.isLoading`, it is
+ * `"running"` only while a run streams and no later message closed its turn,
+ * and `"incomplete"` otherwise, since no run can still answer it.
  */
 export function seedToolCallsFromMessages(
   namespace: readonly string[],
-  messages: readonly BaseMessage[]
+  messages: readonly BaseMessage[],
+  options?: { isLoading?: boolean }
 ): AssembledToolCall[] {
+  const isLoading = options?.isLoading;
+  let lastTurn = messages.length - 1;
+  while (lastTurn >= 0 && ToolMessage.isInstance(messages[lastTurn])) {
+    lastTurn -= 1;
+  }
   let toolCalls: AssembledToolCall[] = [];
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
     if (!Array.isArray(raw)) continue;
     for (const toolCall of raw) {
@@ -107,7 +117,10 @@ export function seedToolCallsFromMessages(
         input: record.args ?? {},
         args: record.args ?? {},
         output: null,
-        status: "running",
+        status:
+          isLoading == null || (isLoading && index >= lastTurn)
+            ? "running"
+            : "incomplete",
         error: undefined,
       });
     }

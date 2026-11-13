@@ -1,4 +1,4 @@
-import { AIMessage, ToolMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { describe, expect, it } from "vitest";
 import type { AssembledToolCall } from "./tool-payload.js";
 import {
@@ -27,6 +27,47 @@ describe("seedToolCallsFromMessages", () => {
     expect(toolCalls).toMatchObject([
       { callId: "call-1", status: "error", error: "Error: boom", output: null },
     ]);
+  });
+
+  const oneOfTwoAnswered = [
+    new AIMessage({
+      content: "",
+      tool_calls: [
+        { id: "call-1", name: "search", args: {} },
+        { id: "call-2", name: "search", args: {} },
+      ],
+    }),
+    new ToolMessage({ content: "found", tool_call_id: "call-1" }),
+  ];
+
+  it("marks a call with no result incomplete when no run streams", () => {
+    expect(
+      seedToolCallsFromMessages([], oneOfTwoAnswered, { isLoading: false })
+    ).toMatchObject([
+      { callId: "call-1", status: "finished", output: "found" },
+      { callId: "call-2", status: "incomplete", output: null },
+    ]);
+  });
+
+  it("marks a call incomplete once a later message closed its turn, even while a run streams", () => {
+    const later = [...oneOfTwoAnswered, new HumanMessage("try again")];
+    expect(
+      seedToolCallsFromMessages([], later, { isLoading: true })
+    ).toMatchObject([
+      { callId: "call-1", status: "finished" },
+      { callId: "call-2", status: "incomplete" },
+    ]);
+  });
+
+  it("keeps a call with no result running while a run streams, or when isLoading is left out", () => {
+    for (const options of [{ isLoading: true }, undefined]) {
+      expect(
+        seedToolCallsFromMessages([], oneOfTwoAnswered, options)
+      ).toMatchObject([
+        { callId: "call-1", status: "finished" },
+        { callId: "call-2", status: "running" },
+      ]);
+    }
   });
 });
 

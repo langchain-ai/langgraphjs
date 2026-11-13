@@ -1,7 +1,19 @@
 /**
  * High-level outcome of a single tool call.
  */
-export type ToolCallStatus = "running" | "finished" | "error";
+export type ToolCallStatus =
+  /** No result yet. */
+  | "running"
+  /** Returned a result, in `output`. */
+  | "finished"
+  /** Failed, with the reason in `error`. */
+  | "error"
+  /**
+   * No result, and no run streams that could give one: the run stopped,
+   * failed, or waits on an interrupt. A run that resumes the call makes it
+   * `"running"` again.
+   */
+  | "incomplete";
 
 /** Shared metadata for assembled tool-call handles. */
 export interface ToolCallBase<TName extends string = string, TInput = unknown> {
@@ -32,9 +44,9 @@ export interface ToolCallBase<TName extends string = string, TInput = unknown> {
  * {@link output} instead for script consumers that read tool results
  * sequentially.
  *
- * {@link output} is `null` while the call is running or after it fails;
- * successful completion sets it to the parsed tool return value (objects
- * and strings are unwrapped from ToolMessage wire envelopes when needed).
+ * {@link output} is `null` until {@link status} is `"finished"`, which sets
+ * it to the parsed tool return value (objects and strings are unwrapped
+ * from ToolMessage wire envelopes when needed).
  */
 export interface AssembledToolCall<
   TName extends string = string,
