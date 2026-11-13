@@ -170,7 +170,7 @@ describe("LangSmithApiClient", () => {
     ]);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe(
-      "https://api.smith.langchain.com/api/v1/tenants?skip_create=true"
+      "https://api.smith.langchain.com/api/v1/workspaces"
     );
     expect(init.headers["X-Api-Key"]).toBe("secret");
   });

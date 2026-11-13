@@ -28,7 +28,7 @@ const ALL_FLAGS = {
   deployments_cli_builds_supported: true,
   deployments_dedicated_supported: true,
 };
-const DISCOVER = "GET https://api.smith.langchain.com/api/v1/tenants";
+const DISCOVER = "GET https://api.smith.langchain.com/api/v1/workspaces";
 const INFO = `GET ${DATA_PLANE_URL}/api/v1/info`;
 
 const json = (body: unknown, status = 200) =>

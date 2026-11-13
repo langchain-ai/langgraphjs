@@ -211,26 +211,24 @@ class JsonClient {
  */
 export class LangSmithApiClient extends JsonClient {
   /**
-   * List the workspaces the API key can use
-   * (`GET /api/v1/tenants?skip_create=true`), skipping deleted ones.
+   * List the workspaces the API key can use (`GET /api/v1/workspaces`),
+   * skipping deleted ones.
    *
    * @returns Each workspace with its data plane URL, or `null` off BYOC.
    */
   async listWorkspaces(): Promise<Workspace[]> {
-    const tenants = await this.request("GET", "/api/v1/tenants", {
-      params: { skip_create: "true" },
-    });
-    if (!Array.isArray(tenants)) return [];
-    return tenants
+    const workspaces = await this.request("GET", "/api/v1/workspaces");
+    if (!Array.isArray(workspaces)) return [];
+    return workspaces
       .filter(
-        (tenant): tenant is Record<string, unknown> =>
-          typeof tenant?.id === "string" && !tenant.is_deleted
+        (workspace): workspace is Record<string, unknown> =>
+          typeof workspace?.id === "string" && !workspace.is_deleted
       )
-      .map((tenant) => ({
-        id: tenant.id as string,
+      .map((workspace) => ({
+        id: workspace.id as string,
         dataPlaneUrl:
-          typeof tenant.data_plane_url === "string"
-            ? tenant.data_plane_url.replace(/\/+$/, "") || null
+          typeof workspace.data_plane_url === "string"
+            ? workspace.data_plane_url.replace(/\/+$/, "") || null
             : null,
       }));
   }
