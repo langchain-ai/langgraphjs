@@ -47,6 +47,7 @@ import {
   DEFAULT_HOST_URL,
   DEPLOYMENT_NAME_ENV,
   TERMINAL_STATUSES,
+  dataPlaneRootUrl,
   envWithoutDeploymentName,
   findDeploymentIdByName,
   formatDeploymentsTable,
@@ -55,6 +56,7 @@ import {
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
   isPathWithin,
+  isSecureOrLocalUrl,
   langsmithApiUrl,
   langsmithDashboardUrl,
   levelColor,
@@ -77,6 +79,7 @@ const CLI_BUILDS_UNSUPPORTED =
   "Push the image to a registry you manage and deploy it with the Python " +
   "CLI: 'langgraph deploy --push-to <registry>/<repository>', or " +
   "'langgraph deploy --image-uri' for an image that is already there.";
+const DISCOVERY_TRANSPORT = { retries: 0, timeoutMs: 5_000 };
 
 // ---------------------------------------------------------------------------
 // Small utilities
@@ -340,28 +343,33 @@ async function createHostBackendClient(
   }
 
   const tenantId =
-    resolvedEnv.LANGSMITH_TENANT_ID || process.env.LANGSMITH_TENANT_ID;
-  if (hostUrl) return new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
+    (
+      resolvedEnv.LANGSMITH_TENANT_ID || process.env.LANGSMITH_TENANT_ID
+    )?.trim() || undefined;
   const langsmithEndpoint =
     resolvedEnv.LANGSMITH_ENDPOINT || process.env.LANGSMITH_ENDPOINT;
+  const newDataPlaneClient = (dataPlaneUrl: string, workspaceId?: string) =>
+    new DataPlaneClient(
+      dataPlaneUrl,
+      resolvedApiKey,
+      workspaceId,
+      langsmithDashboardUrl(langsmithEndpoint, dataPlaneUrl)
+    );
+
+  if (hostUrl) {
+    const dataPlaneUrl = dataPlaneRootUrl(hostUrl);
+    return dataPlaneUrl
+      ? newDataPlaneClient(dataPlaneUrl, tenantId)
+      : new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
+  }
   const target = await discoverTarget(
     langsmithEndpoint,
     resolvedApiKey,
     tenantId
   );
-  if (target.dataPlaneUrl) {
-    return new DataPlaneClient(
-      target.dataPlaneUrl,
-      resolvedApiKey,
-      target.tenantId,
-      langsmithDashboardUrl(langsmithEndpoint)
-    );
-  }
-  return new HostBackendClient(
-    DEFAULT_HOST_URL,
-    resolvedApiKey,
-    target.tenantId
-  );
+  return target.dataPlaneUrl
+    ? newDataPlaneClient(target.dataPlaneUrl, target.tenantId)
+    : new HostBackendClient(DEFAULT_HOST_URL, resolvedApiKey, target.tenantId);
 }
 
 interface HostTarget {
@@ -370,39 +378,69 @@ interface HostTarget {
 }
 
 /**
- * Find the data plane of the API key's workspace. Without one (LangSmith
- * cloud, workspaces on different planes, or a failed lookup), keep the
- * default control plane and the given tenant.
+ * Find the data plane of the API key's workspace. Workspaces on different
+ * planes need a workspace ID, from `tenantId` or a prompt. Without a data
+ * plane (LangSmith cloud or a failed lookup), keep the default control plane.
  */
 async function discoverTarget(
   langsmithEndpoint: string | undefined,
   apiKey: string,
   tenantId: string | undefined
 ): Promise<HostTarget> {
-  let workspaces: Workspace[];
-  try {
-    workspaces = await new LangSmithApiClient(
-      langsmithApiUrl(langsmithEndpoint),
-      apiKey
-    ).listWorkspaces();
-  } catch {
-    return { tenantId };
-  }
-  if (tenantId && workspaces.length) {
-    workspaces = workspaces.filter((workspace) => workspace.id === tenantId);
-    if (!workspaces.length) {
-      throw new Error(
-        `This API key has no access to workspace ${tenantId}. Check LANGSMITH_TENANT_ID.`
-      );
-    }
-  }
+  const workspaces = await listWorkspaces(langsmithEndpoint, apiKey);
+  if (!workspaces.length) return { tenantId };
   const dataPlaneUrls = new Set(workspaces.map((w) => w.dataPlaneUrl));
-  const [dataPlaneUrl] = dataPlaneUrls;
-  if (dataPlaneUrls.size !== 1 || !dataPlaneUrl) return { tenantId };
-  return {
-    tenantId: workspaces.length === 1 ? workspaces[0].id : undefined,
-    dataPlaneUrl,
-  };
+  const workspaceId =
+    tenantId ??
+    (dataPlaneUrls.size > 1 ? await promptWorkspaceId() : undefined);
+  if (workspaceId === undefined) {
+    const [dataPlaneUrl] = dataPlaneUrls;
+    if (!dataPlaneUrl) return {};
+    return dataPlaneTarget(
+      dataPlaneUrl,
+      workspaces.length === 1 ? workspaces[0].id : undefined
+    );
+  }
+  const workspace = workspaces.find(
+    (w) => w.id.toLowerCase() === workspaceId.toLowerCase()
+  );
+  if (!workspace) {
+    throw new Error(
+      `This API key has no access to workspace ${workspaceId}. Check LANGSMITH_TENANT_ID.`
+    );
+  }
+  return workspace.dataPlaneUrl
+    ? dataPlaneTarget(workspace.dataPlaneUrl, workspace.id)
+    : { tenantId: workspace.id };
+}
+
+async function listWorkspaces(
+  langsmithEndpoint: string | undefined,
+  apiKey: string
+): Promise<Workspace[]> {
+  const client = new LangSmithApiClient(
+    langsmithApiUrl(langsmithEndpoint),
+    apiKey,
+    DISCOVERY_TRANSPORT
+  );
+  try {
+    return await client.listWorkspaces();
+  } catch (error) {
+    if (!(error instanceof HostBackendError)) throw error;
+    emitter.note(
+      `Could not look up your LangSmith workspaces (${error.message}); using ${DEFAULT_HOST_URL}.`
+    );
+    return [];
+  }
+}
+
+function dataPlaneTarget(dataPlaneUrl: string, tenantId?: string): HostTarget {
+  if (!isSecureOrLocalUrl(dataPlaneUrl)) {
+    throw new Error(
+      `Refusing to send your API key to ${dataPlaneUrl}: a data plane URL must use https.`
+    );
+  }
+  return { tenantId, dataPlaneUrl };
 }
 
 async function requireCliBuilds(
@@ -429,7 +467,26 @@ function newDeploymentSourceConfig(
         "Use --deployment-type dev instead."
     );
   }
-  return { resource_spec: null, deployment_type: "prod" };
+  return { resource_spec: null, deployment_type: deploymentType };
+}
+
+async function promptWorkspaceId(): Promise<string> {
+  if (noInput) {
+    throw new Error(
+      "API key is org-scoped and requires a workspace ID. Set LANGSMITH_TENANT_ID " +
+        "in your .env file or use a workspace-scoped API key."
+    );
+  }
+  process.stdout.write(
+    paint("Your API key is org-scoped and requires a workspace ID.\n", "yellow")
+  );
+  process.stdout.write(
+    paint(
+      "Find your workspace ID in LangSmith under Settings > Workspaces.\n",
+      "yellow"
+    )
+  );
+  return promptText("Workspace ID");
 }
 
 async function callWithOptionalTenant<T>(
@@ -447,26 +504,7 @@ async function callWithOptionalTenant<T>(
         error.statusCode === 403 &&
         error.message.includes("requires workspace specification")
       ) {
-        if (noInput) {
-          throw new Error(
-            "API key is org-scoped and requires a workspace ID. Set LANGSMITH_TENANT_ID " +
-              "in your .env file or use a workspace-scoped API key."
-          );
-        }
-        process.stdout.write(
-          paint(
-            "Your API key is org-scoped and requires a workspace ID.\n",
-            "yellow"
-          )
-        );
-        process.stdout.write(
-          paint(
-            "Find your workspace ID in LangSmith under Settings > Workspaces.\n",
-            "yellow"
-          )
-        );
-        const workspaceId = await promptText("Workspace ID");
-        client.setTenantId(workspaceId);
+        client.setTenantId(await promptWorkspaceId());
         promptedForTenant = true;
         continue;
       }

@@ -1,80 +1,25 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { gracefulExit } from "exit-hook";
-
-vi.mock("exit-hook", () => ({ gracefulExit: vi.fn() }));
-vi.mock("execa", () => ({ $: () => async () => ({ exitCode: 0 }) }));
-vi.mock("../src/cli/utils/analytics.mjs", () => ({
-  withAnalytics: () => () => {},
-}));
-vi.mock("../src/cli/utils/archive.mjs", () => ({
-  BYTES_PER_MIB: 1024 * 1024,
-  MAX_SIZE: 200 * 1024 * 1024,
-  createArchive: async (configPath: string) => ({
-    archivePath: configPath,
-    fileSize: 0,
-    configRel: "langgraph.json",
-    cleanup: async () => {},
-  }),
-}));
+import { beforeEach, expect, it, vi } from "vitest";
+import {
+  gracefulExit,
+  json,
+  runDeployCli,
+  useDeployHarness,
+} from "./deploy-harness.mjs";
 
 const fetchMock = vi.fn();
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status });
-let configPath: string;
-let output: string;
+const harness = useDeployHarness({
+  env: { LANGSMITH_DEPLOYMENT_NAME: "also-ignore-me" },
+});
 
-beforeEach(async () => {
-  vi.resetModules();
-  vi.clearAllMocks();
+beforeEach(() => {
   vi.stubEnv("LANGSMITH_AGENT_ID", "my-agent");
   vi.stubEnv("LANGSMITH_AGENT_ENVIRONMENT", "staging");
   vi.stubEnv("LANGSMITH_DEPLOYMENT_NAME", "ignore-me");
   vi.stubGlobal("fetch", fetchMock);
-  output = "";
-  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    output += String(chunk);
-    return true;
-  });
-  configPath = path.join(
-    await mkdtemp(path.join(os.tmpdir(), "deploy-agent-")),
-    "langgraph.json"
-  );
-  await writeFile(
-    configPath,
-    JSON.stringify({
-      node_version: "20",
-      graphs: { agent: "./agent.ts:graph" },
-      image_distro: "wolfi",
-      env: { LANGSMITH_DEPLOYMENT_NAME: "also-ignore-me" },
-    })
-  );
 });
 
-afterEach(async () => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
-  await rm(path.dirname(configPath), { recursive: true, force: true });
-});
-
-async function run(...args: string[]) {
-  await import("../src/cli/deploy.mjs");
-  const { builder } = await import("../src/cli/utils/builder.mjs");
-  await builder.parseAsync(
-    [
-      "deploy",
-      ...args,
-      "--api-key",
-      "test-key",
-      "--host-url",
-      "https://api.host.langchain.com",
-    ],
-    { from: "user" }
-  );
-}
+const run = (...args: string[]) =>
+  runDeployCli(...args, "--host-url", "https://api.host.langchain.com");
 
 // `sent` is the upload's headers apart from Content-Length.
 const GCS_DEFAULTS = {
@@ -140,7 +85,7 @@ it.each(AGENT_DEPLOYS)("deploys by agent ($label)", async (c) => {
 
   await run(
     "--config",
-    configPath,
+    harness.configPath,
     "--remote",
     "--no-wait",
     "--no-input",
@@ -174,7 +119,7 @@ it.each(AGENT_DEPLOYS)("deploys by agent ($label)", async (c) => {
   expect(fetchMock).toHaveBeenCalledTimes(existing ? 4 : 5);
   expect(gracefulExit).not.toHaveBeenCalled();
   expect(
-    output
+    harness.output
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line).message)
@@ -203,8 +148,8 @@ it("stops when the tenant cannot use agent filters", async () => {
   fetchMock.mockResolvedValueOnce(
     json({ detail: "Agent filters are not available for this tenant." }, 400)
   );
-  await run("--config", configPath, "--remote", "--no-input", "--json");
+  await run("--config", harness.configPath, "--remote", "--no-input", "--json");
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(gracefulExit).toHaveBeenCalledWith(1);
-  expect(output).toContain("Agent filters are not available for this tenant.");
+  expect(harness.output).toContain("Agent filters are not available for this tenant.");
 });

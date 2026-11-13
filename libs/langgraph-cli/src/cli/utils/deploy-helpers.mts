@@ -89,6 +89,14 @@ export const DEFAULT_HOST_URL = "https://api.host.langchain.com";
 
 const CLOUD_DASHBOARD_URL = "https://smith.langchain.com";
 const CLOUD_LANGSMITH_API_HOST = "api.smith.langchain.com";
+const CLOUD_HOST_BACKEND_HOST = "api.host.langchain.com";
+const LOCAL_HOSTNAMES: ReadonlySet<string> = new Set([
+  "localhost",
+  "127.0.0.1",
+]);
+
+/** Where a LangSmith data plane serves the host backend. */
+export const DATA_PLANE_HOST_PATH = "/api-host";
 
 /** Revision statuses that end status polling (success or failure). */
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
@@ -433,16 +441,49 @@ export function smithDashboardBaseUrl(
     return "https://smith.langchain.com";
   }
   const hostname = parsed.hostname || "";
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
+  if (LOCAL_HOSTNAMES.has(hostname)) {
     return hostUrl.replace(/\/+$/, "");
   }
-  const apiHostSuffix = "api.host.langchain.com";
-  if (hostname === apiHostSuffix) return "https://smith.langchain.com";
-  if (hostname.endsWith(`.${apiHostSuffix}`)) {
-    const prefix = hostname.slice(0, -(apiHostSuffix.length + 1));
+  if (hostname === CLOUD_HOST_BACKEND_HOST) {
+    return "https://smith.langchain.com";
+  }
+  if (hostname.endsWith(`.${CLOUD_HOST_BACKEND_HOST}`)) {
+    const prefix = hostname.slice(0, -(CLOUD_HOST_BACKEND_HOST.length + 1));
     return `https://${prefix}.smith.langchain.com`;
   }
   return "https://smith.langchain.com";
+}
+
+function isCloudHostBackend(hostname: string): boolean {
+  return (
+    hostname === CLOUD_HOST_BACKEND_HOST ||
+    hostname.endsWith(`.${CLOUD_HOST_BACKEND_HOST}`)
+  );
+}
+
+/** Whether an API key may be sent to `url`: https, or http on localhost. */
+export function isSecureOrLocalUrl(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  return (
+    protocol === "https:" ||
+    (protocol === "http:" && LOCAL_HOSTNAMES.has(hostname))
+  );
+}
+
+/**
+ * The data plane root of a `--host-url` that points at a data plane's host
+ * backend (`<root>/api-host` off LangSmith cloud), or `undefined`.
+ */
+export function dataPlaneRootUrl(hostUrl: string): string | undefined {
+  const url = new URL(hostUrl);
+  const path = url.pathname.replace(/\/+$/, "");
+  if (
+    isCloudHostBackend(url.hostname) ||
+    !path.endsWith(DATA_PLANE_HOST_PATH)
+  ) {
+    return undefined;
+  }
+  return `${url.origin}${path.slice(0, -DATA_PLANE_HOST_PATH.length)}`;
 }
 
 /**
@@ -458,13 +499,18 @@ export function langsmithApiUrl(langsmithEndpoint: string | undefined): string {
 
 /**
  * The LangSmith UI for `LANGSMITH_ENDPOINT`: the regional
- * `smith.langchain.com` for LangSmith cloud, or the self-hosted root.
+ * `smith.langchain.com` for LangSmith cloud, or the self-hosted root. An
+ * endpoint on the data plane itself links LangSmith cloud.
  */
 export function langsmithDashboardUrl(
-  langsmithEndpoint: string | undefined
+  langsmithEndpoint: string | undefined,
+  dataPlaneUrl?: string
 ): string {
   const apiUrl = langsmithApiUrl(langsmithEndpoint);
   const { hostname } = new URL(apiUrl);
+  if (dataPlaneUrl && hostname === new URL(dataPlaneUrl).hostname) {
+    return CLOUD_DASHBOARD_URL;
+  }
   if (hostname !== "langchain.com" && !hostname.endsWith(".langchain.com")) {
     return apiUrl;
   }

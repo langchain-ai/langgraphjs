@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  dataPlaneRootUrl,
   envWithoutDeploymentName,
   findDeploymentIdByName,
   formatDeploymentsTable,
@@ -10,6 +11,7 @@ import {
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
   isPathWithin,
+  isSecureOrLocalUrl,
   langsmithApiUrl,
   langsmithDashboardUrl,
   levelColor,
@@ -194,6 +196,39 @@ describe("langsmithDashboardUrl", () => {
     ["https://smith.example.com/api/v1", "https://smith.example.com"],
   ])("maps %s to %s", (endpoint, expected) => {
     expect(langsmithDashboardUrl(endpoint)).toBe(expected);
+  });
+
+  it("links LangSmith cloud for an endpoint on the data plane", () => {
+    expect(
+      langsmithDashboardUrl(
+        "https://langsmith.customer.example/api/v1",
+        "https://langsmith.customer.example"
+      )
+    ).toBe("https://smith.langchain.com");
+  });
+});
+
+describe("isSecureOrLocalUrl", () => {
+  it.each([
+    ["https://dp.example.com", true],
+    ["http://localhost:1984", true],
+    ["http://127.0.0.1", true],
+    ["http://dp.example.com", false],
+    ["ftp://dp.example.com", false],
+  ])("treats %s as %s", (url, expected) => {
+    expect(isSecureOrLocalUrl(url)).toBe(expected);
+  });
+});
+
+describe("dataPlaneRootUrl", () => {
+  it.each([
+    ["https://dp.example.com/api-host", "https://dp.example.com"],
+    ["https://dp.example.com/smith/api-host/", "https://dp.example.com/smith"],
+    ["https://dp.example.com", undefined],
+    ["https://api.host.langchain.com", undefined],
+    ["https://eu.api.host.langchain.com/api-host", undefined],
+  ])("maps %s to %s", (hostUrl, expected) => {
+    expect(dataPlaneRootUrl(hostUrl)).toBe(expected);
   });
 });
 

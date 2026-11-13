@@ -5,7 +5,10 @@
  * with a small retry loop on transport-level failures.
  */
 
-import { smithDashboardBaseUrl } from "./deploy-helpers.mjs";
+import {
+  DATA_PLANE_HOST_PATH,
+  smithDashboardBaseUrl,
+} from "./deploy-helpers.mjs";
 
 /**
  * A deployment secret (an environment variable injected into the running
@@ -80,9 +83,15 @@ interface RequestOptions {
   params?: Record<string, string | number | undefined>;
 }
 
-/** Number of times a transport-level failure is retried before giving up. */
+/** How a client retries transport-level failures and times out requests. */
+export interface TransportOptions {
+  /** Times a transport-level failure is retried before giving up. */
+  retries?: number;
+  /** Per-request timeout in milliseconds, enforced via `AbortController`. */
+  timeoutMs?: number;
+}
+
 const TRANSPORT_RETRIES = 3;
-/** Per-request timeout in milliseconds, enforced via `AbortController`. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
@@ -100,16 +109,30 @@ class JsonClient {
   /** Headers sent with every request. */
   protected readonly headers: Record<string, string>;
 
+  private readonly retries: number;
+
+  private readonly timeoutMs: number;
+
   /**
    * @param baseUrl - Base URL that request paths are appended to.
    * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
+   * @param transport - Retries and timeout for each request.
    */
-  constructor(baseUrl: string, apiKey: string) {
+  constructor(
+    baseUrl: string,
+    apiKey: string,
+    {
+      retries = TRANSPORT_RETRIES,
+      timeoutMs = REQUEST_TIMEOUT_MS,
+    }: TransportOptions = {}
+  ) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.headers = {
       "X-Api-Key": apiKey,
       Accept: "application/json",
     };
+    this.retries = retries;
+    this.timeoutMs = timeoutMs;
   }
 
   /**
@@ -159,16 +182,16 @@ class JsonClient {
     }
 
     let lastError: unknown;
-    for (let attempt = 0; attempt <= TRANSPORT_RETRIES; attempt += 1) {
+    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
       let response: Response;
       try {
         response = await fetch(url, { ...init, signal: controller.signal });
       } catch (error) {
         // Transport-level error (network, DNS, timeout). Retry a few times.
         lastError = error;
-        if (attempt < TRANSPORT_RETRIES) continue;
+        if (attempt < this.retries) continue;
         throw new HostBackendError(
           error instanceof Error ? error.message : String(error)
         );
@@ -254,13 +277,23 @@ export class LangSmithApiClient extends JsonClient {
  * Minimal JSON HTTP client for the host backend deployment service.
  */
 export class HostBackendClient extends JsonClient {
+  /** The LangSmith UI that shows this host backend's deployments. */
+  readonly dashboardUrl: string;
+
   /**
    * @param baseUrl - Host backend base URL, e.g. `https://api.host.langchain.com`.
    * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
    * @param tenantId - Optional workspace/tenant ID sent as `X-Tenant-ID`.
+   * @param dashboardUrl - The LangSmith UI for status links. Defaults to the
+   * one that matches `baseUrl`.
    * @throws {@link HostBackendError} if `baseUrl` is empty.
    */
-  constructor(baseUrl: string, apiKey: string, tenantId?: string) {
+  constructor(
+    baseUrl: string,
+    apiKey: string,
+    tenantId?: string,
+    dashboardUrl = smithDashboardBaseUrl(baseUrl)
+  ) {
     if (!baseUrl) {
       throw new HostBackendError("Host backend URL is required");
     }
@@ -268,11 +301,7 @@ export class HostBackendClient extends JsonClient {
     if (tenantId) {
       this.headers["X-Tenant-ID"] = tenantId;
     }
-  }
-
-  /** The LangSmith UI that shows this host backend's deployments. */
-  get dashboardUrl(): string {
-    return smithDashboardBaseUrl(this.baseUrl);
+    this.dashboardUrl = dashboardUrl;
   }
 
   /**
@@ -563,27 +592,25 @@ export class HostBackendClient extends JsonClient {
 export class DataPlaneClient extends HostBackendClient {
   private readonly dataPlane: LangSmithApiClient;
 
-  private readonly langsmithDashboardUrl: string;
-
   /**
    * @param dataPlaneUrl - The workspace's data plane URL.
    * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
    * @param tenantId - Workspace ID sent as `X-Tenant-ID`, if known.
-   * @param langsmithDashboardUrl - The LangSmith UI for status links.
+   * @param dashboardUrl - The LangSmith UI for status links.
    */
   constructor(
     dataPlaneUrl: string,
     apiKey: string,
     tenantId: string | undefined,
-    langsmithDashboardUrl: string
+    dashboardUrl: string
   ) {
-    super(`${dataPlaneUrl.replace(/\/+$/, "")}/api-host`, apiKey, tenantId);
+    super(
+      `${dataPlaneUrl.replace(/\/+$/, "")}${DATA_PLANE_HOST_PATH}`,
+      apiKey,
+      tenantId,
+      dashboardUrl
+    );
     this.dataPlane = new LangSmithApiClient(dataPlaneUrl, apiKey);
-    this.langsmithDashboardUrl = langsmithDashboardUrl;
-  }
-
-  override get dashboardUrl(): string {
-    return this.langsmithDashboardUrl;
   }
 
   override instanceFlags(): Promise<InstanceFlags> {

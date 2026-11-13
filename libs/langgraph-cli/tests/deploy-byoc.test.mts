@@ -1,38 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { gracefulExit } from "exit-hook";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  gracefulExit,
+  json,
+  runDeployCli,
+  useDeployHarness,
+} from "./deploy-harness.mjs";
 
-vi.mock("exit-hook", () => ({ gracefulExit: vi.fn() }));
-vi.mock("execa", () => ({ $: () => async () => ({ exitCode: 0 }) }));
-vi.mock("../src/cli/utils/analytics.mjs", () => ({
-  withAnalytics: () => () => {},
-}));
-vi.mock("../src/cli/utils/archive.mjs", () => ({
-  BYTES_PER_MIB: 1024 * 1024,
-  MAX_SIZE: 200 * 1024 * 1024,
-  createArchive: async (configPath: string) => ({
-    archivePath: configPath,
-    fileSize: 0,
-    configRel: "langgraph.json",
-    cleanup: async () => {},
-  }),
+const { promptAnswer } = vi.hoisted(() => ({ promptAnswer: vi.fn() }));
+vi.mock("node:readline", () => ({
+  default: {
+    createInterface: () => ({
+      question: (_: string, answer: (text: string) => void) =>
+        answer(promptAnswer()),
+      close: () => {},
+    }),
+  },
 }));
 
 const DATA_PLANE_URL = "https://langsmith.customer.example";
+const DATA_PLANE_HOST = `${DATA_PLANE_URL}/api-host`;
+const OTHER_DATA_PLANE_URL = "https://langsmith.other.example";
+const OTHER_DATA_PLANE_HOST = `${OTHER_DATA_PLANE_URL}/api-host`;
 const CLOUD_HOST_URL = "https://api.host.langchain.com";
-const BYOC_WORKSPACE = { id: "ws-1", data_plane_url: DATA_PLANE_URL };
-const SAAS_WORKSPACE = { id: "ws-2", data_plane_url: null };
+const WORKSPACE_ID = "0b6e7f3e-2c1d-4a5b-9e8f-1a2b3c4d5e6f";
+const BYOC_WORKSPACE = { id: WORKSPACE_ID, data_plane_url: DATA_PLANE_URL };
+const OTHER_BYOC_WORKSPACE = {
+  id: "ws-other",
+  data_plane_url: OTHER_DATA_PLANE_URL,
+};
+const SAAS_WORKSPACE = { id: "ws-saas", data_plane_url: null };
 const ALL_FLAGS = {
   deployments_cli_builds_supported: true,
   deployments_dedicated_supported: true,
 };
 const DISCOVER = "GET https://api.smith.langchain.com/api/v1/workspaces";
-const INFO = `GET ${DATA_PLANE_URL}/api/v1/info`;
+const info = (dataPlaneUrl: string) => `GET ${dataPlaneUrl}/api/v1/info`;
+const INFO = info(DATA_PLANE_URL);
+const UPLOAD = "PUT https://upload.example/source";
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status });
+type Routes = Record<string, () => Response>;
 
 interface Call {
   route: string;
@@ -40,20 +46,25 @@ interface Call {
   body: unknown;
 }
 
+const harness = useDeployHarness();
 let calls: Call[];
-let routes: Record<string, () => Response>;
-let configPath: string;
-let output: string;
+let routes: Routes;
 
-function serve(overrides: Record<string, () => Response> = {}): void {
-  routes = {
+/**
+ * Answer each request whose `METHOD URL` matches a route exactly. Routes
+ * written as `METHOD /path` are host backend routes under `hostUrl`.
+ */
+function serve(hostUrl: string, overrides: Routes = {}): void {
+  const all: Routes = {
     [DISCOVER]: () => json([]),
     [INFO]: () => json({ instance_flags: ALL_FLAGS }),
+    [UPLOAD]: () => json({}),
     "GET /v2/deployments": () => json({ resources: [] }),
     "POST /v2/deployments": () => json({ id: "dep-1" }),
     "POST /v2/deployments/dep-1/upload-url": () =>
       json({ upload_url: "https://upload.example/source", object_path: "src" }),
-    "PUT https://upload.example/source": () => json({}),
+    "POST /v2/deployments/dep-1/push-token": () =>
+      json({ token: "push-token", registry_url: "registry.example/project" }),
     "PATCH /v2/deployments/dep-1": () => json({ tenant_id: "tenant-1" }),
     "GET /v2/deployments/dep-1/revisions": () =>
       json({ resources: [{ id: "rev-1" }] }),
@@ -61,16 +72,23 @@ function serve(overrides: Record<string, () => Response> = {}): void {
       json({ logs: [] }),
     ...overrides,
   };
+  routes = Object.fromEntries(
+    Object.entries(all).map(([route, handler]) => {
+      const [method, target] = route.split(" ");
+      return [
+        target.startsWith("/") ? `${method} ${hostUrl}${target}` : route,
+        handler,
+      ];
+    })
+  );
 }
 
-beforeEach(async () => {
-  vi.resetModules();
-  vi.clearAllMocks();
+beforeEach(() => {
   for (const name of ["LANGSMITH_TENANT_ID", "LANGSMITH_ENDPOINT"]) {
     vi.stubEnv(name, "");
   }
   calls = [];
-  serve();
+  serve(DATA_PLANE_HOST);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init: RequestInit) => {
@@ -86,69 +104,49 @@ beforeEach(async () => {
         headers: Object.fromEntries(new Headers(init.headers)),
         body,
       });
-      const handler =
-        routes[route] ??
-        routes[`${init.method} ${url.pathname.replace(/^\/api-host/, "")}`];
+      const handler = routes[route];
       return handler ? handler() : json({ detail: `unexpected ${route}` }, 599);
     })
   );
-  output = "";
-  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    output += String(chunk);
-    return true;
-  });
-  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-    output += String(chunk);
-    return true;
-  });
-  configPath = path.join(
-    await mkdtemp(path.join(os.tmpdir(), "deploy-byoc-")),
-    "langgraph.json"
-  );
-  await writeFile(
-    configPath,
-    JSON.stringify({
-      node_version: "20",
-      graphs: { agent: "./agent.ts:graph" },
-      image_distro: "wolfi",
-    })
-  );
 });
 
-afterEach(async () => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
-  await rm(path.dirname(configPath), { recursive: true, force: true });
-});
-
-async function run(...args: string[]) {
-  await import("../src/cli/deploy.mjs");
-  const { builder } = await import("../src/cli/utils/builder.mjs");
-  await builder.parseAsync(["deploy", ...args, "--api-key", "test-key"], {
-    from: "user",
-  });
-}
-
-const remoteDeploy = (...args: string[]) =>
-  run(
+const deploy = (...args: string[]) =>
+  runDeployCli(
     "--config",
-    configPath,
+    harness.configPath,
     "--name",
     "my-app",
-    "--remote",
     "--no-wait",
     "--no-input",
     "--json",
     ...args
   );
 
+const remoteDeploy = (...args: string[]) => deploy("--remote", ...args);
+
 const createBody = () =>
   calls.find((call) => /^POST \S+\/v2\/deployments$/.test(call.route))
     ?.body as Record<string, unknown>;
 
+const isHostCall = (call: Call) =>
+  call.route !== UPLOAD && !/\/api\/v1\/(workspaces|info)$/.test(call.route);
+
+/** Every host backend call went to `hostUrl` as `tenantId`. */
+function expectHostCalls(hostUrl: string, tenantId?: string): void {
+  const hostCalls = calls.filter(isHostCall);
+  expect(hostCalls.length).toBeGreaterThan(0);
+  expect(
+    hostCalls.filter((call) => !call.route.includes(` ${hostUrl}/`))
+  ).toEqual([]);
+  expect(hostCalls.map((call) => call.headers["x-tenant-id"])).toEqual(
+    hostCalls.map(() => tenantId)
+  );
+}
+
 describe("on a BYOC data plane", () => {
-  beforeEach(() => serve({ [DISCOVER]: () => json([BYOC_WORKSPACE]) }));
+  beforeEach(() =>
+    serve(DATA_PLANE_HOST, { [DISCOVER]: () => json([BYOC_WORKSPACE]) })
+  );
 
   it("deploys through the data plane with the discovered workspace", async () => {
     await remoteDeploy();
@@ -158,14 +156,21 @@ describe("on a BYOC data plane", () => {
       DISCOVER,
       INFO,
     ]);
-    const hostCalls = calls.filter((call) =>
-      call.route.includes(`${DATA_PLANE_URL}/api-host/`)
-    );
-    expect(hostCalls.length).toBeGreaterThan(0);
-    expect(hostCalls.every((call) => call.headers["x-tenant-id"] === "ws-1")).toBe(true);
+    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
     expect(createBody().source_config).toEqual({ resource_spec: {} });
-    expect(output).toContain(
+    expect(harness.output).toContain(
       "https://smith.langchain.com/o/tenant-1/host/deployments/dep-1"
+    );
+  });
+
+  it("pushes a locally built image through the data plane", async () => {
+    await deploy("--no-remote");
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
+    expect(createBody().source).toBe("internal_docker");
+    expect(calls.map((call) => call.route)).toContain(
+      `POST ${DATA_PLANE_HOST}/v2/deployments/dep-1/push-token`
     );
   });
 
@@ -192,7 +197,7 @@ describe("on a BYOC data plane", () => {
       expected: "--push-to <registry>/<repository>",
     },
   ])("refuses $label before creating anything", async (c) => {
-    serve({
+    serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([BYOC_WORKSPACE]),
       [INFO]: () => json({ instance_flags: c.flags }),
     });
@@ -200,12 +205,12 @@ describe("on a BYOC data plane", () => {
     await remoteDeploy(...c.args);
 
     expect(gracefulExit).toHaveBeenCalledWith(1);
-    expect(output).toContain(c.expected);
+    expect(harness.output).toContain(c.expected);
     expect(createBody()).toBeUndefined();
   });
 
   it("redeploys an existing prod deployment without dedicated support", async () => {
-    serve({
+    serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([BYOC_WORKSPACE]),
       [INFO]: () =>
         json({ instance_flags: { deployments_cli_builds_supported: true } }),
@@ -219,20 +224,20 @@ describe("on a BYOC data plane", () => {
   });
 
   it("names both external image flags without CLI builds", async () => {
-    serve({
+    serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([BYOC_WORKSPACE]),
       [INFO]: () => json({}),
     });
 
     await remoteDeploy();
 
-    expect(output).toContain("--push-to");
-    expect(output).toContain("--image-uri");
+    expect(harness.output).toContain("--push-to");
+    expect(harness.output).toContain("--image-uri");
   });
 
   it("surfaces a data plane's 501 as it is", async () => {
     const hint = "Local image pushes are not supported here; use --remote.";
-    serve({
+    serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([BYOC_WORKSPACE]),
       "POST /v2/deployments": () => json({ detail: hint }, 501),
     });
@@ -240,43 +245,133 @@ describe("on a BYOC data plane", () => {
     await remoteDeploy();
 
     expect(gracefulExit).toHaveBeenCalledWith(1);
-    expect(output).toContain(hint);
+    expect(harness.output).toContain(hint);
   });
 
   it("reads build logs from the data plane with the workspace", async () => {
-    await run("logs", "--type", "build", "--deployment-id", "dep-1");
+    await runDeployCli("logs", "--type", "build", "--deployment-id", "dep-1");
 
-    expect(
-      calls
-        .filter((call) => call.route !== DISCOVER)
-        .map((call) => [call.route, call.headers["x-tenant-id"]])
-    ).toEqual([
-      [`GET ${DATA_PLANE_URL}/api-host/v2/deployments/dep-1/revisions`, "ws-1"],
-      [
-        `POST ${DATA_PLANE_URL}/api-host/v1/projects/dep-1/revisions/rev-1/build_logs`,
-        "ws-1",
-      ],
+    expect(calls.map((call) => call.route)).toEqual([
+      DISCOVER,
+      `GET ${DATA_PLANE_HOST}/v2/deployments/dep-1/revisions`,
+      `POST ${DATA_PLANE_HOST}/v1/projects/dep-1/revisions/rev-1/build_logs`,
     ]);
+    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
   });
 
   it("links LangSmith, not the data plane, when deployments are off", async () => {
-    serve({
+    serve(DATA_PLANE_HOST, {
       [DISCOVER]: () => json([BYOC_WORKSPACE]),
       "GET /v2/deployments": () =>
         json({ detail: "LangSmith Deployment is not enabled" }, 403),
     });
 
-    await run("list");
+    await runDeployCli("list");
 
-    expect(output).toContain("https://smith.langchain.com/host/deployments");
-    expect(output).not.toContain("customer.example");
+    expect(harness.output).toContain(
+      "https://smith.langchain.com/host/deployments"
+    );
+    expect(harness.output).not.toContain("customer.example");
+  });
+
+  it("links LangSmith when LANGSMITH_ENDPOINT is the data plane", async () => {
+    vi.stubEnv("LANGSMITH_ENDPOINT", DATA_PLANE_URL);
+    serve(DATA_PLANE_HOST, {
+      [`GET ${DATA_PLANE_URL}/api/v1/workspaces`]: () =>
+        json([BYOC_WORKSPACE]),
+    });
+
+    await remoteDeploy();
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(harness.output).toContain(
+      "https://smith.langchain.com/o/tenant-1/host/deployments/dep-1"
+    );
+  });
+
+  it.each([
+    { label: "an empty", tenantId: "" },
+    { label: "a blank", tenantId: "  " },
+    { label: "an uppercase", tenantId: WORKSPACE_ID.toUpperCase() },
+  ])("finds the workspace with $label LANGSMITH_TENANT_ID", async (c) => {
+    vi.stubEnv("LANGSMITH_TENANT_ID", c.tenantId);
+
+    await remoteDeploy();
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
+  });
+
+  it("refuses a data plane that is not on https", async () => {
+    const insecure = "http://langsmith.customer.example";
+    serve(`${insecure}/api-host`, {
+      [DISCOVER]: () => json([{ ...BYOC_WORKSPACE, data_plane_url: insecure }]),
+    });
+
+    await remoteDeploy();
+
+    expect(gracefulExit).toHaveBeenCalledWith(1);
+    expect(harness.output).toContain("must use https");
+    expect(calls.map((call) => call.route)).toEqual([DISCOVER]);
   });
 
   it("lets --host-url override discovery", async () => {
+    serve("https://host.example.com");
+
     await remoteDeploy("--host-url", "https://host.example.com");
 
     expect(calls.map((call) => call.route)).not.toContain(DISCOVER);
     expect(createBody().source_config).toEqual({ deployment_type: "dev" });
+  });
+
+  it("checks a data plane named by --host-url", async () => {
+    await remoteDeploy("--host-url", DATA_PLANE_HOST);
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(calls[0].route).toBe(INFO);
+    expect(calls.map((call) => call.route)).not.toContain(DISCOVER);
+    expectHostCalls(DATA_PLANE_HOST);
+    expect(createBody().source_config).toEqual({ resource_spec: {} });
+  });
+});
+
+describe("with workspaces on different planes", () => {
+  it("follows LANGSMITH_TENANT_ID to its data plane", async () => {
+    vi.stubEnv("LANGSMITH_TENANT_ID", OTHER_BYOC_WORKSPACE.id);
+    serve(OTHER_DATA_PLANE_HOST, {
+      [DISCOVER]: () => json([BYOC_WORKSPACE, OTHER_BYOC_WORKSPACE]),
+      [info(OTHER_DATA_PLANE_URL)]: () => json({ instance_flags: ALL_FLAGS }),
+    });
+
+    await remoteDeploy();
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expectHostCalls(OTHER_DATA_PLANE_HOST, OTHER_BYOC_WORKSPACE.id);
+  });
+
+  it("follows the prompted workspace to its data plane", async () => {
+    promptAnswer.mockReturnValue(WORKSPACE_ID);
+    serve(DATA_PLANE_HOST, {
+      [DISCOVER]: () => json([SAAS_WORKSPACE, BYOC_WORKSPACE]),
+    });
+
+    await runDeployCli("list");
+
+    expect(gracefulExit).not.toHaveBeenCalled();
+    expect(harness.output).toContain("requires a workspace ID");
+    expectHostCalls(DATA_PLANE_HOST, WORKSPACE_ID);
+  });
+
+  it("asks for LANGSMITH_TENANT_ID without input", async () => {
+    serve(CLOUD_HOST_URL, {
+      [DISCOVER]: () => json([SAAS_WORKSPACE, BYOC_WORKSPACE]),
+    });
+
+    await remoteDeploy();
+
+    expect(gracefulExit).toHaveBeenCalledWith(1);
+    expect(harness.output).toContain("Set LANGSMITH_TENANT_ID");
+    expect(calls.map((call) => call.route)).toEqual([DISCOVER]);
   });
 });
 
@@ -285,48 +380,53 @@ describe("off a data plane", () => {
     {
       label: "a LangSmith cloud workspace",
       discover: () => json([SAAS_WORKSPACE]),
+      note: false,
     },
-    { label: "a failed lookup", discover: () => json({}, 500) },
+    { label: "a failed lookup", discover: () => json({}, 500), note: true },
     {
-      label: "workspaces on different planes and no tenant",
-      discover: () => json([BYOC_WORKSPACE, SAAS_WORKSPACE]),
+      label: "an unreachable API",
+      discover: () => {
+        throw new TypeError("fetch failed");
+      },
+      note: true,
     },
   ])("keeps today's control plane for $label", async (c) => {
-    serve({ [DISCOVER]: c.discover });
+    serve(CLOUD_HOST_URL, { [DISCOVER]: c.discover });
 
     await remoteDeploy();
 
     expect(gracefulExit).not.toHaveBeenCalled();
+    expect(calls.filter((call) => call.route === DISCOVER)).toHaveLength(1);
     expect(calls.map((call) => call.route)).not.toContain(INFO);
-    const hostCalls = calls.filter((call) =>
-      call.route.includes(`${CLOUD_HOST_URL}/`)
-    );
-    expect(hostCalls.length).toBeGreaterThan(0);
-    expect(hostCalls.every((call) => !call.headers["x-tenant-id"])).toBe(true);
+    expectHostCalls(CLOUD_HOST_URL);
     expect(createBody().source_config).toEqual({ deployment_type: "dev" });
+    expect(harness.output.includes("Could not look up")).toBe(c.note);
   });
 
   it("names a LANGSMITH_TENANT_ID the key cannot use", async () => {
     vi.stubEnv("LANGSMITH_TENANT_ID", "unknown-ws");
-    serve({ [DISCOVER]: () => json([BYOC_WORKSPACE]) });
+    serve(CLOUD_HOST_URL, { [DISCOVER]: () => json([BYOC_WORKSPACE]) });
 
     await remoteDeploy();
 
     expect(gracefulExit).toHaveBeenCalledWith(1);
-    expect(output).toContain("unknown-ws");
+    expect(harness.output).toContain("unknown-ws");
     expect(calls.map((call) => call.route)).toEqual([DISCOVER]);
   });
 
   it("hints at external images when an older data plane rejects the source", async () => {
-    serve({
+    serve("https://host.example.com", {
       "POST /v2/deployments": () =>
-        json({ detail: "'source' must be one of ['github', 'external_docker']" }, 400),
+        json(
+          { detail: "'source' must be one of ['github', 'external_docker']" },
+          400
+        ),
     });
 
     await remoteDeploy("--host-url", "https://host.example.com");
 
     expect(gracefulExit).toHaveBeenCalledWith(1);
-    expect(output).toContain("'source' must be one of");
-    expect(output).toContain("--push-to <registry>/<repository>");
+    expect(harness.output).toContain("'source' must be one of");
+    expect(harness.output).toContain("--push-to <registry>/<repository>");
   });
 });

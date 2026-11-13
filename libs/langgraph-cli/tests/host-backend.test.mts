@@ -137,6 +137,17 @@ describe("HostBackendClient", () => {
   it("has no data plane capabilities off a data plane", async () => {
     expect(await new HostBackendClient(BASE, "secret").instanceFlags()).toBeNull();
   });
+
+  it("links the dashboard for its host unless given one", () => {
+    expect(
+      new HostBackendClient("https://eu.api.host.langchain.com", "secret")
+        .dashboardUrl
+    ).toBe("https://eu.smith.langchain.com");
+    expect(
+      new HostBackendClient(BASE, "secret", undefined, "https://smith.example.com")
+        .dashboardUrl
+    ).toBe("https://smith.example.com");
+  });
 });
 
 describe("LangSmithApiClient", () => {
@@ -173,6 +184,16 @@ describe("LangSmithApiClient", () => {
       "https://api.smith.langchain.com/api/v1/workspaces"
     );
     expect(init.headers["X-Api-Key"]).toBe("secret");
+  });
+
+  it("makes one attempt when told not to retry", async () => {
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    const client = new LangSmithApiClient("https://api.smith.langchain.com", "secret", {
+      retries: 0,
+    });
+
+    await expect(client.listWorkspaces()).rejects.toBeInstanceOf(HostBackendError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([
