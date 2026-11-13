@@ -588,6 +588,59 @@ it("keeps a subagent's messages out of a custom transport's main conversation", 
     .toEqual(["hi", "in the main"]);
 });
 
+it("ends a subagent left open when a custom transport's run stops or fails", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() =>
+    useStream({ transport: server.transport })
+  );
+  const startSubagent = async (count: number, id: string) => {
+    void result.current.submit({ messages: [] });
+    await expect.poll(() => server.runs.length).toBe(count);
+    server.runs[count - 1].send("updates", {
+      agent: {
+        messages: [
+          {
+            id: `ai-${id}`,
+            type: "ai",
+            content: "",
+            tool_calls: [
+              {
+                id,
+                name: "task",
+                args: { subagent_type: "researcher", description: "look" },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    await expect
+      .poll(() => result.current.subagents.get(id)?.status)
+      .toBe("running");
+  };
+
+  await startSubagent(1, "call1");
+  await result.current.stop();
+  await expect
+    .poll(() => result.current.subagents.get("call1"))
+    .toMatchObject({ status: "error", error: "The run ended: stopped" });
+
+  await startSubagent(2, "call2");
+  server.runs[1].send("error", { error: "Boom", message: "boom" });
+  await expect
+    .poll(() => result.current.subagents.get("call2"))
+    .toMatchObject({ status: "error", error: "The run ended: error" });
+
+  await startSubagent(3, "call3");
+  void result.current.submit(
+    { messages: [] },
+    { multitaskStrategy: "interrupt" }
+  );
+  await expect
+    .poll(() => result.current.subagents.get("call3"))
+    .toMatchObject({ status: "error", error: "The run ended: stopped" });
+});
+
 it("lists a submit waiting behind a custom transport's run, with no run id", async () => {
   const server = fakeServer();
   const { result } = await renderHook(() => {

@@ -292,6 +292,10 @@ function createCustomEngine(
     if (run == null) return;
     const { id, reason = "stopped" } = run;
     run = undefined;
+    // As on an Agent Server: a subagent can't finish once its run has.
+    if (reason === "error" || reason === "stopped") {
+      engine.stream.closeOpenSubagents(`The run ended: ${reason}`);
+    }
     latest.current.onCompleted?.({ runId: id, reason });
   };
   const engine = new CustomStreamOrchestrator({
