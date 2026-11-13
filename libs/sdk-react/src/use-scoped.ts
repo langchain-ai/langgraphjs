@@ -77,11 +77,12 @@ export function namespaceOf(target: SelectorTarget): readonly string[] {
 }
 
 /**
- * A subagent whose namespace isn't known yet: `useStream` shows such a
- * subagent at `["tools:<tool call id>"]`, and a target with that namespace,
- * given as the subagent or alone, stands for it.
+ * The subagent a target at `["tools:<tool call id>"]` stands for: `useStream`
+ * shows a subagent there until its namespace is known, and an app may keep
+ * that namespace after. Given alone, it stands for one of the stream's
+ * subagents.
  */
-function unresolvedSubagent(
+function placeholderSubagent(
   stream: StreamLike,
   target: SelectorTarget
 ): SubagentDiscoverySnapshot | undefined {
@@ -94,20 +95,19 @@ function unresolvedSubagent(
     const subagent = target as SubagentDiscoverySnapshot;
     return subagent.id === id ? subagent : undefined;
   }
-  const subagent = stream.subagents.get(id);
-  return subagent?.namespace.join("|") === namespace[0] ? subagent : undefined;
+  return stream.subagents.get(id);
 }
 
 /**
- * What identifies a target's scope, `undefined` for the main conversation. An
- * unresolved subagent's key changes with its status, so a lookup that found
+ * What identifies a target's scope, `undefined` for the main conversation. A
+ * placeholder's key changes with its subagent's status, so a lookup that found
  * nothing while it ran is made again once it ends.
  */
 export function scopeKeyOf(
   stream: StreamLike,
   target: SelectorTarget
 ): string | undefined {
-  const subagent = unresolvedSubagent(stream, target);
+  const subagent = placeholderSubagent(stream, target);
   if (subagent != null) return `subagent:${subagent.id}:${subagent.status}`;
   const namespace = namespaceOf(target);
   return namespace.length === 0 ? undefined : namespace.join("|");
@@ -127,7 +127,7 @@ export async function resolveNamespace(
   stream: StreamLike,
   target: SelectorTarget
 ): Promise<readonly string[] | undefined> {
-  const subagent = unresolvedSubagent(stream, target);
+  const subagent = placeholderSubagent(stream, target);
   return subagent == null
     ? namespaceOf(target)
     : engineOf(stream).resolveSubagentNamespace(subagent.id);
