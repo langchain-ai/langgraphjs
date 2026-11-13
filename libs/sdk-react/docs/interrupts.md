@@ -63,7 +63,7 @@ stream.interrupts.map((interrupt) => (
 - During a run, the answer waits in the queue behind it and never interrupts it.
 - `respond` resolves once the answer's run is created or queued, and rejects when it can't be sent.
 - `config` and `metadata` go onto the run that resumes, as with `submit()`.
-- An interrupt answered in another tab disappears here too: at once on Agent Server 0.19 or later, else at the next read of the thread's state.
+- An interrupt answered in another tab disappears here too: at once on Agent Server 0.19 or later with `watchThread` on, else at the next read of the thread's state.
 
 ## Several interrupts at once
 

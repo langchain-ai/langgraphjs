@@ -183,6 +183,7 @@ Use the [selector hooks](./selectors.md).
 
 - **1.x:** a thread followed runs started elsewhere only once it was active (a run streaming or an interrupt waiting) or had sent a message.
 - **2.0:** every loaded thread keeps one connection to the server, so runs started in another tab, by a cron or from Slack show as they stream. The connection pauses while the page is hidden or its own run streams. The JS dev server (`langgraphjs dev`) has no stream to follow, so there such runs show at the next load.
+- **Back:** `useStream({ watchThread: false })` keeps no such connection, and those runs show at the next load or `hydrate()`.
 
 ### Channel hooks start when they mount
 

@@ -113,6 +113,15 @@ export interface AgentServerOptions<
    * `submit()` still does with `multitaskStrategy: "interrupt"`.
    */
   queue?: "local" | "server";
+  /**
+   * Keep a connection open to follow the thread shown, unless this is
+   * `false`, so runs started in another tab or by a cron show as they
+   * stream. With `false`, they show only after a reload or `hydrate()`, as
+   * do interrupts answered elsewhere.
+   *
+   * @default true
+   */
+  watchThread?: boolean;
 }
 
 /**
@@ -143,6 +152,7 @@ export interface CustomTransportOptions<
   onReconnect?: never;
   onConnected?: never;
   streamIdleReconnect?: never;
+  watchThread?: never;
 }
 
 export type UseStreamOptions<
