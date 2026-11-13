@@ -830,15 +830,24 @@ export class RedisSaver extends BaseCheckpointSaver {
       } else {
         for (let idx = 0; idx < writeKeys.length; idx++) {
           if (allSpecial) {
-            await this.client.json.set(writeKeys[idx], "$", writeDocs[idx] as never);
+            await this.client.json.set(
+              writeKeys[idx],
+              "$",
+              writeDocs[idx] as never
+            );
           } else {
             // Equivalent of SQL `INSERT OR IGNORE`: only set when the key is
             // absent. `node-redis` exposes this as the `NX` modifier on
             // `JSON.SET`. The return value is the string "OK" on insert and
             // `null` on no-op, both of which are fine to discard here.
-            await this.client.json.set(writeKeys[idx], "$", writeDocs[idx] as never, {
-              NX: true,
-            });
+            await this.client.json.set(
+              writeKeys[idx],
+              "$",
+              writeDocs[idx] as never,
+              {
+                NX: true,
+              }
+            );
           }
         }
         await this.client.zAdd(zsetKey, zaddMembers);
