@@ -289,6 +289,7 @@ CREATE TABLE IF NOT EXISTS writes (
       await this.migratePendingSends(
         checkpoint,
         row.thread_id,
+        row.checkpoint_ns ?? "",
         row.parent_checkpoint_id
       );
     }
@@ -439,6 +440,7 @@ CREATE TABLE IF NOT EXISTS writes (
           await this.migratePendingSends(
             checkpoint,
             row.thread_id,
+            row.checkpoint_ns ?? "",
             row.parent_checkpoint_id
           );
         }
@@ -615,6 +617,7 @@ CREATE TABLE IF NOT EXISTS writes (
   protected async migratePendingSends(
     checkpoint: Checkpoint,
     threadId: string,
+    checkpointNamespace: string,
     parentCheckpointId: string
   ) {
     const { pending_sends } = this.db
@@ -630,12 +633,15 @@ CREATE TABLE IF NOT EXISTS writes (
             ) as pending_sends
           FROM writes as ps
           WHERE ps.thread_id = ?
+            AND ps.checkpoint_ns = ?
             AND ps.checkpoint_id = ?
             AND ps.channel = '${TASKS}'
           ORDER BY ps.idx
         `
       )
-      .get(threadId, parentCheckpointId) as { pending_sends: string };
+      .get(threadId, checkpointNamespace, parentCheckpointId) as {
+      pending_sends: string;
+    };
 
     const mutableCheckpoint = checkpoint;
 
