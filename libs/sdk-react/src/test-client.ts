@@ -22,6 +22,7 @@ export function fakeServer(threads: Record<string, Values> = {}) {
   const state = new Map(Object.entries(threads));
   const history = new Map<string, Values>();
   const next = new Map<string, string[]>();
+  const running = new Map<string, string>();
   const runs: FakeRun[] = [];
   const calls: string[] = [];
   let ids = 0;
@@ -120,7 +121,10 @@ export function fakeServer(threads: Record<string, Values> = {}) {
         _assistantId: string,
         payload: Record<string, unknown>
       ) => startRun(threadId, payload),
-      joinStream: () => (async function* () {})(),
+      joinStream: (threadId: string, runId: string) => {
+        calls.push(`joinStream ${threadId} ${runId}`);
+        return (async function* () {})();
+      },
       async create(threadId: string) {
         calls.push(`create run ${threadId}`);
         return {
@@ -128,7 +132,12 @@ export function fakeServer(threads: Record<string, Values> = {}) {
           created_at: new Date().toISOString(),
         };
       },
-      list: async () => [],
+      list: async (threadId: string, options?: { status?: string }) => {
+        const runId = running.get(threadId);
+        return options?.status === "running" && runId != null
+          ? [{ run_id: runId }]
+          : [];
+      },
       get: async () => ({ status: "success" }),
       async cancel(_threadId: string, runId: string) {
         calls.push(`cancel ${runId}`);
@@ -145,5 +154,7 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     history,
     /** A thread's pending nodes, by thread id. */
     next,
+    /** The id of a thread's running run, which a thread load finds, by thread id. */
+    running,
   };
 }

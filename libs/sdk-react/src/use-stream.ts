@@ -359,13 +359,7 @@ function createBinding(
     stop: (stopOptions?: StreamStopOptions) => engine.stop(stopOptions),
     disconnect: () => engine.stop({ cancel: false }),
     respond: (response: unknown, respondOptions?: StreamRespondOptions) =>
-      engine.respond(response, {
-        ...respondOptions,
-        // The one `interrupt` shows. `StreamOrchestrator` alone picks the newest.
-        interruptId:
-          respondOptions?.interruptId ??
-          engine.interrupts.find((interrupt) => interrupt.id != null)?.id,
-      }),
+      engine.respond(response, respondOptions),
     respondAll: (
       responses: Record<string, unknown>,
       respondOptions?: StreamRespondAllOptions

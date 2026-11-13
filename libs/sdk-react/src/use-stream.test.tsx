@@ -294,6 +294,49 @@ it("disposes the engine of a suspended render whose tree unmounts", async () => 
   dispose.mockRestore();
 });
 
+it("joins a thread's running run once when a sibling suspends on first mount", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  server.running.set("t1", "run-9");
+  const onCompleted = vi.fn();
+  let mounted = false;
+  let mount!: () => void;
+  const sibling = new Promise<void>((resolve) => {
+    mount = () => {
+      mounted = true;
+      resolve();
+    };
+  });
+  function Sibling() {
+    if (!mounted) throw sibling;
+    return null;
+  }
+  function Chat() {
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      onCompleted,
+    });
+    return <span>chat</span>;
+  }
+  const screen = await render(
+    <Suspense fallback={<span>loading</span>}>
+      <Chat />
+      <Sibling />
+    </Suspense>
+  );
+  await expect.element(screen.getByText("loading")).toBeVisible();
+  mount();
+  await expect.element(screen.getByText("chat")).toBeVisible();
+  await expect.poll(() => onCompleted.mock.calls.length).toBe(1);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(server.calls.filter((call) => call.startsWith("joinStream"))).toEqual([
+    "joinStream t1 run-9",
+  ]);
+  expect(onCompleted).toHaveBeenCalledOnce();
+});
+
 it("calls an onConnected first passed on a later render", async () => {
   const server = fakeServer({ t1: { messages: [] } });
   const onConnected = vi.fn();
