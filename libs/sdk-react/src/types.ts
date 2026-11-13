@@ -10,6 +10,7 @@ import type {
   MessageMetadataMap,
   RunEndReason,
   StreamOrchestratorOptions,
+  UseStreamTransport,
 } from "@langchain/langgraph-sdk/ui";
 
 /** Why a run's stream ended. */
@@ -114,12 +115,44 @@ export interface AgentServerOptions<
   queue?: "local" | "server";
 }
 
+/**
+ * Options of `useStream` with a custom transport, for a backend of your own
+ * that runs the graph and streams what an Agent Server's run streams send.
+ */
+export interface CustomTransportOptions<
+  StateType extends object,
+  ThreadIdType = string | null,
+> extends UseStreamCommonOptions<StateType, ThreadIdType> {
+  /**
+   * Sends each run to your backend and returns its event stream, such as a
+   * `FetchStreamTransport`. The one passed at the latest render sends each
+   * run, so an inline object works.
+   */
+  transport: UseStreamTransport<StateType & Record<string, unknown>>;
+  /** A submit made during a run waits in this page: there is no server queue. */
+  queue?: "local";
+  assistantId?: never;
+  client?: never;
+  apiUrl?: never;
+  apiKey?: never;
+  callerOptions?: never;
+  defaultHeaders?: never;
+  fetch?: never;
+  maxReconnectAttempts?: never;
+  reconnectDelayMs?: never;
+  onReconnect?: never;
+  onConnected?: never;
+  streamIdleReconnect?: never;
+}
+
 export type UseStreamOptions<
   StateType extends object = Record<string, unknown>,
   ThreadIdType = string | null,
   ApiUrlType = string | undefined,
   ApiKeyType = string | undefined,
-> = AgentServerOptions<StateType, ThreadIdType, ApiUrlType, ApiKeyType>;
+> =
+  | AgentServerOptions<StateType, ThreadIdType, ApiUrlType, ApiKeyType>
+  | CustomTransportOptions<StateType, ThreadIdType>;
 
 type RunConfig<ConfigurableType extends object> = {
   configurable?: ConfigurableType;

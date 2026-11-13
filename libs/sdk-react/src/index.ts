@@ -39,12 +39,14 @@ export {
 export {
   StreamProvider,
   useStreamContext,
+  type StreamProviderCustomProps,
   type StreamProviderProps,
 } from "./context.js";
 
 export type {
   AgentServerOptions,
   Channel,
+  CustomTransportOptions,
   Event,
   MessageMetadata,
   MessageMetadataMap,

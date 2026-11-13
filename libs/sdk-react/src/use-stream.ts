@@ -11,6 +11,7 @@ import {
   type Message,
 } from "@langchain/langgraph-sdk";
 import {
+  CustomStreamOrchestrator,
   StreamOrchestrator,
   SubgraphDiscovery,
   ensureMessageInstances,
@@ -19,11 +20,14 @@ import {
   type AssembledToolCall,
   type InferAssembledToolCalls,
   type InferStateType,
+  type StreamEngine,
   type SubagentStreamInterface,
   type SubgraphByNodeMap,
   type SubgraphMap,
+  type UseStreamTransport,
 } from "@langchain/langgraph-sdk/ui";
 import type {
+  RunExecutionReason,
   StreamRespondAllOptions,
   StreamRespondOptions,
   StreamStopOptions,
@@ -117,16 +121,19 @@ export interface UseStreamReturn<
    */
   hydrate(threadId?: string | null): Promise<void>;
 
-  /** The client every request goes through. */
+  /**
+   * The client every request goes through. With a custom transport, a
+   * client with the default URL, which the stream doesn't use.
+   */
   readonly client: Client;
-  /** The assistant runs start with. */
+  /** The assistant runs start with, or `""` with a custom transport. */
   readonly assistantId: string;
 
   /** @deprecated Read {@link interrupts} and answer with {@link respond}. */
   getThread(): StreamThread | undefined;
 
   /** @internal Read by the selector hooks. */
-  readonly [STREAM_CONTROLLER]: StreamOrchestrator;
+  readonly [STREAM_CONTROLLER]: StreamEngine;
 }
 
 export type UseStreamResult<
@@ -190,7 +197,7 @@ export interface StreamBinding {
   readonly latest: { current: UseStreamOptions };
   readonly client: Client;
   readonly assistantId: string;
-  readonly engine: StreamOrchestrator;
+  readonly engine: StreamEngine & { dispose(): void };
   /** Kept current by the hook, since the engine reads it on each interrupt. */
   readonly tools: AnyHeadlessToolImplementation[];
   readonly queue: "local" | "server";
@@ -198,16 +205,18 @@ export interface StreamBinding {
   committed: boolean;
   /** Read the thread, once: at the first client snapshot or effect. */
   start(): void;
+  /** Show a thread, calling `onThreadId` when it's another. */
+  hydrate(threadId?: string | null): Promise<void>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): UseStreamReturn;
   /** What a server render, and the hydration of its HTML, show: the thread loading. */
   getServerSnapshot(): UseStreamReturn;
 }
 
-const bindings = new WeakMap<StreamOrchestrator, StreamBinding>();
+const bindings = new WeakMap<StreamEngine, StreamBinding>();
 
 /** @internal The hook state of a stream's engine. */
-export function bindingOf(engine: StreamOrchestrator): StreamBinding {
+export function bindingOf(engine: StreamEngine): StreamBinding {
   return bindings.get(engine)!;
 }
 
@@ -226,9 +235,30 @@ function messagesKeyOf(options: UseStreamOptions): string {
   return options.messagesKey ?? "messages";
 }
 
+function customTransportOf(
+  options: UseStreamOptions
+): UseStreamTransport | undefined {
+  return options.transport != null && typeof options.transport !== "string"
+    ? options.transport
+    : undefined;
+}
+
+/** The submit option a custom transport can't send, if `options` have one. */
+function agentServerOnly(options: StreamSubmitOptions): string | undefined {
+  if (options.forkFrom != null) return "forkFrom";
+  if (options.interruptBefore != null) return "interruptBefore";
+  if (options.interruptAfter != null) return "interruptAfter";
+  if (options.multitaskStrategy === "rollback") {
+    return 'multitaskStrategy: "rollback"';
+  }
+  return undefined;
+}
+
 function depsOf(options: UseStreamOptions): unknown[] {
   return [
     options.client,
+    // Whether, not which: the engine calls the latest render's transport.
+    customTransportOf(options) != null,
     options.apiUrl,
     options.apiKey,
     options.fetch != null,
@@ -246,12 +276,77 @@ function entriesOf(value: object | undefined): unknown[] {
     : [Object.keys(value).length, ...Object.entries(value).flat()];
 }
 
+/**
+ * The engine of a custom transport, which tells how a run ended only through
+ * callbacks. Its runs go one at a time, each with one transport call.
+ */
+function createCustomEngine(
+  transport: UseStreamTransport,
+  options: UseStreamOptions,
+  latest: { current: UseStreamOptions },
+  tools: AnyHeadlessToolImplementation[],
+  reportError: (error: unknown) => void
+): CustomStreamOrchestrator {
+  let run: { id?: string; reason?: RunExecutionReason } | undefined;
+  const complete = () => {
+    if (run == null) return;
+    const { id, reason = "stopped" } = run;
+    run = undefined;
+    latest.current.onCompleted?.({ runId: id, reason });
+  };
+  const engine = new CustomStreamOrchestrator({
+    transport: {
+      stream: (payload) => {
+        // A notification of the run before can still be on its way.
+        complete();
+        run = {};
+        return (customTransportOf(latest.current) ?? transport).stream(payload);
+      },
+    },
+    initialValues: options.initialValues,
+    messagesKey: options.messagesKey,
+    optimistic: options.optimistic,
+    tools,
+    onTool: (event) => latest.current.onTool?.(event),
+    onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
+    // Sent once per attempt of a run, so only a new id is a new run.
+    onMetadataEvent: ({ run_id: runId }) => {
+      if (run == null || runId == null || runId === run.id) return;
+      run.id = runId;
+      latest.current.onCreated?.({ runId });
+    },
+    onFinish: ({ values }) => {
+      if (run == null) return;
+      const pending = (values as { __interrupt__?: unknown }).__interrupt__;
+      run.reason =
+        Array.isArray(pending) && pending.length > 0 ? "interrupt" : "success";
+    },
+    onError: (error) => {
+      if (run != null) run.reason = "error";
+      reportError(error);
+    },
+    subagentToolNames: ["task"],
+    filterSubagentMessages: true,
+    throttle: true,
+  });
+  engine.subscribe(() => {
+    if (!engine.isLoading) complete();
+  });
+  return engine;
+}
+
 function createBinding(
   options: UseStreamOptions,
   deps: readonly unknown[]
 ): StreamBinding {
   const latest = { current: options };
-  const { assistantId } = options;
+  const transport = customTransportOf(options);
+  if (transport != null && options.queue === "server") {
+    throw new Error(
+      '@langchain/react: `queue: "server"` needs an Agent Server. With a custom transport, a submit made during a run waits in the page.'
+    );
+  }
+  const assistantId = options.assistantId ?? "";
   if (
     options.client != null &&
     options.fetch != null &&
@@ -281,40 +376,59 @@ function createBinding(
     });
   const tools = [...(options.tools ?? [])];
   const errorListeners = new Set<(error: Error) => void>();
-  const engine = new StreamOrchestrator(
-    {
-      assistantId,
-      initialValues: options.initialValues,
-      messagesKey: options.messagesKey,
-      optimistic: options.optimistic,
-      queue: options.queue,
-      maxReconnectAttempts: options.maxReconnectAttempts,
-      reconnectDelayMs: options.reconnectDelayMs,
-      streamIdleReconnect: options.streamIdleReconnect,
-      onReconnect: (info) => latest.current.onReconnect?.(info),
-      onConnected: (info) => latest.current.onConnected?.(info),
-      onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
-      onCreated: (run) => latest.current.onCreated?.({ runId: run.run_id }),
-      onRunEnd: (run) => latest.current.onCompleted?.(run),
-      onError: (error) => {
-        const asError =
-          // eslint-disable-next-line no-instanceof/no-instanceof
-          error instanceof Error ? error : new Error(String(error));
-        for (const listener of errorListeners) listener(asError);
-      },
-      tools,
-      onTool: (event) => latest.current.onTool?.(event),
-      scopedSubagents: true,
-      subagentToolNames: ["task"],
-      throttle: true,
-    },
-    {
-      getClient: () => client,
-      getAssistantId: () => assistantId,
-      getMessagesKey: () => messagesKeyOf(latest.current),
-    }
-  );
+  const reportError = (error: unknown) => {
+    const asError =
+      // eslint-disable-next-line no-instanceof/no-instanceof
+      error instanceof Error ? error : new Error(String(error));
+    for (const listener of errorListeners) listener(asError);
+  };
+  const engine: StreamEngine & { dispose(): void } =
+    transport != null
+      ? createCustomEngine(transport, options, latest, tools, reportError)
+      : new StreamOrchestrator(
+          {
+            assistantId,
+            initialValues: options.initialValues,
+            messagesKey: options.messagesKey,
+            optimistic: options.optimistic,
+            queue: options.queue,
+            maxReconnectAttempts: options.maxReconnectAttempts,
+            reconnectDelayMs: options.reconnectDelayMs,
+            streamIdleReconnect: options.streamIdleReconnect,
+            onReconnect: (info) => latest.current.onReconnect?.(info),
+            onConnected: (info) => latest.current.onConnected?.(info),
+            onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
+            onCreated: (run) =>
+              latest.current.onCreated?.({ runId: run.run_id }),
+            onRunEnd: (run) => latest.current.onCompleted?.(run),
+            onError: reportError,
+            tools,
+            onTool: (event) => latest.current.onTool?.(event),
+            scopedSubagents: true,
+            subagentToolNames: ["task"],
+            throttle: true,
+          },
+          {
+            getClient: () => client,
+            getAssistantId: () => assistantId,
+            getMessagesKey: () => messagesKeyOf(latest.current),
+          }
+        );
   engine.trackStreamMode("messages-tuple", "custom");
+
+  const hydrate = async (threadId?: string | null): Promise<void> => {
+    const before = engine.threadId;
+    const loaded = engine.hydrate(threadId);
+    // StreamOrchestrator calls it itself when it switches.
+    if (
+      transport != null &&
+      engine.threadId != null &&
+      engine.threadId !== before
+    ) {
+      latest.current.onThreadId?.(engine.threadId);
+    }
+    await loaded;
+  };
 
   const discovery = new SubgraphDiscovery();
   let discoveryThread = engine.threadId;
@@ -338,11 +452,21 @@ function createBinding(
           "submit() rejected: a run is already in flight and multitaskStrategy is 'reject'."
         );
       }
+      if (transport != null) {
+        const option = agentServerOnly(submitOptions);
+        if (option != null) {
+          throw new Error(
+            `@langchain/react: \`${option}\` needs an Agent Server, and this stream has a custom transport.`
+          );
+        }
+        // As the server's "interrupt" does: stop the run, drop the queue.
+        if (rest.multitaskStrategy === "interrupt") await engine.stop();
+      }
       if (
         threadId !== undefined &&
         (threadId ?? undefined) !== engine.threadId
       ) {
-        await engine.hydrate(threadId);
+        await hydrate(threadId);
       }
       await engine.submit(input as Record<string, unknown>, {
         ...rest,
@@ -364,7 +488,7 @@ function createBinding(
       responses: Record<string, unknown>,
       respondOptions?: StreamRespondAllOptions
     ) => engine.respondAll(responses, respondOptions),
-    hydrate: (threadId?: string | null) => engine.hydrate(threadId),
+    hydrate,
     getThread: (): StreamThread | undefined =>
       engine.threadId == null
         ? undefined
@@ -421,15 +545,20 @@ function createBinding(
     }
     parts = next;
     const previous = snapshot;
-    const instances = engine.messages.map(toInstance);
+    const values = engine.values;
+    const messagesKey = messagesKeyOf(latest.current);
+    // From the values, not the engine's `messages`, which a custom
+    // transport's engine builds anew on each read.
+    const shownMessages = values[messagesKey];
+    const instances = (Array.isArray(shownMessages) ? shownMessages : []).map(
+      toInstance
+    );
     // Kept while unchanged, so a flip of `isLoading` alone leaves `values`
     // and `messages` as they were.
     const messages =
       previous != null && sameItems(previous.messages, instances)
         ? previous.messages
         : instances;
-    const values = engine.values;
-    const messagesKey = messagesKeyOf(latest.current);
     toolCalls = toolCallsOf(messages, [], toolCalls);
     subagents = subagentsOf(engine.subagents, subagents);
     // Only ones `respond()` can answer: the engine's
@@ -444,7 +573,7 @@ function createBinding(
               : interrupt
           );
     snapshot = {
-      values: !Array.isArray(values[messagesKey])
+      values: !Array.isArray(shownMessages)
         ? values
         : values === shownValues && previous?.values[messagesKey] === messages
           ? previous.values
@@ -464,7 +593,7 @@ function createBinding(
       ...actions,
       client,
       assistantId,
-      [STREAM_CONTROLLER]: engine,
+      [STREAM_CONTROLLER]: engine as StreamEngine,
     } as UseStreamReturn;
     shownValues = values;
     return snapshot;
@@ -477,8 +606,9 @@ function createBinding(
     assistantId,
     engine,
     tools,
-    queue: options.queue ?? "server",
+    queue: transport != null ? "local" : (options.queue ?? "server"),
     committed: false,
+    hydrate,
     subscribe(listener) {
       const unsubscribe = [
         engine.subscribe(listener),
@@ -504,7 +634,8 @@ function createBinding(
       serverSnapshot ??= {
         ...build(),
         threadId,
-        isThreadLoading: threadId != null,
+        // A custom transport has no thread to read.
+        isThreadLoading: transport == null && threadId != null,
       };
       return serverSnapshot;
     },
@@ -599,7 +730,7 @@ export function useStreamBinding(
     // After hydration this effect comes before the first client snapshot.
     binding.start();
     const threadId = options.threadId ?? null;
-    if (threadId !== (engine.threadId ?? null)) void engine.hydrate(threadId);
+    if (threadId !== (engine.threadId ?? null)) void binding.hydrate(threadId);
   }, [binding, engine, options.threadId]);
 
   useEffect(() => {

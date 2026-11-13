@@ -4,9 +4,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import { hydrateRoot } from "react-dom/client";
 import { renderToReadableStream, renderToString } from "react-dom/server";
 import { cleanup, render, renderHook } from "vitest-browser-react";
-import { useStream } from "./use-stream.js";
+import { STREAM_CONTROLLER, useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
+import { useSubmissionQueue } from "./selectors.js";
+import { StreamProvider, useStreamContext } from "./context.js";
 import { fakeServer } from "./test-client.js";
+import type { StreamSubmitOptions } from "./types.js";
 
 afterEach(() => cleanup());
 
@@ -413,4 +416,233 @@ it("hydrates the server's HTML as it is, then reads the thread in the browser", 
   expect(server.calls).toEqual(["getState t1"]);
   root.unmount();
   container.remove();
+});
+
+it("streams a custom transport's run and answers its interrupt through it, with no Agent Server", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() =>
+    useStream({ transport: server.transport })
+  );
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  expect(result.current.messages.map((message) => message.content)).toEqual([
+    "hi",
+  ]);
+
+  server.runs[0].send("values", { messages: [human("h1", "hi")], step: 1 });
+  await expect.poll(() => result.current.values.step).toBe(1);
+  const shown = result.current.messages[0];
+  server.runs[0].send("messages", [ai("a1", "stream"), {}]);
+  await expect.poll(() => result.current.messages.length).toBe(2);
+  expect(result.current.messages[0]).toBe(shown);
+  server.runs[0].finish({
+    messages: [human("h1", "hi"), ai("a1", "approve?")],
+    __interrupt__: [{ id: "i1", value: "approve?" }],
+  });
+  await expect.poll(() => result.current.interrupt?.id).toBe("i1");
+  const { threadId } = result.current;
+  expect(threadId).toEqual(expect.any(String));
+  expect(result.current.assistantId).toBe("");
+
+  void result.current.respond("yes");
+
+  await expect.poll(() => server.runs.length).toBe(2);
+  expect(server.runs[1].payload).toMatchObject({
+    input: null,
+    command: { resume: { i1: "yes" } },
+    config: { configurable: { thread_id: threadId } },
+  });
+  expect(server.calls).toEqual([
+    `transport ${threadId}`,
+    `transport ${threadId}`,
+  ]);
+});
+
+it("keeps the engine when an inline transport changes, and sends each run through the latest", async () => {
+  const server = fakeServer();
+  const sentBy: string[] = [];
+  const transportNamed = (name: string) => ({
+    stream: (payload: Parameters<typeof server.transport.stream>[0]) => {
+      sentBy.push(name);
+      return server.transport.stream(payload);
+    },
+  });
+  const { result, rerender } = await renderHook(
+    (props?: { name: string }) =>
+      useStream({ transport: transportNamed(props?.name ?? "") }),
+    { initialProps: { name: "first" } }
+  );
+  const engine = result.current[STREAM_CONTROLLER];
+  await rerender({ name: "second" });
+  expect(result.current[STREAM_CONTROLLER]).toBe(engine);
+
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => sentBy).toEqual(["second"]);
+});
+
+it("calls onCreated with a custom transport's run id, and onCompleted with how each run ended", async () => {
+  const server = fakeServer();
+  const created: string[] = [];
+  const completed: unknown[] = [];
+  const { result } = await renderHook(() =>
+    useStream({
+      transport: server.transport,
+      onCreated: ({ runId }) => created.push(runId),
+      onCompleted: (info) => completed.push(info),
+    })
+  );
+  const submit = () => void result.current.submit({ messages: [] });
+
+  const first = result.current.submit({ messages: [] });
+  await expect.poll(() => created).toHaveLength(1);
+  server.runs[0].finish({
+    messages: [],
+    __interrupt__: [{ id: "i1", value: "approve?" }],
+  });
+  await first;
+  submit();
+  await expect.poll(() => created).toHaveLength(2);
+  server.runs[1].send("error", { error: "Boom", message: "boom" });
+  await expect.poll(() => completed).toHaveLength(2);
+  submit();
+  await expect.poll(() => created).toHaveLength(3);
+  await result.current.stop();
+  await expect.poll(() => completed).toHaveLength(3);
+  submit();
+  await expect.poll(() => created).toHaveLength(4);
+  server.runs[3].finish({ messages: [] });
+  await expect.poll(() => completed).toHaveLength(4);
+
+  expect(completed).toEqual([
+    { runId: created[0], reason: "interrupt" },
+    { runId: created[1], reason: "error" },
+    { runId: created[2], reason: "stopped" },
+    { runId: created[3], reason: "success" },
+  ]);
+});
+
+it("calls onThreadId for each thread a custom transport's stream moves to", async () => {
+  const server = fakeServer();
+  const seen: string[] = [];
+  const { result, rerender } = await renderHook(
+    (props?: { threadId?: string }) =>
+      useStream({
+        transport: server.transport,
+        threadId: props?.threadId,
+        onThreadId: (threadId) => seen.push(threadId),
+      }),
+    { initialProps: {} }
+  );
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => result.current.threadId).toEqual(expect.any(String));
+  expect(seen).toEqual([result.current.threadId]);
+
+  await rerender({ threadId: "t2" });
+  await expect.poll(() => seen.at(-1)).toBe("t2");
+  await result.current.hydrate("t3");
+  await result.current.hydrate("t3");
+  expect(seen.slice(1)).toEqual(["t2", "t3"]);
+});
+
+it("rejects a custom transport's submit options that need an Agent Server, and stops the run for interrupt", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() =>
+    useStream({ transport: server.transport })
+  );
+  // Each option a custom transport can't send, and the name its error gives.
+  const agentServerOnly: [StreamSubmitOptions, string][] = [
+    [{ forkFrom: "cp-1" }, "forkFrom"],
+    [{ interruptBefore: ["agent"] }, "interruptBefore"],
+    [{ interruptAfter: "*" }, "interruptAfter"],
+    [{ multitaskStrategy: "rollback" }, 'multitaskStrategy: "rollback"'],
+  ];
+  for (const [options, name] of agentServerOnly) {
+    await expect(result.current.submit(null, options)).rejects.toThrow(
+      `\`${name}\` needs an Agent Server`
+    );
+  }
+  expect(server.runs).toHaveLength(0);
+
+  const interrupt = { multitaskStrategy: "interrupt" } as const;
+  void result.current.submit({ messages: [human("h1", "hi")] }, interrupt);
+  await expect.poll(() => server.runs.length).toBe(1);
+  void result.current.submit({ messages: [human("h2", "now")] }, interrupt);
+
+  await expect.poll(() => server.runs.length).toBe(2);
+  expect((server.runs[0].payload.signal as AbortSignal).aborted).toBe(true);
+});
+
+it("keeps a subagent's messages out of a custom transport's main conversation", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() =>
+    useStream({ transport: server.transport })
+  );
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+
+  server.runs[0].send("messages|tools:call1", [ai("s1", "in the subagent"), {}]);
+  server.runs[0].send("messages", [ai("a1", "in the main"), {}]);
+
+  await expect
+    .poll(() => result.current.messages.map((message) => message.content))
+    .toEqual(["hi", "in the main"]);
+});
+
+it("lists a submit waiting behind a custom transport's run, with no run id", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() => {
+    const stream = useStream({ transport: server.transport });
+    return { stream, queue: useSubmissionQueue(stream) };
+  });
+  void result.current.stream.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  void result.current.stream.submit({ messages: [human("h2", "next")] });
+
+  await expect.poll(() => result.current.queue.size).toBe(1);
+  expect(result.current.queue.entries[0].runId).toBeUndefined();
+});
+
+it("gives StreamProvider's children a stream over its custom transport", async () => {
+  const server = fakeServer();
+  const { result } = await renderHook(() => useStreamContext(), {
+    wrapper: ({ children }) => (
+      <StreamProvider transport={server.transport}>{children}</StreamProvider>
+    ),
+  });
+  void result.current.submit({ messages: [human("h1", "hi")] });
+
+  await expect.poll(() => server.runs.length).toBe(1);
+  expect(server.calls).toEqual([`transport ${result.current.threadId}`]);
+});
+
+it("throws when a custom transport is given the server's queue", async () => {
+  const server = fakeServer();
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  await expect(
+    renderHook(() =>
+      useStream({ transport: server.transport, queue: "server" as "local" })
+    )
+  ).rejects.toThrow('`queue: "server"` needs an Agent Server');
+  error.mockRestore();
+});
+
+it("renders a custom transport's thread on the server, since there is nothing to read", () => {
+  const server = fakeServer();
+  function Chat() {
+    const stream = useStream({ transport: server.transport, threadId: "t1" });
+    return <span>{stream.isThreadLoading ? "loading" : "shown"}</span>;
+  }
+  function SuspenseChat() {
+    useSuspenseStream({ transport: server.transport, threadId: "t1" });
+    return <span>chat</span>;
+  }
+
+  expect(renderToString(<Chat />)).toContain("shown");
+  expect(
+    renderToString(
+      <Suspense fallback={<span>fallback</span>}>
+        <SuspenseChat />
+      </Suspense>
+    )
+  ).toContain("chat");
 });

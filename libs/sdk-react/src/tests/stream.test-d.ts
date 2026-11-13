@@ -11,9 +11,11 @@ import { describe, expectTypeOf, test } from "vitest";
 import { tool } from "langchain";
 import { z } from "zod/v4";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
-import type { Interrupt } from "@langchain/langgraph-sdk";
+import type { Client, Interrupt } from "@langchain/langgraph-sdk";
+import type { FetchStreamTransport } from "@langchain/langgraph-sdk/ui";
 import {
   useStream,
+  StreamProvider,
   useMessageMetadata,
   useMessages,
   useSubmissionQueue,
@@ -24,6 +26,7 @@ import {
   type AnyStream,
   type AssembledToolCall,
   type Channel,
+  type CustomTransportOptions,
   type Event,
   type InferStateType,
   type InferSubagentStates,
@@ -31,6 +34,7 @@ import {
   type InferToolOutput,
   type MessageMetadata,
   type SelectorTarget,
+  type StreamProviderCustomProps,
   type StreamSubmitOptions,
   type SubagentDiscoverySnapshot,
   type SubgraphDiscoverySnapshot,
@@ -585,9 +589,46 @@ describe("UseStreamOptions — the Agent Server's options", () => {
     }>().toExtend<AgentServerOptions<BedtimeState>>();
   });
 
-  test("options are AgentServerOptions", () => {
+  test("options are AgentServerOptions or CustomTransportOptions", () => {
     expectTypeOf<UseStreamOptions<BedtimeState>>().toEqualTypeOf<
-      AgentServerOptions<BedtimeState>
+      AgentServerOptions<BedtimeState> | CustomTransportOptions<BedtimeState>
+    >();
+  });
+});
+
+describe("UseStreamOptions — a custom transport's options", () => {
+  type Transport = CustomTransportOptions<BedtimeState>["transport"];
+
+  test("transport alone compiles, also a FetchStreamTransport", () => {
+    expectTypeOf<{ transport: Transport }>().toExtend<
+      UseStreamOptions<BedtimeState>
+    >();
+    expectTypeOf<FetchStreamTransport>().toExtend<Transport>();
+  });
+
+  test("an Agent Server's option on a custom transport doesn't compile", () => {
+    expectTypeOf<{ transport: Transport; assistantId: string }>().not.toExtend<
+      UseStreamOptions<BedtimeState>
+    >();
+    expectTypeOf<{ transport: Transport; apiUrl: string }>().not.toExtend<
+      UseStreamOptions<BedtimeState>
+    >();
+    expectTypeOf<{ transport: Transport; client: Client }>().not.toExtend<
+      UseStreamOptions<BedtimeState>
+    >();
+    expectTypeOf<{
+      transport: Transport;
+      queue: "server";
+    }>().not.toExtend<UseStreamOptions<BedtimeState>>();
+  });
+
+  test("StreamProvider takes a transport instead of an assistant", () => {
+    expectTypeOf<{
+      transport: Transport;
+      children: null;
+    }>().toExtend<Parameters<typeof StreamProvider<BedtimeState>>[0]>();
+    expectTypeOf<StreamProviderCustomProps<BedtimeState>>().toExtend<
+      Parameters<typeof StreamProvider<BedtimeState>>[0]
     >();
   });
 });
