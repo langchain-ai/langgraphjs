@@ -44,7 +44,7 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `apiUrl`                          | `string`                                                 | The server's URL.                                                                                                                 |
 | `apiKey`                          | `string`                                                 | Sent by the client the hook builds.                                                                                               |
 | `client`                          | `Client`                                                 | A client to use instead of building one.                                                                                          |
-| `callerOptions`, `defaultHeaders` | `ClientConfig["callerOptions"]`, `ClientConfig["defaultHeaders"]` | Passed to the client the hook builds.                                                                                    |
+| `callerOptions`, `defaultHeaders` | `ClientConfig["callerOptions"]`, `ClientConfig["defaultHeaders"]` | Passed to the client the hook builds, and compared by entry. See [Headers and auth](./transports.md#headers-and-auth).   |
 | `fetch`                           | `typeof fetch`                                           | Used for every request of the client the hook builds. Ignored, with a warning, when you pass `client`: set it on that client.   |
 | `queue`                           | `"server" \| "local"`                                    | Where a submit made during a run waits: in the server's queue (the default) or in this page. See [Submission queue](./submission-queue.md). |
 | `maxReconnectAttempts`            | `number`                                                 | Reconnects in a row without an event before a dropped stream fails. Defaults to 5.                                               |
@@ -94,7 +94,7 @@ The functions keep their identity across renders.
 | `threadId`                          | `string \| null`                                     | Submit to this thread instead, loading it first. Later submits stay on it until the hook's `threadId` changes.          |
 | `onError`                           | `(error: unknown) => void`                           | Called when this run fails.                                                                                              |
 | `command`                           | `Command`                                            | Resume, update or route the graph instead of sending input. To answer an interrupt, use `respond`.                       |
-| `interruptBefore`, `interruptAfter` | `"*" \| string[]`                                    | Pause before or after these nodes. The pause shows as a `{ when: "breakpoint" }` interrupt, and `submit(null)` continues. |
+| `interruptBefore`, `interruptAfter` | `"*" \| string[]`                                    | Pause before or after these nodes. `submit(null)` continues. See [Breakpoints](./interrupts.md#breakpoints).             |
 | `signal`                            | `AbortSignal`                                        | Accepted and ignored. Stop a run with `stop()`.                                                                          |
 
 `submit()` resolves when the run's stream ends, or, for a submit that waits behind another run, once it is queued. It doesn't reject when the run fails: the error goes to `error` and to `onError`. With `multitaskStrategy: "reject"`, it throws while a run streams.

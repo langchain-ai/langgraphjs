@@ -28,19 +28,14 @@ const stream = useStream({
 Add fixed headers to every request with `defaultHeaders`:
 
 ```tsx
-const headers = { "x-tenant-id": "acme" };
-
-function Chat() {
-  const stream = useStream({
-    assistantId: "agent",
-    apiUrl: "http://localhost:2024",
-    defaultHeaders: headers,
-  });
-  // ...
-}
+const stream = useStream({
+  assistantId: "agent",
+  apiUrl: "http://localhost:2024",
+  defaultHeaders: { "x-tenant-id": "acme" },
+});
 ```
 
-Keep `defaultHeaders` and `callerOptions` the same object across renders, as a constant or with `useMemo`: when one of them changes, the hook builds a new client and a new stream.
+`defaultHeaders` and `callerOptions` are compared by entry, so an inline object keeps the client while its values stay the same. A changed value builds a new client and reads the thread again. So does a function written inline in `callerOptions`: define it outside the component.
 
 For a header that changes, such as a token, pass `fetch`. It is used for every request of the client the hook builds, the latest one each time, so an inline function is fine:
 

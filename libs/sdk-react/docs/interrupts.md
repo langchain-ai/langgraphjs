@@ -104,7 +104,7 @@ An answer to an interrupt that is no longer waiting, because another tab answere
 
 ## Breakpoints
 
-A thread paused at a breakpoint (`interruptBefore` or `interruptAfter`) shows one interrupt, `{ when: "breakpoint" }`, with no `id` and no `value`. `submit(null)` continues the run. Check `interrupt.value` or `interrupt.id` before you render an approval card, as the example above does.
+A thread paused at a breakpoint (`interruptBefore` or `interruptAfter`) shows no interrupt, since there is nothing to answer. `submit(null)` continues the run.
 
 ## Headless tools
 

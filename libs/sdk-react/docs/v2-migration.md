@@ -81,7 +81,7 @@ Channels a graph published through stream transformers (`StreamChannel`) exist o
 
 ### `useProjection`
 
-Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
+Use the [selector hooks](./selectors.md).
 
 ### The WebSocket transport
 
@@ -93,7 +93,7 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 
 ### `getThread()`
 
-1.x returned the protocol's `ThreadStream`. 2.0 returns a deprecated `{ interrupts, onError }`: each waiting interrupt as `{ interruptId, namespace, payload }`, and a way to listen for errors. Read `stream.interrupts` and answer with `stream.respond()` instead.
+1.x returned the protocol's `ThreadStream`, with `subscribe` and the thread's `run`, `input` and `state` commands. In 2.0, `getThread()` is deprecated. It returns `undefined` before the stream has a thread, and then a `StreamThread` with only `interrupts`, each waiting interrupt as `{ interruptId, namespace, payload }`, and `onError(listener)`. Read `stream.interrupts` and answer with `stream.respond()` instead. For what `subscribe` gave, use `useChannel` or `useChannelEffect`.
 
 ### Channels
 
@@ -174,15 +174,16 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 - **1.x:** `subgraphs` and `subgraphsByNode` were rebuilt from history on load.
 - **2.0:** they start empty after a reload and fill as runs stream them.
 
-### Breakpoints show as an interrupt
-
-- **1.x:** a thread paused at a breakpoint (`interruptBefore` or `interruptAfter`) showed nothing.
-- **2.0:** it shows one interrupt, `{ when: "breakpoint" }`, with no `id` and no `value`. `submit(null)` continues the run. Check `interrupt.id` before you render an approval card.
-
 ### Runs started elsewhere
 
 - **1.x:** a thread followed runs started elsewhere only once it was active (a run streaming or an interrupt waiting) or had sent a message.
 - **2.0:** every loaded thread keeps one connection to the server, so runs started in another tab, by a cron or from Slack show as they stream. The connection pauses while the page is hidden or its own run streams. The JS dev server (`langgraphjs dev`) has no stream to follow, so there such runs show at the next load.
+
+### Channel hooks start when they mount
+
+- **1.x:** `useChannel` first replayed the run's earlier events from the server, and so did `useChannelEffect` with `replay: true`.
+- **2.0:** both get events from when they mount, and a hook on `tools` gets none from a run that was already streaming. `useChannel` drops its events when the stream moves to another thread. `replay` is deprecated and does nothing.
+- **Back:** none for events from before the page loaded. Call the hook in the component that calls `useStream`, so it sees each run this page starts from its beginning.
 
 ### Channel events
 
@@ -191,17 +192,16 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 - `lifecycle` has the events of subagents and subgraphs, and one event when a run ends: `completed`, `interrupted` or `failed`. No event says a run started.
 - `custom` gives `{ payload }`, where `payload` is what the graph wrote.
 - `params.timestamp` is when the page received the event.
-- `useChannel` collects events from when it mounts, and drops them when the stream moves to another thread. 1.x replayed the events the server kept for the thread. `replay` is accepted and does nothing.
 - In `useChannelEffect`, an `onEvent` that throws is logged with `console.error` when there is no `onError`. 1.x dropped it.
 
 ## What's new
 
 - `stream.hydrate(threadId?)` loads a thread, or reads the current one again, and joins its running run.
-- `subscribeScope(stream, target)` and `getMessageMetadata(stream, id)` give code that can't call hooks in a loop, such as an adapter, what the selector hooks give. See [Selector hooks](./selectors.md#outside-react-subscribescope-and-getmessagemetadata).
 - `submit()` takes `command`, `interruptBefore` and `interruptAfter`.
 - The selector hooks accept a `useSuspenseStream` result.
 - Callbacks (`onThreadId`, `onCreated`, `onCompleted`, `onTool` and the reconnect callbacks) are read from the latest render, so they see current state. 1.x kept the first render's.
 - `submit`, `stop`, `respond` and the stream's other functions keep their identity across renders.
+- `defaultHeaders` and `callerOptions` are compared by entry, so an inline object keeps the client while its values stay the same. 1.x built a new client for each new object. A function written inline in `callerOptions` still builds one on every render.
 
 ## What stays the same
 
@@ -217,7 +217,7 @@ Use the [selector hooks](./selectors.md), or `subscribeScope` outside React.
 - Gone with their functions: the media and player types, `AgentServerAdapter`, `HttpAgentServerAdapterOptions` and `CustomAdapterOptions`.
 - `Channel` and `Event` are `@langchain/react`'s own types for 2.0's channels, not `@langchain/protocol`'s.
 - `stream[STREAM_CONTROLLER]` is internal, and holds 2.0's engine, a `StreamOrchestrator`, instead of 1.x's `StreamController`, so code that read its members, such as `registry`, has to change. Its `hydrate()` is the same as `stream.hydrate()`.
-- New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions`, `ScopeHandle`, `ScopeView` and `StreamThread`.
+- New: `RunCompletedInfo`, `RunExecutionInfo`, `RunExecutionReason`, `StreamRespondOptions`, `StreamRespondAllOptions`, `UseStreamCommonOptions`, `UseChannelOptions` and `StreamThread`.
 
 ## Coming from 0.x
 

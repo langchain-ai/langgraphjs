@@ -95,4 +95,3 @@ function SubgraphCard({
 | `AssembledToolCall`, `ToolCallStatus`                                                            | For tool call UI.                                                                              |
 | `MessageMetadata`, `UseSubmissionQueueReturn`, `SubmissionQueueEntry`, `SubmissionQueueSnapshot` | What the selector hooks return.                                                                |
 | `Channel`, `Event`                                                                               | `useChannel`'s channels and events.                                                            |
-| `ScopeHandle`, `ScopeView`                                                                       | What `subscribeScope` returns.                                                                 |

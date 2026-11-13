@@ -11,7 +11,6 @@
 - [`useChannel`](#usechannel)
 - [`useChannelEffect`](#usechanneleffect)
 - [`useSubmissionQueue`](#usesubmissionqueue)
-- [Outside React: `subscribeScope` and `getMessageMetadata`](#outside-react-subscribescope-and-getmessagemetadata)
 - [Related](#related)
 
 ## Targets
@@ -125,7 +124,7 @@ See [Fork from a checkpoint](./fork-from-checkpoint.md) for the full flow.
 
 ## `useChannel`
 
-`useChannel(stream, channels, target?, options?)` returns the events of `channels` since the hook mounted, at the target's namespace or one level below it, oldest first. It keeps at most `options.bufferSize` events (4096 by default) and drops them when the stream moves to another thread. `options.replay` is accepted and does nothing.
+`useChannel(stream, channels, target?, options?)` returns the events of `channels` since the hook mounted, at the target's namespace or one level below it, oldest first. It keeps at most `options.bufferSize` events (4096 by default) and drops them when the stream moves to another thread. `options.replay` is deprecated and does nothing.
 
 ```tsx
 const events = useChannel(stream, ["custom"]);
@@ -142,7 +141,7 @@ Each event is `{ method, params: { namespace, timestamp, data } }`, where `names
 | `tools`     | `tool-started` (`tool_call_id`, `tool_name`, `input`), `tool-progress` (`data`), `tool-finished` (`output`) or `tool-error` (`message`), in `event`. |
 | `lifecycle` | `{ event, cause?, error? }`: `started`, `completed`, `failed` or `interrupted` for subagents and subgraphs, and one event when a run ends. |
 
-A hook on `tools` asks the server for tool events, which Agent Server 0.19 or later sends. For messages, tool calls and values, prefer `useMessages`, `useToolCalls` and `useValues`.
+A hook on `tools` adds tool events to the runs that start after it mounts, so a run already streaming sends it none. Tool events need Agent Server 0.19 or later. For messages, tool calls and values, prefer `useMessages`, `useToolCalls` and `useValues`.
 
 ## `useChannelEffect`
 
@@ -167,36 +166,14 @@ useChannelEffect(stream, ["lifecycle", "tools"], {
 | `onError`    |                       | Called when `onEvent` throws. Without it, the error is logged.              |
 | `target`     | the main conversation | A subagent, a subgraph or a namespace.                                      |
 | `enabled`    | `true`                | Set to `false` to pause, for example while another thread shows.            |
-| `replay`     |                       | Accepted, and does nothing.                                                 |
-| `bufferSize` |                       | Accepted, and does nothing.                                                 |
+| `replay`     |                       | Deprecated, and does nothing.                                               |
+| `bufferSize` |                       | Deprecated, and does nothing.                                               |
 
 `onEvent` and `onError` are read from the latest render, so inline functions are fine and never subscribe again.
 
 ## `useSubmissionQueue`
 
 `useSubmissionQueue(stream)` lists the submits waiting for the current run, with `cancel(id)` and `clear()`. See [Submission queue](./submission-queue.md).
-
-## Outside React: `subscribeScope` and `getMessageMetadata`
-
-Code that can't call hooks in a loop, such as an adapter that renders every subagent, gets the same views from two functions:
-
-```ts
-import { subscribeScope, getMessageMetadata } from "@langchain/react";
-
-const handle = subscribeScope(stream, subagent);
-const unsubscribe = handle.subscribe(() => {
-  const { messages, toolCalls, values } = handle.getSnapshot();
-  render(messages, toolCalls, values);
-});
-
-// When the view is gone, so its connection can close:
-unsubscribe();
-handle.release();
-
-const metadata = getMessageMetadata(stream, messageId);
-```
-
-`getMessageMetadata(stream, messageId)` returns what `useMessageMetadata` does. Its first call turns fork points on for the rest of the stream's life, since there is no unmount to turn them off.
 
 ## Related
 
