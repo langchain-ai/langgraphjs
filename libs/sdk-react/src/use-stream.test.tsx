@@ -1,4 +1,5 @@
 import { StrictMode, Suspense, useState } from "react";
+import type { Client } from "@langchain/langgraph-sdk";
 import { StreamOrchestrator } from "@langchain/langgraph-sdk/ui";
 import { afterEach, expect, it, vi } from "vitest";
 import { hydrateRoot } from "react-dom/client";
@@ -362,6 +363,38 @@ it("calls an onConnected first passed on a later render", async () => {
   connected({ kind: "initial", attempt: 0 });
 
   expect(onConnected).toHaveBeenCalledOnce();
+});
+
+it("follows a loaded thread over a thread stream, unless watchThread is false", async () => {
+  const server = fakeServer({ t1: { messages: [] }, t2: { messages: [] } });
+  const followed: string[] = [];
+  const client = {
+    ...server.client,
+    threads: {
+      ...server.client.threads,
+      joinStream: (threadId: string, { signal }: { signal: AbortSignal }) => {
+        followed.push(threadId);
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: () =>
+              new Promise((resolve) =>
+                signal.addEventListener("abort", () => resolve({ done: true }))
+              ),
+          }),
+        };
+      },
+    },
+  } as unknown as Client;
+
+  await renderHook(() => useStream({ assistantId: "agent", client, threadId: "t1" }));
+  const quiet = await renderHook(() =>
+    useStream({ assistantId: "agent", client, threadId: "t2", watchThread: false })
+  );
+  await expect.poll(() => quiet.result.current.isThreadLoading).toBe(false);
+  await expect.poll(() => followed).toEqual(["t1"]);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  expect(followed).toEqual(["t1"]);
 });
 
 it("renders on the server without reading the thread, which shows loading", () => {

@@ -349,6 +349,7 @@ function createBinding(
             messagesKey: options.messagesKey,
             optimistic: options.optimistic,
             queue: options.queue,
+            watchThread: options.watchThread,
             maxReconnectAttempts: options.maxReconnectAttempts,
             reconnectDelayMs: options.reconnectDelayMs,
             streamIdleReconnect: options.streamIdleReconnect,
