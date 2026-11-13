@@ -291,10 +291,8 @@ function createBinding(
       maxReconnectAttempts: options.maxReconnectAttempts,
       reconnectDelayMs: options.reconnectDelayMs,
       streamIdleReconnect: options.streamIdleReconnect,
-      onReconnect:
-        options.onReconnect && ((info) => latest.current.onReconnect?.(info)),
-      onConnected:
-        options.onConnected && ((info) => latest.current.onConnected?.(info)),
+      onReconnect: (info) => latest.current.onReconnect?.(info),
+      onConnected: (info) => latest.current.onConnected?.(info),
       onThreadId: (threadId) => latest.current.onThreadId?.(threadId),
       onCreated: (run) => latest.current.onCreated?.({ runId: run.run_id }),
       onRunEnd: (run) => latest.current.onCompleted?.(run),

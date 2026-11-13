@@ -291,3 +291,27 @@ it("disposes the engine of a suspended render whose tree unmounts", async () => 
   await expect.poll(() => dispose.mock.calls.length, { timeout: 3_000 }).toBe(1);
   dispose.mockRestore();
 });
+
+it("calls an onConnected first passed on a later render", async () => {
+  const server = fakeServer({ t1: { messages: [] } });
+  const onConnected = vi.fn();
+  const { result, rerender } = await renderHook(
+    (props?: { onConnected?: () => void }) =>
+      useStream({
+        assistantId: "agent",
+        client: server.client,
+        threadId: "t1",
+        onConnected: props?.onConnected,
+      }),
+    { initialProps: {} }
+  );
+  await expect.poll(() => result.current.isThreadLoading).toBe(false);
+  await rerender({ onConnected });
+
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  const connected = server.runs[0].payload.onConnected as (info: unknown) => void;
+  connected({ kind: "initial", attempt: 0 });
+
+  expect(onConnected).toHaveBeenCalledOnce();
+});
