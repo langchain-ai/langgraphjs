@@ -1467,6 +1467,12 @@ export type AnyStreamCustomOptions<
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
   tools?: AnyHeadlessToolImplementation[];
   onTool?: OnToolCallback;
+  /**
+   * Show a submit's input at once, unless this is `false`: its messages,
+   * with ids minted for the ones without, and its other keys. A submit with
+   * its own `optimisticValues` shows only those.
+   */
+  optimistic?: boolean;
 };
 
 export type CustomSubmitOptions<

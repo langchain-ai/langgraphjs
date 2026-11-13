@@ -13,6 +13,7 @@
  * object is shallow-cloned.
  */
 import type { BaseMessage } from "@langchain/core/messages";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import type { Message } from "../types.messages.js";
 import { toMessageDict } from "./messages.js";
 import { ensureMessageInstances } from "./message-coercion.js";
@@ -195,4 +196,60 @@ export function prepareOptimisticInput(
     optimisticDicts
   ) as BaseMessage[];
   return { dispatchInput, optimisticMessages, echoedIds, extraValues };
+}
+
+/**
+ * A submit's input with an id on every message, or `undefined` when the
+ * input isn't an object.
+ */
+export function prepareSubmitInput(
+  values: unknown,
+  messagesKey: string
+): PreparedOptimisticInput | undefined {
+  if (values == null || typeof values !== "object" || Array.isArray(values)) {
+    return undefined;
+  }
+  try {
+    return prepareOptimisticInput(
+      values as Record<string, unknown>,
+      messagesKey,
+      uuidv7
+    );
+  } catch {
+    // Messages the client can't read go as they are, for the server to judge.
+    return undefined;
+  }
+}
+
+/**
+ * The values a run shows as it starts: `current`, with the input's messages
+ * and keys when `shown` is the input shown at once, then the submit's own
+ * `optimisticValues` on top.
+ */
+export function runStartValues<StateType extends Record<string, unknown>>(
+  current: StateType,
+  shown: PreparedOptimisticInput | undefined,
+  optimisticValues:
+    | Partial<StateType>
+    | ((prev: StateType) => Partial<StateType>)
+    | undefined,
+  messages: {
+    get: (values: StateType) => Message[];
+    set: (values: StateType, messages: Message[]) => StateType;
+  }
+): StateType {
+  const prev =
+    shown == null
+      ? current
+      : messages.set({ ...current, ...shown.extraValues }, [
+          ...messages.get(current),
+          ...(shown.optimisticMessages as unknown as Message[]),
+        ]);
+  if (optimisticValues == null) return { ...prev };
+  return {
+    ...prev,
+    ...(typeof optimisticValues === "function"
+      ? optimisticValues(prev)
+      : optimisticValues),
+  };
 }

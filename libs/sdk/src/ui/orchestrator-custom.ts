@@ -1,4 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
 import { DEFAULT_MESSAGES_KEY } from "./constants.js";
 import type { ThreadState, Interrupt } from "../schema.js";
@@ -13,9 +14,17 @@ import {
   ensureMessageInstances,
 } from "./messages.js";
 import {
-  extractInterrupts,
+  resumeCommand,
   userFacingInterruptsFromValuesArray,
+  valuesInterrupts,
 } from "./interrupts.js";
+import type { MessageMetadataMap } from "./message-metadata-tracker.js";
+import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import type { StreamEngine } from "./engine.js";
+import type { RespondOptions } from "./orchestrator.js";
+import { PendingRunsTracker } from "./queue.js";
+import type { Scope, ScopeSnapshot } from "./scoped.js";
+import { StreamStore } from "./store.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
 import type {
@@ -28,6 +37,14 @@ import type {
   GetConfigurableType,
   SubagentStreamInterface,
 } from "./types.js";
+
+const EMPTY_SCOPE_SNAPSHOT: ScopeSnapshot = { messages: [], values: undefined };
+
+const EMPTY_SCOPE: Scope = {
+  getSnapshot: () => EMPTY_SCOPE_SNAPSHOT,
+  subscribe: () => () => {},
+  release() {},
+};
 
 /**
  * Create a custom transport thread state.
@@ -63,7 +80,7 @@ function createCustomTransportThreadState<
 export class CustomStreamOrchestrator<
   StateType extends Record<string, unknown> = Record<string, unknown>,
   Bag extends BagTemplate = BagTemplate,
-> {
+> implements StreamEngine<StateType, Bag> {
   readonly stream: StreamManager<StateType, Bag>;
 
   readonly messageManager: MessageTupleManager;
@@ -72,7 +89,11 @@ export class CustomStreamOrchestrator<
 
   readonly #channels = new ChannelListeners();
 
-  readonly #historyValues: StateType;
+  /**
+   * What a run's values start from: `initialValues` on the first thread, and
+   * nothing after a switch, since a custom transport reads no thread.
+   */
+  #baseValues: StateType;
 
   #threadId: string | null;
 
@@ -86,7 +107,42 @@ export class CustomStreamOrchestrator<
 
   #disposed = false;
 
+  #pendingDispose: ReturnType<typeof setTimeout> | undefined;
+
   #handledHeadlessToolInterruptIds = new Set<string>();
+
+  readonly #answered = new Set<string>();
+
+  readonly #queue = new PendingRunsTracker<
+    StateType,
+    CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
+  >();
+
+  #tail: Promise<void> = Promise.resolve();
+
+  #turns = 0;
+
+  /** Always `false`: a custom transport has no route to read a thread. */
+  readonly isThreadLoading = false;
+
+  /** Settled: there is no thread to load. */
+  readonly hydrationPromise: Promise<void> = Promise.resolve();
+
+  /** Holds no error: there is no thread to load. */
+  readonly historyData = { error: undefined as unknown };
+
+  /**
+   * Empty: a subagent's or subgraph's own view needs the Agent Server's
+   * filtered streams. Their events still reach {@link onChannelEvent}.
+   */
+  readonly scopes = {
+    acquire: (_namespace: readonly string[]): Scope => EMPTY_SCOPE,
+  };
+
+  /** Empty: fork points come from the Agent Server's thread history. */
+  readonly messageMetadataStore = new StreamStore<MessageMetadataMap>(
+    new Map()
+  );
 
   /**
    * Create a new {@link CustomStreamOrchestrator} instance.
@@ -107,20 +163,21 @@ export class CustomStreamOrchestrator<
       toMessage: options.toMessage ?? toMessageClass,
     });
 
-    this.#historyValues = options.initialValues ?? ({} as StateType);
+    this.#baseValues = options.initialValues ?? ({} as StateType);
 
     this.#streamUnsub = this.stream.subscribe(() => {
       this.#flushPendingHeadlessToolInterrupts();
       this.#notify();
     });
+    this.#queue.subscribe(() => this.#notify());
 
-    const historyMessages = this.#getMessages(this.#historyValues);
+    const initialMessages = this.#getMessages(this.#baseValues);
     if (
       options.filterSubagentMessages &&
       !this.stream.isLoading &&
-      historyMessages.length > 0
+      initialMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(historyMessages, {
+      this.stream.reconstructSubagents(initialMessages, {
         skipIfPopulated: true,
       });
     }
@@ -180,12 +237,71 @@ export class CustomStreamOrchestrator<
    * @param newId - The new thread ID, or `null` to clear.
    */
   syncThreadId(newId: string | null): void {
-    if (newId !== this.#threadId) {
-      this.#threadId = newId;
-      this.#handledHeadlessToolInterruptIds.clear();
-      this.stream.clear();
-      this.#notify();
-    }
+    this.switchThread(newId);
+  }
+
+  /**
+   * The thread shown: the one passed in or switched to, or the one the first
+   * submit created.
+   */
+  get threadId(): string | undefined {
+    return this.#threadId ?? undefined;
+  }
+
+  /**
+   * Show a thread before any run, with `initialValues`. Nothing is read: a
+   * custom transport has no thread routes.
+   */
+  initThreadId(threadId: string | undefined): void {
+    this.#threadId = threadId ?? null;
+  }
+
+  /**
+   * Switch to `threadId` when it's another thread. Nothing is read: a custom
+   * transport has no thread routes, so the thread shows empty until a run
+   * streams.
+   */
+  hydrate(threadId: string | null = this.#threadId): Promise<void> {
+    this.switchThread(threadId);
+    return Promise.resolve();
+  }
+
+  /**
+   * Mark the orchestrator in use. The returned function disposes it a tick
+   * later, unless `activate()` runs again first, as when React's StrictMode
+   * mounts a component twice.
+   */
+  activate(): () => void {
+    clearTimeout(this.#pendingDispose);
+    return () => {
+      if (this.#disposed) return;
+      this.#pendingDispose = setTimeout(() => this.dispose(), 0);
+    };
+  }
+
+  /** Resolves to `undefined`: subagents get no view of their own here. */
+  resolveSubagentNamespace(_toolCallId: string): Promise<string[] | undefined> {
+    return Promise.resolve(undefined);
+  }
+
+  /** A no-op: fork points come from the Agent Server's thread history. */
+  trackMessageMetadata(): () => void {
+    return () => {};
+  }
+
+  /** The submits made during a run, waiting for their turn, oldest first. */
+  get queueEntries() {
+    return this.#queue.entries;
+  }
+
+  /** Drop a waiting submit. Resolves to whether it was still waiting. */
+  async cancelQueueItem(id: string): Promise<boolean> {
+    return this.#queue.remove(id);
+  }
+
+  /** Drop every waiting submit. */
+  async clearQueue(): Promise<void> {
+    this.#queue.removeAll();
   }
 
   #getMessages = (value: StateType): Message[] => {
@@ -200,12 +316,9 @@ export class CustomStreamOrchestrator<
     return { ...current, [messagesKey]: messages };
   };
 
-  /**
-   * The current stream state values, falling back to an empty object
-   * when no stream values are available.
-   */
+  /** The latest run's values, or `initialValues` until a run streams. */
   get values(): StateType {
-    return this.stream.values ?? ({} as StateType);
+    return this.stream.values ?? this.#baseValues;
   }
 
   /**
@@ -241,25 +354,16 @@ export class CustomStreamOrchestrator<
     this.#notify();
   }
 
-  /**
-   * All messages from the current stream values, converted to
-   * {@link BaseMessage} instances. Returns an empty array when no
-   * stream values are available.
-   */
+  /** The messages of {@link values}, as {@link BaseMessage} instances. */
   get messages(): BaseMessage[] {
-    if (!this.stream.values) return [];
     return ensureMessageInstances(
-      this.#getMessages(this.stream.values)
+      this.#getMessages(this.values)
     ) as BaseMessage[];
   }
 
-  /**
-   * All tool calls paired with their results extracted from the
-   * current stream messages.
-   */
+  /** The tool calls of {@link messages}, paired with their results. */
   get toolCalls() {
-    if (!this.stream.values) return [];
-    return getToolCallsWithResults(this.#getMessages(this.stream.values));
+    return getToolCallsWithResults(this.#getMessages(this.values));
   }
 
   /**
@@ -269,37 +373,27 @@ export class CustomStreamOrchestrator<
    * @returns Tool calls associated with the given message.
    */
   getToolCalls(message: Message) {
-    if (!this.stream.values) return [];
     const allToolCalls = getToolCallsWithResults(
-      this.#getMessages(this.stream.values)
+      this.#getMessages(this.values)
     );
     return allToolCalls.filter((tc) => tc.aiMessage.id === message.id);
   }
 
   /**
-   * All active interrupts from the current stream values.
-   * Returns a single breakpoint interrupt when the interrupt array is
-   * present but empty, or an empty array when no interrupts exist.
+   * The interrupts of {@link values}, without those a run in flight
+   * answers.
    */
   get interrupts(): Interrupt<GetInterruptType<Bag>>[] {
-    if (
-      this.stream.values != null &&
-      "__interrupt__" in this.stream.values &&
-      Array.isArray(this.stream.values.__interrupt__)
-    ) {
-      return userFacingInterruptsFromValuesArray<GetInterruptType<Bag>>(
-        this.stream.values.__interrupt__ as Interrupt<GetInterruptType<Bag>>[]
-      );
-    }
-    return [];
+    const fromValues = valuesInterrupts<GetInterruptType<Bag>>(this.values);
+    if (fromValues == null) return [];
+    return userFacingInterruptsFromValuesArray(fromValues).filter(
+      ({ id }) => id == null || !this.#answered.has(id)
+    );
   }
 
-  /**
-   * The first active interrupt extracted from the current stream values,
-   * or `undefined` if there are no interrupts.
-   */
+  /** The first of {@link interrupts}. */
   get interrupt(): Interrupt<GetInterruptType<Bag>> | undefined {
-    return extractInterrupts<GetInterruptType<Bag>>(this.stream.values);
+    return this.interrupts[0];
   }
 
   /**
@@ -373,35 +467,42 @@ export class CustomStreamOrchestrator<
    * This is a no-op if subagents are already populated.
    */
   reconstructSubagentsIfNeeded(): void {
-    const hvMessages = this.#getMessages(this.#historyValues);
+    const baseMessages = this.#getMessages(this.#baseValues);
     if (
       this.#options.filterSubagentMessages &&
       !this.stream.isLoading &&
-      hvMessages.length > 0
+      baseMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+      this.stream.reconstructSubagents(baseMessages, { skipIfPopulated: true });
     }
   }
 
   /**
    * Abort the current stream and invoke the `onStop` callback
-   * if one was provided in the options.
+   * if one was provided in the options, and drop the submits waiting behind
+   * it. `cancel` is ignored: a custom transport has no route to cancel a run,
+   * and its server sees the request aborted.
    */
-  stop(): void {
-    void this.stream.stop(this.#historyValues, {
+  stop(_options?: { cancel?: boolean }): Promise<void> {
+    this.#queue.removeAll();
+    return this.stream.stop(this.#baseValues, {
       onStop: this.#options.onStop,
     });
   }
 
   /**
    * Switch to a different thread. If the thread ID actually changed,
-   * the current stream is cleared and listeners are notified.
+   * the current stream is cleared, the submits waiting behind it are
+   * dropped, and listeners are notified. The new thread starts empty:
+   * `initialValues` were the first thread's.
    *
    * @param newThreadId - The thread ID to switch to, or `null` to clear.
    */
   switchThread(newThreadId: string | null): void {
     if (newThreadId !== this.#threadId) {
       this.#threadId = newThreadId;
+      this.#baseValues = {} as StateType;
+      this.#queue.removeAll();
       this.#handledHeadlessToolInterruptIds.clear();
       this.stream.clear();
       this.#notify();
@@ -424,44 +525,80 @@ export class CustomStreamOrchestrator<
     values: GetUpdateType<Bag, StateType> | null | undefined,
     submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>
   ): Promise<void> {
+    await this.#submit(values, submitOptions);
+  }
+
+  #submit(
+    values: GetUpdateType<Bag, StateType> | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    started?: () => void
+  ): Promise<void> {
+    // Submits run one at a time. One made before the others finish is listed
+    // until its turn, so an app can show or cancel it.
+    const waiting =
+      this.#turns > 0
+        ? {
+            id: uuidv7(),
+            values: values as Partial<StateType> | null | undefined,
+            options: submitOptions,
+            createdAt: new Date(),
+          }
+        : undefined;
+    if (waiting != null) this.#queue.add(waiting);
+    this.#turns += 1;
+    const turn = this.#tail.then(() =>
+      waiting == null || this.#queue.remove(waiting.id)
+        ? this.#run(values, submitOptions, started)
+        : undefined
+    );
+    const done = () => {
+      this.#turns -= 1;
+    };
+    this.#tail = turn.then(done, done);
+    return turn;
+  }
+
+  async #run(
+    values: GetUpdateType<Bag, StateType> | null | undefined,
+    submitOptions?: CustomSubmitOptions<StateType, GetConfigurableType<Bag>>,
+    started?: () => void
+  ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
 
-    const currentThreadId = this.#options.threadId ?? null;
-    if (currentThreadId !== this.#threadId) {
-      this.#threadId = currentThreadId;
-      this.stream.clear();
-    }
-
-    let usableThreadId = this.#threadId ?? submitOptions?.threadId;
-
-    this.stream.setStreamValues(() => {
-      if (submitOptions?.optimisticValues != null) {
-        return {
-          ...this.#historyValues,
-          ...(typeof submitOptions.optimisticValues === "function"
-            ? submitOptions.optimisticValues(this.#historyValues)
-            : submitOptions.optimisticValues),
-        };
-      }
-
-      return { ...this.#historyValues };
-    });
+    // Only input shown at once gets ids, so the server's copy replaces it.
+    const shown =
+      this.#options.optimistic !== false &&
+      submitOptions?.optimisticValues == null
+        ? prepareSubmitInput(
+            values,
+            this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
+          )
+        : undefined;
+    let usableThreadId: string | undefined;
 
     await this.stream.start(
       async (signal: AbortSignal) => {
-        if (!usableThreadId) {
-          usableThreadId = crypto.randomUUID();
+        // Set as the run starts, so a submit waiting behind a run doesn't
+        // change what that run shows.
+        this.stream.setStreamValues(() =>
+          runStartValues(
+            { ...this.#baseValues, ...this.stream.values },
+            shown,
+            submitOptions?.optimisticValues,
+            { get: this.#getMessages, set: this.#setMessages }
+          )
+        );
+
+        usableThreadId =
+          this.#threadId ?? submitOptions?.threadId ?? crypto.randomUUID();
+        if (usableThreadId !== this.#threadId) {
           this.#threadId = usableThreadId;
           this.#options.onThreadId?.(usableThreadId);
         }
 
-        if (!usableThreadId) {
-          throw new Error("Failed to obtain valid thread ID.");
-        }
-
-        return this.#options.transport.stream({
-          input: values,
+        const run = await this.#options.transport.stream({
+          input: (shown?.dispatchInput ?? values) as UpdateType,
           context: submitOptions?.context,
           command: submitOptions?.command,
           streamSubgraphs: submitOptions?.streamSubgraphs,
@@ -473,8 +610,10 @@ export class CustomStreamOrchestrator<
               ...submitOptions?.config?.configurable,
             } as unknown as GetConfigurableType<Bag>,
           },
-        }) as Promise<
-          AsyncGenerator<EventStreamEvent<StateType, UpdateType, CustomType>>
+        });
+        started?.();
+        return run as AsyncGenerator<
+          EventStreamEvent<StateType, UpdateType, CustomType>
         >;
       },
       {
@@ -485,9 +624,8 @@ export class CustomStreamOrchestrator<
         onSuccess: () => {
           if (!usableThreadId) return undefined;
 
-          const finalValues = this.stream.values ?? this.#historyValues;
           this.#options.onFinish?.(
-            createCustomTransportThreadState(finalValues, usableThreadId),
+            createCustomTransportThreadState(this.values, usableThreadId),
             undefined
           );
 
@@ -520,6 +658,73 @@ export class CustomStreamOrchestrator<
   }
 
   /**
+   * Answer an interrupt: `options.interruptId`, or the first one not
+   * answered yet, which {@link interrupt} shows. See {@link respondAll}.
+   */
+  respond(
+    value: unknown,
+    options: RespondOptions<GetConfigurableType<Bag>> & {
+      interruptId?: string;
+    } = {}
+  ): Promise<void> {
+    const interruptId =
+      options.interruptId ??
+      this.interrupts.find((interrupt) => interrupt.id != null)?.id;
+    if (interruptId == null) {
+      return Promise.reject(new Error("No pending interrupt to respond to."));
+    }
+    return this.respondAll({ [interruptId]: value }, options);
+  }
+
+  /**
+   * Answer interrupts by id in one run, sent through the transport as a
+   * resume command. It starts at once or waits behind the run in flight, and
+   * the answered interrupts are hidden until it ends. Resolves once the run
+   * starts, and rejects when it can't be sent. `strictResume` needs the Agent
+   * Server, which checks it.
+   */
+  async respondAll(
+    responses: Record<string, unknown>,
+    options: RespondOptions<GetConfigurableType<Bag>> = {}
+  ): Promise<void> {
+    if (this.#threadId == null) {
+      throw new Error("No active thread to respond to.");
+    }
+    const ids = Object.keys(responses);
+    if (ids.length === 0) {
+      throw new Error("respondAll() requires at least one response.");
+    }
+    for (const id of ids) this.#answered.add(id);
+    this.#notify();
+
+    let failed: { error: unknown } | undefined;
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const ended = this.#submit(
+      null,
+      {
+        config: options.config,
+        command: resumeCommand(
+          responses,
+          options,
+          this.#options.messagesKey ?? DEFAULT_MESSAGES_KEY
+        ),
+        onError: (error) => {
+          failed ??= { error };
+        },
+      },
+      started
+    ).finally(() => {
+      for (const id of ids) this.#answered.delete(id);
+      this.#notify();
+    });
+    await Promise.race([running, ended]);
+    if (failed != null) throw failed.error;
+  }
+
+  /**
    * Tear down the orchestrator. Marks the instance as disposed,
    * unsubscribes from the stream, and aborts any in-progress stream.
    * After calling this method, no further notifications will be emitted.
@@ -528,7 +733,8 @@ export class CustomStreamOrchestrator<
     this.#disposed = true;
     this.#streamUnsub?.();
     this.#streamUnsub = null;
-    void this.stream.stop(this.#historyValues, {
+    this.#queue.removeAll();
+    void this.stream.stop(this.#baseValues, {
       onStop: this.#options.onStop,
     });
   }

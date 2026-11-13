@@ -10,7 +10,6 @@ import {
   getInteropZodObjectShape,
   type InteropZodObject,
   interopParse,
-  interopZodObjectPartial,
   isInteropZodObject,
 } from "@langchain/core/utils/types";
 import type {
@@ -1826,12 +1825,14 @@ export class CompiledStateGraph<
         const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
         if (schemaUpdates.length === 0) return updates;
 
-        const updateSchema = interopZodObjectPartial(
-          this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
-            withReducerSchema: true,
-          })
+        const updateSchema = this._metaRegistry.getExtendedChannelSchemas(
+          schemaDef,
+          { withReducerSchema: true, asPartial: true }
         );
-        const valueSchema = interopZodObjectPartial(schemaDef);
+        const valueSchema = this._metaRegistry.getExtendedChannelSchemas(
+          schemaDef,
+          { asPartial: true }
+        );
         return updates.map(([k, v]) => {
           if (!schemaKeys.has(k)) return [k, v];
 
@@ -1915,6 +1916,7 @@ export class CompiledStateGraph<
               : _getUpdates,
           trace: false,
           recurse: false,
+          bindContext: false,
         }),
       },
     ];
@@ -2094,7 +2096,10 @@ export class CompiledStateGraph<
       if (isInteropZodObject(inputDef)) return apply(inputDef);
       if (inputDef === PartialStateSchema) {
         if (isInteropZodObject(schemaDef)) {
-          return interopZodObjectPartial(apply(schemaDef)!);
+          return this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
+            withReducerSchema: true,
+            asPartial: true,
+          });
         }
         return undefined;
       }
@@ -2186,6 +2191,7 @@ function _getControlBranch() {
     tags: [TAG_HIDDEN],
     trace: false,
     recurse: false,
+    bindContext: false,
     name: "<control_branch>",
   });
   return new Branch({

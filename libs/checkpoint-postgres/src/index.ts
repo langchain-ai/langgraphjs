@@ -25,6 +25,7 @@ import {
   type DeltaStage2Row,
   type SQL_STATEMENTS,
   type SQL_TYPES,
+  MAX_BATCH_ROWS,
   getDeltaStage1SQL,
   getDeltaStage2SQL,
   getSQLStatements,
@@ -730,6 +731,25 @@ export class PostgresSaver extends BaseCheckpointSaver {
       this._dumpMetadata(metadata),
     ]);
 
+    const checkpointRow = [
+      thread_id,
+      checkpoint_ns,
+      checkpoint.id,
+      checkpoint_id,
+      serializedCheckpoint,
+      serializedMetadata,
+    ];
+    if (serializedBlobs.length <= MAX_BATCH_ROWS) {
+      await this.pool.query(
+        serializedBlobs.length > 0
+          ? this.SQL_STATEMENTS.UPSERT_CHECKPOINT_WITH_BLOBS_SQL(
+              serializedBlobs.length
+            )
+          : this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL,
+        [...checkpointRow, ...serializedBlobs.flatMap((b) => b.slice(2))]
+      );
+      return nextConfig;
+    }
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -739,14 +759,10 @@ export class PostgresSaver extends BaseCheckpointSaver {
           serializedBlob
         );
       }
-      await client.query(this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL, [
-        thread_id,
-        checkpoint_ns,
-        checkpoint.id,
-        checkpoint_id,
-        serializedCheckpoint,
-        serializedMetadata,
-      ]);
+      await client.query(
+        this.SQL_STATEMENTS.UPSERT_CHECKPOINTS_SQL,
+        checkpointRow
+      );
       await client.query("COMMIT");
     } catch (e) {
       await client.query("ROLLBACK");
@@ -783,6 +799,23 @@ export class PostgresSaver extends BaseCheckpointSaver {
       writes,
       taskPath ?? ""
     );
+    if (
+      query === this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_SQL &&
+      dumpedWrites.length <= MAX_BATCH_ROWS
+    ) {
+      // One statement is atomic alone, so this skips BEGIN and COMMIT and a
+      // round trip per row.
+      await this.pool.query(
+        this.SQL_STATEMENTS.INSERT_CHECKPOINT_WRITES_BATCH_SQL(
+          dumpedWrites.length
+        ),
+        [
+          ...dumpedWrites[0].slice(0, 5),
+          ...dumpedWrites.flatMap((w) => w.slice(5)),
+        ]
+      );
+      return;
+    }
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
