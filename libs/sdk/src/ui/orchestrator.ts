@@ -302,8 +302,11 @@ export type StreamOrchestratorOptions<
      */
     durableRuns?: boolean;
 
-    /** Called when the stream of each run this orchestrator streams ends. */
-    onRunEnd?: (run: { runId: string; reason: RunEndReason }) => void;
+    /**
+     * Called when the stream of each run this orchestrator streams ends, and
+     * without a `runId` for a submit stopped before its run's id came.
+     */
+    onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
 
     /** Idle-reconnect policy for run streams, as `client.runs.stream` takes it. */
     streamIdleReconnect?: IdleReconnectMode;
@@ -2091,7 +2094,12 @@ export class StreamOrchestrator<
             outcome === "success" ? "sent" : "failed"
           );
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
-          if (runId == null) return;
+          if (runId == null) {
+            if (outcome === "aborted" && !this.#disposed) {
+              this.#options.onRunEnd?.({ reason: "stopped" });
+            }
+            return;
+          }
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);

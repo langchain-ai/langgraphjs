@@ -674,14 +674,14 @@ export class StreamManager<
 
       /** Called with each event, before it is applied. */
       onEvent?: (event: string, data: unknown) => void;
-    }
+    },
+    abort = new AbortController()
   ) => {
     try {
       this.queueSize = Math.max(0, this.queueSize - 1);
       this.#epoch += 1;
       this.setState({ isLoading: true, error: undefined });
       // clear() and stop() replace abortRef, so the run keeps its own.
-      const abort = new AbortController();
       this.abortRef = abort;
       if (options.isReplaying) {
         this.messages.startReplay();
@@ -1186,8 +1186,13 @@ export class StreamManager<
     if (startOptions?.abortPrevious) {
       this.abortRef.abort();
     }
+    // With no stream before it, it is the current one at once: a stop() or
+    // clear() before it begins stops it.
+    const abort =
+      this.isLoading || this.queueSize > 0 ? undefined : new AbortController();
+    if (abort != null) this.abortRef = abort;
     this.queueSize += 1;
-    const queued = this.queue.then(() => this.enqueue(action, options));
+    const queued = this.queue.then(() => this.enqueue(action, options, abort));
     this.queue = queued;
     await queued;
   };
