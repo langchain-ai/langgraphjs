@@ -40,6 +40,12 @@ export type AnySuspenseStream = Omit<
  * throws a failed load to the nearest error boundary. A run's error stays in
  * `error`, so the conversation stays on screen.
  *
+ * A server render reads nothing: the hook throws an error with the `digest`
+ * `"BAILOUT_TO_CLIENT_SIDE_RENDERING"`, so React renders the Suspense
+ * fallback on the server and the hook in the browser. Next.js doesn't report
+ * that error. Elsewhere, skip it by its `digest` in the server's `onError`
+ * and the browser's `onRecoverableError`.
+ *
  * ```tsx
  * <ErrorBoundary fallback={<ErrorDisplay />}>
  *   <Suspense fallback={<Spinner />}>
@@ -67,8 +73,12 @@ export function useSuspenseStream<
     // The server snapshot reads nothing, so there's no load to wait for:
     // React renders the fallback instead, and this hook in the browser.
     if (stream === binding.getServerSnapshot()) {
-      throw new Error(
-        "@langchain/react: useSuspenseStream reads its thread in the browser, so the server renders the Suspense fallback."
+      throw Object.assign(
+        new Error(
+          "@langchain/react: useSuspenseStream reads its thread in the browser, so the server renders the Suspense fallback."
+        ),
+        // Next.js's mark for rendering on the client, which it doesn't log.
+        { digest: "BAILOUT_TO_CLIENT_SIDE_RENDERING" }
       );
     }
     if (key != null && !binding.committed) {

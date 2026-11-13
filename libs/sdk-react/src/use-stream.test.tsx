@@ -336,16 +336,20 @@ it("streams useSuspenseStream's fallback from the server without reading the thr
     return <span>chat</span>;
   }
 
+  const errors: unknown[] = [];
   const html = await renderToReadableStream(
     <Suspense fallback={<span>fallback</span>}>
       <Chat />
     </Suspense>,
-    { onError: () => undefined }
+    { onError: (error) => void errors.push(error) }
   );
   await html.allReady;
 
   expect(await new Response(html).text()).toContain("fallback");
   expect(server.calls).toEqual([]);
+  expect(errors).toEqual([
+    expect.objectContaining({ digest: "BAILOUT_TO_CLIENT_SIDE_RENDERING" }),
+  ]);
 });
 
 it("hydrates the server's HTML as it is, then reads the thread in the browser", async () => {
