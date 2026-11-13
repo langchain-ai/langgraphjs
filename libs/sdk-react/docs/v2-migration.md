@@ -53,7 +53,7 @@ function MessageMedia({ message }: { message: BaseMessage }) {
 }
 ```
 
-Data that arrives as bytes (a `Uint8Array`) needs a URL of its own, such as `URL.createObjectURL(new Blob([block.data]))`.
+Data that arrives as bytes (a `Uint8Array`) needs a URL of its own, such as `URL.createObjectURL(new Blob([new Uint8Array(block.data)], { type: block.mimeType }))`.
 
 ### `useExtension`
 
