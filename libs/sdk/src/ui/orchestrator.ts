@@ -1768,12 +1768,10 @@ export class StreamOrchestrator<
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
         if (queuedHere) {
-          // The run before it may still be reading how it ended.
-          await new Promise<void>((resolve) => {
-            void this.#runEnd.then(resolve, resolve);
-            signal.addEventListener("abort", () => resolve(), { once: true });
-          });
-          this.#options.onCreated?.(callbackMeta);
+          // The run before it may still be reading how it ended. A stop
+          // waits too, so the run's own end comes after.
+          await this.#runEnd.catch(() => undefined);
+          if (!this.#disposed) this.#options.onCreated?.(callbackMeta);
         }
         const mode = this.#options.scopedSubagents
           ? await this.#joinMode(tid, runId, runInfo, signal)
