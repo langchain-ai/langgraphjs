@@ -30,6 +30,34 @@ const STATUS_NO_RETRY = [
   422, // Unprocessable Entity
 ];
 
+// Methods that are safe to send again after the server may have received them.
+const IDEMPOTENT_METHODS = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"];
+
+// Failures that prove the request never reached the server: the host could
+// not be resolved or reached, or it refused the connection.
+const CONNECT_ERROR_CODES = [
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ConnectionRefused", // Bun
+];
+
+function isConnectError(error: unknown): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { code, cause } = (error ?? {}) as any;
+  if (CONNECT_ERROR_CODES.includes(code)) return true;
+  // Node's fetch (undici) puts the socket error on `cause`, and an
+  // AggregateError there when it tried several addresses.
+  if (cause == null || cause === error) return false;
+  if (Array.isArray(cause.errors) && cause.errors.some(isConnectError)) {
+    return true;
+  }
+  return isConnectError(cause);
+}
+
 type ResponseCallback = (response?: Response) => Promise<boolean>;
 
 export interface AsyncCallerParams {
@@ -56,6 +84,13 @@ export interface AsyncCallerParams {
 
 export interface AsyncCallerCallOptions {
   signal?: AbortSignal;
+  /**
+   * The HTTP method of the request the callable sends. A request that is not
+   * idempotent (e.g. `POST`, `PATCH`) is retried only when it failed before
+   * it reached the server, since sending it again could repeat its effect.
+   * Omit for callables that send no HTTP request.
+   */
+  method?: string;
 }
 
 /**
@@ -150,7 +185,21 @@ export class AsyncCaller {
     callable: T,
     ...args: Parameters<T>
   ): Promise<Awaited<ReturnType<T>>> {
+    return this.callWithRetry(undefined, callable, ...args);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private callWithRetry<
+    A extends any[],
+    T extends (...args: A) => Promise<any>,
+  >(
+    method: string | undefined,
+    callable: T,
+    ...args: Parameters<T>
+  ): Promise<Awaited<ReturnType<T>>> {
     const { onFailedResponseHook } = this;
+    const retryAnyFailure =
+      method === undefined || IDEMPOTENT_METHODS.includes(method.toUpperCase());
     return this.queue.add(
       () =>
         pRetry(
@@ -193,7 +242,12 @@ export class AsyncCaller {
                 errorMessage.includes("Failed to fetch") ||
                 errorMessage.includes("NetworkError")
               ) {
-                if (retriesLeft > 0) return;
+                if (
+                  retriesLeft > 0 &&
+                  (retryAnyFailure || isConnectError(error))
+                ) {
+                  return;
+                }
                 const connectionError = new Error(
                   `Unable to connect to LangGraph server. Please ensure the server is running and accessible. Original error: ${errorMessage}`
                 );
@@ -209,6 +263,13 @@ export class AsyncCaller {
                 if (onFailedResponseHook && error.response) {
                   await onFailedResponseHook(error.response);
                 }
+              }
+
+              // The server may have acted on a request that is not
+              // idempotent, and sending it again could repeat that (e.g.
+              // create a second run).
+              if (!retryAnyFailure && !isConnectError(error)) {
+                throw error;
               }
             },
             // If needed we can change some of the defaults here,
@@ -231,7 +292,7 @@ export class AsyncCaller {
     // when available prefer to use the signal option of the underlying call
     if (options.signal) {
       return Promise.race([
-        this.call<A, T>(callable, ...args),
+        this.callWithRetry<A, T>(options.method, callable, ...args),
         new Promise<never>((_, reject) => {
           options.signal?.addEventListener("abort", () => {
             reject(new Error("AbortError"));
@@ -239,14 +300,28 @@ export class AsyncCaller {
         }),
       ]);
     }
-    return this.call<A, T>(callable, ...args);
+    return this.callWithRetry<A, T>(options.method, callable, ...args);
   }
 
   fetch(...args: Parameters<typeof fetch>): ReturnType<typeof fetch> {
     const fetchFn =
       this.customFetch ?? (_getFetchImplementation() as typeof fetch);
-    return this.call(() =>
+    const [input, init] = args;
+    const method =
+      init?.method ??
+      (typeof input === "object" && "method" in input ? input.method : "GET");
+    return this.callWithRetry(method, () =>
       fetchFn(...args).then((res) => (res.ok ? res : Promise.reject(res)))
     );
+  }
+
+  /**
+   * Sends one request with no retries and resolves with the response
+   * whatever its status, for callers that run their own retry loop.
+   */
+  fetchOnce(...args: Parameters<typeof fetch>): ReturnType<typeof fetch> {
+    const fetchFn =
+      this.customFetch ?? (_getFetchImplementation() as typeof fetch);
+    return this.queue.add(() => fetchFn(...args), { throwOnTimeout: true });
   }
 }

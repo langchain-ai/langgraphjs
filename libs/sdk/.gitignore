@@ -21,3 +21,4 @@ react-ui/server.js
 node_modules
 dist
 .yarn
+.langgraph_api

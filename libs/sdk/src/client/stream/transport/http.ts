@@ -500,7 +500,10 @@ export class ProtocolSseTransportAdapter implements TransportAdapter {
 
     try {
       return useAsyncCaller
-        ? await this.asyncCaller!.call(execute)
+        ? await this.asyncCaller!.callWithOptions(
+            { method: requestInit.method ?? "GET" },
+            execute
+          )
         : await execute();
     } catch (error) {
       throw toError(error);

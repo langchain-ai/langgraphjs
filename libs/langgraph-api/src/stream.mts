@@ -15,7 +15,8 @@ import {
 import type { Pregel } from "@langchain/langgraph/pregel";
 import { Client as LangSmithClient, getDefaultProjectName } from "langsmith";
 import type { ServerRuntime } from "./graph/load.utils.mjs";
-import { getLangGraphCommand } from "./command.mjs";
+import { getLangGraphCommand, isKeyedByInterruptId } from "./command.mjs";
+import { ChainLifecycle, SubgraphLifecycle } from "./lifecycle.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "./protocol/constants.mjs";
 import type { SourceStreamEvent } from "./protocol/types.mjs";
 import { checkLangGraphSemver } from "./semver/index.mjs";
@@ -56,6 +57,7 @@ interface DebugCheckpoint {
 
 type LangGraphDebugChunk =
   | DebugChunk<"checkpoint", DebugCheckpoint>
+  | DebugChunk<"task", { id: string; name: string; input: unknown }>
   | DebugChunk<"task_result", DebugTask>;
 
 const isRunnableConfig = (config: unknown): config is RunnableConfig => {
@@ -66,6 +68,12 @@ const isRunnableConfig = (config: unknown): config is RunnableConfig => {
     config.configurable != null
   );
 };
+
+// The tags LangGraph.js's own `messages` stream mode skips, so the modes built
+// from stream events hide what `messages-tuple` hides.
+const NOSTREAM_TAGS = ["nostream", "langsmith:nostream"];
+const hasNoStreamTag = (tags: string[] | undefined) =>
+  tags?.some((tag) => NOSTREAM_TAGS.includes(tag)) ?? false;
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -196,7 +204,8 @@ export async function* streamState(
 
   const libStreamMode: Set<LangGraphStreamMode> = new Set(
     userStreamMode.filter(
-      (mode) => mode !== "events" && mode !== "messages-tuple"
+      (mode) =>
+        mode !== "events" && mode !== "messages-tuple" && mode !== "lifecycle"
     ) ?? []
   );
 
@@ -214,6 +223,15 @@ export async function* streamState(
     event: "metadata",
     data: { run_id: run.run_id, attempt: options.attempt },
   };
+  // Tells the thread's other clients which interrupts this run answers,
+  // before the graph starts, so they stop offering them.
+  const resume = run.kwargs.command?.resume;
+  if (isKeyedByInterruptId(resume)) {
+    yield {
+      event: "interrupts",
+      data: { run_id: run.run_id, answered: Object.keys(resume).sort() },
+    };
+  }
 
   if (!LANGGRAPH_VERSION) {
     const version = await checkLangGraphSemver();
@@ -244,6 +262,16 @@ export async function* streamState(
       })
     : undefined;
 
+  const lifecycle = userStreamMode.includes("lifecycle");
+  const lifecycleTasks =
+    lifecycle && kwargs.subgraphs ? new SubgraphLifecycle() : undefined;
+  const lifecycleListener =
+    lifecycle && !kwargs.subgraphs ? new ChainLifecycle() : undefined;
+  const callbacks = [
+    ...(tracer ? [tracer] : []),
+    ...(lifecycleListener ? [lifecycleListener] : []),
+  ];
+
   const events = graph.streamEvents(
     kwargs.command != null
       ? getLangGraphCommand(kwargs.command)
@@ -267,7 +295,7 @@ export async function* streamState(
       runId: run.run_id,
       streamMode: [...libStreamMode],
       signal: options?.signal,
-      ...(tracer && { callbacks: [tracer] }),
+      ...(callbacks.length > 0 && { callbacks }),
     })
   );
 
@@ -276,6 +304,7 @@ export async function* streamState(
   const completedIds = new Set<string>();
 
   for await (const event of events) {
+    if (lifecycleListener) yield* lifecycleListener.events.splice(0);
     if (event.tags?.includes("langsmith:hidden")) continue;
 
     // A runnable streamed inside a node emits on_chain_stream with a plain chunk.
@@ -295,6 +324,11 @@ export async function* streamState(
       let data: unknown = chunk;
       if (mode === "debug") {
         const debugChunk = chunk as LangGraphDebugChunk;
+        if (lifecycleTasks && debugChunk.type === "task") {
+          yield* lifecycleTasks.onTask(ns ?? [], debugChunk.payload);
+        } else if (lifecycleTasks && debugChunk.type === "task_result") {
+          yield* lifecycleTasks.onTaskResult(debugChunk.payload);
+        }
 
         if (debugChunk.type === "checkpoint") {
           const debugCheckpoint = preprocessDebugCheckpoint(debugChunk.payload);
@@ -348,7 +382,10 @@ export async function* streamState(
           kwargs.subgraphs && ns?.length ? `${mode}|${ns.join("|")}` : mode;
         yield { event: sseEvent, data };
       }
-    } else if (userStreamMode.includes("events")) {
+    } else if (
+      userStreamMode.includes("events") &&
+      !hasNoStreamTag(event.tags)
+    ) {
       yield { event: "events", data: event };
     }
 
@@ -393,7 +430,7 @@ export async function* streamState(
         }
       } else if (
         event.event === "on_chat_model_stream" &&
-        !event.tags?.includes("nostream")
+        !hasNoStreamTag(event.tags)
       ) {
         const message: BaseMessageChunk = event.data.chunk;
         // Anthropic sets the id on the first chunk only; the rest get run-<runId>.
@@ -415,6 +452,7 @@ export async function* streamState(
       }
     }
   }
+  if (lifecycleListener) yield* lifecycleListener.events.splice(0);
 
   if (kwargs.feedback_keys) {
     const client = new LangSmithClient();
@@ -433,6 +471,22 @@ export async function* streamState(
     yield { event: "feedback", data };
   }
 }
+
+export const matchesStreamMode = (event: string, streamMode: string[]) => {
+  // The interrupts a run answers are for the thread's other clients.
+  if (event === "interrupts") return false;
+  // A run's error and end are its outcome, not modes, so no filter drops them.
+  if (streamMode.length === 0 || event === "error" || event === "end")
+    return true;
+  const mode = event.split("|")[0];
+  if (streamMode.includes(mode)) return true;
+  // The messages modes stream `messages` (messages-tuple) and `messages/*`
+  // (messages) events; as on the Agent Server, either mode keeps both.
+  return (
+    mode.startsWith("messages") &&
+    (streamMode.includes("messages") || streamMode.includes("messages-tuple"))
+  );
+};
 
 function isUnsupportedStreamEventsV3Error(error: unknown): boolean {
   return (
@@ -509,6 +563,15 @@ export async function* streamStateV2(
     event: "metadata",
     data: { run_id: run.run_id, attempt: options.attempt },
   };
+  // Tells the thread's other clients which interrupts this run answers,
+  // before the graph starts, so they stop offering them.
+  const resume = run.kwargs.command?.resume;
+  if (isKeyedByInterruptId(resume)) {
+    yield {
+      event: "interrupts",
+      data: { run_id: run.run_id, answered: Object.keys(resume).sort() },
+    };
+  }
 
   if (!LANGGRAPH_VERSION) {
     const version = await checkLangGraphSemver();

@@ -6,9 +6,10 @@ import type {
 import {
   Client,
   type MessagesTupleStreamEvent,
+  type StreamMode,
 } from "@langchain/langgraph-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
-import { findLast, gatherIterator } from "./utils.mjs";
+import { assertEnded, findLast, gatherIterator } from "./utils.mjs";
 import {
   createEmbedServer,
   type ThreadSaver,
@@ -240,11 +241,53 @@ describe("runs", () => {
       }
     }
 
-    expect(chunk.event).toBe("values");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "values"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "values", "end"]));
 
     const runCheckpoints = await client.threads.getHistory(thread.thread_id);
     expect(runCheckpoints.length).toBeGreaterThan(1);
+  });
+
+  it.concurrent("history before a checkpoint config", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "agent", {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      })
+    );
+
+    const history = await client.threads.getHistory(thread.thread_id);
+    const page = await client.threads.getHistory(thread.thread_id, {
+      before: {
+        configurable: { checkpoint_id: history[1].checkpoint.checkpoint_id },
+      },
+    });
+
+    expect(page.map((state) => state.checkpoint.checkpoint_id)).toEqual(
+      history.slice(2).map((state) => state.checkpoint.checkpoint_id)
+    );
+  });
+
+  it.concurrent("history with select", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "agent", {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      })
+    );
+
+    const history = await client.threads.getHistory<AgentState>(
+      thread.thread_id,
+      { select: ["values.messages", "tasks"] }
+    );
+
+    expect(history).toHaveLength(5);
+    for (const state of history) {
+      expect(Object.keys(state).sort()).toEqual(["tasks", "values"]);
+      expect(Object.keys(state.values)).toEqual(["messages"]);
+    }
   });
 
   it.concurrent("stream updates", async () => {
@@ -273,8 +316,8 @@ describe("runs", () => {
 
     expect(seenNodes).toEqual(["agent", "tool", "agent"]);
 
-    expect(chunk.event).toBe("updates");
-    expect(seenEventTypes).toEqual(new Set(["metadata", "updates"]));
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
+    expect(seenEventTypes).toEqual(new Set(["metadata", "updates", "end"]));
   });
 
   it.concurrent("stream events", async () => {
@@ -288,7 +331,7 @@ describe("runs", () => {
       config: globalConfig,
     });
 
-    const events = await gatherIterator(stream);
+    const events = assertEnded(await gatherIterator(stream), "success");
     expect(new Set(events.map((i) => i.event))).toEqual(
       new Set(["metadata", "events"])
     );
@@ -347,13 +390,14 @@ describe("runs", () => {
     expect(lastMessage).not.toBeNull();
     expect(lastMessage.content).toBe("end");
 
-    expect(chunk.event).toBe("messages/complete");
+    expect(chunk).toMatchObject({ event: "end", data: { status: "success" } });
     expect(seenEventTypes).toEqual(
       new Set([
         "metadata",
         "messages/metadata",
         "messages/partial",
         "messages/complete",
+        "end",
       ])
     );
   });
@@ -370,7 +414,7 @@ describe("runs", () => {
       streamSubgraphs: true,
     });
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     const runId = findLast(chunks, (i) => i.event === "metadata")?.data.run_id;
     expect(runId).not.toBeUndefined();
     expect(runId).not.toBeNull();
@@ -404,7 +448,7 @@ describe("runs", () => {
       config: globalConfig,
     });
 
-    const chunks = await gatherIterator(stream);
+    const chunks = assertEnded(await gatherIterator(stream), "success");
     expect(chunks.at(-1)?.event).toBe("messages/complete");
     expect(chunks.filter((i) => i.event === "error").length).toBe(0);
 
@@ -430,6 +474,48 @@ describe("runs", () => {
       ])
     );
   });
+
+  it.concurrent(
+    "join stream returns only the requested stream modes",
+    async () => {
+      const joinNewRun = async (streamMode?: StreamMode | StreamMode[]) => {
+        const thread = await client.threads.create();
+        const run = await client.runs.create(thread.thread_id, "agent", {
+          input: { messages: [{ type: "human", content: "foo" }] },
+          streamMode: ["values", "updates", "messages", "messages-tuple"],
+          config: globalConfig,
+        });
+        const chunks = assertEnded(
+          await gatherIterator(
+            client.runs.joinStream(thread.thread_id, run.run_id, { streamMode })
+          ),
+          "success"
+        );
+        return chunks.map((i) => i.event);
+      };
+
+      const all = await joinNewRun();
+      expect(new Set(all)).toEqual(
+        new Set([
+          "metadata",
+          "values",
+          "updates",
+          "messages/metadata",
+          "messages/partial",
+          "messages/complete",
+          "messages",
+        ])
+      );
+      expect(await joinNewRun("updates")).toEqual(
+        all.filter((event) => event === "updates")
+      );
+      expect(await joinNewRun(["values", "messages-tuple"])).toEqual(
+        all.filter(
+          (event) => event === "values" || event.startsWith("messages")
+        )
+      );
+    }
+  );
 
   it.concurrent(
     "human in the loop - no modification",
@@ -564,13 +650,24 @@ describe("runs", () => {
       })
     );
 
-    expect(stream.at(-1)).toMatchObject({
+    expect(assertEnded(stream, "error").at(-1)).toMatchObject({
       event: "error",
       data: {
         error: "CustomError",
         message: "Boo!",
       },
     });
+  });
+
+  it.concurrent("ends a stateless run stream with its status", async () => {
+    const chunks = await gatherIterator(
+      client.runs.stream(null, "agent", {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      })
+    );
+
+    assertEnded(chunks, "success");
   });
 });
 
@@ -582,13 +679,16 @@ describe("subgraphs", () => {
 
     // run until the interrupt
     let lastMessageBeforeInterrupt: { content?: string } | null = null;
-    const chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, graphId, {
-        input: {
-          messages: [{ role: "human", content: "SF", id: "initial-message" }],
-        },
-        interruptBefore: ["tool"],
-      })
+    const chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, graphId, {
+          input: {
+            messages: [{ role: "human", content: "SF", id: "initial-message" }],
+          },
+          interruptBefore: ["tool"],
+        })
+      ),
+      "success"
     );
 
     for (const chunk of chunks) {
@@ -717,12 +817,15 @@ describe("subgraphs", () => {
     ]);
 
     // continue after interrupt
-    const chunksSubgraph = await gatherIterator(
-      client.runs.stream(thread.thread_id, graphId, {
-        input: null,
-        streamMode: ["values", "updates"],
-        streamSubgraphs: true,
-      })
+    const chunksSubgraph = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, graphId, {
+          input: null,
+          streamMode: ["values", "updates"],
+          streamSubgraphs: true,
+        })
+      ),
+      "success"
     );
 
     expect(chunksSubgraph.filter((i) => i.event === "error")).toEqual([]);
@@ -947,10 +1050,13 @@ describe("subgraphs", () => {
     ]);
 
     // continue after interrupt
-    chunks = await gatherIterator(
-      client.runs.stream(thread.thread_id, graphId, {
-        input: null,
-      })
+    chunks = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, graphId, {
+          input: null,
+        })
+      ),
+      "success"
     );
 
     expect(chunks.filter((i) => i.event === "error")).toEqual([]);
@@ -1019,10 +1125,13 @@ describe("subgraphs", () => {
       },
     ]);
 
-    const stream = await gatherIterator(
-      client.runs.stream(thread.thread_id, graphId, {
-        command: { resume: "i want to resume" },
-      })
+    const stream = assertEnded(
+      await gatherIterator(
+        client.runs.stream(thread.thread_id, graphId, {
+          command: { resume: "i want to resume" },
+        })
+      ),
+      "success"
     );
 
     expect(stream.at(-1)?.event).toBe("values");
@@ -1194,12 +1303,15 @@ it("continue after interrupt must have checkpoint present", async () => {
 it("tasks / checkpoints stream mode", async () => {
   const thread = await client.threads.create();
 
-  const stream = await gatherIterator(
-    client.runs.stream(thread.thread_id, "agent", {
-      input: { messages: [{ role: "human", content: "input" }] },
-      streamMode: ["tasks", "checkpoints"],
-      config: globalConfig,
-    })
+  const stream = assertEnded(
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "agent", {
+        input: { messages: [{ role: "human", content: "input" }] },
+        streamMode: ["tasks", "checkpoints"],
+        config: globalConfig,
+      })
+    ),
+    "success"
   );
 
   expect(stream).toMatchObject([

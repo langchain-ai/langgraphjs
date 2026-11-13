@@ -71,6 +71,7 @@ interface StreamTasksResultOutput<
   StreamUpdates,
 > extends StreamTasksOutputBase {
   result: [Keys, StreamUpdates][];
+  error: unknown;
 }
 
 type StreamTasksOutput<StreamUpdates, StreamValues, Nodes = string> =

@@ -1,12 +1,12 @@
 import type { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { streamSSE } from "hono/streaming";
+import { type SSEStreamingApi, streamSSE } from "hono/streaming";
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 import { z } from "zod/v3";
 
 import type { Run } from "../../storage/types.mjs";
 import * as schemas from "../../schemas.mjs";
-import { streamState } from "../../stream.mjs";
+import { matchesStreamMode, streamState } from "../../stream.mjs";
 import { serialiseAsDict, serializeError } from "../../utils/serde.mjs";
 import { getDisconnectAbortSignal, jsonExtra } from "../../utils/hono.mjs";
 
@@ -51,6 +51,42 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
     return run;
   }
 
+  // Runs the run inside the request and writes its events, then its error if
+  // it fails, then `end` with how it ended. `onSettled` runs before `end`.
+  async function streamRun(
+    stream: SSEStreamingApi,
+    run: Run,
+    options: {
+      signal: AbortSignal;
+      streamMode?: string[];
+      onSettled?: () => void;
+    }
+  ) {
+    let status: "success" | "error" = "success";
+    try {
+      for await (const { event, data } of streamState(run, {
+        attempt: 1,
+        getGraph: context.getGraph,
+        signal: options.signal,
+      })) {
+        if (!matchesStreamMode(event, options.streamMode ?? [])) continue;
+        await stream.writeSSE({ data: serialiseAsDict(data), event });
+      }
+    } catch (error) {
+      status = "error";
+      await stream.writeSSE({
+        data: serialiseAsDict(serializeError(error)),
+        event: "error",
+      });
+    } finally {
+      options.onSettled?.();
+    }
+    await stream.writeSSE({
+      data: serialiseAsDict({ run_id: run.run_id, status }),
+      event: "end",
+    });
+  }
+
   api.post(
     "/threads/:thread_id/runs",
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
@@ -88,8 +124,10 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
         run_id: z.string().uuid(),
       })
     ),
+    zValidator("query", schemas.JoinStreamQuery),
     async (c) => {
       const { thread_id, run_id } = c.req.valid("param");
+      const { stream_mode } = c.req.valid("query");
 
       const thread = await context.threads.get(thread_id);
       if (thread == null) return c.json({ error: "Thread not found" }, 404);
@@ -114,24 +152,13 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
           state.activeRunId = run_id;
           (run as Run & { status: string }).status = "running";
 
-          try {
-            for await (const { event, data } of streamState(run, {
-              attempt: 1,
-              getGraph: context.getGraph,
-              signal,
-            })) {
-              await stream.writeSSE({ data: serialiseAsDict(data), event });
-            }
-          } catch (error) {
-            await stream.writeSSE({
-              data: serialiseAsDict(serializeError(error)),
-              event: "error",
-            });
-          } finally {
-            if (state.activeRunId === run_id) {
-              state.activeRunId = null;
-            }
-          }
+          await streamRun(stream, run, {
+            signal,
+            streamMode: stream_mode,
+            onSettled: () => {
+              if (state.activeRunId === run_id) state.activeRunId = null;
+            },
+          });
         } catch (err) {
           if (err instanceof DOMException && err.name === "AbortError") {
             return;
@@ -191,24 +218,12 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
           },
         });
 
-        try {
-          for await (const { event, data } of streamState(run, {
-            attempt: 1,
-            getGraph: context.getGraph,
-            signal,
-          })) {
-            await stream.writeSSE({ data: serialiseAsDict(data), event });
-          }
-        } catch (error) {
-          await stream.writeSSE({
-            data: serialiseAsDict(serializeError(error)),
-            event: "error",
-          });
-        } finally {
-          if (state.activeRunId === run.run_id) {
-            state.activeRunId = null;
-          }
-        }
+        await streamRun(stream, run, {
+          signal,
+          onSettled: () => {
+            if (state.activeRunId === run.run_id) state.activeRunId = null;
+          },
+        });
       });
     }
   );
@@ -232,20 +247,7 @@ export function registerRunRoutes(api: Hono, context: EmbedRouteContext) {
       });
 
       try {
-        try {
-          for await (const { event, data } of streamState(run, {
-            attempt: 1,
-            getGraph: context.getGraph,
-            signal,
-          })) {
-            await stream.writeSSE({ data: serialiseAsDict(data), event });
-          }
-        } catch (error) {
-          await stream.writeSSE({
-            data: serialiseAsDict(serializeError(error)),
-            event: "error",
-          });
-        }
+        await streamRun(stream, run, { signal });
       } finally {
         await context.threads.delete(threadId);
       }

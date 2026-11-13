@@ -1,6 +1,10 @@
 export type * from "./types.js";
 export type * from "./stream/index.js";
 export type {
+  AssembledToolCallFromTool,
+  InferAssembledToolCalls,
+} from "./types-inference.js";
+export type {
   ClassToolCallWithResult,
   ClassSubagentStreamInterface,
   WithClassMessages,
@@ -29,6 +33,7 @@ export {
   normalizeHitlResponseForServer,
 } from "./hitl-interrupt-payload.js";
 export { FetchStreamTransport } from "./transport.js";
+export type { ChannelEvent } from "./channels.js";
 export {
   unique,
   findLast,
@@ -43,6 +48,14 @@ export {
   isSubagentNamespace,
 } from "./subagents.js";
 export {
+  SubgraphDiscovery,
+  type SubgraphByNodeMap,
+  type SubgraphDiscoverySnapshot,
+  type SubgraphMap,
+} from "./subgraphs.js";
+export { seedToolCallsFromMessages } from "./tool-calls.js";
+export type { AssembledToolCall, ToolCallStatus } from "./tool-payload.js";
+export {
   PendingRunsTracker,
   type QueueEntry,
   type QueueInterface,
@@ -50,5 +63,14 @@ export {
 export {
   StreamOrchestrator,
   type OrchestratorAccessors,
+  type RespondOptions,
+  type RunEndReason,
+  type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 export { CustomStreamOrchestrator } from "./orchestrator-custom.js";
+export type { StreamEngine } from "./engine.js";
+export type { Scope, ScopeRegistry, ScopeSnapshot } from "./scoped.js";
+export type {
+  MessageMetadataMap,
+  OptimisticStatus,
+} from "./message-metadata-tracker.js";

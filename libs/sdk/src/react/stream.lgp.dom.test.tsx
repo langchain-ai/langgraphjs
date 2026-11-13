@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { Activity, StrictMode, act, type ReactElement } from "react";
-import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useStream } from "./stream.js";
 import type { Client } from "../client.js";
+import { StreamManager } from "../ui/manager.js";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -160,12 +163,22 @@ function mockRun(
   );
 }
 
-function mockJoin(client: TestClient, events: StreamEvents) {
+function mockJoin(
+  client: TestClient,
+  events: StreamEvents,
+  { hang = false } = {}
+) {
   client.runs.joinStream.mockImplementationOnce(
     (_threadId: string, _runId: string, payload: { signal: AbortSignal }) =>
-      streamOf(events, payload.signal, false)
+      streamOf(events, payload.signal, hang)
   );
 }
+
+const sentRuns = (client: TestClient) =>
+  client.runs.stream.mock.calls.map(([threadId, , payload]) => [
+    threadId,
+    payload.command?.resume ?? null,
+  ]);
 
 async function settle() {
   await act(async () => {
@@ -232,6 +245,34 @@ async function startStop(view: View) {
   return { stopping };
 }
 
+async function endRunWithToolRunning(
+  client: TestClient,
+  options: Record<string, unknown>
+) {
+  let finish!: (result: string) => void;
+  const tool = weatherTool(
+    vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        })
+      )
+      .mockResolvedValue("sunny")
+  );
+  const view = await renderStream(client, { ...options, tools: [tool] });
+  mockRun(client, [
+    {
+      event: "values",
+      data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+    },
+  ]);
+  await submit(view);
+  await settle();
+  const finishTool = () => act(async () => finish("stale"));
+  return { tool, view, finishTool };
+}
+
 describe("useStream (old engine) joinStream", () => {
   it("shows the head read after the run when history is enabled", async () => {
     const client = createClient();
@@ -256,6 +297,323 @@ describe("useStream (old engine) joinStream", () => {
     });
 
     expect(view.current.messages).toEqual([message("h0"), final]);
+  });
+});
+
+describe("useStream (old engine) submit onError", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const boom = expect.objectContaining({ message: "boom" });
+
+  it("calls the submit's onError and the hook's onError when a run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockRun(client, [{ event: "error", data: { message: "boom" } }]);
+    const hookOnError = vi.fn();
+    const submitOnError = vi.fn();
+    const view = await renderStream(client, { onError: hookOnError });
+
+    await submit(view, { onError: submitOnError });
+
+    const run = { run_id: "run-1", thread_id: "t1" };
+    expect(submitOnError).toHaveBeenCalledExactlyOnceWith(boom, run);
+    expect(hookOnError).toHaveBeenCalledExactlyOnceWith(boom, run);
+  });
+
+  it("calls the submit's onError and the hook's onError when a custom transport run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const transport = {
+      stream: vi.fn(async () =>
+        (async function* () {
+          yield { event: "error", data: { message: "boom" } };
+        })()
+      ),
+    };
+    const hookOnError = vi.fn();
+    const submitOnError = vi.fn();
+    const view = await renderStream(createClient(), {
+      transport,
+      onError: hookOnError,
+    });
+
+    await submit(view, { onError: submitOnError });
+
+    expect(submitOnError).toHaveBeenCalledExactlyOnceWith(boom, undefined);
+    expect(hookOnError).toHaveBeenCalledExactlyOnceWith(boom, undefined);
+  });
+});
+
+describe("useStream (old engine) rejoin on mount", () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const parent = threadState({ messages: [message("h0")] });
+  const head = threadState(
+    { messages: [message("h0"), message("a0", "ai")] },
+    {
+      checkpoint: { ...parent.checkpoint, checkpoint_id: "cp2" },
+      parent_checkpoint: parent.checkpoint,
+    }
+  );
+
+  const joinedWith = (client: TestClient) => {
+    const [threadId, runId, { lastEventId, checkpointId }] =
+      client.runs.joinStream.mock.calls[0];
+    return { threadId, runId, lastEventId, checkpointId };
+  };
+
+  it.each([
+    {
+      name: "from the checkpoint of the state",
+      fetchStateHistory: false,
+      read: head,
+      checkpointId: "cp2",
+    },
+    {
+      name: "from the newest checkpoint of the history",
+      fetchStateHistory: true,
+      read: [head, parent],
+      checkpointId: "cp2",
+    },
+    {
+      name: "without a checkpoint on a new thread",
+      fetchStateHistory: false,
+      read: threadState({ messages: [] }, { checkpoint: null }),
+      checkpointId: undefined,
+    },
+  ])(
+    "rejoins a stored run once the thread loads, $name",
+    async ({ fetchStateHistory, read, checkpointId }) => {
+      const client = createClient();
+      serve(client, head);
+      let serveRead!: (value: unknown) => void;
+      (fetchStateHistory
+        ? client.threads.getHistory
+        : client.threads.getState
+      ).mockReturnValueOnce(
+        new Promise((resolve) => {
+          serveRead = resolve;
+        })
+      );
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory,
+        reconnectOnMount: true,
+      });
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(read));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toEqual({
+        threadId: "t1",
+        runId: "run-1",
+        lastEventId: "-1",
+        checkpointId,
+      });
+    }
+  );
+
+  it("shows a message the loaded state holds once when the rejoin sends it again", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(
+      client,
+      [
+        { event: "messages", data: [message("a0", "ai"), {}] },
+        { event: "messages", data: [message("a1", "ai"), {}] },
+      ],
+      { hang: true }
+    );
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    await settle();
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.messages.map((m) => m.id)).toEqual(["h0", "a0", "a1"]);
+  });
+
+  it("rejoins a stored run without a checkpoint when the thread fails to load", async () => {
+    const client = createClient();
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = { ...userThread(), data: undefined, isLoading: true };
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread,
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await view.rerender({
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: false, error: new Error("offline") },
+    });
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client)).toEqual({
+      threadId: "t1",
+      runId: "run-1",
+      lastEventId: "-1",
+      checkpointId: undefined,
+    });
+  });
+
+  it("stays loading while a stored run waits for the thread state", async () => {
+    const client = createClient();
+    serve(client, head);
+    const serveRead = deferRead(client, false);
+    mockJoin(client, []);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+    });
+    expect(view.current.isLoading).toBe(true);
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    await act(async () => serveRead(head));
+    await settle();
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(joinedWith(client).checkpointId).toBe("cp2");
+    expect(view.current.isLoading).toBe(false);
+  });
+
+  it("stays idle on a new thread before and after its first run fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockRun(client, [{ event: "error", data: { message: "boom" } }]);
+    const view = await renderStream(client, { reconnectOnMount: true });
+    expect(view.current.isLoading).toBe(false);
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
+    expect(view.current.error).toBeDefined();
+  });
+
+  it.each([
+    {
+      from: "a thread with a checkpoint",
+      threadId: "t0",
+      checkpoint: { ...parent.checkpoint, thread_id: "t0" },
+    },
+    { from: "a thread without a checkpoint", threadId: "t0", checkpoint: null },
+    { from: "no thread", threadId: null, checkpoint: null },
+  ])(
+    "waits for the new thread's state before rejoining after a switch from $from",
+    async ({ threadId, checkpoint }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }, { checkpoint }));
+      const view = await renderStream(client, {
+        threadId,
+        reconnectOnMount: true,
+      });
+      serve(client, head);
+      const serveRead = deferRead(client, false);
+      mockJoin(client, []);
+      window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+      await view.rerender({ threadId: "t1", reconnectOnMount: true });
+      await settle();
+      expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+      await act(async () => serveRead(head));
+      await settle();
+
+      expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+      expect(joinedWith(client)).toMatchObject({
+        threadId: "t1",
+        checkpointId: "cp2",
+      });
+    }
+  );
+
+  it("does not retry a failed rejoin when the thread state reloads", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = createClient();
+    mockJoin(client, [{ event: "error", data: { message: "gone" } }]);
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    const thread = userThread();
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...thread, isLoading: true },
+    });
+    expect(client.runs.joinStream).not.toHaveBeenCalled();
+
+    for (const isLoading of [false, true, false]) {
+      await view.rerender({
+        threadId: "t1",
+        reconnectOnMount: true,
+        thread: { ...thread, isLoading },
+      });
+      await settle();
+    }
+
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
+    expect(view.current.error).toBeDefined();
+  });
+
+  it("hides the head's interrupts while a stored run waits for the thread state", async () => {
+    const client = createClient();
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+
+    const view = await renderStream(client, {
+      threadId: "t1",
+      reconnectOnMount: true,
+      thread: { ...userThread(), data: [interrupted()], isLoading: true },
+    });
+
+    expect(view.current.isLoading).toBe(true);
+    expect(view.current.interrupts).toEqual([]);
+  });
+
+  it("disables a loading-gated input after hydrating a server render that had no stored run", async () => {
+    const client = createClient();
+    serve(client, head);
+    mockJoin(client, [], { hang: true });
+    window.sessionStorage.setItem("lg:stream:t1", "run-1");
+    function Send() {
+      const stream = useStream<State>({
+        assistantId: "agent",
+        client: client as unknown as Client,
+        threadId: "t1",
+        reconnectOnMount: true,
+      });
+      return <button disabled={stream.isLoading}>send</button>;
+    }
+    vi.stubGlobal("window", undefined);
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<Send />);
+    vi.unstubAllGlobals();
+
+    let root!: ReturnType<typeof hydrateRoot>;
+    await act(async () => {
+      root = hydrateRoot(container, <Send />);
+    });
+    await settle();
+    unmounts.push(() => act(() => root.unmount()));
+
+    expect(container.querySelector("button")?.disabled).toBe(true);
+    expect(client.runs.joinStream).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -551,6 +909,34 @@ describe("useStream (old engine) headless tools", () => {
     expect(tool.execute).toHaveBeenCalledTimes(1);
   });
 
+  it("ends loading and runs a pending tool after a run when each store update renders synchronously", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const isLoadingReads = vi.spyOn(
+      StreamManager.prototype,
+      "isLoading",
+      "get"
+    );
+    const view = await renderStream(client, {
+      threadId: "t1",
+      fetchStateHistory: true,
+      tools: [tool],
+    });
+    const manager = isLoadingReads.mock.contexts[0] as StreamManager<State>;
+    isLoadingReads.mockRestore();
+    manager.subscribe(() => flushSync(() => {}));
+    mockRun(client, []);
+    mockRun(client, []);
+    serve(client, pendingTool());
+
+    await submit(view);
+    await settle();
+
+    expect(view.current.isLoading).toBe(false);
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
   it("runs a pending tool once under StrictMode", async () => {
     const client = createClient();
     mockRun(client, []);
@@ -611,6 +997,219 @@ describe("useStream (old engine) headless tools", () => {
     await settle();
 
     expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { switchTo: "t2", via: "threadId" },
+    { switchTo: null, via: "threadId" },
+    { switchTo: "t2", via: "switchThread" },
+    { switchTo: null, via: "switchThread" },
+  ])(
+    "does not run or resume a finished run's pending tool after a switch to $switchTo through $via",
+    async ({ switchTo, via }) => {
+      const client = createClient();
+      client.threads.create.mockResolvedValue({ thread_id: "t3" });
+      serve(client, threadState({ messages: [message("h0")] }));
+      const { tool, view, finishTool } = await endRunWithToolRunning(client, {
+        threadId: "t1",
+      });
+
+      if (via === "switchThread") {
+        await act(async () => view.current.switchThread(switchTo));
+      }
+      await view.rerender({ threadId: switchTo, tools: [tool] });
+      await finishTool();
+      await settle();
+
+      expect(sentRuns(client)).toEqual([["t1", null]]);
+      expect(tool.execute).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("runs the new thread's own pending tool once after a switch away from a finished run's pending call", async () => {
+    const t2Call = {
+      id: "int-2",
+      value: {
+        type: "tool",
+        toolCall: { id: "call-2", name: "get_weather", args: { city: "NY" } },
+      },
+    };
+    const t2Head = {
+      ...pendingTool(),
+      checkpoint: { ...pendingTool().checkpoint, thread_id: "t2" },
+      tasks: [
+        { id: "task-2", name: "tools", error: null, interrupts: [t2Call] },
+      ],
+    };
+    const client = createClient();
+    client.threads.getState.mockImplementation(async (threadId: string) =>
+      threadId === "t2" ? t2Head : threadState({ messages: [message("h0")] })
+    );
+    const { tool, view, finishTool } = await endRunWithToolRunning(client, {
+      threadId: "t1",
+    });
+    mockRun(client, []);
+
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await finishTool();
+    await settle();
+
+    expect(sentRuns(client)).toEqual([
+      ["t1", null],
+      ["t2", { "int-2": { "call-2": "sunny" } }],
+    ]);
+    expect(tool.execute.mock.calls).toEqual([
+      [{ city: "SF" }],
+      [{ city: "NY" }],
+    ]);
+  });
+
+  it("does not run a pending tool again when its thread is left while the resume streams", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const tool = weatherTool();
+    const view = await renderStream(client, { threadId: "t1", tools: [tool] });
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+      },
+    ]);
+    mockRun(client, [], { hang: true });
+    await submit(view);
+    await settle();
+
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await settle();
+
+    expect(sentRuns(client)).toEqual([
+      ["t1", null],
+      ["t1", { "int-1": { "call-1": "sunny" } }],
+    ]);
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run a pending tool again when the threadId prop catches up with the thread submit created", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const { tool, view, finishTool } = await endRunWithToolRunning(client, {
+      threadId: null,
+    });
+    mockRun(client, []);
+
+    await view.rerender({ threadId: "t1", tools: [tool] });
+    await finishTool();
+    await settle();
+
+    expect(sentRuns(client)).toEqual([
+      ["t1", null],
+      ["t1", { "int-1": { "call-1": "stale" } }],
+    ]);
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run the shown thread's pending tool again while the threadId prop catches up with switchThread", async () => {
+    const client = createClient();
+    client.threads.getState.mockImplementation(async (threadId: string) =>
+      threadId === "t1" ? pendingTool() : threadState({ messages: [] })
+    );
+    const tool = weatherTool(vi.fn(() => new Promise(() => {})));
+    const view = await renderStream(client, { threadId: "t1", tools: [tool] });
+
+    await act(async () => view.current.switchThread("t2"));
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { shownWhenToolEnds: "t1", resumedThreads: ["t1"] },
+    { shownWhenToolEnds: "t2", resumedThreads: [] },
+  ])(
+    "resumes a pending tool's thread only if it is still shown when the tool ends ($shownWhenToolEnds)",
+    async ({ shownWhenToolEnds, resumedThreads }) => {
+      const client = createClient();
+      serve(client, pendingTool());
+      mockRun(client, []);
+      let finishTool!: (result: string) => void;
+      const tool = weatherTool(
+        vi.fn(
+          () =>
+            new Promise<string>((resolve) => {
+              finishTool = resolve;
+            })
+        )
+      );
+      const view = await renderStream(client, {
+        threadId: "t1",
+        tools: [tool],
+      });
+      serve(client, threadState({ messages: [] }));
+
+      await view.rerender({ threadId: shownWhenToolEnds, tools: [tool] });
+      await act(async () => finishTool("sunny"));
+      await settle();
+
+      expect(
+        client.runs.stream.mock.calls.map(([threadId]) => threadId)
+      ).toEqual(resumedThreads);
+    }
+  );
+
+  it("runs a pending tool again when its thread is reopened after a switch dropped its result", async () => {
+    const client = createClient();
+    client.threads.getState.mockImplementation(async (threadId: string) =>
+      threadId === "t1" ? pendingTool() : threadState({ messages: [] })
+    );
+    mockRun(client, []);
+    let finishFirstRun!: (result: string) => void;
+    const tool = weatherTool(
+      vi
+        .fn()
+        .mockReturnValueOnce(
+          new Promise<string>((resolve) => {
+            finishFirstRun = resolve;
+          })
+        )
+        .mockResolvedValue("sunny")
+    );
+    const view = await renderStream(client, { threadId: "t1", tools: [tool] });
+    await view.rerender({ threadId: "t2", tools: [tool] });
+    await act(async () => finishFirstRun("stale"));
+    await settle();
+
+    await view.rerender({ threadId: "t1", tools: [tool] });
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(2);
+    expect(client.runs.stream.mock.calls.map(([threadId]) => threadId)).toEqual(
+      ["t1"]
+    );
+  });
+
+  it("resumes a pending tool on the thread submit created while the threadId prop stays null", async () => {
+    const client = createClient();
+    client.threads.create
+      .mockResolvedValueOnce({ thread_id: "t1" })
+      .mockResolvedValueOnce({ thread_id: "t2" });
+    const tool = weatherTool();
+    const view = await renderStream(client, { threadId: null, tools: [tool] });
+    mockRun(client, [
+      {
+        event: "values",
+        data: { messages: [message("h0")], __interrupt__: [weatherCall] },
+      },
+    ]);
+    mockRun(client, []);
+
+    await submit(view);
+    await settle();
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(client.runs.stream.mock.calls.map(([threadId]) => threadId)).toEqual(
+      ["t1", "t1"]
+    );
   });
 
   it("does not run a pending tool from a read that resolves after a rejoined run ends", async () => {
@@ -983,4 +1582,187 @@ describe("useStream (old engine) thread state after stop", () => {
 
     expect(view.current.messages).toEqual(next);
   });
+});
+
+describe("useStream (old engine) tool progress", () => {
+  it("ignores a tool event kind it doesn't know", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const view = await renderStream(client, { threadId: "t1" });
+    mockRun(client, [
+      {
+        event: "tools",
+        data: {
+          event: "tool-started",
+          tool_call_id: "call-raw",
+          tool_name: "lookup",
+          input: { q: "raw" },
+        },
+      },
+      {
+        event: "tools",
+        data: {
+          event: "on_tool_start",
+          toolCallId: "call-1",
+          name: "lookup",
+          input: { q: "known" },
+        },
+      },
+    ]);
+    await submit(view);
+
+    expect(view.current.toolProgress).toEqual([
+      {
+        toolCallId: "call-1",
+        name: "lookup",
+        state: "starting",
+        input: { q: "known" },
+      },
+    ]);
+  });
+});
+
+describe("useStream (old engine) stop before the run id arrives", () => {
+  const storage = () => ({
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  });
+
+  it.each([
+    {
+      how: "stop()",
+      reconnectOnMount: storage,
+      abort: (view: View) => view.current.stop(),
+      cancelled: ["run-1"],
+    },
+    {
+      how: "stop() without reconnectOnMount",
+      reconnectOnMount: undefined,
+      abort: (view: View) => view.current.stop(),
+      cancelled: [],
+    },
+    {
+      how: "a submit that interrupts the run",
+      reconnectOnMount: storage,
+      abort: (view: View, client: TestClient) => {
+        mockRun(client, []);
+        return view.current.submit(
+          { messages: [] },
+          { multitaskStrategy: "interrupt" }
+        );
+      },
+      cancelled: [],
+    },
+  ])(
+    "$how before the run id arrives cancels $cancelled",
+    async ({ reconnectOnMount, abort, cancelled }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }));
+      const view = await renderStream(client, {
+        threadId: "t1",
+        reconnectOnMount,
+      });
+      let respond!: () => void;
+      const response = new Promise<void>((resolve) => {
+        respond = resolve;
+      });
+      client.runs.stream.mockImplementationOnce(
+        (
+          threadId: string,
+          _assistantId: string,
+          payload: {
+            signal: AbortSignal;
+            onRunCreated?: (params: {
+              run_id: string;
+              thread_id: string;
+            }) => void;
+          }
+        ) =>
+          (async function* () {
+            await new Promise<void>((resolve, reject) => {
+              void response.then(resolve);
+              payload.signal.addEventListener("abort", () =>
+                reject(Object.assign(new Error(), { name: "AbortError" }))
+              );
+            });
+            payload.onRunCreated?.({ run_id: "run-1", thread_id: threadId });
+            yield { event: "metadata", data: {} };
+          })()
+      );
+
+      const { running } = await startRun(view);
+      await act(async () => {
+        await abort(view, client);
+        await running;
+      });
+      await act(async () => respond());
+      await settle();
+
+      expect(client.runs.cancel.mock.calls).toEqual(
+        cancelled.map((runId) => ["t1", runId])
+      );
+    }
+  );
+
+  it.each([
+    {
+      how: "after the run id, before any event",
+      runId: "run-1",
+      events: [],
+      cancelled: ["run-1"],
+    },
+    {
+      how: "after an event, with no run id",
+      runId: undefined,
+      events: [{ event: "metadata", data: {} }],
+      cancelled: [],
+    },
+  ])(
+    "stop() $how closes the request at once",
+    async ({ runId, events, cancelled }) => {
+      const client = createClient();
+      serve(client, threadState({ messages: [message("h0")] }));
+      const stored = new Map<string, string>();
+      const view = await renderStream(client, {
+        threadId: "t1",
+        reconnectOnMount: () => ({
+          getItem: (key: string) => stored.get(key) ?? null,
+          setItem: (key: string, value: string) => void stored.set(key, value),
+          removeItem: (key: string) => void stored.delete(key),
+        }),
+      });
+      let request!: AbortSignal;
+      client.runs.stream.mockImplementationOnce(
+        (
+          threadId: string,
+          _assistantId: string,
+          payload: {
+            signal: AbortSignal;
+            onRunCreated?: (params: {
+              run_id: string;
+              thread_id: string;
+            }) => void;
+          }
+        ) => {
+          request = payload.signal;
+          if (runId) payload.onRunCreated?.({ run_id: runId, thread_id: threadId });
+          return streamOf(events, payload.signal, true);
+        }
+      );
+
+      const { running } = await startRun(view);
+      await act(async () => {
+        await view.current.stop();
+      });
+      expect(request.aborted).toBe(true);
+
+      await act(async () => {
+        await running;
+      });
+      expect(client.runs.cancel.mock.calls).toEqual(
+        cancelled.map((id) => ["t1", id])
+      );
+    }
+  );
 });
