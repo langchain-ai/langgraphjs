@@ -143,7 +143,7 @@ it("warns once when both client and fetch are passed", async () => {
   warn.mockRestore();
 });
 
-it("sends forkFrom as the run's checkpoint, with its command", async () => {
+it("sends forkFrom as the run's checkpoint, with no checkpoint_map, and its command", async () => {
   const server = fakeServer({ t1: { messages: [] } });
   const { result } = await renderHook(() =>
     useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
@@ -154,9 +154,10 @@ it("sends forkFrom as the run's checkpoint, with its command", async () => {
     command: { resume: "yes" },
   });
   await expect.poll(() => server.runs.length).toBe(1);
-  expect(server.runs[0].payload).toMatchObject({
-    checkpoint: { checkpoint_id: "cp-1" },
-    command: { resume: "yes" },
+  expect(server.runs[0].payload).toMatchObject({ command: { resume: "yes" } });
+  expect(server.runs[0].payload.checkpoint).toEqual({
+    checkpoint_id: "cp-1",
+    checkpoint_ns: "",
   });
 });
 

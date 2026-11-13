@@ -422,7 +422,7 @@ function createBinding(
             : {
                 checkpoint_id: forkFrom,
                 checkpoint_ns: "",
-                checkpoint_map: null,
+                checkpoint_map: undefined,
               },
       });
     },
