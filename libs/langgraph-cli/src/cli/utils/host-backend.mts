@@ -5,6 +5,11 @@
  * with a small retry loop on transport-level failures.
  */
 
+import {
+  DATA_PLANE_HOST_PATH,
+  smithDashboardBaseUrl,
+} from "./deploy-helpers.mjs";
+
 /**
  * A deployment secret (an environment variable injected into the running
  * deployment). Mirrors the `{name, value}` shape the host backend expects.
@@ -33,15 +38,41 @@ export class HostBackendError extends Error {
   /** HTTP status code, when the failure came from an HTTP error response. */
   statusCode?: number;
 
+  /** The response body's `detail`, when it is a string. */
+  detail?: string;
+
   /**
    * @param message - Human-readable error description.
    * @param statusCode - HTTP status code, if the error came from a response.
+   * @param detail - The response body's `detail`, if any.
    */
-  constructor(message: string, statusCode?: number) {
+  constructor(message: string, statusCode?: number, detail?: string) {
     super(message);
     this.name = "HostBackendError";
     this.statusCode = statusCode;
+    this.detail = detail;
   }
+}
+
+function errorDetail(body: string): string | undefined {
+  try {
+    const detail = (JSON.parse(body) as Record<string, unknown> | null)?.detail;
+    return typeof detail === "string" ? detail : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A workspace the API key can use, and the data plane it runs on (BYOC). */
+export interface Workspace {
+  id: string;
+  dataPlaneUrl: string | null;
+}
+
+/** What a LangSmith data plane supports, from its `/api/v1/info`. */
+export interface InstanceFlags {
+  cliBuilds: boolean;
+  dedicated: boolean;
 }
 
 /** Options for a single {@link HostBackendClient} request. */
@@ -52,56 +83,56 @@ interface RequestOptions {
   params?: Record<string, string | number | undefined>;
 }
 
-/** Number of times a transport-level failure is retried before giving up. */
+/** How a client retries transport-level failures and times out requests. */
+export interface TransportOptions {
+  /** Times a transport-level failure is retried before giving up. */
+  retries?: number;
+  /** Per-request timeout in milliseconds, enforced via `AbortController`. */
+  timeoutMs?: number;
+}
+
 const TRANSPORT_RETRIES = 3;
-/** Per-request timeout in milliseconds, enforced via `AbortController`. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Minimal JSON HTTP client for the host backend deployment service.
+ * Minimal JSON HTTP client over the global `fetch`.
  *
  * @remarks
- * Wraps the global `fetch`, attaching the API-key (and optional tenant)
- * headers to every request, retrying transport-level failures, and decoding
- * JSON responses. All methods reject with a {@link HostBackendError} on
- * failure.
+ * Attaches the API-key headers to every request, retries transport-level
+ * failures, and decodes JSON responses. All requests reject with a
+ * {@link HostBackendError} on failure.
  */
-export class HostBackendClient {
+class JsonClient {
   /** The normalized base URL (trailing slashes stripped). */
-  readonly baseUrl: string;
+  baseUrl: string;
 
-  /** Headers sent with every request (API key, accept, optional tenant). */
-  private readonly headers: Record<string, string>;
+  /** Headers sent with every request. */
+  protected readonly headers: Record<string, string>;
+
+  private readonly retries: number;
+
+  private readonly timeoutMs: number;
 
   /**
-   * @param baseUrl - Host backend base URL, e.g. `https://api.host.langchain.com`.
+   * @param baseUrl - Base URL that request paths are appended to.
    * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
-   * @param tenantId - Optional workspace/tenant ID sent as `X-Tenant-ID`.
-   * @throws {@link HostBackendError} if `baseUrl` is empty.
+   * @param transport - Retries and timeout for each request.
    */
-  constructor(baseUrl: string, apiKey: string, tenantId?: string) {
-    if (!baseUrl) {
-      throw new HostBackendError("Host backend URL is required");
-    }
+  constructor(
+    baseUrl: string,
+    apiKey: string,
+    {
+      retries = TRANSPORT_RETRIES,
+      timeoutMs = REQUEST_TIMEOUT_MS,
+    }: TransportOptions = {}
+  ) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.headers = {
       "X-Api-Key": apiKey,
       Accept: "application/json",
     };
-    if (tenantId) {
-      this.headers["X-Tenant-ID"] = tenantId;
-    }
-  }
-
-  /**
-   * Set or override the tenant (workspace) header on this client. Used after
-   * an org-scoped API key prompts for a workspace ID, so subsequent requests
-   * are tenant-aware.
-   *
-   * @param tenantId - Workspace/tenant ID to send as `X-Tenant-ID`.
-   */
-  setTenantId(tenantId: string): void {
-    this.headers["X-Tenant-ID"] = tenantId;
+    this.retries = retries;
+    this.timeoutMs = timeoutMs;
   }
 
   /**
@@ -111,7 +142,7 @@ export class HostBackendClient {
    * @param params - Optional query parameters; nullish values are omitted.
    * @returns The absolute URL string.
    */
-  private buildUrl(path: string, params?: RequestOptions["params"]): string {
+  protected buildUrl(path: string, params?: RequestOptions["params"]): string {
     const url = new URL(`${this.baseUrl}${path}`);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
@@ -134,7 +165,7 @@ export class HostBackendClient {
    * @throws {@link HostBackendError} on HTTP error responses, transport
    * failures (after retries), or undecodable JSON bodies.
    */
-  private async request<T = unknown>(
+  protected async request<T = unknown>(
     method: string,
     path: string,
     options: RequestOptions = {}
@@ -151,16 +182,16 @@ export class HostBackendClient {
     }
 
     let lastError: unknown;
-    for (let attempt = 0; attempt <= TRANSPORT_RETRIES; attempt += 1) {
+    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
       let response: Response;
       try {
         response = await fetch(url, { ...init, signal: controller.signal });
       } catch (error) {
         // Transport-level error (network, DNS, timeout). Retry a few times.
         lastError = error;
-        if (attempt < TRANSPORT_RETRIES) continue;
+        if (attempt < this.retries) continue;
         throw new HostBackendError(
           error instanceof Error ? error.message : String(error)
         );
@@ -169,11 +200,13 @@ export class HostBackendClient {
       }
 
       if (!response.ok) {
-        const detail =
-          (await response.text().catch(() => "")) || String(response.status);
+        const body = await response.text().catch(() => "");
         throw new HostBackendError(
-          `${method} ${path} failed with status ${response.status}: ${detail}`,
-          response.status
+          `${method} ${path} failed with status ${response.status}: ${
+            body || response.status
+          }`,
+          response.status,
+          errorDetail(body)
         );
       }
 
@@ -194,13 +227,125 @@ export class HostBackendClient {
       lastError instanceof Error ? lastError.message : String(lastError)
     );
   }
+}
+
+/**
+ * Client for the LangSmith API, on the LangSmith API root or on a data plane.
+ */
+export class LangSmithApiClient extends JsonClient {
+  /**
+   * List the workspaces the API key can use (`GET /api/v1/workspaces`),
+   * skipping deleted ones.
+   *
+   * @returns Each workspace with its data plane URL, or `null` off BYOC.
+   */
+  async listWorkspaces(): Promise<Workspace[]> {
+    const workspaces = await this.request("GET", "/api/v1/workspaces");
+    if (!Array.isArray(workspaces)) return [];
+    return workspaces
+      .filter(
+        (workspace): workspace is Record<string, unknown> =>
+          typeof workspace?.id === "string" && !workspace.is_deleted
+      )
+      .map((workspace) => ({
+        id: workspace.id as string,
+        dataPlaneUrl:
+          typeof workspace.data_plane_url === "string"
+            ? workspace.data_plane_url.replace(/\/+$/, "") || null
+            : null,
+      }));
+  }
+
+  /**
+   * Read the deployment capabilities from `GET /api/v1/info`. A missing flag
+   * means the capability is not supported.
+   */
+  async getInstanceFlags(): Promise<InstanceFlags> {
+    const info = await this.request<Record<string, unknown> | undefined>(
+      "GET",
+      "/api/v1/info"
+    );
+    const flags = (info?.instance_flags ?? {}) as Record<string, unknown>;
+    return {
+      cliBuilds: flags.deployments_cli_builds_supported === true,
+      dedicated: flags.deployments_dedicated_supported === true,
+    };
+  }
+}
+
+/**
+ * Minimal JSON HTTP client for the host backend deployment service.
+ */
+export type WorkspaceRouter = (
+  workspaceId: string
+) => HostBackendClient | undefined;
+
+export class HostBackendClient extends JsonClient {
+  /** The LangSmith UI that shows this host backend's deployments. */
+  dashboardUrl: string;
+
+  protected dataPlane?: LangSmithApiClient;
+
+  private readonly router?: WorkspaceRouter;
+
+  /**
+   * @param baseUrl - Host backend base URL, e.g. `https://api.host.langchain.com`.
+   * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
+   * @param tenantId - Optional workspace/tenant ID sent as `X-Tenant-ID`.
+   * @param dashboardUrl - The LangSmith UI for status links. Defaults to the
+   * one that matches `baseUrl`.
+   * @param router - Finds the host backend of a workspace chosen later.
+   * @throws {@link HostBackendError} if `baseUrl` is empty.
+   */
+  constructor(
+    baseUrl: string,
+    apiKey: string,
+    tenantId?: string,
+    dashboardUrl = smithDashboardBaseUrl(baseUrl),
+    router?: WorkspaceRouter
+  ) {
+    if (!baseUrl) {
+      throw new HostBackendError("Host backend URL is required");
+    }
+    super(baseUrl, apiKey);
+    if (tenantId) {
+      this.headers["X-Tenant-ID"] = tenantId;
+    }
+    this.dashboardUrl = dashboardUrl;
+    this.router = router;
+  }
+
+  /**
+   * Set or override the tenant (workspace) header on this client. Used after
+   * an org-scoped API key prompts for a workspace ID, so subsequent requests
+   * are tenant-aware and go to that workspace's data plane, if it has one.
+   *
+   * @param tenantId - Workspace/tenant ID to send as `X-Tenant-ID`.
+   */
+  setTenantId(tenantId: string): void {
+    const workspaceHost = this.router?.(tenantId);
+    if (workspaceHost) {
+      this.baseUrl = workspaceHost.baseUrl;
+      this.dashboardUrl = workspaceHost.dashboardUrl;
+      this.dataPlane = workspaceHost.dataPlane;
+    }
+    this.headers["X-Tenant-ID"] = tenantId;
+  }
+
+  /**
+   * Deployment capabilities of the data plane this host backend runs on, or
+   * `null` when it is not on one.
+   */
+  async instanceFlags(): Promise<InstanceFlags | null> {
+    return this.dataPlane ? this.dataPlane.getInstanceFlags() : null;
+  }
 
   /**
    * Create a new deployment (`POST /v2/deployments`).
    *
    * @param args - Deployment creation parameters.
    * @param args.name - Deployment name.
-   * @param args.deploymentType - Deployment type, e.g. `dev` or `prod`.
+   * @param args.sourceConfig - `source_config`, e.g. `{deployment_type: "dev"}`.
    * @param args.source - Source kind, e.g. `internal_docker` or `internal_source`.
    * @param args.configPath - Config path inside the source archive. Only sent
    * for `internal_source` deployments.
@@ -210,7 +355,7 @@ export class HostBackendClient {
   createDeployment(args: {
     name?: string;
     agent?: DeploymentAgent;
-    deploymentType: string;
+    sourceConfig: Record<string, unknown>;
     source: string;
     configPath?: string | null;
     secrets?: Secret[] | null;
@@ -218,7 +363,7 @@ export class HostBackendClient {
     const payload: Record<string, unknown> = {
       ...(args.agent ? { agent: args.agent } : { name: args.name }),
       source: args.source,
-      source_config: { deployment_type: args.deploymentType },
+      source_config: args.sourceConfig,
       source_revision_config: {} as Record<string, unknown>,
     };
     if (args.source === "internal_source" && args.configPath) {
@@ -455,5 +600,31 @@ export class HostBackendClient {
       ? `/v1/projects/${projectId}/revisions/${revisionId}/deploy_logs`
       : `/v1/projects/${projectId}/deploy_logs`;
     return this.request("POST", path, { payload });
+  }
+}
+
+/**
+ * Host backend on a LangSmith data plane (BYOC), reached at `<dp>/api-host`.
+ */
+export class DataPlaneClient extends HostBackendClient {
+  /**
+   * @param dataPlaneUrl - The workspace's data plane URL.
+   * @param apiKey - LangSmith API key sent as the `X-Api-Key` header.
+   * @param tenantId - Workspace ID sent as `X-Tenant-ID`, if known.
+   * @param dashboardUrl - The LangSmith UI for status links.
+   */
+  constructor(
+    dataPlaneUrl: string,
+    apiKey: string,
+    tenantId: string | undefined,
+    dashboardUrl: string
+  ) {
+    super(
+      `${dataPlaneUrl.replace(/\/+$/, "")}${DATA_PLANE_HOST_PATH}`,
+      apiKey,
+      tenantId,
+      dashboardUrl
+    );
+    this.dataPlane = new LangSmithApiClient(dataPlaneUrl, apiKey);
   }
 }

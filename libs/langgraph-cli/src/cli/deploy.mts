@@ -31,10 +31,14 @@ import {
   isBinaryNotFound,
 } from "../docker/errors.mjs";
 import {
+  DataPlaneClient,
   HostBackendClient,
   HostBackendError,
+  LangSmithApiClient,
   type DeploymentAgent,
+  type InstanceFlags,
   type Secret,
+  type Workspace,
 } from "./utils/host-backend.mjs";
 import { Emitter, Spinner } from "./utils/deploy-output.mjs";
 import { createArchive, BYTES_PER_MIB, MAX_SIZE } from "./utils/archive.mjs";
@@ -51,12 +55,14 @@ import {
   getDeploymentStatusUrl,
   hasDisallowedBuildCommandContent,
   isPathWithin,
+  isSecureOrLocalUrl,
+  langsmithApiUrl,
+  langsmithDashboardUrl,
   levelColor,
   normalizeImageTag,
   normalizeName,
   resolvePushTarget,
   secretsFromEnv,
-  smithDashboardBaseUrl,
 } from "./utils/deploy-helpers.mjs";
 
 // ---------------------------------------------------------------------------
@@ -66,9 +72,35 @@ import {
 let emitter = new Emitter(false);
 let noInput = false;
 
+const SOURCE_REJECTED_PREFIX = "'source' must be";
+const RESOURCE_SPEC_REQUIRED_MARKER =
+  "'source_config.resource_spec' is required";
+const HOST_URL_ON_A_DATA_PLANE =
+  "If --host-url or LANGGRAPH_HOST_URL points at a BYOC data plane, drop it " +
+  "so 'langgraphjs deploy' finds the data plane from your API key.";
+const CLI_BUILDS_UNSUPPORTED =
+  "This LangSmith data plane does not build images for 'langgraphjs deploy'. " +
+  "Push the image to a registry you manage and deploy it with the Python " +
+  "CLI: 'langgraph deploy --push-to <registry>/<repository>', or " +
+  "'langgraph deploy --image-uri' for an image that is already there.";
+const DISCOVERY_TRANSPORT = { retries: 0, timeoutMs: 5_000 };
+
 // ---------------------------------------------------------------------------
 // Small utilities
 // ---------------------------------------------------------------------------
+
+function createErrorHint(error: unknown): string | undefined {
+  if (!(error instanceof HostBackendError) || error.statusCode !== 400) {
+    return undefined;
+  }
+  if (error.detail?.startsWith(SOURCE_REJECTED_PREFIX)) {
+    return CLI_BUILDS_UNSUPPORTED;
+  }
+  if (error.detail?.includes(RESOURCE_SPEC_REQUIRED_MARKER)) {
+    return HOST_URL_ON_A_DATA_PLANE;
+  }
+  return undefined;
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -287,7 +319,7 @@ async function setEnvKey(
 // ---------------------------------------------------------------------------
 
 async function createHostBackendClient(
-  hostUrl: string,
+  hostUrl: string | undefined,
   apiKey: string | undefined,
   envVars?: Record<string, string>
 ): Promise<HostBackendClient> {
@@ -328,8 +360,154 @@ async function createHostBackendClient(
   }
 
   const tenantId =
-    resolvedEnv.LANGSMITH_TENANT_ID || process.env.LANGSMITH_TENANT_ID;
-  return new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
+    (
+      resolvedEnv.LANGSMITH_TENANT_ID || process.env.LANGSMITH_TENANT_ID
+    )?.trim() || undefined;
+  const langsmithEndpoint =
+    resolvedEnv.LANGSMITH_ENDPOINT || process.env.LANGSMITH_ENDPOINT;
+  const newDataPlaneClient = (dataPlaneUrl: string, workspaceId?: string) =>
+    new DataPlaneClient(
+      dataPlaneUrl,
+      resolvedApiKey,
+      workspaceId,
+      langsmithDashboardUrl(langsmithEndpoint, dataPlaneUrl)
+    );
+
+  if (hostUrl) return new HostBackendClient(hostUrl, resolvedApiKey, tenantId);
+  const workspaces = await listWorkspaces(langsmithEndpoint, resolvedApiKey);
+  const target = discoverTarget(workspaces, tenantId);
+  if (target.dataPlaneUrl) {
+    return newDataPlaneClient(target.dataPlaneUrl, target.tenantId);
+  }
+  const routeToDataPlane = (workspaceId: string) => {
+    const dataPlaneUrl = findWorkspace(workspaces, workspaceId)?.dataPlaneUrl;
+    return dataPlaneUrl
+      ? newDataPlaneClient(requireSecureDataPlane(dataPlaneUrl), workspaceId)
+      : undefined;
+  };
+  return new HostBackendClient(
+    DEFAULT_HOST_URL,
+    resolvedApiKey,
+    target.tenantId,
+    undefined,
+    routeToDataPlane
+  );
+}
+
+interface HostTarget {
+  tenantId?: string;
+  dataPlaneUrl?: string;
+}
+
+function findWorkspace(
+  workspaces: Workspace[],
+  workspaceId: string
+): Workspace | undefined {
+  return workspaces.find(
+    (w) => w.id.toLowerCase() === workspaceId.toLowerCase()
+  );
+}
+
+/**
+ * The data plane of the API key's workspace, when `tenantId` or all of the
+ * key's workspaces name one. Otherwise keep the default control plane, which
+ * asks for a workspace when the key is org-scoped.
+ */
+function discoverTarget(
+  workspaces: Workspace[],
+  tenantId: string | undefined
+): HostTarget {
+  if (tenantId !== undefined && workspaces.length) {
+    const workspace = findWorkspace(workspaces, tenantId);
+    if (!workspace) {
+      throw new Error(
+        `This API key has no access to workspace ${tenantId}. Check LANGSMITH_TENANT_ID.`
+      );
+    }
+    workspaces = [workspace];
+  }
+  const dataPlaneUrls = new Set(workspaces.map((w) => w.dataPlaneUrl));
+  const [dataPlaneUrl] = dataPlaneUrls;
+  if (dataPlaneUrls.size !== 1 || !dataPlaneUrl) return { tenantId };
+  return {
+    tenantId: workspaces.length === 1 ? workspaces[0].id : undefined,
+    dataPlaneUrl: requireSecureDataPlane(dataPlaneUrl),
+  };
+}
+
+async function listWorkspaces(
+  langsmithEndpoint: string | undefined,
+  apiKey: string
+): Promise<Workspace[]> {
+  const client = new LangSmithApiClient(
+    langsmithApiUrl(langsmithEndpoint),
+    apiKey,
+    DISCOVERY_TRANSPORT
+  );
+  try {
+    return await client.listWorkspaces();
+  } catch (error) {
+    if (!(error instanceof HostBackendError)) throw error;
+    emitter.note(
+      `Could not look up your LangSmith workspaces (${error.message}); using ${DEFAULT_HOST_URL}.`
+    );
+    return [];
+  }
+}
+
+function requireSecureDataPlane(dataPlaneUrl: string): string {
+  if (!isSecureOrLocalUrl(dataPlaneUrl)) {
+    throw new Error(
+      `Refusing to send your API key to ${dataPlaneUrl}: a data plane URL must use https.`
+    );
+  }
+  return dataPlaneUrl;
+}
+
+async function requireCliBuilds(
+  client: HostBackendClient
+): Promise<InstanceFlags | null> {
+  const flags = await client.instanceFlags();
+  if (flags && !flags.cliBuilds) throw new Error(CLI_BUILDS_UNSUPPORTED);
+  return flags;
+}
+
+/**
+ * The `source_config` for a new deployment built by this CLI. A data plane
+ * sizes it by `resource_spec` and needs dedicated support for `prod`.
+ */
+function newDeploymentSourceConfig(
+  flags: InstanceFlags | null,
+  deploymentType: string
+): Record<string, unknown> {
+  if (!flags) return { deployment_type: deploymentType };
+  if (deploymentType === "dev") return { resource_spec: {} };
+  if (!flags.dedicated) {
+    throw new Error(
+      "This LangSmith data plane does not support prod (dedicated) deployments. " +
+        "Use --deployment-type dev instead."
+    );
+  }
+  return { resource_spec: null, deployment_type: deploymentType };
+}
+
+async function promptWorkspaceId(): Promise<string> {
+  if (noInput) {
+    throw new Error(
+      "API key is org-scoped and requires a workspace ID. Set LANGSMITH_TENANT_ID " +
+        "in your .env file or use a workspace-scoped API key."
+    );
+  }
+  process.stdout.write(
+    paint("Your API key is org-scoped and requires a workspace ID.\n", "yellow")
+  );
+  process.stdout.write(
+    paint(
+      "Find your workspace ID in LangSmith under Settings > Workspaces.\n",
+      "yellow"
+    )
+  );
+  return promptText("Workspace ID");
 }
 
 async function callWithOptionalTenant<T>(
@@ -347,26 +525,7 @@ async function callWithOptionalTenant<T>(
         error.statusCode === 403 &&
         error.message.includes("requires workspace specification")
       ) {
-        if (noInput) {
-          throw new Error(
-            "API key is org-scoped and requires a workspace ID. Set LANGSMITH_TENANT_ID " +
-              "in your .env file or use a workspace-scoped API key."
-          );
-        }
-        process.stdout.write(
-          paint(
-            "Your API key is org-scoped and requires a workspace ID.\n",
-            "yellow"
-          )
-        );
-        process.stdout.write(
-          paint(
-            "Find your workspace ID in LangSmith under Settings > Workspaces.\n",
-            "yellow"
-          )
-        );
-        const workspaceId = await promptText("Workspace ID");
-        client.setTenantId(workspaceId);
+        client.setTenantId(await promptWorkspaceId());
         promptedForTenant = true;
         continue;
       }
@@ -374,7 +533,7 @@ async function callWithOptionalTenant<T>(
         error.statusCode === 403 &&
         error.message.toLowerCase().includes("not enabled")
       ) {
-        const smithBase = smithDashboardBaseUrl(client.baseUrl);
+        const smithBase = client.dashboardUrl;
         throw new HostBackendError(
           "LangSmith Deployment is not enabled for this organization. " +
             `Enable it at ${smithBase}/host/deployments (ensure this matches the ` +
@@ -495,7 +654,7 @@ async function createDeployment(
   args: {
     name?: string;
     agent?: DeploymentAgent;
-    deploymentType: string;
+    sourceConfig: Record<string, unknown>;
     source: string;
     secrets: Secret[];
   }
@@ -520,6 +679,14 @@ async function createDeployment(
         409
       );
     }
+    const hint = createErrorHint(error);
+    if (hint && error instanceof HostBackendError) {
+      throw new HostBackendError(
+        `${error.message}\n${hint}`,
+        error.statusCode,
+        error.detail
+      );
+    }
     throw error;
   }
   const id = typeof created.id === "string" ? created.id : undefined;
@@ -542,9 +709,9 @@ async function createDeployment(
 function emitDeploymentStatusUrl(
   updated: unknown,
   deploymentId: string,
-  hostUrl: string
+  dashboardUrl: string
 ): string | null {
-  const url = getDeploymentStatusUrl(updated, deploymentId, hostUrl);
+  const url = getDeploymentStatusUrl(updated, deploymentId, dashboardUrl);
   if (url) emitter.statusUrl(url);
   return url;
 }
@@ -1226,7 +1393,7 @@ interface DeployOptions {
   deploymentType: string;
   wait: boolean;
   verbose: boolean;
-  hostUrl: string;
+  hostUrl?: string;
   imageName?: string;
   tag: string;
   pull: boolean;
@@ -1336,12 +1503,13 @@ async function runDeploy(
   );
   deploymentId = resolved.deploymentId;
   step = resolved.step;
+  const flags = await requireCliBuilds(client);
 
   if (resolved.needsCreation) {
     const created = await createDeployment(client, step, {
       name,
       agent,
-      deploymentType: opts.deploymentType,
+      sourceConfig: newDeploymentSourceConfig(flags, opts.deploymentType),
       source: useRemoteBuild ? "internal_source" : "internal_docker",
       secrets,
     });
@@ -1388,7 +1556,7 @@ async function runDeploy(
   const depStatusUrl = emitDeploymentStatusUrl(
     buildResult.updated,
     deploymentId,
-    opts.hostUrl
+    client.dashboardUrl
   );
 
   if (!opts.wait) {
@@ -1448,7 +1616,7 @@ async function runDeploy(
 
 async function runList(opts: {
   apiKey?: string;
-  hostUrl: string;
+  hostUrl?: string;
   nameContains: string;
   agentId?: string;
   agentEnvironment?: string;
@@ -1476,7 +1644,7 @@ async function runList(opts: {
 
 async function runRevisionsList(
   deploymentId: string,
-  opts: { apiKey?: string; hostUrl: string; limit: string }
+  opts: { apiKey?: string; hostUrl?: string; limit: string }
 ): Promise<void> {
   emitter = new Emitter(false);
   noInput = false;
@@ -1503,7 +1671,7 @@ async function runRevisionsList(
 
 async function runDelete(
   deploymentId: string,
-  opts: { apiKey?: string; hostUrl: string; force: boolean }
+  opts: { apiKey?: string; hostUrl?: string; force: boolean }
 ): Promise<void> {
   emitter = new Emitter(false);
   noInput = false;
@@ -1537,7 +1705,7 @@ interface LogsOptions {
   startTime?: string;
   endTime?: string;
   follow: boolean;
-  hostUrl: string;
+  hostUrl?: string;
 }
 
 async function runLogs(opts: LogsOptions): Promise<void> {
@@ -1675,6 +1843,10 @@ async function runLogs(opts: LogsOptions): Promise<void> {
 // Command registration
 // ---------------------------------------------------------------------------
 
+const HOST_URL_HELP =
+  "Host backend URL. Defaults to the one LangSmith reports for your " +
+  `workspace's data plane, or ${DEFAULT_HOST_URL}.`;
+
 const deploy = builder
   .command("deploy")
   .description(
@@ -1702,7 +1874,7 @@ const deploy = builder
   )
   .option("--no-wait", "Skip waiting for deployment status.")
   .option("--verbose", "Show more output from the server logs.", false)
-  .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
+  .option("--host-url <url>", HOST_URL_HELP)
   .option("--image-name <name>", "Image repository name for the pushed image.")
   .option(
     "-t, --tag <tag>",
@@ -1766,7 +1938,7 @@ deploy
     "Agent environment: development, staging, or production (or LANGSMITH_AGENT_ENVIRONMENT)."
   )
   .option("--api-key <key>", "API key.")
-  .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
+  .option("--host-url <url>", HOST_URL_HELP)
   .option(
     "--name-contains <value>",
     "Only show deployments whose names contain this value.",
@@ -1788,7 +1960,7 @@ revisions
   .description("[Beta] List revisions for a LangSmith Deployment.")
   .argument("<deploymentId>", "Deployment ID (see 'deploy list').")
   .option("--api-key <key>", "API key.")
-  .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
+  .option("--host-url <url>", HOST_URL_HELP)
   .option("--limit <n>", "Maximum number of revisions to return.", "10")
   .exitOverride((error) => gracefulExit(error.exitCode))
   .action(
@@ -1802,7 +1974,7 @@ deploy
   .description("[Beta] Delete a LangSmith Deployment.")
   .argument("<deploymentId>", "Deployment ID (see 'deploy list').")
   .option("--api-key <key>", "API key.")
-  .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
+  .option("--host-url <url>", HOST_URL_HELP)
   .option("--force", "Delete without prompting for confirmation.", false)
   .exitOverride((error) => gracefulExit(error.exitCode))
   .action(
@@ -1829,7 +2001,7 @@ deploy
   .option("--start-time <ts>", "ISO8601 start time.")
   .option("--end-time <ts>", "ISO8601 end time.")
   .option("-f, --follow", "Continuously poll for new logs.", false)
-  .option("--host-url <url>", "Host backend URL.", DEFAULT_HOST_URL)
+  .option("--host-url <url>", HOST_URL_HELP)
   .exitOverride((error) => gracefulExit(error.exitCode))
   .action(
     action(async (opts) => {
