@@ -1,5 +1,22 @@
 # @langchain/langgraph
 
+## 1.7.5
+
+### Patch Changes
+
+- [#3295](https://github.com/langchain-ai/langgraphjs/pull/3295) [`5d41764`](https://github.com/langchain-ai/langgraphjs/commit/5d417645e48a615d52d6033c2624e9755690a6e6) Thanks [@eliornl](https://github.com/eliornl)! - With a zod state schema, node updates and run input are validated with the cached partial schema instead of a new zod schema per update, which zod had to compile every time. A 50-step run on a 30-field zod state is 1.65x faster.
+
+- [#3297](https://github.com/langchain-ai/langgraphjs/pull/3297) [`0ccd9a2`](https://github.com/langchain-ai/langgraphjs/commit/0ccd9a237419b5d9fb2d6dfaebb413cbabb0ad31) Thanks [@eliornl](https://github.com/eliornl)! - The Pregel loop finds `DeltaChannel` and `UntrackedValue` channels once per run instead of scanning every channel on each task and step. A 1,000-node chain runs 1.37x faster.
+
+- [#3294](https://github.com/langchain-ai/langgraphjs/pull/3294) [`a770874`](https://github.com/langchain-ai/langgraphjs/commit/a770874c66602625d6258ea4d5275ca912a0796c) Thanks [@eliornl](https://github.com/eliornl)! - `messagesStateReducer` does less work per update on a long history: it rules out message chunks with a native prototype check first, looks up only the ids the update touches, and skips the removal pass when nothing is removed. A call on 2,000 messages is 4x faster.
+
+- [#3296](https://github.com/langchain-ai/langgraphjs/pull/3296) [`0994aa8`](https://github.com/langchain-ai/langgraphjs/commit/0994aa8aeb9c301c97565bf9608cf956fc65f7be) Thanks [@eliornl](https://github.com/eliornl)! - The runner keeps a step's running tasks in a `Map`. Listing them took longer with every task, which made wide `Send` fan-outs quadratic: 500 parallel tasks now run 1.4x faster.
+
+- [#3293](https://github.com/langchain-ai/langgraphjs/pull/3293) [`b382028`](https://github.com/langchain-ai/langgraphjs/commit/b3820280fe63573b16d60da871f515008e509906) Thanks [@eliornl](https://github.com/eliornl)! - LangGraph's own writers and branch runners inside each node no longer enter an async context. Entering one made `@langchain/core` build a LangSmith run tree on every call, even with tracing off, so graphs whose nodes do little work run up to 1.75x faster. Node functions, edge functions and tools keep their context.
+- Updated dependencies [[`a4a8cb4`](https://github.com/langchain-ai/langgraphjs/commit/a4a8cb4db09d0acfc286b16dbb803f1240739924), [`62e40b9`](https://github.com/langchain-ai/langgraphjs/commit/62e40b998f769ccf9d872d394d2fd3d6796a0ddf), [`feb9832`](https://github.com/langchain-ai/langgraphjs/commit/feb9832ee5c1438f5f403afa9e00b0d9ce6b934f), [`6033cc7`](https://github.com/langchain-ai/langgraphjs/commit/6033cc746bebf962cb0120e06499a838a512bac3), [`abea7e8`](https://github.com/langchain-ai/langgraphjs/commit/abea7e8b42d1a9a38bb5a07c66228798e068f1d5), [`a9dc990`](https://github.com/langchain-ai/langgraphjs/commit/a9dc9907bad977259687dfa467d0e0fd6809d10f), [`6aa450d`](https://github.com/langchain-ai/langgraphjs/commit/6aa450d3e3a0ec277390be20c1d3f33cdb09ce96), [`09e4351`](https://github.com/langchain-ai/langgraphjs/commit/09e4351a78bed1487c245d0bf5a9b0693937151d), [`b2bc8eb`](https://github.com/langchain-ai/langgraphjs/commit/b2bc8eb322c869825e82d68186caf1c9424e8fc2), [`82a7d07`](https://github.com/langchain-ai/langgraphjs/commit/82a7d070eff81a653d2b292ef5e2ad8169e91555), [`dd0c346`](https://github.com/langchain-ai/langgraphjs/commit/dd0c346df9f77446f0fd61491fa1a45970ae1cdf), [`6cf515f`](https://github.com/langchain-ai/langgraphjs/commit/6cf515ff63a29a90e8c3220b36c2727f1b0db856), [`99b9dde`](https://github.com/langchain-ai/langgraphjs/commit/99b9dde5a75cbbd3a2fa72c2014f38fbad053d1b), [`e337917`](https://github.com/langchain-ai/langgraphjs/commit/e3379170d2bdea6b603949e83475f01024e7c3c3), [`77bf3db`](https://github.com/langchain-ai/langgraphjs/commit/77bf3db1b81e7f30d341e4e8bc56d264e41cb341)]:
+  - @langchain/langgraph-checkpoint@1.2.3
+  - @langchain/langgraph-sdk@1.17.0
+
 ## 1.7.4
 
 ### Patch Changes

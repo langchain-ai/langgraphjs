@@ -1,5 +1,0 @@
----
-"@langchain/langgraph-sdk": patch
----
-
-A `StreamOrchestrator` that loads threads now needs `activate()`, which bindings call from an effect. A thread load before the first `activate()` reads the thread and holds what it finds until then: the running run's join, the head's headless tool calls and the server's queued runs. Bindings create the engine during a render, and an engine from a render that never commits, such as StrictMode's double render or a suspended tree that unmounts, used to join runs, run tools a second time and send their answers again. A running run a load holds counts as `isLoading`, so the queue waits for it too. A stream the engine starts before `activate()`, such as a submit from an effect that runs before the binding's, drops what the load held. `respond()` with no id now answers the first interrupt shown, as `CustomStreamOrchestrator` does. `StreamController`, which the Vue, Svelte and Angular bindings use, still answers the newest. The engine also reads the server's `/info` at its first `activate()` instead of when it's built, and warns about a server without subagent lifecycle events only once a subagent's messages are read.

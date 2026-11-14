@@ -1,5 +1,13 @@
 # @langchain/langgraph-api
 
+## 1.8.0
+
+### Patch Changes
+
+- [#3353](https://github.com/langchain-ai/langgraphjs/pull/3353) [`9586aca`](https://github.com/langchain-ai/langgraphjs/commit/9586aca0b579a232ade5b36ac6861de1aaf81a26) Thanks [@eliornl](https://github.com/eliornl)! - The `messages` and `events` stream modes now skip calls tagged `nostream` or `langsmith:nostream` (LangGraph.js's `TAG_NOSTREAM`), as `messages-tuple` already does. Before, `messages` streamed the tokens of calls tagged `langsmith:nostream`, and `events` streamed every tagged call. In `events` mode the skip covers everything that runs inside a tagged call, so a run whose config tags are `nostream` streams no `events`.
+- Updated dependencies []:
+  - @langchain/langgraph-ui@1.8.0
+
 ## 1.7.2
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @langchain/langgraph-cli
 
+## 1.8.0
+
+### Minor Changes
+
+- [#3366](https://github.com/langchain-ai/langgraphjs/pull/3366) [`fa426b2`](https://github.com/langchain-ai/langgraphjs/commit/fa426b293b6ecccbf62b4f262475777b4bf86673) Thanks [@syachamaneni-lc](https://github.com/syachamaneni-lc)! - `langgraphjs deploy` and its `list`, `revisions list`, `logs` and `delete` subcommands work on LangSmith BYOC data planes with only an API key. The CLI finds the key's workspace through the LangSmith API, sends requests to that workspace's data plane, and links status pages to the LangSmith UI. On a data plane, it checks before creating anything that CLI builds (and, for `prod`, dedicated deployments) are supported. `--host-url` now defaults to the discovered host and still overrides it. The CLI only sends the API key to an `https` data plane, and sends the workspace an org-scoped key is asked for to that workspace's data plane.
+
+### Patch Changes
+
+- Updated dependencies [[`9586aca`](https://github.com/langchain-ai/langgraphjs/commit/9586aca0b579a232ade5b36ac6861de1aaf81a26)]:
+  - @langchain/langgraph-api@1.8.0
+
 ## 1.7.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @langchain/langgraph-checkpoint-postgres
 
+## 1.1.4
+
+### Patch Changes
+
+- [#3303](https://github.com/langchain-ai/langgraphjs/pull/3303) [`c60e23f`](https://github.com/langchain-ai/langgraphjs/commit/c60e23f3ecd8863c1177785c0f63ee97c2e8e2f4) Thanks [@eliornl](https://github.com/eliornl)! - `PostgresSaver.put` saves a checkpoint and its blobs in one statement instead of a transaction with one INSERT per channel, so it takes one round trip instead of three plus one per changed channel.
+
+- [#3302](https://github.com/langchain-ai/langgraphjs/pull/3302) [`5aa87d0`](https://github.com/langchain-ai/langgraphjs/commit/5aa87d001fdfe859e1d23ac590b19244f0053d21) Thanks [@eliornl](https://github.com/eliornl)! - `PostgresSaver.putWrites` saves a task's writes in one statement instead of a transaction with one INSERT per write, so it takes one round trip instead of two plus one per write.
+
 ## 1.1.3
 
 ### Patch Changes

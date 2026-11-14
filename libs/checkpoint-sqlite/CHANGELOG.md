@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-sqlite
 
+## 1.1.1
+
+### Patch Changes
+
+- [#3298](https://github.com/langchain-ai/langgraphjs/pull/3298) [`d2489aa`](https://github.com/langchain-ai/langgraphjs/commit/d2489aa1af17a2afdc8d831b5b1b600a43ad3c6a) Thanks [@eliornl](https://github.com/eliornl)! - `SqliteSaver` prepares its `put` and `putWrites` statements once per saver instead of on every call.
+
 ## 1.1.0
 
 ### Minor Changes
