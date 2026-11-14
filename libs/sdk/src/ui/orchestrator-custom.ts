@@ -497,15 +497,13 @@ export class CustomStreamOrchestrator<
   /**
    * Abort the current stream and invoke the `onStop` callback
    * if one was provided in the options, and drop the submits waiting behind
-   * it. The run's values stay, without a reply the stop cut off. `cancel` is
-   * ignored: a custom transport has no route to cancel a run, and its server
-   * sees the request aborted.
+   * it. `cancel` is ignored: a custom transport has no route to cancel a run,
+   * and its server sees the request aborted.
    */
   stop(_options?: { cancel?: boolean }): Promise<void> {
     this.#queue.removeAll();
     return this.stream.stop(this.#baseValues, {
       onStop: this.#options.onStop,
-      read: async (shown) => shown,
     });
   }
 

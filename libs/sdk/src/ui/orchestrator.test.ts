@@ -1351,12 +1351,14 @@ describe("StreamOrchestrator", () => {
     });
 
     it("reconciles the stream buffer against server state after a cancel", async () => {
-      const partial = { id: "m1", content: "partial", type: "ai" };
+      const partialValues: TestState = {
+        messages: [{ id: "m1", content: "partial", type: "ai" }],
+      };
 
       let submitSignal: AbortSignal | undefined;
       const mockStream = {
         async *[Symbol.asyncIterator]() {
-          yield { event: "messages" as const, data: [partial, {}] };
+          yield { event: "values" as const, data: partialValues };
           // Hang until the run is aborted, like a real in-flight fetch would.
           await new Promise<never>((_resolve, reject) => {
             submitSignal?.addEventListener("abort", () => {
@@ -1389,7 +1391,7 @@ describe("StreamOrchestrator", () => {
       await flushMicrotasks();
 
       // The in-flight chunk is optimistically visible while streaming.
-      expect(orch.messages.map(({ id }) => id)).toEqual(["m1"]);
+      expect(orch.messages).toEqual(partialValues.messages);
 
       await orch.stop();
       await flushMicrotasks();
