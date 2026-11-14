@@ -1,5 +1,12 @@
 # @langchain/vue
 
+## 1.2.15
+
+### Patch Changes
+
+- Updated dependencies [[`62e40b9`](https://github.com/langchain-ai/langgraphjs/commit/62e40b998f769ccf9d872d394d2fd3d6796a0ddf), [`feb9832`](https://github.com/langchain-ai/langgraphjs/commit/feb9832ee5c1438f5f403afa9e00b0d9ce6b934f), [`6033cc7`](https://github.com/langchain-ai/langgraphjs/commit/6033cc746bebf962cb0120e06499a838a512bac3), [`abea7e8`](https://github.com/langchain-ai/langgraphjs/commit/abea7e8b42d1a9a38bb5a07c66228798e068f1d5), [`a9dc990`](https://github.com/langchain-ai/langgraphjs/commit/a9dc9907bad977259687dfa467d0e0fd6809d10f), [`09e4351`](https://github.com/langchain-ai/langgraphjs/commit/09e4351a78bed1487c245d0bf5a9b0693937151d), [`b2bc8eb`](https://github.com/langchain-ai/langgraphjs/commit/b2bc8eb322c869825e82d68186caf1c9424e8fc2), [`82a7d07`](https://github.com/langchain-ai/langgraphjs/commit/82a7d070eff81a653d2b292ef5e2ad8169e91555), [`dd0c346`](https://github.com/langchain-ai/langgraphjs/commit/dd0c346df9f77446f0fd61491fa1a45970ae1cdf), [`6cf515f`](https://github.com/langchain-ai/langgraphjs/commit/6cf515ff63a29a90e8c3220b36c2727f1b0db856), [`99b9dde`](https://github.com/langchain-ai/langgraphjs/commit/99b9dde5a75cbbd3a2fa72c2014f38fbad053d1b), [`e337917`](https://github.com/langchain-ai/langgraphjs/commit/e3379170d2bdea6b603949e83475f01024e7c3c3), [`77bf3db`](https://github.com/langchain-ai/langgraphjs/commit/77bf3db1b81e7f30d341e4e8bc56d264e41cb341)]:
+  - @langchain/langgraph-sdk@1.17.0
+
 ## 1.2.14
 
 ### Patch Changes
