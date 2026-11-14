@@ -102,6 +102,9 @@ export class QueryBuilder {
           newParamIndex: paramIndex + 2,
         };
       case "$in":
+        if (Array.isArray(operatorValue) && operatorValue.length === 0) {
+          return { condition: "FALSE", newParamIndex: paramIndex };
+        }
         if (Array.isArray(operatorValue) && operatorValue.length > 0) {
           const placeholders = operatorValue.map(
             (_, i) => `$${paramIndex + 1 + i}`
