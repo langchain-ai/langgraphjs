@@ -2,7 +2,7 @@ import { MemorySaver } from "@langchain/langgraph-checkpoint";
 import { describe, expect, it } from "vitest";
 
 import { Annotation, StateGraph } from "../graph/index.js";
-import { Command, INTERRUPT, START, isInterrupted } from "../constants.js";
+import { Command, END, INTERRUPT, START, isInterrupted } from "../constants.js";
 import { task } from "../func/index.js";
 import { interrupt } from "../interrupt.js";
 import type { StateSnapshot } from "../pregel/types.js";
@@ -118,4 +118,105 @@ describe("resuming a subgraph", () => {
       b: 1,
     });
   });
+});
+
+describe("calling a checkpointer: true subgraph again", () => {
+  const Counter = Annotation.Root({ x: Annotation<number>() });
+  const Loop = Annotation.Root({
+    x: Annotation<number>(),
+    rounds: Annotation<number>(),
+  });
+
+  it.each<{ interruptBefore?: "child"[]; interruptAfter?: "tick"[] }>([
+    { interruptBefore: ["child"] },
+    { interruptAfter: ["tick"] },
+  ])(
+    "runs it on its new input after the parent pauses (%o)",
+    async (breakpoint) => {
+      const inputs: number[] = [];
+      const child = new StateGraph(Counter)
+        .addNode("increment", ({ x }) => {
+          inputs.push(x);
+          return { x: x + 1 };
+        })
+        .addEdge(START, "increment")
+        .addEdge("increment", END)
+        .compile({ checkpointer: true });
+      const graph = new StateGraph(Loop)
+        .addNode("child", child)
+        .addNode("tick", ({ rounds }) => ({ rounds: rounds + 1 }))
+        .addEdge(START, "child")
+        .addEdge("child", "tick")
+        .addConditionalEdges(
+          "tick",
+          ({ rounds }) => (rounds < 2 ? "child" : END),
+          ["child", END]
+        )
+        .compile({ checkpointer: new MemorySaver(), ...breakpoint });
+      const config = { configurable: { thread_id: "1" } };
+
+      await graph.invoke({ x: 0, rounds: 0 }, config);
+      for (let pauses = 0; pauses < 5; pauses += 1) {
+        if ((await graph.getState(config)).next.length === 0) break;
+        await graph.invoke(null, config);
+      }
+
+      expect(inputs).toEqual([0, 1]);
+      expect((await graph.getState(config)).values).toEqual({
+        x: 2,
+        rounds: 2,
+      });
+    }
+  );
+
+  it.each(["interrupt", "interruptBefore", "interruptAfter"] as const)(
+    "resumes a call that paused inside it (%s)",
+    async (pause) => {
+      const inputs: number[] = [];
+      const child = new StateGraph(Counter)
+        .addNode("increment", ({ x }) => {
+          inputs.push(x);
+          return { x: x + 1 };
+        })
+        .addNode("confirm", () => {
+          if (pause === "interrupt") interrupt("ok?");
+          return {};
+        })
+        .addEdge(START, "increment")
+        .addEdge("increment", "confirm")
+        .addEdge("confirm", END)
+        .compile({
+          checkpointer: true,
+          interruptBefore: pause === "interruptBefore" ? ["confirm"] : [],
+          interruptAfter: pause === "interruptAfter" ? ["confirm"] : [],
+        });
+      const graph = new StateGraph(Loop)
+        .addNode("child", child)
+        .addNode("tick", ({ rounds }) => ({ rounds: rounds + 1 }))
+        .addEdge(START, "child")
+        .addEdge("child", "tick")
+        .addConditionalEdges(
+          "tick",
+          ({ rounds }) => (rounds < 2 ? "child" : END),
+          ["child", END]
+        )
+        .compile({ checkpointer: new MemorySaver() });
+      const config = { configurable: { thread_id: "1" } };
+
+      await graph.invoke({ x: 0, rounds: 0 }, config);
+      for (let pauses = 0; pauses < 5; pauses += 1) {
+        if ((await graph.getState(config)).next.length === 0) break;
+        await graph.invoke(
+          pause === "interrupt" ? new Command({ resume: "yes" }) : null,
+          config
+        );
+      }
+
+      expect(inputs).toEqual([0, 1]);
+      expect((await graph.getState(config)).values).toEqual({
+        x: 2,
+        rounds: 2,
+      });
+    }
+  );
 });
