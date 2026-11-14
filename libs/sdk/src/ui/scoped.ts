@@ -5,6 +5,7 @@ import { inNamespaces } from "../client/runs/namespaces.js";
 import type { Message } from "../types.messages.js";
 import type { StreamReconnectOptions } from "../utils/stream.js";
 import { MessageTupleManager, ensureMessageInstances } from "./messages.js";
+import { isSubagentNamespace } from "./subagents.js";
 
 /** What a scope's panel shows of its subgraph. */
 export interface ScopeSnapshot {
@@ -357,11 +358,14 @@ export class ScopeRegistry {
   }
 
   #setValues(scope: ScopeState, values: Record<string, unknown>): void {
-    const rootIds = this.#host.rootMessageIds();
+    const rootIds = isSubagentNamespace(scope.key.split("|"))
+      ? this.#host.rootMessageIds()
+      : new Set<string>();
     const messages = values?.[this.#host.messagesKey()];
     scope.values = values;
     // Deep agents' fork-mode subagents start from a copy of the parent's
-    // messages.
+    // messages. A subgraph's are its own, also those it shares with the
+    // parent.
     scope.list = ensureMessageInstances(
       Array.isArray(messages) ? messages : []
     ).filter((message) => message.id == null || !rootIds.has(message.id));
