@@ -3643,6 +3643,63 @@ describe("_getModel", () => {
 });
 
 describe("ToolNode with Commands", () => {
+  it("keeps parallel tool results before other command messages", async () => {
+    const addImage = tool(
+      async (_, config) =>
+        new Command({
+          update: {
+            messages: [
+              new ToolMessage({
+                content: "image attached",
+                tool_call_id: config.toolCall.id,
+                name: "add_image",
+              }),
+              new HumanMessage("[image of Paris]"),
+            ],
+          },
+          goto: "agent",
+          graph: Command.PARENT,
+        }),
+      {
+        name: "add_image",
+        description: "Return an image result",
+        schema: z.object({}),
+      }
+    );
+    const getWeather = tool(() => "18C in Paris", {
+      name: "get_weather",
+      description: "Get the weather",
+      schema: z.object({}),
+    });
+
+    const result = await new ToolNode([addImage, getWeather]).invoke({
+      messages: [
+        new AIMessage({
+          content: "",
+          tool_calls: [
+            { args: {}, id: "call-1", name: "add_image", type: "tool_call" },
+            { args: {}, id: "call-2", name: "get_weather", type: "tool_call" },
+          ],
+        }),
+      ],
+    });
+
+    expect(result).toMatchObject([
+      {
+        messages: [
+          expect.objectContaining({ tool_call_id: "call-1" }),
+          expect.objectContaining({ tool_call_id: "call-2" }),
+        ],
+      },
+      new Command({
+        update: { messages: [] },
+        goto: "agent",
+        graph: Command.PARENT,
+      }),
+      { messages: [new HumanMessage("[image of Paris]")] },
+    ]);
+  });
+
   it("can handle tools returning commands with dict input", async () => {
     // Tool that returns a Command
     const transferToBob = tool(
