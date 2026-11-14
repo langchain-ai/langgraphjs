@@ -405,10 +405,9 @@ describe("ScopeRegistry", () => {
     expect(client.runs.joinStream).not.toHaveBeenCalled();
   });
 
-  it("leaves out of a panel the main conversation's messages its host names for that namespace", async () => {
+  it("a subagent's panel leaves out the main conversation's messages, and a subgraph's keeps them", async () => {
     const { registry, client } = setup(undefined, {
-      rootMessageIds: (namespace) =>
-        new Set(namespace === "tools:a" ? ["parent"] : []),
+      rootMessageIds: () => new Set(["parent"]),
     });
     (client.threads.getHistory as Mock).mockResolvedValue([
       { values: { messages: [human("parent"), human("own")] } },

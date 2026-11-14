@@ -5,6 +5,7 @@ import { inNamespaces } from "../client/runs/namespaces.js";
 import type { Message } from "../types.messages.js";
 import type { StreamReconnectOptions } from "../utils/stream.js";
 import { MessageTupleManager, ensureMessageInstances } from "./messages.js";
+import { isSubagentNamespace } from "./subagents.js";
 
 /** What a scope's panel shows of its subgraph. */
 export interface ScopeSnapshot {
@@ -29,11 +30,8 @@ export interface ScopeHost {
   reconnectOptions(): StreamReconnectOptions;
   /** Whether the server filters a join by namespace (`stream_namespaces`). */
   canFilter(): Promise<boolean>;
-  /**
-   * Ids of the messages the main conversation shows when the namespace is a
-   * subagent's, and none for a subgraph's.
-   */
-  rootMessageIds(namespace: string): Set<string>;
+  /** Ids of the messages the main conversation shows. */
+  rootMessageIds(): Set<string>;
   /** Whether the subagent at this namespace ran to its end. */
   finished(namespace: string): boolean;
   /** Called with each join event the run's own stream doesn't carry. */
@@ -360,12 +358,14 @@ export class ScopeRegistry {
   }
 
   #setValues(scope: ScopeState, values: Record<string, unknown>): void {
-    const rootIds = this.#host.rootMessageIds(scope.key);
+    const rootIds = isSubagentNamespace(scope.key.split("|"))
+      ? this.#host.rootMessageIds()
+      : new Set<string>();
     const messages = values?.[this.#host.messagesKey()];
     scope.values = values;
     // Deep agents' fork-mode subagents start from a copy of the parent's
-    // messages. A subgraph's messages are its own, also those it shares with
-    // the parent.
+    // messages. A subgraph's are its own, also those it shares with the
+    // parent.
     scope.list = ensureMessageInstances(
       Array.isArray(messages) ? messages : []
     ).filter((message) => message.id == null || !rootIds.has(message.id));

@@ -596,12 +596,8 @@ export class StreamOrchestrator<
       messagesKey: () => this.#accessors.getMessagesKey(),
       reconnectOptions: () => this.#reconnectOptions(),
       canFilter: () => this.#canFilter(),
-      rootMessageIds: (namespace) =>
-        [...this.stream.getSubagents().values()].some(
-          (subagent) => subagent.namespace.join("|") === namespace
-        )
-          ? new Set(this.messages.flatMap((message) => message.id ?? []))
-          : new Set(),
+      rootMessageIds: () =>
+        new Set(this.messages.flatMap((message) => message.id ?? [])),
       finished: (namespace) =>
         [...this.stream.getSubagents().values()].some(
           (subagent) =>

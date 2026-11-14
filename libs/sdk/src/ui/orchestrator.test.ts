@@ -5268,11 +5268,11 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("a subgraph's panel shows the messages it shares with the main conversation, and a subagent's leaves them out", async () => {
+    it("a subgraph's panel shows the messages it shares with the main conversation, and a subagent's leaves them out before its namespace is known", async () => {
       withFlags(flags);
-      const values = createSubagentStateValues();
-      values.messages[2].artifact = { checkpoint_ns: "tools:sub" };
-      (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState(createSubagentStateValues())
+      );
       (client.threads.getHistory as Mock).mockImplementation(
         async (_threadId: string, { checkpoint }: { checkpoint: { checkpoint_ns: string } }) => [
           createThreadState({
@@ -5287,6 +5287,7 @@ describe("StreamOrchestrator runs", () => {
       orch.initThreadId("t1");
       await orch.hydrationPromise;
       orch.reconstructSubagentsIfNeeded();
+      expect(orch.getSubagent("task-1")?.namespace).toEqual([]);
 
       const subgraph = orch.scopes.acquire(["child:1"]);
       const subagent = orch.scopes.acquire(["tools:sub"]);
