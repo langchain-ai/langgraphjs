@@ -675,9 +675,9 @@ export class CustomStreamOrchestrator<
           // StreamManager calls neither onSuccess nor onError for an abort,
           // or for an AbortError or TimeoutError of the transport's own.
           const reason = ended ?? (runSignal?.aborted ? "stopped" : "error");
-          // A run that ends without values almost always ended before saving
-          // its input. A stopped one may have saved it.
-          if (reason !== "stopped" && !sentValues && shownKeys.length > 0) {
+          // A transport needn't send values, so only a run that fails before
+          // sending any is taken to have failed before saving its input.
+          if (reason === "error" && !sentValues && shownKeys.length > 0) {
             this.stream.setStreamValues(
               (current) => current && restoreKeys(current, shownKeys)
             );

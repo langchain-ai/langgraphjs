@@ -984,9 +984,11 @@ describe("CustomStreamOrchestrator", () => {
       }
     );
 
-    it("keeps the keys its input set when its run sends values, or is stopped", async () => {
+    it("keeps the keys its input set when its run sends values, succeeds without them, or is stopped", async () => {
+      const reply = { id: "ai1", type: "ai", content: "done" };
       const transport = runsTransport(
         { events: [{ event: "values", data: { messages: [], count: 3 } }, failed] },
+        { events: [{ event: "messages", data: [reply, {}] }] },
         { events: [], untilAborted: true }
       );
       const orch = new CustomStreamOrchestrator<TestState>(
@@ -1000,11 +1002,14 @@ describe("CustomStreamOrchestrator", () => {
       await orch.submit({ messages: [], count: 2 });
       expect(orch.values.count).toBe(3);
 
-      const stopped = orch.submit({ messages: [], count: 4 });
-      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      await orch.submit({ messages: [], count: 4 });
+      expect(orch.values).toMatchObject({ messages: [reply], count: 4 });
+
+      const stopped = orch.submit({ messages: [], count: 5 });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(3));
       await orch.stop();
       await stopped;
-      expect(orch.values.count).toBe(4);
+      expect(orch.values.count).toBe(5);
       orch.dispose();
     });
 
