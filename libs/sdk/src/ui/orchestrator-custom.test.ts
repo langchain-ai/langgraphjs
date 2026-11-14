@@ -961,6 +961,58 @@ describe("CustomStreamOrchestrator", () => {
       orch.dispose();
     });
 
+    it.each([
+      { name: "removes a key", before: {} },
+      { name: "puts back a key's value", before: { count: 1 } },
+    ])(
+      "a run that fails before sending values $name its input set, and keeps its message",
+      async ({ before }) => {
+        const orch = new CustomStreamOrchestrator<TestState>(
+          createOptions({
+            transport: runsTransport({ events: [failed] }),
+            threadId: "t1",
+            initialValues: { messages: [], ...before },
+          })
+        );
+
+        await orch.submit({ messages: [human("h1", "hi")], count: 2 });
+
+        const { messages, ...rest } = orch.values;
+        expect(rest).toStrictEqual(before);
+        expect(messages.map(({ id }) => id)).toEqual(["h1"]);
+        orch.dispose();
+      }
+    );
+
+    it("keeps the keys its input set when its run sends values, succeeds without them, or is stopped", async () => {
+      const reply = { id: "ai1", type: "ai", content: "done" };
+      const transport = runsTransport(
+        { events: [{ event: "values", data: { messages: [], count: 3 } }, failed] },
+        { events: [{ event: "messages", data: [reply, {}] }] },
+        { events: [], untilAborted: true }
+      );
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          initialValues: { messages: [], count: 1 },
+        })
+      );
+
+      await orch.submit({ messages: [], count: 2 });
+      expect(orch.values.count).toBe(3);
+
+      await orch.submit({ messages: [], count: 4 });
+      expect(orch.values).toMatchObject({ messages: [reply], count: 4 });
+
+      const stopped = orch.submit({ messages: [], count: 5 });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(3));
+      await orch.stop();
+      await stopped;
+      expect(orch.values.count).toBe(5);
+      orch.dispose();
+    });
+
     it("calls onThreadId when it switches to another thread", async () => {
       const onThreadId = vi.fn();
       const orch = new CustomStreamOrchestrator<TestState>(
