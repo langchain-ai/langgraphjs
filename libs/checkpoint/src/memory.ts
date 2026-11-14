@@ -139,13 +139,12 @@ export class MemorySaver extends BaseCheckpointSaver {
     parentCheckpointId: string
   ) {
     const deseriablizableCheckpoint = mutableCheckpoint;
-    const parentKey = _generateKey(threadId, checkpointNs, parentCheckpointId);
 
     const pendingSends = await Promise.all(
-      Object.values(this.writes[parentKey] ?? {})
-        .filter(([_taskId, channel]) => channel === TASKS)
+      this._orderedWrites(threadId, checkpointNs, parentCheckpointId)
+        .filter(([, , [, channel]]) => channel === TASKS)
         .map(
-          async ([_taskId, _channel, writes]) =>
+          async ([, , [, , writes]]) =>
             await this.serde.loadsTyped("json", writes)
         )
     );
