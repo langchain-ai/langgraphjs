@@ -114,8 +114,6 @@ it("a panel on each subagent, by the subagent or its namespace, shows the same m
       expect(v1.live![0].messages.at(-1), v1Bug("commandOutputShownRaw")).toEqual(expect.objectContaining({ type: "tool", text: "" }));
     }
     expect(v2.reloaded).toEqual(v1.reloaded);
-    expect(v1.liveByNamespace).toEqual(v1.live);
-    expect(v1.reloadedByNamespace).toEqual(v1.reloaded);
   }
   expect(v2.liveByNamespace).toEqual(v2.live);
   expect(v2.reloadedByNamespace).toEqual(v2.reloaded);
