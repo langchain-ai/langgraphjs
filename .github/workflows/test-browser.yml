@@ -92,7 +92,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet "langgraph-cli[inmem]==0.4.43" \
             langgraph-api==0.19.0rc2 langgraph-api-core-bin==0.19.0rc2 \
-            langgraph-runtime-inmem==0.39.0rc2 deepagents==0.7.38
+            langgraph-runtime-inmem==0.39.0rc2 deepagents==0.7.39
           "$RUNNER_TEMP/venv/bin/langgraph" dev --port 2124 --host 127.0.0.1 \
             --no-browser --no-reload --n-jobs-per-worker 10 \
             > "$RUNNER_TEMP/server.log" 2>&1 &

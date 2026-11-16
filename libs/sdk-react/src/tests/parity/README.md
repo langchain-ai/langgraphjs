@@ -18,7 +18,7 @@ On the Python server, `langgraph dev` serves the twins of the fixtures in `pytho
 
 ```bash
 python3 -m venv ~/parity-venv
-~/parity-venv/bin/pip install "langgraph-cli[inmem]==0.4.43" langgraph-api==0.19.0rc2 langgraph-api-core-bin==0.19.0rc2 langgraph-runtime-inmem==0.39.0rc2 deepagents==0.7.38
+~/parity-venv/bin/pip install "langgraph-cli[inmem]==0.4.43" langgraph-api==0.19.0rc2 langgraph-api-core-bin==0.19.0rc2 langgraph-runtime-inmem==0.39.0rc2 deepagents==0.7.39
 PARITY_BACKEND=python PARITY_LANGGRAPH=~/parity-venv/bin/langgraph pnpm test:parity
 ```
 

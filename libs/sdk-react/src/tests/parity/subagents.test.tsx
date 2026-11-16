@@ -284,11 +284,7 @@ it.skipIf(jsGraphs)("an async subagent's panel on its own thread shows its run l
   });
 
   if (v1.loading.includes(true)) {
-    expectSameSummary(v1, v2, {
-      fields: ["callbacks", "streamedInParts"],
-      because: ["joinedRunCompletedWithId", "asyncSubagentRepliesArriveWhole"],
-    });
-    expect(v1.streamedInParts, is("asyncSubagentRepliesArriveWhole")).toBe(true);
+    expectSameSummary(v1, v2, { fields: ["callbacks"], because: ["joinedRunCompletedWithId"] });
   }
   expect(v2.final.messages.map((m) => m.text)).toEqual([
     "Research the protocol's history",
@@ -297,5 +293,5 @@ it.skipIf(jsGraphs)("an async subagent's panel on its own thread shows its run l
     "Research finished.",
   ]);
   expect(v2.loading).toEqual([false, true, false, true, false]);
-  expect(v2.streamedInParts, is("asyncSubagentRepliesArriveWhole")).toBe(false);
+  expect(v2.streamedInParts).toBe(true);
 });

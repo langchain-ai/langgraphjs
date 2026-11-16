@@ -157,11 +157,6 @@ export const DIFFERENCES = {
     v1: "a streamed AI message's content is an array of content blocks, and a model called inside a node of 1.x's run can return them to the graph",
     v2: "it is a string, as the server stores it and as 1.x shows after a reload, and graph code sees a string",
   },
-  asyncSubagentRepliesArriveWhole: {
-    guide: null,
-    v1: "a panel on an async subagent's thread streams the child's reply in parts, since the child's runs inherit the lead run's protocol marker and stream every mode",
-    v2: "it shows the reply when the child's step ends: deepagents creates the child's runs with the default `values` stream mode, so a join has no tokens",
-  },
 } as const satisfies Record<string, { guide: string | null; v1: string; v2: string }>;
 
 export type Difference = keyof typeof DIFFERENCES;
