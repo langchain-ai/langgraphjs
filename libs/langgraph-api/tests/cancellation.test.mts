@@ -42,6 +42,19 @@ describe("run cancellation reason", () => {
     expect(getCancelAction(controller.signal)).toBe("rollback");
   });
 
+  it("does not mark a non-cancel reason passed to the controller", () => {
+    const runId = "cancel-test-other";
+    const signal = StreamManager.lock(runId);
+    try {
+      const timeout = new DOMException("timed out", "TimeoutError");
+      (StreamManager.getControl(runId) as AbortController).abort(timeout);
+      expect(signal.reason).toBe(timeout);
+      expect(getCancelAction(signal)).toBeUndefined();
+    } finally {
+      StreamManager.unlock(runId);
+    }
+  });
+
   it("does not treat other aborts as a cancel", () => {
     const plain = new AbortController();
     plain.abort();

@@ -10,7 +10,11 @@ import { serializeError } from "../utils/serde.mjs";
 import { checkpointer } from "./checkpoint.mjs";
 import { FileSystemPersistence } from "./persist.mjs";
 import { store } from "./store.mjs";
-import { RunCancellation, type CancelAction } from "../utils/cancellation.mjs";
+import {
+  RunCancellation,
+  isCancelAction,
+  type CancelAction,
+} from "../utils/cancellation.mjs";
 import type {
   Metadata,
   ThreadStatus,
@@ -134,8 +138,11 @@ class Queue {
 }
 
 class CancellationAbortController extends AbortController {
-  abort(action: CancelAction) {
-    super.abort(new RunCancellation(action));
+  abort(reason?: CancelAction | unknown) {
+    // Only deliberate cancels carry the marker; any other reason (a timeout,
+    // an error from a custom caller) is passed through untouched so it is
+    // never traced as `cancelled`.
+    super.abort(isCancelAction(reason) ? new RunCancellation(reason) : reason);
   }
 }
 

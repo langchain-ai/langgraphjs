@@ -14,7 +14,7 @@ export class RunCancellation extends Error {
   }
 }
 
-const isCancelAction = (value: unknown): value is CancelAction =>
+export const isCancelAction = (value: unknown): value is CancelAction =>
   value === "interrupt" || value === "rollback";
 
 /**
