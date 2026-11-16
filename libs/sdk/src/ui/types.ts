@@ -1480,6 +1480,13 @@ export type AnyStreamCustomOptions<
    * thread switch. `runId` is the one its `metadata` event sent.
    */
   onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
+  /**
+   * The root `values` keys to show: a run's streamed values, a submit's
+   * optimistic values and `initialValues` keep only these, the messages key
+   * and `__interrupt__`. `[]` keeps only the messages key. Unset shows every
+   * key. Read once, at construction.
+   */
+  stateKeys?: readonly (keyof StateType & string)[];
 };
 
 export type CustomSubmitOptions<

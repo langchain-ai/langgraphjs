@@ -5957,4 +5957,250 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
   });
+
+  describe("stateKeys", () => {
+    const fixedFields = [
+      "next",
+      "tasks",
+      "checkpoint",
+      "parent_checkpoint",
+      "created_at",
+      "metadata",
+    ];
+
+    const selectOf = (mock: unknown, call = 0) =>
+      new Set((mock as Mock).mock.calls[call].at(-1)?.select);
+
+    it("asks getState for its own fields, the listed keys and messages", async () => {
+      const orch = orchestrator({ stateKeys: ["count"] });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect((client.threads.getState as Mock).mock.calls[0][0]).toBe("t1");
+      expect(selectOf(client.threads.getState)).toEqual(
+        new Set([...fixedFields, "values.count", "values.messages"])
+      );
+      orch.dispose();
+    });
+
+    it("asks getHistory for the same fields with fetchStateHistory", async () => {
+      const orch = orchestrator({
+        stateKeys: ["count"],
+        fetchStateHistory: { limit: 3 },
+      });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect((client.threads.getHistory as Mock).mock.calls[0][1].limit).toBe(3);
+      expect(selectOf(client.threads.getHistory)).toEqual(
+        new Set([...fixedFields, "values.count", "values.messages"])
+      );
+      orch.dispose();
+    });
+
+    it("asks for a custom messagesKey, and only it with []", async () => {
+      const orch = new StreamOrchestrator<TestState>(
+        createOptions({ stateKeys: [] }),
+        { ...createAccessors(client), getMessagesKey: () => "chat" }
+      );
+      orch.activate();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(selectOf(client.threads.getState)).toEqual(
+        new Set([...fixedFields, "values.chat"])
+      );
+      orch.dispose();
+    });
+
+    it("sends no select when unset", async () => {
+      const orch = orchestrator({ fetchStateHistory: true });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.setThreadId("t2");
+      orch.dispose();
+
+      const fresh = orchestrator();
+      fresh.initThreadId("t3");
+      await fresh.hydrationPromise;
+
+      expect(client.threads.getHistory).toHaveBeenCalledWith("t1", { limit: 10 });
+      expect(client.threads.getState).toHaveBeenCalledWith("t3");
+      fresh.dispose();
+    });
+
+    it("shows every key when unset", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({
+          messages: [message("m1")],
+          count: 1,
+          files: ["a.txt"],
+        } as TestState)
+      );
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.values).toEqual({
+        messages: [message("m1")],
+        count: 1,
+        files: ["a.txt"],
+      });
+      orch.dispose();
+    });
+
+    it("shows only the listed keys and messages from a server that ignores select", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({
+          messages: [message("m1")],
+          count: 1,
+          files: ["a.txt"],
+        } as TestState)
+      );
+      const orch = orchestrator({ stateKeys: ["count"] });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.values).toEqual({ messages: [message("m1")], count: 1 });
+      orch.dispose();
+    });
+
+    it("narrows each history entry the same way", async () => {
+      const full = (id: string) => ({
+        ...createThreadState({
+          messages: [message(id)],
+          count: 1,
+          files: ["a.txt"],
+        } as TestState),
+        checkpoint: {
+          thread_id: "t1",
+          checkpoint_id: id,
+          checkpoint_ns: "",
+          checkpoint_map: null,
+        },
+      });
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        full("cp-2"),
+        { ...full("cp-1"), checkpoint: { ...full("cp-1").checkpoint } },
+      ]);
+      const orch = orchestrator({
+        stateKeys: ["count"],
+        fetchStateHistory: true,
+      });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(
+        orch.historyData.data?.map((state) => Object.keys(state.values).sort())
+      ).toEqual([
+        ["count", "messages"],
+        ["count", "messages"],
+      ]);
+      orch.dispose();
+    });
+
+    it("narrows a run's streamed values, keeping its interrupts", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [
+          {
+            event: "values",
+            data: { messages: [message("m1")], count: 2, files: ["a.txt"] },
+          },
+          // As langgraph sends it when the graph pauses.
+          {
+            event: "values",
+            data: { __interrupt__: [{ id: "int-1", value: "approve?" }] },
+          },
+        ],
+        { ended: ended.promise }
+      );
+      const orch = orchestrator({ stateKeys: ["count"] });
+      orch.initThreadId("t1");
+
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.interrupts).toHaveLength(1));
+
+      expect(Object.keys(orch.values).sort()).toEqual([
+        "__interrupt__",
+        "count",
+        "messages",
+      ]);
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual([
+        "int-1",
+      ]);
+      ended.resolve();
+      orch.dispose();
+    });
+
+    it("sends an unlisted input key to the run without showing it", async () => {
+      const created = deferred();
+      mockRunStream([], { created: created.promise });
+      const orch = orchestrator({ stateKeys: ["count"] });
+      orch.initThreadId("t1");
+
+      void orch.submit({
+        messages: [message("h1")],
+        count: 1,
+        files: ["a.txt"],
+      } as TestState);
+      await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalled());
+
+      expect(streamInput()).toMatchObject({ files: ["a.txt"] });
+      expect(Object.keys(orch.values).sort()).toEqual(["count", "messages"]);
+      created.resolve();
+      orch.dispose();
+    });
+
+    it("narrows initialValues", () => {
+      const orch = orchestrator({
+        stateKeys: ["count"],
+        initialValues: { messages: [], count: 0, files: [] } as TestState,
+      });
+
+      expect(orch.values).toEqual({ messages: [], count: 0 });
+      orch.dispose();
+    });
+
+    it("builds the branch tree from a narrowed history", async () => {
+      const checkpoint = (id: string) => ({
+        thread_id: "t1",
+        checkpoint_id: id,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      });
+      const state = (id: string, parent: string | null, text: string) => ({
+        ...createThreadState({
+          messages: [message(text)],
+          files: [text],
+        } as TestState),
+        checkpoint: checkpoint(id),
+        parent_checkpoint: parent == null ? null : checkpoint(parent),
+      });
+      // Two edits of the same message: two branches off cp-0.
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        state("cp-2", "cp-0", "second"),
+        state("cp-1", "cp-0", "first"),
+        state("cp-0", null, "root"),
+      ]);
+      const orch = orchestrator({ stateKeys: [], fetchStateHistory: true });
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      expect(orch.values).toEqual({ messages: [message("second")] });
+
+      const head = orch.branchContext.branchByCheckpoint["cp-2"];
+      expect(head.branchOptions).toHaveLength(2);
+      orch.setBranch(head.branchOptions!.find((b) => b !== head.branch)!);
+      expect(orch.values).toEqual({ messages: [message("first")] });
+      orch.dispose();
+    });
+  });
 });

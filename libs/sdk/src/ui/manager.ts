@@ -30,6 +30,7 @@ import {
   isSubagentNamespace,
 } from "./subagents.js";
 import type { SubagentStreamInterface } from "./types.js";
+import { pickKeys } from "./state-keys.js";
 
 /**
  * Special ID used by LangGraph's messagesStateReducer to signal
@@ -197,6 +198,15 @@ export interface StreamManagerOptions {
    * Framework SDKs pass `toMessageClass` (identity) to keep class instances.
    */
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
+
+  /**
+   * The only root values keys shown. Every write of the stream's values
+   * keeps only these, whether from a `values` event, a `messages` event, a
+   * callback's `mutate` or a stop. Unset shows every key.
+   *
+   * @internal The engines' `stateKeys`.
+   */
+  keepKeys?: ReadonlySet<string>;
 }
 
 export class StreamManager<
@@ -216,6 +226,8 @@ export class StreamManager<
   private filterSubagentMessages: boolean;
 
   private toMessage: (chunk: BaseMessage) => Message | BaseMessage;
+
+  private keepKeys: ReadonlySet<string> | undefined;
 
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -242,6 +254,7 @@ export class StreamManager<
     this.throttle = options.throttle;
     this.filterSubagentMessages = options.filterSubagentMessages ?? false;
     this.toMessage = options.toMessage ?? toMessageDict;
+    this.keepKeys = options.keepKeys;
     this.subagentManager = new SubagentManager({
       subagentToolNames: options.subagentToolNames,
       onSubagentChange: () => this.bumpVersion(),
@@ -577,14 +590,13 @@ export class StreamManager<
       | ((prev: StateType | null, kind: "stream" | "stop") => StateType | null),
     kind: "stream" | "stop" = "stream"
   ) => {
-    if (typeof values === "function") {
-      const [prevValues, prevKind] = this.state.values ?? [null, "stream"];
-      const nextValues = values(prevValues, prevKind);
-      this.setState({ values: nextValues != null ? [nextValues, kind] : null });
-    } else {
-      const nextValues = values != null ? [values, kind] : null;
-      this.setState({ values: nextValues as [StateType, "stream" | "stop"] });
-    }
+    const [prevValues, prevKind] = this.state.values ?? [null, "stream"];
+    const nextValues =
+      typeof values === "function" ? values(prevValues, prevKind) : values;
+    this.setState({
+      values:
+        nextValues != null ? [pickKeys(nextValues, this.keepKeys), kind] : null,
+    });
   };
 
   private getMutateFn = (kind: "stream" | "stop", historyValues: StateType) => {
