@@ -161,7 +161,7 @@ export interface Side {
 
 export interface Panel {
   readonly latest: PanelSnapshot;
-  until(check: (panel: PanelSnapshot) => unknown, what: string): Promise<void>;
+  until(check: (panel: PanelSnapshot) => unknown, what: string, timeout?: number): Promise<void>;
   unmount(): Promise<void>;
 }
 
@@ -206,12 +206,12 @@ function makeSide(
         get latest() {
           return latest;
         },
-        async until(check, what) {
+        async until(check, what, timeout = 30_000) {
           await vi.waitFor(
             () => {
               if (!check(latest)) throw new Error(`${name} panel: waiting for ${what}`);
             },
-            { timeout: 30_000, interval: 20 }
+            { timeout, interval: 20 }
           );
         },
         async unmount() {

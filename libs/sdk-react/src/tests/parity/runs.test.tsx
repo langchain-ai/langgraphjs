@@ -321,7 +321,9 @@ it("opening a thread while a run streams never shows fewer messages than the thr
   expect(v1.rewound).toBe(false);
   expect(v2.rewound).toBe(false);
   expect(texts(v2.summary)).toEqual(["one", "Done.", "two", "Done.", "wait 1500", "Done."]);
-  if (texts(v1.summary).length === 6) expectSameSummary(v1.summary, v2.summary);
+  if (texts(v1.summary).length === 6) {
+    expectSameSummary(v1.summary, v2.summary, { fields: ["callbacks"], because: ["joinedRunCompletedWithId"] });
+  }
 });
 
 itOnAgentServer("a remount mid-run rejoins the run without a rewind", async () => {
