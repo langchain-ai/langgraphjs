@@ -246,7 +246,7 @@ it("a reply cut off by stop() stays gone after the next turn and a reload", asyn
 it("stop() after a reload cancels the run on 2.0, and 1.x leaves it running", async () => {
   const { v1, v2 } = await onBothSides(async (side) => {
     const first = await side.mount({ assistantId: "slow_graph" });
-    void first.stream.submit(say("wait 2000")).catch(() => undefined);
+    void first.stream.submit(say("wait 6000")).catch(() => undefined);
     await first.until(() => first.calls.some(([name]) => name === "onCreated"), "the run");
     const threadId = first.stream.threadId!;
     first.stream.stop({ cancel: false });
