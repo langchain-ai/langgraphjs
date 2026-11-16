@@ -20,6 +20,8 @@
     "parallel_fanout": "./graphs.py:parallel_fanout",
     "parallel_subgraph": "./graphs.py:parallel_subgraph",
     "async_subagent": "./graphs.py:async_subagent",
-    "async_researcher": "./graphs.py:async_researcher"
+    "async_researcher": "./graphs.py:async_researcher",
+    "five_workers": "./graphs.py:five_workers",
+    "async_reviewer": "./graphs.py:async_reviewer"
   }
 }

@@ -1,9 +1,12 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import { FANOUT_WORKER_COUNT } from "../fixtures/parallel-constants.js";
 import { is } from "./differences.js";
 import {
+  asyncTaskThread,
+  client,
   expectSameSummary,
+  interruptSaved,
   normalizeIds,
   onBothSides,
   jsGraphs,
@@ -286,14 +289,11 @@ for (const graph of Object.keys(PANEL_AFTER_RUN)) {
 
 it.skipIf(jsGraphs)("an async subagent's panel on its own thread shows its run live, and its next run", async () => {
   const say = (content: string) => ({ messages: [{ type: "human", content }] });
-  const taskThread = (stream: Probe["stream"]) =>
-    Object.values((stream.values as { async_tasks?: Record<string, { thread_id: string }> }).async_tasks ?? {})[0]
-      ?.thread_id;
   const { v1, v2 } = await onBothSides(async (side) => {
     const lead = await side.mount({ assistantId: "async_subagent" });
     void lead.stream.submit(say("Research the protocol's history")).catch(() => undefined);
-    await lead.until((s) => taskThread(s) != null, "the task");
-    const threadId = taskThread(lead.stream)!;
+    await lead.until((s) => asyncTaskThread(s.values) != null, "the task");
+    const threadId = asyncTaskThread(lead.stream.values)!;
     const panel = await side.mount({ assistantId: "async_researcher", threadId });
     await runsOf(threadId, (runs) => ended(runs) && runs.length === 1);
     await lead.until((s) => !s.isLoading, "the lead's run");
@@ -313,4 +313,74 @@ it.skipIf(jsGraphs)("an async subagent's panel on its own thread shows its run l
   ]);
   expect(v2.loading).toEqual([false, true, false, true, false]);
   expect(v2.streamedInParts).toBe(true);
+});
+
+it.skipIf(jsGraphs)("with five subagent panels and an async subagent's panel open, respond() and stop() still go through", async () => {
+  const parts = [1, 2, 3, 4, 5].map((i) => `Check part ${i}`);
+  const { v1, v2 } = await onBothSides(async (side) => {
+    const lead = await side.mount({ assistantId: "five_workers" });
+    void lead.stream.submit({ messages: [{ type: "human", content: "Check the plan" }] }).catch(() => undefined);
+    await lead.until(
+      (s) => [...s.subagents.values()].filter((sub) => sub.status === "running").length === parts.length,
+      "the running workers"
+    );
+    const threadId = lead.stream.threadId!;
+    const reviewThreadId = await vi.waitFor(
+      async () => {
+        const [thread] = await client.threads.search({ metadata: { parent_thread_id: threadId } });
+        if (thread == null) throw new Error(`no review thread for ${threadId}`);
+        return thread.thread_id;
+      },
+      { timeout: 30_000, interval: 100 }
+    );
+    await interruptSaved(reviewThreadId);
+    const review = await side.mount({ assistantId: "async_reviewer", threadId: reviewThreadId });
+    await review.until((s) => s.interrupt != null, "the review's approval");
+
+    const workers = subagentsOf(lead);
+    const panels: Panel[] = [];
+    for (const worker of workers) panels.push(await side.mountPanel(lead.stream, worker));
+    const shown = await Promise.all(
+      panels.map((panel, i) =>
+        panelShows(side, panel, (p) => p.messages.some((m) => m.type === "ai" && m.text.length > 0), `${workers[i].taskInput}'s reply`)
+      )
+    );
+    if (side.name === "2.0") {
+      await expect
+        .poll(() => [...side.open].filter((stream) => stream.includes(threadId)).length, {
+          message: "the run's own stream and one join for all five panels",
+        })
+        .toBe(2);
+    }
+
+    await review.stream.respond({ approved: true });
+    const [runWhenAnswered] = await client.runs.list(threadId);
+    await lead.stream.stop();
+    const runs = await runsOf(threadId, ended);
+    await runsOf(reviewThreadId, (all) => all.length === 2 && ended(all));
+    await review.until((s) => !s.isLoading && s.messages.at(-1)?.text === "Review finished.", "the review's reply");
+    return {
+      panels: shown.every(Boolean)
+        ? panels.map((panel) => panel.latest.messages.find((m) => m.type === "human")?.text).sort()
+        : null,
+      runWhenAnswered: runWhenAnswered.status,
+      runs: runs.map((run) => run.status),
+      lead: await summary(lead),
+      review: await summary(review),
+    };
+  });
+
+  expect(v2.panels).toEqual(parts);
+  if (v1.panels != null) expect(v1.panels).toEqual(v2.panels);
+  for (const side of [v1, v2]) {
+    expect(side.runWhenAnswered).toBe("running");
+    expect(side.runs).toEqual(["interrupted"]);
+  }
+  expect(v2.lead.callbacks.at(-1)).toEqual(["onCompleted", expect.objectContaining({ reason: "stopped" })]);
+  expectSameSummary(v1.review, v2.review, {
+    fields: ["callbacks", "loading"],
+    because: ["pausedThreadBlinksLoading", "answerRunsUntracked"],
+  });
+  expect(v2.review.final.messages.map((m) => m.text)).toEqual(["Review the plan", "Review finished."]);
+  expect(v2.review.loading).toEqual([false, true, false]);
 });
