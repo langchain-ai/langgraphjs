@@ -1,0 +1,33 @@
+libs/langgraph-cli/tests/deploy-byoc.test.mts
+  s_9929d82d7a093b::t_c64a83962bfc32 1-318
+.changeset/byoc-cli-deploy.md
+  s_9929d82d7a093b::t_df5fa4fe07bea1 1-5
+libs/langgraph-cli/src/cli/deploy.mts
+  s_9929d82d7a093b::t_5a3689c0bfb280 34,37,40,57-58,73-79,301,343-426,471,592,617-627,650,652,1334,1430,1450,1497,1557,1585,1612,1646,1784-1787,1815,1879,1901,1915,1942
+libs/langgraph-cli/src/cli/utils/deploy-helpers.mts
+  s_9929d82d7a093b::t_64bd1dbd819e9d 90-92,448-477,483,489,496
+libs/langgraph-cli/src/cli/utils/host-backend.mts
+  s_9929d82d7a093b::t_7a8ce275349ab1 8-9,38-40,44,46,50,54-74,89,92-94,96,100-101,104,107,122,145,180,182-186,207-297,304,314,322,561-594
+libs/langgraph-cli/tests/deploy-agent.test.mts
+  s_9929d82d7a093b::t_b982d6816f3394 66-76
+libs/langgraph-cli/tests/deploy-helpers.test.mts
+  s_9929d82d7a093b::t_8ecc2555b02984 13-14,179-199,206,208,212-214
+libs/langgraph-cli/tests/host-backend.test.mts
+  s_9929d82d7a093b::t_9e1b37ac338bb0 3,6,54,127-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6703b2acc2e88c95c5974a97ace3ffe049b7b17c",
+  "prompts": {},
+  "sessions": {
+    "s_9929d82d7a093b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "eea50cb2-d32f-4abf-98b0-ea2c15e7cc89",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "syachamaneni-lc <sreekara.yachamaneni@langchain.dev>"
+    }
+  }
+}
