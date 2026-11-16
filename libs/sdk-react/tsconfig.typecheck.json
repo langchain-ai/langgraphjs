@@ -6,11 +6,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.test-d.ts", "src/**/*.d.ts", "src/**/*.ts", "src/**/*.tsx"],
-  "exclude": [
-    "src/tests/components",
-    "src/tests/fixtures",
-    "src/tests/stream.*.test.tsx",
-    "src/tests/mock-server.ts",
-    "src/tests/test-utils.ts"
-  ]
+  "exclude": ["src/tests/fixtures", "src/tests/parity"]
 }

@@ -25,6 +25,7 @@ export class StableFakeListChatModel extends FakeListChatModel {
 
     const streamMessageId = `stategraph-message-${this.streamIndex++}`;
     for await (const text of response) {
+      if (this.sleep) await new Promise((r) => setTimeout(r, this.sleep));
       const chunk = this._createResponseChunk(text);
       chunk.message.id = streamMessageId;
       chunk.message.lc_kwargs.id = streamMessageId;
@@ -42,9 +43,10 @@ export class StableFakeListChatModel extends FakeListChatModel {
   }
 }
 
-export const createStableTextModel = (responses: string[]) =>
+export const createStableTextModel = (responses: string[], sleep?: number) =>
   new StableFakeListChatModel({
     responses,
+    sleep,
   });
 
 /**
@@ -104,15 +106,17 @@ export function createDeterministicToolCallingModel(options: {
 }
 
 export const searchWebTool = tool(
-  async ({ query }: { query: string }) =>
-    JSON.stringify({
+  async ({ query }: { query: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return JSON.stringify({
       status: "success",
       query,
       results: [
         { title: `Result for: ${query}`, url: "https://example.com/1" },
         { title: `More on: ${query}`, url: "https://example.com/2" },
       ],
-    }),
+    });
+  },
   {
     name: "search_web",
     description: "Search the web for information on a topic",

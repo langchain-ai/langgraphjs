@@ -19,11 +19,12 @@ const GraphState = Annotation.Root({
   }),
 });
 
-const reviewNode = (state: typeof GraphState.State) => {
+const reviewNode = async (state: typeof GraphState.State) => {
   const decision = interrupt({
     prompt: "Approve the outbound action?",
     request: state.request,
   });
+  await new Promise((resolve) => setTimeout(resolve, 400));
 
   return {
     decision:

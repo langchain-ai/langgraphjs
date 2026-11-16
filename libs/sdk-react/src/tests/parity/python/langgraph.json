@@ -1,0 +1,25 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "stategraph_text": "./graphs.py:stategraph_text",
+    "create_agent": "./graphs.py:weather_agent",
+    "deep_agent": "./graphs.py:deep_agent",
+    "interrupt_graph": "./graphs.py:interrupt_graph",
+    "interrupt_card_graph": "./graphs.py:interrupt_card_graph",
+    "interrupt_once_graph": "./graphs.py:interrupt_once_graph",
+    "multi_interrupt_graph": "./graphs.py:multi_interrupt_graph",
+    "nested_interrupt_graph": "./graphs.py:nested_interrupt_graph",
+    "deep_agent_interrupt": "./graphs.py:deep_agent_interrupt",
+    "error_graph": "./graphs.py:error_graph",
+    "subgraph_graph": "./graphs.py:subgraph_graph",
+    "embedded_subgraph_graph": "./graphs.py:embedded_subgraph_graph",
+    "custom_channel_graph": "./graphs.py:custom_channel_graph",
+    "slow_graph": "./graphs.py:slow_graph",
+    "remove_message_graph": "./graphs.py:remove_message_graph",
+    "stateful_values_graph": "./graphs.py:stateful_values_graph",
+    "parallel_fanout": "./graphs.py:parallel_fanout",
+    "parallel_subgraph": "./graphs.py:parallel_subgraph",
+    "async_subagent": "./graphs.py:async_subagent",
+    "async_researcher": "./graphs.py:async_researcher"
+  }
+}

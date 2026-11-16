@@ -11,7 +11,7 @@ const modelMap = new Map<string, ReturnType<typeof createStableTextModel>>();
 
 const getModel = (threadId: string) => {
   if (!modelMap.has(threadId)) {
-    modelMap.set(threadId, createStableTextModel(["Plan accepted."]));
+    modelMap.set(threadId, createStableTextModel(["Plan accepted."], 15));
   }
   return modelMap.get(threadId)!;
 };

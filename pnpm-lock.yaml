@@ -2318,9 +2318,6 @@ importers:
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
-      '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -2354,9 +2351,6 @@ importers:
       deepagents:
         specifier: ^1.10.5
         version: 1.10.5(@opentelemetry/api@1.9.0)(langsmith@0.11.5(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)(zod-to-json-schema@3.25.2(zod@4.6.6))
-      hono:
-        specifier: '>=4.13.11 <5'
-        version: 4.13.13
       langchain:
         specifier: ^1.6.0
         version: 1.6.0(@langchain/core@1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1))(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
