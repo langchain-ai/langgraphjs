@@ -1,0 +1,20 @@
+libs/langgraph-api/src/storage/ops.mts
+  s_f91e4eaec06732::t_c1f2853d428c3d 137
+  s_f91e4eaec06732::t_9447ef149100a3 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c18e5ff38c67b77f8ec2567e05c3b637b91cc1b",
+  "prompts": {},
+  "sessions": {
+    "s_f91e4eaec06732": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a834b05-af9e-40a6-ab46-8d3c718cb59c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Kiewan Villatel <kiewan@langchain.dev>"
+    }
+  }
+}
