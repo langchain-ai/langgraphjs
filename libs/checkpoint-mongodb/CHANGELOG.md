@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-mongodb
 
+## 1.5.2
+
+### Patch Changes
+
+- [#3325](https://github.com/langchain-ai/langgraphjs/pull/3325) [`9e9297a`](https://github.com/langchain-ai/langgraphjs/commit/9e9297aeffc0e643985774e9b30f6f13ced2e0bc) Thanks [@jkennedyvz](https://github.com/jkennedyvz)! - fix(langgraph-checkpoint-mongodb): only pre-filter vector search on declared index fields and allow deleting items under slash-containing namespace labels
+
 ## 1.5.1
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @langchain/langgraph-checkpoint
 
+## 1.2.3
+
+### Patch Changes
+
+- [#3299](https://github.com/langchain-ai/langgraphjs/pull/3299) [`a4a8cb4`](https://github.com/langchain-ai/langgraphjs/commit/a4a8cb4db09d0acfc286b16dbb803f1240739924) Thanks [@eliornl](https://github.com/eliornl)! - The batched store a compiled graph wraps around its store now wakes when a call is queued instead of polling a 0 ms timer, which Node clamps to 1 ms. Store calls made from a node no longer wait about 1 ms each: a loop doing one `get` and one `put` per step runs 10.9x faster.
+
+- [#3300](https://github.com/langchain-ai/langgraphjs/pull/3300) [`6aa450d`](https://github.com/langchain-ai/langgraphjs/commit/6aa450d3e3a0ec277390be20c1d3f33cdb09ce96) Thanks [@eliornl](https://github.com/eliornl)! - `InMemoryStore.search` stops collecting matches at `offset + limit` when there is no query embedding, and copies only the returned page. A first page is about 20x faster on a 1,000-item namespace, and a search over a namespace with hundreds of thousands of items no longer throws `RangeError`.
+
 ## 1.2.2
 
 ### Patch Changes
