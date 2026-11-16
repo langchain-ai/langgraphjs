@@ -93,7 +93,7 @@ export const DIFFERENCES = {
     v2: "every write arrives as `{ payload: <what it wrote> }`",
   },
   submitOptionsReachServer: {
-    guide: "- `submit()` takes `command`, `interruptBefore` and `interruptAfter`.",
+    guide: "### `interruptBefore` and `interruptAfter` take effect",
     v1: "submit() drops command, interruptBefore and interruptAfter",
     v2: "submit() sends them",
   },
