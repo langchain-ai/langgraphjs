@@ -1802,6 +1802,20 @@ describe("StreamManager", () => {
       expect(mgr.getActiveSubagents()).toEqual([]);
     });
 
+    it("gives a pending subagent depth 1 before its namespace is known", () => {
+      const mgr = new SubagentManager({
+        subagentToolNames: ["task"],
+      });
+
+      mgr.registerFromToolCalls(toolCalls, "msg-1");
+
+      expect(mgr.getSubagent("call_1")).toMatchObject({
+        namespace: [],
+        parentId: null,
+        depth: 1,
+      });
+    });
+
     it("returns pending subagents from getSubagentsByMessage before they start running", () => {
       const mgr = new SubagentManager({
         subagentToolNames: ["task"],

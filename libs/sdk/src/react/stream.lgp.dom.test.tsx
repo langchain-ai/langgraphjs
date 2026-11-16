@@ -345,6 +345,33 @@ describe("useStream (old engine) submit onError", () => {
   });
 });
 
+describe("useStream (old engine) thread load", () => {
+  it("shows a task error the thread saved as an object as an Error", async () => {
+    const client = createClient();
+    serve(
+      client,
+      threadState(
+        { messages: [] },
+        {
+          tasks: [
+            {
+              id: "task-1",
+              name: "agent",
+              error: { message: "boom", name: "Error" },
+              interrupts: [],
+            },
+          ],
+        }
+      )
+    );
+
+    const view = await renderStream(client, { threadId: "t1" });
+
+    expect(view.current.error).toBeInstanceOf(Error);
+    expect((view.current.error as Error).message).toBe("boom");
+  });
+});
+
 describe("useStream (old engine) rejoin on mount", () => {
   afterEach(() => {
     window.sessionStorage.clear();
@@ -1515,6 +1542,24 @@ describe("useStream (old engine) thread state after stop", () => {
       expect(view.current.messages).toEqual([]);
     }
   );
+
+  it("stop() right after a submit shows none of its input and sends nothing", async () => {
+    const client = createClient();
+    serve(client, threadState({ messages: [message("h0")] }));
+    const view = await renderStream(client, { threadId: "t1" });
+
+    await act(async () => {
+      const running = view.current.submit(
+        { messages: [message("h1")] },
+        { optimisticValues: { count: 1 } }
+      );
+      await view.current.stop();
+      await running;
+    });
+
+    expect(view.current.values).toEqual({ messages: [message("h0")] });
+    expect(client.runs.stream).not.toHaveBeenCalled();
+  });
 
   it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
     "stop does not overwrite a run queued before it (fetchStateHistory: $fetchStateHistory)",

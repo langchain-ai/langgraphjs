@@ -58,7 +58,13 @@ import {
   planStopRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
-import { prepareSubmitInput, runStartValues } from "./optimistic-input.js";
+import {
+  prepareSubmitInput,
+  restoreKeys,
+  runStartValues,
+  snapshotKeys,
+  type OptimisticKeySnapshot,
+} from "./optimistic-input.js";
 import {
   MessageMetadataTracker,
   findForkPoints,
@@ -147,6 +153,24 @@ function withV1Streaming(
     configurable: { ...config?.configurable, __event_streaming_v2: false },
   };
 }
+
+/**
+ * Whether a run streams v3 frames, as runs `@langchain/react` 1.x starts do,
+ * also when joined. Only its own `metadata`, `error` and `end` events have
+ * the shape this engine reads, so its state and its subagents' are read from
+ * the thread instead. The JS dev server marks such a run in its kwargs, the
+ * Agent Server in its config.
+ */
+function streamsV3(run: Run | undefined): boolean {
+  const kwargs = run?.kwargs;
+  return (
+    kwargs?.__protocol_stream_run === true ||
+    (kwargs?.config as Config | undefined)?.configurable
+      ?.__event_streaming_v2 === true
+  );
+}
+
+const V3_READABLE_EVENTS = new Set(["metadata", "error", "end"]);
 
 /** Run events that only servers with `stream_lifecycle` send on run routes. */
 const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
@@ -317,8 +341,11 @@ export type StreamOrchestratorOptions<
      */
     durableRuns?: boolean;
 
-    /** Called when the stream of each run this orchestrator streams ends. */
-    onRunEnd?: (run: { runId: string; reason: RunEndReason }) => void;
+    /**
+     * Called when the stream of each run this orchestrator streams ends, and
+     * without a `runId` for a submit stopped before its run's id came.
+     */
+    onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
 
     /** Idle-reconnect policy for run streams, as `client.runs.stream` takes it. */
     streamIdleReconnect?: IdleReconnectMode;
@@ -450,6 +477,15 @@ export class StreamOrchestrator<
   /** Aborted by `stop()` to cancel the own run being streamed once its id arrives. */
   #stopOwnRun: AbortController | undefined;
 
+  /** Settles once the last submit queued on the server is created, or not. */
+  #queueing: Promise<void> = Promise.resolve();
+
+  /** Bumped when the queue is emptied, which drops the submits still waiting to join it. */
+  #queueDrops = 0;
+
+  /** Settles once the last run streamed here has called `onRunEnd`. */
+  #runEnd: Promise<void> = Promise.resolve();
+
   #hydration: Promise<void> = Promise.resolve();
 
   /**
@@ -467,6 +503,9 @@ export class StreamOrchestrator<
 
   /** Subagent namespace lookups in flight on the current thread, by tool call id. */
   #namespaceLookups = new Map<string, Promise<string[] | undefined>>();
+
+  /** Lookups waiting for a run to start their subagent. dispose() ends them. */
+  #namespaceWaits = new Set<() => void>();
 
   /** Interrupts answered by a run that hasn't ended yet. */
   #answered = new Set<string>();
@@ -532,7 +571,19 @@ export class StreamOrchestrator<
    */
   #listedRuns = new Map<string, Run>();
 
-  #onVisibilityChange = () => this.#syncWatcher();
+  #onVisibilityChange = () => {
+    const closed = this.#watch == null;
+    this.#syncWatcher();
+    // A thread stream opened without an event id starts live, so only a read
+    // shows what ran while the page was hidden, as after a gap.
+    if (
+      closed &&
+      this.#watch != null &&
+      this.#watchCursor.lastEventId == null
+    ) {
+      this.#onThreadEvent(this.#watch.threadId, "gap", null);
+    }
+  };
 
   readonly #metadata = new MessageMetadataTracker();
 
@@ -1089,14 +1140,16 @@ export class StreamOrchestrator<
   }
 
   /**
-   * The error from the last task in the thread head, if any.
-   * Attempts to parse structured {@link StreamError} instances from JSON.
+   * The error from the last task in the thread head, if any. A structured
+   * error, saved as a JSON string or as an object, becomes a
+   * {@link StreamError}.
    */
   get historyError(): unknown {
-    const error = this.branchContext.threadHead?.tasks?.at(-1)?.error;
+    const error: unknown = this.branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
-      const parsed = JSON.parse(error) as unknown;
+      const parsed: unknown =
+        typeof error === "string" ? JSON.parse(error) : error;
       if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
       return parsed;
     } catch {
@@ -1450,6 +1503,7 @@ export class StreamOrchestrator<
    * Remove all pending runs from the queue and cancel them on the server.
    */
   async clearQueue(): Promise<void> {
+    this.#queueDrops += 1;
     await this.#dropQueued(this.#threadId, this.pendingRuns.removeAll());
   }
 
@@ -1589,13 +1643,14 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Find a subagent's namespace, so its scope can be acquired after a reload:
-   * the one bound while it streamed, else the one its `task` tool message
-   * records (`artifact.checkpoint_ns`), else a match in the thread's lean
-   * history. A subagent with no tool message yet is running or paused, so
-   * the newest two history entries hold its call and its task. The subagent
-   * keeps the namespace found. Callers that ask at the same time share one
-   * lookup.
+   * Find a subagent's namespace, so its scope can be acquired: the one bound
+   * while it streams, else the one its `task` tool message records
+   * (`artifact.checkpoint_ns`), else a match in the thread's lean history. A
+   * subagent with no tool message yet is running or paused, so the newest two
+   * history entries hold its call and its task. One that the run streaming
+   * now hasn't started yet is looked up again once the run starts it, or
+   * ends. The subagent keeps the namespace found. Callers that ask at the
+   * same time share one lookup.
    *
    * @param toolCallId - The tool call ID that started the subagent.
    * @returns Its namespace, or `undefined` if none was found.
@@ -1619,6 +1674,7 @@ export class StreamOrchestrator<
     if (bound != null && bound.length > 0) return bound;
     const threadId = this.#threadId;
     if (threadId == null) return undefined;
+    const unstarted = this.#awaitsNamespace(toolCallId);
     const toolMessage = this.messages.find(
       (message): message is ToolMessage =>
         message.type === "tool" && message.tool_call_id === toolCallId
@@ -1638,10 +1694,44 @@ export class StreamOrchestrator<
               }
             ).catch(() => undefined)
           )?.get(toolCallId);
+    if (namespace == null && unstarted) {
+      // The history holds nothing for it yet: its run's lifecycle event binds
+      // its namespace when the run starts it.
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (
+            threadId === this.#threadId &&
+            this.#awaitsNamespace(toolCallId)
+          ) {
+            return;
+          }
+          off();
+          this.#namespaceWaits.delete(check);
+          resolve();
+        };
+        const off = this.subscribe(check);
+        this.#namespaceWaits.add(check);
+        check();
+      });
+      return threadId === this.#threadId && !this.#disposed
+        ? this.#lookUpSubagentNamespace(toolCallId)
+        : undefined;
+    }
     if (namespace == null || threadId !== this.#threadId) return undefined;
     const segments = namespace.split("|");
     this.stream.bindSubagentNamespace(toolCallId, segments);
     return segments;
+  }
+
+  /** Whether a run streams here while this subagent has no namespace yet. */
+  #awaitsNamespace(toolCallId: string): boolean {
+    const subagent = this.getSubagent(toolCallId);
+    return (
+      !this.#disposed &&
+      this.isLoading &&
+      subagent?.namespace.length === 0 &&
+      (subagent.status === "pending" || subagent.status === "running")
+    );
   }
 
   /**
@@ -1691,6 +1781,10 @@ export class StreamOrchestrator<
     }
     this.scopes.setRun(undefined);
     const shownHead = this.branchContext.threadHead;
+    const unpersisted = this.#metadata.unpersistedOptimisticIds();
+    const inputs = this.messages.filter(
+      (message) => message.id != null && unpersisted.has(message.id)
+    );
     const read = planStopRead({
       history:
         this.historyLimit === true || typeof this.historyLimit === "number",
@@ -1710,7 +1804,9 @@ export class StreamOrchestrator<
         this.#options.onStop?.(args);
       },
       // A cancelled run skips `onSuccess`, so the buffer still holds what it
-      // streamed, including a message chunk the server never saved.
+      // streamed, including a message chunk the server never saved. Inputs it
+      // hasn't saved stay, after the head's messages, so a run stopped before
+      // the server saved its input doesn't lose it.
       read:
         threadId == null || this.#disposed
           ? undefined
@@ -1720,7 +1816,13 @@ export class StreamOrchestrator<
                 map: (states) => applyStopRead(states, shownHead),
               });
               if (newHistory == null) return undefined;
-              return newHistory.at(0)?.values ?? null;
+              const head = newHistory.at(0)?.values ?? null;
+              const base = head ?? this.historyValues;
+              const saved = this.#getMessages(base);
+              const ids = new Set(saved.map((message) => message.id));
+              const unsaved = inputs.filter((message) => !ids.has(message.id));
+              if (unsaved.length === 0) return head;
+              return this.#setMessages(base, [...saved, ...unsaved]);
             },
     });
   }
@@ -1757,7 +1859,8 @@ export class StreamOrchestrator<
    * `own` marks a join `stop()` may cancel: the engine's queued and stored runs
    * and the run it finds after a load. Apps call `joinStream()` to watch a run,
    * so `stop()` leaves those runs going. `runInfo` is the run as a list
-   * returned it, so its options need no read.
+   * returned it, so its options need no read. `queuedHere` marks a run a
+   * submit of this engine queued, which gets `onCreated` as it starts.
    */
   async #join(
     runId: string,
@@ -1766,7 +1869,8 @@ export class StreamOrchestrator<
       StreamOrchestrator<StateType, Bag>["joinStream"]
     >[2],
     own: boolean,
-    runInfo?: Run
+    runInfo?: Run,
+    queuedHere = false
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -1791,9 +1895,11 @@ export class StreamOrchestrator<
       run_id: runId,
     };
 
+    const v3 = streamsV3(runInfo);
     const includeImplicitBranch =
       this.historyLimit === true || typeof this.historyLimit === "number";
     const shouldRefetchJoin =
+      v3 ||
       includeImplicitBranch ||
       onFinishRequiresThreadState(this.#options.onFinish);
 
@@ -1809,11 +1915,19 @@ export class StreamOrchestrator<
         run.signal = signal;
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
-        const mode = this.#options.scopedSubagents
-          ? await this.#joinMode(tid, runId, runInfo, signal)
-          : undefined;
+        if (queuedHere) {
+          // The run before it may still be reading how it ended. A stop
+          // waits too, so the run's own end comes after.
+          await this.#runEnd.catch(() => undefined);
+          if (!this.#disposed) this.#options.onCreated?.(callbackMeta);
+        }
+        const mode = v3
+          ? { filtered: false, subgraphs: false }
+          : this.#options.scopedSubagents
+            ? await this.#joinMode(tid, runId, runInfo, signal)
+            : undefined;
         this.scopes.setRun(runId, mode);
-        const rawStream = client.runs.joinStream(tid, runId, {
+        const joined = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
           streamMode: joinOptions?.streamMode,
@@ -1823,6 +1937,9 @@ export class StreamOrchestrator<
         }) as AsyncGenerator<
           EventStreamEvent<StateType, UpdateType, CustomType>
         >;
+        const rawStream = v3
+          ? filterStream(joined, ({ event }) => V3_READABLE_EVENTS.has(event))
+          : joined;
 
         return joinOptions?.filter != null
           ? filterStream(rawStream, joinOptions.filter)
@@ -1849,7 +1966,7 @@ export class StreamOrchestrator<
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
-          void this.#reportRunEnd(tid, runId, watch, outcome);
+          this.#runEnd = this.#reportRunEnd(tid, runId, watch, outcome);
           this.#drainQueue();
         },
         isReplaying: lastEventId === "-1",
@@ -1945,6 +2062,8 @@ export class StreamOrchestrator<
         : undefined;
     const unsent = new Set(optimistic?.echoedIds);
     if (unsent.size > 0) this.#metadata.markPending(unsent);
+    let shownKeys: OptimisticKeySnapshot[] = [];
+    let sentValues = false;
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -1960,17 +2079,19 @@ export class StreamOrchestrator<
         if (signal.aborted) return (async function* () {})();
 
         // Before any thread create, so a new chat's input shows at once.
-        this.stream.setStreamValues(() =>
-          runStartValues(
-            { ...this.historyValues, ...this.stream.values },
+        this.stream.setStreamValues(() => {
+          const current = { ...this.historyValues, ...this.stream.values };
+          shownKeys = snapshotKeys(current, optimistic);
+          return runStartValues(
+            current,
             optimistic,
             submitOptions?.optimisticValues,
             {
               get: (values) => this.#getMessages(values),
               set: (values, messages) => this.#setMessages(values, messages),
             }
-          )
-        );
+          );
+        });
 
         if (usableThreadId) {
           if (this.#missingThreads.has(usableThreadId)) {
@@ -2137,12 +2258,29 @@ export class StreamOrchestrator<
             unsent,
             outcome === "success" ? "sent" : "failed"
           );
+          // Keys the input showed stay only if the run's values held them. A
+          // stop leaves them to its read of the thread.
+          if (outcome !== "aborted" && !sentValues && shownKeys.length > 0) {
+            this.stream.setStreamValues(
+              (values) => values && restoreKeys(values, shownKeys)
+            );
+          }
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
-          if (runId == null) return;
+          if (runId == null) {
+            if (outcome === "aborted" && !this.#disposed) {
+              this.#options.onRunEnd?.({ reason: "stopped" });
+            }
+            return;
+          }
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
-          void this.#reportRunEnd(usableThreadId, runId, watch, outcome);
+          this.#runEnd = this.#reportRunEnd(
+            usableThreadId,
+            runId,
+            watch,
+            outcome
+          );
         },
         onEvent: (event, data) => {
           // The run exists once it streams, even when no response header
@@ -2151,6 +2289,7 @@ export class StreamOrchestrator<
           settleOwnRun();
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
+          if (event === "values") sentValues = true;
           if (event === "values" && unsent.size > 0) {
             const saved = this.#getMessages((data ?? {}) as StateType).flatMap(
               ({ id }) => (id != null && unsent.delete(id) ? [id] : [])
@@ -2245,6 +2384,7 @@ export class StreamOrchestrator<
       const next = this.pendingRuns.shift();
       if (next) {
         this.#submitting = true;
+        const listed = this.#listedRuns.get(next.id);
         const sent =
           this.#options.queue === "local"
             ? this.submitDirect(next.values as StateType, next.options)
@@ -2253,7 +2393,8 @@ export class StreamOrchestrator<
                 undefined,
                 undefined,
                 true,
-                this.#listedRuns.get(next.id)
+                listed,
+                listed == null
               ).finally(() => this.#unhide(next.options?.command));
         void sent.finally(() => {
           this.#submitting = false;
@@ -2323,11 +2464,23 @@ export class StreamOrchestrator<
       if (usableThreadId) {
         const client = this.#accessors.getClient();
         const assistantId = this.#accessors.getAssistantId();
+        const turn = this.#queueing;
+        let done!: () => void;
+        this.#queueing = new Promise<void>((resolve) => {
+          done = resolve;
+        });
+        const drops = this.#queueDrops;
         try {
+          // The server runs queued runs in the order their creates reach it.
+          await turn;
           // Sent before the run being submitted reaches the server, it would
           // run first.
           if (this.#ownRun) await this.#ownRun;
           const streamMode = await this.#getRunStreamModes(submitOptions);
+          if (drops !== this.#queueDrops) {
+            this.#unhide(submitOptions?.command);
+            return;
+          }
           const input = (this.#prepareInput(values)?.dispatchInput ??
             values) as Record<string, unknown>;
           const create = (modes: StreamMode[]) =>
@@ -2360,16 +2513,25 @@ export class StreamOrchestrator<
             return create(fallback);
           });
 
-          this.pendingRuns.add({
+          const entry = {
             id: run.run_id,
             values: values as Partial<StateType> | null | undefined,
             options: submitOptions,
             createdAt: new Date(run.created_at),
-          });
+          };
+          if (drops !== this.#queueDrops) {
+            void this.#dropQueued(usableThreadId, [entry]);
+            return;
+          }
+          this.pendingRuns.add(entry);
+          // The run before it may have ended while it waited.
+          this.#drainQueue();
         } catch (error) {
           this.#unhide(submitOptions?.command);
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
+        } finally {
+          done();
         }
         return;
       }
@@ -2478,6 +2640,7 @@ export class StreamOrchestrator<
       const queued = this.pendingRuns
         .removeAll()
         .filter((entry) => !this.#listedRuns.has(entry.id));
+      this.#queueDrops += 1;
       this.#listedRuns.clear();
       void this.#dropQueued(prevThreadId, queued);
 
@@ -2524,6 +2687,7 @@ export class StreamOrchestrator<
   dispose(): void {
     clearTimeout(this.#pendingDispose);
     this.#disposed = true;
+    for (const check of this.#namespaceWaits) check();
     this.scopes.dispose();
     globalThis.document?.removeEventListener(
       "visibilitychange",

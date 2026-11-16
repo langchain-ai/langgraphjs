@@ -790,7 +790,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         messages: [],
         aiMessageId: aiMessageId ?? null,
         parentId: null,
-        depth: 0,
+        depth: 1,
         startedAt: null,
         completedAt: null,
       };
@@ -857,7 +857,6 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
       namespace,
       parentId:
         existing.parentId ?? extractParentIdFromNamespace(namespace) ?? null,
-      depth: existing.depth || calculateDepthFromNamespace(namespace),
       startedAt: existing.startedAt ?? new Date(),
     });
 
@@ -1071,7 +1070,7 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,
-      { content: string; status: "success" | "error" }
+      { content: string; status: "success" | "error"; namespace: string[] }
     >();
 
     for (const message of messages) {
@@ -1085,7 +1084,13 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           "status" in message && message.status === "error"
             ? "error"
             : "success";
-        toolResults.set(toolCallId, { content, status });
+        // Python deepagents record the subagent's checkpoint namespace.
+        const stamped: unknown = message.artifact?.checkpoint_ns;
+        toolResults.set(toolCallId, {
+          content,
+          status,
+          namespace: typeof stamped === "string" ? stamped.split("|") : [],
+        });
       }
     }
 
@@ -1135,9 +1140,8 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
             : "complete"
           : "running";
 
-        // Create the subagent execution stub. Messages and namespace are empty
-        // here; fetchSubagentHistory will derive the subgraph checkpoint_ns by
-        // inspecting intermediate history tasks and populate messages async.
+        // A namespace its tool message doesn't record is looked up in the
+        // thread's history when its messages are read.
         const execution: SubagentStreamBase<ToolCall> = {
           id: toolCall.id,
           toolCall: subagentToolCall,
@@ -1146,11 +1150,11 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
           result:
             isComplete && status === "complete" ? toolResult.content : null,
           error: isComplete && status === "error" ? toolResult.content : null,
-          namespace: [],
+          namespace: toolResult?.namespace ?? [],
           messages: [], // Restored asynchronously via fetchSubagentHistory
           aiMessageId: (message.id as string) ?? null,
           parentId: null,
-          depth: 0,
+          depth: 1,
           startedAt: null,
           completedAt: isComplete ? new Date() : null,
         };

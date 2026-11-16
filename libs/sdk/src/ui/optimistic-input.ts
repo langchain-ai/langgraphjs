@@ -221,6 +221,31 @@ export function prepareSubmitInput(
   }
 }
 
+/** How `values` held each non-message key of the input `shown` at once. */
+export function snapshotKeys(
+  values: Record<string, unknown>,
+  shown: PreparedOptimisticInput | undefined
+): OptimisticKeySnapshot[] {
+  return Object.keys(shown?.extraValues ?? {}).map((key) => ({
+    key,
+    hadKey: Object.prototype.hasOwnProperty.call(values, key),
+    prevValue: values[key],
+  }));
+}
+
+/** `values` with each snapshot's key put back as it was, or removed. */
+export function restoreKeys<StateType extends Record<string, unknown>>(
+  values: StateType,
+  snapshots: readonly OptimisticKeySnapshot[]
+): StateType {
+  const restored: Record<string, unknown> = { ...values };
+  for (const { key, hadKey, prevValue } of snapshots) {
+    if (hadKey) restored[key] = prevValue;
+    else delete restored[key];
+  }
+  return restored as StateType;
+}
+
 /**
  * The values a run shows as it starts: `current`, with the input's messages
  * and keys when `shown` is the input shown at once, then the submit's own

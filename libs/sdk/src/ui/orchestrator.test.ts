@@ -1791,6 +1791,33 @@ describe("StreamOrchestrator", () => {
     );
 
     it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+      "stop keeps an input the server didn't save until the next run, and drops the reply it cut off (fetchStateHistory: $fetchStateHistory)",
+      async ({ fetchStateHistory }) => {
+        const ids = () => orch.messages.map(({ id }) => id);
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ fetchStateHistory });
+
+        mockRun(
+          [{ event: "messages", data: [{ ...message("a1", "ai"), content: "Hel" }, {}] }],
+          { hang: true }
+        );
+        const running = orch.submit({ messages: [message("h1")] });
+        await vi.waitFor(() => expect(ids()).toEqual(["h0", "h1", "a1"]));
+        await orch.stop();
+
+        expect(ids()).toEqual(["h0", "h1"]);
+        await running;
+        const next = [message("h0"), message("h2")];
+        serve(stateWith({ messages: next }));
+        mockRun([{ event: "values", data: { messages: next } }]);
+        await orch.submit({ messages: [message("h2")] });
+
+        expect(orch.messages).toEqual(next);
+        orch.dispose();
+      }
+    );
+
+    it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
       "stop shows no error or breakpoint from the cancel (fetchStateHistory: $fetchStateHistory)",
       async ({ fetchStateHistory }) => {
         serve(interrupted());
@@ -2504,10 +2531,11 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("stop() before the run's id arrives stops at once and cancels the run once it does", async () => {
+    it("stop() before the run's id arrives ends it stopped at once and cancels the run once the id does", async () => {
       const created = deferred();
       mockRunStream(undefined, { created: created.promise });
-      const orch = orchestrator();
+      const onRunEnd = vi.fn();
+      const orch = orchestrator({ onRunEnd });
       orch.initThreadId("t1");
 
       void orch.submit({ messages: [] });
@@ -2523,8 +2551,35 @@ describe("StreamOrchestrator runs", () => {
           "run-1"
         )
       );
+      expect(onRunEnd.mock.calls).toEqual([[{ reason: "stopped" }]]);
       orch.dispose();
     });
+
+    it.each([
+      { name: "a new thread", threadId: undefined },
+      { name: "a thread", threadId: "t1" },
+    ])(
+      "stop() right after a submit on $name sends nothing, ends it stopped, and the next submit runs",
+      async ({ threadId }) => {
+        mockRunStream(undefined, { ended: Promise.resolve() });
+        const onRunEnd = vi.fn();
+        const orch = orchestrator({ onRunEnd });
+        orch.initThreadId(threadId);
+
+        const submitted = orch.submit({ messages: [] });
+        await orch.stop();
+        await submitted;
+
+        expect(client.threads.create).not.toHaveBeenCalled();
+        expect(client.runs.stream).not.toHaveBeenCalled();
+        expect(orch.isLoading).toBe(false);
+        expect(onRunEnd.mock.calls).toEqual([[{ reason: "stopped" }]]);
+
+        await orch.submit({ messages: [] });
+        expect(client.runs.stream).toHaveBeenCalledOnce();
+        orch.dispose();
+      }
+    );
 
     it("stop() before the run's request is sent sends none, also after a thread switch", async () => {
       const thread = deferred();
@@ -2662,6 +2717,166 @@ describe("StreamOrchestrator runs", () => {
       await orch.stop();
       orch.dispose();
     });
+
+    it("creates the runs submitted during a run one at a time, in submit order, past one that fails", async () => {
+      mockRunStream();
+      const firstCreate = deferred();
+      (client.runs.create as Mock)
+        .mockImplementationOnce(async () => {
+          await firstCreate.promise;
+          return { run_id: "run-2", created_at: "2026-01-01" };
+        })
+        .mockRejectedValueOnce(new Error("HTTP 500"))
+        .mockResolvedValueOnce({ run_id: "run-4", created_at: "2026-01-03" });
+      const onError = vi.fn();
+      const orch = orchestrator({ onError });
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      const queued = [1, 2, 3].map(() => orch.submit({ messages: [] }));
+      await vi.waitFor(() => expect(client.runs.create).toHaveBeenCalled());
+      await flushMicrotasks(10);
+      expect(client.runs.create).toHaveBeenCalledOnce();
+      firstCreate.resolve();
+      await Promise.all(queued);
+
+      expect(orch.queueEntries.map(({ id }) => id)).toEqual(["run-2", "run-4"]);
+      expect(onError).toHaveBeenCalledOnce();
+      await orch.stop();
+      orch.dispose();
+    });
+
+    it.each([
+      {
+        name: "clearQueue()",
+        drop: (orch: StreamOrchestrator<TestState>) => orch.clearQueue(),
+      },
+      {
+        name: "a thread switch",
+        drop: (orch: StreamOrchestrator<TestState>) => orch.switchThread("t2"),
+      },
+    ])(
+      "$name cancels a queued run whose create was in flight and never creates the ones waiting",
+      async ({ drop }) => {
+        mockRunStream();
+        mockJoinStream([], Promise.resolve());
+        const firstCreate = deferred();
+        (client.runs.create as Mock).mockImplementationOnce(async () => {
+          await firstCreate.promise;
+          return { run_id: "run-2", created_at: "2026-01-01" };
+        });
+        const orch = orchestrator();
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+        const queued = [1, 2].map(() => orch.submit({ messages: [] }));
+        await vi.waitFor(() => expect(client.runs.create).toHaveBeenCalled());
+        await drop(orch);
+        firstCreate.resolve();
+        await Promise.all(queued);
+
+        expect(client.runs.create).toHaveBeenCalledOnce();
+        expect(client.runs.cancel).toHaveBeenCalledWith("t1", "run-2");
+        expect(orch.queueEntries).toEqual([]);
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        await orch.stop();
+        orch.dispose();
+      }
+    );
+
+    it("streams a queued run whose create returns after the run before it ended", async () => {
+      const firstEnded = deferred();
+      mockRunStream(undefined, { ended: firstEnded.promise });
+      mockJoinStream([], Promise.resolve());
+      const created = deferred();
+      (client.runs.create as Mock).mockImplementationOnce(async () => {
+        await created.promise;
+        return { run_id: "run-2", created_at: "2026-01-01" };
+      });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      const queued = orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(client.runs.create).toHaveBeenCalled());
+      firstEnded.resolve();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      created.resolve();
+      await queued;
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-2",
+          expect.anything()
+        )
+      );
+      orch.dispose();
+    });
+
+    it.each([
+      {
+        name: "running to the end",
+        whileWaiting: undefined,
+        after: ["ended run-1 success", "created run-2", "ended run-2 success"],
+      },
+      {
+        name: "stopped while it waits",
+        whileWaiting: (orch: StreamOrchestrator<TestState>) => orch.stop(),
+        after: ["ended run-1 success", "created run-2", "ended run-2 stopped"],
+      },
+      {
+        name: "disposed while it waits",
+        whileWaiting: (orch: StreamOrchestrator<TestState>) => orch.dispose(),
+        after: [],
+      },
+    ])(
+      "calls onCreated for each run it queued as it starts, after the run before it ended, $name",
+      async ({ whileWaiting, after }) => {
+        const firstEnded = deferred();
+        mockRunStream(undefined, { ended: firstEnded.promise });
+        mockJoinStream([], Promise.resolve());
+        const firstStatus = deferred();
+        (client.runs.get as Mock).mockImplementation(
+          async (_threadId: string, runId: string) => {
+            if (runId === "run-1") await firstStatus.promise;
+            return { status: "success" };
+          }
+        );
+        (client.runs.create as Mock)
+          .mockResolvedValueOnce({ run_id: "run-2", created_at: "2026-01-01" })
+          .mockResolvedValueOnce({ run_id: "run-3", created_at: "2026-01-02" });
+        const calls: string[] = [];
+        const orch = orchestrator({
+          onCreated: ({ run_id }) => calls.push(`created ${run_id}`),
+          onRunEnd: ({ runId, reason }) =>
+            calls.push(`ended ${runId} ${reason}`),
+        });
+        orch.initThreadId("t1");
+
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(calls).toEqual(["created run-1"]));
+        await orch.submit({ messages: [] });
+        await orch.submit({ messages: [] });
+        await orch.cancelQueueItem("run-3");
+        expect(calls).toEqual(["created run-1"]);
+
+        firstEnded.resolve();
+        await vi.waitFor(() => expect(orch.queueSize).toBe(0));
+        await flushMicrotasks(20);
+        await whileWaiting?.(orch);
+        await flushMicrotasks(20);
+        firstStatus.resolve();
+
+        await vi.waitFor(() =>
+          expect(calls).toEqual(["created run-1", ...after])
+        );
+        orch.dispose();
+      }
+    );
 
     it("turns off the v3 marker on every run it creates", async () => {
       mockRunStream();
@@ -3466,6 +3681,28 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.isThreadLoading).toBe(true);
       orch.dispose();
     });
+
+    it("shows a task error the thread saved as an object as an Error", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        tasks: [
+          {
+            id: "task-1",
+            name: "agent",
+            error: { message: "boom", name: "Error" },
+            interrupts: [],
+          },
+        ],
+      });
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.error).toBeInstanceOf(Error);
+      expect((orch.error as Error).message).toBe("boom");
+      orch.dispose();
+    });
   });
 
   describe("a thread that doesn't exist yet", () => {
@@ -4062,6 +4299,37 @@ describe("StreamOrchestrator runs", () => {
     expect(orch.error).toBeInstanceOf(Error);
     orch.dispose();
   });
+
+  it.each([
+    { name: "removes a key", before: {} },
+    { name: "puts back a key's value", before: { count: 1 } },
+  ])(
+    "a run that fails before sending values $name its input set, and keeps its message as failed",
+    async ({ before }) => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({ messages: [], ...before })
+      );
+      (client.runs.stream as Mock).mockReturnValue({
+        [Symbol.asyncIterator]: () => ({
+          next: () => Promise.reject(new Error("HTTP 404")),
+        }),
+      });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      await orch.submit({ messages: [message("hi")], count: 2 });
+
+      const { messages, ...rest } = orch.values;
+      expect(rest).toStrictEqual(before);
+      expect(messages.map(({ id }) => id)).toEqual(["hi"]);
+      expect(
+        orch.messageMetadataStore.getSnapshot().get("hi")?.optimisticStatus
+      ).toBe("failed");
+      orch.dispose();
+    }
+  );
 
   it("a submit made while a new thread's create fails creates a thread itself", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -5049,7 +5317,40 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("finds a reloaded subagent's namespace in its task tool message, and binds it", async () => {
+    it("a subgraph's panel shows the messages it shares with the main conversation, and a subagent's leaves them out before its namespace is known", async () => {
+      withFlags(flags);
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState(createSubagentStateValues())
+      );
+      (client.threads.getHistory as Mock).mockImplementation(
+        async (_threadId: string, { checkpoint }: { checkpoint: { checkpoint_ns: string } }) => [
+          createThreadState({
+            messages: [
+              { id: "m1", content: "research tires", type: "human" },
+              { id: `${checkpoint.checkpoint_ns} reply`, content: "", type: "ai" },
+            ],
+          }),
+        ]
+      );
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+      expect(orch.getSubagent("task-1")?.namespace).toEqual([]);
+
+      const subgraph = orch.scopes.acquire(["child:1"]);
+      const subagent = orch.scopes.acquire(["tools:sub"]);
+      const ids = (scope: typeof subgraph) =>
+        scope.getSnapshot().messages.map((m) => m.id);
+
+      await vi.waitFor(() => expect(ids(subgraph)).toEqual(["m1", "child:1 reply"]));
+      await vi.waitFor(() => expect(ids(subagent)).toEqual(["tools:sub reply"]));
+      subgraph.release();
+      subagent.release();
+      orch.dispose();
+    });
+
+    it("takes a reloaded subagent's namespace from its task tool message at load", async () => {
       withFlags(flags);
       const values = createSubagentStateValues();
       values.messages[2].artifact = { checkpoint_ns: "tools:stamped" };
@@ -5059,11 +5360,29 @@ describe("StreamOrchestrator runs", () => {
       await orch.hydrationPromise;
       orch.reconstructSubagentsIfNeeded();
 
+      expect(orch.getSubagent("task-1")).toMatchObject({
+        namespace: ["tools:stamped"],
+        parentId: null,
+        depth: 1,
+      });
       await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual([
         "tools:stamped",
       ]);
-      expect(orch.getSubagent("task-1")?.namespace).toEqual(["tools:stamped"]);
       expect(client.threads.getHistory).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("gives a reloaded subagent depth 1 before its namespace is known", async () => {
+      withFlags(flags);
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState(createSubagentStateValues())
+      );
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      expect(orch.getSubagent("task-1")).toMatchObject({ namespace: [], depth: 1 });
       orch.dispose();
     });
 
@@ -5139,6 +5458,111 @@ describe("StreamOrchestrator runs", () => {
       await expect(orch.resolveSubagentNamespace("task-1")).resolves.toEqual(["tools:pregel-1"]);
       expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 20 }));
       orch.dispose();
+    });
+
+    describe("a lookup of a subagent its run hasn't started yet", () => {
+      const withTask = {
+        event: "updates",
+        data: {
+          model: {
+            messages: [
+              {
+                id: "ai-1",
+                type: "ai",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    name: "task",
+                    args: { subagent_type: "researcher", description: "Research" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      it.each(["after", "during"])(
+        "gets the namespace the run starts it at, %s its history read",
+        async (when) => {
+          withFlags(flags);
+          const start = deferred();
+          (client.runs.stream as Mock).mockImplementation(
+            (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+              async *[Symbol.asyncIterator]() {
+                payload.onRunCreated?.({ run_id: "run-1" });
+                yield withTask;
+                await start.promise;
+                yield {
+                  event: "lifecycle|tools:a",
+                  data: { event: "started", namespace: ["tools:a"], tool_call_id: "call_1" },
+                };
+                await openUntil(payload.signal);
+              },
+            })
+          );
+          let answer!: (history: unknown[]) => void;
+          (client.threads.getHistory as Mock).mockReturnValue(
+            new Promise((resolve) => {
+              answer = resolve;
+            })
+          );
+          const orch = orchestrator({ scopedSubagents: true });
+          orch.initThreadId("t1");
+          void orch.submit({ messages: [] });
+          await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+
+          const lookup = orch.resolveSubagentNamespace("call_1");
+          await vi.waitFor(() =>
+            expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 2 }))
+          );
+          if (when === "after") {
+            answer([]);
+            await flushMicrotasks();
+          }
+          start.resolve();
+          await vi.waitFor(() => expect(orch.getSubagent("call_1")?.namespace).toEqual(["tools:a"]));
+          answer([]);
+
+          await expect(lookup).resolves.toEqual(["tools:a"]);
+          orch.dispose();
+        }
+      );
+
+      it("finds nothing once the run ends without starting it", async () => {
+        withFlags(flags);
+        const end = deferred();
+        mockRunStream([withTask], { ended: end.promise });
+        const orch = orchestrator({ scopedSubagents: true });
+        orch.initThreadId("t1");
+        const run = orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+
+        const lookup = orch.resolveSubagentNamespace("call_1");
+        end.resolve();
+        await run;
+
+        await expect(lookup).resolves.toBeUndefined();
+        orch.dispose();
+      });
+
+      it("finds nothing, and reads nothing more, once the engine is disposed while it waits", async () => {
+        withFlags(flags);
+        mockRunStream([withTask]);
+        const orch = orchestrator({ scopedSubagents: true });
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+        const lookup = orch.resolveSubagentNamespace("call_1");
+        await vi.waitFor(() => expect(client.threads.getHistory).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        orch.dispose();
+
+        await expect(lookup).resolves.toBeUndefined();
+        expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      });
     });
 
     describe("lookups asked at the same time", () => {
@@ -5362,28 +5786,71 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("reads the state once and joins nothing for a run that started and ended while the tab was hidden", async () => {
+    it("resumes from its last event after the tab was hidden, and reads the state once and joins nothing for a run that started and ended meanwhile", async () => {
       const page = Object.assign(new EventTarget(), {
         visibilityState: "visible",
       });
       vi.stubGlobal("document", page);
       (client.runs.get as Mock).mockResolvedValue({ status: "success" });
       const orch = await watching();
-      const reads = (client.threads.getState as Mock).mock.calls.length;
+      open()!.send(done("run-old", "1-0"));
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(2)
+      );
 
       page.visibilityState = "hidden";
       page.dispatchEvent(new Event("visibilitychange"));
       expect(open()).toBeUndefined();
       page.visibilityState = "visible";
       page.dispatchEvent(new Event("visibilitychange"));
-      open()!.send(started("run-d", "1-0"), done("run-d", "2-0"));
+      expect(open()!.lastEventId).toBe("1-0");
+      open()!.send(started("run-d", "2-0"), done("run-d", "3-0"));
 
       await vi.waitFor(() =>
-        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1)
+        expect(client.threads.getState).toHaveBeenCalledTimes(3)
       );
       await flushMicrotasks(10);
       expect(client.runs.joinStream).not.toHaveBeenCalled();
+      expect(client.threads.getState).toHaveBeenCalledTimes(3);
+      orch.dispose();
+    });
+
+    it("reads the state once and shows a run that ran while the tab was hidden when it has no last event to resume from", async () => {
+      const page = Object.assign(new EventTarget(), {
+        visibilityState: "visible",
+      });
+      vi.stubGlobal("document", page);
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      page.visibilityState = "hidden";
+      page.dispatchEvent(new Event("visibilitychange"));
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({ messages: [message("from-b")] })
+      );
+      page.visibilityState = "visible";
+      page.dispatchEvent(new Event("visibilitychange"));
+
+      expect(open()!.lastEventId).toBeUndefined();
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("from-b")])
+      );
+      await flushMicrotasks(10);
       expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1);
+      orch.dispose();
+    });
+
+    it("reads nothing more when it opens again after this tab's own run with no last event", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      await orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      await flushMicrotasks(10);
+
+      expect(open()!.lastEventId).toBeUndefined();
+      expect(client.threads.getState).toHaveBeenCalledTimes(reads);
       orch.dispose();
     });
 
@@ -6200,6 +6667,159 @@ describe("StreamOrchestrator runs", () => {
       expect(head.branchOptions).toHaveLength(2);
       orch.setBranch(head.branchOptions!.find((b) => b !== head.branch)!);
       expect(orch.values).toEqual({ messages: [message("first")] });
+      orch.dispose();
+    });
+  });
+
+  describe("runs 1.x started", () => {
+    it.each([
+      {
+        server: "the Agent Server",
+        kwargs: { config: { configurable: { __event_streaming_v2: true } } },
+        frames: (messages: unknown[]) => [
+          {
+            event: "values",
+            data: {
+              type: "event",
+              method: "values",
+              params: { namespace: [], data: { messages }, interrupts: [] },
+              seq: 1,
+            },
+          },
+        ],
+      },
+      {
+        server: "the JS dev server",
+        kwargs: { __protocol_stream_run: true },
+        frames: (messages: unknown[]) => [
+          { event: "values", data: { messages } },
+          {
+            event: "messages|agent:task-1",
+            data: { event: "message-start", id: "reply" },
+          },
+          {
+            event: "updates",
+            data: { node: "agent", values: { messages: messages.slice(-1) } },
+          },
+        ],
+      },
+    ])(
+      "on $server, a page opened during 1.x's run keeps what it shows until that run and the one 1.x queued end, then shows the thread",
+      async ({ kwargs, frames }) => {
+        const [m1, a1, m2, a2] = ["m1", "a1", "m2", "a2"].map(message);
+        (client.threads.getState as Mock)
+          .mockResolvedValueOnce(createThreadState({ messages: [m1] }))
+          .mockResolvedValueOnce(createThreadState({ messages: [m1, a1] }))
+          .mockResolvedValueOnce(
+            createThreadState({ messages: [m1, a1, m2, a2] })
+          );
+        listRuns(
+          [{ run_id: "run-1", kwargs }],
+          [
+            {
+              run_id: "run-2",
+              created_at: "2026-11-13T10:00:00Z",
+              kwargs: { ...kwargs, input: { messages: [m2] } },
+            },
+          ]
+        );
+        const runs = {
+          "run-1": { streamed: [m1], last: [m1, a1], ended: deferred() },
+          "run-2": {
+            streamed: [m1, a1, m2],
+            last: [m1, a1, m2, a2],
+            ended: deferred(),
+          },
+        };
+        (client.runs.joinStream as Mock).mockImplementation(async function* (
+          _threadId: string,
+          runId: keyof typeof runs,
+          payload: RunsStreamPayload
+        ) {
+          const run = runs[runId];
+          yield { event: "metadata", data: { run_id: runId, attempt: 1 } };
+          yield* frames(run.streamed);
+          await openUntil(payload.signal, run.ended.promise);
+          yield* frames(run.last);
+          yield { event: "end", data: { run_id: runId, status: "success" } };
+        });
+        const orch = orchestrator();
+        const ids = () => orch.messages.map((m) => m.id);
+        const shown: { keys: string[]; ids: unknown[] }[] = [];
+        orch.subscribe(() =>
+          shown.push({ keys: Object.keys(orch.values), ids: ids() })
+        );
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        await flushMicrotasks(10);
+        expect(orch.isLoading, "loading during the first run").toBe(true);
+        expect(ids(), "during the first run").toEqual(["m1"]);
+
+        runs["run-1"].ended.resolve();
+        await vi.waitFor(() =>
+          expect(client.runs.joinStream).toHaveBeenCalledTimes(2)
+        );
+        await flushMicrotasks(10);
+        expect(orch.isLoading, "loading during the queued run").toBe(true);
+        expect(ids(), "during the queued run").toEqual(["m1", "a1"]);
+
+        runs["run-2"].ended.resolve();
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        expect(ids(), "after both runs").toEqual(["m1", "a1", "m2", "a2"]);
+        expect(
+          new Set(shown.flatMap((s) => s.keys)),
+          "the keys values ever had"
+        ).toEqual(new Set(["messages"]));
+        const counts = shown.map((s) => s.ids.length);
+        expect(counts, "messages shown at each notify").toEqual(
+          [...counts].sort((a, b) => a - b)
+        );
+        orch.dispose();
+      }
+    );
+
+    it("a subagent panel opened during 1.x's run reads its history instead of joining the run, and again when it ends", async () => {
+      (client as unknown as { info: Mock }).info = vi.fn().mockResolvedValue({
+        flags: { stream_lifecycle: true, stream_namespaces: true },
+      });
+      listRuns([
+        {
+          run_id: "run-1",
+          kwargs: {
+            stream_mode: ["values", "lifecycle"],
+            subgraphs: true,
+            config: { configurable: { __event_streaming_v2: true } },
+          },
+        },
+      ]);
+      const ended = deferred();
+      (client.runs.joinStream as Mock).mockImplementation(async function* (
+        _threadId: string,
+        runId: string,
+        payload: RunsStreamPayload
+      ) {
+        yield { event: "metadata", data: { run_id: runId, attempt: 1 } };
+        await openUntil(payload.signal, ended.promise);
+        yield { event: "end", data: { run_id: runId, status: "success" } };
+      });
+      (client.threads.getHistory as Mock)
+        .mockResolvedValueOnce([createThreadState({ messages: [message("s1")] })])
+        .mockResolvedValueOnce([
+          createThreadState({ messages: [message("s1"), message("s2")] }),
+        ]);
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      const panel = orch.scopes.acquire(["tools:a"]);
+      const ids = () => panel.getSnapshot().messages.map((m) => m.id);
+
+      await vi.waitFor(() => expect(ids()).toEqual(["s1"]));
+      ended.resolve();
+      await vi.waitFor(() => expect(ids()).toEqual(["s1", "s2"]));
+
+      expect(client.runs.joinStream).toHaveBeenCalledOnce();
+      panel.release();
       orch.dispose();
     });
   });

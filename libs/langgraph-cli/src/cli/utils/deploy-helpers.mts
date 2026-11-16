@@ -87,6 +87,17 @@ export function isPathWithin(parent: string, child: string): boolean {
 /** Default host backend API URL. */
 export const DEFAULT_HOST_URL = "https://api.host.langchain.com";
 
+const CLOUD_DASHBOARD_URL = "https://smith.langchain.com";
+const CLOUD_LANGSMITH_API_HOST = "api.smith.langchain.com";
+const CLOUD_HOST_BACKEND_HOST = "api.host.langchain.com";
+const LOCAL_HOSTNAMES: ReadonlySet<string> = new Set([
+  "localhost",
+  "127.0.0.1",
+]);
+
+/** Where a LangSmith data plane serves the host backend. */
+export const DATA_PLANE_HOST_PATH = "/api-host";
+
 /** Revision statuses that end status polling (success or failure). */
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "DEPLOYED",
@@ -430,16 +441,61 @@ export function smithDashboardBaseUrl(
     return "https://smith.langchain.com";
   }
   const hostname = parsed.hostname || "";
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
+  if (LOCAL_HOSTNAMES.has(hostname)) {
     return hostUrl.replace(/\/+$/, "");
   }
-  const apiHostSuffix = "api.host.langchain.com";
-  if (hostname === apiHostSuffix) return "https://smith.langchain.com";
-  if (hostname.endsWith(`.${apiHostSuffix}`)) {
-    const prefix = hostname.slice(0, -(apiHostSuffix.length + 1));
+  if (hostname === CLOUD_HOST_BACKEND_HOST) {
+    return "https://smith.langchain.com";
+  }
+  if (hostname.endsWith(`.${CLOUD_HOST_BACKEND_HOST}`)) {
+    const prefix = hostname.slice(0, -(CLOUD_HOST_BACKEND_HOST.length + 1));
     return `https://${prefix}.smith.langchain.com`;
   }
   return "https://smith.langchain.com";
+}
+
+/** Whether an API key may be sent to `url`: https, or http on localhost. */
+export function isSecureOrLocalUrl(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  return (
+    protocol === "https:" ||
+    (protocol === "http:" && LOCAL_HOSTNAMES.has(hostname))
+  );
+}
+
+/**
+ * The LangSmith API root for `LANGSMITH_ENDPOINT`: the endpoint without an
+ * `/api` or `/api/v1` suffix, or LangSmith cloud when it is unset.
+ */
+export function langsmithApiUrl(langsmithEndpoint: string | undefined): string {
+  if (!langsmithEndpoint) return `https://${CLOUD_LANGSMITH_API_HOST}`;
+  const url = new URL(langsmithEndpoint);
+  const path = url.pathname.replace(/\/+$/, "").replace(/\/api(\/v1)?$/, "");
+  return `${url.origin}${path}`;
+}
+
+/**
+ * The LangSmith UI for `LANGSMITH_ENDPOINT`: the regional
+ * `smith.langchain.com` for LangSmith cloud, or the self-hosted root. An
+ * endpoint on the data plane itself links LangSmith cloud.
+ */
+export function langsmithDashboardUrl(
+  langsmithEndpoint: string | undefined,
+  dataPlaneUrl?: string
+): string {
+  const apiUrl = langsmithApiUrl(langsmithEndpoint);
+  const { hostname } = new URL(apiUrl);
+  if (dataPlaneUrl && hostname === new URL(dataPlaneUrl).hostname) {
+    return CLOUD_DASHBOARD_URL;
+  }
+  if (hostname !== "langchain.com" && !hostname.endsWith(".langchain.com")) {
+    return apiUrl;
+  }
+  if (hostname.endsWith(`.${CLOUD_LANGSMITH_API_HOST}`)) {
+    const region = hostname.slice(0, -(CLOUD_LANGSMITH_API_HOST.length + 1));
+    return `https://${region}.smith.langchain.com`;
+  }
+  return CLOUD_DASHBOARD_URL;
 }
 
 /**
@@ -447,21 +503,20 @@ export function smithDashboardBaseUrl(
  *
  * @param updated - A deployment object that may carry a `tenant_id`.
  * @param deploymentId - The deployment ID.
- * @param hostUrl - The host backend API URL, used to derive the dashboard host.
+ * @param dashboardUrl - The LangSmith UI base URL.
  * @returns The dashboard URL, or `null` when no tenant ID is available.
  */
 export function getDeploymentStatusUrl(
   updated: unknown,
   deploymentId: string,
-  hostUrl?: string | null
+  dashboardUrl: string
 ): string | null {
   const tenantId =
     updated && typeof updated === "object"
       ? (updated as Record<string, unknown>).tenant_id
       : undefined;
   if (!tenantId) return null;
-  const base = smithDashboardBaseUrl(hostUrl);
-  return `${base}/o/${tenantId}/host/deployments/${deploymentId}`;
+  return `${dashboardUrl}/o/${tenantId}/host/deployments/${deploymentId}`;
 }
 
 /**

@@ -454,10 +454,11 @@ export function useStreamLGP<
   }, [shouldReconstructSubagents, historyMessages.length]);
 
   const historyError = (() => {
-    const error = branchContext.threadHead?.tasks?.at(-1)?.error;
+    const error: unknown = branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
-      const parsed = JSON.parse(error) as unknown;
+      const parsed: unknown =
+        typeof error === "string" ? JSON.parse(error) : error;
       if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
       return parsed;
     } catch {
@@ -616,6 +617,9 @@ export function useStreamLGP<
 
     await stream.start(
       async (signal: AbortSignal) => {
+        // A stop or thread switch came before it began, so its input must
+        // not show.
+        if (signal.aborted) return (async function* () {})();
         const stopRun = new AbortController();
         stopRunRef.current = stopRun;
         stream.setStreamValues((values) => {
