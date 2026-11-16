@@ -1681,6 +1681,10 @@ export class StreamOrchestrator<
     }
     this.scopes.setRun(undefined);
     const shownHead = this.branchContext.threadHead;
+    const unpersisted = this.#metadata.unpersistedOptimisticIds();
+    const inputs = this.messages.filter(
+      (message) => message.id != null && unpersisted.has(message.id)
+    );
     const read = planStopRead({
       history:
         this.historyLimit === true || typeof this.historyLimit === "number",
@@ -1700,7 +1704,9 @@ export class StreamOrchestrator<
         this.#options.onStop?.(args);
       },
       // A cancelled run skips `onSuccess`, so the buffer still holds what it
-      // streamed, including a message chunk the server never saved.
+      // streamed, including a message chunk the server never saved. Inputs it
+      // hasn't saved stay, after the head's messages, so a run stopped before
+      // the server saved its input doesn't lose it.
       read:
         threadId == null || this.#disposed
           ? undefined
@@ -1710,7 +1716,13 @@ export class StreamOrchestrator<
                 map: (states) => applyStopRead(states, shownHead),
               });
               if (newHistory == null) return undefined;
-              return newHistory.at(0)?.values ?? null;
+              const head = newHistory.at(0)?.values ?? null;
+              const base = head ?? this.historyValues;
+              const saved = this.#getMessages(base);
+              const ids = new Set(saved.map((message) => message.id));
+              const unsaved = inputs.filter((message) => !ids.has(message.id));
+              if (unsaved.length === 0) return head;
+              return this.#setMessages(base, [...saved, ...unsaved]);
             },
     });
   }

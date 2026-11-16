@@ -1791,6 +1791,33 @@ describe("StreamOrchestrator", () => {
     );
 
     it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+      "stop keeps an input the server didn't save until the next run, and drops the reply it cut off (fetchStateHistory: $fetchStateHistory)",
+      async ({ fetchStateHistory }) => {
+        const ids = () => orch.messages.map(({ id }) => id);
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ fetchStateHistory });
+
+        mockRun(
+          [{ event: "messages", data: [{ ...message("a1", "ai"), content: "Hel" }, {}] }],
+          { hang: true }
+        );
+        const running = orch.submit({ messages: [message("h1")] });
+        await vi.waitFor(() => expect(ids()).toEqual(["h0", "h1", "a1"]));
+        await orch.stop();
+
+        expect(ids()).toEqual(["h0", "h1"]);
+        await running;
+        const next = [message("h0"), message("h2")];
+        serve(stateWith({ messages: next }));
+        mockRun([{ event: "values", data: { messages: next } }]);
+        await orch.submit({ messages: [message("h2")] });
+
+        expect(orch.messages).toEqual(next);
+        orch.dispose();
+      }
+    );
+
+    it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
       "stop shows no error or breakpoint from the cancel (fetchStateHistory: $fetchStateHistory)",
       async ({ fetchStateHistory }) => {
         serve(interrupted());
