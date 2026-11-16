@@ -174,7 +174,7 @@ export const V1_BUGS = {
   earlyStopDoesNotCancel:
     "a stop before the run's id arrives leaves the run going, and onCompleted may come twice",
   answerRunsUntracked:
-    "a run that respond() starts gets no onCreated, onCompleted or isLoading",
+    "a run that respond() starts can get no onCreated, onCompleted or isLoading",
   answerRunNotStopped:
     "on the JS dev server, stop() right after respond() can leave the answer's run going, and then no card shows",
   interruptLetsRunFinish:

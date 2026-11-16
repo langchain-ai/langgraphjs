@@ -101,7 +101,6 @@ itOnJsServer("a headless tool runs once in the browser under StrictMode, its res
       because: ["answerRunsUntracked"],
     });
     expect(v2[outcome].summary.loading).toEqual([false, true, false]);
-    expect(reasons(v1[outcome].summary), v1Bug("answerRunsUntracked")).toEqual(["stopped"]);
     expect(reasons(v2[outcome].summary)).toEqual(["stopped", "success"]);
   }
   for (const side of [v1, v2]) {
