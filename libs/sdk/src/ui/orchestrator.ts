@@ -538,7 +538,19 @@ export class StreamOrchestrator<
    */
   #listedRuns = new Map<string, Run>();
 
-  #onVisibilityChange = () => this.#syncWatcher();
+  #onVisibilityChange = () => {
+    const closed = this.#watch == null;
+    this.#syncWatcher();
+    // A thread stream opened without an event id starts live, so only a read
+    // shows what ran while the page was hidden, as after a gap.
+    if (
+      closed &&
+      this.#watch != null &&
+      this.#watchCursor.lastEventId == null
+    ) {
+      this.#onThreadEvent(this.#watch.threadId, "gap", null);
+    }
+  };
 
   readonly #metadata = new MessageMetadataTracker();
 

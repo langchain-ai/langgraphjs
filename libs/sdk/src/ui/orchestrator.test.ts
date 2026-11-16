@@ -5681,28 +5681,71 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("reads the state once and joins nothing for a run that started and ended while the tab was hidden", async () => {
+    it("resumes from its last event after the tab was hidden, and reads the state once and joins nothing for a run that started and ended meanwhile", async () => {
       const page = Object.assign(new EventTarget(), {
         visibilityState: "visible",
       });
       vi.stubGlobal("document", page);
       (client.runs.get as Mock).mockResolvedValue({ status: "success" });
       const orch = await watching();
-      const reads = (client.threads.getState as Mock).mock.calls.length;
+      open()!.send(done("run-old", "1-0"));
+      await vi.waitFor(() =>
+        expect(client.threads.getState).toHaveBeenCalledTimes(2)
+      );
 
       page.visibilityState = "hidden";
       page.dispatchEvent(new Event("visibilitychange"));
       expect(open()).toBeUndefined();
       page.visibilityState = "visible";
       page.dispatchEvent(new Event("visibilitychange"));
-      open()!.send(started("run-d", "1-0"), done("run-d", "2-0"));
+      expect(open()!.lastEventId).toBe("1-0");
+      open()!.send(started("run-d", "2-0"), done("run-d", "3-0"));
 
       await vi.waitFor(() =>
-        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1)
+        expect(client.threads.getState).toHaveBeenCalledTimes(3)
       );
       await flushMicrotasks(10);
       expect(client.runs.joinStream).not.toHaveBeenCalled();
+      expect(client.threads.getState).toHaveBeenCalledTimes(3);
+      orch.dispose();
+    });
+
+    it("reads the state once and shows a run that ran while the tab was hidden when it has no last event to resume from", async () => {
+      const page = Object.assign(new EventTarget(), {
+        visibilityState: "visible",
+      });
+      vi.stubGlobal("document", page);
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      page.visibilityState = "hidden";
+      page.dispatchEvent(new Event("visibilitychange"));
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({ messages: [message("from-b")] })
+      );
+      page.visibilityState = "visible";
+      page.dispatchEvent(new Event("visibilitychange"));
+
+      expect(open()!.lastEventId).toBeUndefined();
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("from-b")])
+      );
+      await flushMicrotasks(10);
       expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1);
+      orch.dispose();
+    });
+
+    it("reads nothing more when it opens again after this tab's own run with no last event", async () => {
+      mockRunStream(undefined, { ended: Promise.resolve() });
+      const orch = await watching();
+      const reads = (client.threads.getState as Mock).mock.calls.length;
+
+      await orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(open()).toBeDefined());
+      await flushMicrotasks(10);
+
+      expect(open()!.lastEventId).toBeUndefined();
+      expect(client.threads.getState).toHaveBeenCalledTimes(reads);
       orch.dispose();
     });
 
