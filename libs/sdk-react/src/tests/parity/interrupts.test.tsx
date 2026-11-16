@@ -266,6 +266,41 @@ it("respond() sends its update and goto with the answer", async () => {
   expect(v2.command).toEqual({ resume: [{ approved: true }], update: { request: "send it now" }, goto: "__end__" });
 });
 
+it("submit() with interruptBefore or interruptAfter pauses the run at that node on 2.0, and submit(null) continues it", async () => {
+  const { v1, v2 } = await onBothSides(async (side) => {
+    const outcomes: Record<string, { firstRun: { waiting: boolean; shown: string[] }; summary: Summary }> = {};
+    for (const option of ["interruptBefore", "interruptAfter"] as const) {
+      const probe = await side.mount({ assistantId: "create_agent" });
+      await probe.stream.submit({ messages: [{ type: "human", content: "Weather in San Francisco?" }] }, { [option]: ["tools"] });
+      const threadId = probe.stream.threadId!;
+      await runsOf(threadId, ended);
+      await probe.until((s) => !s.isLoading, "the run");
+      const firstRun = {
+        waiting: (await client.threads.getState(threadId)).next.length > 0,
+        shown: (await summary(probe)).final.messages.map((m) => m.type),
+      };
+      if (firstRun.waiting) {
+        await probe.stream.submit(null);
+        await runsOf(threadId, (runs) => ended(runs) && runs.length === 2);
+        await probe.until((s) => !s.isLoading, "the continued run");
+      }
+      outcomes[option] = { firstRun, summary: await summary(probe) };
+      await probe.unmount();
+    }
+    return outcomes;
+  });
+
+  for (const option of ["interruptBefore", "interruptAfter"]) {
+    expectSameSummary(v1[option].summary, v2[option].summary, {
+      fields: ["callbacks", "loading"],
+      because: ["submitOptionsReachServer"],
+    });
+    expect(v1[option].firstRun, is("submitOptionsReachServer")).toEqual({ waiting: false, shown: ["human", "ai", "tool", "ai"] });
+  }
+  expect(v2.interruptBefore.firstRun, is("submitOptionsReachServer")).toEqual({ waiting: true, shown: ["human", "ai"] });
+  expect(v2.interruptAfter.firstRun, is("submitOptionsReachServer")).toEqual({ waiting: true, shown: ["human", "ai", "tool"] });
+});
+
 itOnAgentServer("an approval another hook answers goes away, and a late answer to it fails its run on 2.0", async () => {
   const { v1, v2 } = await onBothSides(async (side) => {
     const answering = await side.mount({ assistantId: "interrupt_graph" });
