@@ -3681,6 +3681,28 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.isThreadLoading).toBe(true);
       orch.dispose();
     });
+
+    it("shows a task error the thread saved as an object as an Error", async () => {
+      (client.threads.getState as Mock).mockResolvedValue({
+        ...createThreadState({ messages: [] }),
+        tasks: [
+          {
+            id: "task-1",
+            name: "agent",
+            error: { message: "boom", name: "Error" },
+            interrupts: [],
+          },
+        ],
+      });
+      const orch = orchestrator();
+
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(orch.error).toBeInstanceOf(Error);
+      expect((orch.error as Error).message).toBe("boom");
+      orch.dispose();
+    });
   });
 
   describe("a thread that doesn't exist yet", () => {

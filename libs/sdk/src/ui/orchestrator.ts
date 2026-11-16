@@ -1078,14 +1078,16 @@ export class StreamOrchestrator<
   }
 
   /**
-   * The error from the last task in the thread head, if any.
-   * Attempts to parse structured {@link StreamError} instances from JSON.
+   * The error from the last task in the thread head, if any. A structured
+   * error, saved as a JSON string or as an object, becomes a
+   * {@link StreamError}.
    */
   get historyError(): unknown {
-    const error = this.branchContext.threadHead?.tasks?.at(-1)?.error;
+    const error: unknown = this.branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
-      const parsed = JSON.parse(error) as unknown;
+      const parsed: unknown =
+        typeof error === "string" ? JSON.parse(error) : error;
       if (StreamError.isStructuredError(parsed)) return new StreamError(parsed);
       return parsed;
     } catch {

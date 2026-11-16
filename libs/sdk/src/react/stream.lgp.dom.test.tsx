@@ -345,6 +345,33 @@ describe("useStream (old engine) submit onError", () => {
   });
 });
 
+describe("useStream (old engine) thread load", () => {
+  it("shows a task error the thread saved as an object as an Error", async () => {
+    const client = createClient();
+    serve(
+      client,
+      threadState(
+        { messages: [] },
+        {
+          tasks: [
+            {
+              id: "task-1",
+              name: "agent",
+              error: { message: "boom", name: "Error" },
+              interrupts: [],
+            },
+          ],
+        }
+      )
+    );
+
+    const view = await renderStream(client, { threadId: "t1" });
+
+    expect(view.current.error).toBeInstanceOf(Error);
+    expect((view.current.error as Error).message).toBe("boom");
+  });
+});
+
 describe("useStream (old engine) rejoin on mount", () => {
   afterEach(() => {
     window.sessionStorage.clear();
