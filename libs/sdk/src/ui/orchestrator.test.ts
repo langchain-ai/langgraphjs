@@ -5460,6 +5460,111 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    describe("a lookup of a subagent its run hasn't started yet", () => {
+      const withTask = {
+        event: "updates",
+        data: {
+          model: {
+            messages: [
+              {
+                id: "ai-1",
+                type: "ai",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    name: "task",
+                    args: { subagent_type: "researcher", description: "Research" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      it.each(["after", "during"])(
+        "gets the namespace the run starts it at, %s its history read",
+        async (when) => {
+          withFlags(flags);
+          const start = deferred();
+          (client.runs.stream as Mock).mockImplementation(
+            (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+              async *[Symbol.asyncIterator]() {
+                payload.onRunCreated?.({ run_id: "run-1" });
+                yield withTask;
+                await start.promise;
+                yield {
+                  event: "lifecycle|tools:a",
+                  data: { event: "started", namespace: ["tools:a"], tool_call_id: "call_1" },
+                };
+                await openUntil(payload.signal);
+              },
+            })
+          );
+          let answer!: (history: unknown[]) => void;
+          (client.threads.getHistory as Mock).mockReturnValue(
+            new Promise((resolve) => {
+              answer = resolve;
+            })
+          );
+          const orch = orchestrator({ scopedSubagents: true });
+          orch.initThreadId("t1");
+          void orch.submit({ messages: [] });
+          await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+
+          const lookup = orch.resolveSubagentNamespace("call_1");
+          await vi.waitFor(() =>
+            expect(client.threads.getHistory).toHaveBeenCalledWith("t1", expect.objectContaining({ limit: 2 }))
+          );
+          if (when === "after") {
+            answer([]);
+            await flushMicrotasks();
+          }
+          start.resolve();
+          await vi.waitFor(() => expect(orch.getSubagent("call_1")?.namespace).toEqual(["tools:a"]));
+          answer([]);
+
+          await expect(lookup).resolves.toEqual(["tools:a"]);
+          orch.dispose();
+        }
+      );
+
+      it("finds nothing once the run ends without starting it", async () => {
+        withFlags(flags);
+        const end = deferred();
+        mockRunStream([withTask], { ended: end.promise });
+        const orch = orchestrator({ scopedSubagents: true });
+        orch.initThreadId("t1");
+        const run = orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+
+        const lookup = orch.resolveSubagentNamespace("call_1");
+        end.resolve();
+        await run;
+
+        await expect(lookup).resolves.toBeUndefined();
+        orch.dispose();
+      });
+
+      it("finds nothing, and reads nothing more, once the engine is disposed while it waits", async () => {
+        withFlags(flags);
+        mockRunStream([withTask]);
+        const orch = orchestrator({ scopedSubagents: true });
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+        const lookup = orch.resolveSubagentNamespace("call_1");
+        await vi.waitFor(() => expect(client.threads.getHistory).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        orch.dispose();
+
+        await expect(lookup).resolves.toBeUndefined();
+        expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      });
+    });
+
     describe("lookups asked at the same time", () => {
       async function reloadedSubagent() {
         withFlags(flags);
