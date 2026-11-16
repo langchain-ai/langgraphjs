@@ -474,6 +474,9 @@ export class StreamOrchestrator<
   /** Subagent namespace lookups in flight on the current thread, by tool call id. */
   #namespaceLookups = new Map<string, Promise<string[] | undefined>>();
 
+  /** Lookups waiting for a run to start their subagent. dispose() ends them. */
+  #namespaceWaits = new Set<() => void>();
+
   /** Interrupts answered by a run that hasn't ended yet. */
   #answered = new Set<string>();
 
@@ -1648,19 +1651,22 @@ export class StreamOrchestrator<
       // The history holds nothing for it yet: its run's lifecycle event binds
       // its namespace when the run starts it.
       await new Promise<void>((resolve) => {
-        const settled = () =>
-          threadId !== this.#threadId || !this.#awaitsNamespace(toolCallId);
-        if (settled()) {
-          resolve();
-          return;
-        }
-        const off = this.subscribe(() => {
-          if (!settled()) return;
+        const check = () => {
+          if (
+            threadId === this.#threadId &&
+            this.#awaitsNamespace(toolCallId)
+          ) {
+            return;
+          }
           off();
+          this.#namespaceWaits.delete(check);
           resolve();
-        });
+        };
+        const off = this.subscribe(check);
+        this.#namespaceWaits.add(check);
+        check();
       });
-      return threadId === this.#threadId
+      return threadId === this.#threadId && !this.#disposed
         ? this.#lookUpSubagentNamespace(toolCallId)
         : undefined;
     }
@@ -1674,6 +1680,7 @@ export class StreamOrchestrator<
   #awaitsNamespace(toolCallId: string): boolean {
     const subagent = this.getSubagent(toolCallId);
     return (
+      !this.#disposed &&
       this.isLoading &&
       subagent?.namespace.length === 0 &&
       (subagent.status === "pending" || subagent.status === "running")
@@ -2633,6 +2640,7 @@ export class StreamOrchestrator<
   dispose(): void {
     clearTimeout(this.#pendingDispose);
     this.#disposed = true;
+    for (const check of this.#namespaceWaits) check();
     this.scopes.dispose();
     globalThis.document?.removeEventListener(
       "visibilitychange",

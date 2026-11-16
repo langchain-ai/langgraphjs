@@ -5546,6 +5546,23 @@ describe("StreamOrchestrator runs", () => {
         await expect(lookup).resolves.toBeUndefined();
         orch.dispose();
       });
+
+      it("finds nothing, and reads nothing more, once the engine is disposed while it waits", async () => {
+        withFlags(flags);
+        mockRunStream([withTask]);
+        const orch = orchestrator({ scopedSubagents: true });
+        orch.initThreadId("t1");
+        void orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.getSubagent("call_1")?.status).toBe("pending"));
+        const lookup = orch.resolveSubagentNamespace("call_1");
+        await vi.waitFor(() => expect(client.threads.getHistory).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        orch.dispose();
+
+        await expect(lookup).resolves.toBeUndefined();
+        expect(client.threads.getHistory).toHaveBeenCalledOnce();
+      });
     });
 
     describe("lookups asked at the same time", () => {
