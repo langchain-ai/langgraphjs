@@ -28,6 +28,8 @@ This page lists every change a 1.x app may notice, and how to get 1.x's behavior
 
 On an older server, 2.0 still works: subagent panels get every event of each run (a console warning says so once), and a reload replays the running run from its start.
 
+**Async subagents.** With deepagents 0.7.39 or later in Python, `useStream` on an async subagent's thread (deepagents' `AsyncSubAgent`) streams the subagent's replies token by token, as 1.x did. With an older version, and so far with deepagents in JS, each reply shows only when its step ends.
+
 ## Removed
 
 ### Media hooks
@@ -135,6 +137,11 @@ Use the [selector hooks](./selectors.md).
 - **1.x:** `fetch` was used for the stream only, also when you passed `client`.
 - **2.0:** it is used for every request of the client the hook builds: thread reads, runs and cancels. With `client` it is ignored, with a warning in the console.
 - **Back:** set it on your client: `new Client({ apiUrl, callerOptions: { fetch } })`.
+
+### `interruptBefore` and `interruptAfter` take effect
+
+- **1.x:** `submit()` dropped both. They weren't in its types, but code could still pass them.
+- **2.0:** they reach the server, so an app that passes them sees its runs pause before or after those nodes. `submit(null)` continues a paused run (see [Breakpoints](./interrupts.md#breakpoints)).
 
 ### A late answer fails
 
