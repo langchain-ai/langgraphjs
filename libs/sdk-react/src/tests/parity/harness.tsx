@@ -64,6 +64,12 @@ export async function interruptSaved(threadId: string) {
   );
 }
 
+/** The thread of the first async subagent task in a lead agent's values. */
+export function asyncTaskThread(values: unknown): string | undefined {
+  const tasks = (values as { async_tasks?: Record<string, { thread_id: string }> } | null)?.async_tasks;
+  return Object.values(tasks ?? {})[0]?.thread_id;
+}
+
 /** `stream.hydrate()`, which 1.x has only on its controller. */
 export function hydrateOn(side: Side, probe: Probe, threadId?: string): Promise<void> {
   if (side.name === "2.0") return probe.stream.hydrate(threadId);
@@ -352,13 +358,13 @@ function recordNetwork() {
       new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
     );
     const request = { method, path: url.pathname + url.search, headers };
-    requests.push(request);
+    const number = requests.push(request);
     const response = await real(input, init);
     if (
       response.body != null &&
       response.headers.get("content-type")?.includes("text/event-stream")
     ) {
-      trackStream(response, `${method} ${url.pathname}#${requests.length}`, open);
+      trackStream(response, `${method} ${url.pathname}#${number}`, open);
     }
     return response;
   };

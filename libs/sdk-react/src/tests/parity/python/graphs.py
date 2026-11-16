@@ -35,7 +35,10 @@ class TextModel(FakeListChatModel):
 
 
 class ScriptedModel(BaseChatModel):
-    """Makes `calls` for a new message, and gives `answer` once the tools answered."""
+    """Makes `calls` for a new turn, and gives `answer` once the tools answered.
+
+    A task notification the agent adds doesn't start a new turn.
+    """
 
     calls: AIMessage
     answer: AIMessage
@@ -48,7 +51,8 @@ class ScriptedModel(BaseChatModel):
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
-        turn = self.answer if messages[-1].type == "tool" else self.calls
+        last = next(m for m in reversed(messages) if get_notification_metadata(m) is None)
+        turn = self.answer if last.type in ("tool", "ai") else self.calls
         return ChatResult(generations=[ChatGeneration(message=turn.model_copy(deep=True))])
 
 
@@ -513,4 +517,48 @@ async_subagent = create_deep_agent(
         }
     ],
     system_prompt="You delegate research to a background subagent.",
+)
+
+reviewer_model = TextModel(responses=["Review finished."], sleep=0.08)
+
+
+async def review_once_approved(state: MessagesState) -> dict:
+    interrupt({"prompt": "Approve the review?"})
+    return {"messages": [await reviewer_model.ainvoke(state["messages"])]}
+
+
+async_reviewer = single_node(review_once_approved)
+
+five_workers = create_deep_agent(
+    model=ScriptedModel(
+        calls=AIMessage(
+            "",
+            id="five-workers-orchestrator",
+            tool_calls=[
+                call(
+                    "review-1",
+                    "start_async_task",
+                    description="Review the plan",
+                    subagent_type="reviewer",
+                ),
+                *(task(f"part-{i}", f"Check part {i}", "worker") for i in range(1, 6)),
+            ],
+        ),
+        answer=AIMessage("All parts checked.", id="five-workers-final"),
+    ),
+    subagents=[
+        {
+            "name": "worker",
+            "description": "Checks one part of a plan.",
+            "system_prompt": "You check one part of a plan.",
+            "tools": [],
+            "model": TextModel(responses=["Part checked: every case passes."], sleep=1.0),
+        },
+        {
+            "name": "reviewer",
+            "description": "Reviews a plan in the background once approved.",
+            "graph_id": "async_reviewer",
+        },
+    ],
+    system_prompt="You split a plan into parts for workers and start a background review.",
 )

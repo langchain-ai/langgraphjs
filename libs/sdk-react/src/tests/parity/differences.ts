@@ -200,6 +200,8 @@ export const V1_BUGS = {
   stopBlinksLoading: "after stop(), isLoading can turn true for a moment once more",
   panelShowsToolFirst:
     "on the Python server, a subagent panel opened mid-run can first show the subagent's tool message alone, before its earlier messages",
+  twoStreamsPerThread:
+    "each thread a hook shows holds two event streams, so three threads on a page take all six connections a browser opens to a server over HTTP/1.1, and every other request to that server waits",
 } as const;
 
 export type V1Bug = keyof typeof V1_BUGS;

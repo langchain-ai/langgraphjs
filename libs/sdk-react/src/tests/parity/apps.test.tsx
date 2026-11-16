@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import { is, v1Bug } from "./differences.js";
 import {
   apiUrl,
+  asyncTaskThread,
   client,
   droppableFetch,
   expectSameSummary,
@@ -34,6 +35,22 @@ async function panelOf(side: Side, probe: Probe, target: unknown) {
   const panel = await side.mountPanel(probe.stream, target);
   await panel.until((p) => p.messages.length > 0 && p.toolCalls.length > 0, "the panel");
   const shown = normalizeIds({ ...panel.latest, messages: panel.latest.messages.map(({ shape: _shape, ...m }) => m) });
+  await panel.unmount();
+  return shown;
+}
+
+async function asyncSubagentPanel(side: Side) {
+  const lead = await side.mount({ assistantId: "async_subagent" });
+  void lead.stream.submit(say("Research the protocol's history")).catch(() => undefined);
+  await lead.until((s) => asyncTaskThread(s.values) != null, "the task");
+  const leadThreadId = lead.stream.threadId!;
+  const threadId = asyncTaskThread(lead.stream.values)!;
+  // A third thread on the page would take every connection on 1.x (`twoStreamsPerThread`).
+  await lead.unmount();
+  const panel = await side.mount({ assistantId: "async_researcher", threadId });
+  await runsOf(threadId, ended(1));
+  await runsOf(leadThreadId, ended(1));
+  const shown = await summary(panel);
   await panel.unmount();
   return shown;
 }
@@ -184,7 +201,7 @@ it("an app on the server queue: the reconnect options through a dropped connecti
   }
 });
 
-it("an app with useValues, an approval, a subagent panel, and hydrate() when a tab shows again after another tab's run", async () => {
+it("an app with useValues, an approval, a subagent panel, an async subagent's panel, and hydrate() when a tab shows again after another tab's run", async () => {
   const { v1, v2 } = await onBothSides(async (side) => {
     const probe = await side.mount({
       assistantId: "deep_agent_interrupt",
@@ -197,11 +214,12 @@ it("an app with useValues, an approval, a subagent panel, and hydrate() when a t
     await runsOf(threadId, ended(2));
     await probe.until((s) => !s.isLoading && s.subagents.size === 1, "the agent's answer");
     const panel = await panelOf(side, probe, [...probe.stream.subagents.values()][0]);
+    const asyncPanel = jsGraphs ? null : await asyncSubagentPanel(side);
 
     await client.runs.wait(threadId, "slow_graph", { input: say("From the other tab") });
     await hydrateOn(side, probe);
     await probe.until((s) => !s.isLoading && s.messages.at(-1)?.text === "Done.", "the other tab's messages");
-    return { summary: await summary(probe), panel };
+    return { summary: await summary(probe), panel, asyncPanel };
   });
 
   expectSameSummary(v1.summary, v2.summary, {
@@ -224,6 +242,13 @@ it("an app with useValues, an approval, a subagent panel, and hydrate() when a t
   });
   expect(v2.panel, v1Bug("commandOutputShownRaw")).toEqual(withoutEmptyTool(v1.panel));
   expect(v2.summary.final.messages.slice(-2).map((m) => m.text)).toEqual(["From the other tab", "Done."]);
+  if (v1.asyncPanel == null || v2.asyncPanel == null) return;
+  expect(v2.asyncPanel.final.messages.map((m) => m.text)).toEqual(["Research the protocol's history", "Research finished."]);
+  expect(v2.asyncPanel.loading).toEqual([false, true, false]);
+  expect(v2.asyncPanel.streamedInParts).toBe(true);
+  if (v1.asyncPanel.loading.includes(true)) {
+    expectSameSummary(v1.asyncPanel, v2.asyncPanel, { fields: ["callbacks"], because: ["joinedRunCompletedWithId"] });
+  }
 });
 
 it("assistant-ui's setup: the caller's options passed through, and useChannel on custom", async () => {
