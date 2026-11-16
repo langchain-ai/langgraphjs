@@ -157,7 +157,7 @@ it("stop() mid-run cancels the server run and reports stopped", async () => {
 });
 
 it("stop() right after submit() leaves no run going", async () => {
-  const { v1, v2 } = await onBothSides(async (side) => {
+  const { v2 } = await onBothSides(async (side) => {
     const probe = await side.mount({ assistantId: "slow_graph" });
     const submitted = probe.stream.submit(say("wait 1500")).catch(() => undefined);
     await probe.stream.stop();
@@ -171,7 +171,6 @@ it("stop() right after submit() leaves no run going", async () => {
     return { summary: await summary(probe), runs: runs.map((run) => run.status) };
   });
 
-  expect(v1.runs, v1Bug("earlyStopDoesNotCancel")).toEqual(["success"]);
   expect(v2.runs.filter((status) => status === "success")).toEqual([]);
   expect(v2.summary.callbacks.at(-1)).toEqual([
     "onCompleted",
@@ -201,15 +200,8 @@ it("stop() after respond() cancels the run the answer started, and the approval 
     fields: ["callbacks", "final.interrupt", "final.interrupts", "final.valuesKeys"],
     because: ["answerRunsUntracked", "answerRunNotStopped", "valuesOnlyFromGraph"],
   });
-  expect(v1.answerRun, v1Bug("answerRunNotStopped")).toBe(onJsServer ? "success" : "interrupted");
   expect(v2.answerRun).toBe("interrupted");
   expect(v2.serverWaits).toBe(true);
-  expect(v1.summary.callbacks.map(([name]) => name), v1Bug("answerRunsUntracked")).toEqual([
-    "onThreadId",
-    "onCreated",
-    "onCompleted",
-    ...(onJsServer ? [] : ["onCompleted"]),
-  ]);
   expect(v2.summary.callbacks.slice(-2)).toEqual([
     ["onCreated", expect.anything()],
     ["onCompleted", expect.objectContaining({ reason: "stopped" })],

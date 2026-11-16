@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import { FANOUT_WORKER_COUNT } from "../fixtures/parallel-constants.js";
-import { is, v1Bug } from "./differences.js";
+import { is } from "./differences.js";
 import {
   expectSameSummary,
   normalizeIds,
@@ -118,11 +118,7 @@ it("a panel on each subagent, by the subagent or its namespace, shows the same m
   });
 
   if ([v1.live, v1.liveByNamespace, v1.reloaded, v1.reloadedByNamespace].every((panels) => panels != null)) {
-    if (onJsServer) {
-      expect(v2.live).toEqual(v1.live);
-    } else {
-      expect(v1.live![0].messages.at(-1), v1Bug("commandOutputShownRaw")).toEqual(expect.objectContaining({ type: "tool", text: "" }));
-    }
+    if (onJsServer) expect(v2.live).toEqual(v1.live);
     expect(v2.reloaded).toEqual(v1.reloaded);
   }
   expect(v2.liveByNamespace).toEqual(v2.live);

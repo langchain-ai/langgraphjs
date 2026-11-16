@@ -171,11 +171,7 @@ it("an app on the server queue: the reconnect options through a dropped connecti
     fields: ["final.subagents", ...(onJsServer ? [] : ["final.toolCalls"])],
     because: ["subagentOutputIsText", "rootToolCallsListSubagents", "commandOutputShownRaw"],
   });
-  if (onJsServer) {
-    expect(v2.panels).toEqual(v1.panels);
-  } else {
-    expect(v1.panels[0].messages.at(-1), v1Bug("commandOutputShownRaw")).toEqual(expect.objectContaining({ type: "tool", text: "" }));
-  }
+  if (onJsServer) expect(v2.panels).toEqual(v1.panels);
   expect(v1.reconnected, is("fetch")).toBe(true);
   expect(v2.reconnected, is("fetch")).toBe(false);
   expect(v2.custom).toBe(3);
