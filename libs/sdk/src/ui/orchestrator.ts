@@ -1593,13 +1593,14 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Find a subagent's namespace, so its scope can be acquired after a reload:
-   * the one bound while it streamed, else the one its `task` tool message
-   * records (`artifact.checkpoint_ns`), else a match in the thread's lean
-   * history. A subagent with no tool message yet is running or paused, so
-   * the newest two history entries hold its call and its task. The subagent
-   * keeps the namespace found. Callers that ask at the same time share one
-   * lookup.
+   * Find a subagent's namespace, so its scope can be acquired: the one bound
+   * while it streams, else the one its `task` tool message records
+   * (`artifact.checkpoint_ns`), else a match in the thread's lean history. A
+   * subagent with no tool message yet is running or paused, so the newest two
+   * history entries hold its call and its task. One that the run streaming
+   * now hasn't started yet is looked up again once the run starts it, or
+   * ends. The subagent keeps the namespace found. Callers that ask at the
+   * same time share one lookup.
    *
    * @param toolCallId - The tool call ID that started the subagent.
    * @returns Its namespace, or `undefined` if none was found.
@@ -1623,6 +1624,7 @@ export class StreamOrchestrator<
     if (bound != null && bound.length > 0) return bound;
     const threadId = this.#threadId;
     if (threadId == null) return undefined;
+    const unstarted = this.#awaitsNamespace(toolCallId);
     const toolMessage = this.messages.find(
       (message): message is ToolMessage =>
         message.type === "tool" && message.tool_call_id === toolCallId
@@ -1642,10 +1644,40 @@ export class StreamOrchestrator<
               }
             ).catch(() => undefined)
           )?.get(toolCallId);
+    if (namespace == null && unstarted) {
+      // The history holds nothing for it yet: its run's lifecycle event binds
+      // its namespace when the run starts it.
+      await new Promise<void>((resolve) => {
+        const settled = () =>
+          threadId !== this.#threadId || !this.#awaitsNamespace(toolCallId);
+        if (settled()) {
+          resolve();
+          return;
+        }
+        const off = this.subscribe(() => {
+          if (!settled()) return;
+          off();
+          resolve();
+        });
+      });
+      return threadId === this.#threadId
+        ? this.#lookUpSubagentNamespace(toolCallId)
+        : undefined;
+    }
     if (namespace == null || threadId !== this.#threadId) return undefined;
     const segments = namespace.split("|");
     this.stream.bindSubagentNamespace(toolCallId, segments);
     return segments;
+  }
+
+  /** Whether a run streams here while this subagent has no namespace yet. */
+  #awaitsNamespace(toolCallId: string): boolean {
+    const subagent = this.getSubagent(toolCallId);
+    return (
+      this.isLoading &&
+      subagent?.namespace.length === 0 &&
+      (subagent.status === "pending" || subagent.status === "running")
+    );
   }
 
   /**
