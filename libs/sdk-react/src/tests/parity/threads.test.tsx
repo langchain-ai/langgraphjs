@@ -261,8 +261,8 @@ it("hydrate() shows another client's run, and joins a run it finds running", asy
   expect(texts(v2.joined)).toEqual(["Hello", "Plan accepted.", "From elsewhere", "Done.", "wait 1500", "Done."]);
   if (texts(v1.joined).length === 6) {
     expectSameSummary(v1.joined, v2.joined, {
-      fields: ["callbacks", "threadLoading"],
-      because: ["joinedRunCompletedWithId", "quietSameThreadHydrate"],
+      fields: ["callbacks", "threadLoading", ...(onJsServer ? [] : ["loading"])],
+      because: ["joinedRunCompletedWithId", "quietSameThreadHydrate", "runsStartedElsewhere"],
     });
   }
 });
