@@ -522,6 +522,18 @@ describe("RunProtocolSession", () => {
                 id: "ai_1",
                 type: "ai",
                 content: "",
+                additional_kwargs: {
+                  tool_calls: [
+                    {
+                      id: "call_123",
+                      type: "function",
+                      function: {
+                        name: "task",
+                        arguments: "{\"description\":\"Review risks\"}",
+                      },
+                    },
+                  ],
+                },
                 response_metadata: {
                   model_provider: "openai",
                   usage: {
