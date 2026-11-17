@@ -23,7 +23,26 @@
     "@langchain/langgraph-benchmark",
     "langgraph",
     "@example/*",
-    "@examples/*"
+    "@examples/*",
+    "@langchain/angular",
+    "@langchain/build",
+    "@langchain/langgraph",
+    "@langchain/langgraph-api",
+    "@langchain/langgraph-checkpoint",
+    "@langchain/langgraph-checkpoint-mongodb",
+    "@langchain/langgraph-checkpoint-postgres",
+    "@langchain/langgraph-checkpoint-redis",
+    "@langchain/langgraph-checkpoint-sqlite",
+    "@langchain/langgraph-checkpoint-validation",
+    "@langchain/langgraph-cli",
+    "@langchain/langgraph-cua",
+    "@langchain/langgraph-supervisor",
+    "@langchain/langgraph-swarm",
+    "@langchain/langgraph-ui",
+    "@langchain/svelte",
+    "@langchain/vue",
+    "create-langgraph",
+    "docs"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
