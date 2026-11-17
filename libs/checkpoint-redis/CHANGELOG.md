@@ -1,5 +1,11 @@
 # @langchain/langgraph-checkpoint-redis
 
+## 1.1.2
+
+### Patch Changes
+
+- [#3301](https://github.com/langchain-ai/langgraphjs/pull/3301) [`b4b7b8b`](https://github.com/langchain-ai/langgraphjs/commit/b4b7b8bed99525893388d3e3125d37712d240d25) Thanks [@eliornl](https://github.com/eliornl)! - `RedisSaver` and `ShallowRedisSaver` send the index checks they run before every write together, in one round trip instead of one per index. A 100-step loop on `RedisSaver` runs 1.44x faster.
+
 ## 1.1.1
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @langchain/react
 
+## 1.3.0
+
+### Minor Changes
+
+- [#3370](https://github.com/langchain-ai/langgraphjs/pull/3370) [`77bf3db`](https://github.com/langchain-ai/langgraphjs/commit/77bf3db1b81e7f30d341e4e8bc56d264e41cb341) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `useStream` accepts `stateKeys`, the `values` keys your UI reads. Opening a thread then sends `select` on `GET /threads/{thread_id}/state` for those keys, the messages key, and the top-level fields the hook reads itself, so the server can skip the rest of the state. `stream.values` contains only those keys plus the messages key, after loading and while a run streams, including on a server that ignores `select`. A custom adapter's `getState` receives `{ select }`, and `HttpAgentServerAdapter` forwards it. Without `stateKeys`, nothing changes.
+
+### Patch Changes
+
+- Updated dependencies [[`74c6edd`](https://github.com/langchain-ai/langgraphjs/commit/74c6edd9768e0312425af544fd505a543a0a0370), [`62e40b9`](https://github.com/langchain-ai/langgraphjs/commit/62e40b998f769ccf9d872d394d2fd3d6796a0ddf), [`cfa7a37`](https://github.com/langchain-ai/langgraphjs/commit/cfa7a373229d6d215395ccdfcb52dfadc28fb12e), [`feb9832`](https://github.com/langchain-ai/langgraphjs/commit/feb9832ee5c1438f5f403afa9e00b0d9ce6b934f), [`fd10c3a`](https://github.com/langchain-ai/langgraphjs/commit/fd10c3a2c7c1b4d4e6d4339c32a546b44385af89), [`6033cc7`](https://github.com/langchain-ai/langgraphjs/commit/6033cc746bebf962cb0120e06499a838a512bac3), [`abea7e8`](https://github.com/langchain-ai/langgraphjs/commit/abea7e8b42d1a9a38bb5a07c66228798e068f1d5), [`a9dc990`](https://github.com/langchain-ai/langgraphjs/commit/a9dc9907bad977259687dfa467d0e0fd6809d10f), [`6d8d5fd`](https://github.com/langchain-ai/langgraphjs/commit/6d8d5fd0dcb53e385b48a5e6a0bc044722fea68f), [`4cef0cc`](https://github.com/langchain-ai/langgraphjs/commit/4cef0cca4315150b8c49757d3b82533eb138b6c8), [`7eb96bc`](https://github.com/langchain-ai/langgraphjs/commit/7eb96bceed9f0814921101110dc2c594bb816e66), [`09e4351`](https://github.com/langchain-ai/langgraphjs/commit/09e4351a78bed1487c245d0bf5a9b0693937151d), [`b2bc8eb`](https://github.com/langchain-ai/langgraphjs/commit/b2bc8eb322c869825e82d68186caf1c9424e8fc2), [`82a7d07`](https://github.com/langchain-ai/langgraphjs/commit/82a7d070eff81a653d2b292ef5e2ad8169e91555), [`dd0c346`](https://github.com/langchain-ai/langgraphjs/commit/dd0c346df9f77446f0fd61491fa1a45970ae1cdf), [`6cf515f`](https://github.com/langchain-ai/langgraphjs/commit/6cf515ff63a29a90e8c3220b36c2727f1b0db856), [`99b9dde`](https://github.com/langchain-ai/langgraphjs/commit/99b9dde5a75cbbd3a2fa72c2014f38fbad053d1b), [`e337917`](https://github.com/langchain-ai/langgraphjs/commit/e3379170d2bdea6b603949e83475f01024e7c3c3), [`77bf3db`](https://github.com/langchain-ai/langgraphjs/commit/77bf3db1b81e7f30d341e4e8bc56d264e41cb341)]:
+  - @langchain/langgraph-sdk@1.17.0
+
 ## 1.2.14
 
 ### Patch Changes
