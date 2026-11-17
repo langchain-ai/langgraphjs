@@ -142,6 +142,28 @@ describe("ProtocolSseTransportAdapter URL resolution", () => {
 
     await expect(transport.getState()).resolves.toBeNull();
   });
+
+  it("sends select as repeated query params when reading thread state", async () => {
+    const { calls, fetch } = createFetchRecorder({
+      response: new Response(JSON.stringify({ values: {} }), { status: 200 }),
+    });
+    const transport = new ProtocolSseTransportAdapter({
+      apiUrl: PROXIED_API_URL,
+      threadId: THREAD_ID,
+      fetch,
+    });
+
+    await transport.getState({ select: ["tasks", "values.messages"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].pathname).toBe(
+      new URL(`${PROXIED_API_URL}/threads/${THREAD_ID}/state`).pathname
+    );
+    expect(calls[0].searchParams.getAll("select")).toEqual([
+      "tasks",
+      "values.messages",
+    ]);
+  });
 });
 
 describe("ProtocolSseTransportAdapter thread binding", () => {

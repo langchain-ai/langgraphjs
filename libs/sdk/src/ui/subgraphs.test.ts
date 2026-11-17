@@ -1,40 +1,31 @@
 import { describe, expect, it } from "vitest";
-import type { Event, LifecycleEvent, ValuesEvent } from "@langchain/protocol";
 
+import type { ChannelEvent } from "./channels.js";
 import { SubgraphDiscovery } from "./subgraphs.js";
 
 function lifecycleEvent(
   namespace: readonly string[],
-  event: "started" | "completed" | "failed",
-  seq = 1
-): Event {
+  event: "started" | "completed" | "failed"
+): ChannelEvent {
   return {
-    type: "event",
     method: "lifecycle",
-    seq,
     params: {
-      namespace,
+      namespace: [...namespace],
       timestamp: Date.now(),
       data: { event },
     },
-  } as LifecycleEvent & Event;
+  };
 }
 
-function valuesEvent(
-  namespace: readonly string[],
-  data: Record<string, unknown> = {},
-  seq = 1
-): Event {
+function valuesEvent(namespace: readonly string[]): ChannelEvent {
   return {
-    type: "event",
     method: "values",
-    seq,
     params: {
-      namespace,
+      namespace: [...namespace],
       timestamp: Date.now(),
-      data,
+      data: {},
     },
-  } as ValuesEvent & Event;
+  };
 }
 
 describe("SubgraphDiscovery", () => {
@@ -43,8 +34,8 @@ describe("SubgraphDiscovery", () => {
     const host = ["classify:u1"] as const;
     const inner = ["classify:u1", "inner:u2"] as const;
 
-    discovery.push(lifecycleEvent(host, "started", 1));
-    discovery.push(lifecycleEvent(inner, "started", 2));
+    discovery.push(lifecycleEvent(host, "started"));
+    discovery.push(lifecycleEvent(inner, "started"));
 
     expect([...discovery.snapshot.values()]).toMatchObject([
       { nodeName: "classify", status: "running" },
@@ -60,12 +51,12 @@ describe("SubgraphDiscovery", () => {
     const host = ["classify:u1"] as const;
     const inner = ["classify:u1", "run:u2"] as const;
 
-    discovery.push(lifecycleEvent(host, "started", 1));
-    discovery.push(valuesEvent(host, {}, 2));
-    discovery.push(lifecycleEvent(inner, "started", 3));
-    discovery.push(lifecycleEvent(host, "completed", 4));
+    discovery.push(lifecycleEvent(host, "started"));
+    discovery.push(valuesEvent(host));
+    discovery.push(lifecycleEvent(inner, "started"));
+    discovery.push(lifecycleEvent(host, "completed"));
     // Reordered: the host's final values snapshot lands after completed.
-    discovery.push(valuesEvent(host, {}, 5));
+    discovery.push(valuesEvent(host));
 
     expect([...discovery.snapshot.values()]).toMatchObject([
       { nodeName: "classify", status: "complete" },
@@ -77,10 +68,10 @@ describe("SubgraphDiscovery", () => {
     const host = ["classify:u1"] as const;
     const inner = ["classify:u1", "run:u2"] as const;
 
-    discovery.push(lifecycleEvent(host, "started", 1));
-    discovery.push(lifecycleEvent(inner, "started", 2));
-    discovery.push(lifecycleEvent(host, "failed", 3));
-    discovery.push(valuesEvent(host, {}, 4));
+    discovery.push(lifecycleEvent(host, "started"));
+    discovery.push(lifecycleEvent(inner, "started"));
+    discovery.push(lifecycleEvent(host, "failed"));
+    discovery.push(valuesEvent(host));
 
     expect([...discovery.snapshot.values()]).toMatchObject([
       { nodeName: "classify", status: "error" },
@@ -110,9 +101,9 @@ describe("SubgraphDiscovery", () => {
     const discovery = new SubgraphDiscovery();
     const host = ["classify:u1"] as const;
     const inner = ["classify:u1", "inner:u2"] as const;
-    discovery.push(lifecycleEvent(host, "started", 1));
-    discovery.push(lifecycleEvent(inner, "started", 2));
-    discovery.push(lifecycleEvent(host, "completed", 3));
+    discovery.push(lifecycleEvent(host, "started"));
+    discovery.push(lifecycleEvent(inner, "started"));
+    discovery.push(lifecycleEvent(host, "completed"));
     expect([...discovery.snapshot.values()][0].status).toBe("complete");
 
     // A stale "running" from history must not resurrect it.
@@ -122,12 +113,20 @@ describe("SubgraphDiscovery", () => {
     expect([...discovery.snapshot.values()][0].status).toBe("complete");
   });
 
+  it("ignores a lifecycle event without data", () => {
+    const discovery = new SubgraphDiscovery();
+    discovery.push({
+      method: "lifecycle",
+      params: { namespace: ["classify:u1"], data: null },
+    });
+
+    expect(discovery.snapshot.size).toBe(0);
+  });
+
   it("reset clears committed subgraph maps", () => {
     const discovery = new SubgraphDiscovery();
-    discovery.push(lifecycleEvent(["classify:u1"], "started", 1));
-    discovery.push(
-      lifecycleEvent(["classify:u1", "inner:u2"], "started", 2)
-    );
+    discovery.push(lifecycleEvent(["classify:u1"], "started"));
+    discovery.push(lifecycleEvent(["classify:u1", "inner:u2"], "started"));
     expect(discovery.snapshot.size).toBeGreaterThan(0);
 
     discovery.reset();

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EMPTY_QUEUE, type SubmissionQueueSnapshot } from "./queue-adapter.js";
 import { LocalQueueAdapter } from "./queue-adapter-local.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 
 interface State {
   count?: number;

@@ -1,6 +1,47 @@
-import { normalizeHitlInterruptPayload } from "./hitl-interrupt-payload.js";
+import {
+  normalizeHitlInterruptPayload,
+  normalizeHitlResponseForServer,
+} from "./hitl-interrupt-payload.js";
+import { serializeUpdateMessages } from "./optimistic-input.js";
 import { filterOutHeadlessToolInterrupts } from "../headless-tools.js";
 import { Interrupt, ThreadState } from "../schema.js";
+import type { Command } from "../types.js";
+
+/** The `__interrupt__` list of `values`, or `undefined` when it has none. */
+export function valuesInterrupts<InterruptType = unknown>(
+  values: unknown
+): Interrupt<InterruptType>[] | undefined {
+  return typeof values === "object" &&
+    values != null &&
+    "__interrupt__" in values &&
+    Array.isArray(values.__interrupt__)
+    ? (values.__interrupt__ as Interrupt<InterruptType>[])
+    : undefined;
+}
+
+/**
+ * The command that resumes interrupts with answers by id, with the state
+ * update and the node to go to that come with them.
+ */
+export function resumeCommand(
+  responses: Record<string, unknown>,
+  options: { update?: Command["update"]; goto?: Command["goto"] },
+  messagesKey: string
+): Command {
+  return {
+    resume: Object.fromEntries(
+      Object.entries(responses).map(([id, response]) => [
+        id,
+        normalizeHitlResponseForServer(response),
+      ])
+    ),
+    update:
+      options.update == null
+        ? options.update
+        : serializeUpdateMessages(options.update, messagesKey),
+    goto: options.goto,
+  };
+}
 
 /**
  * Normalizes HITL interrupt payloads to expose camelCase fields plus deprecated
@@ -57,13 +98,8 @@ export function extractInterrupts<InterruptType = unknown>(
     error: unknown;
   }
 ): Interrupt<InterruptType> | undefined {
-  if (
-    typeof values === "object" &&
-    values != null &&
-    "__interrupt__" in values &&
-    Array.isArray(values.__interrupt__)
-  ) {
-    const valueInterrupts = values.__interrupt__ as Interrupt<InterruptType>[];
+  const valueInterrupts = valuesInterrupts<InterruptType>(values);
+  if (valueInterrupts != null) {
     if (valueInterrupts.length === 0) return { when: "breakpoint" };
 
     const filtered = filterOutHeadlessToolInterrupts(valueInterrupts);

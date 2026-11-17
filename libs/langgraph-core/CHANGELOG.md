@@ -1,5 +1,45 @@
 # @langchain/langgraph
 
+## 1.7.5
+
+### Patch Changes
+
+- [#3295](https://github.com/langchain-ai/langgraphjs/pull/3295) [`5d41764`](https://github.com/langchain-ai/langgraphjs/commit/5d417645e48a615d52d6033c2624e9755690a6e6) Thanks [@eliornl](https://github.com/eliornl)! - With a zod state schema, node updates and run input are validated with the cached partial schema instead of a new zod schema per update, which zod had to compile every time. A 50-step run on a 30-field zod state is 1.65x faster.
+
+- [#3297](https://github.com/langchain-ai/langgraphjs/pull/3297) [`0ccd9a2`](https://github.com/langchain-ai/langgraphjs/commit/0ccd9a237419b5d9fb2d6dfaebb413cbabb0ad31) Thanks [@eliornl](https://github.com/eliornl)! - The Pregel loop finds `DeltaChannel` and `UntrackedValue` channels once per run instead of scanning every channel on each task and step. A 1,000-node chain runs 1.37x faster.
+
+- [#3294](https://github.com/langchain-ai/langgraphjs/pull/3294) [`a770874`](https://github.com/langchain-ai/langgraphjs/commit/a770874c66602625d6258ea4d5275ca912a0796c) Thanks [@eliornl](https://github.com/eliornl)! - `messagesStateReducer` does less work per update on a long history: it rules out message chunks with a native prototype check first, looks up only the ids the update touches, and skips the removal pass when nothing is removed. A call on 2,000 messages is 4x faster.
+
+- [#3296](https://github.com/langchain-ai/langgraphjs/pull/3296) [`0994aa8`](https://github.com/langchain-ai/langgraphjs/commit/0994aa8aeb9c301c97565bf9608cf956fc65f7be) Thanks [@eliornl](https://github.com/eliornl)! - The runner keeps a step's running tasks in a `Map`. Listing them took longer with every task, which made wide `Send` fan-outs quadratic: 500 parallel tasks now run 1.4x faster.
+
+- [#3293](https://github.com/langchain-ai/langgraphjs/pull/3293) [`b382028`](https://github.com/langchain-ai/langgraphjs/commit/b3820280fe63573b16d60da871f515008e509906) Thanks [@eliornl](https://github.com/eliornl)! - LangGraph's own writers and branch runners inside each node no longer enter an async context. Entering one made `@langchain/core` build a LangSmith run tree on every call, even with tracing off, so graphs whose nodes do little work run up to 1.75x faster. Node functions, edge functions and tools keep their context.
+- Updated dependencies [[`a4a8cb4`](https://github.com/langchain-ai/langgraphjs/commit/a4a8cb4db09d0acfc286b16dbb803f1240739924), [`74c6edd`](https://github.com/langchain-ai/langgraphjs/commit/74c6edd9768e0312425af544fd505a543a0a0370), [`62e40b9`](https://github.com/langchain-ai/langgraphjs/commit/62e40b998f769ccf9d872d394d2fd3d6796a0ddf), [`cfa7a37`](https://github.com/langchain-ai/langgraphjs/commit/cfa7a373229d6d215395ccdfcb52dfadc28fb12e), [`feb9832`](https://github.com/langchain-ai/langgraphjs/commit/feb9832ee5c1438f5f403afa9e00b0d9ce6b934f), [`fd10c3a`](https://github.com/langchain-ai/langgraphjs/commit/fd10c3a2c7c1b4d4e6d4339c32a546b44385af89), [`6033cc7`](https://github.com/langchain-ai/langgraphjs/commit/6033cc746bebf962cb0120e06499a838a512bac3), [`abea7e8`](https://github.com/langchain-ai/langgraphjs/commit/abea7e8b42d1a9a38bb5a07c66228798e068f1d5), [`a9dc990`](https://github.com/langchain-ai/langgraphjs/commit/a9dc9907bad977259687dfa467d0e0fd6809d10f), [`6d8d5fd`](https://github.com/langchain-ai/langgraphjs/commit/6d8d5fd0dcb53e385b48a5e6a0bc044722fea68f), [`4cef0cc`](https://github.com/langchain-ai/langgraphjs/commit/4cef0cca4315150b8c49757d3b82533eb138b6c8), [`7eb96bc`](https://github.com/langchain-ai/langgraphjs/commit/7eb96bceed9f0814921101110dc2c594bb816e66), [`6aa450d`](https://github.com/langchain-ai/langgraphjs/commit/6aa450d3e3a0ec277390be20c1d3f33cdb09ce96), [`09e4351`](https://github.com/langchain-ai/langgraphjs/commit/09e4351a78bed1487c245d0bf5a9b0693937151d), [`b2bc8eb`](https://github.com/langchain-ai/langgraphjs/commit/b2bc8eb322c869825e82d68186caf1c9424e8fc2), [`82a7d07`](https://github.com/langchain-ai/langgraphjs/commit/82a7d070eff81a653d2b292ef5e2ad8169e91555), [`dd0c346`](https://github.com/langchain-ai/langgraphjs/commit/dd0c346df9f77446f0fd61491fa1a45970ae1cdf), [`6cf515f`](https://github.com/langchain-ai/langgraphjs/commit/6cf515ff63a29a90e8c3220b36c2727f1b0db856), [`99b9dde`](https://github.com/langchain-ai/langgraphjs/commit/99b9dde5a75cbbd3a2fa72c2014f38fbad053d1b), [`e337917`](https://github.com/langchain-ai/langgraphjs/commit/e3379170d2bdea6b603949e83475f01024e7c3c3), [`77bf3db`](https://github.com/langchain-ai/langgraphjs/commit/77bf3db1b81e7f30d341e4e8bc56d264e41cb341)]:
+  - @langchain/langgraph-checkpoint@1.2.3
+  - @langchain/langgraph-sdk@1.17.0
+
+## 1.7.4
+
+### Patch Changes
+
+- Updated dependencies [[`c3c2c56`](https://github.com/langchain-ai/langgraphjs/commit/c3c2c56b6b1eaaa2f2338cded1f2ff501169e646), [`7c28214`](https://github.com/langchain-ai/langgraphjs/commit/7c28214376f5bc7bb88903130e066f08dec7ea21), [`f9bad09`](https://github.com/langchain-ai/langgraphjs/commit/f9bad0936380e2cabb9614ad3220bfe6f01ea98e), [`3f15c7c`](https://github.com/langchain-ai/langgraphjs/commit/3f15c7cddf8832c841cdbd0db74f7218f747f1cf), [`c354854`](https://github.com/langchain-ai/langgraphjs/commit/c354854a9afd835837dad53d8443be944e9c400a), [`13c9590`](https://github.com/langchain-ai/langgraphjs/commit/13c9590a75bad3d0f653b22ec8dca5c344014d8d), [`bd2c46c`](https://github.com/langchain-ai/langgraphjs/commit/bd2c46c3a8167f1e71357ca59a26f9944d49ed44), [`6aec378`](https://github.com/langchain-ai/langgraphjs/commit/6aec378fdc74450f225482f61d865ad0951ce082), [`bbbc710`](https://github.com/langchain-ai/langgraphjs/commit/bbbc710910925151c9764e0041b5ef16490073b1), [`1adb1ec`](https://github.com/langchain-ai/langgraphjs/commit/1adb1ec6f6ae9ec7e4a7e66131309007211c2992), [`737e53b`](https://github.com/langchain-ai/langgraphjs/commit/737e53b1d8f613e8844764b0f2f7c012e548a15c), [`eb174a8`](https://github.com/langchain-ai/langgraphjs/commit/eb174a85b006c3b71626c9fb1edd2b4fdbd2cbbe), [`679a50f`](https://github.com/langchain-ai/langgraphjs/commit/679a50ff435cd1deb8482415c60d3a86e1e66f3a), [`75297cb`](https://github.com/langchain-ai/langgraphjs/commit/75297cbffc1eeb95ec183d82decf7c3f324cc54d), [`e2e196e`](https://github.com/langchain-ai/langgraphjs/commit/e2e196e9122bd56abfa2279c93763453da6e8b76), [`d685e95`](https://github.com/langchain-ai/langgraphjs/commit/d685e95fbd025de69d7a51bce5b45e7ead724b61), [`c8a9c7d`](https://github.com/langchain-ai/langgraphjs/commit/c8a9c7de5f2c57362094815ab3024e133834ee91)]:
+  - @langchain/langgraph-sdk@1.16.0
+
+## 1.7.3
+
+### Patch Changes
+
+- [#3308](https://github.com/langchain-ai/langgraphjs/pull/3308) [`c6874b4`](https://github.com/langchain-ai/langgraphjs/commit/c6874b4095a5c3d2d12512cb90999d9e4f36eeb0) Thanks [@richardscarrott](https://github.com/richardscarrott)! - match whole namespace segments in `getSubgraphs` and `getSubgraphsAsync`, so a `namespace` such as `research_review` no longer also yields `research|review`, and yield a namespace's subgraph once when a node declares several `subgraphs`
+
+- [#3090](https://github.com/langchain-ai/langgraphjs/pull/3090) [`3944b75`](https://github.com/langchain-ai/langgraphjs/commit/3944b75c9344ce5703c12d8144c6b9168057da59) Thanks [@OsamaAnsar](https://github.com/OsamaAnsar)! - Stop the run when a consumer breaks out of a `for await` loop over `graph.stream()` or `graph.streamEvents()`, or cancels the stream's reader. Only an explicit `stream.cancel()` aborted the run before; breaking out of the loop left the remaining nodes running in the background.
+
+## 1.7.2
+
+### Patch Changes
+
+- [#3258](https://github.com/langchain-ai/langgraphjs/pull/3258) [`585b78b`](https://github.com/langchain-ai/langgraphjs/commit/585b78bbc8249014c6d092ff0e38699679b33034) Thanks [@richardscarrott](https://github.com/richardscarrott)! - `getState` and `getStateHistory` report the `result` of a task that was interrupted and then resumed. The task's interrupt write stays on the checkpoint after it finishes, and that hid the result, so a node with human-in-the-loop never showed what it returned in history. A task that failed after writing some output now reports that output as its `result` too, as in Python. A task still paused at an interrupt keeps `result: undefined`.
+- Updated dependencies [[`0398106`](https://github.com/langchain-ai/langgraphjs/commit/03981062e9010b7454b8e9e290455d9d96306db9), [`5e70fcf`](https://github.com/langchain-ai/langgraphjs/commit/5e70fcf1dcde1d173513139ee3e3eece14d57a95), [`e76a53e`](https://github.com/langchain-ai/langgraphjs/commit/e76a53e7a2c659ff3f63bc26ebb054338968e2ba), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5), [`dcbe966`](https://github.com/langchain-ai/langgraphjs/commit/dcbe966ed9a8487806d3ce6afd93b986611499b5)]:
+  - @langchain/langgraph-sdk@1.15.0
+
 ## 1.7.1
 
 ### Patch Changes

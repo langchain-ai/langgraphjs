@@ -604,7 +604,7 @@ describe("InferToolCalls — typed streaming tool handles", () => {
       { query: string } | { id: string }
     >();
     expectTypeOf<SearchCall["status"]>().toEqualTypeOf<
-      "running" | "finished" | "error"
+      "running" | "finished" | "error" | "incomplete"
     >();
 
     type LookupCall = Extract<Calls, { name: "lookup" }>;
@@ -771,6 +771,40 @@ describe("UseStreamOptions — discriminated union", () => {
     >().toEqualTypeOf<
       | AgentServerOptions<BedtimeState>
       | CustomAdapterOptions<BedtimeState>
+    >();
+  });
+});
+
+describe("UseStreamOptions — stateKeys", () => {
+  test("accepts keys of a known state type", () => {
+    useStream<BedtimeState>({
+      assistantId: "agent",
+      stateKeys: ["paragraphs", "theme"],
+    });
+  });
+
+  test("rejects a key the state type doesn't have", () => {
+    useStream<BedtimeState>({
+      assistantId: "agent",
+      // @ts-expect-error `paragraph` is not a key of BedtimeState
+      stateKeys: ["paragraph"],
+    });
+  });
+
+  test("accepts a readonly tuple", () => {
+    const keys = ["theme"] as const;
+    useStream<BedtimeState>({ assistantId: "agent", stateKeys: keys });
+  });
+
+  test("accepts any string when the state type is unknown", () => {
+    useStream({ assistantId: "agent", stateKeys: ["anything"] });
+  });
+
+  test("is accepted on the custom-adapter branch", () => {
+    expectTypeOf<
+      CustomAdapterOptions<BedtimeState>["stateKeys"]
+    >().toEqualTypeOf<
+      readonly ("messages" | "paragraphs" | "theme")[] | undefined
     >();
   });
 });

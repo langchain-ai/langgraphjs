@@ -478,6 +478,36 @@ describe("streamWithRetry", () => {
     });
   });
 
+  describe("abort during the reconnect wait", () => {
+    test("ends the stream at once instead of after the wait", async () => {
+      const controller = new AbortController();
+      const makeRequest = vi.fn(async () => ({
+        response: mockResponse,
+        stream: createErroringStream(
+          [{ id: "1", event: "msg", data: {} }],
+          new TypeError("network error")
+        ),
+      }));
+      let ended = false;
+      const consume = gatherGenerator(
+        streamWithRetry(makeRequest, {
+          signal: controller.signal,
+          reconnectDelayMs: () => 60_000,
+        })
+      ).finally(() => {
+        ended = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ended).toBe(true);
+      expect(await consume).toHaveLength(1);
+      expect(makeRequest).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("onReconnect callback", () => {
     test("onReconnect callback can be provided", async () => {
       // This tests that the callback is accepted, detailed behavior is tested in integration tests

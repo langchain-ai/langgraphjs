@@ -11,6 +11,7 @@ export default defineConfig((env) => {
         "**/*.int.test.ts",
         "**/*.bench.test.ts",
         "**/*.test-d.ts",
+        "src/react/tests/**",
         ...configDefaults.exclude,
       ],
     },

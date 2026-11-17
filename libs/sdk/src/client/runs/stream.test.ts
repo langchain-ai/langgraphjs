@@ -213,6 +213,28 @@ describe("Client streaming with retry", () => {
       expect(body).not.toHaveProperty("namespace");
     });
 
+    test("a run stream that asked for namespaces drops the others", async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createSSEResponseBody([
+            { id: "1", event: "values", data: {} },
+            { id: "2", event: "messages|tools:a", data: [{}, {}] },
+            { id: "3", event: "messages", data: [{}, {}] },
+          ]),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      const events = await gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          input: {},
+          streamNamespaces: [""],
+        })
+      );
+
+      expect(events.map((e) => e.event)).toEqual(["values", "messages"]);
+    });
+
     test("passes streamMode including tools in request body", async () => {
       const chunks = [{ id: "1", event: "values", data: {} }];
 
@@ -425,6 +447,7 @@ describe("Client streaming with retry", () => {
       const chunks = [
         { id: "1", event: "values", data: { state: "running" } },
         { id: "2", event: "values", data: { state: "complete" } },
+        { event: "end", data: { run_id: "run-1", status: "success" } },
       ];
 
       mockFetch.mockResolvedValueOnce(
@@ -437,7 +460,7 @@ describe("Client streaming with retry", () => {
       const stream = client.runs.joinStream("thread-1", "run-1");
       const results = await gatherStream(stream);
 
-      expect(results).toHaveLength(2);
+      expect(results).toHaveLength(3);
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
       // Verify GET was used (not POST)
@@ -573,6 +596,39 @@ describe("Client streaming with retry", () => {
       expect(url.toString()).toContain("cancel_on_disconnect=1");
     });
 
+    test("a join that asked for namespaces drops a subagent's events an older pod sent", async () => {
+      const chunks = [
+        { id: "1", event: "metadata", data: { run_id: "run-1" } },
+        { id: "2", event: "values", data: { messages: [] } },
+        { id: "3", event: "lifecycle|tools:a", data: { event: "started" } },
+        { id: "4", event: "messages|tools:a", data: [{}, {}] },
+        { id: "5", event: "values|tools:a", data: { messages: [] } },
+        { id: "6", event: "end", data: { status: "success" } },
+      ];
+      const respond = () =>
+        new Response(createSSEResponseBody(chunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      mockFetch.mockImplementation(() => Promise.resolve(respond()));
+
+      const chat = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", { streamNamespaces: [""] })
+      );
+      const panel = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          streamNamespaces: ["tools:a"],
+        })
+      );
+      const everything = await gatherStream(
+        client.runs.joinStream("thread-1", "run-1")
+      );
+
+      expect(chat.map((e) => e.id)).toEqual(["1", "2", "3", "6"]);
+      expect(panel.map((e) => e.id)).toEqual(["1", "4", "5", "6"]);
+      expect(everything).toHaveLength(chunks.length);
+    });
+
     test("sends streamNamespaces as repeated namespace params", async () => {
       mockFetch.mockResolvedValueOnce(
         new Response(createSSEResponseBody([]), {
@@ -642,6 +698,55 @@ describe("Client streaming with retry", () => {
       expect(params.getAll("namespace")).toEqual(["tools:a"]);
       expect(params.getAll("cancel_on_disconnect")).toEqual(["0"]);
     });
+
+    test("sends checkpointId as checkpoint_id on the join and its reconnect, next to the last event id", async () => {
+      let streamCalls = 0;
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith("/runs/run-1")) {
+          return Promise.resolve(Response.json({ status: "success" }));
+        }
+        streamCalls += 1;
+        const body =
+          streamCalls === 1
+            ? createErroringSSEResponseBody(
+                [{ id: "7", event: "values", data: {} }],
+                new TypeError("disconnected")
+              )
+            : createSSEResponseBody([{ id: "8", event: "values", data: {} }]);
+        return Promise.resolve(
+          new Response(body, {
+            headers: {
+              "content-type": "text/event-stream",
+              location:
+                "/threads/thread-1/runs/run-1/stream?cancel_on_disconnect=0&checkpoint_id=cp-1",
+            },
+          })
+        );
+      });
+
+      const consume = gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          lastEventId: "-1",
+          checkpointId: "cp-1",
+        })
+      );
+      await vi.runAllTimersAsync();
+      await consume;
+
+      expect(
+        mockFetch.mock.calls
+          .filter(([url]) => url.toString().includes("/stream"))
+          .map(([url, init]) => ({
+            checkpointId: new URL(url.toString()).searchParams.getAll(
+              "checkpoint_id"
+            ),
+            lastEventId: new Headers(init.headers).get("last-event-id"),
+          }))
+      ).toEqual([
+        { checkpointId: ["cp-1"], lastEventId: "-1" },
+        { checkpointId: ["cp-1"], lastEventId: "7" },
+      ]);
+    });
   });
 
   describe("threads.joinStream()", () => {
@@ -672,7 +777,7 @@ describe("Client streaming with retry", () => {
       expect(init.body).toBeUndefined();
     });
 
-    test("passes streamMode parameter", async () => {
+    test("sends the modes as stream_mode and as one comma-joined stream_modes", async () => {
       const chunks = [{ id: "1", event: "messages", data: {} }];
 
       mockFetch.mockResolvedValueOnce(
@@ -689,10 +794,116 @@ describe("Client streaming with retry", () => {
       await gatherStream(stream);
 
       const [url] = mockFetch.mock.calls[0];
-      const urlObj = new URL(url.toString());
-      const streamMode = urlObj.searchParams.get("stream_mode");
+      const { searchParams } = new URL(url.toString());
+      expect(searchParams.getAll("stream_mode")).toEqual([
+        "lifecycle",
+        "state_update",
+      ]);
+      expect(searchParams.getAll("stream_modes")).toEqual([
+        "lifecycle,state_update",
+      ]);
+    });
+  });
 
-      expect(streamMode).toBeTruthy();
+  describe("per-call reconnect options", () => {
+    const dropAfter = (chunks: Array<{ id: string; event: string; data: unknown }>) =>
+      new Response(
+        createErroringSSEResponseBody(chunks, new TypeError("terminated")),
+        {
+          headers: {
+            "content-type": "text/event-stream",
+            location: "/threads/thread-1/runs/run-1/stream",
+          },
+        }
+      );
+    const firstEvent = { id: "1", event: "values", data: {} };
+
+    test("maxReconnectAttempts 0 ends a run stream on the first drop", async () => {
+      const onReconnect = vi.fn();
+      mockFetch.mockResolvedValueOnce(dropAfter([firstEvent]));
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          maxReconnectAttempts: 0,
+          onReconnect,
+        })
+      ).catch((caught: unknown) => caught);
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(onReconnect).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("a run stream waits reconnectDelayMs, reports each connection and gives up after maxReconnectAttempts", async () => {
+      const onReconnect = vi.fn();
+      const onConnected = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(dropAfter([firstEvent]))
+        .mockResolvedValueOnce(dropAfter([]));
+
+      let settled = false;
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          maxReconnectAttempts: 1,
+          reconnectDelayMs: () => 60_000,
+          onReconnect,
+          onConnected,
+        })
+      )
+        .catch((caught: unknown) => caught)
+        .finally(() => {
+          settled = true;
+        });
+
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(settled).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.runAllTimersAsync();
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onConnected.mock.calls).toEqual([
+        [{ kind: "initial", attempt: 0 }],
+        [{ kind: "reconnected", attempt: 1 }],
+      ]);
+      expect(onReconnect.mock.calls).toEqual([
+        [
+          expect.objectContaining({
+            attempt: 1,
+            delayMs: 60_000,
+            lastEventId: "1",
+          }),
+        ],
+      ]);
+    });
+
+    test("a run join takes the same reconnect options", async () => {
+      const onReconnect = vi.fn();
+      const onConnected = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(dropAfter([firstEvent]))
+        .mockResolvedValueOnce(dropAfter([]));
+
+      const consume = gatherStream(
+        client.runs.joinStream("thread-1", "run-1", {
+          maxReconnectAttempts: 1,
+          reconnectDelayMs: () => 0,
+          onReconnect,
+          onConnected,
+        })
+      ).catch((caught: unknown) => caught);
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toBeInstanceOf(MaxReconnectAttemptsError);
+      expect(onConnected.mock.calls).toEqual([
+        [{ kind: "initial", attempt: 0 }],
+        [{ kind: "reconnected", attempt: 1 }],
+      ]);
+      expect(onReconnect.mock.calls).toEqual([
+        [expect.objectContaining({ attempt: 1, delayMs: 0 })],
+      ]);
     });
   });
 
@@ -774,10 +985,13 @@ describe("Client streaming with retry", () => {
 
     const runStream = (
       chunks: Array<{ id?: string; event: string; data: unknown }>,
-      location = "/threads/thread-1/runs/run-1/stream"
+      location: string | null = "/threads/thread-1/runs/run-1/stream"
     ) =>
       new Response(createSSEResponseBody(chunks), {
-        headers: { "content-type": "text/event-stream", location },
+        headers: {
+          "content-type": "text/event-stream",
+          ...(location != null && { location }),
+        },
       });
 
     const httpStatus = (status: number) => async () =>
@@ -977,6 +1191,94 @@ describe("Client streaming with retry", () => {
         "x-api-key": "test-key",
         "x-custom": "custom",
       });
+    });
+
+    test("rejoins a run stream without Location by the run id in its first event", async () => {
+      const metadata = { id: "0", event: "metadata", data: { run_id: "run-1" } };
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      const onRunCreated = vi.fn();
+      mockFetch
+        .mockResolvedValueOnce(runStream([metadata, values], null))
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(
+        client.runs.stream("thread-1", "assistant-1", {
+          onRunCreated,
+          streamResumable: true,
+        })
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([metadata, values, next]);
+      expect(onRunCreated.mock.calls).toEqual([
+        [{ run_id: "run-1", thread_id: "thread-1" }],
+      ]);
+      expect(requests()).toEqual([createRun, runCheck, joinRun, runCheck]);
+      expect(
+        new Headers(mockFetch.mock.calls[2][1].headers).get("last-event-id")
+      ).toBe("1");
+    });
+
+    test("rejoins a threadless run stream without Location through its Content-Location", async () => {
+      const temporaryRun = "/threads/temporary-thread/runs/run-1";
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(
+          new Response(createSSEResponseBody([values]), {
+            headers: {
+              "content-type": "text/event-stream",
+              "content-location": temporaryRun,
+            },
+          })
+        )
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(
+        client.runs.stream(null, "assistant-1", { streamResumable: true })
+      );
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([
+        "POST /runs/stream",
+        `GET ${temporaryRun}`,
+        `GET ${temporaryRun}/stream`,
+        `GET ${temporaryRun}`,
+      ]);
+    });
+
+    test("fails a run stream that isn't resumable on a drop without Location", async () => {
+      const metadata = { id: "0", event: "metadata", data: { run_id: "run-1" } };
+      mockFetch.mockResolvedValueOnce(
+        new Response(
+          createErroringSSEResponseBody([metadata], new TypeError("terminated")),
+          { headers: { "content-type": "text/event-stream" } }
+        )
+      );
+
+      await expect(
+        gatherStream(client.runs.stream("thread-1", "assistant-1"))
+      ).rejects.toThrow("terminated");
+      expect(requests()).toEqual([createRun]);
+    });
+
+    test("rejoins a run join without Location at its own URL", async () => {
+      const next = { id: "2", event: "values", data: { step: 2 } };
+      mockFetch
+        .mockResolvedValueOnce(runStream([values], null))
+        .mockImplementationOnce(runStatus("running"))
+        .mockResolvedValueOnce(runStream([next], null))
+        .mockImplementationOnce(runStatus("success"));
+
+      const consume = gatherStream(client.runs.joinStream("thread-1", "run-1"));
+      await vi.runAllTimersAsync();
+
+      expect(await consume).toEqual([values, next]);
+      expect(requests()).toEqual([joinRun, runCheck, joinRun, runCheck]);
     });
   });
 });

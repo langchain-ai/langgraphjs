@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Client } from "./index.js";
 import { ThreadStream } from "./stream/index.js";
@@ -23,6 +23,40 @@ describe("Client", () => {
     expect(client.runs).toBeDefined();
     expect(client.crons).toBeDefined();
     expect(client.store).toBeDefined();
+  });
+
+  it("info reads the server's version and flags from GET /info", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ version: "1.2.3", flags: { stream_lifecycle: true } })
+    );
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+      callerOptions: { fetch },
+    });
+
+    await expect(client.info()).resolves.toEqual({
+      version: "1.2.3",
+      flags: { stream_lifecycle: true },
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(String(url)).toBe("http://localhost:9999/info");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("info throws when the server has no /info", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () => new Response("Not Found", { status: 404 })
+    );
+    const client = new Client({
+      apiUrl: "http://localhost:9999",
+      apiKey: null,
+      callerOptions: { fetch },
+    });
+
+    await expect(client.info()).rejects.toMatchObject({ status: 404 });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("threads.stream returns a ThreadStream bound to an existing thread ID", () => {

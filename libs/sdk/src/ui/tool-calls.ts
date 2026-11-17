@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { ToolMessage } from "@langchain/core/messages";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
-import { parseToolOutput } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "./tool-payload.js";
+import { parseToolOutput } from "./tool-payload.js";
 
 /**
  * Insert or replace an assembled tool call by call id.
@@ -27,6 +27,8 @@ export function upsertToolCall(
  * Backfill unfinished tool-call handles from authoritative ToolMessages in a
  * values snapshot. This covers headless tools whose graph state contains the
  * result even when the `tools` channel omits a matching `tool-finished` event.
+ * A ToolMessage with `status: "error"` fails its call, with the message's
+ * text as `error`.
  */
 export function reconcileToolCallsFromMessages(
   toolCalls: readonly AssembledToolCall[],
@@ -45,6 +47,16 @@ export function reconcileToolCallsFromMessages(
     if (idx < 0) continue;
 
     const current = currentToolCalls[idx];
+    if (message.status === "error") {
+      if (current.status === "error") continue;
+      updated = upsertToolCall(currentToolCalls, {
+        ...current,
+        output: null,
+        status: "error",
+        error: message.text,
+      });
+      continue;
+    }
     if (current.status === "finished" && current.output != null) continue;
 
     const output = parseToolOutput(message.content);
@@ -61,16 +73,26 @@ export function reconcileToolCallsFromMessages(
 }
 
 /**
- * Build completed scoped tool-call handles from an authoritative
- * `values.messages` snapshot. Used when an idle thread hydrates card panels
- * from checkpoint history instead of replaying scoped `/events`.
+ * Build scoped tool-call handles from an authoritative `values.messages`
+ * snapshot. Used when an idle thread hydrates card panels from checkpoint
+ * history instead of replaying scoped `/events`.
+ *
+ * A call with no ToolMessage is `"running"`, or `"incomplete"` when no run
+ * can still answer it: `options.isLoading` is `false`, or a later message
+ * closed its turn. `isLoading` defaults to `true`.
  */
 export function seedToolCallsFromMessages(
   namespace: readonly string[],
-  messages: readonly BaseMessage[]
+  messages: readonly BaseMessage[],
+  options?: { isLoading?: boolean }
 ): AssembledToolCall[] {
+  const isLoading = options?.isLoading ?? true;
+  let lastTurn = messages.length - 1;
+  while (lastTurn >= 0 && ToolMessage.isInstance(messages[lastTurn])) {
+    lastTurn -= 1;
+  }
   let toolCalls: AssembledToolCall[] = [];
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     const raw = (message as unknown as { tool_calls?: unknown }).tool_calls;
     if (!Array.isArray(raw)) continue;
     for (const toolCall of raw) {
@@ -95,7 +117,7 @@ export function seedToolCallsFromMessages(
         input: record.args ?? {},
         args: record.args ?? {},
         output: null,
-        status: "running",
+        status: isLoading && index >= lastTurn ? "running" : "incomplete",
         error: undefined,
       });
     }

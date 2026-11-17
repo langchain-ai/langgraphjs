@@ -5,6 +5,7 @@ import type {
   Message,
   SubscribeParams,
 } from "@langchain/protocol";
+import type { ThreadStateSelectField } from "../../schema.js";
 
 /**
  * Handle returned by {@link TransportAdapter.openEventStream} representing
@@ -114,8 +115,16 @@ export interface AgentServerAdapter extends TransportAdapter {
    * `GET /threads/:threadId/state` (or an adapter-specific override).
    * When omitted, {@link StreamController.hydrate} falls back to
    * `client.threads.getState()`.
+   *
+   * @param options.select - Passed when `useStream` has `stateKeys` set:
+   *   the fields it reads, in `client.threads.getState()`'s `select` form
+   *   (`"tasks"`, `"values.messages"`, …). An adapter may forward it to
+   *   the server or ignore it; `useStream` keeps only the keys it asked
+   *   for either way.
    */
-  getState?<StateType = unknown>(): Promise<{
+  getState?<StateType = unknown>(options?: {
+    select?: ThreadStateSelectField[];
+  }): Promise<{
     values: StateType;
     next?: unknown;
     tasks?: unknown;
