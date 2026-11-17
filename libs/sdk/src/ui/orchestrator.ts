@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
-import { Client } from "../client.js";
+import { Client, getClientConfigHash } from "../client.js";
 import type {
   ThreadState,
   ThreadTask,
@@ -178,15 +178,21 @@ const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
 const withoutRunEventModes = (modes: StreamMode[]) =>
   modes.filter((mode) => !RUN_EVENT_MODES.includes(mode));
 
-const serverInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
+const serverInfoReads = new Map<string, Promise<ServerInfo | undefined>>();
+
+/** Reads of clients with no config hash, such as a test's stub. */
+const clientInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
 
 /**
- * What the server supports, from `/info`, read once per client. A read that
- * fails or takes over 5 s counts as no support, and the next run that needs
- * it reads again, apart from a 404: that server has no `/info`.
+ * What the server supports, from `/info`, read once per server: clients built
+ * with the same config, URL, API key and headers included, share the read. A
+ * read that fails or takes over 5 s counts as no support, and the next run
+ * that needs it reads again, apart from a 404: that server has no `/info`.
  */
 function serverInfo(client: Client): Promise<ServerInfo | undefined> {
-  let read = serverInfoReads.get(client);
+  const key = getClientConfigHash(client);
+  let read =
+    key == null ? clientInfoReads.get(client) : serverInfoReads.get(key);
   if (read == null) {
     // Not AbortSignal.timeout, which React Native lacks.
     const timeout = new AbortController();
@@ -195,12 +201,14 @@ function serverInfo(client: Client): Promise<ServerInfo | undefined> {
       .then(() => client.info({ signal: timeout.signal }))
       .catch((error: unknown) => {
         if ((error as { status?: unknown } | null)?.status !== 404) {
-          serverInfoReads.delete(client);
+          if (key == null) clientInfoReads.delete(client);
+          else serverInfoReads.delete(key);
         }
         return undefined;
       })
       .finally(() => clearTimeout(timer));
-    serverInfoReads.set(client, read);
+    if (key == null) clientInfoReads.set(client, read);
+    else serverInfoReads.set(key, read);
   }
   return read;
 }

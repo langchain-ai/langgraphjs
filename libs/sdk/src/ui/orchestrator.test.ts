@@ -5,6 +5,7 @@ import {
   vi,
   beforeEach,
   afterEach,
+  onTestFinished,
   type Mock,
 } from "vitest";
 import {
@@ -13,7 +14,7 @@ import {
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
-import type { Client } from "../client.js";
+import { Client } from "../client.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
 import { HumanMessage } from "@langchain/core/messages";
 
@@ -2413,10 +2414,13 @@ describe("StreamOrchestrator runs", () => {
     client = createMockClient();
   });
 
-  function orchestrator(options?: Partial<StreamOrchestratorOptions<TestState>>) {
+  function orchestrator(
+    options?: Partial<StreamOrchestratorOptions<TestState>>,
+    on: Client = client
+  ) {
     const orch = new StreamOrchestrator<TestState>(
       createOptions(options),
-      createAccessors(client)
+      createAccessors(on)
     );
     orch.activate();
     return orch;
@@ -4790,6 +4794,41 @@ describe("StreamOrchestrator runs", () => {
       await flushMicrotasks();
 
       expect(read).toHaveBeenCalledOnce();
+    });
+
+    it("clients built with one config read /info once, and a client with other headers reads its own", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      onTestFinished(() => read.mockRestore());
+      const config = { apiUrl: "http://one-server.test", apiKey: null };
+      for (const each of [
+        new Client(config),
+        new Client(config),
+        new Client({ ...config, defaultHeaders: { "x-tenant": "other" } }),
+      ]) {
+        orchestrator({ onToolEvent: vi.fn() }, each).dispose();
+      }
+      await flushMicrotasks();
+
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+
+    it("a client reads /info again when another client's read of that server failed", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockRejectedValueOnce(
+          Object.assign(new Error("unavailable"), { status: 503 })
+        )
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      onTestFinished(() => read.mockRestore());
+      const config = { apiUrl: "http://flaky-server.test", apiKey: null };
+      for (const each of [new Client(config), new Client(config), new Client(config)]) {
+        orchestrator({ onToolEvent: vi.fn() }, each).dispose();
+        await flushMicrotasks();
+      }
+
+      expect(read).toHaveBeenCalledTimes(2);
     });
 
     it.each([
