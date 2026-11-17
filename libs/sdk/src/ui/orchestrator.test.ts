@@ -31,8 +31,12 @@ async function flushMicrotasks(count = 4) {
   }
 }
 
+let mockClients = 0;
+
 function createMockClient(overrides?: Partial<Client>): Client {
   return {
+    // As on a real client: the engine shares /info reads by this hash.
+    "~configHash": `mock-${(mockClients += 1)}`,
     threads: {
       getState: vi.fn().mockResolvedValue({
         values: { messages: [] },
@@ -4825,6 +4829,26 @@ describe("StreamOrchestrator runs", () => {
       const config = { apiUrl: "http://flaky-server.test", apiKey: null };
       for (const each of [new Client(config), new Client(config), new Client(config)]) {
         orchestrator({ onToolEvent: vi.fn() }, each).dispose();
+        await flushMicrotasks();
+      }
+
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+
+    it("clients of one server read /info again once the shared read is 5 minutes old", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      const start = Date.now();
+      const now = vi.spyOn(Date, "now").mockReturnValue(start);
+      onTestFinished(() => {
+        read.mockRestore();
+        now.mockRestore();
+      });
+      const config = { apiUrl: "http://aging-server.test", apiKey: null };
+      for (const age of [0, 5 * 60_000 - 1, 5 * 60_000]) {
+        now.mockReturnValue(start + age);
+        orchestrator({ onToolEvent: vi.fn() }, new Client(config)).dispose();
         await flushMicrotasks();
       }
 
