@@ -6,8 +6,10 @@ import {
   contentShapes,
   expectSameSummary,
   itOnAgentServer,
+  messagesOnly,
   onBothSides,
   onJsServer,
+  onSide,
   runsOf,
   summary,
   wire,
@@ -60,6 +62,7 @@ it("a reply streams in parts, and both sides end with the same messages and valu
     "GET /info",
     "POST /threads",
     "POST /threads/:id/runs/stream",
+    ...(messagesOnly ? ["GET /threads/:id/state"] : []),
     "GET /threads/:id/stream",
   ]);
 });
@@ -77,6 +80,61 @@ it("a message the graph removes disappears on both sides", async () => {
     "Step 2: To Keep",
     "Step 3: To Keep",
   ]);
+});
+
+itOnAgentServer("with stateKeys: [], 2.0's runs, answers and queued runs ask for no values and end on the server's messages, and a values-only run another client starts shows live and final", async () => {
+  const serverTexts = async (threadId: string) =>
+    ((await client.threads.getState(threadId)).values as { messages: { content: unknown }[] }).messages.map((m) => m.content);
+
+  const shown = await onSide("2.0", async (side) => {
+    const texts = (probe: { stream: { messages: { text: string }[] } }) => probe.stream.messages.map((m) => m.text);
+    const approving = await side.mount({ assistantId: "interrupt_card_graph", options: { stateKeys: [] } });
+    await approving.stream.submit(say("Hello"));
+    await approving.until((s) => !s.isLoading && s.interrupts.length === 1, "the approval");
+    await approving.stream.respond({ approved: true });
+    await approving.until((s) => !s.isLoading && s.interrupts.length === 0 && s.messages.length === 4, "the answered run");
+    const threadId = approving.stream.threadId!;
+    const answered = { shown: texts(approving), server: await serverTexts(threadId) };
+    await approving.unmount();
+
+    const queueing = await side.mount({ assistantId: "slow_graph", options: { stateKeys: [] } });
+    void queueing.stream.submit(say("wait 800"));
+    await queueing.until((s) => s.isLoading && s.threadId != null, "the first run");
+    void queueing.stream.submit(say("Queued"));
+    const queueThread = queueing.stream.threadId!;
+    await runsOf(queueThread, (runs) => runs.length === 2 && runs.every((run) => run.status === "success"));
+    await queueing.until((s) => !s.isLoading && s.messages.length === 4, "both runs");
+    const queued = { shown: texts(queueing), server: await serverTexts(queueThread) };
+
+    const watching = await side.mount({ assistantId: "stategraph_text", threadId, options: { stateKeys: [] } });
+    await watching.until((s) => !s.isThreadLoading && s.messages.length === 4, "the thread");
+    await client.runs.create(threadId, "stategraph_text", {
+      input: say("Values only"),
+      streamMode: ["values"],
+      streamResumable: true,
+    });
+    await watching.until((s) => s.isLoading, "the values-only run");
+    await watching.until((s) => !s.isLoading && s.messages.length === 6, "its answer");
+
+    return {
+      runModes: side.requests
+        .filter((r) => r.method === "POST" && /\/runs(\/stream)?$/.test(r.path.split("?")[0]))
+        .map((r) => (r.body as { stream_mode?: string[] }).stream_mode ?? []),
+      answered,
+      queued,
+      valuesOnly: { shown: texts(watching), server: await serverTexts(threadId) },
+    };
+  });
+
+  expect(shown.runModes, "a run, its answer, a run and the one queued behind it").toHaveLength(4);
+  for (const modes of shown.runModes) {
+    expect(modes).toEqual(expect.arrayContaining(["updates", "messages-tuple"]));
+    expect(modes).not.toContain("values");
+  }
+  for (const flow of [shown.answered, shown.queued, shown.valuesOnly]) {
+    expect(flow.shown).toEqual(flow.server);
+  }
+  expect(shown.valuesOnly.shown.slice(-2)).toEqual(["Values only", "Plan accepted."]);
 });
 
 it("a failing run sets error and its callbacks, a reload shows it, and the next run clears it", async () => {
@@ -207,7 +265,7 @@ it("stop() after respond() cancels the run the answer started, and the approval 
     ["onCompleted", expect.objectContaining({ reason: "stopped" })],
   ]);
   expect(v2.summary.final.interrupt).not.toBeNull();
-  expect(v1.summary.final.valuesKeys, is("valuesOnlyFromGraph")).toContain("messages");
+  if (!messagesOnly) expect(v1.summary.final.valuesKeys, is("valuesOnlyFromGraph")).toContain("messages");
   expect(v2.summary.final.valuesKeys, is("valuesOnlyFromGraph")).not.toContain("messages");
 });
 

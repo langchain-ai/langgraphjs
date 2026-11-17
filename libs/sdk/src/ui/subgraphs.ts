@@ -129,7 +129,8 @@ export class SubgraphDiscovery {
 
   /** Feed a single root event. Non-discovery events are ignored. */
   push(event: DiscoveryEvent): void {
-    if (event.method === "values") {
+    // A run without `values` still sends its subgraphs' node `updates`.
+    if (event.method === "values" || event.method === "updates") {
       this.#onValuesEvent(event);
       return;
     }
@@ -190,7 +191,8 @@ export class SubgraphDiscovery {
   }
 
   /**
-   * Promote subgraph host namespaces from namespaced `values` snapshots.
+   * Promote subgraph host namespaces from namespaced `values` snapshots, or
+   * from the `updates` of their nodes.
    *
    * Older protocol streams exposed subgraph structure primarily through
    * nested `lifecycle` events: a host namespace such as

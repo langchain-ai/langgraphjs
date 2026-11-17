@@ -40,7 +40,7 @@ async function panelOf(side: Side, probe: Probe, target: unknown) {
 }
 
 async function asyncSubagentPanel(side: Side) {
-  const lead = await side.mount({ assistantId: "async_subagent" });
+  const lead = await side.mount({ assistantId: "async_subagent", options: { stateKeys: ["async_tasks"] } });
   void lead.stream.submit(say("Research the protocol's history")).catch(() => undefined);
   await lead.until((s) => asyncTaskThread(s.values) != null, "the task");
   const leadThreadId = lead.stream.threadId!;

@@ -28,6 +28,7 @@ import {
   SubagentManager,
   extractToolCallIdFromNamespace,
   isSubagentNamespace,
+  namespaceFromMessageMetadata,
 } from "./subagents.js";
 import type { SubagentStreamInterface } from "./types.js";
 import { pickKeys } from "./state-keys.js";
@@ -1050,16 +1051,10 @@ export class StreamManager<
           const [serialized, metadata] = data;
 
           // Check if this message is from a subagent namespace
-          const eventCheckpointNs =
-            namespace && isSubagentNamespace(namespace) ? namespace : undefined;
-          const rawCheckpointNs =
-            (metadata?.langgraph_checkpoint_ns as string | undefined) ||
-            (metadata?.checkpoint_ns as string | undefined);
-          const checkpointNs: string[] | undefined =
-            eventCheckpointNs ??
-            (typeof rawCheckpointNs === "string"
-              ? rawCheckpointNs.split("|")
-              : undefined);
+          const checkpointNs =
+            namespace && isSubagentNamespace(namespace)
+              ? namespace
+              : namespaceFromMessageMetadata(metadata);
           const isFromSubagent = isSubagentNamespace(checkpointNs);
           const toolCallId = isFromSubagent
             ? extractToolCallIdFromNamespace(checkpointNs)
@@ -1074,7 +1069,6 @@ export class StreamManager<
             const taskCallId = metadata?.lc_subagent_tool_call_id;
             if (
               typeof taskCallId === "string" &&
-              checkpointNs != null &&
               this.subagentManager.hasSubagent(taskCallId)
             ) {
               this.subagentManager.bindNamespace(

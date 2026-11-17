@@ -28,6 +28,8 @@ export interface StateKeys {
   readonly kept: ReadonlySet<string>;
   /** The `select` of a thread load. */
   readonly select: ThreadStateSelectField[];
+  /** Whether the messages are the only key shown, as with `stateKeys: []`. */
+  readonly messagesOnly: boolean;
 }
 
 /** `stateKeys` with the messages key, or `undefined` when it is unset. */
@@ -43,6 +45,7 @@ export function stateKeysOf(
       ...THREAD_STATE_FIELDS,
       ...[...keys].map((key): ThreadStateSelectField => `values.${key}`),
     ],
+    messagesOnly: keys.size === 1,
   };
 }
 

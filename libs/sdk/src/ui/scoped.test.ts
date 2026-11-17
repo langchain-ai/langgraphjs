@@ -148,6 +148,11 @@ describe("ScopeRegistry", () => {
           event: "messages",
           data: [{ id: "old", type: "ai", content: "old core" }, { langgraph_checkpoint_ns: "tools:a|model:x" }],
         },
+        {
+          id: "5",
+          event: "messages",
+          data: [{ id: "result", type: "tool", content: "done", tool_call_id: "call_1" }, { langgraph_checkpoint_ns: "tools:a" }],
+        },
       ],
       { canFilter: async () => false }
     );
@@ -306,6 +311,28 @@ describe("ScopeRegistry", () => {
 
     await vi.waitFor(() => expect(ids(a.getSnapshot().messages)).toEqual(["done"]));
     expect(client.runs.joinStream).not.toHaveBeenCalled();
+  });
+
+  it("a panel opened while a run without values streams reads its saved state before joining, and again when the run ends", async () => {
+    const { registry, client } = setup(() => [
+      { id: "1", event: "messages|tools:a", data: token("a1", "streamed") },
+    ]);
+    (client.threads.getHistory as Mock)
+      .mockResolvedValueOnce([{ values: { messages: [human("task")] } }])
+      .mockResolvedValueOnce([
+        { values: { messages: [human("task"), { id: "a1", type: "ai", content: "saved" }] } },
+      ]);
+    registry.setRun("run-1", { values: false });
+    const a = registry.acquire(["tools:a"]);
+
+    await vi.waitFor(() => expect(ids(a.getSnapshot().messages)).toEqual(["task", "a1"]));
+    expect(client.threads.getHistory).toHaveBeenCalledBefore(client.runs.joinStream);
+
+    registry.endRun("run-1");
+
+    await vi.waitFor(() =>
+      expect(a.getSnapshot().messages.map((m) => m.content)).toEqual(["task", "saved"])
+    );
   });
 
   it("the same run joined again after its end streams new panels", async () => {
