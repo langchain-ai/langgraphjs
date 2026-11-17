@@ -1210,6 +1210,12 @@ export class StreamManager<
        * the queue so the new run request can proceed immediately.
        */
       abortPrevious?: boolean;
+      /**
+       * Asked when a stream queued behind another gets its turn. `false`
+       * skips it before it changes any state, as for a run of a thread the
+       * view has left since.
+       */
+      stillWanted?: () => boolean;
     }
   ): Promise<void> => {
     if (startOptions?.abortPrevious) {
@@ -1221,7 +1227,13 @@ export class StreamManager<
       this.isLoading || this.queueSize > 0 ? undefined : new AbortController();
     if (abort != null) this.abortRef = abort;
     this.queueSize += 1;
-    const queued = this.queue.then(() => this.enqueue(action, options, abort));
+    const queued = this.queue.then(() => {
+      if (startOptions?.stillWanted?.() === false) {
+        this.queueSize = Math.max(0, this.queueSize - 1);
+        return undefined;
+      }
+      return this.enqueue(action, options, abort);
+    });
     this.queue = queued;
     await queued;
   };

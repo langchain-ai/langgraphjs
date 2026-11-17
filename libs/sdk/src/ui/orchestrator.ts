@@ -9,6 +9,8 @@ import type {
   Config,
   Metadata,
   Run,
+  RunSelectField,
+  RunStatus,
   ServerInfo,
   ThreadStateSelectField,
 } from "../schema.js";
@@ -433,6 +435,13 @@ export interface RespondOptions<
 }
 
 /**
+ * What a thread load's two run lookups found: the run one of them joined,
+ * which the other doesn't join again, and whether the lookup after the read
+ * answered, which leaves the one sent with the read out of date.
+ */
+type RunLookups = { joined?: string; settled?: boolean };
+
+/**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
  *
  * Encapsulates all business logic shared across React, Vue, Svelte, and Angular:
@@ -829,10 +838,11 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       this.#notify();
+      const read = this.#mutate(threadId);
+      const lookups: RunLookups = {};
+      this.#joinEarly(threadId, read, lookups);
       this.#startLoad(
-        this.#mutate(threadId).then((states) =>
-          this.#joinActiveRun(threadId, states)
-        )
+        read.then((states) => this.#joinActiveRun(threadId, states, lookups))
       );
     } else {
       this.#history = {
@@ -891,9 +901,79 @@ export class StreamOrchestrator<
     );
   }
 
+  /**
+   * Looks for the thread's running run while its state is read, and joins it
+   * once both answer, a round trip before {@link #joinActiveRun} would. Only
+   * that later lookup can tell no run is going: the thread watcher opens as
+   * the read lands and misses runs that started before it, so a lookup sent
+   * with the read can miss one started during it.
+   */
+  #joinEarly(
+    threadId: string,
+    read: Promise<ThreadState<StateType>[] | undefined>,
+    lookups: RunLookups
+  ): void {
+    if (!this.#durable || this.#missingThreads.has(threadId)) return;
+    const running = this.#listRuns(threadId, { status: "running", limit: 1 });
+    void Promise.all([read, running]).then(([states, runs]) => {
+      const run = runs?.at(0);
+      // Before activate(), the later lookup holds the join.
+      if (
+        run == null ||
+        lookups.settled ||
+        run.run_id === lookups.joined ||
+        states == null ||
+        !this.#active ||
+        threadId !== this.#threadId ||
+        this.#missingThreads.has(threadId)
+      ) {
+        return;
+      }
+      lookups.joined = run.run_id;
+      void this.#joinFound(run, states.at(0));
+    });
+  }
+
+  /** Joins a run a thread load found, from the head it read. */
+  #joinFound(
+    run: Run,
+    head: ThreadState<StateType> | undefined
+  ): Promise<void> {
+    return this.#join(
+      run.run_id,
+      "-1",
+      { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
+      true,
+      run
+    );
+  }
+
+  /**
+   * The thread's runs, or `undefined` when the list fails or takes over 10 s:
+   * a lookup that hangs would hold the load, and with it the head's
+   * interrupts, for good. Not AbortSignal.timeout, which React Native lacks.
+   */
+  async #listRuns(
+    threadId: string,
+    query: { status: RunStatus; limit: number; select?: RunSelectField[] }
+  ): Promise<Run[] | undefined> {
+    const lookup = new AbortController();
+    const timer = setTimeout(() => lookup.abort(), 10_000);
+    try {
+      return await this.#accessors
+        .getClient()
+        .runs.list(threadId, { ...query, signal: lookup.signal });
+    } catch {
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async #joinActiveRun(
     threadId: string,
-    states: ThreadState<StateType>[] | undefined
+    states: ThreadState<StateType>[] | undefined,
+    lookups: RunLookups = {}
   ): Promise<void> {
     if (
       !this.#durable ||
@@ -903,46 +983,31 @@ export class StreamOrchestrator<
     ) {
       return;
     }
-    const client = this.#accessors.getClient();
-    // A lookup that hangs would hold the load, and with it the head's
-    // interrupts, for good. Not AbortSignal.timeout, which React Native lacks.
-    const lookup = new AbortController();
-    const timer = setTimeout(() => lookup.abort(), 10_000);
     const [runs, pending] = await Promise.all([
-      client.runs
-        .list(threadId, { status: "running", limit: 1, signal: lookup.signal })
-        .catch(() => undefined),
+      this.#listRuns(threadId, { status: "running", limit: 1 }),
       this.#options.queue === "local"
         ? undefined
-        : client.runs
-            .list(threadId, {
-              status: "pending",
-              limit: 100,
-              select: ["run_id", "kwargs", "created_at"],
-              signal: lookup.signal,
-            })
-            .catch(() => undefined),
-    ]).finally(() => clearTimeout(timer));
+        : this.#listRuns(threadId, {
+            status: "pending",
+            limit: 100,
+            select: ["run_id", "kwargs", "created_at"],
+          }),
+    ]);
+    lookups.settled = true;
     if (threadId !== this.#threadId) return;
     if (pending != null) this.#queueListedRuns(pending);
     if (runs == null) return;
     const head = states.at(0);
-    const runId = runs.at(0)?.run_id;
-    if (runId != null) {
+    const run = runs.at(0);
+    if (run != null && run.run_id !== lookups.joined) {
+      lookups.joined = run.run_id;
       // The queue drains when this join ends.
-      const join = () =>
-        void this.#join(
-          runId,
-          "-1",
-          { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
-          true,
-          runs.at(0)
-        );
+      const join = () => void this.#joinFound(run, head);
       if (this.#active) join();
       else this.#heldJoin = join;
       return;
     }
-    if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
+    if (run == null && hasPendingNodes(head) && !hasTaskInterrupts(head)) {
       // The read caught a run mid-step that has ended since, so it misses
       // the run's last steps.
       await this.#mutate(threadId, { quiet: true });
@@ -2004,7 +2069,8 @@ export class StreamOrchestrator<
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
         },
-      }
+      },
+      { stillWanted: () => !this.#disposed && this.#threadId === tid }
     );
 
     this.#liveRuns.set(runId, run);
@@ -2433,7 +2499,10 @@ export class StreamOrchestrator<
       !this.#disposed &&
       !this.isLoading &&
       !this.#submitting &&
-      this.pendingRuns.size > 0
+      this.pendingRuns.size > 0 &&
+      // A join queued behind the stream that just ended streams first, and
+      // drains the queue when it ends.
+      ![...this.#liveRuns.values()].some((live) => live.signal == null)
     ) {
       const next = this.pendingRuns.shift();
       if (next) {
