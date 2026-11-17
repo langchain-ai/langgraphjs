@@ -5,6 +5,7 @@ import {
   vi,
   beforeEach,
   afterEach,
+  onTestFinished,
   type Mock,
 } from "vitest";
 import {
@@ -13,7 +14,7 @@ import {
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
-import type { Client } from "../client.js";
+import { Client } from "../client.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
 import { HumanMessage } from "@langchain/core/messages";
 
@@ -30,8 +31,12 @@ async function flushMicrotasks(count = 4) {
   }
 }
 
+let mockClients = 0;
+
 function createMockClient(overrides?: Partial<Client>): Client {
   return {
+    // As on a real client: the engine shares /info reads by this hash.
+    "~configHash": `mock-${(mockClients += 1)}`,
     threads: {
       getState: vi.fn().mockResolvedValue({
         values: { messages: [] },
@@ -1547,21 +1552,83 @@ describe("StreamOrchestrator", () => {
       }
     );
 
-    it("a run on a thread with nothing pending reads no state", async () => {
-      serve(stateWith({ messages: [message("h0")] }));
-      const orch = await openThread();
+    it.each(answeringRuns)(
+      "a run on a thread with nothing pending reads no state ($via)",
+      async ({ run }) => {
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread();
 
-      mockRun([
-        {
-          event: "values",
-          data: { messages: [message("h0"), message("a0", "ai")] },
-        },
-      ]);
-      await orch.submit({ messages: [] });
+        await run(orch, [
+          {
+            event: "values",
+            data: { messages: [message("h0"), message("a0", "ai")] },
+          },
+        ]);
 
-      expect(getState()).toHaveBeenCalledTimes(1);
-      orch.dispose();
-    });
+        expect(getState()).toHaveBeenCalledTimes(1);
+        expect(orch.messages).toEqual([message("h0"), message("a0", "ai")]);
+        orch.dispose();
+      }
+    );
+
+    it.each(answeringRuns)(
+      "a run that streamed no values shows the head read after it, in its saved order, and a failed read keeps what streamed ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ onError });
+        const streamed = (id: string) => ({
+          event: "messages",
+          data: [message(id, "ai"), {}],
+        });
+        serve(
+          stateWith({
+            messages: [message("h0"), message("a1", "ai"), message("a2", "ai")],
+          })
+        );
+
+        await run(orch, [streamed("a2"), streamed("a1")]);
+
+        expect(getState()).toHaveBeenCalledTimes(2);
+        expect(orch.messages.map((m) => m.id)).toEqual(["h0", "a1", "a2"]);
+
+        getState().mockRejectedValue(new Error("offline"));
+        await run(orch, [streamed("a3")]);
+
+        expect(orch.messages.map((m) => m.id)).toEqual([
+          "h0",
+          "a1",
+          "a2",
+          "a3",
+        ]);
+        expect(orch.error).toBeUndefined();
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
+    it.each(answeringRuns)(
+      "a run that streamed no values shows the interrupt its updates sent, also when the read after it fails ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ onError });
+        getState().mockRejectedValue(new Error("offline"));
+
+        await run(orch, [
+          { event: "messages", data: [message("a1", "ai"), {}] },
+          {
+            event: "updates",
+            data: { __interrupt__: [{ id: "int-1", value: "approve?" }] },
+          },
+        ]);
+
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+        expect(orch.messages.map((m) => m.id)).toEqual(["h0", "a1"]);
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
 
     it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
       "a failed read after a run puts no error on the thread opened since (fetchStateHistory: $fetchStateHistory)",
@@ -2413,10 +2480,13 @@ describe("StreamOrchestrator runs", () => {
     client = createMockClient();
   });
 
-  function orchestrator(options?: Partial<StreamOrchestratorOptions<TestState>>) {
+  function orchestrator(
+    options?: Partial<StreamOrchestratorOptions<TestState>>,
+    on: Client = client
+  ) {
     const orch = new StreamOrchestrator<TestState>(
       createOptions(options),
-      createAccessors(client)
+      createAccessors(on)
     );
     orch.activate();
     return orch;
@@ -2483,6 +2553,9 @@ describe("StreamOrchestrator runs", () => {
           : Promise.resolve([])
       );
   }
+
+  const stateRead = (orch: StreamOrchestrator<TestState>) =>
+    vi.waitFor(() => expect(orch.historyData.data).toBeDefined());
 
   const message = (id: string) => ({ id, content: id, type: "human" });
 
@@ -3160,7 +3233,7 @@ describe("StreamOrchestrator runs", () => {
         const orch = orchestrator();
 
         orch.initThreadId("t1");
-        await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+        await stateRead(orch);
 
         expect(orch.interrupts).toEqual([]);
         expect(orch.interrupt).toBeUndefined();
@@ -3220,15 +3293,15 @@ describe("StreamOrchestrator runs", () => {
       lookupUntil(lookup.promise);
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
+      lookupUntil(lookup.promise);
 
       const reload = orch.hydrate();
       await vi.waitFor(() =>
-        expect(
-          (client.runs.list as Mock).mock.calls.filter(
-            ([, options]) => options.status === "running"
-          )
-        ).toHaveLength(2)
+        expect(client.runs.list).toHaveBeenCalledWith(
+          "t1",
+          expect.objectContaining({ status: "running" })
+        )
       );
       expect(orch.interrupts).toEqual([]);
 
@@ -3501,7 +3574,7 @@ describe("StreamOrchestrator runs", () => {
       const orch = orchestrator({ tools: [tool] });
 
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
       await flushMicrotasks(20);
       expect(tool.execute).not.toHaveBeenCalled();
 
@@ -3542,7 +3615,7 @@ describe("StreamOrchestrator runs", () => {
       mockRunStream(undefined, { ended: Promise.resolve() });
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
 
       const answer = orch.respond("yes");
       lookup.resolve();
@@ -3561,7 +3634,7 @@ describe("StreamOrchestrator runs", () => {
       mockRunStream(undefined, { ended: Promise.resolve() });
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
 
       const answer = orch.respond("yes");
       const second = deferred();
@@ -3587,7 +3660,7 @@ describe("StreamOrchestrator runs", () => {
       mockRunStream(undefined, { ended: Promise.resolve() });
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
 
       const answer = orch.respond("yes");
       orch.dispose();
@@ -3606,7 +3679,7 @@ describe("StreamOrchestrator runs", () => {
       mockRunStream(undefined, { ended: Promise.resolve() });
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
 
       const answer = orch.respond("yes");
       orch.switchThread("t2");
@@ -3626,7 +3699,7 @@ describe("StreamOrchestrator runs", () => {
       lookupUntil(lookup.promise);
       const orch = orchestrator();
       orch.initThreadId("t1");
-      await vi.waitFor(() => expect(client.runs.list).toHaveBeenCalled());
+      await stateRead(orch);
 
       mockRunStream(undefined, { ended: Promise.resolve() });
       await orch.submit({ messages: [] });
@@ -3658,6 +3731,373 @@ describe("StreamOrchestrator runs", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    describe("run lookups sent with the read and after it", () => {
+      const going = { run_id: "run-9" };
+      const queued = {
+        run_id: "run-p1",
+        created_at: "2026-11-11T10:00:01Z",
+        kwargs: { input: { messages: [message("next")] } },
+      };
+
+      function open({
+        head = createThreadState({ messages: [] }),
+        withRead,
+        afterRead,
+        pending = [],
+        fails = false,
+      }: {
+        head?: unknown;
+        withRead: unknown[] | "hangs" | Promise<unknown[]>;
+        afterRead: unknown[];
+        pending?: unknown[];
+        fails?: boolean;
+      }) {
+        const landing = deferred();
+        const answer = deferred();
+        let landed = false;
+        (client.threads.getState as Mock).mockReturnValueOnce(
+          landing.promise.then(() => {
+            if (fails) throw new Error("unavailable");
+            return head;
+          })
+        );
+        (client.runs.list as Mock).mockImplementation(
+          (
+            threadId: string,
+            options: { status: string; signal: AbortSignal }
+          ) => {
+            if (threadId !== "t1") return Promise.resolve([]);
+            if (options.status !== "running") return Promise.resolve(pending);
+            if (landed) return answer.promise.then(() => afterRead);
+            return withRead === "hangs"
+              ? openUntil(options.signal)
+              : Promise.resolve(withRead);
+          }
+        );
+        const orch = orchestrator();
+        orch.initThreadId("t1");
+        return {
+          orch,
+          land: () => {
+            landed = true;
+            landing.resolve();
+          },
+          answer: answer.resolve,
+        };
+      }
+
+      const joined = () =>
+        (client.runs.joinStream as Mock).mock.calls.map(([, runId]) => runId);
+
+      it("joins a run going on the thread once the read and the lookup sent with it answer", async () => {
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+        });
+
+        land();
+        await vi.waitFor(() =>
+          expect(client.runs.joinStream).toHaveBeenCalledExactlyOnceWith(
+            "t1",
+            "run-9",
+            expect.objectContaining({ lastEventId: "-1", checkpointId: "cp1" })
+          )
+        );
+        answer();
+        await orch.hydrationPromise;
+        ended.resolve();
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+        expect(joined()).toEqual(["run-9"]);
+        orch.dispose();
+      });
+
+      it.each([
+        { started: "after the read", head: createThreadState({ messages: [] }) },
+        { started: "while it was read", head: breakpointHead },
+      ])(
+        "joins a run started $started, which only the lookup after the read lists",
+        async ({ head }) => {
+          mockJoinStream([], Promise.resolve());
+          const { orch, land, answer } = open({
+            head,
+            withRead: [],
+            afterRead: [going],
+          });
+
+          land();
+          answer();
+          await orch.hydrationPromise;
+          await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+          expect(client.runs.joinStream).toHaveBeenCalledExactlyOnceWith(
+            "t1",
+            "run-9",
+            expect.objectContaining({ lastEventId: "-1", checkpointId: "cp1" })
+          );
+          orch.dispose();
+        }
+      );
+
+      it("shows no breakpoint from a read that caught a run the lookup sent with it listed, which ended before the lookup after it", async () => {
+        mockJoinStream([], Promise.resolve());
+        const { orch, land, answer } = open({
+          head: breakpointHead,
+          withRead: [going],
+          afterRead: [],
+        });
+        const seen = interruptsOnEveryNotify(orch);
+
+        land();
+        await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
+        answer();
+        await orch.hydrationPromise;
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+        expect(seen.flat()).toEqual([]);
+        expect(orch.interrupts).toEqual([]);
+        orch.dispose();
+      });
+
+      it("joins no run again whose join ended before the lookup after the read listed it, and streams the queued run", async () => {
+        mockJoinStream([], Promise.resolve());
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+          pending: [queued],
+        });
+
+        land();
+        await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        await flushMicrotasks(20);
+        answer();
+        await orch.hydrationPromise;
+        await vi.waitFor(() => expect(joined()).toEqual(["run-9", "run-p1"]));
+        await flushMicrotasks(20);
+
+        expect(joined()).toEqual(["run-9", "run-p1"]);
+        orch.dispose();
+      });
+
+      it.each([
+        { going: "a run going", withRead: [going], expected: ["run-9", "run-p1"] },
+        { going: "no run going", withRead: [], expected: ["run-p1"] },
+      ])(
+        "with $going, streams the server's queued run once, after it",
+        async ({ withRead, expected }) => {
+          const ended = deferred();
+          mockJoinStream([], ended.promise);
+          const { orch, land, answer } = open({
+            withRead,
+            afterRead: withRead,
+            pending: [queued],
+          });
+
+          land();
+          answer();
+          await orch.hydrationPromise;
+          ended.resolve();
+          await vi.waitFor(() => expect(joined()).toEqual(expected));
+          await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+          await flushMicrotasks(20);
+
+          expect(joined()).toEqual(expected);
+          orch.dispose();
+        }
+      );
+
+      it("joins no run again that the lookup after the read joined, when the one sent with it lists it later", async () => {
+        mockJoinStream([], Promise.resolve());
+        const listed = deferred();
+        const { orch, land, answer } = open({
+          withRead: listed.promise.then(() => [going]),
+          afterRead: [going],
+        });
+
+        land();
+        answer();
+        await orch.hydrationPromise;
+        await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        listed.resolve();
+        await flushMicrotasks(20);
+
+        expect(joined()).toEqual(["run-9"]);
+        orch.dispose();
+      });
+
+      it("keeps a later run's messages, joining nothing, when the lookup sent with the read answers after the one after it", async () => {
+        mockJoinStream(
+          [{ event: "values", data: { messages: [message("old")] } }],
+          Promise.resolve()
+        );
+        mockRunStream(
+          [{ event: "values", data: { messages: [message("new")] } }],
+          { ended: Promise.resolve() }
+        );
+        const listed = deferred();
+        const { orch, land, answer } = open({
+          withRead: listed.promise.then(() => [going]),
+          afterRead: [],
+        });
+        land();
+        answer();
+        await orch.hydrationPromise;
+        await orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+        listed.resolve();
+        await flushMicrotasks(20);
+
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        expect(orch.messages).toEqual([message("new")]);
+        orch.dispose();
+      });
+
+      it("streams nothing of the thread it left from a run the lookup after the read found while the first join streamed", async () => {
+        mockJoinStream([
+          { event: "values", data: { messages: [message("from-t1")] } },
+        ]);
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [{ run_id: "run-10" }],
+        });
+        land();
+        await vi.waitFor(() => expect(joined()).toEqual(["run-9"]));
+        answer();
+        await orch.hydrationPromise;
+        await flushMicrotasks(20);
+
+        orch.switchThread("t2");
+        await orch.hydrationPromise;
+        await flushMicrotasks(50);
+
+        expect(orch.threadId).toBe("t2");
+        expect(joined()).toEqual(["run-9"]);
+        expect(orch.messages).toEqual([]);
+        expect(orch.isLoading).toBe(false);
+        orch.dispose();
+      });
+
+      it("keeps the server's queued run queued while the run the lookup after the read found waits for the first join to end", async () => {
+        const firstEnds = deferred();
+        (client.runs.joinStream as Mock).mockImplementation(
+          (_threadId: string, runId: string, payload: RunsStreamPayload) => ({
+            async *[Symbol.asyncIterator]() {
+              if (runId === "run-9") await firstEnds.promise;
+              else await openUntil(payload.signal);
+              yield* [];
+            },
+          })
+        );
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [{ run_id: "run-10" }],
+          pending: [queued],
+        });
+        land();
+        await vi.waitFor(() => expect(joined()).toEqual(["run-9"]));
+        answer();
+        await orch.hydrationPromise;
+
+        firstEnds.resolve();
+        await vi.waitFor(() => expect(joined()).toEqual(["run-9", "run-10"]));
+        await flushMicrotasks(50);
+
+        expect(orch.pendingRuns.entries.map((entry) => entry.id)).toEqual([
+          "run-p1",
+        ]);
+        orch.dispose();
+      });
+
+      it("hydrate() joins again a run still going after its own stream failed", async () => {
+        (client.runs.stream as Mock).mockImplementation(
+          (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
+            async *[Symbol.asyncIterator]() {
+              payload.onRunCreated?.({ run_id: "run-1" });
+              yield { event: "metadata", data: { run_id: "run-1" } };
+              throw new Error("network dropped");
+            },
+          })
+        );
+        mockJoinStream([], Promise.resolve());
+        const orch = orchestrator();
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        await orch.submit({ messages: [] }).catch(() => undefined);
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        listRuns([{ run_id: "run-1" }]);
+
+        await orch.hydrate();
+
+        await vi.waitFor(() =>
+          expect(client.runs.joinStream).toHaveBeenCalledWith(
+            "t1",
+            "run-1",
+            expect.objectContaining({ lastEventId: "-1" })
+          )
+        );
+        orch.dispose();
+      });
+
+      it("joins nothing a lookup of the thread it switched from found", async () => {
+        mockJoinStream([], Promise.resolve());
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+        });
+
+        orch.switchThread("t2");
+        land();
+        answer();
+        await orch.hydrationPromise;
+        await flushMicrotasks(20);
+
+        expect(orch.threadId).toBe("t2");
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        orch.dispose();
+      });
+
+      it("joins nothing the lookup sent with a read that fails found", async () => {
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+          fails: true,
+        });
+
+        land();
+        answer();
+        await orch.hydrationPromise;
+        await flushMicrotasks(20);
+
+        expect(orch.error).toBeInstanceOf(Error);
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        orch.dispose();
+      });
+
+      it("ends the load on the lookup after the read when the one sent with it hangs", async () => {
+        const { orch, land, answer } = open({
+          head: breakpointHead,
+          withRead: "hangs",
+          afterRead: [],
+        });
+        let settled = false;
+        void orch.hydrationPromise.then(() => {
+          settled = true;
+        });
+
+        land();
+        answer();
+
+        await vi.waitFor(() => expect(settled).toBe(true));
+        expect(client.runs.joinStream).not.toHaveBeenCalled();
+        orch.dispose();
+      });
     });
 
     it("a thread switch shows the new thread loading, with nothing of the last one", async () => {
@@ -3733,7 +4173,10 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.messages).toEqual([]);
       expect(orch.isThreadLoading).toBe(false);
       expect(orch.error).toBeUndefined();
-      expect(client.runs.list).not.toHaveBeenCalled();
+      expect(client.runs.list).toHaveBeenCalledExactlyOnceWith(
+        "t-new",
+        expect.objectContaining({ status: "running" })
+      );
 
       await orch.submit({ messages: [] }, { metadata: { from: "chat" } });
       await orch.submit({ messages: [] });
@@ -4792,6 +5235,61 @@ describe("StreamOrchestrator runs", () => {
       expect(read).toHaveBeenCalledOnce();
     });
 
+    it("clients built with one config read /info once, and a client with other headers reads its own", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      onTestFinished(() => read.mockRestore());
+      const config = { apiUrl: "http://one-server.test", apiKey: null };
+      for (const each of [
+        new Client(config),
+        new Client(config),
+        new Client({ ...config, defaultHeaders: { "x-tenant": "other" } }),
+      ]) {
+        orchestrator({ onToolEvent: vi.fn() }, each).dispose();
+      }
+      await flushMicrotasks();
+
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+
+    it("a client reads /info again when another client's read of that server failed", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockRejectedValueOnce(
+          Object.assign(new Error("unavailable"), { status: 503 })
+        )
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      onTestFinished(() => read.mockRestore());
+      const config = { apiUrl: "http://flaky-server.test", apiKey: null };
+      for (const each of [new Client(config), new Client(config), new Client(config)]) {
+        orchestrator({ onToolEvent: vi.fn() }, each).dispose();
+        await flushMicrotasks();
+      }
+
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+
+    it("clients of one server read /info again once the shared read is 5 minutes old", async () => {
+      const read = vi
+        .spyOn(Client.prototype, "info")
+        .mockResolvedValue({ flags: { stream_lifecycle: true } });
+      const start = Date.now();
+      const now = vi.spyOn(Date, "now").mockReturnValue(start);
+      onTestFinished(() => {
+        read.mockRestore();
+        now.mockRestore();
+      });
+      const config = { apiUrl: "http://aging-server.test", apiKey: null };
+      for (const age of [0, 5 * 60_000 - 1, 5 * 60_000]) {
+        now.mockReturnValue(start + age);
+        orchestrator({ onToolEvent: vi.fn() }, new Client(config)).dispose();
+        await flushMicrotasks();
+      }
+
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+
     it.each([
       { flags: { stream_lifecycle: true }, sent: true },
       { flags: {}, sent: false },
@@ -5154,6 +5652,32 @@ describe("StreamOrchestrator runs", () => {
         await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
 
         expect(joined().streamNamespaces).toEqual(namespaces);
+        expect(client.runs.get).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
+    it.each([
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: undefined, values: false },
+    ])(
+      "a joined run on $server with options $kwargs tells its panels values: $values",
+      async ({ serverFlags, kwargs, values }) => {
+        withFlags(serverFlags);
+        listRuns([{ run_id: "run-9", ...(kwargs && { kwargs }) }]);
+        mockJoinStream([], Promise.resolve());
+        const orch = orchestrator({ scopedSubagents: true });
+        const setRun = vi.spyOn(orch.scopes, "setRun");
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+
+        await vi.waitFor(() =>
+          expect(setRun).toHaveBeenCalledWith("run-9", expect.objectContaining({ values }))
+        );
         expect(client.runs.get).not.toHaveBeenCalled();
         orch.dispose();
       }
@@ -6604,6 +7128,55 @@ describe("StreamOrchestrator runs", () => {
         "int-1",
       ]);
       ended.resolve();
+      orch.dispose();
+    });
+
+    it.each([
+      { stateKeys: [], asked: ["messages-tuple"], values: false },
+      { stateKeys: ["messages"], asked: ["messages-tuple"], values: false },
+      { stateKeys: [], asked: [], values: true },
+      { stateKeys: [], asked: ["messages-tuple", "values"], values: true },
+      { stateKeys: ["count"], asked: ["messages-tuple"], values: true },
+      { stateKeys: undefined, asked: ["messages-tuple"], values: true },
+    ] as const)(
+      "stateKeys $stateKeys, asking for $asked: a run streams values: $values",
+      async ({ stateKeys, asked, values }) => {
+        mockRunStream([], { ended: Promise.resolve() });
+        const orch = orchestrator({
+          stateKeys: stateKeys && [...stateKeys],
+        });
+        orch.initThreadId("t1");
+
+        await orch.submit({ messages: [] }, { streamMode: [...asked] });
+
+        const streamMode = (client.runs.stream as Mock).mock.calls[0][2]
+          .streamMode as string[];
+        expect(streamMode.includes("values")).toBe(values);
+        expect(streamMode).toEqual(expect.arrayContaining(["updates", ...asked]));
+        orch.dispose();
+      }
+    );
+
+    it("without values, an optimistic message is sent once its run's first step streams", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [{ event: "messages", data: [{ id: "a1", type: "ai", content: "Hi" }, {}] }],
+        { ended: ended.promise }
+      );
+      const orch = orchestrator({ stateKeys: [] });
+      orch.trackStreamMode("messages-tuple");
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      const sent = orch.submit({ messages: [message("h1")] });
+      const status = () =>
+        orch.messageMetadataStore.getSnapshot().get("h1")?.optimisticStatus;
+      expect(status()).toBe("pending");
+
+      await vi.waitFor(() => expect(status()).toBe("sent"));
+      expect(orch.isLoading).toBe(true);
+      ended.resolve();
+      await sent;
       orch.dispose();
     });
 

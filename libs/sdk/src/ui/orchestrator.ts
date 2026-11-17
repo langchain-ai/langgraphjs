@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
-import { Client } from "../client.js";
+import { Client, getClientConfigHash } from "../client.js";
 import type {
   ThreadState,
   ThreadTask,
@@ -9,6 +9,8 @@ import type {
   Config,
   Metadata,
   Run,
+  RunSelectField,
+  RunStatus,
   ServerInfo,
   ThreadStateSelectField,
 } from "../schema.js";
@@ -178,30 +180,48 @@ const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
 const withoutRunEventModes = (modes: StreamMode[]) =>
   modes.filter((mode) => !RUN_EVENT_MODES.includes(mode));
 
-const serverInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
+/**
+ * How long clients share a server's `/info` read: past it a server's new
+ * flags show, and a long-lived process drops the reads of configs it no
+ * longer uses.
+ */
+const SERVER_INFO_MAX_AGE_MS = 5 * 60_000;
+
+const serverInfoReads = new Map<
+  string,
+  { read: Promise<ServerInfo | undefined>; at: number }
+>();
 
 /**
- * What the server supports, from `/info`, read once per client. A read that
+ * What the server supports, from `/info`. Clients built with the same config,
+ * URL, API key and headers included, share a read for 5 minutes. A read that
  * fails or takes over 5 s counts as no support, and the next run that needs
  * it reads again, apart from a 404: that server has no `/info`.
  */
 function serverInfo(client: Client): Promise<ServerInfo | undefined> {
-  let read = serverInfoReads.get(client);
-  if (read == null) {
-    // Not AbortSignal.timeout, which React Native lacks.
-    const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(), 5_000);
-    read = Promise.resolve()
-      .then(() => client.info({ signal: timeout.signal }))
-      .catch((error: unknown) => {
-        if ((error as { status?: unknown } | null)?.status !== 404) {
-          serverInfoReads.delete(client);
-        }
-        return undefined;
-      })
-      .finally(() => clearTimeout(timer));
-    serverInfoReads.set(client, read);
+  const now = Date.now();
+  // Reads are kept in the order they were made, so expired ones come first.
+  for (const [config, { at }] of serverInfoReads) {
+    if (now - at < SERVER_INFO_MAX_AGE_MS) break;
+    serverInfoReads.delete(config);
   }
+  const key = getClientConfigHash(client);
+  const shared = key == null ? undefined : serverInfoReads.get(key);
+  if (shared != null && now - shared.at < SERVER_INFO_MAX_AGE_MS) {
+    return shared.read;
+  }
+  // Not AbortSignal.timeout, which React Native lacks.
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), 5_000);
+  const read = Promise.resolve()
+    .then(() => client.info({ signal: timeout.signal }))
+    .catch((error: unknown) => {
+      const status = (error as { status?: unknown } | null)?.status;
+      if (key != null && status !== 404) serverInfoReads.delete(key);
+      return undefined;
+    })
+    .finally(() => clearTimeout(timer));
+  if (key != null) serverInfoReads.set(key, { read, at: now });
   return read;
 }
 
@@ -413,6 +433,13 @@ export interface RespondOptions<
   /** The node to go to next. */
   goto?: Command["goto"];
 }
+
+/**
+ * What a thread load's two run lookups found: the run one of them joined,
+ * which the other doesn't join again, and whether the lookup after the read
+ * answered, which leaves the one sent with the read out of date.
+ */
+type RunLookups = { joined?: string; settled?: boolean };
 
 /**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
@@ -811,10 +838,11 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       this.#notify();
+      const read = this.#mutate(threadId);
+      const lookups: RunLookups = {};
+      this.#joinEarly(threadId, read, lookups);
       this.#startLoad(
-        this.#mutate(threadId).then((states) =>
-          this.#joinActiveRun(threadId, states)
-        )
+        read.then((states) => this.#joinActiveRun(threadId, states, lookups))
       );
     } else {
       this.#history = {
@@ -873,9 +901,79 @@ export class StreamOrchestrator<
     );
   }
 
+  /**
+   * Looks for the thread's running run while its state is read, and joins it
+   * once both answer, a round trip before {@link #joinActiveRun} would. Only
+   * that later lookup can tell no run is going: the thread watcher opens as
+   * the read lands and misses runs that started before it, so a lookup sent
+   * with the read can miss one started during it.
+   */
+  #joinEarly(
+    threadId: string,
+    read: Promise<ThreadState<StateType>[] | undefined>,
+    lookups: RunLookups
+  ): void {
+    if (!this.#durable || this.#missingThreads.has(threadId)) return;
+    const running = this.#listRuns(threadId, { status: "running", limit: 1 });
+    void Promise.all([read, running]).then(([states, runs]) => {
+      const run = runs?.at(0);
+      // Before activate(), the later lookup holds the join.
+      if (
+        run == null ||
+        lookups.settled ||
+        run.run_id === lookups.joined ||
+        states == null ||
+        !this.#active ||
+        threadId !== this.#threadId ||
+        this.#missingThreads.has(threadId)
+      ) {
+        return;
+      }
+      lookups.joined = run.run_id;
+      void this.#joinFound(run, states.at(0));
+    });
+  }
+
+  /** Joins a run a thread load found, from the head it read. */
+  #joinFound(
+    run: Run,
+    head: ThreadState<StateType> | undefined
+  ): Promise<void> {
+    return this.#join(
+      run.run_id,
+      "-1",
+      { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
+      true,
+      run
+    );
+  }
+
+  /**
+   * The thread's runs, or `undefined` when the list fails or takes over 10 s:
+   * a lookup that hangs would hold the load, and with it the head's
+   * interrupts, for good. Not AbortSignal.timeout, which React Native lacks.
+   */
+  async #listRuns(
+    threadId: string,
+    query: { status: RunStatus; limit: number; select?: RunSelectField[] }
+  ): Promise<Run[] | undefined> {
+    const lookup = new AbortController();
+    const timer = setTimeout(() => lookup.abort(), 10_000);
+    try {
+      return await this.#accessors
+        .getClient()
+        .runs.list(threadId, { ...query, signal: lookup.signal });
+    } catch {
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async #joinActiveRun(
     threadId: string,
-    states: ThreadState<StateType>[] | undefined
+    states: ThreadState<StateType>[] | undefined,
+    lookups: RunLookups = {}
   ): Promise<void> {
     if (
       !this.#durable ||
@@ -885,46 +983,31 @@ export class StreamOrchestrator<
     ) {
       return;
     }
-    const client = this.#accessors.getClient();
-    // A lookup that hangs would hold the load, and with it the head's
-    // interrupts, for good. Not AbortSignal.timeout, which React Native lacks.
-    const lookup = new AbortController();
-    const timer = setTimeout(() => lookup.abort(), 10_000);
     const [runs, pending] = await Promise.all([
-      client.runs
-        .list(threadId, { status: "running", limit: 1, signal: lookup.signal })
-        .catch(() => undefined),
+      this.#listRuns(threadId, { status: "running", limit: 1 }),
       this.#options.queue === "local"
         ? undefined
-        : client.runs
-            .list(threadId, {
-              status: "pending",
-              limit: 100,
-              select: ["run_id", "kwargs", "created_at"],
-              signal: lookup.signal,
-            })
-            .catch(() => undefined),
-    ]).finally(() => clearTimeout(timer));
+        : this.#listRuns(threadId, {
+            status: "pending",
+            limit: 100,
+            select: ["run_id", "kwargs", "created_at"],
+          }),
+    ]);
+    lookups.settled = true;
     if (threadId !== this.#threadId) return;
     if (pending != null) this.#queueListedRuns(pending);
     if (runs == null) return;
     const head = states.at(0);
-    const runId = runs.at(0)?.run_id;
-    if (runId != null) {
+    const run = runs.at(0);
+    if (run != null && run.run_id !== lookups.joined) {
+      lookups.joined = run.run_id;
       // The queue drains when this join ends.
-      const join = () =>
-        void this.#join(
-          runId,
-          "-1",
-          { checkpointId: head?.checkpoint?.checkpoint_id ?? undefined },
-          true,
-          runs.at(0)
-        );
+      const join = () => void this.#joinFound(run, head);
       if (this.#active) join();
       else this.#heldJoin = join;
       return;
     }
-    if (hasPendingNodes(head) && !hasTaskInterrupts(head)) {
+    if (run == null && hasPendingNodes(head) && !hasTaskInterrupts(head)) {
       // The read caught a run mid-step that has ended since, so it misses
       // the run's last steps.
       await this.#mutate(threadId, { quiet: true });
@@ -1053,9 +1136,14 @@ export class StreamOrchestrator<
   async #finishRun(
     threadId: string | undefined,
     refetch: boolean,
-    callbackMeta: RunCallbackMeta | undefined
+    callbackMeta: RunCallbackMeta | undefined,
+    streamedValues: boolean
   ): Promise<null | undefined> {
-    const read = planReadAfterRun(this.branchContext.threadHead, refetch);
+    const read = planReadAfterRun(
+      this.branchContext.threadHead,
+      refetch,
+      streamedValues
+    );
     if (read && threadId) {
       const lastHead = (await this.#mutate(threadId, read))?.at(0);
       if (lastHead) {
@@ -1906,6 +1994,7 @@ export class StreamOrchestrator<
     const client = this.#accessors.getClient();
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
+    let sentValues = false;
 
     let releaseStream: (() => void) | undefined;
     const run: LiveRun = { promise: Promise.resolve() };
@@ -1954,7 +2043,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
+          return this.#finishRun(
+            tid,
+            shouldRefetchJoin,
+            callbackMeta,
+            sentValues
+          );
         },
         onError: (error) => {
           outcome = { error };
@@ -1971,10 +2065,12 @@ export class StreamOrchestrator<
         },
         isReplaying: lastEventId === "-1",
         onEvent: (event, data) => {
+          if (event === "values") sentValues = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
         },
-      }
+      },
+      { stillWanted: () => !this.#disposed && this.#threadId === tid }
     );
 
     this.#liveRuns.set(runId, run);
@@ -2063,6 +2159,7 @@ export class StreamOrchestrator<
     const unsent = new Set(optimistic?.echoedIds);
     if (unsent.size > 0) this.#metadata.markPending(unsent);
     let shownKeys: OptimisticKeySnapshot[] = [];
+    let asksValues = true;
     let sentValues = false;
     const stopRun = new AbortController();
 
@@ -2124,6 +2221,7 @@ export class StreamOrchestrator<
 
         const modes = this.#getRunStreamModes(submitOptions);
         const streamMode = Array.isArray(modes) ? modes : await modes;
+        asksValues = streamMode.includes("values");
         const streamSubgraphs = this.#streamSubgraphs(submitOptions);
         // The run's stream carries the main conversation only when the run
         // tells which subagent is which (lifecycle) and publishes them.
@@ -2201,6 +2299,7 @@ export class StreamOrchestrator<
             this.scopes.setRun(runId, {
               subgraphs: streamSubgraphs === true,
               filtered: rootFiltered,
+              values: asksValues,
             });
 
             if (this.#runMetadataStorage) {
@@ -2240,7 +2339,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-          return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
+          return this.#finishRun(
+            usableThreadId,
+            shouldRefetch,
+            callbackMeta,
+            sentValues
+          );
         },
         onError: (error) => {
           outcome = { error };
@@ -2295,6 +2399,14 @@ export class StreamOrchestrator<
               ({ id }) => (id != null && unsent.delete(id) ? [id] : [])
             );
             this.#metadata.resolvePending(saved, "sent");
+          } else if (
+            !asksValues &&
+            unsent.size > 0 &&
+            (event.startsWith("updates") || event.startsWith("messages"))
+          ) {
+            // No `values` echo the input, but a step's output comes after it.
+            this.#metadata.resolvePending(unsent, "sent");
+            unsent.clear();
           }
         },
       },
@@ -2348,6 +2460,10 @@ export class StreamOrchestrator<
    * subagents are tracked, and `tools`, asked for by `onToolEvent`, go only
    * to servers that send them on run routes, as do tracked ones. Runs that
    * ask for neither get their modes without waiting for `/info`.
+   *
+   * `values` sends the whole state on every step. When the messages are the
+   * only key shown and `messages-tuple` streams them, it carries nothing
+   * else, so it goes, and the head is read when the run ends.
    */
   #getRunStreamModes(
     submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
@@ -2359,14 +2475,18 @@ export class StreamOrchestrator<
         : []),
       ...(this.#options.onToolEvent != null ? (["tools"] as StreamMode[]) : []),
     ]);
-    const modes = (sent: StreamMode[]) =>
-      unique([
-        "values" as StreamMode,
-        "updates" as StreamMode,
+    const modes = (sent: StreamMode[]) => {
+      const asked = [
         ...(submitOptions?.streamMode ?? []),
         ...sent,
         ...this.#callbackStreamModes,
-      ]);
+      ];
+      const values: StreamMode[] =
+        this.#stateKeys?.messagesOnly && asked.includes("messages-tuple")
+          ? []
+          : ["values"];
+      return unique([...values, "updates" as StreamMode, ...asked]);
+    };
     const plain = withoutRunEventModes(tracked);
     if (plain.length === tracked.length) return modes(tracked);
     return serverInfo(this.#accessors.getClient()).then((info) =>
@@ -2379,7 +2499,10 @@ export class StreamOrchestrator<
       !this.#disposed &&
       !this.isLoading &&
       !this.#submitting &&
-      this.pendingRuns.size > 0
+      this.pendingRuns.size > 0 &&
+      // A join queued behind the stream that just ended streams first, and
+      // drains the queue when it ends.
+      ![...this.#liveRuns.values()].some((live) => live.signal == null)
     ) {
       const next = this.pendingRuns.shift();
       if (next) {
@@ -2919,37 +3042,41 @@ export class StreamOrchestrator<
 
   /**
    * How a joined run streams, from its own options: subgraphs (so panels have
-   * events to join) and lifecycle events (so the main conversation knows its
-   * subagents). Only with both, on a server with both flags, does its stream
-   * carry the main conversation alone.
+   * events to join), lifecycle events (so the main conversation knows its
+   * subagents) and `values` (without which panels read their state). Only
+   * with subgraphs and lifecycle, on a server with both flags, does its
+   * stream carry the main conversation alone.
    */
   async #joinMode(
     threadId: string,
     runId: string,
     runInfo: Run | undefined,
     signal: AbortSignal
-  ): Promise<{ filtered: boolean; subgraphs?: boolean }> {
+  ): Promise<{ filtered: boolean; subgraphs?: boolean; values: boolean }> {
     const info = await serverInfo(this.#accessors.getClient());
-    if (
-      info?.flags?.stream_namespaces !== true ||
-      info.flags.stream_lifecycle !== true
-    ) {
-      return { filtered: false };
-    }
+    const canFilter =
+      info?.flags?.stream_namespaces === true &&
+      info.flags.stream_lifecycle === true;
+    // A server that can't filter isn't asked for the run just for its modes.
     const kwargs = (
       runInfo ??
-      (await this.#accessors
-        .getClient()
-        .runs.get(threadId, runId, { signal })
-        .catch(() => undefined))
+      (canFilter
+        ? await this.#accessors
+            .getClient()
+            .runs.get(threadId, runId, { signal })
+            .catch(() => undefined)
+        : undefined)
     )?.kwargs;
-    if (kwargs == null) return { filtered: false };
+    // Unknown modes count as no `values`, which costs panels one more read.
+    if (kwargs == null) return { filtered: false, values: false };
     const modes = kwargs.stream_mode;
+    const asked = (mode: string) =>
+      Array.isArray(modes) ? modes.includes(mode) : modes === mode;
+    // The server's default is `values`.
+    const values = modes == null || asked("values");
+    if (!canFilter) return { filtered: false, values };
     const subgraphs = kwargs.subgraphs === true;
-    const lifecycle = Array.isArray(modes)
-      ? modes.includes("lifecycle")
-      : modes === "lifecycle";
-    return { filtered: subgraphs && lifecycle, subgraphs };
+    return { filtered: subgraphs && asked("lifecycle"), subgraphs, values };
   }
 
   #reconnectOptions() {

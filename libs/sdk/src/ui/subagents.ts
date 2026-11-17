@@ -43,6 +43,26 @@ export function isSubagentNamespace(
 }
 
 /**
+ * The namespace of the graph a message came from, read from its metadata when
+ * its `messages` event names none. `langgraph_checkpoint_ns` ends with the
+ * task that wrote the message, so the tools node's own `ToolMessage`
+ * (`tools:<task id>`) is the root graph's. deepagents puts the `task` call on
+ * a subagent's messages, which keep that segment, since a subagent can write
+ * from the tool itself.
+ */
+export function namespaceFromMessageMetadata(
+  metadata: Record<string, unknown> | undefined
+): string[] {
+  const namespace =
+    metadata?.langgraph_checkpoint_ns || metadata?.checkpoint_ns;
+  if (typeof namespace !== "string" || namespace === "") return [];
+  const segments = namespace.split("|");
+  return typeof metadata?.lc_subagent_tool_call_id === "string"
+    ? segments
+    : segments.slice(0, -1);
+}
+
+/**
  * Extracts the tool call ID from a namespace path.
  *
  * Namespaces follow the pattern: ["tools:call_abc123", "model_request:xyz", ...]

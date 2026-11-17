@@ -290,7 +290,7 @@ for (const graph of Object.keys(PANEL_AFTER_RUN)) {
 it.skipIf(jsGraphs)("an async subagent's panel on its own thread shows its run live, and its next run", async () => {
   const say = (content: string) => ({ messages: [{ type: "human", content }] });
   const { v1, v2 } = await onBothSides(async (side) => {
-    const lead = await side.mount({ assistantId: "async_subagent" });
+    const lead = await side.mount({ assistantId: "async_subagent", options: { stateKeys: ["async_tasks"] } });
     void lead.stream.submit(say("Research the protocol's history")).catch(() => undefined);
     await lead.until((s) => asyncTaskThread(s.values) != null, "the task");
     const threadId = asyncTaskThread(lead.stream.values)!;

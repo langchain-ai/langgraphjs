@@ -17,9 +17,12 @@ function lifecycleEvent(
   };
 }
 
-function valuesEvent(namespace: readonly string[]): ChannelEvent {
+function valuesEvent(
+  namespace: readonly string[],
+  method: "values" | "updates" = "values"
+): ChannelEvent {
   return {
-    method: "values",
+    method,
     params: {
       namespace: [...namespace],
       timestamp: Date.now(),
@@ -39,6 +42,20 @@ describe("SubgraphDiscovery", () => {
 
     expect([...discovery.snapshot.values()]).toMatchObject([
       { nodeName: "classify", status: "running" },
+    ]);
+  });
+
+  it("promotes a host namespace from its nodes' updates, which a run without values still sends, but not a subagent's", () => {
+    const discovery = new SubgraphDiscovery();
+
+    discovery.push(lifecycleEvent(["child:u1"], "started"));
+    discovery.push(valuesEvent([], "updates"));
+    discovery.push(valuesEvent(["tools:u2"], "updates"));
+    discovery.push(valuesEvent(["child:u1"], "updates"));
+    discovery.push(lifecycleEvent(["child:u1"], "completed"));
+
+    expect([...discovery.snapshot.values()]).toMatchObject([
+      { nodeName: "child", namespace: ["child:u1"], status: "complete" },
     ]);
   });
 

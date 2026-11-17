@@ -148,6 +148,11 @@ describe("ScopeRegistry", () => {
           event: "messages",
           data: [{ id: "old", type: "ai", content: "old core" }, { langgraph_checkpoint_ns: "tools:a|model:x" }],
         },
+        {
+          id: "5",
+          event: "messages",
+          data: [{ id: "result", type: "tool", content: "done", tool_call_id: "call_1" }, { langgraph_checkpoint_ns: "tools:a" }],
+        },
       ],
       { canFilter: async () => false }
     );
@@ -306,6 +311,95 @@ describe("ScopeRegistry", () => {
 
     await vi.waitFor(() => expect(ids(a.getSnapshot().messages)).toEqual(["done"]));
     expect(client.runs.joinStream).not.toHaveBeenCalled();
+  });
+
+  it("a panel opened while a run without values streams shows nothing until it has read its saved state, then that with what streamed on top, and reads it again when the run ends", async () => {
+    const { registry, client } = setup(() => [
+      { id: "1", event: "messages|tools:a", data: token("a1", "streamed") },
+    ]);
+    let read!: (states: unknown[]) => void;
+    (client.threads.getHistory as Mock)
+      .mockReturnValueOnce(new Promise((resolve) => (read = resolve)))
+      .mockResolvedValueOnce([
+        { values: { messages: [human("task"), { id: "a1", type: "ai", content: "saved" }] } },
+      ]);
+    registry.setRun("run-1", { values: false });
+    const a = registry.acquire(["tools:a"]);
+
+    await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(a.getSnapshot().messages).toEqual([]);
+
+    read([{ values: { messages: [human("task")] } }]);
+    await vi.waitFor(() => expect(ids(a.getSnapshot().messages)).toEqual(["task", "a1"]));
+
+    registry.endRun("run-1");
+
+    await vi.waitFor(() =>
+      expect(a.getSnapshot().messages.map((m) => m.content)).toEqual(["task", "saved"])
+    );
+  });
+
+  it.each([
+    { saved: "nothing", first: [] },
+    {
+      saved: "only its input checkpoint",
+      first: [{ values: { messages: [] }, metadata: { source: "input", step: -1 } }],
+    },
+  ])("a panel opened as its subagent starts reads again when the first read finds $saved, and shows nothing before", async ({ first }) => {
+    const { registry, client } = setup(() => [
+      { id: "1", event: "messages|tools:a", data: token("a1", "streamed") },
+    ]);
+    (client.threads.getHistory as Mock)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce([{ values: { messages: [human("task")] } }]);
+    registry.setRun("run-1", { values: false });
+    const a = registry.acquire(["tools:a"]);
+    const shown: (string | undefined)[][] = [];
+    a.subscribe(() => shown.push(ids(a.getSnapshot().messages)));
+
+    await vi.waitFor(() => expect(shown.at(-1)).toEqual(["task", "a1"]));
+    expect(shown[0]).toEqual(["task", "a1"]);
+    expect(client.threads.getHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it("a panel whose first read never answers shows the read made when the run ends", async () => {
+    const { registry, client } = setup(() => [
+      { id: "1", event: "messages|tools:a", data: token("a1", "streamed") },
+    ]);
+    (client.threads.getHistory as Mock)
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValueOnce([
+        { values: { messages: [human("task"), { id: "a1", type: "ai", content: "saved" }] } },
+      ]);
+    registry.setRun("run-1", { values: false });
+    const a = registry.acquire(["tools:a"]);
+    await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalledOnce());
+
+    registry.endRun("run-1");
+
+    await vi.waitFor(() =>
+      expect(a.getSnapshot().messages.map((m) => m.content)).toEqual(["task", "saved"])
+    );
+  });
+
+  it("a finished subagent's panel shows what it saved over a reply its join cut off", async () => {
+    const { registry, client } = setup(() => [
+      { id: "1", event: "messages|tools:a", data: token("a1", "Hel") },
+    ], { finished: () => true });
+    let read!: (states: unknown[]) => void;
+    (client.threads.getHistory as Mock).mockReturnValueOnce(
+      new Promise((resolve) => (read = resolve))
+    );
+    registry.setRun("run-1");
+    const a = registry.acquire(["tools:a"]);
+    await vi.waitFor(() => expect(ids(a.getSnapshot().messages)).toEqual(["a1"]));
+
+    read([{ values: { messages: [{ id: "a1", type: "ai", content: "Hello world" }] } }]);
+
+    await vi.waitFor(() =>
+      expect(a.getSnapshot().messages.map((m) => m.content)).toEqual(["Hello world"])
+    );
   });
 
   it("the same run joined again after its end streams new panels", async () => {

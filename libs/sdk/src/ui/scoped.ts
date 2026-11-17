@@ -5,7 +5,10 @@ import { inNamespaces } from "../client/runs/namespaces.js";
 import type { Message } from "../types.messages.js";
 import type { StreamReconnectOptions } from "../utils/stream.js";
 import { MessageTupleManager, ensureMessageInstances } from "./messages.js";
-import { isSubagentNamespace } from "./subagents.js";
+import {
+  isSubagentNamespace,
+  namespaceFromMessageMetadata,
+} from "./subagents.js";
 
 /** What a scope's panel shows of its subgraph. */
 export interface ScopeSnapshot {
@@ -93,6 +96,8 @@ interface ScopeState {
   snapshot: ScopeSnapshot;
   listeners: Set<() => void>;
   notifying: boolean;
+  /** Shows nothing until it has read what its subgraph saved. */
+  reading: boolean;
 }
 
 const EMPTY: ScopeSnapshot = { messages: [], values: undefined };
@@ -109,7 +114,13 @@ export class ScopeRegistry {
   #scopes = new Map<string, ScopeState>();
 
   #run:
-    | { id: string; subgraphs: boolean; filtered: boolean; ended: boolean }
+    | {
+        id: string;
+        subgraphs: boolean;
+        filtered: boolean;
+        values: boolean;
+        ended: boolean;
+      }
     | undefined;
 
   #join: AbortController | undefined;
@@ -148,6 +159,7 @@ export class ScopeRegistry {
         snapshot: EMPTY,
         listeners: new Set(),
         notifying: false,
+        reading: false,
       };
       const created = scope;
       created.messages.onRefresh = (ids) => {
@@ -164,6 +176,8 @@ export class ScopeRegistry {
         this.#host.finished(key)
       ) {
         void this.#seed(scope);
+      } else if (!run.values) {
+        void this.#readSaved(created);
       }
       this.#reopen();
     }
@@ -193,10 +207,11 @@ export class ScopeRegistry {
    * `subgraphs` the run publishes no subgraph events, so it has nothing to
    * join. `filtered` says the run's own stream carries only the main
    * conversation, so the channels get the scopes' events from their join.
+   * `values` says the run streams its subgraphs' state.
    */
   setRun(
     runId: string | undefined,
-    mode: { subgraphs?: boolean; filtered?: boolean } = {}
+    mode: { subgraphs?: boolean; filtered?: boolean; values?: boolean } = {}
   ): void {
     // A run's id can arrive after its engine is disposed.
     if (this.#disposed) return;
@@ -217,6 +232,7 @@ export class ScopeRegistry {
             id: runId,
             subgraphs: mode.subgraphs ?? true,
             filtered: mode.filtered ?? false,
+            values: mode.values ?? true,
             ended: false,
           };
     this.#reopen();
@@ -224,19 +240,18 @@ export class ScopeRegistry {
 
   /**
    * The run's own stream ended. A join still replaying it goes on to its end,
-   * and a scope it didn't fill, or every one when the run had no subgraphs,
-   * is read from history.
+   * and a scope it didn't fill, or every one when the run had no subgraphs
+   * or sent no values, is read from history.
    */
   endRun(runId: string): void {
     const run = this.#run;
     if (run?.id !== runId || run.ended) return;
     run.ended = true;
+    // Nothing streamed the state of a run without subgraphs or values, so a
+    // read made during it is stale.
+    const stale = !run.subgraphs || !run.values;
     for (const scope of this.#scopes.values()) {
-      // Nothing streamed a run without subgraphs, so a read made during it
-      // is stale.
-      if (!run.subgraphs || scope.values == null) {
-        void this.#seed(scope, !run.subgraphs);
-      }
+      if (stale || scope.values == null) void this.#seed(scope, stale);
     }
   }
 
@@ -370,6 +385,7 @@ export class ScopeRegistry {
       Array.isArray(messages) ? messages : []
     ).filter((message) => message.id == null || !rootIds.has(message.id));
     scope.attemptList = scope.list;
+    scope.reading = false;
   }
 
   /** Places a streamed message by id, as the main conversation does. */
@@ -414,8 +430,23 @@ export class ScopeRegistry {
         });
       const current = this.#scopes.get(scope.key) === scope;
       if (!current || threadId !== this.#host.threadId()) return;
-      if (state?.values != null && (replace || scope.values == null)) {
+      // A subgraph's first checkpoint holds its input before it is applied,
+      // so a running one has saved nothing to show yet.
+      const early =
+        scope.reading && !replace && state?.metadata?.source === "input";
+      if (
+        state?.values != null &&
+        !early &&
+        (replace || scope.values == null)
+      ) {
+        // Mid-run, the join already placed messages the subgraph hasn't
+        // saved yet. A saved one is whole, so it wins over a streamed one.
+        const streamed = scope.reading && !replace ? scope.list : [];
         this.#setValues(scope, state.values);
+        const saved = new Set(scope.list.map(({ id }) => id));
+        for (const { id } of streamed) {
+          if (id != null && !saved.has(id)) this.#place(scope, id, false);
+        }
         this.#publish(scope);
       }
     } catch (error) {
@@ -427,7 +458,25 @@ export class ScopeRegistry {
     }
   }
 
+  /**
+   * A run without `values` sends no saved state, such as a subagent's input,
+   * so a panel opened during it shows nothing until it has read it, with what
+   * its join streamed meanwhile on top. A subagent that has just started may
+   * not have saved its input yet, so a read that finds nothing goes again.
+   */
+  async #readSaved(scope: ScopeState): Promise<void> {
+    scope.reading = true;
+    await this.#seed(scope);
+    if (scope.reading) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await this.#seed(scope);
+    }
+    scope.reading = false;
+    this.#publish(scope);
+  }
+
   #publish(scope: ScopeState): void {
+    if (scope.reading) return;
     scope.snapshot = { messages: scope.list, values: scope.values };
     if (scope.notifying) return;
     scope.notifying = true;
@@ -440,12 +489,10 @@ export class ScopeRegistry {
 }
 
 function namespaceFromMetadata(data: unknown): string {
-  const metadata = (Array.isArray(data) ? data[1] : undefined) as
-    | { langgraph_checkpoint_ns?: unknown; checkpoint_ns?: unknown }
-    | undefined;
-  const namespace =
-    metadata?.langgraph_checkpoint_ns || metadata?.checkpoint_ns;
-  return typeof namespace === "string" && namespace !== ""
-    ? `messages|${namespace}`
-    : "messages";
+  const namespace = namespaceFromMessageMetadata(
+    (Array.isArray(data) ? data[1] : undefined) as
+      | Record<string, unknown>
+      | undefined
+  );
+  return namespace.length > 0 ? `messages|${namespace.join("|")}` : "messages";
 }

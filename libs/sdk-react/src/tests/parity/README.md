@@ -24,6 +24,8 @@ PARITY_BACKEND=python PARITY_LANGGRAPH=~/parity-venv/bin/langgraph pnpm test:par
 
 Rows that test only the client run on the JS dev server alone (`itOnJsServer`), and rows that need the Agent Server run everywhere else (`itOnAgentServer`), `PARITY_SERVER_URL` included.
 
+`PARITY_STATE_KEYS='[]'` runs every row with `stateKeys: []` on both sides, as apps that show only messages do, so 2.0's runs stream no `values`. Rows that read other keys pass their own `stateKeys`, and `messagesOnly` tells a row which pass it is in.
+
 A `PARITY_SERVER_URL` server is taken to serve the Python graphs. For an Agent Server serving the JS ones (`langchain/langgraphjs-api`), add `PARITY_GRAPHS=js`: rows where 1.x behaves differently with JS graphs check `jsGraphs`.
 
 The rows about a hidden page also check an expired resume point on a server that keeps resume points only briefly. Start it with `RESUMABLE_STREAM_TTL_SECONDS=2` and pass the same seconds as `PARITY_RESUME_TTL`, running just those rows (`-t hidden`), since a short lifetime changes how other rows reconnect.
