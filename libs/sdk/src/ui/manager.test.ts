@@ -573,7 +573,74 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("interrupts sent in root updates", () => {
+    const run = (events: Array<{ event: string; data: unknown }>) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [{ id: "h0", type: "human", content: "hi" }] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+      });
+    const interrupts = () =>
+      (streamManager.values as unknown as { __interrupt__?: { id?: string }[] })
+        .__interrupt__;
+    const interruptIds = () => interrupts()?.map(({ id }) => id);
+    const token = (id: string) => ({
+      event: "messages",
+      data: [{ id, type: "ai", content: id }, {}],
+    });
+
+    it("a stream without values shows them, and its first output drops an earlier run's", async () => {
+      await run([
+        { event: "updates", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+        { event: "updates|tools:t1", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+      ]);
+      expect(interruptIds()).toEqual(["int-1"]);
+      expect(streamManager.values?.messages.map((m) => m.id)).toEqual(["h0"]);
+
+      await run([
+        token("a1"),
+        { event: "updates", data: { __interrupt__: [{ id: "int-2", value: "b?" }] } },
+      ]);
+      expect(interruptIds()).toEqual(["int-2"]);
+    });
+
+    it("a restarted attempt doesn't bring back an earlier run's interrupt its first output dropped", async () => {
+      await run([
+        { event: "updates", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+      ]);
+
+      await run([
+        { event: "metadata", data: { run_id: "r2" } },
+        token("a1"),
+        { event: "metadata", data: { run_id: "r2" } },
+        token("a2"),
+      ]);
+
+      expect(interrupts()).toBeUndefined();
+    });
+
+    it("an interrupt without an id that root updates and then values send shows once", async () => {
+      const interrupt = { __interrupt__: [{ value: "x?" }] };
+      await run([
+        { event: "updates", data: interrupt },
+        { event: "values", data: { ...interrupt, messages: [] } },
+      ]);
+
+      expect(interrupts()).toEqual([{ value: "x?" }]);
+    });
+  });
+
   describe("parallel interrupt accumulation", () => {
+
     it("should accumulate interrupts from separate values events", async () => {
       // Simulates parallel branches each raising an interrupt in separate
       // values events during a single stream.

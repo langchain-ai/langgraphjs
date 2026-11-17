@@ -1602,6 +1602,29 @@ describe("StreamOrchestrator", () => {
       }
     );
 
+    it.each(answeringRuns)(
+      "a run that streamed no values shows the interrupt its updates sent, also when the read after it fails ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ onError });
+        getState().mockRejectedValue(new Error("offline"));
+
+        await run(orch, [
+          { event: "messages", data: [message("a1", "ai"), {}] },
+          {
+            event: "updates",
+            data: { __interrupt__: [{ id: "int-1", value: "approve?" }] },
+          },
+        ]);
+
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+        expect(orch.messages.map((m) => m.id)).toEqual(["h0", "a1"]);
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
     it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
       "a failed read after a run puts no error on the thread opened since (fetchStateHistory: $fetchStateHistory)",
       async ({ fetchStateHistory }) => {
@@ -5193,6 +5216,32 @@ describe("StreamOrchestrator runs", () => {
         await vi.waitFor(() => expect(client.runs.joinStream).toHaveBeenCalled());
 
         expect(joined().streamNamespaces).toEqual(namespaces);
+        expect(client.runs.get).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
+    it.each([
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: undefined, values: false },
+    ])(
+      "a joined run on $server with options $kwargs tells its panels values: $values",
+      async ({ serverFlags, kwargs, values }) => {
+        withFlags(serverFlags);
+        listRuns([{ run_id: "run-9", ...(kwargs && { kwargs }) }]);
+        mockJoinStream([], Promise.resolve());
+        const orch = orchestrator({ scopedSubagents: true });
+        const setRun = vi.spyOn(orch.scopes, "setRun");
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+
+        await vi.waitFor(() =>
+          expect(setRun).toHaveBeenCalledWith("run-9", expect.objectContaining({ values }))
+        );
         expect(client.runs.get).not.toHaveBeenCalled();
         orch.dispose();
       }

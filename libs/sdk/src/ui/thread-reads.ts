@@ -35,10 +35,10 @@ export function hasTaskErrors(state: ThreadState | undefined): boolean {
  * The read to make after a run succeeds, or `undefined` for none.
  *
  * With `refetch` the caller needs the head anyway. Otherwise a run that
- * streamed no `values` calls for a read, since only the head has the run's
- * interrupts and the order its parallel steps saved, and so do the shown
- * head's interrupts, pending nodes and task errors, since the run may have
- * answered or cleared them and they come from the head. That read only
+ * streamed no `values` calls for a read, since only the head has the order
+ * its parallel steps saved and anything the stream missed, and so do the
+ * shown head's interrupts, pending nodes and task errors, since the run may
+ * have answered or cleared them and they come from the head. That read only
  * refreshes what is shown, so a failure is quiet.
  */
 export function planReadAfterRun(

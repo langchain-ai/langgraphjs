@@ -96,6 +96,8 @@ interface ScopeState {
   snapshot: ScopeSnapshot;
   listeners: Set<() => void>;
   notifying: boolean;
+  /** Shows nothing until it has read what its subgraph saved. */
+  reading: boolean;
 }
 
 const EMPTY: ScopeSnapshot = { messages: [], values: undefined };
@@ -157,6 +159,7 @@ export class ScopeRegistry {
         snapshot: EMPTY,
         listeners: new Set(),
         notifying: false,
+        reading: false,
       };
       const created = scope;
       created.messages.onRefresh = (ids) => {
@@ -173,15 +176,10 @@ export class ScopeRegistry {
         this.#host.finished(key)
       ) {
         void this.#seed(scope);
-        this.#reopen();
-      } else if (run.values) {
-        this.#reopen();
-      } else {
-        // Without `values` the run sends no saved state, such as the
-        // subagent's input, so the panel reads it first and the join replays
-        // the run's messages over it.
-        void this.#seed(scope).then(() => this.#reopen());
+      } else if (!run.values) {
+        void this.#readSaved(created);
       }
+      this.#reopen();
     }
     scope.refs += 1;
     const held = scope;
@@ -387,6 +385,7 @@ export class ScopeRegistry {
       Array.isArray(messages) ? messages : []
     ).filter((message) => message.id == null || !rootIds.has(message.id));
     scope.attemptList = scope.list;
+    scope.reading = false;
   }
 
   /** Places a streamed message by id, as the main conversation does. */
@@ -431,8 +430,23 @@ export class ScopeRegistry {
         });
       const current = this.#scopes.get(scope.key) === scope;
       if (!current || threadId !== this.#host.threadId()) return;
-      if (state?.values != null && (replace || scope.values == null)) {
+      // A subgraph's first checkpoint holds its input before it is applied,
+      // so a running one has saved nothing to show yet.
+      const early =
+        scope.reading && !replace && state?.metadata?.source === "input";
+      if (
+        state?.values != null &&
+        !early &&
+        (replace || scope.values == null)
+      ) {
+        // Mid-run, the join already placed messages the subgraph hasn't
+        // saved yet. A saved one is whole, so it wins over a streamed one.
+        const streamed = scope.reading && !replace ? scope.list : [];
         this.#setValues(scope, state.values);
+        const saved = new Set(scope.list.map(({ id }) => id));
+        for (const { id } of streamed) {
+          if (id != null && !saved.has(id)) this.#place(scope, id, false);
+        }
         this.#publish(scope);
       }
     } catch (error) {
@@ -444,7 +458,25 @@ export class ScopeRegistry {
     }
   }
 
+  /**
+   * A run without `values` sends no saved state, such as a subagent's input,
+   * so a panel opened during it shows nothing until it has read it, with what
+   * its join streamed meanwhile on top. A subagent that has just started may
+   * not have saved its input yet, so a read that finds nothing goes again.
+   */
+  async #readSaved(scope: ScopeState): Promise<void> {
+    scope.reading = true;
+    await this.#seed(scope);
+    if (scope.reading) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await this.#seed(scope);
+    }
+    scope.reading = false;
+    this.#publish(scope);
+  }
+
   #publish(scope: ScopeState): void {
+    if (scope.reading) return;
     scope.snapshot = { messages: scope.list, values: scope.values };
     if (scope.notifying) return;
     scope.notifying = true;

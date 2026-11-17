@@ -2965,32 +2965,31 @@ export class StreamOrchestrator<
     runId: string,
     runInfo: Run | undefined,
     signal: AbortSignal
-  ): Promise<{ filtered: boolean; subgraphs?: boolean; values?: boolean }> {
+  ): Promise<{ filtered: boolean; subgraphs?: boolean; values: boolean }> {
     const info = await serverInfo(this.#accessors.getClient());
-    if (
-      info?.flags?.stream_namespaces !== true ||
-      info.flags.stream_lifecycle !== true
-    ) {
-      return { filtered: false };
-    }
+    const canFilter =
+      info?.flags?.stream_namespaces === true &&
+      info.flags.stream_lifecycle === true;
+    // A server that can't filter isn't asked for the run just for its modes.
     const kwargs = (
       runInfo ??
-      (await this.#accessors
-        .getClient()
-        .runs.get(threadId, runId, { signal })
-        .catch(() => undefined))
+      (canFilter
+        ? await this.#accessors
+            .getClient()
+            .runs.get(threadId, runId, { signal })
+            .catch(() => undefined)
+        : undefined)
     )?.kwargs;
-    if (kwargs == null) return { filtered: false };
+    // Unknown modes count as no `values`, which costs panels one more read.
+    if (kwargs == null) return { filtered: false, values: false };
     const modes = kwargs.stream_mode;
     const asked = (mode: string) =>
       Array.isArray(modes) ? modes.includes(mode) : modes === mode;
+    // The server's default is `values`.
+    const values = modes == null || asked("values");
+    if (!canFilter) return { filtered: false, values };
     const subgraphs = kwargs.subgraphs === true;
-    return {
-      filtered: subgraphs && asked("lifecycle"),
-      subgraphs,
-      // The server's default is `values`.
-      values: modes == null || asked("values"),
-    };
+    return { filtered: subgraphs && asked("lifecycle"), subgraphs, values };
   }
 
   #reconnectOptions() {

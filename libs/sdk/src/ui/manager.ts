@@ -46,6 +46,40 @@ const TOOL_EVENT_KINDS = new Set<string>([
   "on_tool_error",
 ]);
 
+function withoutInterrupts<V extends Record<string, unknown>>(
+  values: V | null
+): V | null {
+  if (values == null || !("__interrupt__" in values)) return values;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { __interrupt__, ...rest } = values;
+  return rest as V;
+}
+
+/**
+ * `incoming` interrupts added to `current`. Parallel branches that each raise
+ * one may send them in separate events, so none is lost or added twice, and
+ * an empty list clears them.
+ */
+function addInterrupts(current: unknown, incoming: unknown): unknown {
+  if (
+    !Array.isArray(incoming) ||
+    incoming.length === 0 ||
+    !Array.isArray(current)
+  ) {
+    return incoming;
+  }
+  const merged: Array<{ id?: string }> = [...current];
+  const ids = new Set(merged.map(({ id }) => id).filter((id) => id != null));
+  for (const interrupt of incoming as Array<{ id?: string }>) {
+    if (interrupt.id != null) {
+      if (ids.has(interrupt.id)) continue;
+      ids.add(interrupt.id);
+    }
+    merged.push(interrupt);
+  }
+  return merged;
+}
+
 type GetUpdateType<
   Bag extends BagTemplate,
   StateType extends Record<string, unknown>,
@@ -702,12 +736,21 @@ export class StreamManager<
       }
 
       const run = await action(abort.signal);
-      let clearedPreviousInterrupts = false;
       // A run sends `metadata` once per attempt, so one after other events
       // starts a new attempt: what the cut one streamed since its last root
       // `values` goes, and messages it sends again start over.
       let attemptValues = this.values;
       let sawEvent = false;
+      let sawRootValues = false;
+      // The first main output of the stream (root values, updates or
+      // messages) drops the interrupts an earlier run left, so a resumed one
+      // isn't carried forward, while a stream that fails before any keeps them.
+      let clearedPreviousInterrupts = false;
+      const dropInterrupts = () => {
+        clearedPreviousInterrupts = true;
+        this.setStreamValues(withoutInterrupts);
+        attemptValues = withoutInterrupts(attemptValues);
+      };
 
       // Subagent messages kept in the main stream (`filterSubagentMessages` off)
       const subagentMessageIds = new Set<string>();
@@ -834,6 +877,26 @@ export class StreamManager<
 
         if (this.matchEventType("updates", event, data)) {
           options.callbacks.onUpdateEvent?.(data, { namespace, mutate });
+
+          if (namespace == null) {
+            if (!clearedPreviousInterrupts) dropInterrupts();
+            // A run that sends no root `values` sends its interrupts only here.
+            const interrupts = (data as { __interrupt__?: unknown } | null)
+              ?.__interrupt__;
+            if (!sawRootValues && Array.isArray(interrupts)) {
+              this.setStreamValues(
+                (prev) =>
+                  ({
+                    ...options.initialValues,
+                    ...prev,
+                    __interrupt__: addInterrupts(
+                      prev?.__interrupt__,
+                      interrupts
+                    ),
+                  }) as StateType
+              );
+            }
+          }
 
           // Track subagent streaming updates from subgraph namespaces
           // Mark the subagent as running when we receive updates
@@ -967,63 +1030,22 @@ export class StreamManager<
             // the messages in these values
             this.messages.flush();
 
-            if (!clearedPreviousInterrupts) {
-              // Clear stale __interrupt__ from the previous run once the new
-              // stream starts delivering main values. This avoids carrying
-              // resumed interrupts forward while still preserving the previous
-              // interrupt state if the new stream fails before any values
-              // arrive.
-              this.setStreamValues((prev) => {
-                if (prev && "__interrupt__" in prev) {
-                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                  const { __interrupt__, ...rest } = prev;
-                  return rest as StateType;
-                }
-                return prev;
-              });
-              clearedPreviousInterrupts = true;
-            }
+            // A run's `values` carry its interrupts too, so the ones its
+            // `updates` sent before them go with an earlier run's.
+            if (!sawRootValues) dropInterrupts();
+            sawRootValues = true;
 
             if (data && typeof data === "object" && "__interrupt__" in data) {
-              // When parallel branches each raise an interrupt, the backend
-              // may stream separate values events per branch. We accumulate
-              // the __interrupt__ arrays so none are lost, but still honor an
-              // explicit empty array as "clear interrupts".
-              const interruptData = data as Partial<StateType> & {
-                __interrupt__?: Array<{ id?: string }>;
-              };
-              this.setStreamValues((prev) => {
-                const prevInterrupts = (
-                  prev as
-                    | (StateType & { __interrupt__?: Array<{ id?: string }> })
-                    | null
-                )?.__interrupt__;
-
-                let interrupts = interruptData.__interrupt__;
-                if (Array.isArray(interrupts)) {
-                  if (interrupts.length === 0) {
-                    interrupts = [];
-                  } else if (Array.isArray(prevInterrupts)) {
-                    const mergedInterrupts = [...prevInterrupts];
-                    const existingIds = new Set(
-                      prevInterrupts.map((i) => i.id).filter((id) => id != null)
-                    );
-                    for (const interrupt of interrupts) {
-                      if (interrupt.id != null) {
-                        if (existingIds.has(interrupt.id)) continue;
-                        existingIds.add(interrupt.id);
-                      }
-                      mergedInterrupts.push(interrupt);
-                    }
-                    interrupts = mergedInterrupts;
-                  }
-                }
-
-                return {
-                  ...prev,
-                  __interrupt__: interrupts,
-                } as unknown as StateType;
-              });
+              this.setStreamValues(
+                (prev) =>
+                  ({
+                    ...prev,
+                    __interrupt__: addInterrupts(
+                      prev?.__interrupt__,
+                      data.__interrupt__
+                    ),
+                  }) as unknown as StateType
+              );
             } else {
               // Non-interrupt values events must not wipe accumulated
               // __interrupt__ state. Preserve it when the incoming data
@@ -1049,6 +1071,7 @@ export class StreamManager<
 
         if (this.matchEventType("messages", event, data)) {
           const [serialized, metadata] = data;
+          if (namespace == null && !clearedPreviousInterrupts) dropInterrupts();
 
           // Check if this message is from a subagent namespace
           const checkpointNs =
