@@ -1480,6 +1480,7 @@ export function runPregelTests(
           name: "one",
           result: { inbox: 3 },
           interrupts: [],
+          error: null,
         },
       },
       {
@@ -1491,6 +1492,7 @@ export function runPregelTests(
           name: "two",
           result: { output: 13 },
           interrupts: [],
+          error: null,
         },
       },
       {
@@ -1515,6 +1517,7 @@ export function runPregelTests(
           name: "two",
           result: { output: 4 },
           interrupts: [],
+          error: null,
         },
       },
     ]);
@@ -5512,6 +5515,7 @@ graph TD;
           name: "prepare",
           result: { my_key: " prepared" },
           interrupts: [],
+          error: null,
         },
       },
       {
@@ -5581,6 +5585,7 @@ graph TD;
           name: "tool_two_slow",
           result: { my_key: " slow" },
           interrupts: [],
+          error: null,
         },
       },
       {
@@ -5650,6 +5655,7 @@ graph TD;
           name: "finish",
           result: { my_key: " finished" },
           interrupts: [],
+          error: null,
         },
       },
       {
@@ -12687,6 +12693,34 @@ graph TD;
 
     const result = await graph.invoke({ visits: "one" });
     expect(result.collect).toEqual(["one", "two"]);
+  });
+
+  it("a failing task's result carries its error", async () => {
+    const graph = new StateGraph(Annotation.Root({ foo: Annotation<string> }))
+      .addNode("fails", (): { foo: string } => {
+        throw new Error("boom");
+      })
+      .addEdge("__start__", "fails")
+      .compile();
+
+    const chunks: unknown[] = [];
+    await expect(async () => {
+      for await (const chunk of await graph.stream(
+        { foo: "input" },
+        { streamMode: "tasks" }
+      )) {
+        chunks.push(chunk);
+      }
+    }).rejects.toThrow("boom");
+
+    expect(chunks).toMatchObject([
+      { name: "fails", input: { foo: "input" } },
+      {
+        name: "fails",
+        error: expect.objectContaining({ message: "boom" }),
+        interrupts: [],
+      },
+    ]);
   });
 
   it("multiple writes to the same channel from same node", async () => {

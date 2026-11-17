@@ -11,6 +11,7 @@ import {
   streamWithRetry,
   idleReconnectStream,
   type IdleReconnectMode,
+  type StreamWithRetryOptions,
   StreamRequestParams,
   DEFAULT_IDLE_RECONNECT,
 } from "../utils/stream.js";
@@ -440,12 +441,13 @@ export class BaseClient {
     json?: unknown;
     maxRetries?: number;
     idleReconnect?: IdleReconnectMode;
-    onReconnect?: (options: {
-      attempt: number;
-      lastEventId?: string;
-      cause: unknown;
-    }) => void;
+    reconnectDelayMs?: StreamWithRetryOptions["reconnectDelayMs"];
+    onReconnect?: StreamWithRetryOptions["onReconnect"];
+    onConnected?: StreamWithRetryOptions["onConnected"];
+    fallbackReconnectPath?: StreamWithRetryOptions["fallbackReconnectPath"];
     onInitialResponse?: (response: Response) => void | Promise<void>;
+    onEvent?: (event: T) => void;
+    keep?: (event: T) => boolean;
   }): AsyncGenerator<T> {
     const makeRequest = async (reconnectParams?: StreamRequestParams) => {
       const requestEndpoint = reconnectParams?.reconnectPath || config.endpoint;
@@ -467,7 +469,9 @@ export class BaseClient {
         timeoutMs: null,
         signal: config.signal,
         headers: requestHeaders,
-        params: config.params,
+        params: isReconnect
+          ? paramsMissingFrom(requestEndpoint, config.params)
+          : config.params,
         json: isReconnect ? undefined : config.json,
       });
 
@@ -544,12 +548,16 @@ export class BaseClient {
 
     for await (const part of streamWithRetry(makeRequest, {
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RECONNECT_ATTEMPTS,
+      reconnectDelayMs: config.reconnectDelayMs,
       signal: config.signal,
       onReconnect: config.onReconnect,
+      onConnected: config.onConnected,
+      fallbackReconnectPath: config.fallbackReconnectPath,
       isRunActive,
     })) {
       if (part.event === "end" || part.event === "error") runEnded = true;
-      if (!isSSEControlPart(part)) {
+      if (!isSSEControlPart(part) && (config.keep?.(part) ?? true)) {
+        config.onEvent?.(part);
         yield part.id === "" ? { ...part, id: undefined } : part;
       }
     }
@@ -617,4 +625,20 @@ function serializeHeaders(headers: RequestInit["headers"]): string {
     .sort()
     .map((name) => `${name}:${normalized[name]}`)
     .join("\n");
+}
+
+/**
+ * The params a reconnect still has to send: a server's `Location` usually
+ * keeps the request's query, and re-sending a param it already has would
+ * repeat it once more on every reconnect.
+ */
+function paramsMissingFrom(
+  endpoint: string,
+  params: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!params) return params;
+  const query = new URLSearchParams(endpoint.split("?")[1]);
+  return Object.fromEntries(
+    Object.entries(params).filter(([key]) => !query.has(key))
+  );
 }

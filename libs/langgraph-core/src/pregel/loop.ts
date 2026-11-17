@@ -65,6 +65,7 @@ import {
   ERROR_SOURCE_NODE,
   INPUT,
   INTERRUPT,
+  isTaskOutput,
   NULL_TASK_ID,
   RESUME,
   TAG_HIDDEN,
@@ -76,7 +77,9 @@ import {
   CONFIG_KEY_CHECKPOINT_ID,
   CONFIG_KEY_RESUME_MAP,
   CONFIG_KEY_REPLAY_STATE,
+  CONFIG_KEY_STRICT_RESUME,
   START,
+  type Interrupt,
 } from "../constants.js";
 import { ReplayState } from "./replay.js";
 import {
@@ -106,6 +109,7 @@ import {
   EmptyInputError,
   GraphInterrupt,
   isGraphInterrupt,
+  UnknownInterruptError,
 } from "../errors.js";
 import { getNewChannelVersions, patchConfigurable } from "./utils/index.js";
 import {
@@ -412,6 +416,12 @@ export class PregelLoop {
 
   channels: Record<string, BaseChannel>;
 
+  // Channel kinds are fixed for a run, so they are looked up once here
+  // instead of scanning every channel on each task and step.
+  protected deltaChannels: Record<string, BaseChannel>;
+
+  protected hasUntrackedChannels: boolean;
+
   protected checkpoint: Checkpoint;
 
   protected checkpointIdSaved: string | undefined;
@@ -687,6 +697,12 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
+    this.deltaChannels = Object.fromEntries(
+      Object.entries(this.channels).filter(([, c]) => isDeltaChannel(c))
+    );
+    this.hasUntrackedChannels = Object.values(this.channels).some(
+      (c) => c.lc_graph_name === "UntrackedValue"
+    );
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     // Capture before this run's Command processing adds writes: these are the
     // delta writes already stored on the loaded checkpoint. RESUME writes are
@@ -990,21 +1006,9 @@ export class PregelLoop {
       );
     }
 
-    // Check if any channels are UntrackedValue (manual loop for perf)
-    let hasUntrackedChannels = false;
-    for (const key in this.channels) {
-      if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
-        const channel = this.channels[key];
-        if (channel.lc_graph_name === "UntrackedValue") {
-          hasUntrackedChannels = true;
-          break;
-        }
-      }
-    }
-
     // Sanitize writes for checkpointing: remove UntrackedValue writes and sanitize Send packets
     let writesToSave = writesCopy;
-    if (hasUntrackedChannels) {
+    if (this.hasUntrackedChannels) {
       writesToSave = writesCopy
         .filter(([c]) => {
           // Don't persist UntrackedValue channel writes
@@ -1714,6 +1718,18 @@ export class PregelLoop {
         throw new Error("Cannot use Command(resume=...) without checkpointer");
       }
 
+      if (
+        hasResume &&
+        this.config.configurable?.[CONFIG_KEY_STRICT_RESUME] === true &&
+        // Nested calls inherit the parent's configurable.
+        !this.isNested &&
+        // A finished task can rerun and interrupt again on replay, while its
+        // earlier output still makes its interrupt look answered.
+        !this.addressedCheckpointSuperseded
+      ) {
+        this._refuseUnmatchedResume(command.resume);
+      }
+
       const writes: { [key: string]: PendingWrite[] } = {};
 
       // group writes by task id
@@ -2117,7 +2133,7 @@ export class PregelLoop {
     let newCounters: Record<string, [number, number]>;
     if (!exiting) {
       newCounters = advanceDeltaCounters(
-        this.channels,
+        this.deltaChannels,
         this.updatedChannels ?? new Set<string>(),
         this.checkpointMetadata.counters_since_delta_snapshot
       );
@@ -2139,7 +2155,7 @@ export class PregelLoop {
 
     const channelsToSnapshot = doCheckpoint
       ? deltaChannelsToSnapshot(
-          this.channels,
+          this.deltaChannels,
           newCounters,
           this._deltaWritesVersioned
             ? this.checkpoint.channel_versions
@@ -2227,7 +2243,7 @@ export class PregelLoop {
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
     const channelsToSnapshot = deltaChannelsToSnapshot(
-      this.channels,
+      this.deltaChannels,
       counters,
       this._deltaWritesVersioned ? this.checkpoint.channel_versions : undefined
     );
@@ -2362,19 +2378,55 @@ export class PregelLoop {
     tasks: Record<string, PregelExecutableTask<any, any>>
   ) {
     for (const [tid, k, v] of this.checkpointPendingWrites) {
-      if (
-        k === ERROR ||
-        k === ERROR_SOURCE_NODE ||
-        k === INTERRUPT ||
-        k === RESUME
-      ) {
-        continue;
-      }
+      if (!isTaskOutput(k)) continue;
       const task = tasks[tid];
       if (task) {
         task.writes.push([k, v]);
         this._reappliedTaskIds.add(tid);
       }
+    }
+  }
+
+  /** Ids of the interrupts still waiting for an answer: those of tasks with no output. */
+  protected _pendingInterruptIds(): Set<string> {
+    const finished = new Set(
+      this.checkpointPendingWrites
+        .filter(([, k]) => isTaskOutput(k))
+        .map(([tid]) => tid)
+    );
+    const interrupts = this.checkpointPendingWrites
+      .filter(([tid, k]) => k === INTERRUPT && !finished.has(tid))
+      .flatMap(([, , v]) => v) as Interrupt[];
+    return new Set(interrupts.flatMap(({ id }) => (id == null ? [] : [id])));
+  }
+
+  /**
+   * Strict resume mode: refuses a resume that names an interrupt that isn't
+   * pending, is an empty map, or is one value while several are pending.
+   */
+  protected _refuseUnmatchedResume(resume: unknown) {
+    const pending = this._pendingInterruptIds();
+    const pendingIds = [...pending].sort();
+    if (isPlainObject(resume) && Object.keys(resume).every(isXXH3)) {
+      const ids = Object.keys(resume);
+      if (ids.length === 0) {
+        throw new UnknownInterruptError("The resume map names no interrupt", {
+          reason: "empty_map",
+          pendingIds,
+        });
+      }
+      const unknown = ids.filter((id) => !pending.has(id)).sort();
+      if (unknown.length > 0) {
+        throw new UnknownInterruptError(
+          `Unknown or already-consumed interrupt: ${unknown[0]}`,
+          { reason: "not_pending", interruptIds: unknown, pendingIds }
+        );
+      }
+    } else if (pending.size > 1) {
+      throw new UnknownInterruptError(
+        "When there are multiple pending interrupts, you must specify the interrupt id when resuming.",
+        { reason: "ambiguous", pendingIds }
+      );
     }
   }
 

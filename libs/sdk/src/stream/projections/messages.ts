@@ -24,8 +24,8 @@ import {
 } from "../assembled-to-message.js";
 import type { Message } from "../../types.messages.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
-import { ensureMessageInstances } from "../message-coercion.js";
-import { isRootNamespace, namespaceKey } from "../namespace.js";
+import { ensureMessageInstances } from "../../ui/message-coercion.js";
+import { isRootNamespace, namespaceKey } from "../../ui/namespace.js";
 import {
   buildMessageIndex,
   reconcileMessagesFromValues,

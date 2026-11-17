@@ -58,6 +58,8 @@ export const CONFIG_KEY_TASK_ID = "__pregel_task_id";
 export const CONFIG_KEY_STREAM = "__pregel_stream";
 export const CONFIG_KEY_RESUME_VALUE = "__pregel_resume_value";
 export const CONFIG_KEY_RESUME_MAP = "__pregel_resume_map";
+/** When true, the root graph refuses a resume that can't be matched to its pending interrupts. */
+export const CONFIG_KEY_STRICT_RESUME = "__pregel_strict_resume";
 export const CONFIG_KEY_SCRATCHPAD = "__pregel_scratchpad";
 /** config key containing state from previous invocation of graph for the given thread */
 export const CONFIG_KEY_PREVIOUS_STATE = "__pregel_previous";
@@ -87,6 +89,21 @@ export const INTERRUPT = "__interrupt__";
 export const RESUME = "__resume__";
 /** Special channel reserved for cases when a task exits without any writes */
 export const NO_WRITES = "__no_writes__";
+
+/**
+ * Whether a write to `channel` is output the task produced, rather than a
+ * control write describing what happened to it (an error, an interrupt, or the
+ * answer to one).
+ */
+export function isTaskOutput(channel: string): boolean {
+  return (
+    channel !== ERROR &&
+    channel !== ERROR_SOURCE_NODE &&
+    channel !== INTERRUPT &&
+    channel !== RESUME
+  );
+}
+
 /**
  * `versions_seen` key recording which entries a snapshot-only version bump
  * advanced, and the versions those nodes really read.

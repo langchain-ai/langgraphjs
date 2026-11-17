@@ -77,20 +77,13 @@ class TimeoutError extends Error {}
 class AbortError extends Error {}
 
 class Queue {
+  // Never trimmed: each reader of a run reads it from its own cursor.
   private log: Message[] = [];
   private listeners: ((idx: number) => void)[] = [];
 
-  private nextId = 0;
-  private resumable = false;
-
-  constructor(options: { resumable: boolean }) {
-    this.resumable = options.resumable;
-  }
-
   push(item: Message) {
     this.log.push(item);
-    for (const listener of this.listeners) listener(this.nextId);
-    this.nextId += 1;
+    for (const listener of this.listeners) listener(this.log.length - 1);
   }
 
   async get(options: {
@@ -98,28 +91,19 @@ class Queue {
     lastEventId?: string;
     signal?: AbortSignal;
   }): Promise<[id: string, message: Message]> {
-    if (this.resumable) {
-      const lastEventId = options.lastEventId;
+    const lastEventId = options.lastEventId;
 
-      // Generator stores internal state of the read head index,
-      let targetId = lastEventId != null ? +lastEventId + 1 : null;
-      if (
-        targetId == null ||
-        isNaN(targetId) ||
-        targetId < 0 ||
-        targetId >= this.log.length
-      ) {
-        targetId = null;
-      }
-
-      if (targetId != null) return [String(targetId), this.log[targetId]];
-    } else {
-      if (this.log.length) {
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem];
-      }
+    let targetId = lastEventId != null ? +lastEventId + 1 : null;
+    if (
+      targetId == null ||
+      isNaN(targetId) ||
+      targetId < 0 ||
+      targetId >= this.log.length
+    ) {
+      targetId = null;
     }
+
+    if (targetId != null) return [String(targetId), this.log[targetId]];
 
     let timeout: NodeJS.Timeout | undefined = undefined;
     let resolver: ((idx: number) => void) | undefined = undefined;
@@ -139,15 +123,7 @@ class Queue {
 
       this.listeners.push(resolver);
     })
-      .then((idx) => {
-        if (this.resumable) {
-          return [String(idx), this.log[idx]] as [string, Message];
-        }
-
-        const nextId = this.nextId - this.log.length;
-        const nextItem = this.log.shift()!;
-        return [String(nextId), nextItem] as [string, Message];
-      })
+      .then((idx) => [String(idx), this.log[idx]] as [string, Message])
       .finally(() => {
         this.listeners = this.listeners.filter((l) => l !== resolver);
         clearTimeout(timeout);
@@ -162,19 +138,40 @@ class CancellationAbortController extends AbortController {
   }
 }
 
-class StreamManagerImpl {
-  readers: Record<string, Queue> = {};
-  control: Record<string, CancellationAbortController> = {};
+// Long enough for a client that lost a finished run's stream, or reloaded its
+// page, to rejoin with Last-Event-ID and replay the rest.
+export const RUN_LOG_GRACE_MS = 120_000;
 
-  getQueue(
-    runId: string,
-    options: { ifNotFound: "create"; resumable: boolean }
-  ): Queue {
-    if (this.readers[runId] == null) {
-      this.readers[runId] = new Queue(options);
+class StreamManagerImpl {
+  readers = new Map<string, Queue>();
+  control: Record<string, CancellationAbortController> = {};
+  private expiry = new Map<string, NodeJS.Timeout>();
+
+  getQueue(runId: string): Queue {
+    let queue = this.readers.get(runId);
+    if (queue == null) {
+      queue = new Queue();
+      this.readers.set(runId, queue);
     }
 
-    return this.readers[runId];
+    return queue;
+  }
+
+  freeLater(runId: string) {
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.set(
+      runId,
+      setTimeout(() => this.free(runId), RUN_LOG_GRACE_MS).unref()
+    );
+  }
+
+  free(runId: string) {
+    // A worker that still holds the run keeps publishing to its log, which is
+    // freed a grace period after the worker lets the run go.
+    if (this.isLocked(runId)) return;
+    clearTimeout(this.expiry.get(runId));
+    this.expiry.delete(runId);
+    this.readers.delete(runId);
   }
 
   getControl(runId: string) {
@@ -929,6 +926,7 @@ export class FileSystemThreads implements ThreadsRepo {
       for (const run of Object.values(STORE.runs)) {
         if (run["thread_id"] === thread_id) {
           delete STORE.runs[run["run_id"]];
+          StreamManager.free(run["run_id"]);
         }
       }
       checkpointer.delete(thread_id, null);
@@ -1279,6 +1277,23 @@ export class FileSystemThreads implements ThreadsRepo {
   };
 }
 
+// Each run picks its own start checkpoint. Kept on the thread, a fork's
+// checkpoint_id would make every later run on that thread fork from it again.
+const RUN_ONLY_CONFIGURABLE_KEYS = [
+  "checkpoint_id",
+  "checkpoint_ns",
+  "checkpoint_map",
+  "run_id",
+];
+
+const threadConfigurable = (
+  ...sources: RunnableConfig["configurable"][]
+): NonNullable<RunnableConfig["configurable"]> => {
+  const configurable = Object.assign({}, ...sources);
+  for (const key of RUN_ONLY_CONFIGURABLE_KEYS) delete configurable[key];
+  return configurable;
+};
+
 export class FileSystemRuns implements RunsRepo {
   private readonly conn: FileSystemPersistence<Store>;
   private readonly threads: FileSystemThreads;
@@ -1362,6 +1377,8 @@ export class FileSystemRuns implements RunsRepo {
           STORE.runs[runId].status = "running";
 
           yield { run, attempt: STORE.retry_counter[runId], signal };
+          // The worker is done with the run when it asks for the next one.
+          StreamManager.freeLater(runId);
         } finally {
           StreamManager.unlock(runId);
         }
@@ -1444,8 +1461,7 @@ export class FileSystemRuns implements RunsRepo {
             ...metadata,
           },
           config: Object.assign({}, assistant.config, config, {
-            configurable: Object.assign(
-              {},
+            configurable: threadConfigurable(
               assistant.config?.configurable,
               config?.configurable
             ),
@@ -1468,8 +1484,7 @@ export class FileSystemRuns implements RunsRepo {
             existingThread.config,
             config,
             {
-              configurable: Object.assign(
-                {},
+              configurable: threadConfigurable(
                 assistant.config?.configurable,
                 existingThread?.config?.configurable,
                 config?.configurable
@@ -1499,7 +1514,7 @@ export class FileSystemRuns implements RunsRepo {
       const configurable = Object.assign(
         {},
         assistant.config?.configurable,
-        existingThread?.config?.configurable,
+        threadConfigurable(existingThread?.config?.configurable),
         config?.configurable,
         {
           run_id: runId,
@@ -1521,13 +1536,21 @@ export class FileSystemRuns implements RunsRepo {
         metadata
       );
 
+      // A run that cancels the runs in flight replaces them, so refusing its
+      // answer would stop the agent mid-turn: it never resumes strictly.
+      const { strict_resume: strictResume, ...runKwargs } = kwargs;
+      const cancelsInflight =
+        (multitaskStrategy === "interrupt" ||
+          multitaskStrategy === "rollback") &&
+        inflightRuns.length > 0;
+
       const newRun: Run = {
         run_id: runId,
         thread_id: threadId!,
         assistant_id: assistantId,
         metadata: mergedMetadata,
         status: status,
-        kwargs: Object.assign({}, kwargs, {
+        kwargs: Object.assign({}, runKwargs, {
           config: Object.assign(
             {},
             assistant.config,
@@ -1539,6 +1562,7 @@ export class FileSystemRuns implements RunsRepo {
             typeof assistant.context !== "object" && assistant.context != null
               ? (assistant.context ?? kwargs.context)
               : Object.assign({}, assistant.context, kwargs.context),
+          ...(strictResume && !cancelsInflight ? { strict_resume: true } : {}),
         }),
         multitask_strategy: multitaskStrategy,
         created_at: new Date(now.valueOf() + afterSeconds * 1000),
@@ -1601,10 +1625,11 @@ export class FileSystemRuns implements RunsRepo {
 
       // Ends the run's open streams, which would otherwise wait out their
       // timeout and report the run as not found.
-      StreamManager.readers[run_id]?.push({
+      StreamManager.readers.get(run_id)?.push({
         topic: `run:${run_id}:control`,
         data: "done",
       });
+      StreamManager.free(run_id);
       if (thread_id != null) checkpointer.delete(thread_id, run_id);
       delete STORE.runs[run_id];
       return run.run_id;
@@ -1619,7 +1644,7 @@ export class FileSystemRuns implements RunsRepo {
     const runStream = this.stream.join(
       runId,
       threadId,
-      { ignore404: threadId == null, lastEventId: undefined },
+      { ignore404: threadId == null, lastEventId: "-1" },
       auth
     );
 
@@ -1644,8 +1669,8 @@ export class FileSystemRuns implements RunsRepo {
   }
 
   async join(runId: string, threadId: string, auth: AuthContext | undefined) {
-    // check if thread exists
-    await this.threads.get(threadId, auth);
+    const run = await this.get(runId, threadId, auth);
+    if (run == null) throw new HTTPException(404, { message: "Run not found" });
 
     const lastChunk = await this.wait(runId, threadId, auth);
     if (lastChunk != null) return lastChunk;
@@ -1690,6 +1715,9 @@ export class FileSystemRuns implements RunsRepo {
         control?.abort(options.action ?? "interrupt");
 
         if (run.status === "pending") {
+          // No worker will run it now, so free the log a join may have made.
+          if (control == null) StreamManager.freeLater(runId);
+
           if (control == null && run.kwargs.temporary) {
             // No worker will run it now, so nothing else deletes it, or its
             // temporary thread once no other run is left on it.
@@ -1806,6 +1834,7 @@ export class FileSystemRuns implements RunsRepo {
         signal?: AbortSignal;
         cancelOnDisconnect?: boolean;
         lastEventId: string | undefined;
+        checkRunAccess?: boolean;
       },
       auth: AuthContext | undefined
     ): AsyncGenerator<{
@@ -1818,12 +1847,7 @@ export class FileSystemRuns implements RunsRepo {
       const runs = this.runs;
 
       yield* conn.withGenerator(async function* (STORE) {
-        // TODO: what if we're joining an already completed run? Should we check before?
         const signal = options?.signal;
-        const queue = StreamManager.getQueue(runId, {
-          ifNotFound: "create",
-          resumable: options.lastEventId != null,
-        });
 
         const [filters] = await handleAuthEvent(auth, "threads:read", {
           thread_id: threadId,
@@ -1831,8 +1855,7 @@ export class FileSystemRuns implements RunsRepo {
 
         // TODO: consolidate into a single function
         if (filters != null && threadId != null) {
-          const thread = STORE.threads[threadId];
-          if (!isAuthMatching(thread["metadata"], filters)) {
+          if (!isAuthMatching(STORE.threads[threadId]?.metadata, filters)) {
             yield {
               event: "error",
               data: { error: "Error", message: "404: Thread not found" },
@@ -1840,6 +1863,38 @@ export class FileSystemRuns implements RunsRepo {
             return;
           }
         }
+
+        if (threadId != null && STORE.runs[runId]?.thread_id !== threadId) {
+          if (!options?.ignore404)
+            yield { event: "error", data: "Run not found" };
+          return;
+        }
+
+        // The requests that create a stateless run don't pass this: the run
+        // and its temporary thread can be deleted before their first read, and
+        // that thread's metadata comes from `threads:create_run`, which
+        // `threads:read` filters may not match.
+        if (options.checkRunAccess && filters != null) {
+          const run = STORE.runs[runId];
+          if (
+            run == null ||
+            !isAuthMatching(STORE.threads[run.thread_id]?.metadata, filters)
+          ) {
+            return;
+          }
+        }
+
+        // A run that has ended or is gone has nothing more for a join to
+        // read, and a log created for it might never be freed.
+        const status = STORE.runs[runId]?.status;
+        if (
+          !StreamManager.readers.has(runId) &&
+          status !== "pending" &&
+          status !== "running"
+        ) {
+          return;
+        }
+        const queue = StreamManager.getQueue(runId);
 
         let lastEventId = options?.lastEventId;
         while (!signal?.aborted) {
@@ -1898,13 +1953,9 @@ export class FileSystemRuns implements RunsRepo {
       runId: string;
       event: string;
       data: unknown;
-      resumable: boolean;
       normalized?: boolean;
     }) {
-      const queue = StreamManager.getQueue(payload.runId, {
-        ifNotFound: "create",
-        resumable: payload.resumable,
-      });
+      const queue = StreamManager.getQueue(payload.runId);
       queue.push({
         topic: `run:${payload.runId}:stream:${payload.event}`,
         data: payload.data,

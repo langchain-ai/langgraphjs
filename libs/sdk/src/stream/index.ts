@@ -21,34 +21,40 @@ export type {
   AgentTypeConfigLike,
   CompiledSubAgentLike,
   DefaultSubagentStates,
-  DefaultToolCall,
   DeepAgentTypeConfigLike,
   ExtractAgentConfig,
   ExtractDeepAgentConfig,
   ExtractSubAgentMiddleware,
   InferAgentToolCalls,
-  InferBag,
   InferDeepAgentSubagents,
-  InferNodeNames,
-  InferStateType,
   InferSubagentByName,
   InferSubagentNames,
   InferSubagentState,
-  InferSubagentStates,
-  InferToolCalls,
-  AssembledToolCallFromTool,
-  InferToolOutput,
   IsAgentLike,
   IsDeepAgentLike,
   SubAgentLike,
   SubagentStateMap,
   SubagentToolCall,
+  AcceptBaseMessages as WidenUpdateMessages,
+} from "../ui/types.js";
+export type {
+  InferBag,
+  InferNodeNames,
+  InferStateType,
+  InferSubagentStates,
+} from "../ui/stream/index.js";
+export type {
+  AssembledToolCallFromTool,
+  InferAssembledToolCalls as InferToolCalls,
+} from "../ui/types-inference.js";
+export type {
+  DefaultToolCall,
+  InferToolOutput,
   ToolCallFromTool,
-  WidenUpdateMessages,
-} from "./types-inference.js";
+} from "../types.messages.js";
 
-export { StreamStore } from "./store.js";
-export type { StoreListener } from "./store.js";
+export { StreamStore } from "../ui/store.js";
+export type { StoreListener } from "../ui/store.js";
 
 export { ChannelRegistry } from "./channel-registry.js";
 
@@ -60,12 +66,14 @@ export type {
   SubmissionQueueSnapshot,
 } from "./controller.js";
 
-export { SubagentDiscovery, SubgraphDiscovery } from "./discovery/index.js";
+export { SubagentDiscovery } from "./discovery/index.js";
+export type { SubagentMap } from "./discovery/index.js";
+export { SubgraphDiscovery } from "../ui/subgraphs.js";
 export type {
-  SubagentMap,
-  SubgraphMap,
   SubgraphByNodeMap,
-} from "./discovery/index.js";
+  SubgraphDiscoverySnapshot,
+  SubgraphMap,
+} from "../ui/subgraphs.js";
 
 export {
   messagesProjection,
@@ -111,7 +119,6 @@ export type {
   StreamStopOptions,
   StreamSubmitOptions,
   SubagentDiscoverySnapshot,
-  SubgraphDiscoverySnapshot,
   Target,
   UseStreamCommonOptions,
   UseStreamOptions,
@@ -125,21 +132,18 @@ export type {
   TransportAdapter,
 } from "../client/stream/transport.js";
 
-export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
+export { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 
 // Types framework bindings (React, Vue, Svelte, Angular) typically
 // need when wrapping the projection factories. Re-exported here so
 // bindings can reach them without a deep subpath import.
-export type {
-  AssembledToolCall,
-  ToolCallStatus,
-} from "../client/stream/handles/tools.js";
-export {
-  parseToolPayload,
-  parseToolOutput,
-} from "../client/stream/handles/tools.js";
+export type { AssembledToolCall, ToolCallStatus } from "../ui/tool-payload.js";
+export { parseToolPayload, parseToolOutput } from "../ui/tool-payload.js";
 
 export { MediaAssembler, MediaAssemblyError } from "../client/stream/media.js";
+
+export { isUnknownInterruptError } from "./refusal.js";
+export type { StrictResumeRefusal, UnknownInterruptError } from "./refusal.js";
 export type {
   AnyMediaHandle,
   AudioMedia,

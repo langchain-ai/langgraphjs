@@ -16,15 +16,15 @@
  * subscription; it does not open subscriptions of its own.
  */
 import type { Event, ToolsEvent, ValuesEvent } from "@langchain/protocol";
-import { StreamStore } from "../store.js";
+import { StreamStore } from "../../ui/store.js";
 import type { SubagentDiscoverySnapshot } from "../types.js";
 import {
   isConcreteToolNamespace,
   isRootNamespace,
   isToolNamespaceSegment,
   namespaceKey,
-} from "../namespace.js";
-import { normalizeAIMessageToolCalls } from "../message-coercion.js";
+} from "../../ui/namespace.js";
+import { normalizeAIMessageToolCalls } from "../../ui/message-coercion.js";
 
 export type SubagentMap = ReadonlyMap<string, SubagentDiscoverySnapshot>;
 

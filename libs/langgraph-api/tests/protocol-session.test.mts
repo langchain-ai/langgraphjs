@@ -206,6 +206,105 @@ describe("RunProtocolSession", () => {
     ]);
   });
 
+  it.each([
+    [
+      "any error",
+      { error: "ValueError", message: "boom" },
+      { error: "boom" },
+    ],
+    [
+      "a refused answer",
+      {
+        error: "UnknownInterruptError",
+        message: "boom",
+        reason: "not_pending",
+        interrupt_ids: ["abc"],
+        pending_ids: ["def"],
+      },
+      {
+        error: "boom",
+        reason: "not_pending",
+        interrupt_ids: ["abc"],
+        pending_ids: ["def"],
+      },
+    ],
+  ])("fails the run with the message of %s", async (_name, error, fields) => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["lifecycle"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({ id: "1", event: "error", data: error });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        event_id: expect.any(String),
+        seq: expect.any(Number),
+        method: "lifecycle",
+        params: {
+          namespace: [],
+          timestamp: expect.any(Number),
+          data: { event: "failed", graph_name: "nested", ...fields },
+        },
+      },
+    ]);
+  });
+
+  it("tells input subscribers which interrupts an answer resumes", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["input"] },
+      })
+    );
+    const interruptA = {
+      id: "1",
+      event: "updates",
+      normalized: true,
+      data: {
+        node: "__interrupt__",
+        values: [{ id: "interrupt_a", value: { prompt: "A?" } }],
+      },
+    };
+    await session.ingestSourceEvent(interruptA);
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "2",
+      event: "interrupts",
+      data: { run_id: "r1", answered: ["interrupt_a"] },
+    });
+    await session.ingestSourceEvent({ ...interruptA, id: "3" });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        event_id: expect.any(String),
+        seq: expect.any(Number),
+        method: "input.answered",
+        params: {
+          namespace: [],
+          timestamp: expect.any(Number),
+          data: { interrupt_ids: ["interrupt_a"] },
+        },
+      },
+      expect.objectContaining({ method: "input.requested" }),
+    ]);
+  });
+
   it("filters live events by channel, namespace prefix, and depth", async () => {
     const sent: unknown[] = [];
     const session = createSession(sent);

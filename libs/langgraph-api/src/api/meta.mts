@@ -69,6 +69,7 @@ api.get("/info", async (c) => {
       crons: false,
       langsmith: !!langsmithTracing,
       langsmith_tracing_replicas: true,
+      stream_lifecycle: true,
     },
   });
 });

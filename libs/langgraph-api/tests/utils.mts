@@ -1,9 +1,20 @@
+import { expect } from "vitest";
+
 export async function gatherIterator<T>(
   i: AsyncIterable<T> | Promise<AsyncIterable<T>>
 ): Promise<Array<T>> {
   const out: T[] = [];
   for await (const item of await i) out.push(item);
   return out;
+}
+
+export function assertEnded<T extends { event: string; data?: unknown }>(
+  chunks: T[],
+  status: string
+): T[] {
+  expect(chunks.filter((chunk) => chunk.event === "end")).toHaveLength(1);
+  expect(chunks.at(-1)).toMatchObject({ event: "end", data: { status } });
+  return chunks.slice(0, -1);
 }
 
 export function findLast<T, S extends T>(
