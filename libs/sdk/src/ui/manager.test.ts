@@ -1260,6 +1260,62 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("a stream queued behind another", () => {
+    type State = { messages: Message[] };
+
+    const options = () => ({
+      getMessages: (values: State) => values.messages,
+      setMessages: (current: State, messages: Message[]) => ({
+        ...current,
+        messages,
+      }),
+      initialValues: { messages: [] },
+      callbacks: {},
+      onSuccess: vi.fn(),
+      onError: vi.fn(),
+      onFinish: vi.fn(),
+    });
+
+    it.each([
+      { wanted: true, starts: true },
+      { wanted: false, starts: false },
+    ])(
+      "with stillWanted answering $wanted at its turn, starts: $starts, and otherwise changes no state",
+      async ({ wanted, starts }) => {
+        const manager = new StreamManager<State>(new MessageTupleManager(), {
+          throttle: false,
+        });
+        let endFirst!: () => void;
+        const firstEnds = new Promise<void>((resolve) => {
+          endFirst = resolve;
+        });
+        const first = manager.start(async () => {
+          async function* gen() {
+            yield { event: "values" as const, data: { messages: [] } };
+            await firstEnds;
+          }
+          return gen();
+        }, options());
+        await vi.waitFor(() => expect(manager.isLoading).toBe(true));
+        const epoch = manager.epoch;
+        const second = options();
+        const action = vi.fn(async () => createMockStream([]));
+        const queued = manager.start(action as never, second, {
+          stillWanted: () => wanted,
+        });
+
+        endFirst();
+        await first;
+        await queued;
+
+        expect(action).toHaveBeenCalledTimes(starts ? 1 : 0);
+        expect(second.onFinish).toHaveBeenCalledTimes(starts ? 1 : 0);
+        expect(manager.epoch).toBe(starts ? epoch + 1 : epoch);
+        expect(manager.isLoading).toBe(false);
+      }
+    );
+  });
+
   describe("abandoned run after clear()/stop()", () => {
     type State = { messages: Message[] };
 
