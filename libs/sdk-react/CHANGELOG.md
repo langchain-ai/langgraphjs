@@ -1,5 +1,13 @@
 # @langchain/react
 
+## 2.0.0-rc.1
+
+### Patch Changes
+
+- [`98e0aaa`](https://github.com/langchain-ai/langgraphjs/commit/98e0aaa02d8907eb24b957c8f24503d42f5168db) Thanks [@eliornl](https://github.com/eliornl)! - Picks up the stream engine changes in the matching `@langchain/langgraph-sdk` release candidate: with `stateKeys: []`, runs no longer stream the whole state after every step, a thread opened during a run joins it a round trip sooner, and `/info` is read once per server instead of once per client.
+- Updated dependencies [[`4befdb6`](https://github.com/langchain-ai/langgraphjs/commit/4befdb652bcdfb03a832a7714f41d2b9ac1800bb), [`e139165`](https://github.com/langchain-ai/langgraphjs/commit/e139165196905005e4245823b2ff2e73222cd9bd), [`ed8f2cd`](https://github.com/langchain-ai/langgraphjs/commit/ed8f2cdc5dbe37c2c95ce3c8f7be84b706e1e45b)]:
+  - @langchain/langgraph-sdk@1.17.1-rc.1
+
 ## 2.0.0-rc.0
 
 ### Major Changes

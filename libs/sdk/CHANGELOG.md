@@ -1,5 +1,19 @@
 # @langchain/langgraph-sdk
 
+## 1.17.1-rc.1
+
+### Patch Changes
+
+- [#3404](https://github.com/langchain-ai/langgraphjs/pull/3404) [`4befdb6`](https://github.com/langchain-ai/langgraphjs/commit/4befdb652bcdfb03a832a7714f41d2b9ac1800bb) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` now shares a server's `/info` read for 5 minutes among the clients built with the same config, instead of reading it once per `Client`. An app that builds a `Client` for each thread it shows read `/info` again on every thread it opened. A client with another URL, API key or headers still reads its own. A 404 still means the server has no `/info`, and a read that fails or times out is still read again by the next run that needs it.
+
+- [#3405](https://github.com/langchain-ai/langgraphjs/pull/3405) [`e139165`](https://github.com/langchain-ai/langgraphjs/commit/e139165196905005e4245823b2ff2e73222cd9bd) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` now looks for a thread's running run while it reads the thread's state, not only after. A run it finds is joined as soon as both answer, so a thread opened while a run is going shows the run's progress, `isLoading` and the stop button a round trip sooner. The lookup after the read still runs, and only it can tell that no run is going: the thread watcher opens once the read lands and doesn't replay a run that started before it, so a lookup sent with the read can miss a run that started during the read. A thread load sends one more runs list than before.
+  
+  A join queued behind another stream, such as a `joinStream()` called during a run, no longer starts once the engine has switched to another thread, and the server's queued runs stay in the queue until such a join has streamed.
+
+- [#3402](https://github.com/langchain-ai/langgraphjs/pull/3402) [`ed8f2cd`](https://github.com/langchain-ai/langgraphjs/commit/ed8f2cdc5dbe37c2c95ce3c8f7be84b706e1e45b) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` runs no longer ask for `values` when the messages are the only state key shown (`stateKeys: []`) and `messages-tuple` streams them, as with `@langchain/react` 2.0. A `values` event carries the whole state after every step, so on a long thread each step sent the whole thread again: one 22-message turn on a 1,350-message thread took 70 MB in the browser, and 3.6 MB without `values`, most of it one read of the thread as the run ends. The run's messages come from `messages-tuple` and its interrupts from its root `updates`, and a run that streamed no `values` reads the thread's head once as it ends, joined runs included, so the order its parallel steps saved and anything the stream missed come from the server. A stream's first output drops the interrupts an earlier run left, as its first root `values` did. A panel on a subagent or subgraph opened during such a run shows nothing until it has read what that subgraph saved, then that with what streamed meanwhile on top, and reads it again when the run ends, also when the engine can't tell which modes a joined run streams, and subgraphs are found from their nodes' `updates`. An optimistic input shows as sent once the run's first step streams. Runs the engine joins keep the modes they were started with. Apps that don't set `stateKeys`, list other keys, or pass `values` in `submit()`'s `streamMode` get `values` as before.
+  
+  A message whose `messages` event names no namespace now belongs to the graph its metadata names without the segment of the task that wrote it, as in LangGraph. The tools node's own `ToolMessage` (`tools:<task id>`) was taken for a subagent's: the main conversation left it out until the next `values` event, and a subagent panel on a server that doesn't filter by namespace showed its `task` result.
+
 ## 1.17.1-rc.0
 
 ### Patch Changes
