@@ -1,5 +1,12 @@
 # @examples/assistant-ui-claude
 
+## 0.1.17
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @langchain/react@0.3.8
+
 ## 0.1.16
 
 ### Patch Changes

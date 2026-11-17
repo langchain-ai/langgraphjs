@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.8.13
+
+### Patch Changes
+
+- [#3321](https://github.com/langchain-ai/langgraphjs/pull/3321) [`4d11ea7`](https://github.com/langchain-ai/langgraphjs/commit/4d11ea761065be9992a0ff347726ebc76c9d797a) Thanks [@eliornl](https://github.com/eliornl)! - `useStream` from `@langchain/langgraph-sdk/react` now calls the `onError` passed to `submit()` when that run fails, after the hook's own `onError`. It was typed and documented but never called, on both the LangGraph server and the custom `transport` paths.
+
 ## 1.8.12
 
 ### Patch Changes

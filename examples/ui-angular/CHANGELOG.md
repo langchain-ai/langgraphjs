@@ -1,5 +1,13 @@
 # @examples/ui-angular
 
+## 0.0.27
+
+### Patch Changes
+
+- Updated dependencies [[`4d11ea7`](https://github.com/langchain-ai/langgraphjs/commit/4d11ea761065be9992a0ff347726ebc76c9d797a)]:
+  - @langchain/langgraph-sdk@1.8.13
+  - @langchain/angular@0.4.10
+
 ## 0.0.26
 
 ### Patch Changes
