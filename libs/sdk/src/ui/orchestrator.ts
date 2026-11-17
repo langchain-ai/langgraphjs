@@ -1,7 +1,7 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { v7 as uuidv7 } from "@langchain/core/utils/uuid";
 
-import { Client } from "../client.js";
+import { Client, getClientConfigHash } from "../client.js";
 import type {
   ThreadState,
   ThreadTask,
@@ -178,30 +178,48 @@ const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
 const withoutRunEventModes = (modes: StreamMode[]) =>
   modes.filter((mode) => !RUN_EVENT_MODES.includes(mode));
 
-const serverInfoReads = new WeakMap<Client, Promise<ServerInfo | undefined>>();
+/**
+ * How long clients share a server's `/info` read: past it a server's new
+ * flags show, and a long-lived process drops the reads of configs it no
+ * longer uses.
+ */
+const SERVER_INFO_MAX_AGE_MS = 5 * 60_000;
+
+const serverInfoReads = new Map<
+  string,
+  { read: Promise<ServerInfo | undefined>; at: number }
+>();
 
 /**
- * What the server supports, from `/info`, read once per client. A read that
+ * What the server supports, from `/info`. Clients built with the same config,
+ * URL, API key and headers included, share a read for 5 minutes. A read that
  * fails or takes over 5 s counts as no support, and the next run that needs
  * it reads again, apart from a 404: that server has no `/info`.
  */
 function serverInfo(client: Client): Promise<ServerInfo | undefined> {
-  let read = serverInfoReads.get(client);
-  if (read == null) {
-    // Not AbortSignal.timeout, which React Native lacks.
-    const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(), 5_000);
-    read = Promise.resolve()
-      .then(() => client.info({ signal: timeout.signal }))
-      .catch((error: unknown) => {
-        if ((error as { status?: unknown } | null)?.status !== 404) {
-          serverInfoReads.delete(client);
-        }
-        return undefined;
-      })
-      .finally(() => clearTimeout(timer));
-    serverInfoReads.set(client, read);
+  const now = Date.now();
+  // Reads are kept in the order they were made, so expired ones come first.
+  for (const [config, { at }] of serverInfoReads) {
+    if (now - at < SERVER_INFO_MAX_AGE_MS) break;
+    serverInfoReads.delete(config);
   }
+  const key = getClientConfigHash(client);
+  const shared = key == null ? undefined : serverInfoReads.get(key);
+  if (shared != null && now - shared.at < SERVER_INFO_MAX_AGE_MS) {
+    return shared.read;
+  }
+  // Not AbortSignal.timeout, which React Native lacks.
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), 5_000);
+  const read = Promise.resolve()
+    .then(() => client.info({ signal: timeout.signal }))
+    .catch((error: unknown) => {
+      const status = (error as { status?: unknown } | null)?.status;
+      if (key != null && status !== 404) serverInfoReads.delete(key);
+      return undefined;
+    })
+    .finally(() => clearTimeout(timer));
+  if (key != null) serverInfoReads.set(key, { read, at: now });
   return read;
 }
 
