@@ -1,5 +1,20 @@
 # @langchain/react
 
+## 2.0.0-rc.0
+
+### Major Changes
+
+- [`d11183d`](https://github.com/langchain-ai/langgraphjs/commit/d11183d5851283aa2785931fadc339314a1fd9a7) Thanks [@eliornl](https://github.com/eliornl)! - 2.0 keeps 1.x's hooks, their names and their arguments, on a new streaming engine: the stream engine of `@langchain/langgraph-sdk/ui`, over the Agent Server's run streams instead of the event streaming protocol 1.x used. Most apps upgrade by changing the version.
+  
+  2.0 depends on the exact `@langchain/langgraph-sdk` version it was released with. An app that builds its own `Client` should take it from that version.
+  
+  Everything that changed, and how to get 1.x's behavior back: https://github.com/langchain-ai/langgraphjs/blob/react-2.0/libs/sdk-react/docs/v2-migration.md
+
+### Patch Changes
+
+- Updated dependencies [[`d11183d`](https://github.com/langchain-ai/langgraphjs/commit/d11183d5851283aa2785931fadc339314a1fd9a7)]:
+  - @langchain/langgraph-sdk@1.17.1-rc.0
+
 ## 1.3.0
 
 ### Minor Changes
