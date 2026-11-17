@@ -79,9 +79,9 @@ import {
   assembledMessageToBaseMessage,
   type ExtendedMessageRole,
 } from "./assembled-to-message.js";
-import type { StreamStore } from "./store.js";
+import type { StreamStore } from "../ui/store.js";
 import type { RootSnapshot } from "./types.js";
-import { namespaceKey } from "./namespace.js";
+import { namespaceKey } from "../ui/namespace.js";
 import {
   buildMessageIndex,
   messagesEqual,

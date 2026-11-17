@@ -13,7 +13,8 @@
     "state_schema_graph": "./state_schema_graph.mts:graph",
     "zod_registry_graph": "./zod_registry_graph.mts:graph",
     "plain_zod_graph": "./plain_zod_graph.mts:graph",
-    "subagents": "./subagents.mts:graph"
+    "subagents": "./subagents.mts:graph",
+    "functional": "./functional.mts:graph"
   },
   "ui": {
     "agent-alias": "./agent/ui.tsx"

@@ -1,7 +1,7 @@
 import { expect, describe, it, vi } from "vitest";
 import type { Event } from "@langchain/protocol";
 
-import { StreamStore } from "../store.js";
+import { StreamStore } from "../../ui/store.js";
 import { extensionProjection } from "./extension.js";
 
 function deferred<T>() {

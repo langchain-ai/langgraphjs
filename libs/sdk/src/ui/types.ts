@@ -38,6 +38,7 @@ import type {
   AnyHeadlessToolImplementation,
   OnToolCallback,
 } from "../headless-tools.js";
+import type { RunEndReason } from "./orchestrator.js";
 
 /**
  * Represents a tool call that initiated a subagent.
@@ -320,7 +321,7 @@ export interface SubagentStreamInterface<
   /** Tool call ID of parent subagent (for nested subagents) */
   parentId: string | null;
 
-  /** Nesting depth (0 = called by main agent, 1 = called by subagent, etc.) */
+  /** Nesting depth (1 = called by the main agent, 2 = called by a subagent, etc.) */
   depth: number;
 
   /** When the subagent started */
@@ -1467,6 +1468,18 @@ export type AnyStreamCustomOptions<
   toMessage?: (chunk: BaseMessage) => Message | BaseMessage;
   tools?: AnyHeadlessToolImplementation[];
   onTool?: OnToolCallback;
+  /**
+   * Show a submit's input at once, unless this is `false`: its messages,
+   * with ids minted for the ones without, and its other keys. A submit with
+   * its own `optimisticValues` shows only those.
+   */
+  optimistic?: boolean;
+  /**
+   * Called when the stream of each run ends: `"interrupt"` when the stream
+   * sent an interrupt, `"stopped"` when it's aborted, as by `stop()` or a
+   * thread switch. `runId` is the one its `metadata` event sent.
+   */
+  onRunEnd?: (run: { runId?: string; reason: RunEndReason }) => void;
 };
 
 export type CustomSubmitOptions<

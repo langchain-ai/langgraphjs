@@ -4,7 +4,6 @@ import { AIMessage } from "@langchain/core/messages";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StreamController } from "./controller.js";
-import { messagesProjection } from "./projections/messages.js";
 import { toolCallsProjection } from "./projections/tool-calls.js";
 import type { ThreadStream } from "../client/stream/index.js";
 
@@ -2309,7 +2308,7 @@ describe("StreamController", () => {
     await controller.dispose();
   });
 
-  it("seeds root toolCalls with the finished calls of the hydrated messages", async () => {
+  it("seeds root toolCalls with the calls of the hydrated messages that have a result", async () => {
     const rootSubscription = makePushableSubscription();
     const thread = {
       subscribe: vi.fn(async () => rootSubscription),
@@ -2325,6 +2324,20 @@ describe("StreamController", () => {
         getState: vi.fn(async () => ({
           values: {
             messages: [
+              { type: "human", content: "time?", id: "human-0" },
+              {
+                type: "ai",
+                content: "",
+                id: "ai-0",
+                tool_calls: [
+                  {
+                    id: "call-stopped",
+                    name: "get_time",
+                    args: {},
+                    type: "tool_call",
+                  },
+                ],
+              },
               { type: "human", content: "weather?", id: "human-1" },
               {
                 type: "ai",
@@ -2335,6 +2348,12 @@ describe("StreamController", () => {
                     id: "call-done",
                     name: "get_weather",
                     args: { city: "sf" },
+                    type: "tool_call",
+                  },
+                  {
+                    id: "call-failed",
+                    name: "get_weather",
+                    args: { city: "la" },
                     type: "tool_call",
                   },
                   {
@@ -2350,6 +2369,13 @@ describe("StreamController", () => {
                 content: "sunny",
                 id: "tool-1",
                 tool_call_id: "call-done",
+              },
+              {
+                type: "tool",
+                content: "Error: no such city",
+                id: "tool-2",
+                tool_call_id: "call-failed",
+                status: "error",
               },
             ],
           },
@@ -2375,7 +2401,10 @@ describe("StreamController", () => {
       controller.rootStore
         .getSnapshot()
         .toolCalls.map((toolCall) => `${toolCall.callId}:${toolCall.status}`);
-    expect(callStatuses()).toEqual(["call-done:finished"]);
+    expect(callStatuses()).toEqual([
+      "call-done:finished",
+      "call-failed:error",
+    ]);
 
     await rootSubscription.started;
     rootSubscription.push(
@@ -2387,6 +2416,7 @@ describe("StreamController", () => {
     await waitForExpectation(() => {
       expect(callStatuses()).toEqual([
         "call-done:finished",
+        "call-failed:error",
         "call-next:running",
       ]);
     });
@@ -4910,9 +4940,9 @@ describe("StreamController", () => {
 
   it("hydrate promotes subagent execution namespace from getHistory", async () => {
     const { thread } = discoveryThread();
-    const getHistory = vi.fn(async () => [
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
+    const getHistory = vi.fn(async (_threadId: string, _options?: unknown) => [
       {
-        values: { messages: taskMessages },
         tasks: [
           {
             id: "exec-1",
@@ -4944,6 +4974,10 @@ describe("StreamController", () => {
       ).toEqual(["tools:exec-1"]);
     });
     expect(getHistory).toHaveBeenCalledTimes(1);
+    expect(getHistory.mock.calls[0][1]).toEqual({
+      limit: 20,
+      select: ["checkpoint", "tasks"],
+    });
 
     await controller.dispose();
   });
@@ -4954,9 +4988,9 @@ describe("StreamController", () => {
     // with NO deeper `research:u1|...` descendant. The old strict-prefix
     // rule dropped these, so the card only reappeared once SSE replay
     // arrived; hydrate must now seed it directly from getHistory.
+    // Shaped like a `select: ["checkpoint", "tasks"]` page: no `values`.
     const getHistory = vi.fn(async () => [
       {
-        values: {},
         tasks: [],
         checkpoint: checkpointState("research:u1", "cp-a"),
       },
@@ -5167,73 +5201,6 @@ describe("StreamController", () => {
     expect(snapshot.get("task-3")?.namespace).toEqual(["tools:exec-3"]);
 
     await controller.dispose();
-  });
-
-  it("reuses hydrate discovery history to seed scoped messages when available", async () => {
-    const { thread } = discoveryThread();
-    const workerMessages = [
-      { type: "human", id: "worker-human", content: "Do research" },
-      { type: "ai", id: "worker-ai", content: "Research complete" },
-    ];
-    const getHistory = vi.fn(async () => [
-      {
-        values: { messages: workerMessages },
-        tasks: [],
-        checkpoint: checkpointState("tools:exec-1", "cp-worker"),
-      },
-      {
-        values: { messages: taskMessages },
-        tasks: [
-          {
-            id: "exec-1",
-            name: "tools",
-            path: ["__pregel_push", 0],
-            result: { messages: [{ type: "tool", tool_call_id: "task-1" }] },
-          },
-        ],
-        checkpoint: checkpointState("", "cp-root"),
-      },
-    ]);
-    const client = {
-      threads: {
-        getState: vi.fn(async () => ({
-          values: { messages: taskMessages },
-          next: [],
-          tasks: [],
-        })),
-        getHistory,
-        stream: vi.fn(() => thread),
-      },
-    };
-    const controller = new StreamController<State, unknown>({
-      assistantId: "deep_agent",
-      client: client as never,
-      threadId: "thread-1",
-    });
-    await controller.hydrationPromise;
-
-    await waitForExpectation(() => {
-      expect(controller.subagentStore.getSnapshot().get("task-1")?.namespace).toEqual([
-        "tools:exec-1",
-      ]);
-    });
-    expect(getHistory).toHaveBeenCalledTimes(1);
-
-    const acquired = controller.registry.acquire(
-      messagesProjection(["tools:exec-1"])
-    );
-    try {
-      await waitForExpectation(() => {
-        expect(acquired.store.getSnapshot().map((message) => message.text)).toEqual([
-          "Do research",
-          "Research complete",
-        ]);
-      });
-      expect(getHistory).toHaveBeenCalledTimes(1);
-    } finally {
-      acquired.release();
-      await controller.dispose();
-    }
   });
 
   it("does not apply stale state or reconnect when the thread is cleared during hydrate", async () => {
@@ -6246,6 +6213,299 @@ describe("StreamController same-thread hydrate()", () => {
     expect(h.snapshot().isLoading).toBe(false);
     expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-9"]);
     expect(h.thread.subscribe).toHaveBeenCalledTimes(1);
+    await h.controller.dispose();
+  });
+});
+
+describe("StreamController stateKeys", () => {
+  const HOOK_FIELDS = [
+    "next",
+    "tasks",
+    "checkpoint",
+    "parent_checkpoint",
+    "created_at",
+    "metadata",
+  ];
+
+  function setup(
+    options: {
+      stateKeys?: string[];
+      messagesKey?: string;
+      transport?: unknown;
+    } = {},
+    state: unknown = {
+      values: { messages: [], todos: [], files: {} },
+      next: [],
+      tasks: [],
+    }
+  ) {
+    const onEventListeners = new Set<(event: Event) => void>();
+    const subscriptions: ReturnType<typeof makePushableSubscription>[] = [];
+    const thread = {
+      subscribe: vi.fn(async () => {
+        const subscription = makePushableSubscription();
+        subscriptions.push(subscription);
+        return subscription;
+      }),
+      onError: vi.fn(() => vi.fn()),
+      onEvent: vi.fn((listener: (event: Event) => void) => {
+        onEventListeners.add(listener);
+        return () => onEventListeners.delete(listener);
+      }),
+      close: vi.fn(async () => undefined),
+      ordering: {},
+      interrupts: [],
+      submitRun: vi.fn(() => new Promise(() => undefined)),
+      startLifecycleWatcher: vi.fn(() => undefined),
+    } as unknown as ThreadStream;
+    const getState = vi.fn(async (..._args: unknown[]) => state);
+    const getHistory = vi.fn(async (..._args: unknown[]) => []);
+    const controller = new StreamController<Record<string, unknown>>({
+      assistantId: "agent",
+      client: {
+        threads: { getState, getHistory, stream: () => thread },
+      } as never,
+      threadId: "thread-1",
+      ...(options as object),
+    });
+    const deliver = (...events: Event[]) => {
+      for (const event of events) {
+        for (const listener of [...onEventListeners]) listener(event);
+        subscriptions.at(-1)?.push(event);
+      }
+    };
+    const snapshot = () => controller.rootStore.getSnapshot();
+    return { controller, getState, getHistory, deliver, snapshot };
+  }
+
+  it("asks for the hook's fields and the listed keys plus messages", async () => {
+    const h = setup({ stateKeys: ["todos"] });
+    await h.controller.hydrationPromise;
+
+    expect(h.getState).toHaveBeenCalledTimes(1);
+    const [threadId, checkpoint, options] = h.getState.mock.calls[0];
+    expect(threadId).toBe("thread-1");
+    expect(checkpoint).toBeUndefined();
+    const { select } = options as { select: string[] };
+    expect(new Set(select)).toEqual(
+      new Set([...HOOK_FIELDS, "values.todos", "values.messages"])
+    );
+    expect(select).toHaveLength(HOOK_FIELDS.length + 2);
+    await h.controller.dispose();
+  });
+
+  it("sends no select and exposes full values when unset", async () => {
+    const h = setup();
+    await h.controller.hydrationPromise;
+
+    expect(h.getState).toHaveBeenCalledWith("thread-1");
+    expect(h.getState.mock.calls[0]).toHaveLength(1);
+    expect(Object.keys(h.snapshot().values).sort()).toEqual([
+      "files",
+      "messages",
+      "todos",
+    ]);
+    await h.controller.dispose();
+  });
+
+  it("asks for a custom messagesKey instead of messages", async () => {
+    const h = setup({ stateKeys: ["todos"], messagesKey: "history" });
+    await h.controller.hydrationPromise;
+
+    const { select } = h.getState.mock.calls[0][2] as { select: string[] };
+    expect(select).toContain("values.history");
+    expect(select).toContain("values.todos");
+    expect(select).not.toContain("values.messages");
+    await h.controller.dispose();
+  });
+
+  it("asks for only the messages key when stateKeys is empty", async () => {
+    const h = setup({ stateKeys: [] });
+    await h.controller.hydrationPromise;
+
+    const { select } = h.getState.mock.calls[0][2] as { select: string[] };
+    expect(select.filter((field) => field.startsWith("values"))).toEqual([
+      "values.messages",
+    ]);
+    await h.controller.dispose();
+  });
+
+  it("lists the messages key once when stateKeys names it", async () => {
+    const h = setup({ stateKeys: ["messages", "todos"] });
+    await h.controller.hydrationPromise;
+
+    const { select } = h.getState.mock.calls[0][2] as { select: string[] };
+    expect(select.filter((field) => field === "values.messages")).toHaveLength(
+      1
+    );
+    await h.controller.dispose();
+  });
+
+  it("passes select to a custom transport's getState", async () => {
+    const transportGetState = vi.fn(async (..._args: unknown[]) => ({
+      values: { messages: [], todos: [] },
+      next: [],
+      tasks: [],
+    }));
+    const h = setup({
+      stateKeys: ["todos"],
+      transport: { getState: transportGetState },
+    });
+    await h.controller.hydrationPromise;
+
+    expect(h.getState).not.toHaveBeenCalled();
+    const { select } = transportGetState.mock.calls[0][0] as {
+      select: string[];
+    };
+    expect(new Set(select)).toEqual(
+      new Set([...HOOK_FIELDS, "values.todos", "values.messages"])
+    );
+    await h.controller.dispose();
+  });
+
+  it("keeps only the selected keys when the server ignores select", async () => {
+    const h = setup({ stateKeys: ["todos"] });
+    await h.controller.hydrationPromise;
+
+    expect(Object.keys(h.snapshot().values).sort()).toEqual([
+      "messages",
+      "todos",
+    ]);
+    await h.controller.dispose();
+  });
+
+  it("keeps only the selected keys from values streamed during a run", async () => {
+    const h = setup(
+      { stateKeys: ["todos"] },
+      { values: { messages: [], todos: [] }, next: ["agent"], tasks: [] }
+    );
+    await h.controller.hydrationPromise;
+
+    h.deliver({
+      type: "event",
+      event_id: "values-1",
+      seq: 1,
+      method: "values",
+      params: {
+        namespace: [],
+        timestamp: 0,
+        data: {
+          messages: [{ id: "m1", type: "ai", content: "hi" }],
+          todos: [{ content: "write tests" }],
+          files: { "a.txt": "a" },
+        },
+      },
+    } as Event);
+
+    await waitForExpectation(() => {
+      expect(h.snapshot().values.todos).toEqual([{ content: "write tests" }]);
+    });
+    expect(Object.keys(h.snapshot().values).sort()).toEqual([
+      "messages",
+      "todos",
+    ]);
+    expect(h.snapshot().messages.map((m) => m.id)).toEqual(["m1"]);
+    await h.controller.dispose();
+  });
+
+  it("seeds interrupts and branch points from a selected state", async () => {
+    // Only what a server honouring `select` returns.
+    const h = setup(
+      { stateKeys: [] },
+      {
+        values: { messages: [{ id: "m1", type: "human", content: "hi" }] },
+        next: ["ask"],
+        tasks: [{ interrupts: [{ id: "int-1", value: { question: "ok?" } }] }],
+        checkpoint: { checkpoint_id: "cp-2" },
+        parent_checkpoint: { checkpoint_id: "cp-1" },
+        metadata: { step: 2 },
+        created_at: "2026-11-13T00:00:00Z",
+      }
+    );
+    await h.controller.hydrationPromise;
+
+    expect(h.snapshot().interrupts.map((i) => i.id)).toEqual(["int-1"]);
+    expect(h.snapshot().isLoading).toBe(false);
+    expect(
+      h.controller.messageMetadataStore.getSnapshot().get("m1")
+        ?.parentCheckpointId
+    ).toBe("cp-1");
+    await h.controller.dispose();
+  });
+
+  it("seeds isLoading from a selected state of a running thread", async () => {
+    const h = setup(
+      { stateKeys: [] },
+      { values: { messages: [] }, next: ["agent"], tasks: [] }
+    );
+    await h.controller.hydrationPromise;
+
+    expect(h.snapshot().isLoading).toBe(true);
+    await h.controller.dispose();
+  });
+
+  it("keeps the lean history read for subagent discovery", async () => {
+    const h = setup({ stateKeys: ["todos"] });
+    await h.controller.hydrationPromise;
+
+    await waitForExpectation(() => {
+      expect(h.getHistory).toHaveBeenCalledWith(
+        "thread-1",
+        expect.objectContaining({ select: ["checkpoint", "tasks"] })
+      );
+    });
+    await h.controller.dispose();
+  });
+
+  it("leaves unselected input keys out of optimistic values", async () => {
+    const h = setup({ stateKeys: ["todos"] });
+    await h.controller.hydrationPromise;
+
+    const submitted = h.controller.submit({
+      todos: [{ content: "draft" }],
+      files: { "a.txt": "a" },
+    });
+
+    expect(h.snapshot().values.todos).toEqual([{ content: "draft" }]);
+    expect(h.snapshot().values).not.toHaveProperty("files");
+    await h.controller.dispose();
+    await submitted.catch(() => undefined);
+  });
+
+  it("hydrates from a custom transport that ignores select", async () => {
+    const transportGetState = vi.fn(async () => ({
+      values: {
+        messages: [{ id: "m1", type: "human", content: "hi" }],
+        todos: [],
+        files: { "a.txt": "a" },
+      },
+      next: [],
+      tasks: [],
+    }));
+    const h = setup({
+      stateKeys: ["todos"],
+      transport: { getState: transportGetState },
+    });
+    await h.controller.hydrationPromise;
+
+    expect(h.snapshot().messages.map((m) => m.id)).toEqual(["m1"]);
+    expect(Object.keys(h.snapshot().values).sort()).toEqual([
+      "messages",
+      "todos",
+    ]);
+    await h.controller.dispose();
+  });
+
+  it("calls a custom transport's getState with no arguments when unset", async () => {
+    const transportGetState = vi.fn(async (..._args: unknown[]) => ({
+      values: { messages: [] },
+      next: [],
+      tasks: [],
+    }));
+    const h = setup({ transport: { getState: transportGetState } });
+    await h.controller.hydrationPromise;
+
+    expect(transportGetState.mock.calls[0]).toHaveLength(0);
     await h.controller.dispose();
   });
 });

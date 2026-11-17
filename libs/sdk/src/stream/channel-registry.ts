@@ -38,7 +38,7 @@
  * @see ProjectionSpec - The contract every projection implements.
  * @see StreamStore - The observable store handed to consumers.
  */
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import type {
   AcquiredProjection,
   ProjectionRuntime,

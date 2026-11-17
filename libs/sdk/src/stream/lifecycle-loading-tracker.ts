@@ -49,8 +49,8 @@
  * @typeParam T - The snapshot shape; must contain an `isLoading` flag.
  */
 import type { Event, LifecycleEvent } from "@langchain/protocol";
-import { StreamStore } from "./store.js";
-import { isRootNamespace } from "./namespace.js";
+import { StreamStore } from "../ui/store.js";
+import { isRootNamespace } from "../ui/namespace.js";
 
 /**
  * Minimal contract the snapshot must satisfy. The tracker only

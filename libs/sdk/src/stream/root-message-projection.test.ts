@@ -4,10 +4,10 @@ import type { Event, MessagesEvent } from "@langchain/protocol";
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 
 import { RootMessageProjection } from "./root-message-projection.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import { SubagentDiscovery } from "./discovery/index.js";
 import type { RootSnapshot } from "./types.js";
-import { ensureMessageInstances } from "./message-coercion.js";
+import { ensureMessageInstances } from "../ui/message-coercion.js";
 
 interface State {
   messages?: unknown;

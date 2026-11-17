@@ -30,44 +30,48 @@ import type {
   ToolsEvent,
   ValuesEvent,
 } from "@langchain/protocol";
-import type { Interrupt, ThreadState } from "../schema.js";
+import type {
+  Interrupt,
+  ThreadState,
+  ThreadStateSelectField,
+} from "../schema.js";
 import type { ThreadStream } from "../client/stream/index.js";
 import type { SubscriptionHandle } from "../client/stream/index.js";
 import { ToolCallAssembler } from "../client/stream/handles/tools.js";
-import type { AssembledToolCall } from "../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../ui/tool-payload.js";
 import { normalizeInterruptForClient } from "../ui/interrupts.js";
 import { normalizeHitlResponseForServer } from "../ui/hitl-interrupt-payload.js";
 import type { Message } from "../types.messages.js";
-import { NAMESPACE_SEPARATOR, DEFAULT_MESSAGES_KEY } from "./constants.js";
-import { StreamStore } from "./store.js";
+import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
+import { StreamStore } from "../ui/store.js";
 import { ChannelRegistry } from "./channel-registry.js";
-import { ensureMessageInstances } from "./message-coercion.js";
+import { ensureMessageInstances } from "../ui/message-coercion.js";
+import { SubagentDiscovery, type SubagentMap } from "./discovery/index.js";
 import {
-  SubagentDiscovery,
-  type SubagentMap,
   SubgraphDiscovery,
   type SubgraphMap,
   type SubgraphByNodeMap,
-} from "./discovery/index.js";
+} from "../ui/subgraphs.js";
 import {
   collectSubgraphHostNamespaces,
+  DISCOVERY_HISTORY_SELECT,
   getHistoryPage,
   mapSubagentNamespaces,
   resolveSubagentNamespaces,
-} from "./discovery/namespace-from-history.js";
+} from "../ui/namespace-from-history.js";
 import type { SubagentDiscoverySnapshot } from "./types.js";
 import {
   isInternalWorkNamespace,
   isLegacySubagentNamespace,
   isRootNamespace,
   namespaceKey,
-} from "./namespace.js";
+} from "../ui/namespace.js";
 import {
   MessageMetadataTracker,
   type CheckpointEnvelope,
   type MessageMetadata,
   type MessageMetadataMap,
-} from "./message-metadata-tracker.js";
+} from "../ui/message-metadata-tracker.js";
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
 import { RootMessageProjection } from "./root-message-projection.js";
 import { toRefusal } from "./refusal.js";
@@ -75,7 +79,7 @@ import {
   prepareOptimisticInput,
   serializeUpdateMessages,
   type OptimisticHandle,
-} from "./optimistic-input.js";
+} from "../ui/optimistic-input.js";
 import {
   EMPTY_QUEUE,
   SubmitCoordinator,
@@ -87,7 +91,7 @@ import {
   reconcileToolCallsFromMessages,
   seedToolCallsFromMessages,
   upsertToolCall,
-} from "./tool-calls.js";
+} from "../ui/tool-calls.js";
 import { resolveInterruptTargetForHeadlessResume } from "../headless-tools.js";
 import type {
   RootEventBus,
@@ -167,6 +171,22 @@ function isThreadStateActive(
 }
 
 const ROOT_NAMESPACE: readonly string[] = [];
+
+/**
+ * Top-level thread-state fields the controller reads from `getState()`:
+ * `next` and `tasks` decide whether the thread is active and seed its
+ * interrupts, `created_at` filters replayed events, and `checkpoint`,
+ * `parent_checkpoint` and `metadata.step` place the seeded messages.
+ * Requested alongside the app's `stateKeys` whenever those are set.
+ */
+const HYDRATION_STATE_FIELDS: readonly ThreadStateSelectField[] = [
+  "next",
+  "tasks",
+  "checkpoint",
+  "parent_checkpoint",
+  "created_at",
+  "metadata",
+];
 
 /**
  * Channel set covered by the always-on root subscription. Exported so
@@ -605,12 +625,32 @@ export class StreamController<
   // ---------- public imperatives ----------
 
   /**
+   * `stateKeys` plus the messages key: the only `values` keys kept on
+   * `rootStore.values`. `undefined` when `stateKeys` is unset (full state).
+   */
+  get #keptStateKeys(): ReadonlySet<string> | undefined {
+    const { stateKeys } = this.#options;
+    if (stateKeys == null) return undefined;
+    return new Set([...stateKeys, this.#messagesKey]);
+  }
+
+  /**
    * Load thread state for hydration, preferring the active custom
-   * adapter's `getState()` when present.
+   * adapter's `getState()` when present. With `stateKeys` set, both are
+   * asked for only the fields the controller reads; without it, the call
+   * is made with no `select`.
    */
   async #fetchHydrationState(): Promise<ThreadState<StateType> | null> {
     const threadId = this.#currentThreadId;
     if (threadId == null) return null;
+    const keys = this.#keptStateKeys;
+    const select =
+      keys != null
+        ? [
+            ...HYDRATION_STATE_FIELDS,
+            ...[...keys].map((key): ThreadStateSelectField => `values.${key}`),
+          ]
+        : undefined;
 
     const transport = this.#options.transport;
     if (
@@ -618,10 +658,18 @@ export class StreamController<
       typeof transport === "object" &&
       typeof transport.getState === "function"
     ) {
-      return (await transport.getState<StateType>()) as ThreadState<StateType> | null;
+      const state =
+        select != null
+          ? await transport.getState<StateType>({ select })
+          : await transport.getState<StateType>();
+      return state as ThreadState<StateType> | null;
     }
 
-    return this.#options.client.threads.getState<StateType>(threadId);
+    return select != null
+      ? this.#options.client.threads.getState<StateType>(threadId, undefined, {
+          select,
+        })
+      : this.#options.client.threads.getState<StateType>(threadId);
   }
 
   /**
@@ -783,14 +831,17 @@ export class StreamController<
           // and the replayed ones predate the seed and are skipped. A call
           // with no result yet is left to the live stream, as an open tab
           // would only show it once it starts.
-          const finishedToolCalls = seedToolCallsFromMessages(
+          const endedToolCalls = seedToolCallsFromMessages(
             ROOT_NAMESPACE,
             ensureMessageInstances(seedMessages as (Message | BaseMessage)[])
-          ).filter((toolCall) => toolCall.status === "finished");
-          if (finishedToolCalls.length > 0) {
+          ).filter(
+            (toolCall) =>
+              toolCall.status === "finished" || toolCall.status === "error"
+          );
+          if (endedToolCalls.length > 0) {
             this.rootStore.setState((s) => ({
               ...s,
-              toolCalls: finishedToolCalls.reduce(
+              toolCalls: endedToolCalls.reduce(
                 (toolCalls, toolCall) => upsertToolCall(toolCalls, toolCall),
                 s.toolCalls
               ),
@@ -1014,11 +1065,10 @@ export class StreamController<
     try {
       const history = await getHistoryPage(this.#options.client, threadId, {
         limit: 20,
+        select: DISCOVERY_HISTORY_SELECT,
       });
       // A thread swap (or dispose) during the fetch invalidates this seed.
       if (this.#disposed || this.#currentThreadId !== threadId) return;
-
-      this.#primeScopedHistorySeedsFromHistory(threadId, history);
 
       const hosts = collectSubgraphHostNamespaces(history);
       this.#subgraphs.seedFromHistory(hosts);
@@ -1027,11 +1077,9 @@ export class StreamController<
         .filter(namespaceIsDefaultOnly)
         .map((entry) => entry.id);
       if (defaultOnlyIds.length > 0) {
-        const map = mapSubagentNamespaces(
-          history,
-          defaultOnlyIds,
-          this.#messagesKey
-        );
+        const map = mapSubagentNamespaces(history, defaultOnlyIds, {
+          messagesKey: this.#messagesKey,
+        });
         for (const [id, segment] of map) {
           this.#subagents.applyExecutionNamespace(id, segment);
         }
@@ -1211,9 +1259,8 @@ export class StreamController<
    * `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` often
    * mount together. Both need the same namespace-specific history page, so the
    * controller keeps an in-flight promise per `threadId + checkpoint_ns`.
-   * The cache may already be primed by the hydrate-time discovery history page;
-   * otherwise this method performs a narrow `checkpoint_ns` read and derives
-   * both projection snapshots from that one response:
+   * This method performs a narrow `checkpoint_ns` read and derives both
+   * projection snapshots from that one response:
    *
    * - `messages` are coerced with the stream-local message coercion rules, so
    *   serialized `content_blocks` and tool-call metadata hydrate correctly.
@@ -1257,54 +1304,6 @@ export class StreamController<
     })();
     this.#scopedHistorySeeds.set(key, seed);
     return seed;
-  }
-
-  /**
-   * Reuse the hydrate-time discovery history page as scoped projection data
-   * when it already contains checkpoint values for a namespace.
-   *
-   * The discovery read is required to resolve subagent execution namespaces and
-   * subgraph hosts. That same page often includes the latest values for those
-   * namespaces, so priming `#scopedHistorySeeds` here lets later
-   * `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` mounts
-   * hydrate from memory instead of issuing an immediate second `getHistory`
-   * request. If a namespace is not present in the bounded page,
-   * `#getScopedHistorySeed` still falls back to a targeted `checkpoint_ns`
-   * history read.
-   */
-  #primeScopedHistorySeedsFromHistory(
-    threadId: string,
-    history: Array<{
-      checkpoint?: { checkpoint_ns?: unknown };
-      values?: unknown;
-    }>
-  ): void {
-    for (const state of history) {
-      const checkpointNs = state.checkpoint?.checkpoint_ns;
-      if (typeof checkpointNs !== "string" || checkpointNs.length === 0) {
-        continue;
-      }
-      const namespace = checkpointNs
-        .split(NAMESPACE_SEPARATOR)
-        .filter((segment) => segment.length > 0);
-      if (namespace.length === 0) continue;
-      const key = `${threadId}|${namespaceKey(namespace)}`;
-      if (this.#scopedHistorySeeds.has(key)) continue;
-      const values = state.values;
-      if (values == null || typeof values !== "object") continue;
-      const messages = extractAndCoerceMessagesWithFallback(
-        values as Record<string, unknown>,
-        this.#messagesKey
-      );
-      if (messages == null) continue;
-      this.#scopedHistorySeeds.set(
-        key,
-        Promise.resolve({
-          messages,
-          toolCalls: seedToolCallsFromMessages(namespace, messages),
-        })
-      );
-    }
   }
 
   /**
@@ -2560,7 +2559,9 @@ export class StreamController<
       this.#messagesKey,
       () => uuidv7()
     );
-    const extraKeys = Object.keys(prepared.extraValues);
+    // Input keys outside `stateKeys` are still dispatched, just not shown.
+    const extraValues = this.#pickStateKeys(prepared.extraValues);
+    const extraKeys = Object.keys(extraValues);
     if (prepared.echoedIds.length === 0 && extraKeys.length === 0) {
       return undefined;
     }
@@ -2585,7 +2586,7 @@ export class StreamController<
     // "form hidden" and "resolved card shown").
     this.#rootMessages.appendOptimistic(
       prepared.optimisticMessages,
-      prepared.extraValues,
+      extraValues,
       { sync: true }
     );
     if (prepared.echoedIds.length > 0) {
@@ -2650,11 +2651,27 @@ export class StreamController<
     }
   }
 
+  /**
+   * Keep only the `stateKeys` (plus the messages key) of a `values`
+   * payload. Returns the payload unchanged when `stateKeys` is unset.
+   */
+  #pickStateKeys(values: Record<string, unknown>): Record<string, unknown> {
+    const keys = this.#keptStateKeys;
+    if (keys == null) return values;
+    const picked: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) {
+        picked[key] = values[key];
+      }
+    }
+    return picked;
+  }
+
   #applyValues(raw: unknown, checkpoint?: CheckpointEnvelope): void {
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
       return;
     }
-    const state = raw as Record<string, unknown>;
+    const state = this.#pickStateKeys(raw as Record<string, unknown>);
     // A root `values` snapshot landed: optimistic non-message keys are
     // now reconciled against server truth (see #settleOptimistic).
     this.#sawValuesForRun = true;

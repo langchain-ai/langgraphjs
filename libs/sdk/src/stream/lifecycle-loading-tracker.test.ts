@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Event, LifecycleEvent } from "@langchain/protocol";
 
 import { LifecycleLoadingTracker } from "./lifecycle-loading-tracker.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 
 interface TestSnapshot {
   readonly isLoading: boolean;

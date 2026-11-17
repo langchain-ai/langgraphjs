@@ -13,10 +13,10 @@ import {
   shouldIgnoreScopedTaskToolEvent,
   ToolCallAssembler,
 } from "../../client/stream/handles/tools.js";
-import type { AssembledToolCall } from "../../client/stream/handles/tools.js";
+import type { AssembledToolCall } from "../../ui/tool-payload.js";
 import type { ProjectionSpec, ProjectionRuntime } from "../types.js";
-import { isRootNamespace, namespaceKey } from "../namespace.js";
-import { upsertToolCall } from "../tool-calls.js";
+import { isRootNamespace, namespaceKey } from "../../ui/namespace.js";
+import { upsertToolCall } from "../../ui/tool-calls.js";
 import { openProjectionSubscription } from "./runtime.js";
 
 export function toolCallsProjection(

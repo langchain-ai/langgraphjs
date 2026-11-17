@@ -416,6 +416,12 @@ export class PregelLoop {
 
   channels: Record<string, BaseChannel>;
 
+  // Channel kinds are fixed for a run, so they are looked up once here
+  // instead of scanning every channel on each task and step.
+  protected deltaChannels: Record<string, BaseChannel>;
+
+  protected hasUntrackedChannels: boolean;
+
   protected checkpoint: Checkpoint;
 
   protected checkpointIdSaved: string | undefined;
@@ -691,6 +697,12 @@ export class PregelLoop {
     this.checkpointMetadata = params.checkpointMetadata;
     this.checkpointPreviousVersions = params.checkpointPreviousVersions;
     this.channels = params.channels;
+    this.deltaChannels = Object.fromEntries(
+      Object.entries(this.channels).filter(([, c]) => isDeltaChannel(c))
+    );
+    this.hasUntrackedChannels = Object.values(this.channels).some(
+      (c) => c.lc_graph_name === "UntrackedValue"
+    );
     this.checkpointPendingWrites = params.checkpointPendingWrites;
     // Capture before this run's Command processing adds writes: these are the
     // delta writes already stored on the loaded checkpoint. RESUME writes are
@@ -994,21 +1006,9 @@ export class PregelLoop {
       );
     }
 
-    // Check if any channels are UntrackedValue (manual loop for perf)
-    let hasUntrackedChannels = false;
-    for (const key in this.channels) {
-      if (Object.prototype.hasOwnProperty.call(this.channels, key)) {
-        const channel = this.channels[key];
-        if (channel.lc_graph_name === "UntrackedValue") {
-          hasUntrackedChannels = true;
-          break;
-        }
-      }
-    }
-
     // Sanitize writes for checkpointing: remove UntrackedValue writes and sanitize Send packets
     let writesToSave = writesCopy;
-    if (hasUntrackedChannels) {
+    if (this.hasUntrackedChannels) {
       writesToSave = writesCopy
         .filter(([c]) => {
           // Don't persist UntrackedValue channel writes
@@ -2133,7 +2133,7 @@ export class PregelLoop {
     let newCounters: Record<string, [number, number]>;
     if (!exiting) {
       newCounters = advanceDeltaCounters(
-        this.channels,
+        this.deltaChannels,
         this.updatedChannels ?? new Set<string>(),
         this.checkpointMetadata.counters_since_delta_snapshot
       );
@@ -2155,7 +2155,7 @@ export class PregelLoop {
 
     const channelsToSnapshot = doCheckpoint
       ? deltaChannelsToSnapshot(
-          this.channels,
+          this.deltaChannels,
           newCounters,
           this._deltaWritesVersioned
             ? this.checkpoint.channel_versions
@@ -2243,7 +2243,7 @@ export class PregelLoop {
     const counters =
       this.checkpointMetadata.counters_since_delta_snapshot ?? {};
     const channelsToSnapshot = deltaChannelsToSnapshot(
-      this.channels,
+      this.deltaChannels,
       counters,
       this._deltaWritesVersioned ? this.checkpoint.channel_versions : undefined
     );

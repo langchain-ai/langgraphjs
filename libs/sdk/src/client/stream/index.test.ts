@@ -8,10 +8,7 @@ import {
   SubscriptionHandle,
   ThreadStream,
 } from "./index.js";
-import {
-  ToolCallAssembler,
-  parseToolOutput,
-} from "./handles/tools.js";
+import { ToolCallAssembler } from "./handles/tools.js";
 import type { ThreadExtension } from "./types.js";
 import {
   MockSseTransport,
@@ -900,16 +897,6 @@ describe("ToolCallAssembler", () => {
 
     expect(started!.output).toBe("Weather in SF: sunny");
     await expect(started!.outputPromise).resolves.toBe("Weather in SF: sunny");
-  });
-
-  it("parseToolOutput returns null for empty ToolMessage content", () => {
-    expect(
-      parseToolOutput({
-        type: "tool",
-        content: "",
-        tool_call_id: "tc",
-      })
-    ).toBeNull();
   });
 
   it("assembles tool-started into a mutable handle with dual views", async () => {

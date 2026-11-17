@@ -160,6 +160,10 @@ export class SqliteSaver extends BaseCheckpointSaver {
 
   protected withCheckpoint: Statement;
 
+  protected putStatement?: Statement;
+
+  protected writeTransactions: Record<string, (rows: unknown[][]) => void> = {};
+
   constructor(db: DatabaseType, serde?: SerializerProtocol) {
     super(serde);
     this.db = db;
@@ -511,11 +515,10 @@ CREATE TABLE IF NOT EXISTS writes (
       serializedMetadata,
     ];
 
-    this.db
-      .prepare(
-        `INSERT OR REPLACE INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(...row);
+    this.putStatement ??= this.db.prepare(
+      `INSERT OR REPLACE INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    this.putStatement.run(...row);
 
     return {
       configurable: {
@@ -556,17 +559,22 @@ CREATE TABLE IF NOT EXISTS writes (
     //     clobber a regular write that another concurrent task already stored
     //     at the same (task_id, idx).
     const allSpecial = writes.every(([channel]) => channel in WRITES_IDX_MAP);
-    const stmt = this.db.prepare(`
-      INSERT ${allSpecial ? "OR REPLACE" : "OR IGNORE"} INTO writes
+    const conflict = allSpecial ? "OR REPLACE" : "OR IGNORE";
+    if (this.writeTransactions[conflict] === undefined) {
+      const stmt = this.db.prepare(`
+      INSERT ${conflict} INTO writes
       (thread_id, checkpoint_ns, checkpoint_id, task_id, task_path, idx, channel, type, value)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-
-    const transaction = this.db.transaction((rows) => {
-      for (const row of rows) {
-        stmt.run(...row);
-      }
-    });
+      this.writeTransactions[conflict] = this.db.transaction(
+        (rows: unknown[][]) => {
+          for (const row of rows) {
+            stmt.run(...row);
+          }
+        }
+      );
+    }
+    const transaction = this.writeTransactions[conflict];
 
     const rows = await Promise.all(
       writes.map(async (write, idx) => {

@@ -69,6 +69,12 @@ const isRunnableConfig = (config: unknown): config is RunnableConfig => {
   );
 };
 
+// The tags LangGraph.js's own `messages` stream mode skips, so the modes built
+// from stream events hide what `messages-tuple` hides.
+const NOSTREAM_TAGS = ["nostream", "langsmith:nostream"];
+const hasNoStreamTag = (tags: string[] | undefined) =>
+  tags?.some((tag) => NOSTREAM_TAGS.includes(tag)) ?? false;
+
 type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
@@ -376,7 +382,10 @@ export async function* streamState(
           kwargs.subgraphs && ns?.length ? `${mode}|${ns.join("|")}` : mode;
         yield { event: sseEvent, data };
       }
-    } else if (userStreamMode.includes("events")) {
+    } else if (
+      userStreamMode.includes("events") &&
+      !hasNoStreamTag(event.tags)
+    ) {
       yield { event: "events", data: event };
     }
 
@@ -421,7 +430,7 @@ export async function* streamState(
         }
       } else if (
         event.event === "on_chat_model_stream" &&
-        !event.tags?.includes("nostream")
+        !hasNoStreamTag(event.tags)
       ) {
         const message: BaseMessageChunk = event.data.chunk;
         // Anthropic sets the id on the first chunk only; the rest get run-<runId>.
