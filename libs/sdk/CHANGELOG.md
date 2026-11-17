@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.17.1-rc.0
+
+### Patch Changes
+
+- [`d11183d`](https://github.com/langchain-ai/langgraphjs/commit/d11183d5851283aa2785931fadc339314a1fd9a7) Thanks [@eliornl](https://github.com/eliornl)! - The stream engine in `@langchain/langgraph-sdk/ui` accepts `stateKeys`, which `useStream` in `@langchain/react` 2.0 uses to load only the state keys a UI reads.
+
 ## 1.17.0
 
 ### Minor Changes
