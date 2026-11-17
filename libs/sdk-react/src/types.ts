@@ -50,8 +50,9 @@ export interface UseStreamCommonOptions<
   /**
    * The state keys the UI reads. Opening a thread then loads only these and
    * the {@link messagesKey}, and `values` keeps only them, whether or not the
-   * server honours the narrowed read. `[]` keeps only the messages. Unset
-   * loads the full state. Read when the stream is created.
+   * server honours the narrowed read. `[]` keeps only the messages, and runs
+   * then stream no `values`. Unset loads the full state. Read when the stream
+   * is created.
    */
   // `NoInfer`: without a state type, the keys mustn't become the state.
   stateKeys?: readonly NoInfer<keyof StateType & string>[];

@@ -12,6 +12,7 @@ declare module "vitest" {
     backend: "js" | "python" | "url";
     graphs: "js" | "python";
     resumeTtl: number;
+    stateKeys: string[] | null;
   }
 }
 
@@ -41,6 +42,8 @@ let server: ChildProcess | undefined;
 let log: FileHandle | undefined;
 
 export async function setup({ provide }: TestProject) {
+  const stateKeys = process.env.PARITY_STATE_KEYS;
+  provide("stateKeys", stateKeys ? JSON.parse(stateKeys) : null);
   const given = process.env.PARITY_SERVER_URL;
   if (given) {
     provide("serverUrl", given);

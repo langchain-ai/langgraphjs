@@ -25,6 +25,10 @@ export const onJsServer = backend === "js";
 export const jsGraphs = inject("graphs") === "js";
 /** The server's resume point lifetime in seconds, when it was started with a short one (`PARITY_RESUME_TTL`), else 0. */
 export const resumeTtl = inject("resumeTtl");
+/** The `stateKeys` every probe passes unless its row passes its own (`PARITY_STATE_KEYS`), or null for none. */
+export const stateKeys = inject("stateKeys");
+/** Whether probes show only the messages, so 2.0's runs stream no `values` (`PARITY_STATE_KEYS='[]'`). */
+export const messagesOnly = stateKeys?.length === 0;
 /** A row that tests only the client, run on the JS dev server alone. */
 export const itOnJsServer = it.skipIf(!onJsServer);
 /** A row that needs the Agent Server: the thread stream, checkpoint joins, async subagents. */
@@ -126,6 +130,8 @@ export interface RecordedRequest {
   method: string;
   path: string;
   headers: Record<string, string>;
+  /** A JSON body, parsed. */
+  body?: unknown;
 }
 
 /** Requests as `METHOD /path`, with ids replaced, for checks on the wire. */
@@ -245,6 +251,7 @@ function makeSide(
         );
         const stream = hooks.useStream({
           apiUrl,
+          ...(stateKeys != null && { stateKeys }),
           ...options,
           ...wrapped,
           assistantId: current.assistantId,
@@ -357,7 +364,14 @@ function recordNetwork() {
     const headers = Object.fromEntries(
       new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
     );
-    const request = { method, path: url.pathname + url.search, headers };
+    const request: RecordedRequest = { method, path: url.pathname + url.search, headers };
+    if (typeof init?.body === "string" && headers["content-type"]?.includes("json")) {
+      try {
+        request.body = JSON.parse(init.body);
+      } catch {
+        request.body = init.body;
+      }
+    }
     const number = requests.push(request);
     const response = await real(input, init);
     if (

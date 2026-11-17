@@ -573,7 +573,74 @@ describe("StreamManager", () => {
     });
   });
 
+  describe("interrupts sent in root updates", () => {
+    const run = (events: Array<{ event: string; data: unknown }>) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (streamManager as any).enqueue(async () => createMockStream(events), {
+        getMessages: (values: TestState) => values.messages ?? [],
+        setMessages: (current: TestState, messages: TestState["messages"]) => ({
+          ...current,
+          messages,
+        }),
+        initialValues: { messages: [{ id: "h0", type: "human", content: "hi" }] },
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: (error: unknown) => {
+          throw error;
+        },
+      });
+    const interrupts = () =>
+      (streamManager.values as unknown as { __interrupt__?: { id?: string }[] })
+        .__interrupt__;
+    const interruptIds = () => interrupts()?.map(({ id }) => id);
+    const token = (id: string) => ({
+      event: "messages",
+      data: [{ id, type: "ai", content: id }, {}],
+    });
+
+    it("a stream without values shows them, and its first output drops an earlier run's", async () => {
+      await run([
+        { event: "updates", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+        { event: "updates|tools:t1", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+      ]);
+      expect(interruptIds()).toEqual(["int-1"]);
+      expect(streamManager.values?.messages.map((m) => m.id)).toEqual(["h0"]);
+
+      await run([
+        token("a1"),
+        { event: "updates", data: { __interrupt__: [{ id: "int-2", value: "b?" }] } },
+      ]);
+      expect(interruptIds()).toEqual(["int-2"]);
+    });
+
+    it("a restarted attempt doesn't bring back an earlier run's interrupt its first output dropped", async () => {
+      await run([
+        { event: "updates", data: { __interrupt__: [{ id: "int-1", value: "a?" }] } },
+      ]);
+
+      await run([
+        { event: "metadata", data: { run_id: "r2" } },
+        token("a1"),
+        { event: "metadata", data: { run_id: "r2" } },
+        token("a2"),
+      ]);
+
+      expect(interrupts()).toBeUndefined();
+    });
+
+    it("an interrupt without an id that root updates and then values send shows once", async () => {
+      const interrupt = { __interrupt__: [{ value: "x?" }] };
+      await run([
+        { event: "updates", data: interrupt },
+        { event: "values", data: { ...interrupt, messages: [] } },
+      ]);
+
+      expect(interrupts()).toEqual([{ value: "x?" }]);
+    });
+  });
+
   describe("parallel interrupt accumulation", () => {
+
     it("should accumulate interrupts from separate values events", async () => {
       // Simulates parallel branches each raising an interrupt in separate
       // values events during a single stream.
@@ -2484,6 +2551,61 @@ describe("StreamManager", () => {
       expect(manager.getSubagent("call_2")?.status).toBe("running");
       expect(manager.getSubagent("call_2")?.messages.map((m) => m.id)).toEqual(["from-b"]);
       expect(manager.getSubagent("call_1")?.messages).toEqual([]);
+    });
+
+    it("a message named only by its metadata is a subagent's below the tools node, and the tools node's own stays in the main conversation", async () => {
+      const manager = subagentManager();
+      await run(manager, [
+        {
+          event: "messages",
+          data: [
+            {
+              ...ai("ai-1", ""),
+              tool_calls: [
+                { id: "call_read", name: "read_file", args: {} },
+                task("call_1", "Research"),
+              ],
+            },
+            { langgraph_checkpoint_ns: "model:m" },
+          ],
+        },
+        {
+          event: "messages",
+          data: [
+            ai("sub-1", "looking"),
+            { langgraph_checkpoint_ns: "tools:b", lc_subagent_tool_call_id: "call_1" },
+          ],
+        },
+        {
+          event: "messages",
+          data: [ai("sub-2", "found it"), { langgraph_checkpoint_ns: "tools:b|model:m2" }],
+        },
+        {
+          event: "messages",
+          data: [
+            { id: "tool-read", type: "tool", content: "file", tool_call_id: "call_read" },
+            { langgraph_checkpoint_ns: "tools:a" },
+          ],
+        },
+        {
+          event: "messages",
+          data: [
+            { id: "tool-task", type: "tool", content: "found it", tool_call_id: "call_1" },
+            { langgraph_checkpoint_ns: "tools:b" },
+          ],
+        },
+      ]);
+
+      expect(manager.values?.messages.map((m) => m.id)).toEqual([
+        "ai-1",
+        "tool-read",
+        "tool-task",
+      ]);
+      expect(manager.getSubagent("call_1")).toMatchObject({ status: "complete" });
+      expect(manager.getSubagent("call_1")?.messages.map((m) => m.id)).toEqual([
+        "sub-1",
+        "sub-2",
+      ]);
     });
 
     it("a graph a tool runs inside a subagent leaves the subagent's namespace alone", async () => {

@@ -1071,9 +1071,14 @@ export class StreamOrchestrator<
   async #finishRun(
     threadId: string | undefined,
     refetch: boolean,
-    callbackMeta: RunCallbackMeta | undefined
+    callbackMeta: RunCallbackMeta | undefined,
+    streamedValues: boolean
   ): Promise<null | undefined> {
-    const read = planReadAfterRun(this.branchContext.threadHead, refetch);
+    const read = planReadAfterRun(
+      this.branchContext.threadHead,
+      refetch,
+      streamedValues
+    );
     if (read && threadId) {
       const lastHead = (await this.#mutate(threadId, read))?.at(0);
       if (lastHead) {
@@ -1924,6 +1929,7 @@ export class StreamOrchestrator<
     const client = this.#accessors.getClient();
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
+    let sentValues = false;
 
     let releaseStream: (() => void) | undefined;
     const run: LiveRun = { promise: Promise.resolve() };
@@ -1972,7 +1978,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          return this.#finishRun(tid, shouldRefetchJoin, callbackMeta);
+          return this.#finishRun(
+            tid,
+            shouldRefetchJoin,
+            callbackMeta,
+            sentValues
+          );
         },
         onError: (error) => {
           outcome = { error };
@@ -1989,6 +2000,7 @@ export class StreamOrchestrator<
         },
         isReplaying: lastEventId === "-1",
         onEvent: (event, data) => {
+          if (event === "values") sentValues = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
         },
@@ -2081,6 +2093,7 @@ export class StreamOrchestrator<
     const unsent = new Set(optimistic?.echoedIds);
     if (unsent.size > 0) this.#metadata.markPending(unsent);
     let shownKeys: OptimisticKeySnapshot[] = [];
+    let asksValues = true;
     let sentValues = false;
     const stopRun = new AbortController();
 
@@ -2142,6 +2155,7 @@ export class StreamOrchestrator<
 
         const modes = this.#getRunStreamModes(submitOptions);
         const streamMode = Array.isArray(modes) ? modes : await modes;
+        asksValues = streamMode.includes("values");
         const streamSubgraphs = this.#streamSubgraphs(submitOptions);
         // The run's stream carries the main conversation only when the run
         // tells which subagent is which (lifecycle) and publishes them.
@@ -2219,6 +2233,7 @@ export class StreamOrchestrator<
             this.scopes.setRun(runId, {
               subgraphs: streamSubgraphs === true,
               filtered: rootFiltered,
+              values: asksValues,
             });
 
             if (this.#runMetadataStorage) {
@@ -2258,7 +2273,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-          return this.#finishRun(usableThreadId, shouldRefetch, callbackMeta);
+          return this.#finishRun(
+            usableThreadId,
+            shouldRefetch,
+            callbackMeta,
+            sentValues
+          );
         },
         onError: (error) => {
           outcome = { error };
@@ -2313,6 +2333,14 @@ export class StreamOrchestrator<
               ({ id }) => (id != null && unsent.delete(id) ? [id] : [])
             );
             this.#metadata.resolvePending(saved, "sent");
+          } else if (
+            !asksValues &&
+            unsent.size > 0 &&
+            (event.startsWith("updates") || event.startsWith("messages"))
+          ) {
+            // No `values` echo the input, but a step's output comes after it.
+            this.#metadata.resolvePending(unsent, "sent");
+            unsent.clear();
           }
         },
       },
@@ -2366,6 +2394,10 @@ export class StreamOrchestrator<
    * subagents are tracked, and `tools`, asked for by `onToolEvent`, go only
    * to servers that send them on run routes, as do tracked ones. Runs that
    * ask for neither get their modes without waiting for `/info`.
+   *
+   * `values` sends the whole state on every step. When the messages are the
+   * only key shown and `messages-tuple` streams them, it carries nothing
+   * else, so it goes, and the head is read when the run ends.
    */
   #getRunStreamModes(
     submitOptions?: SubmitOptions<StateType, GetConfigurableType<Bag>>
@@ -2377,14 +2409,18 @@ export class StreamOrchestrator<
         : []),
       ...(this.#options.onToolEvent != null ? (["tools"] as StreamMode[]) : []),
     ]);
-    const modes = (sent: StreamMode[]) =>
-      unique([
-        "values" as StreamMode,
-        "updates" as StreamMode,
+    const modes = (sent: StreamMode[]) => {
+      const asked = [
         ...(submitOptions?.streamMode ?? []),
         ...sent,
         ...this.#callbackStreamModes,
-      ]);
+      ];
+      const values: StreamMode[] =
+        this.#stateKeys?.messagesOnly && asked.includes("messages-tuple")
+          ? []
+          : ["values"];
+      return unique([...values, "updates" as StreamMode, ...asked]);
+    };
     const plain = withoutRunEventModes(tracked);
     if (plain.length === tracked.length) return modes(tracked);
     return serverInfo(this.#accessors.getClient()).then((info) =>
@@ -2937,37 +2973,41 @@ export class StreamOrchestrator<
 
   /**
    * How a joined run streams, from its own options: subgraphs (so panels have
-   * events to join) and lifecycle events (so the main conversation knows its
-   * subagents). Only with both, on a server with both flags, does its stream
-   * carry the main conversation alone.
+   * events to join), lifecycle events (so the main conversation knows its
+   * subagents) and `values` (without which panels read their state). Only
+   * with subgraphs and lifecycle, on a server with both flags, does its
+   * stream carry the main conversation alone.
    */
   async #joinMode(
     threadId: string,
     runId: string,
     runInfo: Run | undefined,
     signal: AbortSignal
-  ): Promise<{ filtered: boolean; subgraphs?: boolean }> {
+  ): Promise<{ filtered: boolean; subgraphs?: boolean; values: boolean }> {
     const info = await serverInfo(this.#accessors.getClient());
-    if (
-      info?.flags?.stream_namespaces !== true ||
-      info.flags.stream_lifecycle !== true
-    ) {
-      return { filtered: false };
-    }
+    const canFilter =
+      info?.flags?.stream_namespaces === true &&
+      info.flags.stream_lifecycle === true;
+    // A server that can't filter isn't asked for the run just for its modes.
     const kwargs = (
       runInfo ??
-      (await this.#accessors
-        .getClient()
-        .runs.get(threadId, runId, { signal })
-        .catch(() => undefined))
+      (canFilter
+        ? await this.#accessors
+            .getClient()
+            .runs.get(threadId, runId, { signal })
+            .catch(() => undefined)
+        : undefined)
     )?.kwargs;
-    if (kwargs == null) return { filtered: false };
+    // Unknown modes count as no `values`, which costs panels one more read.
+    if (kwargs == null) return { filtered: false, values: false };
     const modes = kwargs.stream_mode;
+    const asked = (mode: string) =>
+      Array.isArray(modes) ? modes.includes(mode) : modes === mode;
+    // The server's default is `values`.
+    const values = modes == null || asked("values");
+    if (!canFilter) return { filtered: false, values };
     const subgraphs = kwargs.subgraphs === true;
-    const lifecycle = Array.isArray(modes)
-      ? modes.includes("lifecycle")
-      : modes === "lifecycle";
-    return { filtered: subgraphs && lifecycle, subgraphs };
+    return { filtered: subgraphs && asked("lifecycle"), subgraphs, values };
   }
 
   #reconnectOptions() {

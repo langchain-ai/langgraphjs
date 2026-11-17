@@ -72,7 +72,11 @@ it("threads 1.x used open the same on both sides, and 2.0 answers the approval a
   expect(v2.subagents.final.extra).toEqual({ subagents: ["data-analyst:complete", "researcher:complete"] });
 
   const carriedOn = await onSide("2.0", async (side) => {
-    const paused = await side.mount({ assistantId: GRAPHS.paused, threadId: threads.paused });
+    const paused = await side.mount({
+      assistantId: GRAPHS.paused,
+      threadId: threads.paused,
+      options: { stateKeys: ["completed"] },
+    });
     await paused.until((s) => s.interrupt != null, "the approval");
     await paused.stream.respond({ approved: true });
     await runsOf(threads.paused, ended(2));

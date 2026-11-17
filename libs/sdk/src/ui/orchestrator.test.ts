@@ -1552,21 +1552,83 @@ describe("StreamOrchestrator", () => {
       }
     );
 
-    it("a run on a thread with nothing pending reads no state", async () => {
-      serve(stateWith({ messages: [message("h0")] }));
-      const orch = await openThread();
+    it.each(answeringRuns)(
+      "a run on a thread with nothing pending reads no state ($via)",
+      async ({ run }) => {
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread();
 
-      mockRun([
-        {
-          event: "values",
-          data: { messages: [message("h0"), message("a0", "ai")] },
-        },
-      ]);
-      await orch.submit({ messages: [] });
+        await run(orch, [
+          {
+            event: "values",
+            data: { messages: [message("h0"), message("a0", "ai")] },
+          },
+        ]);
 
-      expect(getState()).toHaveBeenCalledTimes(1);
-      orch.dispose();
-    });
+        expect(getState()).toHaveBeenCalledTimes(1);
+        expect(orch.messages).toEqual([message("h0"), message("a0", "ai")]);
+        orch.dispose();
+      }
+    );
+
+    it.each(answeringRuns)(
+      "a run that streamed no values shows the head read after it, in its saved order, and a failed read keeps what streamed ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ onError });
+        const streamed = (id: string) => ({
+          event: "messages",
+          data: [message(id, "ai"), {}],
+        });
+        serve(
+          stateWith({
+            messages: [message("h0"), message("a1", "ai"), message("a2", "ai")],
+          })
+        );
+
+        await run(orch, [streamed("a2"), streamed("a1")]);
+
+        expect(getState()).toHaveBeenCalledTimes(2);
+        expect(orch.messages.map((m) => m.id)).toEqual(["h0", "a1", "a2"]);
+
+        getState().mockRejectedValue(new Error("offline"));
+        await run(orch, [streamed("a3")]);
+
+        expect(orch.messages.map((m) => m.id)).toEqual([
+          "h0",
+          "a1",
+          "a2",
+          "a3",
+        ]);
+        expect(orch.error).toBeUndefined();
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
+    it.each(answeringRuns)(
+      "a run that streamed no values shows the interrupt its updates sent, also when the read after it fails ($via)",
+      async ({ run }) => {
+        const onError = vi.fn();
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread({ onError });
+        getState().mockRejectedValue(new Error("offline"));
+
+        await run(orch, [
+          { event: "messages", data: [message("a1", "ai"), {}] },
+          {
+            event: "updates",
+            data: { __interrupt__: [{ id: "int-1", value: "approve?" }] },
+          },
+        ]);
+
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+        expect(orch.messages.map((m) => m.id)).toEqual(["h0", "a1"]);
+        expect(onError).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
 
     it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
       "a failed read after a run puts no error on the thread opened since (fetchStateHistory: $fetchStateHistory)",
@@ -5222,6 +5284,32 @@ describe("StreamOrchestrator runs", () => {
       }
     );
 
+    it.each([
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["updates"] }, values: false },
+      { server: "a server that can't filter", serverFlags: { stream_lifecycle: true }, kwargs: { stream_mode: ["values"] }, values: true },
+      { server: "a filtering server", serverFlags: flags, kwargs: undefined, values: false },
+    ])(
+      "a joined run on $server with options $kwargs tells its panels values: $values",
+      async ({ serverFlags, kwargs, values }) => {
+        withFlags(serverFlags);
+        listRuns([{ run_id: "run-9", ...(kwargs && { kwargs }) }]);
+        mockJoinStream([], Promise.resolve());
+        const orch = orchestrator({ scopedSubagents: true });
+        const setRun = vi.spyOn(orch.scopes, "setRun");
+
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+
+        await vi.waitFor(() =>
+          expect(setRun).toHaveBeenCalledWith("run-9", expect.objectContaining({ values }))
+        );
+        expect(client.runs.get).not.toHaveBeenCalled();
+        orch.dispose();
+      }
+    );
+
     it("keeps subagent tokens out of the main conversation on a server that can't filter", async () => {
       withFlags({ stream_lifecycle: true });
       mockRunStream(
@@ -6667,6 +6755,55 @@ describe("StreamOrchestrator runs", () => {
         "int-1",
       ]);
       ended.resolve();
+      orch.dispose();
+    });
+
+    it.each([
+      { stateKeys: [], asked: ["messages-tuple"], values: false },
+      { stateKeys: ["messages"], asked: ["messages-tuple"], values: false },
+      { stateKeys: [], asked: [], values: true },
+      { stateKeys: [], asked: ["messages-tuple", "values"], values: true },
+      { stateKeys: ["count"], asked: ["messages-tuple"], values: true },
+      { stateKeys: undefined, asked: ["messages-tuple"], values: true },
+    ] as const)(
+      "stateKeys $stateKeys, asking for $asked: a run streams values: $values",
+      async ({ stateKeys, asked, values }) => {
+        mockRunStream([], { ended: Promise.resolve() });
+        const orch = orchestrator({
+          stateKeys: stateKeys && [...stateKeys],
+        });
+        orch.initThreadId("t1");
+
+        await orch.submit({ messages: [] }, { streamMode: [...asked] });
+
+        const streamMode = (client.runs.stream as Mock).mock.calls[0][2]
+          .streamMode as string[];
+        expect(streamMode.includes("values")).toBe(values);
+        expect(streamMode).toEqual(expect.arrayContaining(["updates", ...asked]));
+        orch.dispose();
+      }
+    );
+
+    it("without values, an optimistic message is sent once its run's first step streams", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [{ event: "messages", data: [{ id: "a1", type: "ai", content: "Hi" }, {}] }],
+        { ended: ended.promise }
+      );
+      const orch = orchestrator({ stateKeys: [] });
+      orch.trackStreamMode("messages-tuple");
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      const sent = orch.submit({ messages: [message("h1")] });
+      const status = () =>
+        orch.messageMetadataStore.getSnapshot().get("h1")?.optimisticStatus;
+      expect(status()).toBe("pending");
+
+      await vi.waitFor(() => expect(status()).toBe("sent"));
+      expect(orch.isLoading).toBe(true);
+      ended.resolve();
+      await sent;
       orch.dispose();
     });
 

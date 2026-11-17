@@ -79,6 +79,7 @@ const stream = useStream<typeof agent>({
 
 - The thread's state is read with `select` for `values.todos` and `values.messages`, plus the fields the hook reads itself: the checkpoint and its parent, `next`, `tasks` (interrupts and task errors), `metadata` and creation time.
 - The messages key (`messagesKey`) is always loaded. `stateKeys: []` loads only the messages.
+- With `stateKeys: []`, runs don't stream `values`, which carry the whole state after every step, so the whole thread on each step of a long one. Messages stream as before, and as a run ends the hook reads the thread's state once, for its interrupts and the order its parallel steps saved. A subagent's or subgraph's panel opened during such a run reads what it saved first.
 - `values` and `useValues(stream)` keep only `todos`, `messages` and a run's pending interrupts: after the thread loads, while a run streams, in a submit's optimistic values and in `initialValues`. A server that ignores `select`, such as the JS Agent Server or Python `langgraph-api` before 0.19, returns the full state, and `values` is narrowed the same way.
 - The type of `values` stays the full state, so reading a key you didn't list compiles but gives `undefined`.
 - A submit still sends every input key to the run. Keys you didn't list just don't show.
