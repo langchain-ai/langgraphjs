@@ -435,6 +435,11 @@ export const normalizeProtocolStateMessage = (
   ) {
     message.response_metadata = value.response_metadata;
   }
+  // Same for `additional_kwargs`: graphs write app metadata there (e.g.
+  // committed attachments), and `GET /threads/:id/state` already returns it.
+  if (additionalKwargs != null && Object.keys(additionalKwargs).length > 0) {
+    message.additional_kwargs = additionalKwargs;
+  }
   if (
     (type === "ai" || type === "human") &&
     typeof value.example === "boolean"

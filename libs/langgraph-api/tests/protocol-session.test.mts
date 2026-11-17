@@ -621,6 +621,18 @@ describe("RunProtocolSession", () => {
                 id: "ai_1",
                 type: "ai",
                 content: "",
+                additional_kwargs: {
+                  tool_calls: [
+                    {
+                      id: "call_123",
+                      type: "function",
+                      function: {
+                        name: "task",
+                        arguments: "{\"description\":\"Review risks\"}",
+                      },
+                    },
+                  ],
+                },
                 response_metadata: {
                   model_provider: "openai",
                   usage: {
@@ -672,6 +684,69 @@ describe("RunProtocolSession", () => {
     ]);
   });
 
+
+  it("preserves non-empty additional_kwargs inside values snapshots", async () => {
+    const sent: unknown[] = [];
+    const session = createSession(sent);
+    await session.start();
+    sent.length = 0;
+
+    await session.handleCommand(
+      JSON.stringify({
+        id: 1,
+        method: "subscription.subscribe",
+        params: { channels: ["values"] },
+      })
+    );
+    sent.length = 0;
+
+    await session.ingestSourceEvent({
+      id: "1",
+      event: "values",
+      data: {
+        messages: [
+          {
+            id: "human_1",
+            type: "human",
+            content: "What columns are in this file?",
+            additional_kwargs: {
+              attachments: [
+                { filename: "sample.csv", path: "/uploads/sample.csv" },
+              ],
+            },
+            response_metadata: {},
+          },
+        ],
+      },
+    });
+
+    expect(sent).toEqual([
+      {
+        type: "event",
+        event_id: expect.any(String),
+        seq: expect.any(Number),
+        method: "values",
+        params: {
+          namespace: [],
+          timestamp: expect.any(Number),
+          data: {
+            messages: [
+              {
+                id: "human_1",
+                type: "human",
+                content: "What columns are in this file?",
+                additional_kwargs: {
+                  attachments: [
+                    { filename: "sample.csv", path: "/uploads/sample.csv" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    ]);
+  });
 
   it("returns an agent tree built from observed namespaces", async () => {
     const sent: unknown[] = [];
