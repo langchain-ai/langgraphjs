@@ -1270,8 +1270,8 @@ importers:
         specifier: ^0.3.13
         version: 0.3.13(@bufbuild/protobuf@2.16.0)(@grpc/grpc-js@1.14.6)(express@5.2.1)
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -1831,11 +1831,11 @@ importers:
         specifier: ^7.26.2
         version: 7.29.0
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)
+        version: 1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)
       '@hono/zod-validator':
         specifier: ^0.7.6
         version: 0.7.6(hono@4.13.13)(zod@4.6.6)
@@ -2383,11 +2383,11 @@ importers:
         specifier: ^22.2.4
         version: 22.2.4(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@22.2.4(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)(zone.js@0.16.1)))(rxjs@7.8.2)
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)
+        version: 1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -2450,11 +2450,11 @@ importers:
         version: link:../sdk
     devDependencies:
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)
+        version: 1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -2517,11 +2517,11 @@ importers:
         version: link:../sdk
     devDependencies:
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)
+        version: 1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -2581,11 +2581,11 @@ importers:
         version: link:../sdk
     devDependencies:
       '@hono/node-server':
-        specifier: ^2.1.6
-        version: 2.1.6(hono@4.13.13)
+        specifier: ^2.1.8
+        version: 2.1.8(hono@4.13.13)
       '@hono/node-ws':
         specifier: ^1.3.0
-        version: 1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)
+        version: 1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)
       '@langchain/core':
         specifier: ^1.3.4
         version: 1.3.4(@opentelemetry/api@1.9.0)(openai@7.45.1(undici@6.29.1)(ws@8.21.1)(zod@4.6.6))(ws@8.21.1)
@@ -3723,8 +3723,8 @@ packages:
   '@harperfast/extended-iterable@1.0.5':
     resolution: {integrity: sha512-4ScXlphaKEa49RpHmqwATq9QI9aUTdWVYDlJkzxhsD7ShJP+pHCYLznMO9n/wREY8jPjRZ59wLJY6HM5yB5Gkw==}
 
-  '@hono/node-server@2.1.6':
-    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
+  '@hono/node-server@2.1.8':
+    resolution: {integrity: sha512-jdf7FHh6A1lzjpHHQUgxsg2GeER2vMetnAOfeActzcoli6jamlK+NAwL6Dsr5Fl3BS3tYUQzCdtZjU8Qxv7bEA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: '>=4.13.11 <5'
@@ -11905,15 +11905,15 @@ packages:
   tldts-core@6.1.86:
     resolution: {integrity: sha512-Je6p7pkk+KMzMv2XXKmAE3McmolOQFdxkKw0R8EYNr7sELW46JqnNeTX8ybPiQgvg1ymCoF8LXs5fzFaZvJPTA==}
 
-  tldts-core@7.5.0:
-    resolution: {integrity: sha512-1kVus7QxknwQLIyAVIziz32NkXyENMsBFOSEe3oB4MoUPyCKnzPgkrNLc03PZwzKFb3+GbuKbzoEkT94W3CO5w==}
+  tldts-core@7.5.1:
+    resolution: {integrity: sha512-GGSowIH9Pp52ym/x0OxBBNqS2DuqlLL91YNnlnj+k+ZWjJQ+ilNxpwP7/RT+iX1gzuafhj1l7j46CNVqm+xAeQ==}
 
   tldts@6.1.86:
     resolution: {integrity: sha512-WMi/OQ2axVTf/ykqCQgXiIct+mSQDFdH2fkwhPwgEwvJ1kSzZRiinb0zF2Xb8u4+OqPChmyI6MEu4EezNJz+FQ==}
     hasBin: true
 
-  tldts@7.5.0:
-    resolution: {integrity: sha512-qHpu8BE4S/si6A0hUBO8TWQ9C7cY69WGSFww5QM20YNnOssXfHS9Vu/Cm0+lkesSLULY/wa0NUg8zONQrnzyWA==}
+  tldts@7.5.1:
+    resolution: {integrity: sha512-UW1Z5afSpu5qA0qhDnaynyiwPa+/VC7J/mofz72R032It5DUTUWk8I502cAitA6qMQV1x7IwNHg7pCBNVORVww==}
     hasBin: true
 
   tmp@0.2.7:
@@ -14058,13 +14058,13 @@ snapshots:
   '@harperfast/extended-iterable@1.0.5':
     optional: true
 
-  '@hono/node-server@2.1.6(hono@4.13.13)':
+  '@hono/node-server@2.1.8(hono@4.13.13)':
     dependencies:
       hono: 4.13.13
 
-  '@hono/node-ws@1.3.1(@hono/node-server@2.1.6(hono@4.13.13))(hono@4.13.13)':
+  '@hono/node-ws@1.3.1(@hono/node-server@2.1.8(hono@4.13.13))(hono@4.13.13)':
     dependencies:
-      '@hono/node-server': 2.1.6(hono@4.13.13)
+      '@hono/node-server': 2.1.8(hono@4.13.13)
       hono: 4.13.13
       ws: 8.21.0
     transitivePeerDependencies:
@@ -23470,16 +23470,16 @@ snapshots:
 
   tldts-core@6.1.86: {}
 
-  tldts-core@7.5.0:
+  tldts-core@7.5.1:
     optional: true
 
   tldts@6.1.86:
     dependencies:
       tldts-core: 6.1.86
 
-  tldts@7.5.0:
+  tldts@7.5.1:
     dependencies:
-      tldts-core: 7.5.0
+      tldts-core: 7.5.1
     optional: true
 
   tmp@0.2.7: {}
@@ -23505,7 +23505,7 @@ snapshots:
 
   tough-cookie@6.1.0:
     dependencies:
-      tldts: 7.5.0
+      tldts: 7.5.1
     optional: true
 
   tr46@0.0.3: {}
