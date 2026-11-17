@@ -111,7 +111,7 @@ payload stays reactive and you avoid repeating the double unwrap.
 ## Human-in-the-loop (HITL)
 
 When using LangChain's
-[`humanInTheLoopMiddleware`](https://docs.langchain.com/oss/javascript/langchain/middleware/human-in-the-loop),
+[`humanInTheLoopMiddleware`](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in#human-in-the-loop),
 the interrupt payload is a `HITLRequest` (action requests, review
 configs, allowed decisions). Import the types from `langchain` and
 unwrap the payload in script with `stream.interrupt.value?.value`:
