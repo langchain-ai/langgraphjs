@@ -371,6 +371,7 @@ export class HostBackendClient extends JsonClient {
         "langgraph_config_path"
       ] = args.configPath;
     }
+    // Unlike update, create sends an empty list too.
     if (args.secrets != null) {
       payload.secrets = args.secrets;
     }
@@ -469,7 +470,8 @@ export class HostBackendClient extends JsonClient {
       revision_source: "internal_docker",
       source_revision_config: { image_uri: imageUri },
     };
-    if (args.secrets != null) {
+    // On update the control plane reads an empty list as "unchanged".
+    if (args.secrets?.length) {
       payload.secrets = args.secrets;
     }
     return this.request("PATCH", `/v2/deployments/${deploymentId}`, {
@@ -519,7 +521,8 @@ export class HostBackendClient extends JsonClient {
       payload.source_config = sourceConfig;
     }
 
-    if (args.secrets != null) {
+    // On update the control plane reads an empty list as "unchanged".
+    if (args.secrets?.length) {
       payload.secrets = args.secrets;
     }
     return this.request("PATCH", `/v2/deployments/${deploymentId}`, {
