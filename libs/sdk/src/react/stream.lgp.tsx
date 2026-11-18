@@ -185,7 +185,8 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       return;
     }
 
-    void fetcher(threadId, limit);
+    // A failed read already sets `error` and calls `onError`.
+    fetcher(threadId, limit).catch(() => undefined);
     // The `threadId` and `limit` arguments are already present in `key`
     // Thus we don't need to include them in the dependency array
     // eslint-disable-next-line react-hooks/exhaustive-deps
