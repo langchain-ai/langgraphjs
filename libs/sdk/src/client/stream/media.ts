@@ -654,7 +654,7 @@ export interface MediaAssemblerOptions extends MediaAssemblerCallbacks {
 interface ActiveMessage {
   /** `id` from `message-start`, or empty string when synthesized. */
   messageId: string;
-  /** `${messageId}::${mediaType}::${index}` keys currently active under this message. */
+  /** Scoped media keys currently active under this message. */
   keys: Set<string>;
   /** Content-block index → active media key. */
   indexKeys: Map<number, string>;
@@ -663,7 +663,7 @@ interface ActiveMessage {
 export class MediaAssembler {
   readonly #callbacks: MediaAssemblerCallbacks;
   readonly #fetch: typeof fetch;
-  // Keyed by `${messageId}::${type}::${blockIndex}`.
+  // Keyed by namespace, node, message id, media type and block index.
   readonly #active = new Map<string, MediaHandleImpl>();
   // Maps `${namespace.join("/")}::${node ?? ""}` → active message. One
   // entry per in-flight logical message; replaced on each
@@ -866,7 +866,13 @@ export class MediaAssembler {
     if (!MEDIA_BLOCK_TYPES.has(blockType)) return;
 
     const mediaType = blockType as MediaBlockType;
-    const key = `${active.messageId}::${mediaType}::${blockIndex}`;
+    const key = JSON.stringify([
+      namespace,
+      node ?? "",
+      active.messageId,
+      mediaType,
+      blockIndex,
+    ]);
     let handle = this.#active.get(key);
     const isStart = dataEvent === "content-block-start";
 
