@@ -18,6 +18,16 @@ describe("ThreadCache", () => {
     expect(cache.bytes).toBe(200);
   });
 
+  it("counts an object the read reaches twice once, also through a cycle", () => {
+    const shared = { text: "x".repeat(10) };
+    const cyclic: Record<string, unknown> = { text: "y".repeat(5) };
+    cyclic.self = cyclic;
+    const cache = new ThreadCache();
+    cache.set("a", [{ values: { one: shared, two: shared, cyclic } }] as never);
+
+    expect(cache.bytes).toBe(15);
+  });
+
   it("keeps no read bigger than maxBytes, and no empty one", () => {
     const cache = new ThreadCache({ maxBytes: 50 });
     cache.set("a", read(10));

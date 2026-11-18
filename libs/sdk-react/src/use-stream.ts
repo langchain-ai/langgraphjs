@@ -278,9 +278,8 @@ function entriesOf(value: object | undefined): unknown[] {
 }
 
 function createBinding(
-  options: UseStreamOptions,
-  deps: readonly unknown[],
-  threadCache: ThreadCache | undefined
+  options: UseStreamOptions & { threadCache?: ThreadCache },
+  deps: readonly unknown[]
 ): StreamBinding {
   const latest = { current: options };
   const transport = customTransportOf(options);
@@ -355,7 +354,7 @@ function createBinding(
             optimistic: options.optimistic,
             queue: options.queue,
             watchThread: options.watchThread,
-            threadCache,
+            threadCache: options.threadCache,
             maxReconnectAttempts: options.maxReconnectAttempts,
             reconnectDelayMs: options.reconnectDelayMs,
             streamIdleReconnect: options.streamIdleReconnect,
@@ -667,7 +666,7 @@ export function useStreamBinding(
       kept.deps = deps;
       ref.current = kept;
     } else {
-      ref.current = createBinding(options, deps, threadCache);
+      ref.current = createBinding({ ...options, threadCache }, deps);
     }
   }
   const binding = ref.current;

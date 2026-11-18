@@ -1,5 +1,3 @@
-/* __LC_ALLOW_ENTRYPOINT_SIDE_EFFECTS__ */
-
 "use client";
 
 import { createContext, useState, type ReactNode } from "react";

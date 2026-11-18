@@ -84,11 +84,13 @@ export class ThreadCache {
 
 function sizeOf(value: unknown): number {
   let size = 0;
+  const seen = new WeakSet<object>();
   const stack = [value];
   while (stack.length > 0) {
     const item = stack.pop();
     if (typeof item === "string") size += item.length;
-    else if (item != null && typeof item === "object") {
+    else if (item != null && typeof item === "object" && !seen.has(item)) {
+      seen.add(item);
       for (const child of Object.values(item)) stack.push(child);
     }
   }
