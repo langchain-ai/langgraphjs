@@ -107,6 +107,18 @@ describe("mapCommand", () => {
     ]);
   });
 
+  it("should handle Command with falsy resume values", () => {
+    for (const resume of [false, 0, ""]) {
+      const result = Array.from(
+        mapCommand(new Command({ resume }), [])
+      );
+
+      expect(result).toEqual([
+        ["00000000-0000-0000-0000-000000000000", "__resume__", resume],
+      ]);
+    }
+  });
+
   it("should handle Command with update (object)", () => {
     const cmd = new Command({
       update: {
