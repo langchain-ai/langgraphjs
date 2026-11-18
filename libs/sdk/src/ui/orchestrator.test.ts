@@ -3747,12 +3747,14 @@ describe("StreamOrchestrator runs", () => {
         afterRead,
         pending = [],
         fails = false,
+        active = true,
       }: {
         head?: unknown;
         withRead: unknown[] | "hangs" | Promise<unknown[]>;
         afterRead: unknown[];
         pending?: unknown[];
         fails?: boolean;
+        active?: boolean;
       }) {
         const landing = deferred();
         const answer = deferred();
@@ -3776,7 +3778,7 @@ describe("StreamOrchestrator runs", () => {
               : Promise.resolve(withRead);
           }
         );
-        const orch = orchestrator();
+        const orch = active ? orchestrator() : inactive();
         orch.initThreadId("t1");
         return {
           orch,
@@ -3813,6 +3815,104 @@ describe("StreamOrchestrator runs", () => {
         await vi.waitFor(() => expect(orch.isLoading).toBe(false));
 
         expect(joined()).toEqual(["run-9"]);
+        orch.dispose();
+      });
+
+      it("holds the join until activate() when both answer before it, without waiting for the lookup after the read", async () => {
+        mockJoinStream([], Promise.resolve());
+        const { orch, land } = open({
+          withRead: [going],
+          afterRead: [going],
+          active: false,
+        });
+        const loading: boolean[] = [];
+        orch.subscribe(() => loading.push(orch.isLoading));
+
+        land();
+        await vi.waitFor(() => expect(loading).toContain(true));
+        expect(joined()).toEqual([]);
+        orch.activate();
+
+        await vi.waitFor(() => expect(joined()).toEqual(["run-9"]));
+        orch.dispose();
+      });
+
+      it("drops the join it held before activate() once the lookup after the read finds no run going", async () => {
+        mockJoinStream([], Promise.resolve());
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [],
+          active: false,
+        });
+
+        land();
+        await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+        answer();
+        await orch.hydrationPromise;
+        orch.activate();
+        await flushMicrotasks(20);
+
+        expect(orch.isLoading).toBe(false);
+        expect(joined()).toEqual([]);
+        orch.dispose();
+      });
+
+      function reloadedBeforeActivate(afterReload: unknown[]) {
+        mockJoinStream([], Promise.resolve());
+        (client.threads.getState as Mock).mockResolvedValue(
+          createThreadState({ messages: [] })
+        );
+        const afterFirstRead = deferred();
+        const runningLists = [
+          () => Promise.resolve([going]),
+          () => afterFirstRead.promise.then(() => []),
+          () => Promise.resolve(afterReload),
+        ];
+        let listed = 0;
+        (client.runs.list as Mock).mockImplementation(
+          (_threadId: string, options: { status: string }) =>
+            options.status === "running"
+              ? runningLists[listed++]()
+              : Promise.resolve([])
+        );
+        const orch = inactive();
+        orch.initThreadId("t1");
+        return {
+          orch,
+          reload: async () => {
+            await vi.waitFor(() => expect(listed).toBe(2));
+            await orch.hydrate("t1");
+          },
+          firstLoadFindsNoRun: afterFirstRead.resolve,
+        };
+      }
+
+      it("keeps the join a reload holds when the first load's lookup after the read finds no run going", async () => {
+        const { orch, reload, firstLoadFindsNoRun } = reloadedBeforeActivate([
+          { run_id: "run-10" },
+        ]);
+
+        await reload();
+        firstLoadFindsNoRun();
+        await flushMicrotasks(20);
+        orch.activate();
+
+        await vi.waitFor(() => expect(joined()).toEqual(["run-10"]));
+        orch.dispose();
+      });
+
+      it("tells subscribers once the first load's lookup after the read drops its held join after a reload", async () => {
+        const { orch, reload, firstLoadFindsNoRun } = reloadedBeforeActivate([]);
+        await reload();
+        const loading: boolean[] = [];
+        orch.subscribe(() => loading.push(orch.isLoading));
+
+        firstLoadFindsNoRun();
+
+        await vi.waitFor(() => expect(loading.at(-1)).toBe(false));
+        orch.activate();
+        await flushMicrotasks(20);
+        expect(joined()).toEqual([]);
         orch.dispose();
       });
 

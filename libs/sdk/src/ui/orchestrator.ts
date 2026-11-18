@@ -437,9 +437,11 @@ export interface RespondOptions<
 /**
  * What a thread load's two run lookups found: the run one of them joined,
  * which the other doesn't join again, and whether the lookup after the read
- * answered, which leaves the one sent with the read out of date.
+ * answered, which leaves the one sent with the read out of date. `held` is
+ * the join the one sent with the read holds for `activate()`, which the
+ * later one drops when it finds no run going.
  */
-type RunLookups = { joined?: string; settled?: boolean };
+type RunLookups = { joined?: string; settled?: boolean; held?: () => void };
 
 /**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
@@ -906,7 +908,9 @@ export class StreamOrchestrator<
    * once both answer, a round trip before {@link #joinActiveRun} would. Only
    * that later lookup can tell no run is going: the thread watcher opens as
    * the read lands and misses runs that started before it, so a lookup sent
-   * with the read can miss one started during it.
+   * with the read can miss one started during it. Both can answer before
+   * {@link activate}, since bindings start the load during a render: the
+   * join is then held for it, as the later lookup holds its own.
    */
   #joinEarly(
     threadId: string,
@@ -917,20 +921,25 @@ export class StreamOrchestrator<
     const running = this.#listRuns(threadId, { status: "running", limit: 1 });
     void Promise.all([read, running]).then(([states, runs]) => {
       const run = runs?.at(0);
-      // Before activate(), the later lookup holds the join.
       if (
         run == null ||
         lookups.settled ||
         run.run_id === lookups.joined ||
         states == null ||
-        !this.#active ||
         threadId !== this.#threadId ||
         this.#missingThreads.has(threadId)
       ) {
         return;
       }
       lookups.joined = run.run_id;
-      void this.#joinFound(run, states.at(0));
+      const join = () => void this.#joinFound(run, states.at(0));
+      if (this.#active) {
+        join();
+      } else {
+        lookups.held = join;
+        this.#heldJoin = join;
+        this.#notify();
+      }
     });
   }
 
@@ -1006,6 +1015,15 @@ export class StreamOrchestrator<
       if (this.#active) join();
       else this.#heldJoin = join;
       return;
+    }
+    // The run the lookup sent with the read found has ended since.
+    if (
+      run == null &&
+      lookups.held != null &&
+      this.#heldJoin === lookups.held
+    ) {
+      this.#heldJoin = undefined;
+      this.#notify();
     }
     if (run == null && hasPendingNodes(head) && !hasTaskInterrupts(head)) {
       // The read caught a run mid-step that has ended since, so it misses
