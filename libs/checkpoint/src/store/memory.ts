@@ -200,6 +200,7 @@ export class InMemoryStore extends BaseStore {
 
     if (op.value === null) {
       namespaceMap.delete(op.key);
+      this.vectors.get(namespaceKey)?.delete(op.key);
     } else {
       const now = new Date();
       if (namespaceMap.has(op.key)) {
