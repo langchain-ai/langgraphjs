@@ -1,5 +1,13 @@
 # @langchain/react
 
+## 2.0.0-rc.2
+
+### Patch Changes
+
+- [#3410](https://github.com/langchain-ai/langgraphjs/pull/3410) [`adcf1d1`](https://github.com/langchain-ai/langgraphjs/commit/adcf1d14602cb7a2bc5bb4dfc1da608e64faef6f) Thanks [@eliornl](https://github.com/eliornl)! - Add `ThreadCacheProvider`. Every `useStream` and `useSuspenseStream` inside it shows a thread opened again from its last read at once, while it is read again. Wrap the part of the app whose streams read the same server as the same user, and key the provider by that user. See "Showing a reopened thread at once" in the `useStream` guide.
+- Updated dependencies [[`84df9ca`](https://github.com/langchain-ai/langgraphjs/commit/84df9ca7dfa790502655ebd80021534d947a556d), [`adcf1d1`](https://github.com/langchain-ai/langgraphjs/commit/adcf1d14602cb7a2bc5bb4dfc1da608e64faef6f)]:
+  - @langchain/langgraph-sdk@1.17.1-rc.2
+
 ## 2.0.0-rc.1
 
 ### Patch Changes

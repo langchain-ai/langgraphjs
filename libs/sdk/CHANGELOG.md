@@ -1,5 +1,13 @@
 # @langchain/langgraph-sdk
 
+## 1.17.1-rc.2
+
+### Patch Changes
+
+- [#3413](https://github.com/langchain-ai/langgraphjs/pull/3413) [`84df9ca`](https://github.com/langchain-ai/langgraphjs/commit/84df9ca7dfa790502655ebd80021534d947a556d) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` now joins the running run a thread load's first lookup finds even when that lookup and the state read both answer before `activate()`. Bindings start the load during a render and call `activate()` from an effect, so this happens whenever the answers are already at hand, for example when an app sent those reads before the engine existed. Such a join was dropped and left to the lookup after the read, a whole runs list later. It is now held for `activate()`, as a join the lookup after the read finds already is, and dropped if that lookup finds no run going.
+
+- [#3410](https://github.com/langchain-ai/langgraphjs/pull/3410) [`adcf1d1`](https://github.com/langchain-ai/langgraphjs/commit/adcf1d14602cb7a2bc5bb4dfc1da608e64faef6f) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` takes a `threadCache`, a `ThreadCache` exported from `@langchain/langgraph-sdk/ui`, that keeps what thread loads read. A thread opened again shows its last read at once while it is read again, and what the read finds replaces it as on a first open. Until then the cached head counts as one no read has confirmed: its interrupts and task errors stay hidden, its headless tool calls don't run, and `respond()`, and a `submit()` made before the read lands, wait for the load. A read that fails takes the cached thread off the screen and out of the cache. A read in flight when `clear()` is called, or one a disposed stream makes, stays out of it. A run that starts on a thread takes it out of the cache, and a read begun during a run, or before one began, stays out, except the read after the run, so a thread left while a run streamed opens as on a first open. The cache holds threads up to `maxBytes` characters of strings (32 M by default) and drops the ones opened least recently first. Without a `threadCache`, loads work as before.
+
 ## 1.17.1-rc.1
 
 ### Patch Changes
