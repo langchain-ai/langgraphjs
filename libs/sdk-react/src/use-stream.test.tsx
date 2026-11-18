@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, useState } from "react";
 import type { Client } from "@langchain/langgraph-sdk";
-import { StreamOrchestrator, ThreadCache } from "@langchain/langgraph-sdk/ui";
+import { StreamOrchestrator } from "@langchain/langgraph-sdk/ui";
 import { afterEach, expect, it, vi } from "vitest";
 import { hydrateRoot } from "react-dom/client";
 import { renderToReadableStream, renderToString } from "react-dom/server";
@@ -9,6 +9,7 @@ import { STREAM_CONTROLLER, useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
 import { useSubmissionQueue, useValues } from "./selectors.js";
 import { StreamProvider, useStreamContext } from "./context.js";
+import { ThreadCacheProvider } from "./thread-cache.js";
 import { fakeServer } from "./test-client.js";
 import type { StreamSubmitOptions } from "./types.js";
 
@@ -34,30 +35,33 @@ it("keeps a loaded message's instance while a run streams", async () => {
   expect(result.current.messages[0]).toBe(earlier);
 });
 
-it("renders a thread its cache holds on the first render, before reading it again", async () => {
+it("renders a thread its ThreadCacheProvider holds on the first render, before reading it again", async () => {
   const server = fakeServer({ t1: { messages: [human("h1", "earlier")] } });
-  const threadCache = new ThreadCache();
-  const options = {
-    assistantId: "agent",
-    client: server.client,
-    threadId: "t1",
-    threadCache,
-  };
-  const first = await renderHook(() => useStream(options));
-  await expect.poll(() => first.result.current.messages.length).toBe(1);
-  await first.unmount();
+  const shown: string[] = [];
+  function Thread() {
+    const stream = useStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    const text = stream.isThreadLoading ? "loading" : `${stream.messages.length} message`;
+    shown.push(text);
+    return <span>{text}</span>;
+  }
+  const screen = await render(
+    <ThreadCacheProvider>
+      <Thread key="first" />
+    </ThreadCacheProvider>
+  );
+  await expect.poll(() => screen.container.textContent).toBe("1 message");
 
-  const shown: number[] = [];
-  const again = await renderHook(() => {
-    const stream = useStream(options);
-    shown.push(stream.messages.length);
-    return stream;
-  });
+  shown.length = 0;
+  await screen.rerender(
+    <ThreadCacheProvider>
+      <Thread key="again" />
+    </ThreadCacheProvider>
+  );
 
-  expect(shown[0]).toBe(1);
-  expect(again.result.current.isThreadLoading).toBe(false);
-  await again.result.current.hydrationPromise;
-  expect(server.calls.filter((call) => call === "getState t1")).toHaveLength(2);
+  expect(shown[0]).toBe("1 message");
+  await expect
+    .poll(() => server.calls.filter((call) => call === "getState t1"))
+    .toHaveLength(2);
 });
 
 it("reads the thread once under StrictMode", async () => {

@@ -51,7 +51,6 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `fetch`                           | `typeof fetch`                                           | Used for every request of the client the hook builds. Ignored, with a warning, when you pass `client`: set it on that client.   |
 | `queue`                           | `"server" \| "local"`                                    | Where a submit made during a run waits: in the server's queue (the default) or in this page. See [Submission queue](./submission-queue.md). |
 | `watchThread`                     | `boolean`                                                | Keep a connection open to follow the thread shown, so runs started in another tab or by a cron show as they stream. With `false`, they show only after a reload or `hydrate()`. Defaults to `true`. |
-| `threadCache`                     | `ThreadCache`                                            | Keeps what thread loads read, so a thread opened again shows at once while it is read again. See [Showing a reopened thread at once](#showing-a-reopened-thread-at-once). |
 | `maxReconnectAttempts`            | `number`                                                 | Reconnects in a row without an event before a dropped stream fails. Defaults to 5.                                               |
 | `reconnectDelayMs`                | `(attempt: number) => number`                            | How long to wait before each reconnect.                                                                                           |
 | `onReconnect`, `onConnected`      | callbacks                                                | Called before each reconnect, and after each connection.                                                                          |
@@ -91,35 +90,32 @@ const stream = useStream<typeof agent>({
 
 ### Showing a reopened thread at once
 
-Each load reads the thread's state, also of a thread you just left, and shows the thread once that read lands. Pass a `ThreadCache` to keep what loads read, and a thread opened again shows its last read at once while it is read again:
+Each load reads the thread's state, also of a thread you just left, and shows the thread once that read lands. Wrap your streams in a `ThreadCacheProvider` to keep what loads read, and a thread opened again shows its last read at once while it is read again:
 
 ```tsx
-import { useState } from "react";
-import { ThreadCache, useStream } from "@langchain/react";
+import { ThreadCacheProvider, useStream } from "@langchain/react";
 
-function App({ threadId }: { threadId: string }) {
-  const [threadCache] = useState(() => new ThreadCache());
-  return <Thread threadId={threadId} threadCache={threadCache} />;
+function App({ userId, threadId }: { userId: string; threadId: string }) {
+  return (
+    <ThreadCacheProvider key={userId}>
+      <Thread threadId={threadId} />
+    </ThreadCacheProvider>
+  );
 }
 
-function Thread({
-  threadId,
-  threadCache,
-}: {
-  threadId: string;
-  threadCache: ThreadCache;
-}) {
-  const stream = useStream({ assistantId: "agent", threadId, threadCache });
+function Thread({ threadId }: { threadId: string }) {
+  const stream = useStream({ assistantId: "agent", threadId });
   // ...
 }
 ```
 
-- Create the cache once, in a component that stays mounted while threads come and go, such as your app's root, and pass it to every `useStream` that reads the same server as the same user. A cache created in a thread's own component goes away with it. The cache holds what that user could read, so call `threadCache.clear()` when they sign out. A read still in flight then stays out of it, and so does one a disposed stream makes.
+- Every `useStream` and `useSuspenseStream` inside the provider that reads an Agent Server uses its cache, so wrap the part of your app whose streams read the same server as the same user. Put it above the components that come and go with threads, so the cache outlives them.
+- The cache holds what that user could read. Key the provider by the user, as above, so a new user starts with an empty cache. A read still in flight from before stays out of it.
 - A thread the cache holds shows on the stream's first render: `isThreadLoading` is `false` and its messages render. Its interrupts and task errors don't show and its pending headless tool calls don't run until the thread has been read again and checked for a running run. `respond()` waits for that, and so does a `submit()` made before the read lands.
 - What the read finds then replaces the cached thread, as on a first open: a run that finished or started since, a message changed, another tab's writes.
 - A read that fails takes the cached thread off the screen and out of the cache.
-- `new ThreadCache({ maxBytes })` holds threads up to `maxBytes` characters of strings, 32 M by default, and drops the ones opened least recently first.
-- Streams with different `stateKeys` keep their reads apart. `threadCache` is read once, when the stream is created.
+- `<ThreadCacheProvider maxBytes={...}>` holds threads up to `maxBytes` characters of strings, 32 M by default, and drops the ones opened least recently first.
+- Streams with different `stateKeys` keep their reads apart.
 
 ## Return values
 

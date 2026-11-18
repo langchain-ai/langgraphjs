@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useContext, useEffect, useRef, useSyncExternalStore } from "react";
 import type { AIMessage, BaseMessage } from "@langchain/core/messages";
 import {
   Client,
@@ -24,8 +24,10 @@ import {
   type SubagentStreamInterface,
   type SubgraphByNodeMap,
   type SubgraphMap,
+  type ThreadCache,
   type UseStreamTransport,
 } from "@langchain/langgraph-sdk/ui";
+import { ThreadCacheContext } from "./thread-cache.js";
 import type {
   StreamRespondAllOptions,
   StreamRespondOptions,
@@ -277,7 +279,8 @@ function entriesOf(value: object | undefined): unknown[] {
 
 function createBinding(
   options: UseStreamOptions,
-  deps: readonly unknown[]
+  deps: readonly unknown[],
+  threadCache: ThreadCache | undefined
 ): StreamBinding {
   const latest = { current: options };
   const transport = customTransportOf(options);
@@ -352,7 +355,7 @@ function createBinding(
             optimistic: options.optimistic,
             queue: options.queue,
             watchThread: options.watchThread,
-            threadCache: options.threadCache,
+            threadCache,
             maxReconnectAttempts: options.maxReconnectAttempts,
             reconnectDelayMs: options.reconnectDelayMs,
             streamIdleReconnect: options.streamIdleReconnect,
@@ -649,6 +652,7 @@ export function useStreamBinding(
   suspenseKey?: string
 ): { binding: StreamBinding; stream: UseStreamReturn } {
   const ref = useRef<StreamBinding>(null);
+  const threadCache = useContext(ThreadCacheContext);
   const deps = depsOf(options);
   if (
     ref.current == null ||
@@ -663,7 +667,7 @@ export function useStreamBinding(
       kept.deps = deps;
       ref.current = kept;
     } else {
-      ref.current = createBinding(options, deps);
+      ref.current = createBinding(options, deps, threadCache);
     }
   }
   const binding = ref.current;
