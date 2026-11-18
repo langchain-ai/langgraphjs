@@ -13,6 +13,49 @@ import {
 
 type MockFetch = ReturnType<typeof vi.fn> & typeof fetch;
 
+describe("ProtocolSseTransportAdapter cancellation", () => {
+  it.each(["handle", "transport"])(
+    "settles readiness when the %s closes during the initial retry delay",
+    async (target) => {
+      vi.useFakeTimers();
+      let retrying!: () => void;
+      const retryStarted = new Promise<void>((resolve) => { retrying = resolve; });
+      const fetchImpl = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+      const transport = new ProtocolSseTransportAdapter({
+        apiUrl: "http://localhost:8123",
+        threadId: THREAD_ID,
+        fetch: fetchImpl,
+        reconnectDelayMs: () => 1000,
+        onReconnect: retrying,
+      });
+      const handle = transport.openEventStream({ channels: ["values"] });
+      let outcome: unknown = "pending";
+      const ready = handle.ready.then(
+        () => { outcome = "connected"; },
+        (error) => { outcome = error; }
+      );
+      try {
+        await retryStarted;
+        if (target === "handle") handle.close();
+        else await transport.close();
+        await Promise.resolve();
+        expect(outcome).toMatchObject({ name: "AbortError" });
+        await ready;
+        await vi.runAllTimersAsync();
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        await expect(handle.events[Symbol.asyncIterator]().next()).resolves.toEqual({
+          done: true, value: undefined,
+        });
+      } finally {
+        handle.close();
+        await transport.close();
+        await vi.runAllTimersAsync();
+        vi.useRealTimers();
+      }
+    }
+  );
+});
+
 function streamEventBodies(fetchImpl: MockFetch): Record<string, unknown>[] {
   return fetchImpl.mock.calls
     .filter((call: unknown[]) => String(call[0]).includes("/stream/events"))
