@@ -418,7 +418,6 @@ export class StateGraph<
 > extends Graph<N, S, U, StateGraphNodeSpec<S, U>, ToStateDefinition<C>> {
   channels: Record<string, BaseChannel> = {};
 
-  // TODO: this doesn't dedupe edges as in py, so worth fixing at some point
   waitingEdges: Set<[N[], N]> = new Set();
 
   /** @internal */
@@ -1270,6 +1269,19 @@ export class StateGraph<
     }
     if (!Object.keys(this.nodes).some((node) => node === endKey)) {
       throw new Error(`Need to add a node named "${endKey}" first`);
+    }
+
+    const alreadyExists = Array.from(this.waitingEdges).some(
+      ([starts, end]) => {
+        if (end !== endKey) return false;
+        if (starts.length !== startKey.length) return false;
+        return starts.every((s, i) => s === startKey[i]);
+      }
+    );
+    if (alreadyExists) {
+      throw new Error(
+        `Edge from [${startKey.join(", ")}] to \`${endKey}\` already exists.`
+      );
     }
 
     this.waitingEdges.add([startKey, endKey]);
