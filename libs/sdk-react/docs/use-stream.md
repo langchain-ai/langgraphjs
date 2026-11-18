@@ -94,17 +94,27 @@ const stream = useStream<typeof agent>({
 Each load reads the thread's state, also of a thread you just left, and shows the thread once that read lands. Pass a `ThreadCache` to keep what loads read, and a thread opened again shows its last read at once while it is read again:
 
 ```tsx
+import { useState } from "react";
 import { ThreadCache, useStream } from "@langchain/react";
 
-const threadCache = new ThreadCache();
+function App({ threadId }: { threadId: string }) {
+  const [threadCache] = useState(() => new ThreadCache());
+  return <Thread threadId={threadId} threadCache={threadCache} />;
+}
 
-function Thread({ threadId }: { threadId: string }) {
+function Thread({
+  threadId,
+  threadCache,
+}: {
+  threadId: string;
+  threadCache: ThreadCache;
+}) {
   const stream = useStream({ assistantId: "agent", threadId, threadCache });
   // ...
 }
 ```
 
-- Make one cache for the app and pass it to every `useStream` that reads the same server as the same user. It holds what that user could read, so call `threadCache.clear()` when they sign out. A read still in flight then stays out of it, and so does one a disposed stream makes.
+- Create the cache once, in a component that stays mounted while threads come and go, such as your app's root, and pass it to every `useStream` that reads the same server as the same user. A cache created in a thread's own component goes away with it. The cache holds what that user could read, so call `threadCache.clear()` when they sign out. A read still in flight then stays out of it, and so does one a disposed stream makes.
 - A thread the cache holds shows on the stream's first render: `isThreadLoading` is `false` and its messages render. Its interrupts and task errors don't show and its pending headless tool calls don't run until the thread has been read again and checked for a running run. `respond()` waits for that, and so does a `submit()` made before the read lands.
 - What the read finds then replaces the cached thread, as on a first open: a run that finished or started since, a message changed, another tab's writes.
 - A read that fails takes the cached thread off the screen and out of the cache.
