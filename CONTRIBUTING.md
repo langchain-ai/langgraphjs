@@ -254,7 +254,7 @@ Some key concepts:
 - Each node writes to (one or more) channels. This defines where the final value after a node is executed is stored, because nodes don't store their own value.
 - More on channels below.
 
-To form an intuition around Pregel graphs, let's look at the example tests.
+To form an intuition around Pregel graphs, let's look at the example tests. These build graphs by hand with `Channel` and `RawPregel` from `libs/langgraph-core/src/tests/raw_pregel.ts`. That helper exists only for tests: LangGraph does not let users construct a `Pregel` directly, and graphs are built with `StateGraph` or `entrypoint`.
 
 In the example below, the pregel graph is defined to start at `inputChannelName` and end at `outputChannelName`. The graph has a single node called `nodeOne` that transforms the input value by adding one to it. When the graph is invoked with an input value of `2`:
 
@@ -269,7 +269,7 @@ const chain = Channel.subscribeTo("inputChannelName")
   .pipe(addOne)
   .pipe(Channel.writeTo("outputChannelName"));
 
-const app = new Pregel({
+const app = new RawPregel({
   nodes: { nodeOne: chain },
   input: ["inputChannelName"],
   output: ["outputChannelName"],
@@ -317,7 +317,7 @@ it("should handle checkpoints correctly", async () => {
 
   const memory = new MemorySaver();
 
-  const app = new Pregel({
+  const app = new RawPregel({
     nodes: { one },
     channels: { total: new BinaryOperatorAggregate<number>((a, b) => a + b) },
     checkpointer: memory,
