@@ -167,7 +167,8 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
   function extractFromObj(
     obj: unknown,
     tokens: string[],
-    pos: number
+    pos: number,
+    inSelection: boolean = false
   ): string[] {
     if (pos >= tokens.length) {
       if (
@@ -178,7 +179,7 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
         return [String(obj)];
       }
       if (obj === null || obj === undefined) {
-        return [];
+        return obj === null && inSelection ? ["null"] : [];
       }
       if (Array.isArray(obj) || typeof obj === "object") {
         return [JSON.stringify(obj, null, 2)];
@@ -188,7 +189,7 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
 
     const token = tokens[pos];
     const results: string[] = [];
-    if (pos === 0 && token === "$") {
+    if (pos === 0 && token === "$" && !inSelection) {
       results.push(JSON.stringify(obj, null, 2));
     }
 
@@ -198,7 +199,7 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
       const index = token.slice(1, -1);
       if (index === "*") {
         for (const item of obj) {
-          results.push(...extractFromObj(item, tokens, pos + 1));
+          results.push(...extractFromObj(item, tokens, pos + 1, inSelection));
         }
       } else {
         try {
@@ -207,7 +208,9 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
             idx = obj.length + idx;
           }
           if (idx >= 0 && idx < obj.length) {
-            results.push(...extractFromObj(obj[idx], tokens, pos + 1));
+            results.push(
+              ...extractFromObj(obj[idx], tokens, pos + 1, inSelection)
+            );
           }
         } catch {
           return [];
@@ -223,43 +226,24 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
       for (const field of fields) {
         const nestedTokens = tokenizePath(field);
         if (nestedTokens.length) {
-          let currentObj = obj as Record<string, unknown> | undefined;
-          for (const nestedToken of nestedTokens) {
-            if (
-              currentObj &&
-              typeof currentObj === "object" &&
-              nestedToken in currentObj
-            ) {
-              currentObj = currentObj[nestedToken] as Record<string, unknown>;
-            } else {
-              currentObj = undefined;
-              break;
-            }
-          }
-          if (currentObj !== undefined) {
-            if (
-              typeof currentObj === "string" ||
-              typeof currentObj === "number" ||
-              typeof currentObj === "boolean"
-            ) {
-              results.push(String(currentObj));
-            } else if (
-              Array.isArray(currentObj) ||
-              typeof currentObj === "object"
-            ) {
-              results.push(JSON.stringify(currentObj, null, 2));
-            }
-          }
+          results.push(
+            ...extractFromObj(
+              obj,
+              [...nestedTokens, ...tokens.slice(pos + 1)],
+              0,
+              true
+            )
+          );
         }
       }
     } else if (token === "*") {
       if (Array.isArray(obj)) {
         for (const item of obj) {
-          results.push(...extractFromObj(item, tokens, pos + 1));
+          results.push(...extractFromObj(item, tokens, pos + 1, inSelection));
         }
       } else if (typeof obj === "object" && obj !== null) {
         for (const value of Object.values(obj)) {
-          results.push(...extractFromObj(value, tokens, pos + 1));
+          results.push(...extractFromObj(value, tokens, pos + 1, inSelection));
         }
       }
     } else {
@@ -268,7 +252,8 @@ export function getTextAtPath(obj: unknown, path: string[] | string): string[] {
           ...extractFromObj(
             (obj as Record<string, unknown>)[token],
             tokens,
-            pos + 1
+            pos + 1,
+            inSelection
           )
         );
       }
