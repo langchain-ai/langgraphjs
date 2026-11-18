@@ -7,6 +7,7 @@ export {
   messagesStateReducer,
   messagesStateReducer as addMessages,
   messagesDeltaReducer,
+  inputMessageId,
   REMOVE_ALL_MESSAGES,
   type Messages,
   Annotation,
