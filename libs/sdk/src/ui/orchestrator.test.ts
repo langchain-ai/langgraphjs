@@ -4662,6 +4662,59 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("drops a thread from the cache while a run streams on it, and keeps the read after the run", async () => {
+      serve(() => head("cp1", ["m1"]));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      const ended = deferred();
+      mockJoinStream([], ended.promise);
+
+      const joined = orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      expect(cache.bytes).toBe(0);
+      serve(() => head("cp2", ["m1", "m2"]));
+      ended.resolve();
+      await joined;
+      orch.dispose();
+
+      const again = orchestrator({ threadCache: cache });
+      again.initThreadId("t1");
+      expect(again.messages).toEqual([message("m1"), message("m2")]);
+      again.dispose();
+    });
+
+    it("keeps a read out of the cache when a run began while it was in flight", async () => {
+      const read = deferred();
+      serve(() => head("cp1", ["m1"]), read.promise);
+      mockJoinStream([], new Promise(() => {}));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+
+      void orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      read.resolve();
+      await orch.hydrationPromise;
+
+      expect(cache.bytes).toBe(0);
+      orch.dispose();
+    });
+
+    it("keeps a read begun while a run streams out of the cache", async () => {
+      serve(() => head("cp1", ["m1"]));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      mockJoinStream([], new Promise(() => {}));
+      void orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.hydrate();
+
+      expect(cache.bytes).toBe(0);
+      orch.dispose();
+    });
+
     it("keeps the reads of engines that load other state keys or history apart", async () => {
       serve(() => head("cp1", ["m1"]));
       await visit({ stateKeys: [] });

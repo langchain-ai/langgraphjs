@@ -114,6 +114,7 @@ function Thread({ threadId }: { threadId: string }) {
 - A thread the cache holds shows on the stream's first render: `isThreadLoading` is `false` and its messages render. Its interrupts and task errors don't show and its pending headless tool calls don't run until the thread has been read again and checked for a running run. `respond()` waits for that, and so does a `submit()` made before the read lands.
 - What the read finds then replaces the cached thread, as on a first open: a run that finished or started since, a message changed, another tab's writes.
 - A read that fails takes the cached thread off the screen and out of the cache.
+- A run that starts on a thread takes it out of the cache until a read after the run lands, so a thread you left while a run streamed opens as on a first open.
 - `<ThreadCacheProvider maxBytes={...}>` holds threads up to `maxBytes` characters of strings, 32 M by default, and drops the ones opened least recently first.
 - Streams with different `stateKeys` keep their reads apart.
 
