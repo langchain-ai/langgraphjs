@@ -185,16 +185,6 @@ export function ensureDeltaMessageIds<W extends [PropertyKey, unknown]>(
   return deltaWrites;
 }
 
-/**
- * Give the input messages of a run with a run id, in channels whose reducer is
- * {@link messagesStateReducer} or {@link messagesDeltaReducer}, the id
- * {@link inputMessageId} derives, where they have none. Ids the caller set,
- * including `""`, are kept. Accepts every form those reducers do (a message,
- * a plain object, a string, a `[role, content]` pair; alone, in an array or in
- * an `Overwrite`). A plain object outside an `Overwrite` stays plain, with the
- * id on a copy; other message-likes become messages. Changed writes are
- * replaced in `writes`; arrays the caller passed in are never changed.
- */
 function ensureInputMessageIds<W extends [PropertyKey, unknown]>(
   channels: Record<string, BaseChannel>,
   writes: W[],
