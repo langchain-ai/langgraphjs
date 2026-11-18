@@ -272,7 +272,7 @@ export class StreamMux {
    * the main event log.
    *
    * Subgraph discovery (materializing a {@link StreamHandle} for each
-   * newly observed top-level namespace) is handled by the
+   * newly observed namespace prefix) is handled by the
    * {@link createSubgraphDiscoveryTransformer} when installed, not here.
    *
    * @param ns - The namespace path that produced the event.
