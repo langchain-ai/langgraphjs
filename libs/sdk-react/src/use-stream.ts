@@ -352,6 +352,7 @@ function createBinding(
             optimistic: options.optimistic,
             queue: options.queue,
             watchThread: options.watchThread,
+            threadCache: options.threadCache,
             maxReconnectAttempts: options.maxReconnectAttempts,
             reconnectDelayMs: options.reconnectDelayMs,
             streamIdleReconnect: options.streamIdleReconnect,

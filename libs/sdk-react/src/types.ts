@@ -10,6 +10,7 @@ import type {
   MessageMetadataMap,
   RunEndReason,
   StreamOrchestratorOptions,
+  ThreadCache,
   UseStreamTransport,
 } from "@langchain/langgraph-sdk/ui";
 
@@ -131,6 +132,13 @@ export interface AgentServerOptions<
    * @default true
    */
   watchThread?: boolean;
+  /**
+   * Keeps what thread loads read, so a thread opened again shows at once
+   * while it is read again. Pass one cache, made once, to every `useStream`
+   * reading the same server as the same user, and clear it when they sign
+   * out. Read when the stream is created.
+   */
+  threadCache?: ThreadCache;
 }
 
 /**
@@ -162,6 +170,7 @@ export interface CustomTransportOptions<
   onConnected?: never;
   streamIdleReconnect?: never;
   watchThread?: never;
+  threadCache?: never;
 }
 
 export type UseStreamOptions<

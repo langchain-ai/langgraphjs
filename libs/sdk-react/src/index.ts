@@ -75,6 +75,8 @@ export type {
   ToolCallStatus,
 } from "@langchain/langgraph-sdk/ui";
 
+export { ThreadCache } from "@langchain/langgraph-sdk/ui";
+
 export type ToolCallWithResult<ToolCall = DefaultToolCall> =
   _ToolCallWithResult<ToolCall, CoreToolMessage, CoreAIMessage>;
 export type {

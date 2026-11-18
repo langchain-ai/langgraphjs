@@ -8,6 +8,7 @@ The root hook of `@langchain/react`. Mount it once per thread. It loads the thre
   - [Common options](#common-options)
   - [Agent Server options](#agent-server-options)
   - [Loading only some state keys](#loading-only-some-state-keys)
+  - [Showing a reopened thread at once](#showing-a-reopened-thread-at-once)
 - [Return values](#return-values)
 - [`submit()`](#submit)
 - [Stopping, answering and loading](#stopping-answering-and-loading)
@@ -50,6 +51,7 @@ The callbacks are read from the latest render, so an inline function sees curren
 | `fetch`                           | `typeof fetch`                                           | Used for every request of the client the hook builds. Ignored, with a warning, when you pass `client`: set it on that client.   |
 | `queue`                           | `"server" \| "local"`                                    | Where a submit made during a run waits: in the server's queue (the default) or in this page. See [Submission queue](./submission-queue.md). |
 | `watchThread`                     | `boolean`                                                | Keep a connection open to follow the thread shown, so runs started in another tab or by a cron show as they stream. With `false`, they show only after a reload or `hydrate()`. Defaults to `true`. |
+| `threadCache`                     | `ThreadCache`                                            | Keeps what thread loads read, so a thread opened again shows at once while it is read again. See [Showing a reopened thread at once](#showing-a-reopened-thread-at-once). |
 | `maxReconnectAttempts`            | `number`                                                 | Reconnects in a row without an event before a dropped stream fails. Defaults to 5.                                               |
 | `reconnectDelayMs`                | `(attempt: number) => number`                            | How long to wait before each reconnect.                                                                                           |
 | `onReconnect`, `onConnected`      | callbacks                                                | Called before each reconnect, and after each connection.                                                                          |
@@ -86,6 +88,28 @@ const stream = useStream<typeof agent>({
 - Subagents' and subgraphs' values, through the [selector hooks](./selectors.md) with a target, are not narrowed.
 - With a custom transport nothing is loaded, and only the streamed and optimistic values are narrowed.
 - `stateKeys` is read once, when the stream is created, so an inline array is fine.
+
+### Showing a reopened thread at once
+
+Each load reads the thread's state, also of a thread you just left, and shows the thread once that read lands. Pass a `ThreadCache` to keep what loads read, and a thread opened again shows its last read at once while it is read again:
+
+```tsx
+import { ThreadCache, useStream } from "@langchain/react";
+
+const threadCache = new ThreadCache();
+
+function Thread({ threadId }: { threadId: string }) {
+  const stream = useStream({ assistantId: "agent", threadId, threadCache });
+  // ...
+}
+```
+
+- Make one cache for the app and pass it to every `useStream` that reads the same server as the same user. It holds what that user could read, so call `threadCache.clear()` when they sign out. A read still in flight then stays out of it, and so does one a disposed stream makes.
+- A thread the cache holds shows on the stream's first render: `isThreadLoading` is `false` and its messages render. Its interrupts and task errors don't show and its pending headless tool calls don't run until the thread has been read again and checked for a running run. `respond()` waits for that, and so does a `submit()` made before the read lands.
+- What the read finds then replaces the cached thread, as on a first open: a run that finished or started since, a message changed, another tab's writes.
+- A read that fails takes the cached thread off the screen and out of the cache.
+- `new ThreadCache({ maxBytes })` holds threads up to `maxBytes` characters of strings, 32 M by default, and drops the ones opened least recently first.
+- Streams with different `stateKeys` keep their reads apart. `threadCache` is read once, when the stream is created.
 
 ## Return values
 
