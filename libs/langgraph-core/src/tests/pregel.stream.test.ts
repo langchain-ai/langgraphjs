@@ -511,6 +511,31 @@ describe("streamEvents version v3", () => {
       expect(run.interrupts[0].payload).toBe("question?");
     });
 
+    it("resolves run.output and run.values with the state at the interrupt", async () => {
+      const graph = new StateGraph(StringState)
+        .addNode("ask", () => {
+          const answer = interrupt("question?");
+          return { value: String(answer) };
+        })
+        .addEdge(START, "ask")
+        .addEdge("ask", END)
+        .compile({ checkpointer: new MemorySaver() });
+
+      const run = await graph.streamEvents(
+        { value: "start" },
+        { version: "v3", configurable: { thread_id: "int-output" } }
+      );
+      const events = await collectEvents(run);
+
+      expect(run.interrupted).toBe(true);
+      expect(await run.output).toEqual({ value: "start" });
+      expect(await run.values).toEqual({ value: "start" });
+      // The interrupt still reaches the event log, where remote clients read it.
+      expect(byMethod(events, "values").at(-1)!.params.data).toHaveProperty(
+        "__interrupt__"
+      );
+    });
+
     it("can resume after interrupt with Command({ resume })", async () => {
       const graph = new StateGraph(StringState)
         .addNode("ask", () => {
