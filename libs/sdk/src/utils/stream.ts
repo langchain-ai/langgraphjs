@@ -310,6 +310,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       await options.onConnected?.({ kind, attempt });
 
       reader = stream.getReader();
+      let streamDone = false;
 
       try {
         while (true) {
@@ -321,7 +322,11 @@ export async function* streamWithRetry<T extends { id?: string }>(
 
           const { done, value } = await reader.read();
 
-          if (done) break;
+          if (done) {
+            // Stream completed successfully
+            streamDone = true;
+            break;
+          }
 
           // Track last event ID for reconnection
           if (value.id !== undefined) {
@@ -350,6 +355,13 @@ export async function* streamWithRetry<T extends { id?: string }>(
         }
       } finally {
         if (reader) {
+          if (!streamDone) {
+            // The consumer stopped early (`break`/`return`/`throw` out of the
+            // iterator) or the read failed. Cancel so the response body, and
+            // with it the HTTP connection, is closed instead of staying open
+            // until the server ends the stream.
+            await reader.cancel().catch(() => {});
+          }
           try {
             reader.releaseLock();
           } catch {
