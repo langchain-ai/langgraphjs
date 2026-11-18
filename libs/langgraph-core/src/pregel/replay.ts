@@ -63,7 +63,8 @@ export class ReplayState {
   async getCheckpoint(
     checkpointNs: string,
     checkpointer: BaseCheckpointSaver,
-    checkpointConfig: RunnableConfig
+    checkpointConfig: RunnableConfig,
+    getTuple = (config: RunnableConfig) => checkpointer.getTuple(config)
   ): Promise<CheckpointTuple | undefined> {
     if (this.#isFirstVisit(checkpointNs)) {
       const results: CheckpointTuple[] = [];
@@ -77,6 +78,6 @@ export class ReplayState {
       }
       return results.length > 0 ? results[0] : undefined;
     }
-    return (await checkpointer.getTuple(checkpointConfig)) ?? undefined;
+    return (await getTuple(checkpointConfig)) ?? undefined;
   }
 }
