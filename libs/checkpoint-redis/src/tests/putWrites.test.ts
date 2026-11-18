@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { emptyCheckpoint } from "@langchain/langgraph-checkpoint";
 import { RedisSaver } from "../index.js";
 import { ShallowRedisSaver } from "../shallow.js";
 
@@ -198,5 +199,88 @@ describe("ShallowRedisSaver.loadPendingWrites — undefined values", () => {
     });
 
     expect(tuple?.pendingWrites).toEqual([["task_A", "regular", undefined]]);
+  });
+});
+
+describe.each([
+  { name: "RedisSaver", Saver: RedisSaver },
+  { name: "ShallowRedisSaver", Saver: ShallowRedisSaver },
+])("$name — pending write TTL", ({ Saver }) => {
+  it("keeps interrupt writes and their index alive when a checkpoint is read", async () => {
+    let now = 0;
+    const documents = new Map<string, unknown>();
+    const sortedSets = new Map<string, string[]>();
+    const expiresAt = new Map<string, number>();
+    const exists = (key: string) => {
+      if (expiresAt.has(key) && expiresAt.get(key)! <= now) {
+        documents.delete(key);
+        sortedSets.delete(key);
+        expiresAt.delete(key);
+      }
+      return documents.has(key) || sortedSets.has(key);
+    };
+    const client = {
+      ft: { create: async () => {} },
+      json: {
+        set: async (key: string, _path: string, value: unknown) => {
+          documents.set(key, structuredClone(value));
+          return "OK";
+        },
+        get: async (key: string) =>
+          exists(key) ? structuredClone(documents.get(key)) : null,
+      },
+      keys: async (pattern: string) =>
+        [...documents.keys()].filter(
+          (key) => key.startsWith(pattern.slice(0, -1)) && exists(key)
+        ),
+      exists: async (key: string) => Number(exists(key)),
+      zAdd: async (key: string, entries: Array<{ value: string }>) => {
+        sortedSets.set(key, entries.map((entry) => entry.value));
+        return entries.length;
+      },
+      zRange: async (key: string) =>
+        exists(key) ? sortedSets.get(key) ?? [] : [],
+      expire: async (key: string, seconds: number) => {
+        if (!exists(key)) return 0;
+        expiresAt.set(key, now + seconds);
+        return 1;
+      },
+    } as never;
+    const saver = new Saver(client, { defaultTTL: 1, refreshOnRead: true });
+    const config = await saver.put(
+      { configurable: { thread_id: "ttl", checkpoint_ns: "" } },
+      { ...emptyCheckpoint(), id: "c" },
+      { source: "loop", step: 1, parents: {} },
+      {}
+    );
+    await saver.putWrites(
+      config,
+      [["__interrupt__", { value: "approve?" }]],
+      "ask"
+    );
+
+    const writeKey =
+      Saver === RedisSaver
+        ? "checkpoint_write:ttl::c:ask:-3"
+        : "checkpoint_write:ttl::c:ask:0";
+    const indexKey = "write_keys_zset:ttl::c";
+    const checkpointKey =
+      Saver === RedisSaver ? "checkpoint:ttl::c" : "checkpoint:ttl::shallow";
+    expect(expiresAt.get(writeKey)).toBe(60);
+    expect(expiresAt.get(indexKey)).toBe(60);
+
+    now = 50;
+    expect((await saver.getTuple(config))?.pendingWrites).toEqual([
+      ["ask", "__interrupt__", { value: "approve?" }],
+    ]);
+    now = 65;
+    const tuple = await saver.getTuple(config);
+    expect(tuple?.checkpoint.id).toBe("c");
+    expect(tuple?.pendingWrites).toEqual([
+      ["ask", "__interrupt__", { value: "approve?" }],
+    ]);
+    expect(expiresAt.get(checkpointKey)).toBe(125);
+    expect(expiresAt.get(writeKey)).toBe(125);
+    expect(expiresAt.get(indexKey)).toBe(125);
   });
 });
