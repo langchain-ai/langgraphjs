@@ -9,6 +9,7 @@ import { STREAM_CONTROLLER, useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
 import { useSubmissionQueue, useValues } from "./selectors.js";
 import { StreamProvider, useStreamContext } from "./context.js";
+import { ThreadCacheProvider } from "./thread-cache.js";
 import { fakeServer } from "./test-client.js";
 import type { StreamSubmitOptions } from "./types.js";
 
@@ -32,6 +33,35 @@ it("keeps a loaded message's instance while a run streams", async () => {
 
   await expect.poll(() => result.current.messages.length).toBe(3);
   expect(result.current.messages[0]).toBe(earlier);
+});
+
+it("renders a thread its ThreadCacheProvider holds on the first render, before reading it again", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "earlier")] } });
+  const shown: string[] = [];
+  function Thread() {
+    const stream = useStream({ assistantId: "agent", client: server.client, threadId: "t1" });
+    const text = stream.isThreadLoading ? "loading" : `${stream.messages.length} message`;
+    shown.push(text);
+    return <span>{text}</span>;
+  }
+  const screen = await render(
+    <ThreadCacheProvider>
+      <Thread key="first" />
+    </ThreadCacheProvider>
+  );
+  await expect.poll(() => screen.container.textContent).toBe("1 message");
+
+  shown.length = 0;
+  await screen.rerender(
+    <ThreadCacheProvider>
+      <Thread key="again" />
+    </ThreadCacheProvider>
+  );
+
+  expect(shown[0]).toBe("1 message");
+  await expect
+    .poll(() => server.calls.filter((call) => call === "getState t1"))
+    .toHaveLength(2);
 });
 
 it("reads the thread once under StrictMode", async () => {

@@ -14,6 +14,7 @@ import {
   type StreamOrchestratorOptions,
 } from "./orchestrator.js";
 import type { AnyStreamOptions } from "./types.js";
+import { ThreadCache } from "./thread-cache.js";
 import { Client } from "../client.js";
 import type { HeadlessToolImplementation } from "../headless-tools.js";
 import { HumanMessage } from "@langchain/core/messages";
@@ -4372,6 +4373,376 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.messages).toEqual([]);
       expect(orch.error).toBeUndefined();
       expect(client.runs.list).toHaveBeenCalledTimes(lookups);
+      orch.dispose();
+    });
+  });
+
+  describe("threadCache", () => {
+    const cache = new ThreadCache();
+    beforeEach(() => cache.clear());
+
+    const head = (checkpointId: string, ids: string[]) => ({
+      ...createThreadState({ messages: ids.map(message) }),
+      checkpoint: {
+        thread_id: "t1",
+        checkpoint_id: checkpointId,
+        checkpoint_ns: "",
+        checkpoint_map: null,
+      },
+    });
+
+    const paused = (
+      interrupts: Array<{ id: string; value: unknown }>,
+      error: string | null = null
+    ) => ({
+      ...head("cp1", ["m1"]),
+      next: ["tools"],
+      tasks: [{ id: "task-1", name: "tools", error, interrupts }],
+    });
+
+    /** Serves `server()` as the thread's state, each read held until `gate`. */
+    function serve(
+      server: () => Record<string, unknown> | Error,
+      gate?: Promise<void>
+    ) {
+      (client.threads.getState as Mock)
+        .mockClear()
+        .mockImplementation(async () => {
+          await gate;
+          const state = server();
+          if (state instanceof Error) throw state;
+          return state;
+        });
+    }
+
+    async function visit(
+      options?: Partial<StreamOrchestratorOptions<TestState>>
+    ) {
+      const orch = orchestrator({ threadCache: cache, ...options });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.dispose();
+    }
+
+    it("shows a thread opened again at once, then what its read finds", async () => {
+      serve(() => head("cp1", ["m1", "m2"]));
+      await visit();
+      const read = deferred();
+      serve(() => head("cp2", ["m1", "m3"]), read.promise);
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+
+      expect(orch.isThreadLoading).toBe(false);
+      expect(orch.messages).toEqual([message("m1"), message("m2")]);
+      read.resolve();
+      await orch.hydrationPromise;
+      expect(orch.messages).toEqual([message("m1"), message("m3")]);
+      expect(client.threads.getState).toHaveBeenCalledTimes(1);
+      orch.dispose();
+    });
+
+    it("shows no interrupt and runs no tool call of the cached head, which a run elsewhere answered since", async () => {
+      const execute = vi.fn().mockResolvedValue("sunny");
+      serve(() =>
+        paused([
+          {
+            id: "int-1",
+            value: {
+              type: "tool",
+              toolCall: { id: "call-1", name: "get_weather", args: {} },
+            },
+          },
+          { id: "int-2", value: { question: "approve?" } },
+        ])
+      );
+      await visit({ tools: [] });
+      const read = deferred();
+      serve(() => head("cp2", ["m1", "m2"]), read.promise);
+
+      const orch = orchestrator({
+        threadCache: cache,
+        tools: [{ tool: { name: "get_weather" }, execute }],
+      });
+      orch.initThreadId("t1");
+      await flushMicrotasks(20);
+      expect(orch.messages).toEqual([message("m1")]);
+      expect(orch.interrupts).toEqual([]);
+      read.resolve();
+      await orch.hydrationPromise;
+      await flushMicrotasks(20);
+
+      expect(orch.messages).toEqual([message("m1"), message("m2")]);
+      expect(orch.interrupts).toEqual([]);
+      expect(execute).not.toHaveBeenCalled();
+      orch.dispose();
+    });
+
+    it("shows the cached head's interrupt once the load finds it still waiting and no run going", async () => {
+      const waiting = paused([{ id: "int-1", value: { question: "approve?" } }]);
+      serve(() => waiting);
+      await visit();
+      const lookup = deferred();
+      lookupUntil(lookup.promise);
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await stateRead(orch);
+      expect(orch.interrupts).toEqual([]);
+      lookup.resolve();
+      await orch.hydrationPromise;
+
+      expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual([
+        "int-1",
+      ]);
+      orch.dispose();
+    });
+
+    it("keeps the cached head unconfirmed when a stream begun during the load ends before its read", async () => {
+      serve(() => paused([{ id: "int-1", value: { question: "approve?" } }]));
+      await visit();
+      const read = deferred();
+      serve(() => head("cp2", ["m1", "m2"]), read.promise);
+      (client.runs.joinStream as Mock).mockImplementation(() => ({
+        [Symbol.asyncIterator]: () => ({
+          next: () =>
+            Promise.reject(Object.assign(new Error("HTTP 404"), { status: 404 })),
+        }),
+      }));
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.joinStream("stale").catch(() => undefined);
+      await flushMicrotasks(20);
+      expect(orch.interrupts).toEqual([]);
+      read.resolve();
+      await orch.hydrationPromise;
+
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
+    it("hides a task error of the cached head until the read shows it still failed", async () => {
+      const failed = paused([], "boom");
+      serve(() => failed);
+      await visit();
+      const read = deferred();
+      serve(() => failed, read.promise);
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      expect(orch.error).toBeUndefined();
+      read.resolve();
+      await orch.hydrationPromise;
+
+      expect(orch.error).toBe("boom");
+      orch.dispose();
+    });
+
+    it("joins a run started since from the checkpoint it read, not the cached one", async () => {
+      serve(() => head("cp1", ["m1"]));
+      await visit();
+      serve(() => head("cp2", ["m1", "m2"]));
+      listRuns([{ run_id: "run-9" }]);
+      mockJoinStream([], Promise.resolve());
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+
+      expect(client.runs.joinStream).toHaveBeenCalledExactlyOnceWith(
+        "t1",
+        "run-9",
+        expect.objectContaining({ checkpointId: "cp2" })
+      );
+      orch.dispose();
+    });
+
+    it("rebuilds the subagents of a cached thread once its read lands", async () => {
+      serve(() => ({
+        ...head("cp1", []),
+        values: createSubagentStateValues(),
+      }));
+      const options = {
+        threadCache: cache,
+        filterSubagentMessages: true,
+        subagentToolNames: ["task"],
+      };
+      await visit(options);
+
+      const orch = orchestrator(options);
+      orch.initThreadId("t1");
+      // As a binding does on its first render, while the load runs.
+      orch.reconstructSubagentsIfNeeded();
+      await orch.hydrationPromise;
+
+      expect([...orch.subagents.keys()]).toEqual(["task-1"]);
+      orch.dispose();
+    });
+
+    it.each([403, 404])(
+      "a read refused with %i takes the cached thread off the screen and out of the cache",
+      async (status) => {
+        serve(() => head("cp1", ["m1"]));
+        await visit();
+        serve(() => Object.assign(new Error(`HTTP ${status}`), { status }));
+
+        const orch = orchestrator({ threadCache: cache });
+        orch.initThreadId("t1");
+        expect(orch.messages).toEqual([message("m1")]);
+        await orch.hydrationPromise;
+
+        expect(orch.messages).toEqual([]);
+        expect(cache.bytes).toBe(0);
+        orch.dispose();
+      }
+    );
+
+    it("a failed hydrate() during a cached load takes the cached thread off the screen, running none of its tool calls", async () => {
+      const execute = vi.fn().mockResolvedValue("sunny");
+      serve(() =>
+        paused([
+          {
+            id: "int-1",
+            value: {
+              type: "tool",
+              toolCall: { id: "call-1", name: "get_weather", args: {} },
+            },
+          },
+        ])
+      );
+      await visit({ tools: [] });
+      const first = deferred();
+      (client.threads.getState as Mock)
+        .mockReset()
+        .mockImplementationOnce(() => first.promise.then(() => head("cp1", ["m1"])))
+        .mockRejectedValueOnce(Object.assign(new Error("HTTP 503"), { status: 503 }));
+
+      const orch = orchestrator({
+        threadCache: cache,
+        tools: [{ tool: { name: "get_weather" }, execute }],
+      });
+      orch.initThreadId("t1");
+      await orch.hydrate();
+      await flushMicrotasks(20);
+
+      expect(orch.messages).toEqual([]);
+      expect(execute).not.toHaveBeenCalled();
+      first.resolve();
+      await orch.hydrationPromise;
+      orch.dispose();
+    });
+
+    it("stores nothing a stream reads once it is disposed", async () => {
+      serve(() => head("cp1", ["m1"]));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      cache.clear();
+      orch.dispose();
+
+      await orch.hydrate();
+
+      expect(cache.bytes).toBe(0);
+    });
+
+    it("keeps a read that lands after the cache was cleared out of it", async () => {
+      serve(() => head("cp1", ["m1"]));
+      await visit();
+      const read = deferred();
+      serve(() => head("cp2", ["m1", "m2"]), read.promise);
+
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      cache.clear();
+      read.resolve();
+      await orch.hydrationPromise;
+
+      expect(cache.bytes).toBe(0);
+      orch.dispose();
+    });
+
+    it("drops a thread from the cache while a run streams on it, and keeps the read after the run", async () => {
+      serve(() => head("cp1", ["m1"]));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      const ended = deferred();
+      mockJoinStream([], ended.promise);
+
+      const joined = orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      expect(cache.bytes).toBe(0);
+      serve(() => head("cp2", ["m1", "m2"]));
+      ended.resolve();
+      await joined;
+      orch.dispose();
+
+      const again = orchestrator({ threadCache: cache });
+      again.initThreadId("t1");
+      expect(again.messages).toEqual([message("m1"), message("m2")]);
+      again.dispose();
+    });
+
+    it("keeps a read out of the cache when a run began while it was in flight", async () => {
+      const read = deferred();
+      serve(() => head("cp1", ["m1"]), read.promise);
+      mockJoinStream([], new Promise(() => {}));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+
+      void orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+      read.resolve();
+      await orch.hydrationPromise;
+
+      expect(cache.bytes).toBe(0);
+      orch.dispose();
+    });
+
+    it("keeps a read begun while a run streams out of the cache", async () => {
+      serve(() => head("cp1", ["m1"]));
+      const orch = orchestrator({ threadCache: cache });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      mockJoinStream([], new Promise(() => {}));
+      void orch.joinStream("run-1");
+      await vi.waitFor(() => expect(orch.isLoading).toBe(true));
+
+      await orch.hydrate();
+
+      expect(cache.bytes).toBe(0);
+      orch.dispose();
+    });
+
+    it("keeps the reads of engines that load other state keys or history apart", async () => {
+      serve(() => head("cp1", ["m1"]));
+      await visit({ stateKeys: [] });
+
+      for (const options of [{}, { stateKeys: [], fetchStateHistory: true }]) {
+        const orch = orchestrator({ threadCache: cache, ...options });
+        orch.initThreadId("t1");
+        expect(orch.isThreadLoading).toBe(true);
+        orch.dispose();
+      }
+    });
+
+    it("with history, shows the cached thread and reads the history again", async () => {
+      (client.threads.getHistory as Mock).mockResolvedValue([
+        head("cp1", ["m1"]),
+      ]);
+      await visit({ fetchStateHistory: true });
+      (client.threads.getHistory as Mock)
+        .mockClear()
+        .mockResolvedValue([head("cp2", ["m1", "m2"])]);
+
+      const orch = orchestrator({ threadCache: cache, fetchStateHistory: true });
+      orch.initThreadId("t1");
+      expect(orch.messages).toEqual([message("m1")]);
+      await orch.hydrationPromise;
+
+      expect(orch.messages).toEqual([message("m1"), message("m2")]);
+      expect(client.threads.getHistory).toHaveBeenCalledTimes(1);
       orch.dispose();
     });
   });

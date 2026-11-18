@@ -51,6 +51,7 @@ import {
   stateKeysOf,
   type StateKeys,
 } from "./state-keys.js";
+import type { ThreadCache } from "./thread-cache.js";
 import {
   applyStopRead,
   hasPendingNodes,
@@ -419,6 +420,16 @@ export type StreamOrchestratorOptions<
      * Subagent and subgraph scopes are not narrowed.
      */
     stateKeys?: readonly (keyof StateType & string)[];
+
+    /**
+     * Where thread reads are kept. Opening a thread it holds shows the states
+     * last read at once, as a head no read has confirmed: its interrupts and
+     * task errors stay hidden and its tool calls don't run until the thread's
+     * load has read it again and looked for a running run. A read that fails
+     * takes them off the screen and out of the cache, and a run that starts
+     * on a thread takes it out until a read after the run.
+     */
+    threadCache?: ThreadCache;
   };
 
 /** Options of {@link StreamOrchestrator.respond} and {@link StreamOrchestrator.respondAll}. */
@@ -570,6 +581,11 @@ export class StreamOrchestrator<
   #heldTools: ThreadState<StateType> | undefined;
 
   #watch: { threadId: string; controller: AbortController } | undefined;
+
+  /** States shown from `threadCache` that no read has replaced yet. */
+  #cachedShown: ThreadState<StateType>[] | undefined;
+
+  #runStarts = 0;
 
   /** Where the current thread's watcher resumes. */
   #watchCursor: { lastEventId?: string } = {};
@@ -838,12 +854,20 @@ export class StreamOrchestrator<
         mutate: this.#mutate,
       };
       this.#notify();
-      const read = this.#mutate(threadId);
+      const cached = this.#options.threadCache?.get<StateType>(
+        this.#cacheKey(threadId)
+      );
+      const read = this.#mutate(threadId, {}, cached);
       const lookups: RunLookups = {};
       this.#joinEarly(threadId, read, lookups);
       this.#startLoad(
         read.then((states) => this.#joinActiveRun(threadId, states, lookups))
       );
+      if (cached != null) {
+        this.#cachedShown = cached;
+        this.#history = { ...this.#history, data: cached };
+        this.#notify();
+      }
     } else {
       this.#history = {
         data: undefined,
@@ -884,14 +908,22 @@ export class StreamOrchestrator<
    * The head shown came from a thread load that hasn't ruled out a run still
    * going on it, so its `next` and interrupts may be that run's. The head
    * shown when the load began stays trusted, and a stream begun since then
-   * reads its own head.
+   * reads its own head. A head from the cache stays in doubt until a read
+   * replaces it, also once such a stream has ended.
    */
   #unconfirmedHead(): boolean {
+    if (this.#showsCached()) return true;
     const load = this.#load;
     return (
       load != null &&
       load.epoch === this.stream.epoch &&
       this.#headId() !== load.shownBefore
+    );
+  }
+
+  #showsCached(): boolean {
+    return (
+      this.#cachedShown != null && this.#history.data === this.#cachedShown
     );
   }
 
@@ -1070,12 +1102,18 @@ export class StreamOrchestrator<
 
   async #mutate(
     mutateId?: string,
-    readOptions: HistoryReadOptions<StateType> = {}
+    readOptions: HistoryReadOptions<StateType> = {},
+    cached?: ThreadState<StateType>[]
   ): Promise<ThreadState<StateType>[] | undefined> {
     const tid = mutateId ?? this.#threadId;
     if (!tid) return undefined;
     const idle = !this.stream.isLoading;
     const epoch = this.stream.epoch;
+    const cache = this.#options.threadCache;
+    const cacheKey = this.#cacheKey(tid);
+    // A read begun before the cache was cleared, as at a sign-out, stays out.
+    const generation = cache?.generation;
+    const runStarts = this.#runStarts;
     try {
       // Narrowed here too, for a server that ignores `select`.
       const fetched = pickKeysOfStates(
@@ -1085,6 +1123,16 @@ export class StreamOrchestrator<
         }),
         this.#stateKeys?.kept
       );
+      // A torn-down stream may still read with the client of a user who
+      // left, and a read begun during a run, or before one began, misses some
+      // of that run.
+      if (
+        !this.#disposed &&
+        (idle || readOptions.afterRun) &&
+        runStarts === this.#runStarts
+      ) {
+        cache?.set(cacheKey, fetched, generation);
+      }
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
       if (tid !== this.#threadId) return data;
@@ -1102,9 +1150,14 @@ export class StreamOrchestrator<
       if (idle && epoch === this.stream.epoch && !this.#unconfirmedHead()) {
         this.#flushHeadToolCalls(data?.at(0));
       }
+      // Subagents are rebuilt from the messages once they're loaded. A
+      // binding asks when the load or the message count changes, and for a
+      // thread shown from the cache neither may change as the read lands.
+      if (cached != null) this.reconstructSubagentsIfNeeded();
       this.#notify();
       return data;
     } catch (err) {
+      cache?.delete(cacheKey);
       if (tid !== this.#threadId || readOptions.quiet) return undefined;
       // An id the app minted before its thread exists, or a deleted thread's.
       if ((err as { status?: unknown } | null)?.status === 404) {
@@ -1120,12 +1173,31 @@ export class StreamOrchestrator<
       }
       this.#history = {
         ...this.#history,
+        // No read confirmed what the cache shows, also when access was lost.
+        ...(this.#showsCached() ? { data: undefined } : {}),
         error: err,
         isLoading: false,
       };
       this.#notify();
       this.#options.onError?.(err, undefined);
       return undefined;
+    }
+  }
+
+  /** Engines that read other `stateKeys` or history keep their reads apart. */
+  #cacheKey(threadId: string): string {
+    return [
+      threadId,
+      String(this.historyLimit),
+      ...(this.#stateKeys?.select ?? []),
+    ].join(" ");
+  }
+
+  /** What the cache holds of a thread is out of date once a run begins on it. */
+  #runStarted(threadId: string | null | undefined): void {
+    this.#runStarts += 1;
+    if (threadId != null) {
+      this.#options.threadCache?.delete(this.#cacheKey(threadId));
     }
   }
 
@@ -1145,7 +1217,9 @@ export class StreamOrchestrator<
       streamedValues
     );
     if (read && threadId) {
-      const lastHead = (await this.#mutate(threadId, read))?.at(0);
+      const lastHead = (
+        await this.#mutate(threadId, { ...read, afterRun: true })
+      )?.at(0);
       if (lastHead) {
         // The read can land after a thread switch, and a resume goes to the
         // current thread.
@@ -1233,6 +1307,8 @@ export class StreamOrchestrator<
    * {@link StreamError}.
    */
   get historyError(): unknown {
+    // A cached head's error may be one a later run cleared.
+    if (this.#showsCached()) return undefined;
     const error: unknown = this.branchContext.threadHead?.tasks?.at(-1)?.error;
     if (error == null) return undefined;
     try {
@@ -2001,6 +2077,7 @@ export class StreamOrchestrator<
     this.#dropHeld();
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
+        this.#runStarted(tid);
         run.signal = signal;
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
@@ -2170,6 +2247,7 @@ export class StreamOrchestrator<
         releaseStream = holdStream();
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
+        this.#runStarted(usableThreadId);
         // Only the thread's load tells whether it exists yet.
         if (usableThreadId && this.#history.isLoading) await this.#hydration;
         // A stop or thread switch came meanwhile, so its input must not show.

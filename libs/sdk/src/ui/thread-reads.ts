@@ -12,6 +12,8 @@ export type HistoryReadOptions<
   quiet?: boolean;
   /** Changes the states read before they are shown. */
   map?: (states: ThreadState<StateType>[]) => ThreadState<StateType>[];
+  /** The read after a run ended, made before its stream counts as done. */
+  afterRun?: boolean;
 };
 
 /** Whether the state has nodes still to run, as at a breakpoint. */
