@@ -3145,6 +3145,7 @@ describe("StreamOrchestrator runs", () => {
       expect(client.runs.list).toHaveBeenCalledWith("t1", {
         status: "running",
         limit: 1,
+        select: ["run_id", "kwargs"],
         signal: expect.any(AbortSignal),
       });
       expect(client.runs.joinStream).toHaveBeenCalledExactlyOnceWith(
@@ -4113,6 +4114,51 @@ describe("StreamOrchestrator runs", () => {
         expect(orch.pendingRuns.entries.map((entry) => entry.id)).toEqual([
           "run-p1",
         ]);
+        orch.dispose();
+      });
+
+      it("asks for only the id and kwargs of the running run, in the lookup sent with the read and the one after it", async () => {
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+        });
+        land();
+        answer();
+        await orch.hydrationPromise;
+
+        const running = (client.runs.list as Mock).mock.calls.filter(
+          ([, query]) => query.status === "running"
+        );
+        expect(running.map(([, query]) => query.select)).toEqual([
+          ["run_id", "kwargs"],
+          ["run_id", "kwargs"],
+        ]);
+        ended.resolve();
+        orch.dispose();
+      });
+
+      it("does not open and abort a thread watcher when the early lookup found a running run", async () => {
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        const threadStreams = vi.fn(() => openUntil(new AbortController().signal));
+        (client.threads as unknown as Record<string, unknown>).joinStream =
+          threadStreams;
+
+        const { orch, land, answer } = open({
+          withRead: [going],
+          afterRead: [going],
+        });
+        await flushMicrotasks(10);
+        land();
+        answer();
+        await orch.hydrationPromise;
+        await flushMicrotasks(20);
+
+        expect(joined()).toEqual(["run-9"]);
+        expect(threadStreams).not.toHaveBeenCalled();
+        ended.resolve();
         orch.dispose();
       });
 

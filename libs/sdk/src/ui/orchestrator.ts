@@ -175,6 +175,9 @@ function streamsV3(run: Run | undefined): boolean {
 
 const V3_READABLE_EVENTS = new Set(["metadata", "error", "end"]);
 
+/** Fields of a running run a thread load reads to join it and pick its modes. */
+const RUNNING_RUN_SELECT: RunSelectField[] = ["run_id", "kwargs"];
+
 /** Run events that only servers with `stream_lifecycle` send on run routes. */
 const RUN_EVENT_MODES: readonly StreamMode[] = ["lifecycle", "tools"];
 
@@ -452,7 +455,12 @@ export interface RespondOptions<
  * the join the one sent with the read holds for `activate()`, which the
  * later one drops when it finds no run going.
  */
-type RunLookups = { joined?: string; settled?: boolean; held?: () => void };
+type RunLookups = {
+  joined?: string;
+  settled?: boolean;
+  held?: () => void;
+  earlyRuns?: Run[];
+};
 
 /**
  * Framework-agnostic orchestrator for LangGraph Platform streams.
@@ -535,6 +543,8 @@ export class StreamOrchestrator<
   #load:
     | { shownBefore: string | undefined; epoch: number; idle: boolean }
     | undefined;
+
+  #startingJoins = 0;
 
   #pendingDispose: ReturnType<typeof setTimeout> | undefined;
 
@@ -859,9 +869,30 @@ export class StreamOrchestrator<
       const cached = this.#options.threadCache?.get<StateType>(
         this.#cacheKey(threadId)
       );
-      const read = this.#mutate(threadId, {}, cached);
       const lookups: RunLookups = {};
-      this.#joinEarly(threadId, read, lookups);
+      const running = this.#startEarlyLookup(threadId, lookups);
+      const read = this.#mutate(
+        threadId,
+        {
+          onRead: (states) => {
+            if (lookups.earlyRuns != null) {
+              this.#applyEarlyJoin(
+                threadId,
+                states,
+                lookups,
+                lookups.earlyRuns,
+                false
+              );
+            }
+          },
+        },
+        cached
+      );
+      if (running != null) {
+        void Promise.all([read, running]).then(([states, runs]) => {
+          this.#applyEarlyJoin(threadId, states, lookups, runs, true);
+        });
+      }
       this.#startLoad(
         read.then((states) => this.#joinActiveRun(threadId, states, lookups))
       );
@@ -944,35 +975,51 @@ export class StreamOrchestrator<
    * {@link activate}, since bindings start the load during a render: the
    * join is then held for it, as the later lookup holds its own.
    */
-  #joinEarly(
+  #startEarlyLookup(
     threadId: string,
-    read: Promise<ThreadState<StateType>[] | undefined>,
     lookups: RunLookups
-  ): void {
-    if (!this.#durable || this.#missingThreads.has(threadId)) return;
-    const running = this.#listRuns(threadId, { status: "running", limit: 1 });
-    void Promise.all([read, running]).then(([states, runs]) => {
-      const run = runs?.at(0);
-      if (
-        run == null ||
-        lookups.settled ||
-        run.run_id === lookups.joined ||
-        states == null ||
-        threadId !== this.#threadId ||
-        this.#missingThreads.has(threadId)
-      ) {
-        return;
-      }
-      lookups.joined = run.run_id;
-      const join = () => void this.#joinFound(run, states.at(0));
-      if (this.#active) {
-        join();
-      } else {
-        lookups.held = join;
-        this.#heldJoin = join;
-        this.#notify();
-      }
+  ): Promise<Run[] | undefined> | undefined {
+    if (!this.#durable || this.#missingThreads.has(threadId)) return undefined;
+    return this.#listRuns(threadId, {
+      status: "running",
+      limit: 1,
+      select: RUNNING_RUN_SELECT,
+    }).then((runs) => {
+      lookups.earlyRuns = runs ?? [];
+      return runs;
     });
+  }
+
+  #applyEarlyJoin(
+    threadId: string,
+    states: ThreadState<StateType>[] | undefined,
+    lookups: RunLookups,
+    runs: Run[] | undefined,
+    notifyOnHold: boolean
+  ): void {
+    const run = runs?.at(0);
+    if (
+      run == null ||
+      lookups.settled ||
+      run.run_id === lookups.joined ||
+      states == null ||
+      threadId !== this.#threadId ||
+      this.#missingThreads.has(threadId)
+    ) {
+      return;
+    }
+    lookups.joined = run.run_id;
+    const join = () => {
+      lookups.held = undefined;
+      void this.#joinFound(run, states.at(0));
+    };
+    if (this.#active) {
+      join();
+    } else {
+      lookups.held = join;
+      this.#heldJoin = join;
+      if (notifyOnHold) this.#notify();
+    }
   }
 
   /** Joins a run a thread load found, from the head it read. */
@@ -1025,7 +1072,11 @@ export class StreamOrchestrator<
       return;
     }
     const [runs, pending] = await Promise.all([
-      this.#listRuns(threadId, { status: "running", limit: 1 }),
+      this.#listRuns(threadId, {
+        status: "running",
+        limit: 1,
+        select: RUNNING_RUN_SELECT,
+      }),
       this.#options.queue === "local"
         ? undefined
         : this.#listRuns(threadId, {
@@ -1172,6 +1223,7 @@ export class StreamOrchestrator<
       // binding asks when the load or the message count changes, and for a
       // thread shown from the cache neither may change as the read lands.
       if (cached != null) this.reconstructSubagentsIfNeeded();
+      readOptions.onRead?.(data);
       this.#notify();
       return data;
     } catch (err) {
@@ -1376,7 +1428,9 @@ export class StreamOrchestrator<
    * found a running run that the first {@link activate} joins.
    */
   get isLoading(): boolean {
-    return this.stream.isLoading || this.#heldJoin != null;
+    return (
+      this.stream.isLoading || this.#startingJoins > 0 || this.#heldJoin != null
+    );
   }
 
   /**
@@ -2091,10 +2145,18 @@ export class StreamOrchestrator<
     let sentValues = false;
 
     let releaseStream: (() => void) | undefined;
+    let countedStarting = true;
+    this.#startingJoins += 1;
+    const clearStarting = () => {
+      if (!countedStarting) return;
+      countedStarting = false;
+      this.#startingJoins -= 1;
+    };
     const run: LiveRun = { promise: Promise.resolve() };
     this.#dropHeld();
     run.promise = this.stream.start(
       async (signal: AbortSignal) => {
+        clearStarting();
         this.#runStarted(tid);
         run.signal = signal;
         releaseStream = holdStream();
@@ -2172,6 +2234,7 @@ export class StreamOrchestrator<
     try {
       await run.promise;
     } finally {
+      clearStarting();
       if (this.#liveRuns.get(runId) === run) this.#liveRuns.delete(runId);
     }
   }
