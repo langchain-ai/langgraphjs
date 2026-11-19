@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { type AuthContext, registerAuth } from "../src/auth/index.mjs";
+import meta from "../src/api/meta.mjs";
 import { getAssistantId, registerFromEnv } from "../src/graph/load.mjs";
 import { logger } from "../src/logging.mjs";
 import { queue } from "../src/queue.mjs";
@@ -29,6 +30,7 @@ beforeAll(() =>
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
   await cleanup?.();
   cleanup = undefined;
@@ -114,6 +116,49 @@ async function runOnce(
   await whileHeld?.();
   await worker.next();
 }
+
+it("advertises run tracing sessions in /info", async () => {
+  const response = await meta.request("/info");
+  expect(await response.json()).toMatchObject({
+    flags: { langsmith_tracing_session_on_runs: true },
+  });
+});
+
+it.each([
+  ["true", "project", "legacy", undefined, "project"],
+  ["true", undefined, "legacy", undefined, "legacy"],
+  ["true", undefined, undefined, undefined, "default"],
+  ["false", "project", undefined, undefined, null],
+  ["true", "project", undefined, "override", "override"],
+  ["false", "project", undefined, "override", "override"],
+])(
+  "persists the tracing session (tracing=%s, project=%s, legacy=%s, override=%s)",
+  async (tracing, project, legacy, override, expected) => {
+    for (const key of [
+      "LANGSMITH_TRACING_V2",
+      "LANGCHAIN_TRACING_V2",
+      "LANGCHAIN_TRACING",
+    ]) {
+      vi.stubEnv(key, undefined);
+    }
+    vi.stubEnv("LANGSMITH_TRACING", tracing);
+    vi.stubEnv("LANGSMITH_PROJECT", project);
+    vi.stubEnv("LANGCHAIN_PROJECT", legacy);
+    vi.stubEnv("LANGCHAIN_SESSION", undefined);
+
+    const { ops, createRun } = await openOps();
+    const run = await createRun({
+      config: { configurable: { langsmith_project: override } },
+    });
+    expect(run.langsmith_session_name).toBe(expected);
+
+    vi.stubEnv("LANGSMITH_PROJECT", "changed-project");
+    expect(
+      (await ops.runs.get(run.run_id, run.thread_id, undefined))
+        ?.langsmith_session_name
+    ).toBe(expected);
+  }
+);
 
 it("picks up later runs after a thread is deleted under its running run", async () => {
   const errors = vi.spyOn(logger, "error").mockImplementation(() => logger);

@@ -65,6 +65,7 @@ describe("persist", () => {
               thread_id: "thread",
               assistant_id: "agent",
               status: "running",
+              langsmith_session_name: "saved-project",
               metadata: {},
               kwargs: {},
               multitask_strategy: "reject",
@@ -94,9 +95,10 @@ describe("persist", () => {
       });
 
       expect(await gatherIterator(ops.runs.next())).toEqual([]);
-      expect((await ops.runs.get("run", "thread", undefined))?.status).toBe(
-        "running"
-      );
+      expect(await ops.runs.get("run", "thread", undefined)).toMatchObject({
+        status: "running",
+        langsmith_session_name: "saved-project",
+      });
 
       await claims.return(undefined);
     } finally {
