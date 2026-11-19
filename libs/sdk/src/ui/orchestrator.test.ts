@@ -3145,6 +3145,7 @@ describe("StreamOrchestrator runs", () => {
       expect(client.runs.list).toHaveBeenCalledWith("t1", {
         status: "running",
         limit: 1,
+        select: ["run_id", "kwargs"],
         signal: expect.any(AbortSignal),
       });
       expect(client.runs.joinStream).toHaveBeenCalledExactlyOnceWith(
@@ -4085,7 +4086,7 @@ describe("StreamOrchestrator runs", () => {
         orch.dispose();
       });
 
-      it("keeps the server's queued run queued while the run the lookup after the read found waits for the first join to end", async () => {
+      it("keeps the server's queued run queued while a second join waits for the first join to end", async () => {
         const firstEnds = deferred();
         (client.runs.joinStream as Mock).mockImplementation(
           (_threadId: string, runId: string, payload: RunsStreamPayload) => ({
@@ -4098,11 +4099,12 @@ describe("StreamOrchestrator runs", () => {
         );
         const { orch, land, answer } = open({
           withRead: [going],
-          afterRead: [{ run_id: "run-10" }],
+          afterRead: [],
           pending: [queued],
         });
         land();
         await vi.waitFor(() => expect(joined()).toEqual(["run-9"]));
+        void orch.joinStream("run-10");
         answer();
         await orch.hydrationPromise;
 
@@ -4113,6 +4115,60 @@ describe("StreamOrchestrator runs", () => {
         expect(orch.pendingRuns.entries.map((entry) => entry.id)).toEqual([
           "run-p1",
         ]);
+        orch.dispose();
+      });
+
+      it("skips the second running lookup once the early lookup joins a run, and keeps it when nothing was joined", async () => {
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        const first = open({ withRead: [going], afterRead: [going] });
+        first.land();
+        await first.orch.hydrationPromise;
+        const runningCallsWhenJoined = (
+          client.runs.list as Mock
+        ).mock.calls.filter(([, q]) => q.status === "running");
+        expect(runningCallsWhenJoined).toEqual([
+          [
+            "t1",
+            {
+              status: "running",
+              limit: 1,
+              select: ["run_id", "kwargs"],
+              signal: expect.any(AbortSignal),
+            },
+          ],
+        ]);
+        ended.resolve();
+        first.orch.dispose();
+
+        (client.runs.list as Mock).mockClear();
+        const idle = open({ withRead: [], afterRead: [] });
+        idle.land();
+        idle.answer();
+        await idle.orch.hydrationPromise;
+        const runningCallsWhenIdle = (
+          client.runs.list as Mock
+        ).mock.calls.filter(([, q]) => q.status === "running");
+        expect(runningCallsWhenIdle).toHaveLength(2);
+        idle.orch.dispose();
+      });
+
+      it("does not open and abort a thread watcher when the early lookup found a running run", async () => {
+        const ended = deferred();
+        mockJoinStream([], ended.promise);
+        const threadStreams = vi.fn(() => openUntil(new AbortController().signal));
+        (client.threads as unknown as Record<string, unknown>).joinStream =
+          threadStreams;
+
+        const { orch, land } = open({ withRead: [going], afterRead: [going] });
+        await flushMicrotasks(10);
+        land();
+        await orch.hydrationPromise;
+        await flushMicrotasks(20);
+
+        expect(joined()).toEqual(["run-9"]);
+        expect(threadStreams).not.toHaveBeenCalled();
+        ended.resolve();
         orch.dispose();
       });
 
