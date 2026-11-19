@@ -1071,15 +1071,12 @@ export class StreamOrchestrator<
     ) {
       return;
     }
-    const alreadyJoined = lookups.joined != null && lookups.held == null;
     const [runs, pending] = await Promise.all([
-      alreadyJoined
-        ? undefined
-        : this.#listRuns(threadId, {
-            status: "running",
-            limit: 1,
-            select: RUNNING_RUN_SELECT,
-          }),
+      this.#listRuns(threadId, {
+        status: "running",
+        limit: 1,
+        select: RUNNING_RUN_SELECT,
+      }),
       this.#options.queue === "local"
         ? undefined
         : this.#listRuns(threadId, {
@@ -1091,10 +1088,6 @@ export class StreamOrchestrator<
     lookups.settled = true;
     if (threadId !== this.#threadId) return;
     if (pending != null) this.#queueListedRuns(pending);
-    if (alreadyJoined) {
-      if (this.#active) this.#drainQueue();
-      return;
-    }
     if (runs == null) return;
     const head = states.at(0);
     const run = runs.at(0);
