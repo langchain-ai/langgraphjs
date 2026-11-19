@@ -94,12 +94,15 @@ api.get(
   zValidator("param", z.object({ thread_id: z.string().uuid() })),
   zValidator(
     "query",
-    z.object({ subgraphs: schemas.coercedBoolean.optional() })
+    z.object({
+      subgraphs: schemas.coercedBoolean.optional(),
+      select: schemas.ThreadStateSelectQuery,
+    })
   ),
   async (c) => {
     // Get Latest Thread State
     const { thread_id } = c.req.valid("param");
-    const { subgraphs } = c.req.valid("query");
+    const { subgraphs, select } = c.req.valid("query");
 
     const state = stateSnapshotToThreadState(
       await threads().state.get(
@@ -109,7 +112,7 @@ api.get(
       )
     );
 
-    return jsonExtra(c, state);
+    return jsonExtra(c, selectThreadState(state, select));
   }
 );
 
@@ -154,12 +157,15 @@ api.get(
   ),
   zValidator(
     "query",
-    z.object({ subgraphs: schemas.coercedBoolean.optional() })
+    z.object({
+      subgraphs: schemas.coercedBoolean.optional(),
+      select: schemas.ThreadStateSelectQuery,
+    })
   ),
   async (c) => {
     // Get Thread State At Checkpoint
     const { thread_id, checkpoint_id } = c.req.valid("param");
-    const { subgraphs } = c.req.valid("query");
+    const { subgraphs, select } = c.req.valid("query");
     const state = stateSnapshotToThreadState(
       await threads().state.get(
         { configurable: { thread_id, checkpoint_id } },
@@ -168,7 +174,7 @@ api.get(
       )
     );
 
-    return jsonExtra(c, state);
+    return jsonExtra(c, selectThreadState(state, select));
   }
 );
 
@@ -180,12 +186,13 @@ api.post(
     z.object({
       subgraphs: schemas.coercedBoolean.optional(),
       checkpoint: schemas.CheckpointSchema.nullish(),
+      select: z.array(schemas.ThreadStateSelectField).optional(),
     })
   ),
   async (c) => {
     // Get Thread State At Checkpoint Post
     const { thread_id } = c.req.valid("param");
-    const { checkpoint, subgraphs } = c.req.valid("json");
+    const { checkpoint, subgraphs, select } = c.req.valid("json");
 
     const state = stateSnapshotToThreadState(
       await threads().state.get(
@@ -195,7 +202,7 @@ api.post(
       )
     );
 
-    return jsonExtra(c, state);
+    return jsonExtra(c, selectThreadState(state, select));
   }
 );
 
@@ -211,13 +218,7 @@ api.get(
         .default("10")
         .transform((value) => parseInt(value, 10)),
       before: z.string().optional(),
-      select: z
-        .union([
-          schemas.ThreadStateSelectField,
-          z.array(schemas.ThreadStateSelectField),
-        ])
-        .optional()
-        .transform((value) => [value ?? []].flat()),
+      select: schemas.ThreadStateSelectQuery,
     })
   ),
   async (c) => {

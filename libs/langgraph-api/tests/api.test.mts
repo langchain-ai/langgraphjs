@@ -915,6 +915,64 @@ describe("threads copy", () => {
     }
   });
 
+  it.concurrent("state with select", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "agent", {
+      input: { messages: [{ type: "human", content: "foo" }] },
+      config: globalConfig,
+    });
+
+    const full = await client.threads.getState<AgentState>(thread.thread_id);
+    expect(Object.keys(full.values).length).toBeGreaterThan(1);
+
+    // Latest state (GET /threads/:thread_id/state)
+    const latest = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      undefined,
+      { select: ["values.messages", "next"] }
+    );
+    expect(latest).toEqual({
+      values: { messages: full.values.messages },
+      next: full.next,
+    });
+
+    // State at a checkpoint (POST /threads/:thread_id/state/checkpoint)
+    const atCheckpoint = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      full.checkpoint,
+      { select: ["checkpoint"] }
+    );
+    expect(atCheckpoint).toEqual({ checkpoint: full.checkpoint });
+
+    // State at a checkpoint ID (GET /threads/:thread_id/state/:checkpoint_id)
+    const atCheckpointId = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      full.checkpoint.checkpoint_id!,
+      { select: ["values.messages"] }
+    );
+    expect(atCheckpointId).toEqual({
+      values: { messages: full.values.messages },
+    });
+
+    // An empty select returns the full state.
+    expect(
+      await client.threads.getState(thread.thread_id, undefined, {
+        select: [],
+      })
+    ).toEqual(full);
+  });
+
+  it.concurrent("state rejects an invalid select field", async () => {
+    const thread = await client.threads.create();
+    for (const field of ["files", "values.", "values.a.b"]) {
+      await expect(
+        client.threads.getState(thread.thread_id, undefined, {
+          select: [field as never],
+        })
+      ).rejects.toThrow("HTTP 400");
+    }
+  });
+
   it.concurrent("copy update", async () => {
     const assistantId = "agent";
     const thread = await client.threads.create();

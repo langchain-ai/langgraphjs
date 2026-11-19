@@ -498,6 +498,12 @@ export const ThreadStateSelectField = z.union([
   z.string().regex(/^values\.[A-Za-z0-9_-]+$/),
 ]);
 
+/** `select` as a query parameter: a single field, or the field repeated. */
+export const ThreadStateSelectQuery = z
+  .union([ThreadStateSelectField, z.array(ThreadStateSelectField)])
+  .optional()
+  .transform((value) => [value ?? []].flat());
+
 export const ThreadHistoryRequest = z.object({
   limit: z.number().optional().default(10),
   before: z

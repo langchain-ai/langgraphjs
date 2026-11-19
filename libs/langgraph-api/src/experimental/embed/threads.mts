@@ -100,11 +100,14 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
     zValidator("param", z.object({ thread_id: z.string().uuid() })),
     zValidator(
       "query",
-      z.object({ subgraphs: schemas.coercedBoolean.optional() })
+      z.object({
+        subgraphs: schemas.coercedBoolean.optional(),
+        select: schemas.ThreadStateSelectQuery,
+      })
     ),
     async (c) => {
       const { thread_id } = c.req.valid("param");
-      const { subgraphs } = c.req.valid("query");
+      const { subgraphs, select } = c.req.valid("query");
 
       const thread = await context.threads.get(thread_id);
       const graphId = thread?.metadata?.graph_id as string | undefined | null;
@@ -113,21 +116,27 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
       if (graph == null) {
         return jsonExtra(
           c,
-          stateSnapshotToThreadState({
-            values: {},
-            next: [],
-            config: {},
-            metadata: undefined,
-            createdAt: undefined,
-            parentConfig: undefined,
-            tasks: [],
-          })
+          selectThreadState(
+            stateSnapshotToThreadState({
+              values: {},
+              next: [],
+              config: {},
+              metadata: undefined,
+              createdAt: undefined,
+              parentConfig: undefined,
+              tasks: [],
+            }),
+            select
+          )
         );
       }
 
       const config = { configurable: { thread_id } };
       const result = await graph.getState(config, { subgraphs });
-      return jsonExtra(c, stateSnapshotToThreadState(result));
+      return jsonExtra(
+        c,
+        selectThreadState(stateSnapshotToThreadState(result), select)
+      );
     }
   );
 
@@ -174,11 +183,14 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
     ),
     zValidator(
       "query",
-      z.object({ subgraphs: schemas.coercedBoolean.optional() })
+      z.object({
+        subgraphs: schemas.coercedBoolean.optional(),
+        select: schemas.ThreadStateSelectQuery,
+      })
     ),
     async (c) => {
       const { thread_id, checkpoint_id } = c.req.valid("param");
-      const { subgraphs } = c.req.valid("query");
+      const { subgraphs, select } = c.req.valid("query");
 
       const thread = await context.threads.get(thread_id);
       const graphId = thread?.metadata?.graph_id as string | undefined | null;
@@ -189,7 +201,10 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
         { configurable: { thread_id, checkpoint_id } },
         { subgraphs }
       );
-      return jsonExtra(c, stateSnapshotToThreadState(result));
+      return jsonExtra(
+        c,
+        selectThreadState(stateSnapshotToThreadState(result), select)
+      );
     }
   );
 
@@ -201,11 +216,12 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
       z.object({
         subgraphs: schemas.coercedBoolean.optional(),
         checkpoint: schemas.CheckpointSchema.nullish(),
+        select: z.array(schemas.ThreadStateSelectField).optional(),
       })
     ),
     async (c) => {
       const { thread_id } = c.req.valid("param");
-      const { checkpoint, subgraphs } = c.req.valid("json");
+      const { checkpoint, subgraphs, select } = c.req.valid("json");
 
       const thread = await context.threads.get(thread_id);
       const graphId = thread?.metadata?.graph_id as string | undefined | null;
@@ -216,7 +232,10 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
         { configurable: { thread_id, ...checkpoint } },
         { subgraphs }
       );
-      return jsonExtra(c, stateSnapshotToThreadState(result));
+      return jsonExtra(
+        c,
+        selectThreadState(stateSnapshotToThreadState(result), select)
+      );
     }
   );
 
