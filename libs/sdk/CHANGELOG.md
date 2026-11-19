@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.17.1-rc.3
+
+### Patch Changes
+
+- [#3416](https://github.com/langchain-ai/langgraphjs/pull/3416) [`21b60ad`](https://github.com/langchain-ai/langgraphjs/commit/21b60ad0899f408256e8ab33417a1cb13a24e2fb) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` now selects only `run_id` and `kwargs` when looking up a thread's running run on open, and avoids opening and immediately aborting the `/threads/:id/stream` watcher while joining a running run.
+
 ## 1.17.1-rc.2
 
 ### Patch Changes
