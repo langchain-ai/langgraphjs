@@ -12,6 +12,8 @@ export type HistoryReadOptions<
   quiet?: boolean;
   /** Changes the states read before they are shown. */
   map?: (states: ThreadState<StateType>[]) => ThreadState<StateType>[];
+  /** Called with the states read, right before subscribers hear of them. */
+  onRead?: (states: ThreadState<StateType>[]) => void;
   /** The read after a run ended, made before its stream counts as done. */
   afterRun?: boolean;
 };
