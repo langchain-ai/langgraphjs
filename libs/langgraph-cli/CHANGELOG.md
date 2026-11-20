@@ -1,5 +1,13 @@
 # @langchain/langgraph-cli
 
+## 1.8.2
+
+### Patch Changes
+
+- [#3414](https://github.com/langchain-ai/langgraphjs/pull/3414) [`62a57df`](https://github.com/langchain-ai/langgraphjs/commit/62a57df594f11865babe151f686205eddc1cffcb) Thanks [@raghavverma-langchain](https://github.com/raghavverma-langchain)! - `langgraphjs deploy` no longer sends an empty `secrets` list when it updates a deployment and finds no variables to send. The control plane already kept the existing variables in that case; the request now says so explicitly. Creating a deployment still sends `secrets`.
+- Updated dependencies []:
+  - @langchain/langgraph-api@1.8.2
+
 ## 1.8.1
 
 ### Patch Changes
