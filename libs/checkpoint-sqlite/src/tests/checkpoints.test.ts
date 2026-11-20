@@ -290,6 +290,25 @@ describe("SqliteSaver", () => {
     ).toBeDefined();
   });
 
+  it("should delete a thread before anything has been saved", async () => {
+    // A fresh database has no tables yet. Deleting from it must be a no-op
+    // rather than failing with "no such table: checkpoints", the way the other
+    // entry points set the schema up on first use.
+    const saver = SqliteSaver.fromConnString(":memory:");
+
+    await expect(saver.deleteThread("1")).resolves.toBeUndefined();
+
+    // The saver stays usable afterwards, and the thread really is empty.
+    await saver.put({ configurable: { thread_id: "1" } }, emptyCheckpoint(), {
+      source: "update",
+      step: -1,
+      parents: {},
+    });
+    expect(
+      await saver.getTuple({ configurable: { thread_id: "1" } })
+    ).toBeDefined();
+  });
+
   it("pending sends migration", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
 
