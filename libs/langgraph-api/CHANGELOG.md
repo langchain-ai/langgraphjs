@@ -1,5 +1,19 @@
 # @langchain/langgraph-api
 
+## 1.8.1
+
+### Patch Changes
+
+- [#3420](https://github.com/langchain-ai/langgraphjs/pull/3420) [`63ad546`](https://github.com/langchain-ai/langgraphjs/commit/63ad546c18de8a26037c2170374cdab91e845347) Thanks [@hari-dhanushkodi](https://github.com/hari-dhanushkodi)! - Expose each run's LangSmith tracing project and the session-name tracing capability so Studio can look up traces from the JavaScript dev server.
+
+- [#2744](https://github.com/langchain-ai/langgraphjs/pull/2744) [`7257a24`](https://github.com/langchain-ai/langgraphjs/commit/7257a24f7106ca8b8f5e14da6d1d72197077d6a7) Thanks [@wario2k](https://github.com/wario2k)! - fix(langgraph-api): preserve additional_kwargs in protocol state normalizer
+  
+  Forward non-empty `additional_kwargs` on values snapshot messages so
+  server-authored message metadata (e.g. committed attachment paths) reaches
+  live subscribers.
+- Updated dependencies [[`7257a24`](https://github.com/langchain-ai/langgraphjs/commit/7257a24f7106ca8b8f5e14da6d1d72197077d6a7)]:
+  - @langchain/langgraph-ui@1.8.1
+
 ## 1.8.0
 
 ### Patch Changes
