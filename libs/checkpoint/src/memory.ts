@@ -279,6 +279,8 @@ export class MemorySaver extends BaseCheckpointSaver {
       if (checkpoints !== undefined) {
         // eslint-disable-next-line prefer-destructuring
         checkpoint_id = Object.keys(checkpoints).sort().reverse()[0];
+        // A failed first serialization can leave an empty namespace.
+        if (checkpoint_id === undefined) return undefined;
         const saved = checkpoints[checkpoint_id];
         const [checkpoint, metadata, parentCheckpointId] = saved;
         const deserializedCheckpoint: Checkpoint = await this.serde.loadsTyped(
