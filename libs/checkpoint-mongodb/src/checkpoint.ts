@@ -1,4 +1,9 @@
-import { type MongoClient, type Db as MongoDatabase } from "mongodb";
+import { createHash } from "node:crypto";
+import {
+  type MongoClient,
+  type Db as MongoDatabase,
+  type Document,
+} from "mongodb";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   BaseCheckpointSaver,
@@ -8,11 +13,27 @@ import {
   type SerializerProtocol,
   type PendingWrite,
   type CheckpointMetadata,
+  type ChannelVersions,
   CheckpointPendingWrite,
   compareWritesSortKeys,
   writesSortKey,
   WRITES_IDX_MAP,
 } from "@langchain/langgraph-checkpoint";
+
+type ChannelReference = {
+  channel: string;
+  version: string | number;
+  value_hash: string;
+};
+
+function channelReferenceKey({
+  channel,
+  version,
+  value_hash,
+}: ChannelReference): string {
+  // In particular, the numeric version 1 and the string version "1" differ.
+  return JSON.stringify([channel, version, value_hash]);
+}
 
 export type MongoDBSaverParams = {
   client: MongoClient;
@@ -91,6 +112,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
   checkpointWritesCollectionName = "checkpoint_writes";
 
+  private get checkpointBlobsCollectionName() {
+    return `${this.checkpointCollectionName}_blobs`;
+  }
+
   protected enableTimestamps: boolean;
 
   protected ttl?: number;
@@ -161,6 +186,16 @@ export class MongoDBSaver extends BaseCheckpointSaver {
         },
         { name: "thread_ns_checkpoint_task_idx" }
       ),
+      this.db.collection(this.checkpointBlobsCollectionName).createIndex(
+        {
+          thread_id: 1,
+          checkpoint_ns: 1,
+          channel: 1,
+          version: 1,
+          value_hash: 1,
+        },
+        { name: "thread_ns_channel_version_idx", unique: true }
+      ),
     ];
 
     if (this.ttl != null) {
@@ -172,6 +207,9 @@ export class MongoDBSaver extends BaseCheckpointSaver {
           .createIndex(ttlIndex, options),
         this.db
           .collection(this.checkpointWritesCollectionName)
+          .createIndex(ttlIndex, options),
+        this.db
+          .collection(this.checkpointBlobsCollectionName)
           .createIndex(ttlIndex, options)
       );
     }
@@ -180,6 +218,45 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     return results
       .filter((r): r is PromiseRejectedResult => r.status === "rejected")
       .map((r) => r.reason as Error);
+  }
+
+  private async loadCheckpoint(doc: Document): Promise<Checkpoint> {
+    const checkpoint = (await this.serde.loadsTyped(
+      doc.type,
+      doc.checkpoint.value("utf8")
+    )) as Checkpoint;
+    // Old records and omitted-newVersions writes contain the complete values.
+    if (!Array.isArray(doc.channel_blobs) || doc.channel_blobs.length === 0) {
+      return checkpoint;
+    }
+    const references = doc.channel_blobs as ChannelReference[];
+    const blobs = await this.db
+      .collection(this.checkpointBlobsCollectionName)
+      .find({
+        thread_id: doc.thread_id,
+        checkpoint_ns: doc.checkpoint_ns,
+        $or: references,
+      })
+      .toArray();
+    const byVersion = new Map(
+      blobs.map((blob) => [channelReferenceKey(blob as ChannelReference), blob])
+    );
+    const values = Object.entries(checkpoint.channel_values);
+    for (const reference of references) {
+      const blob = byVersion.get(channelReferenceKey(reference));
+      if (blob === undefined) {
+        throw new Error(`Missing channel value for ${reference.channel}`);
+      }
+      values.push([
+        reference.channel,
+        // Keep binary serializer payloads as bytes, not UTF-8 strings.
+        await this.serde.loadsTyped(
+          blob.type,
+          new Uint8Array(blob.value.value())
+        ),
+      ]);
+    }
+    return { ...checkpoint, channel_values: Object.fromEntries(values) };
   }
 
   /**
@@ -231,10 +308,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint_ns,
       checkpoint_id: doc.checkpoint_id,
     };
-    const checkpoint = (await this.serde.loadsTyped(
-      doc.type,
-      doc.checkpoint.value("utf8")
-    )) as Checkpoint;
+    const checkpoint = await this.loadCheckpoint(doc);
     const serializedWrites = await this.db
       .collection(this.checkpointWritesCollectionName)
       .find(configurableValues)
@@ -329,10 +403,7 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     }
 
     for await (const doc of result) {
-      const checkpoint = (await this.serde.loadsTyped(
-        doc.type,
-        doc.checkpoint.value("utf8")
-      )) as Checkpoint;
+      const checkpoint = await this.loadCheckpoint(doc);
       const metadata = (await this.serde.loadsTyped(
         doc.type,
         doc.metadata.value("utf8")
@@ -391,7 +462,8 @@ export class MongoDBSaver extends BaseCheckpointSaver {
   async put(
     config: RunnableConfig,
     checkpoint: Checkpoint,
-    metadata: CheckpointMetadata
+    metadata: CheckpointMetadata,
+    newVersions?: ChannelVersions
   ): Promise<RunnableConfig> {
     const thread_id = getStringConfigValue(
       "thread_id",
@@ -409,11 +481,72 @@ export class MongoDBSaver extends BaseCheckpointSaver {
     );
     const checkpoint_id = checkpoint.id;
 
+    let storedCheckpoint = checkpoint;
+    let references: ChannelReference[] | undefined;
+    // A shared timestamp covers the checkpoint and every referenced value.
+    // $max prevents concurrent/older writes shortening shared values' lifetime.
+    const timestamp = this.enableTimestamps ? new Date() : undefined;
+    if (newVersions !== undefined) {
+      references = [];
+      const inlineValues: [string, unknown][] = [];
+      const encoded = new Map<string, { type: string; value: Uint8Array }>();
+      for (const [channel, value] of Object.entries(
+        checkpoint.channel_values
+      )) {
+        if (
+          Object.hasOwn(checkpoint.channel_versions, channel) &&
+          checkpoint.channel_versions[channel] !== undefined
+        ) {
+          const [type, bytes] = await this.serde.dumpsTyped(value);
+          const reference = {
+            channel,
+            version: checkpoint.channel_versions[channel],
+            // Numeric versions can repeat on forks. Bind the reference to the
+            // actual serializer representation so sibling values cannot alias.
+            value_hash: createHash("sha256")
+              .update(JSON.stringify(type))
+              .update("\0")
+              .update(bytes)
+              .digest("hex"),
+          };
+          references.push(reference);
+          encoded.set(channelReferenceKey(reference), { type, value: bytes });
+        } else {
+          inlineValues.push([channel, value]);
+        }
+      }
+      storedCheckpoint = {
+        ...checkpoint,
+        channel_values: Object.fromEntries(inlineValues),
+      };
+      if (references.length > 0) {
+        const collection = this.db.collection(
+          this.checkpointBlobsCollectionName
+        );
+        // Insert-or-ignore also backfills first partial/empty writes and a
+        // value that expired before this write. There is no find/update gap
+        // where a TTL deletion could leave the new checkpoint dangling.
+        const operations = references.map((reference) => ({
+          updateOne: {
+            filter: { thread_id, checkpoint_ns, ...reference },
+            update: {
+              $setOnInsert: encoded.get(channelReferenceKey(reference))!,
+              ...(timestamp ? { $max: { upserted_at: timestamp } } : {}),
+            },
+            upsert: true,
+          },
+        }));
+        if (operations.length > 0) {
+          await collection.bulkWrite(operations);
+        }
+      }
+    }
+
     const [
       [checkpointType, serializedCheckpoint],
       [metadataType, serializedMetadata],
     ] = await Promise.all([
-      this.serde.dumpsTyped(checkpoint),
+      this.serde.dumpsTyped(storedCheckpoint),
       this.serde.dumpsTyped(metadata),
     ]);
 
@@ -426,19 +559,29 @@ export class MongoDBSaver extends BaseCheckpointSaver {
       checkpoint: serializedCheckpoint,
       metadata: serializedMetadata,
       metadata_search: metadata,
+      ...(references !== undefined ? { channel_blobs: references } : {}),
     };
     const upsertQuery = {
       thread_id,
       checkpoint_ns,
       checkpoint_id,
     };
-    await this.db
-      .collection(this.checkpointCollectionName)
-      .updateOne(
-        upsertQuery,
-        { $set: doc, ...this.timestampOp },
-        { upsert: true }
-      );
+    await this.db.collection(this.checkpointCollectionName).updateOne(
+      upsertQuery,
+      references !== undefined
+        ? {
+            $set: {
+              ...doc,
+              ...(timestamp ? { upserted_at: timestamp } : {}),
+            },
+          }
+        : {
+            $set: doc,
+            $unset: { channel_blobs: "" },
+            ...this.timestampOp,
+          },
+      { upsert: true }
+    );
 
     return {
       configurable: {
@@ -550,6 +693,10 @@ export class MongoDBSaver extends BaseCheckpointSaver {
 
     await this.db
       .collection(this.checkpointWritesCollectionName)
+      .deleteMany({ thread_id: threadId });
+
+    await this.db
+      .collection(this.checkpointBlobsCollectionName)
       .deleteMany({ thread_id: threadId });
   }
 }
