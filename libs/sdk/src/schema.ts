@@ -351,9 +351,6 @@ export interface Run {
   /** Why the run was cancelled. `null` or absent if it was not. */
   cancel_reason?: string | null;
 
-  /** The LangSmith tracing project name for this run. */
-  langsmith_session_name?: string | null;
-
   /**
    * What the run was created with, such as its `input`, `config` and
    * `stream_mode`.
