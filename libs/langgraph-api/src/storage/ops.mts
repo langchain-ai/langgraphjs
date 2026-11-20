@@ -1,5 +1,7 @@
 import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
+import { getDefaultProjectName } from "langsmith";
+import { isTracingEnabled } from "../utils/tracing.mjs";
 import { v7 as uuid7, v5 as uuid5 } from "@langchain/core/utils/uuid";
 import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";
@@ -1544,7 +1546,14 @@ export class FileSystemRuns implements RunsRepo {
           multitaskStrategy === "rollback") &&
         inflightRuns.length > 0;
 
+      const projectName = configurable.langsmith_project;
       const newRun: Run = {
+        langsmith_session_name:
+          typeof projectName === "string" && projectName
+            ? projectName
+            : isTracingEnabled()
+              ? getDefaultProjectName()
+              : null,
         run_id: runId,
         thread_id: threadId!,
         assistant_id: assistantId,

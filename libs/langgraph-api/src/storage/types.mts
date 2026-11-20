@@ -145,6 +145,7 @@ export interface Run {
   metadata: Metadata;
   kwargs: RunKwargs;
   multitask_strategy: MultitaskStrategy;
+  langsmith_session_name?: string | null;
 }
 
 export interface Store {
