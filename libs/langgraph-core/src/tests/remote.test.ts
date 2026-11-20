@@ -846,6 +846,31 @@ describe("RemoteGraph", () => {
     expect(run.thread).toBe(thread);
   });
 
+  test.each([false, true])("streamEvents v3 closes its thread when starting fails (cleanup fails: %s)", async (cleanupFails) => {
+    const client = new Client();
+    const thread = makeRemoteV3Thread();
+    const failure = new Error("run rejected");
+    thread.run.start.mockRejectedValue(failure);
+    if (cleanupFails) thread.close.mockRejectedValue(new Error("close failed"));
+    vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+    const graph = new RemoteGraph({ client, graphId: "test_graph_id" });
+
+    await expect(graph.streamEvents({}, { version: "v3" })).rejects.toBe(failure);
+    expect(thread.close).toHaveBeenCalledOnce();
+  });
+
+  test("streamEvents v3 does not start a run when its signal is already aborted", async () => {
+    const client = new Client();
+    const thread = makeRemoteV3Thread();
+    const stream = vi.spyOn(client.threads, "stream").mockReturnValue(thread as any);
+    const graph = new RemoteGraph({ client, graphId: "test_graph_id" });
+    const reason = new Error("cancelled before invocation");
+
+    await expect(graph.streamEvents({}, { version: "v3", signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
+    expect(stream).not.toHaveBeenCalled();
+    expect(thread.run.start).not.toHaveBeenCalled();
+  });
+
   test("streamEvents v3 creates a thread when no thread_id is configured", async () => {
     const client = new Client({});
     const thread = makeRemoteV3Thread();
