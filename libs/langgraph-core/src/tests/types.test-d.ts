@@ -1460,3 +1460,19 @@ describe("Schema type helpers", () => {
     });
   });
 });
+
+describe("tasks stream result errors", () => {
+  it("exposes the error write on public task result events", async () => {
+    const graph = new StateGraph(Annotation.Root({ x: Annotation<number>() }))
+      .addNode("work", () => ({ x: 1 }))
+      .addEdge(START, "work")
+      .addEdge("work", END)
+      .compile();
+    const stream = await graph.stream({ x: 0 }, { streamMode: "tasks" });
+    for await (const event of stream) {
+      if ("result" in event) {
+        expectTypeOf(event.error).toEqualTypeOf<unknown>();
+      }
+    }
+  });
+});
