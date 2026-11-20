@@ -26,6 +26,9 @@ export interface DeploymentAgent {
   environment: string;
 }
 
+const secretsToReplace = (secrets?: Secret[] | null) =>
+  secrets?.length ? { secrets } : {};
+
 /**
  * Error raised when the host backend returns a non-success response or a
  * request fails at the transport level.
@@ -468,10 +471,8 @@ export class HostBackendClient extends JsonClient {
     const payload: Record<string, unknown> = {
       revision_source: "internal_docker",
       source_revision_config: { image_uri: imageUri },
+      ...secretsToReplace(args.secrets),
     };
-    if (args.secrets != null) {
-      payload.secrets = args.secrets;
-    }
     return this.request("PATCH", `/v2/deployments/${deploymentId}`, {
       payload,
     });
@@ -506,6 +507,7 @@ export class HostBackendClient extends JsonClient {
         source_tarball_path: args.sourceTarballPath,
         langgraph_config_path: args.configPath,
       },
+      ...secretsToReplace(args.secrets),
     };
 
     const sourceConfig: Record<string, unknown> = {};
@@ -519,9 +521,6 @@ export class HostBackendClient extends JsonClient {
       payload.source_config = sourceConfig;
     }
 
-    if (args.secrets != null) {
-      payload.secrets = args.secrets;
-    }
     return this.request("PATCH", `/v2/deployments/${deploymentId}`, {
       payload,
     });

@@ -116,6 +116,7 @@ it.each(AGENT_DEPLOYS)("deploys by agent ($label)", async (c) => {
   expect(new URL(updateUrl).pathname).toBe("/v2/deployments/dep-1");
   expect(update.method).toBe("PATCH");
   expect(JSON.parse(update.body).revision_source).toBe("internal_source");
+  expect(JSON.parse(update.body)).not.toHaveProperty("secrets");
   expect(fetchMock).toHaveBeenCalledTimes(existing ? 4 : 5);
   expect(gracefulExit).not.toHaveBeenCalled();
   expect(

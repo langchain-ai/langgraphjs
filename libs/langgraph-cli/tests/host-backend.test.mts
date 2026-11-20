@@ -4,6 +4,7 @@ import {
   HostBackendClient,
   HostBackendError,
   LangSmithApiClient,
+  type Secret,
 } from "../src/cli/utils/host-backend.mjs";
 
 const BASE = "https://api.host.langchain.com";
@@ -68,6 +69,37 @@ describe("HostBackendClient", () => {
       source_revision_config: { langgraph_config_path: "langgraph.json" },
       secrets: [{ name: "A", value: "1" }],
     });
+  });
+
+  it.each([
+    {
+      label: "image update",
+      update: (client: HostBackendClient, secrets: Secret[]) =>
+        client.updateDeployment("dep-1", "registry.example/app@sha256:1", {
+          secrets,
+        }),
+    },
+    {
+      label: "remote build update",
+      update: (client: HostBackendClient, secrets: Secret[]) =>
+        client.updateDeploymentInternalSource("dep-1", {
+          sourceTarballPath: "tarballs/src.tgz",
+          configPath: "langgraph.json",
+          secrets,
+        }),
+    },
+  ])("sends secrets on $label only when there are some", async ({ update }) => {
+    fetchMock.mockImplementation(async () => jsonResponse({ id: "dep-1" }));
+    const client = new HostBackendClient(BASE, "secret");
+
+    await update(client, []);
+    await update(client, [{ name: "A", value: "1" }]);
+
+    const [empty, nonEmpty] = fetchMock.mock.calls.map(([, init]) =>
+      JSON.parse(init.body)
+    );
+    expect(empty).not.toHaveProperty("secrets");
+    expect(nonEmpty.secrets).toEqual([{ name: "A", value: "1" }]);
   });
 
   it("requests a push token that may use the registry's own username", async () => {

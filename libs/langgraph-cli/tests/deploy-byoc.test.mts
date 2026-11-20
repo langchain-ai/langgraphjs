@@ -173,6 +173,11 @@ describe("on a BYOC data plane", () => {
     expect(calls.map((call) => call.route)).toContain(
       `POST ${DATA_PLANE_HOST}/v2/deployments/dep-1/push-token`
     );
+    const update = calls.find(
+      (call) => call.route === `PATCH ${DATA_PLANE_HOST}/v2/deployments/dep-1`
+    );
+    expect(update?.body).toMatchObject({ revision_source: "internal_docker" });
+    expect(update?.body).not.toHaveProperty("secrets");
   });
 
   it("sizes a prod deployment as dedicated", async () => {
