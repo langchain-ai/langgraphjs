@@ -75,7 +75,7 @@ export class SearchOperations {
       }
     }
 
-    sqlQuery += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${
+    sqlQuery += ` ORDER BY created_at DESC, namespace_path, key LIMIT $${paramIndex} OFFSET $${
       paramIndex + 1
     }`;
     params.push(limit, offset);
@@ -152,7 +152,7 @@ export class SearchOperations {
 
     sqlQuery += ` 
       GROUP BY s.namespace_path, s.key, s.value, s.created_at, s.updated_at
-      ORDER BY similarity_score ASC 
+      ORDER BY similarity_score ASC, s.namespace_path, s.key
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
     params.push(limit, offset);
@@ -227,9 +227,9 @@ export class SearchOperations {
 
       // Add ordering by score if query provided, otherwise by updated_at
       if (query) {
-        sqlQuery += ` ORDER BY score DESC, updated_at DESC`;
+        sqlQuery += ` ORDER BY score DESC, updated_at DESC, namespace_path, key`;
       } else {
-        sqlQuery += ` ORDER BY updated_at DESC`;
+        sqlQuery += ` ORDER BY updated_at DESC, namespace_path, key`;
       }
 
       sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
@@ -373,7 +373,7 @@ export class SearchOperations {
       const orderDirection = "DESC"; // From most similar to least similar
       sqlQuery += ` 
         GROUP BY s.namespace_path, s.key, s.value, s.created_at, s.updated_at
-        ORDER BY similarity_score ${orderDirection}
+        ORDER BY similarity_score ${orderDirection}, s.namespace_path, s.key
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
       `;
       params.push(limit, offset);
@@ -479,7 +479,7 @@ export class SearchOperations {
 
       sqlQuery += ` 
         GROUP BY s.namespace_path, s.key, s.value, s.created_at, s.updated_at
-        ORDER BY hybrid_score DESC
+        ORDER BY hybrid_score DESC, s.namespace_path, s.key
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
       `;
       params.push(limit, offset);
