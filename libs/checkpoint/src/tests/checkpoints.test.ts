@@ -427,6 +427,33 @@ describe("MemorySaver", () => {
       }
     });
 
+    it("keeps the whole checkpoint when a channel holds a bigint", async () => {
+      const memorySaver = new MemorySaver();
+      const config = {
+        configurable: { thread_id: "bigint", checkpoint_ns: "" },
+      };
+      const big = 12345678901234567890n;
+
+      const savedConfig = await memorySaver.put(
+        config,
+        {
+          ...checkpoint1,
+          channel_values: { big, other: "still here" },
+        },
+        { source: "update", step: -1, parents: {} }
+      );
+      await memorySaver.putWrites(savedConfig, [["big", -big]], "bigint-task");
+
+      const restored = await memorySaver.getTuple(savedConfig);
+
+      expect(restored?.checkpoint.id).toBe(checkpoint1.id);
+      expect(restored?.checkpoint.channel_values).toEqual({
+        big,
+        other: "still here",
+      });
+      expect(restored?.pendingWrites).toEqual([["bigint-task", "big", -big]]);
+    });
+
     it("should delete thread", async () => {
     const memorySaver = new MemorySaver();
     const thread1 = { configurable: { thread_id: "1", checkpoint_ns: "" } };
