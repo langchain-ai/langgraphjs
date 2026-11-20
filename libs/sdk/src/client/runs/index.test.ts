@@ -210,3 +210,52 @@ describe("runs strictResume", () => {
     ).toEqual([true, true, true, undefined]);
   });
 });
+
+describe("runs.createBatch", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("maps each payload onto the run-create schema", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("[]", {
+          headers: { "content-type": "application/json" },
+        })
+    ) as unknown as MockFetch;
+    overrideFetchImplementation(fetchMock);
+    const client = new Client({ apiKey: "test-api-key" });
+
+    await client.runs.createBatch([
+      {
+        assistantId: "agent",
+        input: { question: "hi" },
+        metadata: { source: "batch" },
+        interruptBefore: ["review"],
+        checkpointId: "ckpt_1",
+        multitaskStrategy: "enqueue",
+        streamMode: "values",
+        afterSeconds: 30,
+        ifNotExists: "create",
+        feedbackKeys: ["fb"],
+      },
+    ]);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe("/runs/batch");
+    expect(JSON.parse(String(init?.body))).toEqual([
+      {
+        assistant_id: "agent",
+        input: { question: "hi" },
+        metadata: { source: "batch" },
+        interrupt_before: ["review"],
+        checkpoint_id: "ckpt_1",
+        multitask_strategy: "enqueue",
+        stream_mode: "values",
+        after_seconds: 30,
+        if_not_exists: "create",
+        feedback_keys: ["fb"],
+      },
+    ]);
+  });
+});
