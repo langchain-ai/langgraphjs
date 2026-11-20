@@ -1,6 +1,7 @@
 import type { StateSnapshot as LangGraphStateSnapshot } from "@langchain/langgraph";
 import { HTTPException } from "hono/http-exception";
-import { getDefaultProjectName, isTracingEnabled } from "langsmith";
+import { getDefaultProjectName } from "langsmith";
+import { isTracingEnabled } from "../utils/tracing.mjs";
 import { v7 as uuid7, v5 as uuid5 } from "@langchain/core/utils/uuid";
 import { handleAuthEvent, isAuthMatching } from "../auth/index.mjs";
 import type { AuthContext } from "../auth/index.mjs";

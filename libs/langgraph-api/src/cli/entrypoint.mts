@@ -4,21 +4,12 @@ import { startServer, StartServerSchema } from "../server.mjs";
 import { connectToServer } from "./utils/ipc/client.mjs";
 import { Client as LangSmithClient } from "langsmith";
 import { logger } from "../logging.mjs";
+import { isTracingEnabled } from "../utils/tracing.mjs";
 
 logger.info(`Starting server...`);
 
 const [ppid, payload] = process.argv.slice(-2);
 const sendToParent = await connectToServer(+ppid);
-
-// TODO: re-export langsmith/isTracingEnabled
-const isTracingEnabled = () => {
-  const value =
-    process.env?.LANGSMITH_TRACING_V2 ||
-    process.env?.LANGCHAIN_TRACING_V2 ||
-    process.env?.LANGSMITH_TRACING ||
-    process.env?.LANGCHAIN_TRACING;
-  return value === "true";
-};
 
 const options = StartServerSchema.parse(JSON.parse(payload));
 
