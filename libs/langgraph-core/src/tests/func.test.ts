@@ -981,6 +981,39 @@ export function runFuncTests(
       });
 
       it.each([[{ slowCache: false }], [{ slowCache: true }]])(
+        "serves a cached task to every call with the same input (%s)",
+        async ({ slowCache }) => {
+          const checkpointer = await createCheckpointer();
+          const cache = slowCache
+            ? new SlowInMemoryCache()
+            : new InMemoryCache();
+
+          let counter = 0;
+          const price = task(
+            { name: "price", cachePolicy: {} },
+            async (sku: string) => {
+              counter += 1;
+              return `price of ${sku}`;
+            }
+          );
+
+          const workflow = entrypoint(
+            { name: "workflow", checkpointer, cache },
+            async (skus: string[]) => Promise.all(skus.map((sku) => price(sku)))
+          );
+
+          for (const threadId of ["1", "2"]) {
+            expect(
+              await workflow.invoke(["A", "A"], {
+                configurable: { thread_id: threadId },
+              })
+            ).toEqual(["price of A", "price of A"]);
+          }
+          expect(counter).toBe(2);
+        }
+      );
+
+      it.each([[{ slowCache: false }], [{ slowCache: true }]])(
         "mutliple interrupts with cache (%s)",
         async ({ slowCache }) => {
           const checkpointer = await createCheckpointer();
