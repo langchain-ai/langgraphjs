@@ -268,26 +268,42 @@ export class RedisSaver extends BaseCheckpointSaver {
     // The newVersions filter above strips unchanged channels from the checkpoint document.
     // Persist each changed channel as a separate blob so loadCheckpointWithWrites()
     // can reconstruct the full channel_values from blobs written by earlier nodes.
+    const blobWrites: { blobKey: string; blobDoc: Record<string, any> }[] = [];
     if (newVersions !== undefined && checkpoint.channel_values) {
       const channelValues = checkpoint.channel_values;
-      // Write the changed-channel blobs in parallel.
-      await Promise.all(
-        Object.entries(newVersions)
-          .filter(([channel]) => channel in channelValues)
-          .map(([channel, version]) => {
-            const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
-            const blobDoc = {
-              thread_id: threadId,
-              checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
-              checkpoint_id: checkpointId,
-              channel,
-              version: version.toString(),
-              type: "json",
-              value: channelValues[channel],
-            };
-            return this.client.json.set(blobKey, "$", blobDoc as any);
-          })
-      );
+      for (const [channel, version] of Object.entries(newVersions)) {
+        if (!(channel in channelValues)) continue;
+        blobWrites.push({
+          blobKey: `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`,
+          blobDoc: {
+            thread_id: threadId,
+            checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+            checkpoint_id: checkpointId,
+            channel,
+            version: version.toString(),
+            type: "json",
+            value: channelValues[channel],
+          },
+        });
+      }
+    }
+
+    const ttl = this.ttlSeconds();
+    if (ttl !== undefined) {
+      // Persist the blobs and the checkpoint document — and set a TTL on
+      // every new key — in a single MULTI/EXEC transaction. The previous
+      // separate EXPIRE pass left a crash window in which the keys existed
+      // without a TTL (and a failed EXPIRE was only logged), so checkpoint
+      // data could outlive ttlConfig. EXEC is atomic on the server: either
+      // every key lands with its TTL or none of them do.
+      const tx = this.client.multi();
+      for (const { blobKey, blobDoc } of blobWrites) {
+        tx.json.set(blobKey, "$", blobDoc as any);
+        tx.expire(blobKey, ttl);
+      }
+      tx.json.set(key, "$", jsonDoc as any);
+      tx.expire(key, ttl);
+      await tx.exec();
 
       // Refresh the TTL of every blob this checkpoint depends on — the whole
       // channel_versions set, not just the newVersions subset just written.
@@ -296,7 +312,9 @@ export class RedisSaver extends BaseCheckpointSaver {
       // checkpoint is still alive, dropping reconstructed channels on later reads.
       // EXPIRE on a missing key is a no-op, so already-gone carry-overs are
       // skipped. Write-side refresh — correct independent of refreshOnRead.
-      if (this.ttlConfig?.defaultTTL && checkpoint.channel_versions) {
+      // Kept outside the transaction: it is a best-effort refresh of
+      // pre-existing keys and must not abort the checkpoint write.
+      if (checkpoint.channel_versions) {
         const referencedBlobKeys = Object.entries(
           checkpoint.channel_versions
         ).map(
@@ -307,14 +325,16 @@ export class RedisSaver extends BaseCheckpointSaver {
           await this.applyTTL(...referencedBlobKeys);
         }
       }
-    }
+    } else {
+      // Write the changed-channel blobs in parallel.
+      await Promise.all(
+        blobWrites.map(({ blobKey, blobDoc }) =>
+          this.client.json.set(blobKey, "$", blobDoc as any)
+        )
+      );
 
-    // Use Redis JSON commands
-    await this.client.json.set(key, "$", jsonDoc as any);
-
-    // Apply TTL if configured
-    if (this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
+      // Use Redis JSON commands
+      await this.client.json.set(key, "$", jsonDoc as any);
     }
 
     return {
@@ -727,6 +747,7 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Collect write keys for sorted set tracking
     const writeKeys: string[] = [];
+    const writeDocs: Record<string, any>[] = [];
 
     // Use high-resolution timestamp to ensure unique ordering across putWrites calls
     const baseTimestamp = performance.now() * 1000; // Microsecond precision
@@ -752,7 +773,7 @@ export class RedisSaver extends BaseCheckpointSaver {
       const writeKey = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:${taskId}:${writeIdx}`;
       writeKeys.push(writeKey);
 
-      const writeDoc = {
+      writeDocs.push({
         thread_id: threadId,
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpointId,
@@ -768,22 +789,10 @@ export class RedisSaver extends BaseCheckpointSaver {
         // for `pendingWrites`, which is `writesSortKey` (see
         // `loadPendingWrites`).
         global_idx: baseTimestamp + idx,
-      };
-
-      if (allSpecial) {
-        await this.client.json.set(writeKey, "$", writeDoc as never);
-      } else {
-        // Equivalent of SQL `INSERT OR IGNORE`: only set when the key is
-        // absent. `node-redis` exposes this as the `NX` modifier on
-        // `JSON.SET`. The return value is the string "OK" on insert and
-        // `null` on no-op, both of which are fine to discard here.
-        await this.client.json.set(writeKey, "$", writeDoc as never, {
-          NX: true,
-        });
-      }
+      });
     }
 
-    // Register write keys in sorted set for efficient retrieval
+    // Store the writes and register them in the sorted set
     if (writeKeys.length > 0) {
       const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
 
@@ -792,15 +801,56 @@ export class RedisSaver extends BaseCheckpointSaver {
       writeKeys.forEach((key, idx) => {
         zaddArgs[key] = baseTimestamp + idx;
       });
-      await this.client.zAdd(
-        zsetKey,
-        Object.entries(zaddArgs).map(([key, score]) => ({ score, value: key }))
-      );
+      const zaddMembers = Object.entries(zaddArgs).map(([key, score]) => ({
+        score,
+        value: key,
+      }));
 
-      // Apply TTL to write keys and zset if configured
-      if (this.ttlConfig?.defaultTTL) {
-        // Apply TTL to write keys and zset
-        await this.applyTTL(...writeKeys, zsetKey);
+      const ttl = this.ttlSeconds();
+      if (ttl !== undefined) {
+        // Store the writes, register them in the zset and set every TTL in a
+        // single MULTI/EXEC transaction, for the same reason as in put(): a
+        // separate EXPIRE pass can leave keys behind without a TTL. Inside
+        // EXEC, `JSON.SET` with `NX` yields "OK" on insert and `null` on
+        // no-op, both fine to discard (insert-or-ignore contract).
+        const tx = this.client.multi();
+        for (let idx = 0; idx < writeKeys.length; idx++) {
+          if (allSpecial) {
+            tx.json.set(writeKeys[idx], "$", writeDocs[idx] as never);
+          } else {
+            tx.json.set(writeKeys[idx], "$", writeDocs[idx] as never, {
+              NX: true,
+            });
+          }
+          tx.expire(writeKeys[idx], ttl);
+        }
+        tx.zAdd(zsetKey, zaddMembers);
+        tx.expire(zsetKey, ttl);
+        await tx.exec();
+      } else {
+        for (let idx = 0; idx < writeKeys.length; idx++) {
+          if (allSpecial) {
+            await this.client.json.set(
+              writeKeys[idx],
+              "$",
+              writeDocs[idx] as never
+            );
+          } else {
+            // Equivalent of SQL `INSERT OR IGNORE`: only set when the key is
+            // absent. `node-redis` exposes this as the `NX` modifier on
+            // `JSON.SET`. The return value is the string "OK" on insert and
+            // `null` on no-op, both of which are fine to discard here.
+            await this.client.json.set(
+              writeKeys[idx],
+              "$",
+              writeDocs[idx] as never,
+              {
+                NX: true,
+              }
+            );
+          }
+        }
+        await this.client.zAdd(zsetKey, zaddMembers);
       }
     }
 
@@ -1125,6 +1175,13 @@ export class RedisSaver extends BaseCheckpointSaver {
     if ("score" in metadata) {
       jsonDoc.score = metadata.score;
     }
+  }
+
+  // TTL in whole seconds, or undefined when no default TTL is configured.
+  private ttlSeconds(): number | undefined {
+    if (!this.ttlConfig?.defaultTTL) return undefined;
+
+    return Math.floor(this.ttlConfig.defaultTTL * 60);
   }
 
   // Helper method to apply TTL to keys
