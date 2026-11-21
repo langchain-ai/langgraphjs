@@ -1752,6 +1752,39 @@ describe("StreamController", () => {
 
       await controller.dispose();
     });
+
+    it("shows a later run's interrupt when event ids do not name runs", async () => {
+      const server: Array<Record<string, unknown>> = [idle];
+      const { controller, onCreated, emit, ids } = zeroBarrierFixture({
+        states: server,
+      });
+      await controller.hydrationPromise;
+      const plain = (event: Event): Event =>
+        ({ ...event, event_id: `evt-${event.seq}` }) as Event;
+
+      // The first run completes with nothing held.
+      const first = controller.submit({ round: 1 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalledTimes(1));
+      emit(
+        plain(lifecycle("run-1", "running", 1)),
+        plain(lifecycle("run-1", "completed", 2))
+      );
+      await first;
+
+      // The second run pauses; its interrupt is held until the run ends.
+      server[0] = pendingOn("q");
+      const second = controller.submit({ round: 2 } as never);
+      await waitForExpectation(() => expect(onCreated).toHaveBeenCalledTimes(2));
+      emit(
+        plain(lifecycle("run-2", "running", 3)),
+        plain(input("run-2", "q", 4)),
+        plain(lifecycle("run-2", "interrupted", 5))
+      );
+      await second;
+      await waitForExpectation(() => expect(ids()).toEqual(["q"]));
+
+      await controller.dispose();
+    });
   });
 
   it("hydrate without tasks does not wipe in-flight interrupt state", async () => {
