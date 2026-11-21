@@ -255,7 +255,9 @@ export class PregelRunner {
       combineAbortSignals(
         externalAbortSignal,
         timeoutAbortSignal,
-        exceptionSignal
+        exceptionSignal,
+        // A nested graph also receives its parent step's cancellation here.
+        signal
       );
 
     const signals: PregelAbortSignals = {
