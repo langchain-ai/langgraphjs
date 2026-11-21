@@ -841,6 +841,53 @@ describe("PostgresStore Search", () => {
     );
   });
 
+  it.each(["search", "batch", "text"] as const)(
+    "should return no items for an empty $in filter through %s",
+    async (method) => {
+      const filter = { difficulty: { $in: [] } };
+      const results =
+        method === "batch"
+          ? (await store.batch([{ namespacePrefix: ["docs"], filter }]))[0]
+          : await store.search(["docs"], {
+              filter,
+              ...(method === "text" ? { query: "programming" } : {}),
+            });
+
+      expect(results).toEqual([]);
+    }
+  );
+
+  it("should keep an empty $in condition alongside other operators", async () => {
+    const results = await store.search(["docs"], {
+      filter: { difficulty: { $in: [], $eq: "beginner" } },
+    });
+
+    expect(results).toEqual([]);
+  });
+
+  it("should preserve parameter positions after an empty $in condition", async () => {
+    const results = await store.search(["docs"], {
+      filter: {
+        difficulty: { $in: [] },
+        category: "programming",
+      },
+    });
+
+    expect(results).toEqual([]);
+  });
+
+  it("should still match every item for an empty $nin filter", async () => {
+    const results = await store.search(["docs"], {
+      filter: { difficulty: { $nin: [] } },
+    });
+
+    expect(results.map((item) => item.key).sort()).toEqual([
+      "doc1",
+      "doc2",
+      "doc3",
+    ]);
+  });
+
   it("should search with advanced filter operators", async () => {
     // When
     const results = await store.search(["docs"], {
