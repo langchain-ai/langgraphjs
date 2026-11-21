@@ -13,6 +13,30 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 }
 
 describe("MultiCursorBuffer", () => {
+  it("finishes pending and future reads when an iterator returns", async () => {
+    const buffer = new MultiCursorBuffer<string>();
+    const iterator = buffer[Symbol.asyncIterator]();
+    let outcome: IteratorResult<string> | undefined;
+    const pending = iterator.next().then((result) => {
+      outcome = result;
+    });
+    await iterator.return!();
+    await flush();
+    expect(outcome).toEqual({ done: true, value: undefined });
+    await pending;
+    buffer.push("later");
+    await expect(iterator.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    });
+    const independent = buffer[Symbol.asyncIterator]();
+    await expect(independent.next()).resolves.toEqual({
+      done: false,
+      value: "later",
+    });
+    buffer.close();
+  });
+
   it("replays buffered items to late consumers", async () => {
     const buffer = new MultiCursorBuffer<string>();
     buffer.push("one");
