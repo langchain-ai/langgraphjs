@@ -20,6 +20,14 @@ export interface EmbedRouteContext {
   checkpointer: BaseCheckpointSaver;
   store?: BaseStore;
   getGraph: (graphId: string) => Promise<AnyPregel>;
+  /**
+   * Maximum number of events retained per thread for replay to a
+   * late-attaching `/stream/events` subscriber. `undefined` (the
+   * default) keeps every event for the life of the process. When set,
+   * older events are evicted first; the single newest event is never
+   * evicted, so a reconnecting subscriber never sees an empty buffer.
+   */
+  maxQueuedEvents?: number;
 }
 
 export interface Thread {

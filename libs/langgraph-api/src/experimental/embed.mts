@@ -27,6 +27,17 @@ export function createEmbedServer(options: {
   checkpointer: BaseCheckpointSaver;
   store?: BaseStore;
   upgradeWebSocket?: UpgradeWebSocket;
+  /**
+   * Maximum number of events retained per thread for replay to a
+   * late-attaching `/stream/events` subscriber. `undefined` (the
+   * default) keeps today's behavior: every event for the life of the
+   * process. When set, older events are evicted first; the single
+   * newest event is never evicted, so a reconnecting subscriber never
+   * sees an empty buffer.
+   *
+   * @experimental Does not follow semver.
+   */
+  maxQueuedEvents?: number;
 }) {
   async function getGraph(graphId: string) {
     const targetGraph = await options.graph[graphId];
@@ -41,6 +52,7 @@ export function createEmbedServer(options: {
     checkpointer: options.checkpointer,
     store: options.store,
     getGraph,
+    maxQueuedEvents: options.maxQueuedEvents,
   };
 
   const api = new Hono();
