@@ -1,15 +1,17 @@
 import { BaseCache, type CacheFullKey, type CacheNamespace } from "./base.js";
 
 export class InMemoryCache<V = unknown> extends BaseCache<V> {
-  private cache: {
-    [namespace: string]: {
-      [key: string]: {
+  private cache = new Map<
+    string,
+    Map<
+      string,
+      {
         enc: string;
         val: Uint8Array | string;
         exp: number | null;
-      };
-    };
-  } = {};
+      }
+    >
+  >();
 
   async get(keys: CacheFullKey[]): Promise<{ key: CacheFullKey; value: V }[]> {
     if (!keys.length) return [];
@@ -19,10 +21,10 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
         keys.map(
           async (fullKey): Promise<{ key: CacheFullKey; value: V }[]> => {
             const [namespace, key] = fullKey;
-            const strNamespace = namespace.join(",");
+            const namespaceCache = this.cache.get(JSON.stringify(namespace));
+            const cached = namespaceCache?.get(key);
 
-            if (strNamespace in this.cache && key in this.cache[strNamespace]) {
-              const cached = this.cache[strNamespace][key];
+            if (cached) {
               if (cached.exp == null || now < cached.exp) {
                 const value = await this.serde.loadsTyped(
                   cached.enc,
@@ -30,7 +32,7 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
                 );
                 return [{ key: fullKey, value }];
               } else {
-                delete this.cache[strNamespace][key];
+                namespaceCache?.delete(key);
               }
             }
 
@@ -47,24 +49,27 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
     const now = Date.now();
     for (const { key: fullKey, value, ttl } of pairs) {
       const [namespace, key] = fullKey;
-      const strNamespace = namespace.join(",");
+      const strNamespace = JSON.stringify(namespace);
       const [enc, val] = await this.serde.dumpsTyped(value);
       const exp = ttl != null ? ttl * 1000 + now : null;
 
-      this.cache[strNamespace] ??= {};
-      this.cache[strNamespace][key] = { enc, val, exp };
+      let namespaceCache = this.cache.get(strNamespace);
+      if (!namespaceCache) {
+        namespaceCache = new Map();
+        this.cache.set(strNamespace, namespaceCache);
+      }
+      namespaceCache.set(key, { enc, val, exp });
     }
   }
 
   async clear(namespaces: CacheNamespace[]): Promise<void> {
     if (!namespaces.length) {
-      this.cache = {};
+      this.cache.clear();
       return;
     }
 
     for (const namespace of namespaces) {
-      const strNamespace = namespace.join(",");
-      if (strNamespace in this.cache) delete this.cache[strNamespace];
+      this.cache.delete(JSON.stringify(namespace));
     }
   }
 }
