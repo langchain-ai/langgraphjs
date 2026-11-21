@@ -11,6 +11,7 @@ import { ChainValues } from "@langchain/core/utils/types";
 import { NewTokenIndices } from "@langchain/core/callbacks/base";
 import { StreamMessagesHandler } from "./messages.js";
 import { Command, TAG_HIDDEN, TAG_NOSTREAM } from "../constants.js";
+import { ParentCommand } from "../errors.js";
 
 describe("StreamMessagesHandler", () => {
   describe("constructor", () => {
@@ -624,6 +625,37 @@ describe("StreamMessagesHandler", () => {
       handler.handleChainError(new Error("Test error"), runId);
 
       // Should clean up metadata
+      expect(handler.metadatas[runId]).toBeUndefined();
+    });
+
+    it("should emit the messages of a Command routed to the parent graph", () => {
+      const streamFn = vi.fn();
+      const handler = new StreamMessagesHandler(streamFn);
+
+      const runId = "chain-123";
+      handler.metadatas[runId] = [["ns1"], { name: "test" }];
+
+      const message = new ToolMessage({
+        id: "staged",
+        tool_call_id: "call-1",
+        content: "staged",
+      });
+      handler.handleChainError(
+        new ParentCommand(
+          new Command({
+            graph: Command.PARENT,
+            goto: "after",
+            update: { messages: [message] },
+          })
+        ),
+        runId
+      );
+
+      expect(streamFn).toHaveBeenCalledWith([
+        ["ns1"],
+        "messages",
+        [message, { name: "test" }],
+      ]);
       expect(handler.metadatas[runId]).toBeUndefined();
     });
   });

@@ -10129,6 +10129,48 @@ graph TD;
     });
   });
 
+  it("should stream the messages of a Command routed to the parent graph", async () => {
+    const child = new StateGraph(MessagesAnnotation)
+      .addNode(
+        "write",
+        () =>
+          new Command({
+            graph: Command.PARENT,
+            goto: "after",
+            update: {
+              messages: [
+                new ToolMessage({
+                  id: "staged",
+                  tool_call_id: "call-1",
+                  content: "staged",
+                }),
+              ],
+            },
+          })
+      )
+      .addEdge("__start__", "write")
+      .compile();
+
+    const graph = new StateGraph(MessagesAnnotation)
+      .addNode("child", child, { ends: ["after"] })
+      .addNode("after", () => ({
+        messages: [new AIMessage({ id: "done", content: "done" })],
+      }))
+      .addEdge("__start__", "child")
+      .addEdge("after", "__end__")
+      .compile();
+
+    const streamed: (string | undefined)[] = [];
+    for await (const [, , [message]] of await graph.stream(
+      { messages: [] },
+      { streamMode: ["messages"], subgraphs: true }
+    )) {
+      streamed.push(message.id);
+    }
+
+    expect(streamed).toEqual(["staged", "done"]);
+  });
+
   it("should handle Command.PARENT as described in the docs", async () => {
     // See https://langchain-ai.github.io/langgraphjs/how-tos/command/#navigating-to-a-node-in-a-parent-graph
     // Note that the example in the docs isn't deterministic, so this example is modified slightly
