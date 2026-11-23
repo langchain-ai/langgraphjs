@@ -985,6 +985,44 @@ describe("ToolCallAssembler", () => {
 });
 
 describe("thread.toolCalls projection", () => {
+  it("rejects unfinished tool outputs when the thread closes", async () => {
+    const transport = new MockTransport();
+    const thread = new ThreadStream(transport, { assistantId: "test-agent" });
+    const namespace = ["worker"];
+    const graph = new SubgraphHandle("worker", 0, namespace, thread);
+    const agent = new SubagentHandle(
+      "worker",
+      "delegate",
+      namespace,
+      Promise.resolve("work"),
+      Promise.resolve(),
+      thread
+    );
+    const calls = [thread, graph, agent].map((scope) =>
+      nextValue(scope.toolCalls)
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    transport.pushEvent(
+      eventOf(
+        "tools",
+        {
+          event: "tool-started",
+          tool_call_id: "unfinished",
+          tool_name: "calculator",
+          input: {},
+        },
+        { namespace }
+      )
+    );
+    const handles = await Promise.all(calls);
+    await thread.close();
+
+    for (const handle of handles) {
+      await expect(handle.output).rejects.toThrow(/stream ended/i);
+    }
+  });
+
   it("yields assembled tool calls through the getter", async () => {
     const transport = new MockTransport();
     const thread = new ThreadStream(transport, { assistantId: "test-agent" });

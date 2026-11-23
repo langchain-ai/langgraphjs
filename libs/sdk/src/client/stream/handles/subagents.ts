@@ -119,7 +119,12 @@ export class SubagentHandle {
         const tc = assembler.consume(toolsEvent);
         if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
-      () => buffer.close()
+      () => {
+        assembler.failAll(
+          new Error("Tool call stream ended before completion")
+        );
+        buffer.close();
+      }
     );
     return buffer;
   }
