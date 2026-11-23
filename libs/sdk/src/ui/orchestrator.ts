@@ -3130,8 +3130,10 @@ export class StreamOrchestrator<
 
     if (status === "run_done") {
       const streamed = seen === "ended" || this.#liveRuns.has(runId);
-      this.#endRun(runId);
-      if (!streamed) void this.#reload(threadId, { quiet: true });
+      this.#endRun(
+        runId,
+        streamed ? undefined : this.#reload(threadId, { quiet: true })
+      );
       return;
     }
     if (seen != null) return;
@@ -3150,8 +3152,7 @@ export class StreamOrchestrator<
           return;
         }
         if (run.status !== "pending" && run.status !== "running") {
-          this.#endRun(runId);
-          void this.#reload(threadId, { quiet: true });
+          this.#endRun(runId, this.#reload(threadId, { quiet: true }));
           return;
         }
         const head = this.#history.data?.at(0)?.checkpoint?.checkpoint_id;
@@ -3165,14 +3166,34 @@ export class StreamOrchestrator<
       });
   }
 
-  /** Marks a run ended and shows again what it answered elsewhere. */
-  #endRun(runId: string): void {
+  /**
+   * Marks a run ended and shows again what it answered elsewhere, once `read`
+   * settles: until then the head shown is from before the run, with the
+   * answered interrupts still pending. After 10 s they show again anyway, so
+   * a read that hangs doesn't hide an interrupt still pending for good. One
+   * that another run has answered since stays hidden until that run ends.
+   */
+  #endRun(runId: string, read?: Promise<void>): void {
     this.#threadRuns.set(runId, "ended");
     const ids = this.#answeredBy.get(runId);
     if (ids == null) return;
     this.#answeredBy.delete(runId);
-    for (const id of ids) this.#answered.delete(id);
-    this.#notify();
+    const unhide = () => {
+      const held = new Set([...this.#answeredBy.values()].flat());
+      for (const id of ids) if (!held.has(id)) this.#answered.delete(id);
+      this.#notify();
+    };
+    if (read == null) {
+      unhide();
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, 10_000);
+    });
+    void Promise.race([read, timedOut])
+      .then(unhide, unhide)
+      .finally(() => clearTimeout(timer));
   }
 
   /**

@@ -7077,6 +7077,128 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    const awaitingApproval = {
+      ...createThreadState({ messages: [] }),
+      next: ["review"],
+      tasks: [
+        {
+          id: "task-1",
+          name: "review",
+          interrupts: [{ id: "int-1", value: "approve?" }],
+        },
+      ],
+    };
+
+    it.each(["end event", "run lookup"])(
+      "keeps an interrupt answered in another tab hidden while the thread is read after the answering run, which the %s reports ended",
+      async (reportedBy) => {
+        (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
+        let lookedUp!: (run: unknown) => void;
+        (client.runs.get as Mock).mockReturnValue(
+          new Promise((resolve) => {
+            lookedUp = resolve;
+          })
+        );
+        const orch = await watching();
+        open()!.send(started("run-f", "1-0"), {
+          id: "2-0",
+          event: "interrupts",
+          data: { run_id: "run-f", answered: ["int-1"] },
+        });
+        await vi.waitFor(() => expect(orch.interrupts).toEqual([]));
+
+        const reads = (client.threads.getState as Mock).mock.calls.length;
+        let readAfterRun!: (state: unknown) => void;
+        (client.threads.getState as Mock).mockReturnValue(
+          new Promise((resolve) => {
+            readAfterRun = resolve;
+          })
+        );
+        if (reportedBy === "end event") open()!.send(done("run-f", "3-0"));
+        else lookedUp({ status: "success" });
+        await vi.waitFor(() =>
+          expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1)
+        );
+        await flushMicrotasks();
+        expect(orch.interrupts).toEqual([]);
+
+        readAfterRun(createThreadState({ messages: [message("approved")] }));
+        await vi.waitFor(() =>
+          expect(orch.messages).toEqual([message("approved")])
+        );
+        expect(orch.interrupts).toEqual([]);
+        orch.dispose();
+      }
+    );
+
+    it("shows an interrupt answered in another tab again after 10 s when the read after the answering run hangs", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
+      (client.runs.get as Mock).mockReturnValue(new Promise(() => {}));
+      const orch = await watching();
+      open()!.send(started("run-f", "1-0"), {
+        id: "2-0",
+        event: "interrupts",
+        data: { run_id: "run-f", answered: ["int-1"] },
+      });
+      await vi.waitFor(() => expect(orch.interrupts).toEqual([]));
+
+      vi.useFakeTimers();
+      try {
+        const reads = (client.threads.getState as Mock).mock.calls.length;
+        (client.threads.getState as Mock).mockReturnValue(new Promise(() => {}));
+        open()!.send(done("run-f", "3-0"));
+        await flushMicrotasks(20);
+        expect(client.threads.getState).toHaveBeenCalledTimes(reads + 1);
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(orch.interrupts).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(orch.interrupts.map((i) => i.id)).toEqual(["int-1"]);
+        orch.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps an interrupt a second run answers again hidden when the read after the first run lands", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
+      (client.runs.get as Mock).mockReturnValue(new Promise(() => {}));
+      const orch = await watching();
+      open()!.send(started("run-f", "1-0"), {
+        id: "2-0",
+        event: "interrupts",
+        data: { run_id: "run-f", answered: ["int-1"] },
+      });
+      await vi.waitFor(() => expect(orch.interrupts).toEqual([]));
+
+      let readAfterRun!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          readAfterRun = resolve;
+        })
+      );
+      open()!.send(done("run-f", "3-0"), started("run-g", "4-0"), {
+        id: "5-0",
+        event: "interrupts",
+        data: { run_id: "run-g", answered: ["int-1"] },
+      });
+      await vi.waitFor(() =>
+        expect(client.runs.get).toHaveBeenCalledWith("t1", "run-g")
+      );
+      await flushMicrotasks(20);
+
+      readAfterRun({
+        ...awaitingApproval,
+        values: { messages: [message("answered again")] },
+      });
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("answered again")])
+      );
+      await flushMicrotasks();
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
     it("joins nothing when the thread switches during the run lookup", async () => {
       let found!: (run: unknown) => void;
       (client.runs.get as Mock).mockReturnValue(
