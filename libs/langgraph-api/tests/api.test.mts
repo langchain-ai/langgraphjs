@@ -614,10 +614,12 @@ describe("threads copy", () => {
     await client.runs.wait(thread.thread_id, assistantId, {
       input,
       config: globalConfig,
+      metadata: { copied_from: thread.thread_id },
     });
 
     const threadState = await client.threads.getState(thread.thread_id);
 
+    expect(threadState.metadata).toMatchObject({ copied_from: thread.thread_id });
     const copiedThread = await client.threads.copy(thread.thread_id);
     const copiedThreadState = await client.threads.getState(
       copiedThread.thread_id
