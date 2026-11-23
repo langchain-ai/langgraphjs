@@ -20,6 +20,11 @@ export interface EmbedRouteContext {
   checkpointer: BaseCheckpointSaver;
   store?: BaseStore;
   getGraph: (graphId: string) => Promise<AnyPregel>;
+  /**
+   * Cancels a protocol run that is in flight. Set by the protocol routes;
+   * returns `false` when the thread has no such run.
+   */
+  cancelProtocolRun?: (threadId: string, runId: string) => boolean;
 }
 
 export interface Thread {
@@ -93,4 +98,6 @@ export interface EmbedThread {
   >;
   queuedEvents: ProtocolEvent[];
   currentRun?: Run;
+  /** Aborts {@link currentRun} while it is in flight. */
+  currentRunAbort?: AbortController;
 }
