@@ -659,7 +659,7 @@ export class RedisStore {
       similarityThreshold?: number;
     }
   ): Promise<SearchItem[]> {
-    if (hasDottedLabel(namespacePrefix)) {
+    if (hasDottedLabel(namespacePrefix) || options?.limit === 0) {
       return [];
     }
     const prefix = namespacePrefix.join(".");
@@ -835,6 +835,7 @@ export class RedisStore {
     limit?: number;
     offset?: number;
   }): Promise<string[][]> {
+    if (options?.limit === 0) return [];
     const query = "*";
 
     try {
