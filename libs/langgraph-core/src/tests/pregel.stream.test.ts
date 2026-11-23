@@ -479,6 +479,95 @@ describe("streamEvents version v3", () => {
       // Debug mode is not part of STREAM_EVENTS_V3_MODES; confirm it isn't emitted.
       expect(byMethod(events, "debug" as never)).toHaveLength(0);
     });
+
+    it("discovers nested compiled subgraphs alongside a parallel sibling", async () => {
+      const inner = new StateGraph(CounterState)
+        .addNode("leaf", () => ({ count: 1 }))
+        .addEdge(START, "leaf")
+        .compile();
+      const middle = new StateGraph(CounterState)
+        .addNode("nested", inner)
+        .addEdge(START, "nested")
+        .compile();
+      const graph = new StateGraph(CounterState)
+        .addNode("outer", middle)
+        .addNode("sibling", async () => {
+          await Promise.resolve();
+          return { count: 2 };
+        })
+        .addEdge(START, "outer")
+        .addEdge(START, "sibling")
+        .compile();
+
+      const run = await graph.streamEvents({ count: 0 }, { version: "v3" });
+      const events = await collectEvents(run);
+      expect(
+        byMethod(events, "values").some(
+          (event) =>
+            event.params.namespace.length === 2 &&
+            event.params.namespace[0].startsWith("outer:") &&
+            event.params.namespace[1].startsWith("nested:")
+        )
+      ).toBe(true);
+      expect(await run.output).toEqual({ count: 3 });
+
+      const children = [];
+      for await (const sub of run.subgraphs) {
+        if (sub.name === "outer") {
+          for await (const child of sub.subgraphs) children.push(child);
+        }
+      }
+      expect(children).toHaveLength(1);
+      expect(children[0].path).toEqual([
+        expect.stringMatching(/^outer:/),
+        expect.stringMatching(/^nested:/),
+      ]);
+      expect(await children[0].output).toEqual({ count: 1 });
+    });
+
+    it("does not discover ordinary tool-calling nodes as subgraphs", async () => {
+      const tool = new DynamicStructuredTool({
+        name: "noop",
+        description: "Returns ok",
+        schema: z.object({}),
+        func: async () => "ok",
+      });
+      const child = new StateGraph(CounterState)
+        .addNode(
+          "plain",
+          RunnableLambda.from(async (_state, config) => {
+            await tool.invoke({}, config);
+            return { count: 1 };
+          })
+        )
+        .addEdge(START, "plain")
+        .compile();
+      const graph = new StateGraph(CounterState)
+        .addNode("outer", child)
+        .addEdge(START, "outer")
+        .compile();
+
+      const run = await graph.streamEvents({ count: 0 }, { version: "v3" });
+      const events = await collectEvents(run);
+      expect(
+        byMethod(events, "tools").some(
+          (event) =>
+            event.params.namespace.length === 2 &&
+            event.params.namespace[0].startsWith("outer:") &&
+            event.params.namespace[1].startsWith("plain:")
+        )
+      ).toBe(true);
+
+      const children = [];
+      for await (const sub of run.subgraphs) children.push(sub);
+      expect(children).toHaveLength(1);
+      expect(children[0].name).toBe("outer");
+      expect(await children[0].output).toEqual({ count: 1 });
+      const nested = [];
+      for await (const sub of children[0].subgraphs) nested.push(sub);
+      expect(nested).toHaveLength(0);
+      expect(await run.output).toEqual({ count: 1 });
+    });
   });
 
   describe("interrupts", () => {
