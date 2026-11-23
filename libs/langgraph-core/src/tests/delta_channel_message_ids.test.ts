@@ -49,6 +49,17 @@ describe.each([
     "a plain message object with an empty id",
     () => [{ role: "user", content: "b", id: "" }],
   ],
+  [
+    "a message with an empty id",
+    () => [new HumanMessage({ content: "b", id: "" })],
+  ],
+  [
+    "two messages with an empty id",
+    () => [
+      new HumanMessage({ content: "b", id: "" }),
+      new HumanMessage({ content: "c", id: "" }),
+    ],
+  ],
   ["a string", () => ["b"]],
   ["a bare string", () => "b"],
   ["a [role, content] pair", () => [rolePair]],
