@@ -99,7 +99,9 @@ export class Topic<Value> extends BaseChannel<
         }
       } else {
         updated = true;
-        this.values.push(...flatValues);
+        for (const value of flatValues) {
+          this.values.push(value);
+        }
       }
     }
     return updated;

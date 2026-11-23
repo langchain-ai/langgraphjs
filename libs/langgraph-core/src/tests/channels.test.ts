@@ -181,6 +181,18 @@ describe("Topic", () => {
   });
 });
 
+it("Topic appends a large batch in order across updates", () => {
+  const channel = new Topic<number>({ accumulate: true });
+  channel.update([-1]);
+  const batch = Array.from({ length: 200_000 }, (_, i) => i);
+
+  expect(channel.update([batch])).toBe(true);
+  const values = channel.get();
+  expect(values.length).toBe(batch.length + 1);
+  expect(values[0]).toBe(-1);
+  expect(values.slice(1).every((value, i) => value === i)).toBe(true);
+});
+
 describe("Topic with unique: true", () => {
   const channel = new Topic<string>({ unique: true });
 
