@@ -682,12 +682,13 @@ export class RedisStore {
       const knn = (filter: string) =>
         this.client.ft.search(
           "store_vectors",
-          `(${filter})=>[KNN ${limit} @embedding $BLOB]`,
+          `(${filter})=>[KNN ${offset + limit} @embedding $BLOB]`,
           {
             PARAMS: {
               BLOB: vectorBytes,
             },
             DIALECT: 2,
+            SORTBY: { BY: "__embedding_score", DIRECTION: "ASC" },
             LIMIT: { from: offset, size: limit },
             RETURN: ["prefix", "key", "__embedding_score"],
           }
@@ -698,9 +699,10 @@ export class RedisStore {
         // `user:123`, as it does plain search's, and for others, such as
         // `CORP\alice`, it matches nothing. Then run the original query
         const narrowed = await knn(narrowQuery).catch(() => null);
-        const results = narrowed?.documents.length
-          ? narrowed
-          : await knn(queryStr);
+        // An empty page can mean the matching namespace is exhausted. Do not
+        // restart pagination against the broader query in that case.
+        const results =
+          narrowed && narrowed.total > 0 ? narrowed : await knn(queryStr);
 
         // Get matching store documents
         const items: SearchItem[] = [];
