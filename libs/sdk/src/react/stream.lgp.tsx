@@ -185,7 +185,13 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       return;
     }
 
-    void fetcher(threadId, limit);
+    // The read puts its failure in `state` and reports it through `onError`, but it
+    // rejects as well for the callers that await it (`mutate`, `read`, the stop and
+    // finish paths, which all handle it). This effect has nowhere to throw the
+    // promise, so the rejection would travel on as an unhandled promise rejection:
+    // the app handles the error it was given and the browser reports a second one
+    // on top of it.
+    void fetcher(threadId, limit).catch(() => {});
     // The `threadId` and `limit` arguments are already present in `key`
     // Thus we don't need to include them in the dependency array
     // eslint-disable-next-line react-hooks/exhaustive-deps
