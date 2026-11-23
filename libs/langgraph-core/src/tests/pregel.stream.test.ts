@@ -85,6 +85,46 @@ describe("streamEvents version v3", () => {
       expect(output).toEqual({ count: 6 });
     });
 
+    it("aborts graph execution when run.abort() is called", async () => {
+      let release!: () => void;
+      let started!: () => void;
+      let nodeSignal: AbortSignal | undefined;
+      let secondStepRuns = 0;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const graph = new StateGraph(CounterState)
+        .addNode("wait", async (_state, config) => {
+          nodeSignal = config.signal;
+          started();
+          await gate;
+          return { count: 1 };
+        })
+        .addNode("second", () => {
+          secondStepRuns++;
+          return { count: 10 };
+        })
+        .addEdge(START, "wait")
+        .addEdge("wait", "second")
+        .compile();
+
+      const run = await graph.streamEvents({ count: 0 }, { version: "v3" });
+      await entered;
+      run.abort();
+      release();
+
+      expect(run.signal.aborted).toBe(true);
+      expect(nodeSignal?.aborted).toBe(true);
+      await expect(run.output).rejects.toMatchObject({ name: "AbortError" });
+      await expect(collectEvents(run)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(secondStepRuns).toBe(0);
+    });
+
     it("encodes protocol events as text/event-stream", async () => {
       const graph = buildCounterGraph();
       const stream = await graph.streamEvents(
