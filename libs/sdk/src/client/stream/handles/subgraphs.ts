@@ -217,7 +217,12 @@ export class SubgraphHandle {
         const tc = assembler.consume(event as ToolsEvent);
         if (tc) buffer.push(toClientAssembledToolCall(tc));
       },
-      () => buffer.close()
+      () => {
+        assembler.failAll(
+          new Error("Tool call stream ended before completion")
+        );
+        buffer.close();
+      }
     );
     return buffer;
   }
