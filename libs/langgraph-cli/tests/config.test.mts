@@ -1,11 +1,13 @@
 import dedent from "dedent";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assembleLocalDeps,
   configToCompose,
   configToDocker,
   configToWatch,
   getBaseImage,
+  resolveApiVersion,
+  resolveConfigApiVersion,
 } from "../src/docker/docker.mjs";
 import { type Config, getConfig } from "../src/utils/config.mjs";
 import { fileURLToPath } from "node:url";
@@ -985,6 +987,91 @@ describe("packaging", () => {
       source: expect.stringContaining(path.join("/tests/packaging_tests/js")),
       target: "/deps/js",
     });
+  });
+});
+
+describe("resolveApiVersion", () => {
+  const pypi = (releases: Record<string, { yanked?: boolean }[]>) =>
+    vi.fn(async () => new Response(JSON.stringify({ releases })));
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const releases = {
+    "0.17.9": [{}],
+    "0.18.2": [{}],
+    "0.18.10": [{}],
+    "0.18.11": [{ yanked: true }],
+    "0.18.12rc1": [{}],
+    "0.18.12.dev3": [{}],
+    "0.19.0": [{}],
+    "1.0.0": [{}],
+  };
+
+  it.each([
+    ["0.18", "0.18.10"],
+    ["0", "0.19.0"],
+    ["1", "1.0.0"],
+  ])("resolves %s to the newest final release", async (input, expected) => {
+    const fetchMock = pypi(releases);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(resolveApiVersion(input)).resolves.toBe(expected);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://pypi.org/pypi/langgraph-api/json",
+      expect.anything()
+    );
+  });
+
+  it.each([undefined, "0.18.3", "0.19.0rc2", "0.19.0.dev3", "0.19-rc"])(
+    "keeps %s verbatim without fetching",
+    async (input) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(resolveApiVersion(input)).resolves.toBe(input);
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it("throws when no final release matches", async () => {
+    vi.stubGlobal("fetch", pypi(releases));
+    await expect(resolveApiVersion("0.20")).rejects.toThrow(
+      /No final langgraph-api release on PyPI matches api_version "0.20".*Pin an exact api_version/
+    );
+  });
+
+  it("throws when PyPI is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("getaddrinfo ENOTFOUND pypi.org");
+      })
+    );
+    await expect(resolveApiVersion("0.18")).rejects.toThrow(
+      /Failed to resolve api_version "0.18".*ENOTFOUND.*Pin an exact api_version/
+    );
+  });
+
+  it("throws on a non-OK response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 503 }))
+    );
+    await expect(resolveApiVersion("0.18")).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("resolves the config used for the base image", async () => {
+    vi.stubGlobal("fetch", pypi(releases));
+    const config = await resolveConfigApiVersion(
+      getConfig({
+        node_version: "20",
+        graphs: { agent: "./agent.js:graph" },
+        api_version: "0.18",
+      })
+    );
+    expect(getBaseImage(config)).toBe(
+      "langchain/langgraphjs-api:0.18.10-node20"
+    );
   });
 });
 

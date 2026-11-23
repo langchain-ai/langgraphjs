@@ -2,6 +2,7 @@ import {
   assembleLocalDeps,
   configToCompose,
   configToDocker,
+  resolveConfigApiVersion,
 } from "../docker/docker.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
 import { getConfig } from "../utils/config.mjs";
@@ -44,7 +45,9 @@ builder
   )
   .action(async (savePath, options) => {
     const configPath = await getProjectPath(options.config);
-    const config = getConfig(await fs.readFile(configPath, "utf-8"));
+    const config = await resolveConfigApiVersion(
+      getConfig(await fs.readFile(configPath, "utf-8"))
+    );
 
     const localDeps = await assembleLocalDeps(configPath, config);
     const dockerfile = await configToDocker(configPath, config, localDeps);

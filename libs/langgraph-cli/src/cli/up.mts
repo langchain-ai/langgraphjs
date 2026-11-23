@@ -5,7 +5,11 @@ import { getConfig } from "../utils/config.mjs";
 import { getProjectPath } from "./utils/project.mjs";
 import { logger } from "../utils/logging.mjs";
 import { createCompose, getDockerCapabilities } from "../docker/compose.mjs";
-import { configToCompose, getBaseImage } from "../docker/docker.mjs";
+import {
+  configToCompose,
+  getBaseImage,
+  resolveConfigApiVersion,
+} from "../docker/docker.mjs";
 import { $, type Options } from "execa";
 import { createHash } from "node:crypto";
 import dedent from "dedent";
@@ -88,7 +92,9 @@ builder
     );
 
     const configPath = await getProjectPath(params.config);
-    const config = getConfig(await fs.readFile(configPath, "utf-8"));
+    const config = await resolveConfigApiVersion(
+      getConfig(await fs.readFile(configPath, "utf-8"))
+    );
 
     const cwd = path.dirname(configPath);
     const capabilities = await getDockerCapabilities();
