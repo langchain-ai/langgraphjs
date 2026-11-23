@@ -1,5 +1,12 @@
 # @langchain/react
 
+## 2.0.0-rc.4
+
+### Patch Changes
+
+- Updated dependencies [[`bff8b43`](https://github.com/langchain-ai/langgraphjs/commit/bff8b43fccaf95ce15844f1d6231a5df06dc0aea)]:
+  - @langchain/langgraph-sdk@1.17.1-rc.4
+
 ## 2.0.0-rc.3
 
 ### Patch Changes
