@@ -178,6 +178,46 @@ describe("RemoteGraph", () => {
     });
   });
 
+  test("getState preserves task interrupt ids for targeted resume", async () => {
+    const client = new Client();
+    const interrupts = [
+      { id: "approve-invoice", value: "Approve invoice?" },
+      { id: "approve-order", value: "Approve order?" },
+      { interrupt_id: "legacy", value: "Approve legacy request?" },
+    ];
+    vi.spyOn(client.threads, "getState").mockResolvedValue({
+      values: {},
+      next: ["approvals"],
+      checkpoint: {
+        thread_id: "thread1",
+        checkpoint_id: "checkpoint1",
+        checkpoint_ns: "",
+        checkpoint_map: {},
+      },
+      metadata: {},
+      created_at: null,
+      parent_checkpoint: null,
+      tasks: interrupts.map((interrupt, i) => ({
+        id: `task-${i}`,
+        name: "approvals",
+        state: null,
+        checkpoint: null,
+        error: null,
+        interrupts: [interrupt],
+      })),
+    });
+    const graph = new RemoteGraph({ client, graphId: "test_graph_id" });
+    const snapshot = await graph.getState({
+      configurable: { thread_id: "thread1" },
+    });
+
+    expect(snapshot.tasks.flatMap((task) => task.interrupts)).toEqual([
+      { ...interrupts[0], interrupt_id: "approve-invoice" },
+      { ...interrupts[1], interrupt_id: "approve-order" },
+      interrupts[2],
+    ]);
+  });
+
   test("getState handles null checkpoint", async () => {
     const client = new Client({});
     vi.spyOn((client as any).threads, "getState").mockResolvedValue({
