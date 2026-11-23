@@ -1,9 +1,9 @@
 import {
   BaseMessage,
-  ToolMessage,
   AIMessage,
   isBaseMessage,
   isAIMessage,
+  ToolMessage,
 } from "@langchain/core/messages";
 import { RunnableToolLike } from "@langchain/core/runnables";
 import {
@@ -26,6 +26,22 @@ export type ToolNodeOptions = {
 
 const isBaseMessageArray = (input: unknown): input is BaseMessage[] =>
   Array.isArray(input) && input.every(isBaseMessage);
+
+const getCommandMessages = (command: Command): BaseMessage[] | undefined => {
+  const update = command.update;
+  if (update == null || Array.isArray(update) || !("messages" in update)) {
+    return undefined;
+  }
+
+  return Array.isArray(update.messages)
+    ? (update.messages as BaseMessage[])
+    : undefined;
+};
+
+const hasCommandMessages = (command: Command): boolean => {
+  const update = command.update;
+  return update != null && !Array.isArray(update) && "messages" in update;
+};
 
 const isMessagesState = (
   input: unknown
@@ -342,29 +358,96 @@ export class ToolNode<T = any> extends RunnableCallable<T, T> {
       | BaseMessage[]
       | Command
     )[] = [];
+    const hasNonToolMessages = outputs.some((output) => {
+      if (!isCommand(output)) {
+        return false;
+      }
+
+      return (
+        getCommandMessages(output)?.some(
+          (message: BaseMessage) =>
+            message.getType() !== "tool" && message.getType() !== "remove"
+        ) ?? false
+      );
+    });
+    const toolMessages: ToolMessage[] = [];
+    const otherMessages: BaseMessage[] = [];
+    const processedCommands: Command[] = [];
     let parentCommand: Command | null = null;
 
     for (const output of outputs) {
       if (isCommand(output)) {
+        let command = output;
+        const messages = getCommandMessages(output);
+        if (hasNonToolMessages && messages) {
+          toolMessages.push(
+            ...messages.filter(
+              (message): message is ToolMessage => message.getType() === "tool"
+            )
+          );
+          otherMessages.push(
+            ...messages.filter(
+              (message) =>
+                message.getType() !== "tool" && message.getType() !== "remove"
+            )
+          );
+          const retainedMessages = messages.filter(
+            (message) => message.getType() === "remove"
+          );
+          command = new Command({
+            graph: output.graph,
+            goto: output.goto,
+            resume: output.resume,
+            update: {
+              ...output.update,
+              ...(retainedMessages.length > 0 || hasCommandMessages(output)
+                ? { messages: retainedMessages }
+                : {}),
+            },
+          });
+        }
+
         if (
-          output.graph === Command.PARENT &&
-          Array.isArray(output.goto) &&
-          output.goto.every((send) => _isSend(send))
+          command.graph === Command.PARENT &&
+          Array.isArray(command.goto) &&
+          command.goto.every((send) => _isSend(send))
         ) {
           if (parentCommand) {
-            (parentCommand.goto as Send[]).push(...(output.goto as Send[]));
+            (parentCommand.goto as Send[]).push(...(command.goto as Send[]));
           } else {
             parentCommand = new Command({
               graph: Command.PARENT,
-              goto: output.goto,
+              goto: command.goto,
             });
           }
         } else {
-          combinedOutputs.push(output);
+          if (hasNonToolMessages) {
+            processedCommands.push(command);
+          } else {
+            combinedOutputs.push(output);
+          }
         }
       } else {
+        if (hasNonToolMessages) {
+          toolMessages.push(output);
+        } else {
+          combinedOutputs.push(
+            Array.isArray(input) ? [output] : { messages: [output] }
+          );
+        }
+      }
+    }
+
+    if (hasNonToolMessages) {
+      if (toolMessages.length > 0) {
         combinedOutputs.push(
-          Array.isArray(input) ? [output] : { messages: [output] }
+          Array.isArray(input) ? toolMessages : { messages: toolMessages }
+        );
+      }
+      combinedOutputs.push(...processedCommands);
+      if (otherMessages.length > 0) {
+        combinedOutputs.push(
+          Array.isArray(input) ? otherMessages : { messages: otherMessages }
         );
       }
     }
