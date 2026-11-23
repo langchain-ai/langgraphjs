@@ -1855,15 +1855,21 @@ export class ThreadStream<
       },
       transform
     );
+    // The wire protocol treats an empty namespace list as a wildcard.
+    // Use the same representation for filter unions and coverage checks.
+    const filter =
+      params.namespaces?.length === 0
+        ? { ...params, namespaces: undefined }
+        : params;
     const subscription = Object.assign(handle, {
-      filter: params,
+      filter,
       registeredAfterSeq: this.ordering.lastSeenSeq,
       seenEventIds: new Set<string>(),
     });
     this.#subscriptions.set(subscriptionId, subscription);
 
     const covered = new Promise<void>((resolve, reject) => {
-      this.#pendingSubResolves.push({ filter: params, resolve, reject });
+      this.#pendingSubResolves.push({ filter, resolve, reject });
     });
     this.#scheduleReconcile();
 
