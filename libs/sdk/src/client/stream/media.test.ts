@@ -1,10 +1,89 @@
 import type { Event } from "@langchain/protocol";
 import { describe, expect, it } from "vitest";
 
-import { MediaAssembler } from "./media.js";
+import { MediaAssembler, type ImageMedia } from "./media.js";
 import { eventOf } from "./test/utils.js";
 
 describe("MediaAssembler", () => {
+  it.each([
+    {
+      first: { namespace: ["a"], node: "image" },
+      second: { namespace: ["b"], node: "image" },
+      id: "shared",
+    },
+    {
+      first: { namespace: [], node: "a" },
+      second: { namespace: [], node: "b" },
+      id: "shared",
+    },
+    {
+      first: { namespace: [], node: "a" },
+      second: { namespace: [], node: "b" },
+      id: undefined,
+    },
+  ])(
+    "isolates overlapping media in distinct message slots ($id, $first, $second)",
+    async ({ first, second, id }) => {
+      const images: ImageMedia[] = [];
+      const assembler = new MediaAssembler({
+        onImage: (image) => images.push(image),
+      });
+      for (const [index, slot] of [first, second].entries()) {
+        assembler.consume(
+          eventOf("messages", { event: "message-start", id }, slot) as Extract<
+            Event,
+            { method: "messages" }
+          >
+        );
+        assembler.consume(
+          eventOf(
+            "messages",
+            {
+              event: "content-block-start",
+              index: 0,
+              content: { type: "image", data: index === 0 ? "AQ==" : "Ag==" },
+            },
+            slot
+          ) as Extract<Event, { method: "messages" }>
+        );
+      }
+      expect(images).toHaveLength(2);
+      assembler.consume(
+        eventOf(
+          "messages",
+          { event: "message-finish", reason: "stop" },
+          first
+        ) as Extract<Event, { method: "messages" }>
+      );
+      assembler.consume(
+        eventOf(
+          "messages",
+          {
+            event: "content-block-delta",
+            index: 0,
+            delta: { type: "data-delta", data: "Aw==", encoding: "base64" },
+          },
+          second
+        ) as Extract<Event, { method: "messages" }>
+      );
+      assembler.consume(
+        eventOf(
+          "messages",
+          { event: "message-finish", reason: "stop" },
+          second
+        ) as Extract<Event, { method: "messages" }>
+      );
+      expect(images[0]).toMatchObject(first);
+      expect(images[1]).toMatchObject(second);
+      expect(new Uint8Array(await (await images[0]!.blob).arrayBuffer())).toEqual(
+        new Uint8Array([1])
+      );
+      expect(new Uint8Array(await (await images[1]!.blob).arrayBuffer())).toEqual(
+        new Uint8Array([2, 3])
+      );
+    }
+  );
+
   it("assembles audio bytes from protocol data deltas", async () => {
     const audio: Array<{
       mimeType?: string;
