@@ -1813,7 +1813,8 @@ export class FileSystemRuns implements RunsRepo {
         return true;
       });
 
-      return runs.slice(options?.offset ?? 0, options?.limit ?? 10);
+      const offset = options.offset ?? 0;
+      return runs.slice(offset, offset + (options.limit ?? 10));
     });
   }
 
