@@ -59,7 +59,6 @@ export const toWebSocketUrl = (apiUrl: string): string => {
   // with the desired path.
   const url = new URL(apiUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.search = "";
   url.hash = "";
   return url.toString();
 };
