@@ -370,6 +370,28 @@ describe("useStream (old engine) thread load", () => {
     expect(view.current.error).toBeInstanceOf(Error);
     expect((view.current.error as Error).message).toBe("boom");
   });
+
+  it.each([{ fetchStateHistory: false }, { fetchStateHistory: true }])(
+    "a failed load on mount is reported through error and onError only (fetchStateHistory: $fetchStateHistory)",
+    async ({ fetchStateHistory }) => {
+      const onError = vi.fn();
+      const client = createClient();
+      const offline = new Error("offline");
+      client.threads.getState.mockRejectedValue(offline);
+      client.threads.getHistory.mockRejectedValue(offline);
+
+      const view = await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory,
+        onError,
+      });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(offline);
+      expect(view.current.error).toBe(offline);
+      expect(view.current.isLoading).toBe(false);
+    }
+  );
 });
 
 describe("useStream (old engine) rejoin on mount", () => {
