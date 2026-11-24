@@ -5,18 +5,39 @@ import { afterEach, expect, it, vi } from "vitest";
 import { hydrateRoot } from "react-dom/client";
 import { renderToReadableStream, renderToString } from "react-dom/server";
 import { cleanup, render, renderHook } from "vitest-browser-react";
-import { STREAM_CONTROLLER, useStream } from "./use-stream.js";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { STREAM_CONTROLLER, toolCallsOf, useStream } from "./use-stream.js";
 import { useSuspenseStream } from "./suspense-stream.js";
 import { useSubmissionQueue, useValues } from "./selectors.js";
 import { StreamProvider, useStreamContext } from "./context.js";
 import { ThreadCacheProvider } from "./thread-cache.js";
-import { fakeServer } from "./test-client.js";
+import { fakeServer, type FakeRun } from "./test-client.js";
 import type { StreamSubmitOptions } from "./types.js";
 
 afterEach(() => cleanup());
 
 const human = (id: string, content: string) => ({ id, type: "human", content });
 const ai = (id: string, content: string) => ({ id, type: "ai", content });
+const asking = (id: string, callId: string, name = "search") => ({
+  ...ai(id, ""),
+  tool_calls: [{ id: callId, name, args: {} }],
+});
+
+/** Ends `run` paused at `interrupt` with `messages`, as a server streams and saves it. */
+function pause(
+  server: ReturnType<typeof fakeServer>,
+  run: FakeRun,
+  messages: unknown[],
+  interrupt: { id: string; value: unknown }
+) {
+  run.send("values", { messages });
+  run.send("values", { __interrupt__: [interrupt] });
+  server.next.set(run.threadId, ["tools"]);
+  server.tasks.set(run.threadId, [
+    { id: "task-1", name: "tools", error: null, interrupts: [interrupt] },
+  ]);
+  run.finish({ messages });
+}
 
 it("keeps a loaded message's instance while a run streams", async () => {
   const server = fakeServer({ t1: { messages: [human("h1", "earlier")] } });
@@ -189,6 +210,363 @@ it("sends forkFrom as the run's checkpoint, with no checkpoint_map, and its comm
     checkpoint_id: "cp-1",
     checkpoint_ns: "",
   });
+});
+
+it("shows a tool call with no result as running only while a run streams", async () => {
+  const asked = asking("a1", "call-1");
+  const server = fakeServer({
+    t1: { messages: [human("h1", "find it"), asked] },
+  });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect
+    .poll(() => result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+
+  void result.current.submit(null, { command: { resume: "approved" } });
+  await expect.poll(() => result.current.toolCalls[0]?.status).toBe("running");
+
+  server.runs[0].finish({
+    messages: [
+      human("h1", "find it"),
+      asked,
+      { id: "tm1", type: "tool", tool_call_id: "call-1", content: "found" },
+    ],
+  });
+  await expect
+    .poll(() => result.current.toolCalls[0])
+    .toMatchObject({ status: "finished", output: "found" });
+  await expect.poll(() => result.current.isLoading).toBe(false);
+
+  const answered = result.current.toolCalls;
+  void result.current.submit(null, { command: { resume: "again" } });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  expect(result.current.toolCalls).toBe(answered);
+});
+
+it.each(["stopped", "failed"] as const)(
+  "shows a tool call with no result as incomplete once its run is %s",
+  async (ending) => {
+    const server = fakeServer({
+      t1: { messages: [human("h1", "find it"), asking("a1", "call-1")] },
+    });
+    const { result } = await renderHook(() =>
+      useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+    );
+    await expect
+      .poll(() => result.current.toolCalls[0]?.status)
+      .toBe("incomplete");
+    void result.current.submit(null, { command: { resume: "approved" } });
+    await expect
+      .poll(() => result.current.toolCalls[0]?.status)
+      .toBe("running");
+
+    if (ending === "stopped") await result.current.stop();
+    else server.runs[0].send("error", { error: "Boom", message: "boom" });
+
+    await expect.poll(() => result.current.isLoading).toBe(false);
+    expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+  }
+);
+
+it("shows a tool call its run stopped at for an approval as incomplete, and running once answered", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "find it")] } });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.messages.length).toBe(1);
+  void result.current.submit({ messages: [human("h2", "go on")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  pause(
+    server,
+    server.runs[0],
+    [human("h1", "find it"), human("h2", "go on"), asking("a1", "call-1")],
+    { id: "int-1", value: "search?" }
+  );
+
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  await expect
+    .poll(() => result.current.interrupts.map(({ id }) => id))
+    .toEqual(["int-1"]);
+  expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+  void result.current.respond("yes");
+  await expect.poll(() => result.current.toolCalls[0]?.status).toBe("running");
+});
+
+it("shows a tool call the page answers with a headless tool as running until the run resumes with its result", async () => {
+  let answer!: (location: string) => void;
+  const tools = [
+    {
+      tool: { name: "get_location" },
+      execute: () =>
+        new Promise<string>((resolve) => {
+          answer = resolve;
+        }),
+    },
+  ];
+  const asked = asking("a1", "call-1", "get_location");
+  const server = fakeServer({ t1: { messages: [human("h1", "where am i")] } });
+  const { result } = await renderHook(() =>
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      tools,
+    })
+  );
+  await expect.poll(() => result.current.messages.length).toBe(1);
+  void result.current.submit({ messages: [human("h2", "where?")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  pause(
+    server,
+    server.runs[0],
+    [human("h1", "where am i"), human("h2", "where?"), asked],
+    {
+      id: "int-1",
+      value: {
+        type: "tool",
+        toolCall: { id: "call-1", name: "get_location", args: {} },
+      },
+    }
+  );
+
+  await expect.poll(() => answer).toBeDefined();
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  expect(result.current.toolCalls[0]?.status).toBe("running");
+  answer("SF");
+  await expect.poll(() => server.runs.length).toBe(2);
+  server.next.delete("t1");
+  server.tasks.delete("t1");
+  server.runs[1].finish({
+    messages: [
+      human("h1", "where am i"),
+      human("h2", "where?"),
+      asked,
+      { id: "tm1", type: "tool", tool_call_id: "call-1", content: "SF" },
+    ],
+  });
+  await expect
+    .poll(() => result.current.toolCalls[0])
+    .toMatchObject({ status: "finished", output: "SF" });
+});
+
+it("shows a reopened thread's tool call waiting on an approval as running until its load finds no run going", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "find it"), asking("a1", "call-1")] },
+  });
+  server.next.set("t1", ["tools"]);
+  server.tasks.set("t1", [
+    {
+      id: "task-1",
+      name: "tools",
+      error: null,
+      interrupts: [{ id: "int-1", value: "search?" }],
+    },
+  ]);
+  const statuses: Array<string | undefined> = [];
+  function Thread() {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+    });
+    statuses.push(stream.toolCalls[0]?.status);
+    return <span>{stream.interrupts.length} waiting</span>;
+  }
+  const screen = await render(
+    <ThreadCacheProvider>
+      <Thread key="first" />
+    </ThreadCacheProvider>
+  );
+  await expect.poll(() => screen.container.textContent).toBe("1 waiting");
+
+  statuses.length = 0;
+  const release = server.holdLookups();
+  await screen.rerender(
+    <ThreadCacheProvider>
+      <Thread key="again" />
+    </ThreadCacheProvider>
+  );
+  expect(statuses[0], "from the cache, at first paint").toBe("running");
+  await expect
+    .poll(() => server.calls.filter((call) => call === "getState t1"))
+    .toHaveLength(2);
+  expect(statuses.at(-1), "read again, its run lookup pending").toBe("running");
+  release();
+
+  await expect.poll(() => screen.container.textContent).toBe("1 waiting");
+  expect(statuses.at(-1)).toBe("incomplete");
+});
+
+it("keeps a tool call from an earlier turn incomplete while a new run streams", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "find it"), asking("a1", "call-1")] },
+  });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect
+    .poll(() => result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+
+  void result.current.submit({ messages: [human("h2", "never mind")] });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+});
+
+it("with stateKeys: [] and optimistic: false, keeps an earlier turn's call incomplete while a new run streams without its input", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "find it"), asking("a1", "call-1")] },
+  });
+  const { result } = await renderHook(() =>
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: [],
+      optimistic: false,
+    })
+  );
+  await expect
+    .poll(() => result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+
+  void result.current.submit({ messages: [human("h2", "never mind")] });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  await expect.poll(() => server.runs.length).toBe(1);
+  expect(result.current.messages).toHaveLength(2);
+  expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+  server.runs[0].send("messages", [asking("a2", "call-2"), {}]);
+  await expect
+    .poll(() => result.current.toolCalls.map(({ status }) => status))
+    .toEqual(["incomplete", "running"]);
+});
+
+it("with stateKeys: [], keeps an earlier turn's call incomplete while a run queued on the server streams", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "find it"), asking("a1", "call-1")] },
+  });
+  const { result } = await renderHook(() =>
+    useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+      stateKeys: [],
+    })
+  );
+  await expect
+    .poll(() => result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+  void result.current.submit(null, { command: { resume: "approved" } });
+  await expect.poll(() => result.current.toolCalls[0]?.status).toBe("running");
+  void result.current.submit({ messages: [human("h2", "and then?")] });
+  await expect.poll(() => server.calls).toContain("create run t1");
+
+  server.runs[0].send("error", { error: "Boom", message: "boom" });
+  await expect.poll(() => server.runs.length).toBe(2);
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  expect(result.current.messages).toHaveLength(2);
+  expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+});
+
+it("keeps an earlier turn's tool calls as they were when a run starts", async () => {
+  const server = fakeServer({
+    t1: {
+      messages: [
+        human("h1", "find it"),
+        {
+          ...ai("a1", ""),
+          tool_calls: [
+            { id: "call-1", name: "get_weather", args: {} },
+            { id: "call-2", name: "search", args: {} },
+          ],
+        },
+        { id: "tm1", type: "tool", tool_call_id: "call-1", content: '{"city":"SF"}' },
+        human("h2", "never mind"),
+        ai("a2", "ok"),
+      ],
+    },
+  });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect
+    .poll(() => result.current.toolCalls.map(({ status }) => status))
+    .toEqual(["finished", "incomplete"]);
+  expect(result.current.toolCalls[0]?.output).toEqual({ city: "SF" });
+  const shown = result.current.toolCalls;
+
+  void result.current.submit({ messages: [human("h3", "thanks")] });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  await expect.poll(() => result.current.messages).toHaveLength(6);
+
+  expect(result.current.toolCalls).toBe(shown);
+});
+
+it("keeps an earlier turn's call incomplete while a load hasn't ruled out a run going", async () => {
+  const server = fakeServer({
+    t1: {
+      messages: [
+        human("h1", "find it"),
+        asking("a1", "call-1"),
+        human("h2", "never mind"),
+      ],
+    },
+  });
+  const release = server.holdLookups();
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.messages).toHaveLength(3);
+
+  expect(result.current[STREAM_CONTROLLER].headUnconfirmed).toBe(true);
+  expect(result.current.toolCalls[0]?.status).toBe("incomplete");
+  release();
+});
+
+it("builds tool calls again when only the message a new turn starts after changes", () => {
+  const messages = [
+    new HumanMessage({ id: "h1", content: "find it" }),
+    new AIMessage({
+      id: "a1",
+      content: "",
+      tool_calls: [{ id: "call-1", name: "search", args: {} }],
+    }),
+  ];
+  const before = toolCallsOf(messages, [], true, undefined);
+  expect(before.toolCalls[0]?.status).toBe("running");
+
+  const after = toolCallsOf(messages, [], true, "a1", before);
+
+  expect(after.toolCalls[0]?.status).toBe("incomplete");
+  expect(
+    toolCallsOf(
+      [...messages, new AIMessage({ id: "a2", content: "it failed" })],
+      [],
+      true,
+      "a2"
+    ).toolCalls[0]?.status,
+    "a new turn after a reply with no tool calls"
+  ).toBe("incomplete");
+});
+
+it("keeps an empty toolCalls when a values event brings messages without tool calls", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.messages).toHaveLength(1);
+  const shown = result.current.toolCalls;
+
+  void result.current.submit({ messages: [human("h2", "again")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  server.runs[0].send("values", {
+    messages: [human("h1", "hi"), human("h2", "again"), ai("a1", "hello")],
+  });
+  await expect.poll(() => result.current.messages).toHaveLength(3);
+
+  expect(result.current.toolCalls).toBe(shown);
 });
 
 it("throws on a reject submit during a run", async () => {

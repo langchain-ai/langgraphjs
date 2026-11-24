@@ -8,6 +8,7 @@ import {
   useMessageMetadata,
   useMessages,
   useSubmissionQueue,
+  useToolCalls,
   useValues,
 } from "./selectors.js";
 import { engineOf, subscribeScope } from "./use-scoped.js";
@@ -24,8 +25,20 @@ const tick = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * A thread whose `task` call ran a researcher subagent at `tools:abc`, which
  * its tool message records when `stamped`, and the thread's history has.
+ * Unless `answered`, the subagent hasn't returned: the call has no tool
+ * message, and the history has the subagent's task in flight.
  */
-function subagentThread({ stamped = true } = {}) {
+function subagentThread({ stamped = true, answered = true } = {}) {
+  const taskCall = {
+    ...ai("a1", ""),
+    tool_calls: [
+      {
+        id: "call-1",
+        name: "task",
+        args: { subagent_type: "researcher", description: "look" },
+      },
+    ],
+  };
   const toolMessage = {
     id: "tm1",
     type: "tool",
@@ -38,17 +51,8 @@ function subagentThread({ stamped = true } = {}) {
     t1: {
       messages: [
         human("h1", "research tires"),
-        {
-          ...ai("a1", ""),
-          tool_calls: [
-            {
-              id: "call-1",
-              name: "task",
-              args: { subagent_type: "researcher", description: "look" },
-            },
-          ],
-        },
-        toolMessage,
+        taskCall,
+        ...(answered ? [toolMessage] : []),
       ],
     },
   });
@@ -59,7 +63,17 @@ function subagentThread({ stamped = true } = {}) {
           id: "abc",
           name: "tools",
           path: ["__pregel_push", 0],
-          result: { messages: [toolMessage] },
+          ...(answered && { result: { messages: [toolMessage] } }),
+        },
+      ],
+    },
+    {
+      tasks: [
+        {
+          id: "model-1",
+          name: "model",
+          path: ["__pregel_pull", "model"],
+          result: { messages: [taskCall] },
         },
       ],
     },
@@ -146,6 +160,143 @@ it("keeps showing a subagent to a hook that holds its placeholder namespace afte
     .poll(() => result.current.messages.map((message) => message.content))
     .toEqual(["look", "found it"]);
   expect(result.current.held).toEqual(["tools:call-1"]);
+});
+
+const unanswered = (server: ReturnType<typeof fakeServer>) =>
+  server.history.set("tools:abc", {
+    messages: [
+      human("s1", "look"),
+      {
+        ...ai("s2", ""),
+        tool_calls: [{ id: "call-2", name: "search", args: {} }],
+      },
+    ],
+  });
+
+async function subagentPanel(server: ReturnType<typeof fakeServer>) {
+  const stream = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => stream.result.current.subagents.size).toBe(1);
+  const panel = await renderHook(() =>
+    useToolCalls(
+      stream.result.current,
+      stream.result.current.subagents.get("call-1")
+    )
+  );
+  return { stream, panel };
+}
+
+it("shows a subagent's tool call with no result as running only while the task call that started it runs", async () => {
+  const server = subagentThread({ answered: false });
+  unanswered(server);
+  const { stream, panel } = await subagentPanel(server);
+  await expect.poll(() => panel.result.current[0]?.status).toBe("incomplete");
+
+  void stream.result.current.submit(null, { command: { resume: "go on" } });
+  await expect.poll(() => panel.result.current[0]?.status).toBe("running");
+  server.runs[0].finish();
+  await expect.poll(() => panel.result.current[0]?.status).toBe("incomplete");
+});
+
+it("keeps a subagent's tool call with no result incomplete while a new turn runs, given the subagent or its namespace", async () => {
+  const server = subagentThread();
+  unanswered(server);
+  const { stream, panel } = await subagentPanel(server);
+  await expect.poll(() => panel.result.current[0]?.status).toBe("incomplete");
+  await expect
+    .poll(() => stream.result.current.subagents.get("call-1")?.namespace)
+    .toEqual(["tools:abc"]);
+  const byNamespace = await renderHook(() =>
+    useToolCalls(stream.result.current, ["tools:abc"])
+  );
+  server.history.set("tools:abc|tools:def", {
+    messages: [
+      human("n1", "dig"),
+      {
+        ...ai("n2", ""),
+        tool_calls: [{ id: "call-3", name: "search", args: {} }],
+      },
+    ],
+  });
+  const nested = await renderHook(() =>
+    useToolCalls(stream.result.current, ["tools:abc", "tools:def"])
+  );
+  await expect
+    .poll(() => byNamespace.result.current[0]?.status)
+    .toBe("incomplete");
+  await expect.poll(() => nested.result.current[0]?.status).toBe("incomplete");
+
+  void stream.result.current.submit({ messages: [human("h2", "again")] });
+  await expect.poll(() => stream.result.current.isLoading).toBe(true);
+  await tick();
+  expect(panel.result.current[0]?.status).toBe("incomplete");
+  expect(byNamespace.result.current[0]?.status).toBe("incomplete");
+  expect(nested.result.current[0]?.status, "a nested subagent").toBe(
+    "incomplete"
+  );
+});
+
+it("keeps a nested subagent's call incomplete during a new turn when its view opened before the subagent's namespace was known", async () => {
+  const server = subagentThread({ stamped: false });
+  server.history.set("tools:abc|tools:def", {
+    messages: [
+      human("n1", "dig"),
+      {
+        ...ai("n2", ""),
+        tool_calls: [{ id: "call-3", name: "search", args: {} }],
+      },
+    ],
+  });
+  const stream = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => stream.result.current.subagents.size).toBe(1);
+  const nested = await renderHook(() =>
+    useToolCalls(stream.result.current, ["tools:abc", "tools:def"])
+  );
+  await expect.poll(() => nested.result.current[0]?.status).toBe("incomplete");
+  await renderHook(() =>
+    useToolCalls(
+      stream.result.current,
+      stream.result.current.subagents.get("call-1")
+    )
+  );
+  await expect
+    .poll(() => stream.result.current.subagents.get("call-1")?.namespace)
+    .toEqual(["tools:abc"]);
+
+  void stream.result.current.submit({ messages: [human("h2", "again")] });
+  await expect.poll(() => stream.result.current.isLoading).toBe(true);
+  await tick();
+
+  expect(nested.result.current[0]?.status).toBe("incomplete");
+});
+
+it("keeps a subagent's view as it was when its task call starts running and none of its calls changes", async () => {
+  const server = subagentThread({ answered: false });
+  const stream = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => stream.result.current.subagents.size).toBe(1);
+  const handle = subscribeScope(
+    stream.result.current,
+    stream.result.current.subagents.get("call-1")
+  );
+  const off = handle.subscribe(() => {});
+  await expect
+    .poll(() => stream.result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+  await expect.poll(() => handle.getSnapshot().messages).toHaveLength(2);
+  const view = handle.getSnapshot();
+
+  void stream.result.current.submit(null, { command: { resume: "go on" } });
+  await expect.poll(() => stream.result.current.isLoading).toBe(true);
+  await tick();
+
+  expect(handle.getSnapshot()).toBe(view);
+  off();
+  handle.release();
 });
 
 it("releases every scope a subagent panel held once it unmounts", async () => {
