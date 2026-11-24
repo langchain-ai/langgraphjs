@@ -370,6 +370,22 @@ describe("useStream (old engine) thread load", () => {
     expect(view.current.error).toBeInstanceOf(Error);
     expect((view.current.error as Error).message).toBe("boom");
   });
+
+  it("shows a failed thread load without an unhandled rejection", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    unmounts.push(() => process.off("unhandledRejection", unhandled));
+    const client = createClient();
+    const notFound = new Error("HTTP 404: thread t1 not found");
+    client.threads.getState.mockRejectedValue(notFound);
+    const onError = vi.fn();
+
+    const view = await renderStream(client, { threadId: "t1", onError });
+
+    expect(view.current.error).toBe(notFound);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(notFound);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
 });
 
 describe("useStream (old engine) rejoin on mount", () => {
