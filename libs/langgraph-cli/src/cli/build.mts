@@ -3,6 +3,7 @@ import {
   assembleLocalDeps,
   configToDocker,
   getBaseImage,
+  resolveConfigApiVersion,
 } from "../docker/docker.mjs";
 import { getConfig } from "../utils/config.mjs";
 import { builder } from "./utils/builder.mjs";
@@ -43,7 +44,9 @@ builder
     await getDockerCapabilities();
 
     const projectDir = path.dirname(configPath);
-    const config = getConfig(await fs.readFile(configPath, "utf-8"));
+    const config = await resolveConfigApiVersion(
+      getConfig(await fs.readFile(configPath, "utf-8"))
+    );
 
     const opts: Options = {
       cwd: projectDir,

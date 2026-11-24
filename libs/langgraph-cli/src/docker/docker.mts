@@ -242,6 +242,79 @@ async function updateGraphPaths(
   }
 }
 
+const PARTIAL_API_VERSION_PATTERN = /^\d+(?:\.\d+)?$/;
+const FINAL_API_VERSION_PATTERN = /^\d+(?:\.\d+)*$/;
+const PYPI_API_VERSIONS_URL = "https://pypi.org/pypi/langgraph-api/json";
+
+function compareReleases(a: number[], b: number[]) {
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/** Resolve a bare major or major.minor api_version to the newest final langgraph-api release on PyPI. */
+export async function resolveApiVersion(
+  apiVersion: string | undefined
+): Promise<string | undefined> {
+  if (!apiVersion || !PARTIAL_API_VERSION_PATTERN.test(apiVersion)) {
+    return apiVersion;
+  }
+
+  const prefix = apiVersion.split(".").map(Number);
+  const pinHint = `Pin an exact api_version (e.g. "0.18.3") to build without looking it up.`;
+
+  let releases: Record<string, { yanked?: boolean }[]>;
+  try {
+    const response = await fetch(PYPI_API_VERSIONS_URL, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = (await response.json()) as { releases?: unknown } | null;
+    if (typeof payload?.releases !== "object" || payload.releases == null) {
+      throw new Error("invalid response");
+    }
+    releases = payload.releases as typeof releases;
+  } catch (error) {
+    throw new Error(
+      `Failed to resolve api_version "${apiVersion}" from ${PYPI_API_VERSIONS_URL}: ${
+        (error as Error).message
+      }. ${pinHint}`
+    );
+  }
+
+  let best: { version: string; release: number[] } | undefined;
+  for (const [version, files] of Object.entries(releases)) {
+    if (!FINAL_API_VERSION_PATTERN.test(version)) continue;
+    if (Array.isArray(files) && files.length && files.every((f) => f.yanked)) {
+      continue;
+    }
+    const release = version.split(".").map(Number);
+    if (prefix.some((part, i) => release[i] !== part)) continue;
+    if (!best || compareReleases(release, best.release) > 0) {
+      best = { version, release };
+    }
+  }
+
+  if (!best) {
+    throw new Error(
+      `No final langgraph-api release on PyPI matches api_version "${apiVersion}". ${pinHint}`
+    );
+  }
+  return best.version;
+}
+
+/** Return the config with a bare major or major.minor api_version resolved to an exact release. */
+export async function resolveConfigApiVersion<T extends Config>(
+  config: T
+): Promise<T> {
+  const apiVersion = await resolveApiVersion(config.api_version);
+  return apiVersion === config.api_version
+    ? config
+    : { ...config, api_version: apiVersion };
+}
+
 export function getBaseImage(config: Config, apiVersion?: string) {
   const resolvedApiVersion = apiVersion ?? config.api_version;
 

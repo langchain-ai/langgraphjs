@@ -23,6 +23,7 @@ import {
   assembleLocalDeps,
   configToDocker,
   getBaseImage,
+  resolveApiVersion,
 } from "../docker/docker.mjs";
 import { activeDockerHost } from "../docker/compose.mjs";
 import {
@@ -1026,11 +1027,15 @@ async function runLocalBuild(args: LocalBuildArgs): Promise<BuildResult> {
   const projectDir = path.dirname(args.configPath);
   const localDeps = await assembleLocalDeps(args.configPath, args.config);
 
-  // Resolve the base image, honoring `--base-image` / `--api-version`. When
-  // neither is supplied this equals the config's own base image, so the
-  // rewrite below is a no-op.
+  // Resolve the base image, honoring `--base-image` / `--api-version`. A bare
+  // major or major.minor api_version is resolved to an exact release unless
+  // `--base-image` is supplied.
   const baseImageRef =
-    args.baseImage ?? getBaseImage(args.config, args.apiVersion);
+    args.baseImage ??
+    getBaseImage(
+      args.config,
+      await resolveApiVersion(args.apiVersion ?? args.config.api_version)
+    );
 
   const generatedDockerfile = await configToDocker(
     args.configPath,
