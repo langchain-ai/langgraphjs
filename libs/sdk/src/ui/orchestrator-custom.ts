@@ -854,8 +854,9 @@ export class CustomStreamOrchestrator<
   }
 
   #flushPendingHeadlessToolInterrupts(): void {
+    const threadId = this.#threadId;
     const batch: { threadId: string | null; command?: unknown } = {
-      threadId: this.#threadId,
+      threadId,
     };
     flushPendingHeadlessToolInterrupts(
       this.stream.values as Record<string, unknown> | null,
@@ -869,6 +870,11 @@ export class CustomStreamOrchestrator<
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) => {
+          // submit() resumes the current thread, which is no longer this call's.
+          if (threadId !== this.#threadId) {
+            this.#headlessRuns.delete(batch);
+            return;
+          }
           batch.command = command;
           // A stop or cleared queue can drop the resume before it starts.
           return this.submit(null, { command }).finally(() => {
