@@ -349,14 +349,21 @@ export class StreamManager<
    * - Page refresh (when stream has already completed)
    * - Loading thread history
    * - Navigating between threads
+   * - Reading a thread again, after runs this page didn't stream
+   *
+   * A subagent already tracked is only ended, when it has no result yet, with
+   * its tool message's result or error. See
+   * `SubagentManager.reconstructFromMessages`.
    *
    * @param messages - Array of messages from thread history
    * @param options - Optional configuration
-   * @param options.skipIfPopulated - If true, skip reconstruction if subagents already exist
    */
   reconstructSubagents(
     messages: Message[],
-    options?: { skipIfPopulated?: boolean }
+    options?: {
+      /** @deprecated Has no effect: tracked subagents are never replaced. */
+      skipIfPopulated?: boolean;
+    }
   ): void {
     this.subagentManager.reconstructFromMessages(messages, options);
   }

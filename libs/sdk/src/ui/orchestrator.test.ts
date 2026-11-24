@@ -2424,6 +2424,97 @@ describe("StreamOrchestrator", () => {
       controller?.abort();
       orch.dispose();
     });
+
+    describe("a thread read again", () => {
+      const secondTask = [
+        {
+          id: "m4",
+          content: "",
+          type: "ai",
+          tool_calls: [
+            {
+              id: "task-2",
+              name: "task",
+              type: "tool_call",
+              args: { description: "Compare prices", subagent_type: "researcher" },
+            },
+          ],
+        },
+        { id: "m5", content: "compared", type: "tool", name: "task", tool_call_id: "task-2" },
+      ];
+
+      async function loaded(values: TestState) {
+        (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+        const orch = new StreamOrchestrator<TestState>(
+          createOptions({ fetchStateHistory: false, filterSubagentMessages: true }),
+          accessors
+        );
+        orch.initThreadId("t1");
+        await orch.hydrationPromise;
+        orch.reconstructSubagentsIfNeeded();
+        return orch;
+      }
+
+      async function readAgain(orch: StreamOrchestrator<TestState>, values: TestState) {
+        (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+        await orch.hydrate();
+        orch.reconstructSubagentsIfNeeded();
+      }
+
+      it("ends an open subagent whose result the thread now holds", async () => {
+        const open = createSubagentStateValues();
+        open.messages.pop();
+        const orch = await loaded(open);
+        expect(orch.getSubagent("task-1")).toMatchObject({ status: "running", result: null });
+
+        const answered = createSubagentStateValues();
+        answered.messages[2].artifact = { checkpoint_ns: "tools:stamped" };
+        await readAgain(orch, answered);
+
+        expect(orch.getSubagent("task-1")).toMatchObject({
+          status: "complete",
+          result: "completed",
+          error: null,
+          namespace: ["tools:stamped"],
+          completedAt: expect.any(Date),
+        });
+        expect(orch.activeSubagents).toHaveLength(0);
+        orch.dispose();
+      });
+
+      it("ends an open subagent with the error its tool message holds", async () => {
+        const open = createSubagentStateValues();
+        open.messages.pop();
+        const orch = await loaded(open);
+
+        const failed = createSubagentStateValues();
+        Object.assign(failed.messages[2], { content: "boom", status: "error" });
+        await readAgain(orch, failed);
+
+        expect(orch.getSubagent("task-1")).toMatchObject({
+          status: "error",
+          result: null,
+          error: "boom",
+          completedAt: expect.any(Date),
+        });
+        orch.dispose();
+      });
+
+      it("lists the subagents of a turn run elsewhere next to the ones it has", async () => {
+        const orch = await loaded(createSubagentStateValues());
+        expect([...orch.subagents.keys()]).toEqual(["task-1"]);
+        const first = orch.getSubagent("task-1");
+
+        const values = createSubagentStateValues();
+        values.messages.push(...secondTask);
+        await readAgain(orch, values);
+
+        expect([...orch.subagents.keys()]).toEqual(["task-1", "task-2"]);
+        expect(orch.getSubagent("task-2")).toMatchObject({ status: "complete", result: "compared" });
+        expect(orch.getSubagent("task-1")?.completedAt).toBe(first?.completedAt);
+        orch.dispose();
+      });
+    });
   });
 
   describe("getMessagesMetadata", () => {

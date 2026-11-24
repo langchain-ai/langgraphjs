@@ -431,8 +431,7 @@ export function useStreamLGP<
 
   useEffect(() => {
     if (shouldReconstructSubagents) {
-      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
-      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+      stream.reconstructSubagents(historyMessages);
       // Fetch internal messages for each subagent from their subgraph checkpoints.
       // These messages are not in the main thread state but are persisted in the
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).

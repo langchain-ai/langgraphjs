@@ -428,6 +428,65 @@ it("follows a loaded thread over a thread stream, unless watchThread is false", 
   expect(followed).toEqual(["t1"]);
 });
 
+it("ends a loaded subagent, and lists a new one, once hydrate() reads what another tab's runs saved", async () => {
+  const task = (id: string) => ({
+    id: `ai-${id}`,
+    type: "ai",
+    content: "",
+    tool_calls: [{ id, name: "task", args: { subagent_type: "researcher", description: "look" } }],
+  });
+  const result1 = { id: "tool-call1", type: "tool", name: "task", tool_call_id: "call1", content: "found" };
+  const thread: { messages: unknown[] } = { messages: [human("h1", "hi"), task("call1")] };
+  const server = fakeServer({ t1: thread });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect
+    .poll(() => result.current.subagents.get("call1"))
+    .toMatchObject({ output: undefined, completedAt: null });
+
+  thread.messages = [...thread.messages, result1];
+  await result.current.hydrate();
+  await expect
+    .poll(() => result.current.subagents.get("call1"))
+    .toMatchObject({ status: "complete", output: "found", completedAt: expect.any(Date) });
+
+  thread.messages = [...thread.messages, human("h2", "more"), task("call2")];
+  await result.current.hydrate();
+  await expect.poll(() => result.current.subagents.has("call2")).toBe(true);
+});
+
+it("shows the result of a subagent whose run failed here and was finished from another tab", async () => {
+  const task = {
+    id: "ai-call1",
+    type: "ai",
+    content: "",
+    tool_calls: [{ id: "call1", name: "task", args: { subagent_type: "researcher", description: "look" } }],
+  };
+  const thread: { messages: unknown[] } = { messages: [] };
+  const server = fakeServer({ t1: thread });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  void result.current.submit({ messages: [human("h1", "hi")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  server.runs[0].send("updates", { agent: { messages: [task] } });
+  await expect.poll(() => result.current.subagents.get("call1")?.status).toBe("running");
+  server.runs[0].send("error", { error: "Boom", message: "boom" });
+  await expect.poll(() => result.current.subagents.get("call1")?.status).toBe("error");
+
+  thread.messages = [
+    human("h1", "hi"),
+    task,
+    { id: "tool-call1", type: "tool", name: "task", tool_call_id: "call1", content: "found" },
+  ];
+  await result.current.hydrate();
+
+  await expect
+    .poll(() => result.current.subagents.get("call1"))
+    .toMatchObject({ status: "complete", output: "found", error: undefined });
+});
+
 it("renders on the server without reading the thread, which shows loading", () => {
   const server = fakeServer({ t1: { messages: [human("h1", "hi")] } });
   function Chat() {

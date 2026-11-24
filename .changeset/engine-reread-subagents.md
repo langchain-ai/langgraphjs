@@ -1,0 +1,5 @@
+---
+"@langchain/langgraph-sdk": patch
+---
+
+Reading a thread again now updates the subagents already listed. Before, once any subagent was listed, a later read of the same thread changed none of them: a subagent whose result was saved by a run this page didn't stream (another tab answered its interrupt, or the run ended elsewhere before `hydrate()`) stayed `"pending"` or `"running"` with no `result` or `completedAt`, one closed with `"The run ended: error"` stayed an error after another run finished it, and the subagents of a turn run elsewhere were not listed. A read now ends a listed subagent that has no result yet with its `task` tool message's result or error, and adds the ones it doesn't have. It removes or reopens none, a complete subagent keeps its result, and a subagent's messages, values and namespace stay. This applies to `StreamOrchestrator`, which `useStream` from `@langchain/react` runs on, and to `useStream` from `@langchain/langgraph-sdk/react`. The `skipIfPopulated` option of `StreamManager.reconstructSubagents` is deprecated and has no effect.

@@ -1065,28 +1065,30 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * - Page refresh (when stream has already completed)
    * - Loading thread history
    * - Navigating between threads
+   * - Reading a thread again, after runs this page didn't stream
    *
    * The reconstruction process:
    * 1. Find AI messages with tool calls matching subagent tool names
    * 2. Find corresponding tool messages with results
-   * 3. Create SubagentStream entries with "complete" status
+   * 3. Create a SubagentStream entry for each call not tracked yet, ended when
+   *    its tool message is there
+   * 4. End a tracked subagent that has no result yet with its tool message's
+   *    result or error. Its messages, values and namespace stay, a complete
+   *    subagent keeps its result, and no subagent is removed or reopened.
    *
    * Note: Internal subagent messages (their streaming conversation) are not
    * reconstructed since they are not persisted in the main thread state.
    *
    * @param messages - Array of messages from thread history
-   * @param options - Optional configuration
-   * @param options.skipIfPopulated - If true, skip reconstruction if subagents already exist
+   * @param _options - Optional configuration
    */
   reconstructFromMessages(
     messages: Message<DefaultToolCall>[],
-    options?: { skipIfPopulated?: boolean }
-  ): void {
-    // Skip if we already have subagents (from active streaming)
-    if (options?.skipIfPopulated && this.subagents.size > 0) {
-      return;
+    _options?: {
+      /** @deprecated Has no effect: tracked subagents are never replaced. */
+      skipIfPopulated?: boolean;
     }
-
+  ): void {
     // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,
@@ -1130,8 +1132,14 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
         if (!toolCall.id) continue;
         if (!this.isSubagentToolCall(toolCall.name)) continue;
 
-        // Skip if we already have this subagent
-        if (this.subagents.has(toolCall.id)) continue;
+        const existing = this.subagents.get(toolCall.id);
+        if (existing != null) {
+          const ended = toolResults.get(toolCall.id);
+          if (ended != null && this.endFromToolMessage(existing, ended)) {
+            hasChanges = true;
+          }
+          continue;
+        }
 
         // Parse args
         const parsedArgs = this.parseArgs(toolCall.args);
@@ -1187,6 +1195,36 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
     if (hasChanges) {
       this.onSubagentChange?.();
     }
+  }
+
+  /** Whether the subagent changed. */
+  private endFromToolMessage(
+    subagent: SubagentStreamBase<ToolCall>,
+    toolMessage: {
+      content: string;
+      status: "success" | "error";
+      namespace: string[];
+    }
+  ): boolean {
+    // A fork can answer the same call again, and a head read before that run
+    // still holds the first answer.
+    if (subagent.status === "complete") return false;
+    const status = toolMessage.status === "error" ? "error" : "complete";
+    const result = status === "complete" ? toolMessage.content : null;
+    const error = status === "error" ? toolMessage.content : null;
+    if (subagent.status === status && subagent.error === error) return false;
+    this.subagents.set(subagent.id, {
+      ...subagent,
+      status,
+      result,
+      error,
+      namespace:
+        subagent.namespace.length > 0
+          ? subagent.namespace
+          : toolMessage.namespace,
+      completedAt: new Date(),
+    });
+    return true;
   }
 
   /**
