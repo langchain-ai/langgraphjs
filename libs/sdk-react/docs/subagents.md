@@ -21,7 +21,7 @@ interface SubagentDiscoverySnapshot {
   readonly namespace: readonly string[];
   readonly parentId: string | null; // the subagent that started it, or null
   readonly depth: number; // 1 when the main agent started it
-  readonly status: "running" | "complete" | "error";
+  readonly status: "running" | "complete" | "error" | "incomplete";
   readonly taskInput: string | undefined; // the task it was given
   readonly output: unknown; // its result as text, once complete
   readonly error: string | undefined;
@@ -44,6 +44,8 @@ interface SubgraphDiscoverySnapshot {
 ```
 
 The snapshots carry no messages or values. Read those with the selector hooks.
+
+A subagent's `status` is `"incomplete"` when it has no result and no run streams that could give one: its run waits on an interrupt, ended before the thread was loaded, or the page stopped streaming it with `stop({ cancel: false })`. Check `stream.interrupts` to see whether it waits on an approval. A run that resumes the subagent makes it `"running"` again. A subagent that was open when `stop()` cancelled its run, or the run failed, is `"error"`, with the reason in `error`. After a page reload it is `"incomplete"`, since the thread doesn't save the reason.
 
 ## Showing a subagent
 

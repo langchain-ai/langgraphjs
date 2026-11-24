@@ -1083,6 +1083,180 @@ it("ends a subagent left open when a custom transport's run stops or fails", asy
     .toMatchObject({ status: "error", error: "The run ended: stopped" });
 });
 
+const delegating = (id: string, callId: string) => ({
+  ...ai(id, ""),
+  tool_calls: [
+    {
+      id: callId,
+      name: "task",
+      args: { subagent_type: "researcher", description: "look" },
+    },
+  ],
+});
+
+it("shows a loaded thread's subagent that never returned as running until its load finds no run going, then incomplete, also while a new turn runs", async () => {
+  const server = fakeServer({
+    t1: { messages: [human("h1", "research it"), delegating("a1", "call-1")] },
+  });
+  const release = server.holdLookups();
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect.poll(() => result.current.subagents.size).toBe(1);
+  expect(
+    result.current.subagents.get("call-1")?.status,
+    "its run lookup pending"
+  ).toBe("running");
+  release();
+
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.status)
+    .toBe("incomplete");
+  expect(result.current.subagents.get("call-1")).toMatchObject({
+    error: undefined,
+    completedAt: null,
+  });
+
+  void result.current.submit({ messages: [human("h2", "never mind")] });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  expect(
+    result.current.subagents.get("call-1")?.status,
+    "while a new turn runs"
+  ).toBe("incomplete");
+});
+
+const returned = {
+  id: "tm1",
+  type: "tool",
+  name: "task",
+  tool_call_id: "call-1",
+  content: "found it",
+};
+
+async function startSubagent(server: ReturnType<typeof fakeServer>) {
+  const statuses: string[] = [];
+  const hook = await renderHook(() => {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+    });
+    const status = stream.subagents.get("call-1")?.status;
+    if (status != null && statuses.at(-1) !== status) statuses.push(status);
+    return stream;
+  });
+  await expect.poll(() => hook.result.current.messages.length).toBe(1);
+  void hook.result.current.submit({ messages: [human("h2", "go on")] });
+  await expect.poll(() => server.runs.length).toBe(1);
+  const messages = [
+    human("h1", "research it"),
+    human("h2", "go on"),
+    delegating("a1", "call-1"),
+  ];
+  server.runs[0].send("updates", { agent: { messages: [messages[2]] } });
+  await expect
+    .poll(() => hook.result.current.subagents.get("call-1")?.status, {
+      message: "before the main conversation shows its task call",
+    })
+    .toBe("running");
+  server.runs[0].send("values", { messages });
+  await expect
+    .poll(() => hook.result.current.toolCalls[0]?.status)
+    .toBe("running");
+  return { ...hook, messages, statuses };
+}
+
+it("shows a subagent as running, then complete, and nothing else while its run streams it to its result", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "research it")] } });
+  const { result, messages, statuses } = await startSubagent(server);
+
+  server.runs[0].send("updates", { tools: { messages: [returned] } });
+  server.runs[0].finish({ messages: [...messages, returned] });
+
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  expect(result.current.subagents.get("call-1")).toMatchObject({
+    status: "complete",
+    output: "found it",
+  });
+  expect(statuses).toEqual(["running", "complete"]);
+});
+
+it("shows a subagent whose run waits on an interrupt as incomplete, and running once answered", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "research it")] } });
+  const { result, messages } = await startSubagent(server);
+
+  pause(server, server.runs[0], messages, { id: "int-1", value: "search?" });
+  await expect
+    .poll(() => result.current.interrupts.map(({ id }) => id))
+    .toEqual(["int-1"]);
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.status)
+    .toBe("incomplete");
+
+  void result.current.respond("yes");
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.status)
+    .toBe("running");
+});
+
+it("shows a subagent as incomplete once the page stops streaming its run without cancelling it, also while a new turn runs", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "research it")] } });
+  const { result, messages } = await startSubagent(server);
+  server.state.set("t1", { messages });
+
+  await result.current.stop({ cancel: false });
+
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  await expect
+    .poll(() => result.current.toolCalls[0]?.status)
+    .toBe("incomplete");
+  expect(result.current.subagents.get("call-1")?.status).toBe("incomplete");
+
+  void result.current.submit({ messages: [human("h3", "never mind")] });
+  await expect.poll(() => result.current.isLoading).toBe(true);
+  expect(
+    result.current.subagents.get("call-1")?.status,
+    "while a new turn runs"
+  ).toBe("incomplete");
+});
+
+it("shows a subagent as complete once a later read of its thread has its result", async () => {
+  const messages = [human("h1", "research it"), delegating("a1", "call-1")];
+  const server = fakeServer({ t1: { messages } });
+  const { result } = await renderHook(() =>
+    useStream({ assistantId: "agent", client: server.client, threadId: "t1" })
+  );
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.status)
+    .toBe("incomplete");
+
+  server.state.set("t1", { messages: [...messages, returned] });
+  await result.current.hydrate();
+
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.status)
+    .toBe("complete");
+});
+
+it.each(["stopped", "failed"] as const)(
+  "keeps a subagent whose run %s as an error",
+  async (ending) => {
+    const server = fakeServer({
+      t1: { messages: [human("h1", "research it")] },
+    });
+    const { result } = await startSubagent(server);
+
+    if (ending === "stopped") await result.current.stop();
+    else server.runs[0].send("error", { error: "Boom", message: "boom" });
+
+    await expect.poll(() => result.current.isLoading).toBe(false);
+    expect(result.current.subagents.get("call-1")).toMatchObject({
+      status: "error",
+      error: `The run ended: ${ending === "stopped" ? "stopped" : "error"}`,
+    });
+  }
+);
+
 it("lists a submit waiting behind a custom transport's run, with no run id", async () => {
   const server = fakeServer();
   const { result } = await renderHook(() => {

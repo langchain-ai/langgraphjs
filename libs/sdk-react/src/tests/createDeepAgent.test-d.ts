@@ -210,7 +210,9 @@ describe("deep agent", () => {
     const subagent = [...stream.subagents.values()][0];
     expectTypeOf(subagent.id).toEqualTypeOf<string>();
     expectTypeOf(subagent.name).toEqualTypeOf<string>();
-    expectTypeOf(subagent.status).toEqualTypeOf<"running" | "complete" | "error">();
+    expectTypeOf(subagent.status).toEqualTypeOf<
+      "running" | "complete" | "error" | "incomplete"
+    >();
     expectTypeOf(subagent.taskInput).toEqualTypeOf<string | undefined>();
     expectTypeOf(subagent.output).toEqualTypeOf<unknown>();
     expectTypeOf(subagent.namespace).toExtend<readonly string[]>();
