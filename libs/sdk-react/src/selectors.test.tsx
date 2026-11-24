@@ -273,6 +273,30 @@ it("keeps a nested subagent's call incomplete during a new turn when its view op
   expect(nested.result.current[0]?.status).toBe("incomplete");
 });
 
+it("doesn't look up a subagent's namespace again when it goes from running to incomplete", async () => {
+  const server = subagentThread({ answered: false, stamped: false });
+  server.threadHistory.delete("t1");
+  const release = server.holdLookups();
+  const { result } = await renderHook(() => {
+    const stream = useStream({
+      assistantId: "agent",
+      client: server.client,
+      threadId: "t1",
+    });
+    const subagent = stream.subagents.get("call-1");
+    useMessages(stream, subagent);
+    return subagent?.status;
+  });
+  const lookups = () => server.calls.filter((call) => call === "getHistory t1");
+  await expect.poll(() => result.current).toBe("running");
+  await expect.poll(lookups).toHaveLength(1);
+  release();
+
+  await expect.poll(() => result.current).toBe("incomplete");
+  await tick();
+  expect(lookups()).toHaveLength(1);
+});
+
 it("keeps a subagent's view as it was when its task call starts running and none of its calls changes", async () => {
   const server = subagentThread({ answered: false });
   const stream = await renderHook(() =>

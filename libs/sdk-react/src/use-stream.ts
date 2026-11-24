@@ -574,7 +574,7 @@ function createBinding(
       engine.newTurnAfter,
       toolCalls
     );
-    subagents = subagentsOf(engine.subagents, subagents);
+    subagents = subagentsOf(engine, toolCalls.toolCalls, subagents);
     // Only ones `respond()` can answer: the engine's
     // `{ when: "breakpoint" }` placeholder has no id.
     const shown = engine.interrupts.filter((interrupt) => interrupt.id != null);
@@ -658,15 +658,41 @@ function createBinding(
   return binding;
 }
 
+/**
+ * The engine keeps a subagent open until a run streams its `task` call's
+ * result or is known to have ended, so one a thread load rebuilt, or whose
+ * run paused, stays open with no run going, also once a later read of the
+ * thread has its result. An open subagent takes its `task` call's status, or
+ * follows the thread's run while the main conversation doesn't show that call.
+ */
+function subagentStatus(
+  engine: StreamEngine,
+  toolCalls: readonly AssembledToolCall[],
+  subagent: SubagentStreamInterface
+): SubagentDiscoverySnapshot["status"] {
+  if (subagent.status === "complete" || subagent.status === "error") {
+    return subagent.status;
+  }
+  const task = toolCalls.find((call) => call.callId === subagent.id);
+  if (task == null) return mayAnswer(engine) ? "running" : "incomplete";
+  return task.status === "finished" ? "complete" : task.status;
+}
+
 function subagentsOf(
-  current: Map<string, SubagentStreamInterface>,
+  engine: StreamEngine,
+  toolCalls: readonly AssembledToolCall[],
   previous: ReadonlyMap<string, SubagentDiscoverySnapshot>
 ): ReadonlyMap<string, SubagentDiscoverySnapshot> {
+  const current = engine.subagents;
   let changed = current.size !== previous.size;
   const next = new Map<string, SubagentDiscoverySnapshot>();
   for (const [id, subagent] of current) {
     const before = previous.get(id);
-    const snapshot = toSubagentSnapshot(subagent, before);
+    const snapshot = toSubagentSnapshot(
+      subagent,
+      subagentStatus(engine, toolCalls, subagent),
+      before
+    );
     changed ||= snapshot !== before;
     next.set(id, snapshot);
   }
@@ -675,6 +701,7 @@ function subagentsOf(
 
 function toSubagentSnapshot(
   subagent: SubagentStreamInterface,
+  status: SubagentDiscoverySnapshot["status"],
   previous: SubagentDiscoverySnapshot | undefined
 ): SubagentDiscoverySnapshot {
   const { subagent_type: name, description } = subagent.toolCall.args;
@@ -688,7 +715,7 @@ function toSubagentSnapshot(
         : [`tools:${subagent.id}`],
     parentId: subagent.parentId,
     depth: subagent.depth,
-    status: subagent.status === "pending" ? "running" : subagent.status,
+    status,
     taskInput: description,
     output: subagent.result ?? undefined,
     error: subagent.error == null ? undefined : String(subagent.error),

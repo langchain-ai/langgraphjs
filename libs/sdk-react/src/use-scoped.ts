@@ -101,15 +101,20 @@ function placeholderSubagent(
 
 /**
  * What identifies a target's scope, `undefined` for the main conversation. A
- * placeholder's key changes with its subagent's status, so a lookup that found
- * nothing while it ran is made again once it ends.
+ * placeholder's key changes when its subagent ends, so a lookup that found
+ * nothing while it ran is made again then. `"incomplete"` keeps the key of
+ * `"running"`: a pause or a resume would otherwise empty its view and look it
+ * up again.
  */
 export function scopeKeyOf(
   stream: StreamLike,
   target: SelectorTarget
 ): string | undefined {
   const subagent = placeholderSubagent(stream, target);
-  if (subagent != null) return `subagent:${subagent.id}:${subagent.status}`;
+  if (subagent != null) {
+    const { id, status } = subagent;
+    return `subagent:${id}:${status === "incomplete" ? "running" : status}`;
+  }
   const namespace = namespaceOf(target);
   return namespace.length === 0 ? undefined : namespace.join("|");
 }

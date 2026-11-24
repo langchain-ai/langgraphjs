@@ -222,6 +222,11 @@ Use the [selector hooks](./selectors.md).
 - **1.x:** after a reload, each subagent showed its own namespace.
 - **2.0:** a subagent's `namespace` is its own when its `task` tool message records it, as deepagents does from 0.7.36 in Python and 1.16.5 in JS. Otherwise it is `["tools:<tool call id>"]` until the real one is known, which the first hook given that subagent looks up. Hooks given the subagent or its `namespace` work either way, and `depth` is right from the start. To key a list, use `subagent.id`, which doesn't change.
 
+### A subagent's `status` can be `"incomplete"`
+
+- **1.x:** a subagent's `status` was `"running"`, `"complete"` or `"error"`.
+- **2.0:** it is `"incomplete"` when the subagent has no result and no run streams that could give one: its run waits on an interrupt, ended before the thread was loaded, or the page stopped streaming it. A run that resumes it makes it `"running"` again. Add a case for it where you switch on `status`.
+
 ### Runs started elsewhere
 
 - **1.x:** a thread followed runs started elsewhere only once it was active (a run streaming or an interrupt waiting) or had sent a message.
@@ -261,7 +266,7 @@ Use the [selector hooks](./selectors.md).
 
 - The hooks, their names and arguments, and `StreamProvider` and `useStreamContext`.
 - `useSubmissionQueue`'s entries, `cancel` and `clear`.
-- The fields of the subagent snapshots in `stream.subagents`. Only what `output` holds, and `namespace` after a reload, changed (see [What works differently](#what-works-differently)).
+- The fields of the subagent snapshots in `stream.subagents`. Only what `output` holds, `namespace` after a reload, and the `"incomplete"` status changed (see [What works differently](#what-works-differently)).
 - Headless tools (`tools` and `onTool`).
 - Nested interrupts show in `interrupts`.
 - Runs keep going when the tab closes, and a reload joins the running run.

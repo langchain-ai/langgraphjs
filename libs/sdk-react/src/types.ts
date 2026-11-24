@@ -275,7 +275,14 @@ export interface SubagentDiscoverySnapshot {
   readonly parentId: string | null;
   /** Nesting depth: 1 when the main agent started it. */
   readonly depth: number;
-  readonly status: "running" | "complete" | "error";
+  /**
+   * `"incomplete"` when it has no result and no run streams that could give
+   * one: its run waits on an interrupt, ended before the thread was loaded,
+   * or the page stopped streaming it. A run that resumes it makes it
+   * `"running"` again. A subagent open when `stop()` cancels its run, or the
+   * run fails, is `"error"`.
+   */
+  readonly status: "running" | "complete" | "error" | "incomplete";
   /** The task description it was given. */
   readonly taskInput: string | undefined;
   /** Its result, once complete. */

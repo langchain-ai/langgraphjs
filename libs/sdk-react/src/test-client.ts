@@ -174,6 +174,8 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     /** A custom transport that starts the same runs, and reads no thread. */
     transport,
     calls,
+    /** A thread's saved values, by thread id. */
+    state,
     /** The runs streamed, a run queued with `runs.create` once it's joined. */
     runs,
     /** Values a subgraph's history read returns, by namespace. */
