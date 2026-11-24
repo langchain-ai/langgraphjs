@@ -783,6 +783,62 @@ describe("CustomStreamOrchestrator", () => {
       open();
       orch.dispose();
     });
+
+    it("drops a headless tool result that lands after a switch to another thread", async () => {
+      let answer!: (result: string) => void;
+      const { transport, open } = gatedTransport([
+        {
+          event: "values",
+          data: {
+            messages: [],
+            __interrupt__: [
+              {
+                id: "i1",
+                value: {
+                  type: "tool",
+                  toolCall: { id: "call-1", name: "get_weather", args: {} },
+                },
+              },
+            ],
+          },
+        },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          tools: [
+            {
+              tool: { name: "get_weather" },
+              execute: () =>
+                new Promise<string>((resolve) => {
+                  answer = resolve;
+                }),
+            },
+          ],
+        })
+      );
+      void orch.submit({ messages: [human("h1", "weather?")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      open();
+      await vi.waitFor(() => expect(answer).toBeDefined());
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      orch.switchThread("t2");
+      answer("sunny");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(
+        sentThreads(transport),
+        "the result resumed the thread the page switched to"
+      ).toEqual(["t1"]);
+      orch.switchThread("t1");
+      expect(
+        orch.runsHeadlessTools,
+        "the dropped result still counts as a headless tool running on its thread"
+      ).toBe(false);
+      orch.dispose();
+    });
   });
 
   describe("respond", () => {
