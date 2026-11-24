@@ -230,7 +230,7 @@ function isPlainObject(item: unknown): item is Record<string, unknown> {
 
 function stampMessageIds(value: unknown): void {
   if (BaseMessage.isInstance(value)) {
-    if (value.id == null) setMessageId(value);
+    if (!value.id) setMessageId(value);
     return;
   }
   if (Array.isArray(value)) {
