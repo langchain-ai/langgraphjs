@@ -157,9 +157,11 @@ export type AnyStream = Omit<
   readonly "~stateType"?: unknown;
 };
 
-/** The tool calls of some messages, and the messages they came from. */
+/** The tool calls of some messages, and what they were built from. */
 export interface ToolCalls {
   readonly sources: BaseMessage[];
+  readonly running: boolean;
+  readonly newTurnAfter: string | undefined;
   readonly toolCalls: AssembledToolCall[];
 }
 
@@ -168,25 +170,80 @@ function sameItems(a: readonly unknown[], b: readonly unknown[]): boolean {
 }
 
 /**
- * Tool calls are rebuilt only when a message with tool calls or results
- * changes, so they keep their identity while text streams.
+ * An output parsed from JSON is a new object on every build. One that can't
+ * be stringified, such as a BigInt, counts as changed.
+ */
+function sameOutput(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+function sameCall(
+  a: AssembledToolCall,
+  b: AssembledToolCall | undefined
+): boolean {
+  return (
+    b != null &&
+    a.callId === b.callId &&
+    a.status === b.status &&
+    a.error === b.error &&
+    a.input === b.input &&
+    sameOutput(a.output, b.output)
+  );
+}
+
+/** Whether a run may still answer a tool call of the main conversation. */
+export function mayAnswer(engine: StreamEngine): boolean {
+  return engine.isLoading || engine.headUnconfirmed || engine.runsHeadlessTools;
+}
+
+/**
+ * Tool calls are rebuilt only when a human message, or a message with tool
+ * calls or results, changes, or whether a run may answer them does, and a
+ * call keeps its identity while it doesn't change. Human messages are kept
+ * because one closes the turn of the calls before it, and the message a new
+ * turn starts after because `seedToolCallsFromMessages` finds it by id.
  */
 export function toolCallsOf(
   messages: BaseMessage[],
   namespace: readonly string[],
+  running: boolean,
+  newTurnAfter: string | undefined,
   previous?: ToolCalls
 ): ToolCalls {
   const sources = messages.filter(
     (message) =>
       message.getType() === "tool" ||
+      message.getType() === "human" ||
+      (newTurnAfter != null && message.id === newTurnAfter) ||
       ((message as AIMessage).tool_calls?.length ?? 0) > 0
   );
-  if (previous != null && sameItems(previous.sources, sources)) {
+  if (
+    previous != null &&
+    sameItems(previous.sources, sources) &&
+    previous.running === running &&
+    previous.newTurnAfter === newTurnAfter
+  ) {
     return previous;
   }
+  const toolCalls = seedToolCallsFromMessages(namespace, sources, {
+    isLoading: running,
+    newTurnAfter,
+  }).map((call, i) =>
+    sameCall(call, previous?.toolCalls[i]) ? previous!.toolCalls[i] : call
+  );
   return {
     sources,
-    toolCalls: seedToolCallsFromMessages(namespace, sources),
+    running,
+    newTurnAfter,
+    toolCalls:
+      previous != null && sameItems(previous.toolCalls, toolCalls)
+        ? previous.toolCalls
+        : toolCalls,
   };
 }
 
@@ -510,7 +567,13 @@ function createBinding(
       previous != null && sameItems(previous.messages, instances)
         ? previous.messages
         : instances;
-    toolCalls = toolCallsOf(messages, [], toolCalls);
+    toolCalls = toolCallsOf(
+      messages,
+      [],
+      mayAnswer(engine),
+      engine.newTurnAfter,
+      toolCalls
+    );
     subagents = subagentsOf(engine.subagents, subagents);
     // Only ones `respond()` can answer: the engine's
     // `{ when: "breakpoint" }` placeholder has no id.
