@@ -710,6 +710,59 @@ describe("SubagentDiscovery", () => {
     ]);
   });
 
+  it("binds concurrent subagents from one tool node to their sibling namespaces", () => {
+    const discovery = new SubagentDiscovery();
+
+    // Two task calls started from the same tool node, e.g. one eval call
+    // dispatching `task()` twice.
+    for (const [toolCallId, description] of [
+      ["call_a", "fact a"],
+      ["call_b", "fact b"],
+    ] as const) {
+      discovery.push({
+        type: "event",
+        method: "tools",
+        params: {
+          namespace: ["tools:X"],
+          timestamp: Date.now(),
+          data: {
+            event: "tool-started",
+            tool_name: "task",
+            tool_call_id: toolCallId,
+            input: { description, subagent_type: "worker" },
+          },
+        },
+      } as ToolsEvent & Event);
+    }
+
+    // The first subagent streams on the tool node's own namespace; the
+    // second concurrent one streams on `["tools:X", "1"]`.
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:X"],
+        timestamp: Date.now(),
+        data: { messages: [{ type: "human", content: "fact a" }] },
+      },
+    } as ValuesEvent & Event);
+    discovery.push({
+      type: "event",
+      method: "values",
+      params: {
+        namespace: ["tools:X", "1"],
+        timestamp: Date.now(),
+        data: { messages: [{ type: "human", content: "fact b" }] },
+      },
+    } as ValuesEvent & Event);
+
+    expect(discovery.snapshot.get("call_a")?.namespace).toEqual(["tools:X"]);
+    expect(discovery.snapshot.get("call_b")?.namespace).toEqual([
+      "tools:X",
+      "1",
+    ]);
+  });
+
   it("reset clears committed subagent maps", () => {
     const discovery = new SubagentDiscovery();
     discovery.push(
