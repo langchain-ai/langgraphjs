@@ -78,18 +78,25 @@ export function reconcileToolCallsFromMessages(
  * history instead of replaying scoped `/events`.
  *
  * A call with no ToolMessage is `"running"`, or `"incomplete"` when no run
- * can still answer it: `options.isLoading` is `false`, or a later message
- * closed its turn. `isLoading` defaults to `true`.
+ * can still answer it: `options.isLoading` is `false`, a later message
+ * closed its turn, or its message comes no later than the message with id
+ * `options.newTurnAfter`. `isLoading` defaults to `true`.
  */
 export function seedToolCallsFromMessages(
   namespace: readonly string[],
   messages: readonly BaseMessage[],
-  options?: { isLoading?: boolean }
+  options?: { isLoading?: boolean; newTurnAfter?: string }
 ): AssembledToolCall[] {
   const isLoading = options?.isLoading ?? true;
   let lastTurn = messages.length - 1;
   while (lastTurn >= 0 && ToolMessage.isInstance(messages[lastTurn])) {
     lastTurn -= 1;
+  }
+  if (options?.newTurnAfter != null) {
+    const before = messages.findIndex(
+      (message) => message.id === options.newTurnAfter
+    );
+    if (before >= 0) lastTurn = Math.max(lastTurn, before + 1);
   }
   let toolCalls: AssembledToolCall[] = [];
   for (const [index, message] of messages.entries()) {

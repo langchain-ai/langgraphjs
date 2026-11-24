@@ -74,7 +74,10 @@ import {
   type MessageMetadataMap,
 } from "./message-metadata-tracker.js";
 import type { StreamStore } from "./store.js";
-import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
+import {
+  flushPendingHeadlessToolInterrupts,
+  isHeadlessToolInterrupt,
+} from "../headless-tools.js";
 import { followThread } from "./thread-watcher.js";
 import type {
   UseStreamThread,
@@ -246,6 +249,14 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
 
 const isUnprocessable = (error: unknown) =>
   (error as { status?: unknown } | null)?.status === 422;
+
+function inputMessageIds(input: unknown, messagesKey: string): Set<string> {
+  const messages = (input as Record<string, unknown>)[messagesKey];
+  const ids = (Array.isArray(messages) ? messages : [messages]).map(
+    (message) => (message as { id?: unknown } | null)?.id
+  );
+  return new Set(ids.filter((id): id is string => typeof id === "string"));
+}
 
 /**
  * Streams `first`, or `retry` when `first` is refused with a 422 before any
@@ -574,6 +585,15 @@ export class StreamOrchestrator<
 
   #handledHeadlessToolInterruptIds = new Set<string>();
 
+  /**
+   * Headless tool calls the page runs, until the run that resumes them, with
+   * `command`, starts.
+   */
+  #headlessRuns = new Set<{
+    threadId: string | undefined;
+    command?: unknown;
+  }>();
+
   readonly #channels = new ChannelListeners();
 
   /** Subgraph scopes, such as subagent panels, that stream while held. */
@@ -625,6 +645,14 @@ export class StreamOrchestrator<
    * as the list returned them.
    */
   #listedRuns = new Map<string, Run>();
+
+  /** The input queued runs were sent with, its messages with ids. */
+  #queuedInputs = new WeakMap<object, unknown>();
+
+  #newTurnAfter: string | undefined;
+
+  /** A run that begins a new turn waits for its thread's load. */
+  #turnAwaitsLoad = false;
 
   #onVisibilityChange = () => {
     const closed = this.#watch == null;
@@ -841,6 +869,7 @@ export class StreamOrchestrator<
     this.#interruptNamespaces.clear();
     this.#threadRuns.clear();
     this.#answeredBy.clear();
+    this.#newTurnAfter = undefined;
     this.#watchCursor = {};
     this.#metadata.reset();
     this.#forkRead?.abort();
@@ -1272,6 +1301,31 @@ export class StreamOrchestrator<
   }
 
   /**
+   * Sets {@link newTurnAfter} for the run starting now: a run with `input`
+   * begins a new turn after the last message shown. A joined run may have
+   * saved that input already, which only the ids of its messages tell.
+   */
+  #startTurn(input: unknown, joined: boolean): void {
+    const after = this.#lastMessageBefore(input, joined);
+    if (after === this.#newTurnAfter) return;
+    this.#newTurnAfter = after;
+    // The run's start already notified, with the last run's value.
+    this.#notify();
+  }
+
+  #lastMessageBefore(input: unknown, joined: boolean): string | undefined {
+    if (input == null) return undefined;
+    const shown = this.#getMessages(this.values);
+    if (joined) {
+      const ids = inputMessageIds(input, this.#accessors.getMessagesKey());
+      if (ids.size === 0 || shown.some(({ id }) => id != null && ids.has(id))) {
+        return undefined;
+      }
+    }
+    return shown.at(-1)?.id ?? undefined;
+  }
+
+  /**
    * Called when a run succeeds. Returns null when the head was read, which
    * clears the run's streamed values so the head shows.
    */
@@ -1431,6 +1485,45 @@ export class StreamOrchestrator<
     return (
       this.stream.isLoading || this.#startingJoins > 0 || this.#heldJoin != null
     );
+  }
+
+  /**
+   * Whether a run may still be going on the head shown: a thread load hasn't
+   * ruled one out yet, or the head came from the `threadCache`. Its
+   * interrupts stay hidden meanwhile.
+   */
+  get headUnconfirmed(): boolean {
+    return this.#unconfirmedHead();
+  }
+
+  /**
+   * Whether the page runs headless tools whose results resume the thread's
+   * run, from when it takes their calls, or a load holds them for
+   * {@link activate}, until that run starts. It and {@link isLoading} are
+   * never both false in between.
+   */
+  get runsHeadlessTools(): boolean {
+    const held = (this.#options.tools?.length && this.#heldTools?.tasks) || [];
+    return (
+      [...this.#headlessRuns].some(
+        ({ threadId }) => threadId === this.#threadId
+      ) ||
+      held.some((task) =>
+        task.interrupts?.some(({ value }) => isHeadlessToolInterrupt(value))
+      )
+    );
+  }
+
+  /**
+   * The id of the last message shown when the streaming run started a new
+   * turn, if that turn's input didn't show then. The run can't answer a tool
+   * call up to there.
+   */
+  get newTurnAfter(): string | undefined {
+    if (!this.stream.isLoading) return undefined;
+    return this.#turnAwaitsLoad
+      ? (this.#getMessages(this.values).at(-1)?.id ?? undefined)
+      : this.#newTurnAfter;
   }
 
   /**
@@ -2106,7 +2199,8 @@ export class StreamOrchestrator<
     >[2],
     own: boolean,
     runInfo?: Run,
-    queuedHere = false
+    queuedHere = false,
+    input: unknown = runInfo?.kwargs?.input
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -2158,6 +2252,7 @@ export class StreamOrchestrator<
       async (signal: AbortSignal) => {
         clearStarting();
         this.#runStarted(tid);
+        this.#startTurn(input, true);
         run.signal = signal;
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
@@ -2329,11 +2424,21 @@ export class StreamOrchestrator<
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
         this.#runStarted(usableThreadId);
+        const command = submitOptions?.command;
+        for (const batch of command == null ? [] : this.#headlessRuns) {
+          if (batch.command === command) this.#headlessRuns.delete(batch);
+        }
+        const turnInput = submitOptions?.command == null ? values : null;
         // Only the thread's load tells whether it exists yet.
-        if (usableThreadId && this.#history.isLoading) await this.#hydration;
+        if (usableThreadId && this.#history.isLoading) {
+          this.#turnAwaitsLoad = turnInput != null;
+          await this.#hydration;
+          this.#turnAwaitsLoad = false;
+        }
         // A stop or thread switch came meanwhile, so its input must not show.
         if (signal.aborted) return (async function* () {})();
 
+        this.#startTurn(turnInput, false);
         // Before any thread create, so a new chat's input shows at once.
         this.stream.setStreamValues(() => {
           const current = { ...this.historyValues, ...this.stream.values };
@@ -2676,7 +2781,8 @@ export class StreamOrchestrator<
                 undefined,
                 true,
                 listed,
-                listed == null
+                listed == null,
+                this.#queuedInputs.get(next)
               ).finally(() => this.#unhide(next.options?.command));
         void sent.finally(() => {
           this.#submitting = false;
@@ -2805,6 +2911,7 @@ export class StreamOrchestrator<
             void this.#dropQueued(usableThreadId, [entry]);
             return;
           }
+          this.#queuedInputs.set(entry, input);
           this.pendingRuns.add(entry);
           // The run before it may have ended while it waited.
           this.#drainQueue();
@@ -3347,6 +3454,9 @@ export class StreamOrchestrator<
     values: Record<string, unknown> | null | undefined
   ): void {
     const threadId = this.#threadId;
+    const batch: { threadId: string | undefined; command?: unknown } = {
+      threadId,
+    };
     flushPendingHeadlessToolInterrupts(
       values,
       this.#options.tools,
@@ -3354,12 +3464,18 @@ export class StreamOrchestrator<
       {
         onTool: this.#options.onTool,
         defer: (run) => {
+          this.#headlessRuns.add(batch);
+          this.#notify();
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) => {
           // submit() resumes the current thread. The call stays pending on its
           // own thread and runs again when that thread is read.
-          if (threadId !== this.#threadId) return;
+          if (threadId !== this.#threadId) {
+            this.#headlessRuns.delete(batch);
+            return;
+          }
+          batch.command = command;
           void this.submit(null as unknown as StateType, {
             multitaskStrategy: "interrupt",
             command,

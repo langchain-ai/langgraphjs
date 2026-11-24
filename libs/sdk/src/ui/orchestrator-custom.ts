@@ -136,6 +136,14 @@ export class CustomStreamOrchestrator<
 
   #handledHeadlessToolInterruptIds = new Set<string>();
 
+  /**
+   * Headless tool calls the page runs, until the run that resumes them, with
+   * `command`, starts.
+   */
+  #headlessRuns = new Set<{ threadId: string | null; command?: unknown }>();
+
+  #newTurnAfter: string | undefined;
+
   readonly #answered = new Set<string>();
 
   readonly #queue = new PendingRunsTracker<
@@ -149,6 +157,9 @@ export class CustomStreamOrchestrator<
 
   /** Always `false`: a custom transport has no route to read a thread. */
   readonly isThreadLoading = false;
+
+  /** Always `false`: the head shown is always the page's own. */
+  readonly headUnconfirmed = false;
 
   /** Settled: there is no thread to load. */
   readonly hydrationPromise: Promise<void> = Promise.resolve();
@@ -370,6 +381,26 @@ export class CustomStreamOrchestrator<
   /** Whether a stream is currently in progress. */
   get isLoading(): boolean {
     return this.stream.isLoading;
+  }
+
+  /**
+   * Whether the page runs headless tools whose results resume the thread's
+   * run, from when it takes their calls until that run starts. It and
+   * {@link isLoading} are never both false in between.
+   */
+  get runsHeadlessTools(): boolean {
+    return [...this.#headlessRuns].some(
+      ({ threadId }) => threadId === this.#threadId
+    );
+  }
+
+  /**
+   * The id of the last message shown when the streaming run started a new
+   * turn, if that turn's input didn't show then. The run can't answer a tool
+   * call up to there.
+   */
+  get newTurnAfter(): string | undefined {
+    return this.stream.isLoading ? this.#newTurnAfter : undefined;
   }
 
   /** The current branch identifier. */
@@ -618,6 +649,14 @@ export class CustomStreamOrchestrator<
     await this.stream.start(
       async (signal: AbortSignal) => {
         runSignal = signal;
+        const command = submitOptions?.command;
+        for (const batch of command == null ? [] : this.#headlessRuns) {
+          if (batch.command === command) this.#headlessRuns.delete(batch);
+        }
+        this.#newTurnAfter =
+          values != null && submitOptions?.command == null
+            ? (this.#getMessages(this.values).at(-1)?.id ?? undefined)
+            : undefined;
         // Set as the run starts, so a submit waiting behind a run doesn't
         // change what that run shows.
         this.stream.setStreamValues(() => {
@@ -815,6 +854,9 @@ export class CustomStreamOrchestrator<
   }
 
   #flushPendingHeadlessToolInterrupts(): void {
+    const batch: { threadId: string | null; command?: unknown } = {
+      threadId: this.#threadId,
+    };
     flushPendingHeadlessToolInterrupts(
       this.stream.values as Record<string, unknown> | null,
       this.#options.tools,
@@ -822,12 +864,17 @@ export class CustomStreamOrchestrator<
       {
         onTool: this.#options.onTool,
         defer: (run) => {
+          this.#headlessRuns.add(batch);
+          this.#notify();
           void Promise.resolve().then(run);
         },
-        resumeSubmit: (command) =>
-          this.submit(null, {
-            command,
-          }),
+        resumeSubmit: (command) => {
+          batch.command = command;
+          // A stop or cleared queue can drop the resume before it starts.
+          return this.submit(null, { command }).finally(() => {
+            if (this.#headlessRuns.delete(batch)) this.#notify();
+          });
+        },
       }
     );
   }

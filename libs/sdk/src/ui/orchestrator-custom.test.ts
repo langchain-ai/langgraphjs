@@ -577,6 +577,212 @@ describe("CustomStreamOrchestrator", () => {
       await done;
       orch.dispose();
     });
+
+    it("names the last message shown before a run with input as newTurnAfter, and nothing for a resume", async () => {
+      const { transport, open } = gatedTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          initialValues: { messages: [human("h1", "hi")] },
+        })
+      );
+
+      const first = orch.submit({ messages: [human("h2", "again")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      expect(orch.newTurnAfter).toBe("h1");
+      open();
+      await first;
+      expect(orch.newTurnAfter).toBeUndefined();
+
+      const resume = orch.submit(
+        { messages: [] },
+        { command: { resume: "yes" } }
+      );
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      expect(orch.newTurnAfter).toBeUndefined();
+      open();
+      await resume;
+      orch.dispose();
+    });
+
+    /** Its first run pauses on a headless tool and stays open until `close()`. */
+    function pausingTransport() {
+      let close!: () => void;
+      const closed = new Promise<void>((resolve) => {
+        close = resolve;
+      });
+      const transport = {
+        stream: vi
+          .fn()
+          .mockImplementation(async ({ signal }: { signal: AbortSignal }) => {
+            if (transport.stream.mock.calls.length > 1) {
+              return createMockStream([]);
+            }
+            return (async function* () {
+              yield {
+                event: "values",
+                data: {
+                  messages: [],
+                  __interrupt__: [
+                    {
+                      id: "i1",
+                      value: {
+                        type: "tool",
+                        toolCall: { id: "call-1", name: "get_weather", args: {} },
+                      },
+                    },
+                  ],
+                },
+              };
+              await new Promise<void>((resolve, reject) => {
+                void closed.then(resolve);
+                signal.addEventListener("abort", () =>
+                  reject(
+                    Object.assign(new Error("aborted"), { name: "AbortError" })
+                  )
+                );
+              });
+            })();
+          }),
+      };
+      return { transport, close };
+    }
+    const weather = [
+      { tool: { name: "get_weather" }, execute: async () => "sunny" },
+    ];
+
+    it("runsHeadlessTools and isLoading are never both false while the resume waits behind the run still open", async () => {
+      const { transport, close } = pausingTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1", tools: weather })
+      );
+      const answerable: boolean[] = [];
+      orch.subscribe(() =>
+        answerable.push(orch.isLoading || orch.runsHeadlessTools)
+      );
+
+      void orch.submit({ messages: [human("h1", "weather?")] });
+      await vi.waitFor(() => expect(orch.queueEntries).toHaveLength(1));
+      close();
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(
+        answerable.slice(0, answerable.lastIndexOf(true) + 1)
+      ).not.toContain(false);
+      orch.dispose();
+    });
+
+    it("runsHeadlessTools holds while a submit queued ahead of the resume runs", async () => {
+      let answer!: (result: string) => void;
+      const { transport, close } = pausingTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          tools: [
+            {
+              tool: { name: "get_weather" },
+              execute: () =>
+                new Promise<string>((resolve) => {
+                  answer = resolve;
+                }),
+            },
+          ],
+        })
+      );
+      void orch.submit({ messages: [human("h1", "weather?")] });
+      await vi.waitFor(() => expect(answer).toBeDefined());
+      void orch.submit({ messages: [human("h2", "also")] });
+      answer("sunny");
+      await vi.waitFor(() => expect(orch.queueEntries).toHaveLength(2));
+      const answerable: boolean[] = [];
+      orch.subscribe(() =>
+        answerable.push(orch.isLoading || orch.runsHeadlessTools)
+      );
+
+      close();
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(transport.stream.mock.calls[2][0].command).toBeDefined();
+      expect(
+        answerable.slice(0, answerable.lastIndexOf(true) + 1)
+      ).not.toContain(false);
+      orch.dispose();
+    });
+
+    it("runsHeadlessTools turns false when a stop drops the resume waiting behind the run", async () => {
+      const { transport } = pausingTransport();
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({ transport, threadId: "t1", tools: weather })
+      );
+      void orch.submit({ messages: [human("h1", "weather?")] });
+      await vi.waitFor(() => expect(orch.queueEntries).toHaveLength(1));
+
+      await orch.stop();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      await vi.waitFor(() => expect(orch.runsHeadlessTools).toBe(false));
+      expect(transport.stream).toHaveBeenCalledTimes(1);
+      orch.dispose();
+    });
+
+    it("runsHeadlessTools holds while the page runs a headless tool, until the run resuming it starts", async () => {
+      let answer!: (result: string) => void;
+      const { transport, open } = gatedTransport([
+        {
+          event: "values",
+          data: {
+            messages: [],
+            __interrupt__: [
+              {
+                id: "i1",
+                value: {
+                  type: "tool",
+                  toolCall: { id: "call-1", name: "get_weather", args: {} },
+                },
+              },
+            ],
+          },
+        },
+      ]);
+      const orch = new CustomStreamOrchestrator<TestState>(
+        createOptions({
+          transport,
+          threadId: "t1",
+          tools: [
+            {
+              tool: { name: "get_weather" },
+              execute: () =>
+                new Promise<string>((resolve) => {
+                  answer = resolve;
+                }),
+            },
+          ],
+        })
+      );
+      void orch.submit({ messages: [human("h1", "weather?")] });
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(1));
+      open();
+      await vi.waitFor(() => expect(answer).toBeDefined());
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      const answerable: boolean[] = [];
+      orch.subscribe(() =>
+        answerable.push(orch.isLoading || orch.runsHeadlessTools)
+      );
+
+      expect(orch.runsHeadlessTools).toBe(true);
+      answer("sunny");
+      await vi.waitFor(() => expect(transport.stream).toHaveBeenCalledTimes(2));
+
+      expect(orch.runsHeadlessTools).toBe(false);
+      expect(orch.isLoading).toBe(true);
+      expect(answerable).not.toContain(false);
+      open();
+      orch.dispose();
+    });
   });
 
   describe("respond", () => {
