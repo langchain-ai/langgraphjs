@@ -1947,7 +1947,7 @@ export class StreamOrchestrator<
 
     if (!should) return null;
 
-    this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+    this.stream.reconstructSubagents(hvMessages);
 
     const tid = this.#threadId;
     // Scopes read a subagent's history when its panel opens.

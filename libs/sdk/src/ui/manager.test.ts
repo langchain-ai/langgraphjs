@@ -1897,6 +1897,113 @@ describe("StreamManager", () => {
         expect(msg.type).toBeDefined();
       }
     });
+
+    describe("messages read again", () => {
+      const unanswered = historyMessages.slice(0, 1);
+
+      it("ends a streamed subagent with its tool message, keeping its messages and bound namespace", () => {
+        const mgr = createSubagentManager();
+        mgr.reconstructFromMessages(unanswered);
+        mgr.bindNamespace("call_1", ["tools:live"]);
+        mgr.addMessageToSubagent("live", {
+          type: "ai",
+          id: "sub-ai-1",
+          content: "Researching...",
+        });
+        mgr.updateSubagentValues("live", { topic: "AI trends" });
+
+        mgr.reconstructFromMessages([
+          ...unanswered,
+          {
+            type: "tool",
+            id: "tool-1",
+            content: "Done researching",
+            tool_call_id: "call_1",
+            artifact: { checkpoint_ns: "tools:stamped" },
+          },
+        ]);
+
+        const subagent = mgr.getSubagent("call_1");
+        expect(subagent).toMatchObject({
+          status: "complete",
+          result: "Done researching",
+          namespace: ["tools:live"],
+          values: { topic: "AI trends" },
+        });
+        expect(subagent?.messages.map((message) => message.id)).toEqual([
+          "sub-ai-1",
+        ]);
+      });
+
+      it("shows the result of a subagent that was closed when its run ended without one", () => {
+        const mgr = createSubagentManager();
+        mgr.reconstructFromMessages(unanswered);
+        mgr.closeOpenSubagents("The run ended: error");
+
+        mgr.reconstructFromMessages(historyMessages);
+
+        expect(mgr.getSubagent("call_1")).toMatchObject({
+          status: "complete",
+          result: "Done researching",
+          error: null,
+        });
+      });
+
+      it.each(["success", "error"] as const)(
+        "keeps the result a fork's run streamed when an older read holds a first answer with status %s",
+        (status) => {
+          const mgr = createSubagentManager();
+          mgr.reconstructFromMessages(unanswered);
+          mgr.processToolMessage("call_1", "From the fork");
+
+          mgr.reconstructFromMessages([
+            ...unanswered,
+            {
+              type: "tool",
+              id: "tool-1",
+              content: "First answer",
+              tool_call_id: "call_1",
+              status,
+            },
+          ]);
+
+          expect(mgr.getSubagent("call_1")).toMatchObject({
+            status: "complete",
+            result: "From the fork",
+          });
+        }
+      );
+
+      it.each(["success", "error"] as const)(
+        "changes nothing and notifies no one when a subagent already shows its %s tool message",
+        (status) => {
+          const answered = [
+            ...unanswered,
+            {
+              type: "tool" as const,
+              id: "tool-1",
+              content: "Done researching",
+              tool_call_id: "call_1",
+              status,
+            },
+          ];
+          const onSubagentChange = vi.fn();
+          const mgr = new SubagentManager({ onSubagentChange });
+          mgr.reconstructFromMessages(answered);
+          const before = mgr.getSubagent("call_1");
+          onSubagentChange.mockClear();
+
+          mgr.reconstructFromMessages(answered);
+          mgr.reconstructFromMessages(unanswered);
+
+          expect(onSubagentChange).not.toHaveBeenCalled();
+          expect(mgr.getSubagent("call_1")).toMatchObject({
+            status: status === "error" ? "error" : "complete",
+            completedAt: before?.completedAt,
+          });
+        }
+      );
+    });
   });
 
   describe("pending subagent visibility", () => {

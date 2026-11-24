@@ -218,9 +218,7 @@ export class CustomStreamOrchestrator<
       !this.stream.isLoading &&
       initialMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(initialMessages, {
-        skipIfPopulated: true,
-      });
+      this.stream.reconstructSubagents(initialMessages);
     }
   }
 
@@ -528,7 +526,8 @@ export class CustomStreamOrchestrator<
   /**
    * Reconstruct subagent streams from history values when subagent
    * filtering is enabled and the stream is not currently loading.
-   * This is a no-op if subagents are already populated.
+   * Subagents already tracked are kept, and ended when the history values
+   * hold their result.
    */
   reconstructSubagentsIfNeeded(): void {
     const baseMessages = this.#getMessages(this.#baseValues);
@@ -537,7 +536,7 @@ export class CustomStreamOrchestrator<
       !this.stream.isLoading &&
       baseMessages.length > 0
     ) {
-      this.stream.reconstructSubagents(baseMessages, { skipIfPopulated: true });
+      this.stream.reconstructSubagents(baseMessages);
     }
   }
 
