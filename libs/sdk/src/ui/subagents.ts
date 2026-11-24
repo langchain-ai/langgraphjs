@@ -1080,15 +1080,8 @@ export class SubagentManager<ToolCall = DefaultToolCall> {
    * reconstructed since they are not persisted in the main thread state.
    *
    * @param messages - Array of messages from thread history
-   * @param _options - Optional configuration
    */
-  reconstructFromMessages(
-    messages: Message<DefaultToolCall>[],
-    _options?: {
-      /** @deprecated Has no effect: tracked subagents are never replaced. */
-      skipIfPopulated?: boolean;
-    }
-  ): void {
+  reconstructFromMessages(messages: Message<DefaultToolCall>[]): void {
     // Build a map of tool_call_id -> tool message data for quick lookup
     const toolResults = new Map<
       string,

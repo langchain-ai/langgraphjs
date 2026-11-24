@@ -356,16 +356,9 @@ export class StreamManager<
    * `SubagentManager.reconstructFromMessages`.
    *
    * @param messages - Array of messages from thread history
-   * @param options - Optional configuration
    */
-  reconstructSubagents(
-    messages: Message[],
-    options?: {
-      /** @deprecated Has no effect: tracked subagents are never replaced. */
-      skipIfPopulated?: boolean;
-    }
-  ): void {
-    this.subagentManager.reconstructFromMessages(messages, options);
+  reconstructSubagents(messages: Message[]): void {
+    this.subagentManager.reconstructFromMessages(messages);
   }
 
   /**
