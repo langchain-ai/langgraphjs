@@ -290,6 +290,45 @@ describe("runs", () => {
     }
   });
 
+  it.concurrent("state with select", async () => {
+    const thread = await client.threads.create();
+    await gatherIterator(
+      client.runs.stream(thread.thread_id, "agent", {
+        input: { messages: [{ type: "human", content: "foo" }] },
+        config: globalConfig,
+      })
+    );
+
+    const full = await client.threads.getState<AgentState>(thread.thread_id);
+    expect(Object.keys(full.values).length).toBeGreaterThan(1);
+
+    const latest = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      undefined,
+      { select: ["values.messages", "next"] }
+    );
+    expect(latest).toEqual({
+      values: { messages: full.values.messages },
+      next: full.next,
+    });
+
+    const atCheckpoint = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      full.checkpoint,
+      { select: ["checkpoint"] }
+    );
+    expect(atCheckpoint).toEqual({ checkpoint: full.checkpoint });
+
+    const atCheckpointId = await client.threads.getState<AgentState>(
+      thread.thread_id,
+      full.checkpoint.checkpoint_id!,
+      { select: ["values.messages"] }
+    );
+    expect(atCheckpointId).toEqual({
+      values: { messages: full.values.messages },
+    });
+  });
+
   it.concurrent("stream updates", async () => {
     const thread = await client.threads.create();
     const input = {
