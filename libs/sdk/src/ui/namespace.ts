@@ -49,8 +49,20 @@ export function isLegacySubagentNamespace(
 
 /**
  * True when the namespace itself is a concrete tool execution namespace.
+ *
+ * Several subagents started by one tool node run concurrently on sibling
+ * namespaces: the first at `["tools:<id>"]`, the rest at
+ * `["tools:<id>", "1"]`, `["tools:<id>", "2"]`, and so on. Those sibling
+ * namespaces are concrete tool execution namespaces too.
  */
 export function isConcreteToolNamespace(namespace: readonly string[]): boolean {
   const last = namespace.at(-1);
-  return last != null && isToolNamespaceSegment(last);
+  if (last != null && isToolNamespaceSegment(last)) return true;
+  const previous = namespace.at(-2);
+  return (
+    last != null &&
+    previous != null &&
+    isToolNamespaceSegment(previous) &&
+    /^\d+$/.test(last)
+  );
 }
