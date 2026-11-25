@@ -2651,6 +2651,17 @@ describe("StreamOrchestrator runs", () => {
 
   const message = (id: string) => ({ id, content: id, type: "human" });
 
+  const answeredElsewhere = (id: string) => ({
+    event: "error",
+    data: {
+      error: "UnknownInterruptError",
+      message: `Unknown or already-consumed interrupt: ${id}`,
+      reason: "not_pending",
+      interrupt_ids: [id],
+      pending_ids: [],
+    },
+  });
+
   const streamInput = (call = 0) =>
     (client.runs.stream as Mock).mock.calls[call][2].input;
 
@@ -5538,6 +5549,185 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("when another tab answered first, shows no error, keeps the interrupt hidden and reads the thread", async () => {
+      const onError = vi.fn();
+      (client.threads.getState as Mock).mockResolvedValue(pendingState("i1"));
+      mockRunStream([answeredElsewhere("i1")], { ended: Promise.resolve() });
+      const orch = orchestrator({ onError });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      let read!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          read = resolve;
+        })
+      );
+
+      await orch.respond("yes", { interruptId: "i1" });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(orch.error).toBeUndefined();
+      expect(orch.interrupts).toEqual([]);
+      expect(client.threads.getState).toHaveBeenCalledTimes(2);
+      read(createThreadState({ messages: [message("reply")] }));
+      await vi.waitFor(() => expect(orch.messages).toEqual([message("reply")]));
+      expect(orch.interrupts).toEqual([]);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "UnknownInterruptError" }),
+        expect.objectContaining({ run_id: "run-1" })
+      );
+      orch.dispose();
+    });
+
+    it("when another tab answered first, an answer queued behind this tab's run shows no error, keeps the interrupt hidden and reads the thread", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [{ event: "values", data: { messages: [], __interrupt__: [{ id: "i1" }] } }],
+        { ended: ended.promise }
+      );
+      (client.runs.create as Mock).mockResolvedValueOnce({
+        run_id: "run-2",
+        created_at: new Date().toISOString(),
+      });
+      mockJoinStream([answeredElsewhere("i1")], Promise.resolve());
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.interrupts).toHaveLength(1));
+      await orch.respond("ok");
+      let read!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          read = resolve;
+        })
+      );
+
+      ended.resolve();
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-2",
+          expect.anything()
+        )
+      );
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(orch.error).toBeUndefined();
+      expect(orch.interrupts).toEqual([]);
+      read(createThreadState({ messages: [message("reply")] }));
+      await vi.waitFor(() => expect(orch.messages).toEqual([message("reply")]));
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
+    it("when another tab answered first, shows the interrupts the answer also named that the read finds still pending", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(pendingState("i1", "i2"));
+      mockRunStream([answeredElsewhere("i1")], { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      let read!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          read = resolve;
+        })
+      );
+
+      await orch.respondAll({ i1: "yes", i2: "yes" });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      expect(orch.interrupts).toEqual([]);
+
+      read(pendingState("i2"));
+      await vi.waitFor(() =>
+        expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i2"])
+      );
+      orch.dispose();
+    });
+
+    it("when another tab answered first and the read after it hangs, shows the answered interrupts again after 10 s", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(pendingState("i1", "i2"));
+      mockRunStream([answeredElsewhere("i1")], { ended: Promise.resolve() });
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      (client.threads.getState as Mock).mockReturnValue(new Promise(() => {}));
+
+      vi.useFakeTimers();
+      try {
+        await orch.respondAll({ i1: "yes", i2: "yes" });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(orch.isLoading).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(orch.interrupts).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(orch.interrupts.map((interrupt) => interrupt.id)).toEqual(["i1", "i2"]);
+        orch.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("when another tab answered first and the read after a queued answer hangs, joins the next queued run after 10 s", async () => {
+      const ended = deferred();
+      mockRunStream(
+        [{ event: "values", data: { messages: [], __interrupt__: [{ id: "i1" }] } }],
+        { ended: ended.promise }
+      );
+      (client.runs.create as Mock)
+        .mockResolvedValueOnce({ run_id: "run-2", created_at: new Date().toISOString() })
+        .mockResolvedValueOnce({ run_id: "run-3", created_at: new Date().toISOString() });
+      mockJoinStream([answeredElsewhere("i1")], Promise.resolve());
+      const orch = orchestrator();
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      void orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.interrupts).toHaveLength(1));
+      await orch.respond("ok");
+      (client.threads.getState as Mock).mockReturnValue(new Promise(() => {}));
+      const joined = (runId: string) =>
+        (client.runs.joinStream as Mock).mock.calls.some((call) => call[1] === runId);
+
+      vi.useFakeTimers();
+      try {
+        ended.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(joined("run-2")).toBe(true);
+        await orch.submit({ messages: [message("next")] });
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(joined("run-3")).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(joined("run-3")).toBe(true);
+        orch.dispose();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      { reason: "ambiguous", error: "UnknownInterruptError" },
+      { reason: "not_pending", error: "ValueError" },
+    ])(
+      "still shows $error with reason $reason as the error",
+      async ({ reason, error }) => {
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const refusal = answeredElsewhere("i1");
+        mockRunStream([{ ...refusal, data: { ...refusal.data, reason, error } }], {
+          ended: Promise.resolve(),
+        });
+        const orch = orchestrator();
+        orch.initThreadId("t1");
+
+        await orch.respond("yes", { interruptId: "i1" });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+        expect(orch.error).toMatchObject({ name: error });
+        orch.dispose();
+      }
+    );
+
     it("stop() cancels a run respond() started", async () => {
       mockRunStream();
       const orch = orchestrator();
@@ -6388,6 +6578,24 @@ describe("StreamOrchestrator runs", () => {
       expect(orch.queueEntries.map((entry) => entry.id)).toEqual(["run-2"]);
       end.resolve();
       await first;
+      orch.dispose();
+    });
+
+    it("an answer refused as answered elsewhere leaves the subagents still open running", async () => {
+      lifecycleServer();
+      mockRunStream([withTask, started], { ended: Promise.resolve() });
+      const orch = orchestrator({ filterSubagentMessages: true });
+      orch.initThreadId("t1");
+      await orch.submit({ messages: [] });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      expect(orch.getSubagent("call_1")?.status).toBe("running");
+
+      mockRunStream([answeredElsewhere("i1")], { ended: Promise.resolve() });
+      await orch.respond("yes", { interruptId: "i1" });
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+      await flushMicrotasks();
+
+      expect(orch.getSubagent("call_1")?.status).toBe("running");
       orch.dispose();
     });
 
@@ -7624,6 +7832,42 @@ describe("StreamOrchestrator runs", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it("joins another tab's answer refused as answered already, shows no error, and keeps what it answered hidden until the thread is read again", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
+      (client.runs.get as Mock).mockResolvedValue({ status: "pending" });
+      mockJoinStream([answeredElsewhere("int-1")], Promise.resolve());
+      const orch = await watching();
+      let read!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          read = resolve;
+        })
+      );
+
+      open()!.send(started("run-b", "1-0"), {
+        id: "2-0",
+        event: "interrupts",
+        data: { run_id: "run-b", answered: ["int-1"] },
+      });
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-b",
+          expect.anything()
+        )
+      );
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(orch.error).toBeUndefined();
+      expect(orch.interrupts).toEqual([]);
+      read(createThreadState({ messages: [message("approved")] }));
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("approved")])
+      );
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
     });
 
     it("keeps an interrupt a second run answers again hidden when the read after the first run lands", async () => {

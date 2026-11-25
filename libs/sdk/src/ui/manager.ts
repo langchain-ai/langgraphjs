@@ -721,6 +721,12 @@ export class StreamManager<
 
       /** Called with each event, before it is applied. */
       onEvent?: (event: string, data: unknown) => void;
+
+      /**
+       * Whether an error the stream ends with shows as its `error`. `onError`
+       * gets it either way.
+       */
+      showsError?: (error: unknown) => boolean;
     },
     abort = new AbortController()
   ) => {
@@ -1144,8 +1150,10 @@ export class StreamManager<
           (error.name === "AbortError" || error.name === "TimeoutError")
         )
       ) {
-        console.error(error);
-        this.setState({ error });
+        if (options.showsError?.(error) !== false) {
+          console.error(error);
+          this.setState({ error });
+        }
         await options.onError?.(error);
       }
     } finally {
@@ -1202,6 +1210,12 @@ export class StreamManager<
 
       /** Called with each event, before it is applied. */
       onEvent?: (event: string, data: unknown) => void;
+
+      /**
+       * Whether an error the stream ends with shows as its `error`. `onError`
+       * gets it either way.
+       */
+      showsError?: (error: unknown) => boolean;
     },
     startOptions?: {
       /**

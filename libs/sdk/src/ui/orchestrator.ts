@@ -250,6 +250,29 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
 const isUnprocessable = (error: unknown) =>
   (error as { status?: unknown } | null)?.status === 422;
 
+/**
+ * Strict resume refused the run's answer: an interrupt it named was no longer
+ * waiting, as when another tab answered it first. The run changed nothing,
+ * and the head that offered the interrupt is out of date.
+ */
+const isStaleAnswer = (event: string, data: unknown) =>
+  event === "error" &&
+  (data as { error?: unknown } | null)?.error === "UnknownInterruptError" &&
+  (data as { reason?: unknown } | null)?.reason === "not_pending";
+
+/**
+ * Settles when `read` does, or after 10 s if it hangs, and never rejects, so
+ * a read that never lands can't hide an interrupt still pending for good.
+ */
+function readOrTimeout(read: Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, 10_000);
+  });
+  const done = () => clearTimeout(timer);
+  return Promise.race([read, timedOut]).then(done, done);
+}
+
 function inputMessageIds(input: unknown, messagesKey: string): Set<string> {
   const messages = (input as Record<string, unknown>)[messagesKey];
   const ids = (Array.isArray(messages) ? messages : [messages]).map(
@@ -2237,6 +2260,8 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
     let sentValues = false;
+    let staleAnswer = false;
+    let staleRead: Promise<void> | undefined;
 
     let releaseStream: (() => void) | undefined;
     let countedStarting = true;
@@ -2311,16 +2336,19 @@ export class StreamOrchestrator<
           releaseStream?.();
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
-          this.#endRun(runId);
+          if (staleAnswer) staleRead = this.#reload(tid, { quiet: true });
+          this.#endRun(runId, staleRead);
           this.#runEnd = this.#reportRunEnd(tid, runId, watch, outcome);
           this.#drainQueue();
         },
         isReplaying: lastEventId === "-1",
         onEvent: (event, data) => {
           if (event === "values") sentValues = true;
+          if (isStaleAnswer(event, data)) staleAnswer = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
         },
+        showsError: () => !staleAnswer,
       },
       { stillWanted: () => !this.#disposed && this.#threadId === tid }
     );
@@ -2332,6 +2360,8 @@ export class StreamOrchestrator<
       clearStarting();
       if (this.#liveRuns.get(runId) === run) this.#liveRuns.delete(runId);
     }
+    // The queue shows a queued answer's interrupts again once this resolves.
+    if (staleRead != null) await readOrTimeout(staleRead);
   }
 
   /**
@@ -2414,6 +2444,7 @@ export class StreamOrchestrator<
     let shownKeys: OptimisticKeySnapshot[] = [];
     let asksValues = true;
     let sentValues = false;
+    let staleAnswer = false;
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -2619,7 +2650,13 @@ export class StreamOrchestrator<
           this.#threadIdStreaming = null;
           releaseStream?.();
           settleOwnRun();
-          this.#unhide(submitOptions?.command);
+          if (staleAnswer && usableThreadId != null) {
+            void readOrTimeout(
+              this.#reload(usableThreadId, { quiet: true })
+            ).then(() => this.#unhide(submitOptions?.command));
+          } else {
+            this.#unhide(submitOptions?.command);
+          }
           // A run that ends before its values hold a message almost always
           // ended before saving its input.
           this.#metadata.resolvePending(
@@ -2655,6 +2692,7 @@ export class StreamOrchestrator<
           // named it.
           responded = true;
           settleOwnRun();
+          if (isStaleAnswer(event, data)) staleAnswer = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
           if (event === "values") sentValues = true;
@@ -2673,6 +2711,7 @@ export class StreamOrchestrator<
             unsent.clear();
           }
         },
+        showsError: () => !staleAnswer,
       },
       {
         abortPrevious:
@@ -2973,8 +3012,10 @@ export class StreamOrchestrator<
    * interrupting it. The answered interrupts are hidden until that run
    * ends. Resolves once the run is created or queued, and rejects when it
    * can't be sent. Unless `strictResume` is `false`, an answer to an
-   * interrupt that is no longer waiting fails its run instead of running
-   * the step again, and the interrupt shows again.
+   * interrupt that is no longer waiting, as when another tab answered it
+   * first, fails its run instead of running the step again. That failure
+   * goes to `onError` but not to `error`, and the thread is read again
+   * before the answered interrupts can show again.
    */
   async respondAll(
     responses: Record<string, unknown>,
@@ -3294,13 +3335,7 @@ export class StreamOrchestrator<
       unhide();
       return;
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, 10_000);
-    });
-    void Promise.race([read, timedOut])
-      .then(unhide, unhide)
-      .finally(() => clearTimeout(timer));
+    void readOrTimeout(read).then(unhide);
   }
 
   /**
@@ -3397,11 +3432,14 @@ export class StreamOrchestrator<
     // Whether the server said how the run ended, not only that this client
     // stopped its stream or lost the connection while the run went on.
     let ended = true;
+    // A refused answer ran no step, so the subagents still open aren't its.
+    let refused = false;
     if (outcome === "aborted") {
       reason = "stopped";
       ended = false;
     } else if (outcome !== "success") {
       const { name } = outcome.error as { name?: unknown };
+      refused = name === "UnknownInterruptError";
       reason =
         name === "UserInterrupt" || name === "UserRollback"
           ? "stopped"
@@ -3434,6 +3472,7 @@ export class StreamOrchestrator<
     // Subagents the run left open take its word, unless another stream began.
     if (
       ended &&
+      !refused &&
       (reason === "error" || reason === "stopped") &&
       this.stream.epoch === epoch
     ) {
