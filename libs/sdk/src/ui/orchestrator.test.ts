@@ -1866,6 +1866,61 @@ describe("StreamOrchestrator", () => {
         orch.dispose();
       });
 
+      it("starts a run that an onFinish taking no state queued once it lands, without the interrupt the run before it streamed", async () => {
+        serve(stateWith({ messages: [message("h0")] }));
+        let queuedOnce = false;
+        const orch: StreamOrchestrator<TestState> = await openThread({
+          queue: "local",
+          onFinish: () => {
+            if (queuedOnce) return;
+            queuedOnce = true;
+            void orch.submit({ messages: [message("h2")] });
+          },
+        });
+        const read = holdRead();
+        mockRun([
+          chunk("a1"),
+          {
+            event: "updates",
+            data: { __interrupt__: [{ id: "int-1", value: "ok?" }] },
+          },
+        ]);
+        let interruptsAtStart: unknown;
+        (client.runs.stream as Mock).mockImplementationOnce(() => {
+          interruptsAtStart = orch.interrupts.map((i) => i.id);
+          return eventsOf([]);
+        });
+
+        const first = orch.submit({ messages: [message("h1")] });
+        await vi.waitFor(() => expect(getState()).toHaveBeenCalledTimes(2));
+        await flushMicrotasks();
+        expect(orch.isLoading).toBe(true);
+        expect(client.runs.stream).toHaveBeenCalledOnce();
+        read.resolve(
+          stateWith(
+            { messages: [message("h0"), message("h1"), message("a1", "ai")] },
+            {
+              next: ["review"],
+              tasks: [
+                {
+                  id: "task-1",
+                  name: "review",
+                  error: null,
+                  interrupts: [{ id: "int-1", value: "ok?" }],
+                },
+              ],
+            }
+          )
+        );
+        await first;
+
+        await vi.waitFor(() =>
+          expect(client.runs.stream).toHaveBeenCalledTimes(2)
+        );
+        expect(interruptsAtStart).toEqual([]);
+        orch.dispose();
+      });
+
       it("keeps what a stop called from onRunEnd changed", async () => {
         serve(stateWith({ messages: [message("h0")] }));
         const stops: Array<Promise<void>> = [];
@@ -1999,6 +2054,46 @@ describe("StreamOrchestrator", () => {
           orch.dispose();
         }
       );
+
+      it.each(answeringRuns)(
+        "still reads the head when an onFinish that takes no state throws, and the run ends as an error ($via)",
+        async ({ run }) => {
+          vi.spyOn(console, "error").mockImplementation(() => undefined);
+          const onError = vi.fn();
+          serve(interrupted());
+          const orch = await openThread({
+            onFinish: () => {
+              throw new Error("app bug");
+            },
+            onError,
+          });
+          serve(stateWith({ messages: [message("h0"), message("a1", "ai")] }));
+
+          await run(orch, [chunk("a1")]);
+          await vi.waitFor(() => expect(getState()).toHaveBeenCalledTimes(2));
+          await flushMicrotasks();
+
+          expect(orch.interrupts).toEqual([]);
+          expect(onError.mock.calls[0]?.[0]).toMatchObject({
+            message: "app bug",
+          });
+          orch.dispose();
+        }
+      );
+
+      it("keeps what the run streamed when the read finds no state", async () => {
+        serve(stateWith({ messages: [message("h0")] }));
+        const orch = await openThread();
+        const read = holdRead();
+        mockRun([chunk("a1")]);
+        await orch.submit({ messages: [message("h1")] });
+
+        read.resolve(stateWith({ messages: [] }, { checkpoint: null }));
+        await vi.waitFor(() => expect(orch.historyData.data).toEqual([]));
+
+        expect(ids(orch.messages)).toEqual(["h0", "h1", "a1"]);
+        orch.dispose();
+      });
 
       it("calls an onFinish that takes no state when the stream ends, before onRunEnd and without the head", async () => {
         const onFinish = vi.fn(() => {});

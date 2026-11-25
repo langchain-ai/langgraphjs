@@ -36,7 +36,14 @@ export function hasTaskErrors(state: ThreadState | undefined): boolean {
 }
 
 /**
- * The read to make after a run succeeds, or `undefined` for none.
+ * How a succeeded run reads its thread's head: not at all, before the run
+ * counts as done (`"await"`, or `"await-quiet"` when a failure is quiet), or
+ * in the background once it does.
+ */
+export type RunEndRead = "none" | "await" | "await-quiet" | "background";
+
+/**
+ * The read after a run succeeds.
  *
  * With `refetch` the caller needs the head anyway. Otherwise a run that
  * streamed no `values` calls for a read, since only the head has the order
@@ -45,31 +52,33 @@ export function hasTaskErrors(state: ThreadState | undefined): boolean {
  * have answered or cleared them and they come from the head. That read only
  * refreshes what is shown, so a failure is quiet.
  *
- * The run counts as done once its read lands, unless `wait` is false: when
- * only the missing `values` call for the read, what the run streamed shows
- * until it lands. A read the shown head calls for keeps the wait, since that
- * head's interrupts, pending nodes and errors would show meanwhile, an
- * interrupt the run answered among them. So does a read with a run `queued`
- * behind this one, which starts as this one ends: it would start from what
- * this run streamed, its interrupts included, and a joined run that streams
- * no `values` shows its input only from a read of the head.
+ * When only the missing `values` call for the read, it goes in the
+ * background, and what the run streamed shows until it lands. A read the
+ * shown head calls for waits, since that head's interrupts, pending nodes
+ * and errors would show meanwhile, an interrupt the run answered among them.
+ * So does a read with a run `queued` behind this one, which starts as this
+ * one ends: it would start from what this run streamed, its interrupts
+ * included, and a joined run that streams no `values` shows its input only
+ * from a read of the head.
  */
-export function planReadAfterRun(
+export function runEndRead(
   shownHead: ThreadState | undefined,
-  refetch: boolean,
-  streamedValues = true,
-  queued = false
-): { quiet: boolean; wait: boolean } | undefined {
-  if (refetch) return { quiet: false, wait: true };
+  {
+    refetch,
+    streamedValues = true,
+    queued = false,
+  }: { refetch: boolean; streamedValues?: boolean; queued?: boolean }
+): RunEndRead {
+  if (refetch) return "await";
   if (
     hasPendingNodes(shownHead) ||
     hasTaskInterrupts(shownHead) ||
     hasTaskErrors(shownHead)
   ) {
-    return { quiet: true, wait: true };
+    return "await-quiet";
   }
-  if (!streamedValues) return { quiet: true, wait: queued };
-  return undefined;
+  if (!streamedValues) return queued ? "await-quiet" : "background";
+  return "none";
 }
 
 /**

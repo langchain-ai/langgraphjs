@@ -57,8 +57,9 @@ import {
   hasPendingNodes,
   hasTaskInterrupts,
   type HistoryReadOptions,
-  planReadAfterRun,
   planStopRead,
+  runEndRead,
+  type RunEndRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import {
@@ -1339,63 +1340,80 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Called when a run succeeds, with the read {@link planReadAfterRun} plans
-   * after it. Returns null when the head was read, which clears the run's
-   * streamed values so the head shows. A read that doesn't wait is left to
-   * `#readAfterRun`.
+   * Calls an `onFinish` that takes no state. What it throws comes back, to
+   * throw once the read after the run is done: the run still ends as an
+   * error, and the read still shows the head.
    */
-  async #finishRun(
-    threadId: string | undefined,
-    read: ReturnType<typeof planReadAfterRun>,
+  #finishWithoutState(
     callbackMeta: RunCallbackMeta | undefined
-  ): Promise<null | undefined> {
-    if (read?.wait && threadId) {
-      const lastHead = (
-        await this.#mutate(threadId, { quiet: read.quiet, afterRun: true })
-      )?.at(0);
-      if (lastHead) {
-        // The read can land after a thread switch, and a resume goes to the
-        // current thread.
-        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
-        this.#options.onFinish?.(lastHead, callbackMeta);
-        return null;
-      }
+  ): { error: unknown } | undefined {
+    const { onFinish } = this.#options;
+    if (onFinish == null || onFinishRequiresThreadState(onFinish)) {
+      return undefined;
     }
-    if (
-      this.#options.onFinish != null &&
-      !onFinishRequiresThreadState(this.#options.onFinish)
-    ) {
-      this.#options.onFinish(
-        undefined as unknown as ThreadState<StateType>,
-        callbackMeta
-      );
+    try {
+      onFinish(undefined as unknown as ThreadState<StateType>, callbackMeta);
+      return undefined;
+    } catch (error) {
+      return { error };
     }
-    return undefined;
   }
 
-  /** Whether a run starts once the one streaming now ends. */
-  #runQueued(): boolean {
-    return this.pendingRuns.size > 0 || this.#queueCreates > 0;
+  /** The read after a run that succeeded. */
+  #planEndRead(refetch: boolean, streamedValues: boolean): RunEndRead {
+    return runEndRead(this.branchContext.threadHead, {
+      refetch,
+      streamedValues,
+      queued: this.pendingRuns.size > 0 || this.#queueCreates > 0,
+    });
   }
 
   /**
-   * Reads the head after a run whose read doesn't wait, once the run counts
-   * as done, and shows it in place of what the run streamed, unless a
-   * stream, a thread switch or a stop has changed what shows since.
+   * Makes the read after a run that waits for it, and calls an `onFinish`
+   * that takes the state with the head. Returns null when the head was read,
+   * which clears the run's streamed values so the head shows.
    */
-  async #readAfterRun(threadId: string): Promise<void> {
-    const epoch = this.stream.epoch;
-    const shown = this.stream.values;
-    const head = (
-      await this.#mutate(threadId, { quiet: true, afterRun: true })
-    )?.at(0);
-    if (
-      head != null &&
-      this.stream.epoch === epoch &&
-      this.stream.values === shown
-    ) {
-      this.stream.setStreamValues(null);
+  async #finishRun(
+    threadId: string | undefined,
+    read: RunEndRead,
+    callbackMeta: RunCallbackMeta | undefined
+  ): Promise<null | undefined> {
+    if ((read !== "await" && read !== "await-quiet") || !threadId) {
+      return undefined;
     }
+    const lastHead = (
+      await this.#mutate(threadId, {
+        quiet: read === "await-quiet",
+        afterRun: true,
+      })
+    )?.at(0);
+    if (lastHead == null) return undefined;
+    // The read can land after a thread switch, and a resume goes to the
+    // current thread.
+    if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
+    const { onFinish } = this.#options;
+    if (onFinishRequiresThreadState(onFinish)) {
+      onFinish?.(lastHead, callbackMeta);
+    }
+    return null;
+  }
+
+  /**
+   * Reads the head after a run whose read goes in the background, and shows
+   * it in place of what the run streamed, unless a stop has changed that
+   * since. A run begun or a thread switched to meanwhile keeps what shows.
+   */
+  #readInBackground(threadId: string): void {
+    const shown = this.stream.values;
+    void this.#mutate(threadId, {
+      quiet: true,
+      afterRun: true,
+      onRead: (states) => {
+        if (states.length > 0 && this.stream.values === shown) {
+          this.stream.setStreamValues(null);
+        }
+      },
+    });
   }
 
   /**
@@ -2271,7 +2289,7 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
     let sentValues = false;
-    let headRead: ReturnType<typeof planReadAfterRun>;
+    let endRead: RunEndRead = "none";
 
     let releaseStream: (() => void) | undefined;
     let countedStarting = true;
@@ -2330,13 +2348,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          headRead = planReadAfterRun(
-            this.branchContext.threadHead,
-            shouldRefetchJoin,
-            sentValues,
-            this.#runQueued()
-          );
-          return this.#finishRun(tid, headRead, callbackMeta);
+          // Before the plan, so a run it queues counts as queued.
+          const failed = this.#finishWithoutState(callbackMeta);
+          endRead = this.#planEndRead(shouldRefetchJoin, sentValues);
+          const shown = await this.#finishRun(tid, endRead, callbackMeta);
+          if (failed != null) throw failed.error;
+          return shown;
         },
         onError: (error) => {
           outcome = { error };
@@ -2347,7 +2364,7 @@ export class StreamOrchestrator<
           releaseStream?.();
           // Before onRunEnd, whose changes to what shows the head it reads
           // must not replace.
-          if (headRead?.wait === false) void this.#readAfterRun(tid);
+          if (endRead === "background") this.#readInBackground(tid);
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
@@ -2453,7 +2470,7 @@ export class StreamOrchestrator<
     let shownKeys: OptimisticKeySnapshot[] = [];
     let asksValues = true;
     let sentValues = false;
-    let headRead: ReturnType<typeof planReadAfterRun>;
+    let endRead: RunEndRead = "none";
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -2643,13 +2660,16 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-          headRead = planReadAfterRun(
-            this.branchContext.threadHead,
-            shouldRefetch,
-            sentValues,
-            this.#runQueued()
+          // Before the plan, so a run it queues counts as queued.
+          const failed = this.#finishWithoutState(callbackMeta);
+          endRead = this.#planEndRead(shouldRefetch, sentValues);
+          const shown = await this.#finishRun(
+            usableThreadId,
+            endRead,
+            callbackMeta
           );
-          return this.#finishRun(usableThreadId, headRead, callbackMeta);
+          if (failed != null) throw failed.error;
+          return shown;
         },
         onError: (error) => {
           outcome = { error };
@@ -2676,8 +2696,8 @@ export class StreamOrchestrator<
           }
           // After the keys go back, so the head it reads replaces them, and
           // before onRunEnd, whose changes to what shows it must not replace.
-          if (headRead?.wait === false && usableThreadId != null) {
-            void this.#readAfterRun(usableThreadId);
+          if (endRead === "background" && usableThreadId != null) {
+            this.#readInBackground(usableThreadId);
           }
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) {

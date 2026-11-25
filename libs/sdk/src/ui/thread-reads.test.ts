@@ -5,8 +5,8 @@ import {
   hasPendingNodes,
   hasTaskErrors,
   hasTaskInterrupts,
-  planReadAfterRun,
   planStopRead,
+  runEndRead,
 } from "./thread-reads.js";
 
 const head = (extra: Record<string, unknown> = {}) =>
@@ -75,47 +75,51 @@ describe("thread state checks", () => {
   });
 });
 
-describe("planReadAfterRun", () => {
-  const loud = { quiet: false, wait: true };
-  const quietWait = { quiet: true, wait: true };
-  const quietLate = { quiet: true, wait: false };
-
+describe("runEndRead", () => {
   it.each([
-    { shown: "no head", refetch: true, values: true, plan: loud },
-    { shown: "a plain head", refetch: true, values: true, plan: loud },
-    { shown: "a task interrupt", refetch: true, values: true, plan: loud },
-    { shown: "a plain head", refetch: true, values: false, plan: loud },
-    { shown: "no head", refetch: false, values: true, plan: undefined },
-    { shown: "a plain head", refetch: false, values: true, plan: undefined },
+    { shown: "no head", refetch: true, values: true, read: "await" },
+    { shown: "a plain head", refetch: true, values: true, read: "await" },
+    { shown: "a task interrupt", refetch: true, values: true, read: "await" },
+    { shown: "a plain head", refetch: true, values: false, read: "await" },
+    { shown: "no head", refetch: false, values: true, read: "none" },
+    { shown: "a plain head", refetch: false, values: true, read: "none" },
     {
       shown: "a head without next or tasks",
       refetch: false,
       values: true,
-      plan: undefined,
+      read: "none",
     },
-    { shown: "a pending node", refetch: false, values: true, plan: quietWait },
-    { shown: "a task interrupt", refetch: false, values: true, plan: quietWait },
-    { shown: "a task error", refetch: false, values: true, plan: quietWait },
-    { shown: "no head", refetch: false, values: false, plan: quietLate },
-    { shown: "a plain head", refetch: false, values: false, plan: quietLate },
-    { shown: "a pending node", refetch: false, values: false, plan: quietWait },
-    { shown: "a task interrupt", refetch: false, values: false, plan: quietWait },
-    { shown: "a task error", refetch: false, values: false, plan: quietWait },
+    { shown: "a pending node", refetch: false, values: true, read: "await-quiet" },
+    { shown: "a task interrupt", refetch: false, values: true, read: "await-quiet" },
+    { shown: "a task error", refetch: false, values: true, read: "await-quiet" },
+    { shown: "no head", refetch: false, values: false, read: "background" },
+    { shown: "a plain head", refetch: false, values: false, read: "background" },
+    { shown: "a pending node", refetch: false, values: false, read: "await-quiet" },
+    { shown: "a task interrupt", refetch: false, values: false, read: "await-quiet" },
+    { shown: "a task error", refetch: false, values: false, read: "await-quiet" },
   ] as const)(
     "after a run on $shown (refetch: $refetch, streamed values: $values)",
-    ({ shown, refetch, values, plan }) => {
-      expect(planReadAfterRun(heads[shown], refetch, values)).toEqual(plan);
+    ({ shown, refetch, values, read }) => {
+      expect(runEndRead(heads[shown], { refetch, streamedValues: values })).toBe(
+        read
+      );
     }
   );
 
   it.each([
-    { shown: "no head", values: false, plan: quietWait },
-    { shown: "a plain head", values: false, plan: quietWait },
-    { shown: "a plain head", values: true, plan: undefined },
+    { shown: "no head", values: false, read: "await-quiet" },
+    { shown: "a plain head", values: false, read: "await-quiet" },
+    { shown: "a plain head", values: true, read: "none" },
   ] as const)(
     "after a run on $shown with a run queued behind it (streamed values: $values)",
-    ({ shown, values, plan }) => {
-      expect(planReadAfterRun(heads[shown], false, values, true)).toEqual(plan);
+    ({ shown, values, read }) => {
+      expect(
+        runEndRead(heads[shown], {
+          refetch: false,
+          streamedValues: values,
+          queued: true,
+        })
+      ).toBe(read);
     }
   );
 });
