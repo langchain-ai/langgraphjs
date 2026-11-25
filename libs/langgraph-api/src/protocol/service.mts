@@ -140,13 +140,44 @@ type NormalizedRunStart = RunStartParams & {
   strict_resume?: boolean;
 };
 
+/**
+ * Fold the protocol's `langsmith_tracer` into `config.configurable` using the
+ * exact shape the REST run endpoints use (`createValidRun`): `project_name`
+ * becomes `langsmith_project`, `example_id` becomes `langsmith_example_id`.
+ * Without this, thread-streamed runs trace to the default project.
+ *
+ * Returns fresh objects so the caller's `config` / `config.configurable` are
+ * never mutated — `createOrResumeRun` extends the result with `thread_id`.
+ */
+const normalizeRunConfig = (
+  config: unknown,
+  tracer: unknown
+): Record<string, unknown> | undefined => {
+  if (!isRecord(tracer)) return isRecord(config) ? config : undefined;
+
+  const normalized: Record<string, unknown> = isRecord(config)
+    ? { ...config }
+    : {};
+  const configurable: Record<string, unknown> = isRecord(
+    normalized.configurable
+  )
+    ? { ...normalized.configurable }
+    : {};
+  Object.assign(configurable, {
+    langsmith_project: tracer.project_name,
+    langsmith_example_id: tracer.example_id,
+  });
+  normalized.configurable = configurable;
+  return normalized;
+};
+
 const normalizeRunStart = (value: unknown): NormalizedRunStart => {
   if (isRecord(value)) {
     return {
       assistant_id:
         typeof value.assistant_id === "string" ? value.assistant_id : "",
       input: value.input,
-      config: isRecord(value.config) ? value.config : undefined,
+      config: normalizeRunConfig(value.config, value.langsmith_tracer),
       metadata: isRecord(value.metadata) ? value.metadata : undefined,
       multitaskStrategy: multitaskStrategyFromRunStart(value),
       strict_resume: value.strict_resume === true,
