@@ -76,20 +76,46 @@ describe("thread state checks", () => {
 });
 
 describe("planReadAfterRun", () => {
+  const loud = { quiet: false, wait: true };
+  const quietWait = { quiet: true, wait: true };
+  const quietLate = { quiet: true, wait: false };
+
   it.each([
-    { shown: "no head", refetch: true, plan: { quiet: false } },
-    { shown: "a plain head", refetch: true, plan: { quiet: false } },
-    { shown: "a task interrupt", refetch: true, plan: { quiet: false } },
-    { shown: "no head", refetch: false, plan: undefined },
-    { shown: "a plain head", refetch: false, plan: undefined },
-    { shown: "a head without next or tasks", refetch: false, plan: undefined },
-    { shown: "a pending node", refetch: false, plan: { quiet: true } },
-    { shown: "a task interrupt", refetch: false, plan: { quiet: true } },
-    { shown: "a task error", refetch: false, plan: { quiet: true } },
+    { shown: "no head", refetch: true, values: true, plan: loud },
+    { shown: "a plain head", refetch: true, values: true, plan: loud },
+    { shown: "a task interrupt", refetch: true, values: true, plan: loud },
+    { shown: "a plain head", refetch: true, values: false, plan: loud },
+    { shown: "no head", refetch: false, values: true, plan: undefined },
+    { shown: "a plain head", refetch: false, values: true, plan: undefined },
+    {
+      shown: "a head without next or tasks",
+      refetch: false,
+      values: true,
+      plan: undefined,
+    },
+    { shown: "a pending node", refetch: false, values: true, plan: quietWait },
+    { shown: "a task interrupt", refetch: false, values: true, plan: quietWait },
+    { shown: "a task error", refetch: false, values: true, plan: quietWait },
+    { shown: "no head", refetch: false, values: false, plan: quietLate },
+    { shown: "a plain head", refetch: false, values: false, plan: quietLate },
+    { shown: "a pending node", refetch: false, values: false, plan: quietWait },
+    { shown: "a task interrupt", refetch: false, values: false, plan: quietWait },
+    { shown: "a task error", refetch: false, values: false, plan: quietWait },
   ] as const)(
-    "after a run on $shown (refetch: $refetch)",
-    ({ shown, refetch, plan }) => {
-      expect(planReadAfterRun(heads[shown], refetch)).toEqual(plan);
+    "after a run on $shown (refetch: $refetch, streamed values: $values)",
+    ({ shown, refetch, values, plan }) => {
+      expect(planReadAfterRun(heads[shown], refetch, values)).toEqual(plan);
+    }
+  );
+
+  it.each([
+    { shown: "no head", values: false, plan: quietWait },
+    { shown: "a plain head", values: false, plan: quietWait },
+    { shown: "a plain head", values: true, plan: undefined },
+  ] as const)(
+    "after a run on $shown with a run queued behind it (streamed values: $values)",
+    ({ shown, values, plan }) => {
+      expect(planReadAfterRun(heads[shown], false, values, true)).toEqual(plan);
     }
   );
 });

@@ -14,7 +14,7 @@ export type HistoryReadOptions<
   map?: (states: ThreadState<StateType>[]) => ThreadState<StateType>[];
   /** Called with the states read, right before subscribers hear of them. */
   onRead?: (states: ThreadState<StateType>[]) => void;
-  /** The read after a run ended, made before its stream counts as done. */
+  /** The read after a run ended, before or after its stream counts as done. */
   afterRun?: boolean;
 };
 
@@ -44,21 +44,31 @@ export function hasTaskErrors(state: ThreadState | undefined): boolean {
  * shown head's interrupts, pending nodes and task errors, since the run may
  * have answered or cleared them and they come from the head. That read only
  * refreshes what is shown, so a failure is quiet.
+ *
+ * The run counts as done once its read lands, unless `wait` is false: when
+ * only the missing `values` call for the read, what the run streamed shows
+ * until it lands. A read the shown head calls for keeps the wait, since that
+ * head's interrupts, pending nodes and errors would show meanwhile, an
+ * interrupt the run answered among them. So does a read with a run `queued`
+ * behind this one, which starts as this one ends: it would start from what
+ * this run streamed, its interrupts included, and a joined run that streams
+ * no `values` shows its input only from a read of the head.
  */
 export function planReadAfterRun(
   shownHead: ThreadState | undefined,
   refetch: boolean,
-  streamedValues = true
-): { quiet: boolean } | undefined {
-  if (refetch) return { quiet: false };
+  streamedValues = true,
+  queued = false
+): { quiet: boolean; wait: boolean } | undefined {
+  if (refetch) return { quiet: false, wait: true };
   if (
-    !streamedValues ||
     hasPendingNodes(shownHead) ||
     hasTaskInterrupts(shownHead) ||
     hasTaskErrors(shownHead)
   ) {
-    return { quiet: true };
+    return { quiet: true, wait: true };
   }
+  if (!streamedValues) return { quiet: true, wait: queued };
   return undefined;
 }
 

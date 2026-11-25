@@ -542,6 +542,9 @@ export class StreamOrchestrator<
   /** Bumped when the queue is emptied, which drops the submits still waiting to join it. */
   #queueDrops = 0;
 
+  /** Submits queued on the server whose run isn't created yet. */
+  #queueCreates = 0;
+
   /** Settles once the last run streamed here has called `onRunEnd`. */
   #runEnd: Promise<void> = Promise.resolve();
 
@@ -1233,7 +1236,14 @@ export class StreamOrchestrator<
       }
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
-      if (tid !== this.#threadId) return data;
+      // A read after a run is stale once another run has begun, which may
+      // already have read a newer head.
+      if (
+        tid !== this.#threadId ||
+        (readOptions.afterRun && runStarts !== this.#runStarts)
+      ) {
+        return data;
+      }
       this.#threadFound(tid);
       this.#history = {
         data,
@@ -1250,8 +1260,11 @@ export class StreamOrchestrator<
       }
       // Subagents are rebuilt from the messages once they're loaded. A
       // binding asks when the load or the message count changes, and for a
-      // thread shown from the cache neither may change as the read lands.
-      if (cached != null) this.reconstructSubagentsIfNeeded();
+      // thread shown from the cache, or read after a run that already
+      // ended, neither may change as the read lands.
+      if (cached != null || readOptions.afterRun) {
+        this.reconstructSubagentsIfNeeded();
+      }
       readOptions.onRead?.(data);
       this.#notify();
       return data;
@@ -1326,23 +1339,19 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Called when a run succeeds. Returns null when the head was read, which
-   * clears the run's streamed values so the head shows.
+   * Called when a run succeeds, with the read {@link planReadAfterRun} plans
+   * after it. Returns null when the head was read, which clears the run's
+   * streamed values so the head shows. A read that doesn't wait is left to
+   * `#readAfterRun`.
    */
   async #finishRun(
     threadId: string | undefined,
-    refetch: boolean,
-    callbackMeta: RunCallbackMeta | undefined,
-    streamedValues: boolean
+    read: ReturnType<typeof planReadAfterRun>,
+    callbackMeta: RunCallbackMeta | undefined
   ): Promise<null | undefined> {
-    const read = planReadAfterRun(
-      this.branchContext.threadHead,
-      refetch,
-      streamedValues
-    );
-    if (read && threadId) {
+    if (read?.wait && threadId) {
       const lastHead = (
-        await this.#mutate(threadId, { ...read, afterRun: true })
+        await this.#mutate(threadId, { quiet: read.quiet, afterRun: true })
       )?.at(0);
       if (lastHead) {
         // The read can land after a thread switch, and a resume goes to the
@@ -1362,6 +1371,31 @@ export class StreamOrchestrator<
       );
     }
     return undefined;
+  }
+
+  /** Whether a run starts once the one streaming now ends. */
+  #runQueued(): boolean {
+    return this.pendingRuns.size > 0 || this.#queueCreates > 0;
+  }
+
+  /**
+   * Reads the head after a run whose read doesn't wait, once the run counts
+   * as done, and shows it in place of what the run streamed, unless a
+   * stream, a thread switch or a stop has changed what shows since.
+   */
+  async #readAfterRun(threadId: string): Promise<void> {
+    const epoch = this.stream.epoch;
+    const shown = this.stream.values;
+    const head = (
+      await this.#mutate(threadId, { quiet: true, afterRun: true })
+    )?.at(0);
+    if (
+      head != null &&
+      this.stream.epoch === epoch &&
+      this.stream.values === shown
+    ) {
+      this.stream.setStreamValues(null);
+    }
   }
 
   /**
@@ -2237,6 +2271,7 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
     let sentValues = false;
+    let headRead: ReturnType<typeof planReadAfterRun>;
 
     let releaseStream: (() => void) | undefined;
     let countedStarting = true;
@@ -2295,12 +2330,13 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          return this.#finishRun(
-            tid,
+          headRead = planReadAfterRun(
+            this.branchContext.threadHead,
             shouldRefetchJoin,
-            callbackMeta,
-            sentValues
+            sentValues,
+            this.#runQueued()
           );
+          return this.#finishRun(tid, headRead, callbackMeta);
         },
         onError: (error) => {
           outcome = { error };
@@ -2309,6 +2345,9 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
           releaseStream?.();
+          // Before onRunEnd, whose changes to what shows the head it reads
+          // must not replace.
+          if (headRead?.wait === false) void this.#readAfterRun(tid);
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
           this.#endRun(runId);
@@ -2414,6 +2453,7 @@ export class StreamOrchestrator<
     let shownKeys: OptimisticKeySnapshot[] = [];
     let asksValues = true;
     let sentValues = false;
+    let headRead: ReturnType<typeof planReadAfterRun>;
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -2603,12 +2643,13 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-          return this.#finishRun(
-            usableThreadId,
+          headRead = planReadAfterRun(
+            this.branchContext.threadHead,
             shouldRefetch,
-            callbackMeta,
-            sentValues
+            sentValues,
+            this.#runQueued()
           );
+          return this.#finishRun(usableThreadId, headRead, callbackMeta);
         },
         onError: (error) => {
           outcome = { error };
@@ -2632,6 +2673,11 @@ export class StreamOrchestrator<
             this.stream.setStreamValues(
               (values) => values && restoreKeys(values, shownKeys)
             );
+          }
+          // After the keys go back, so the head it reads replaces them, and
+          // before onRunEnd, whose changes to what shows it must not replace.
+          if (headRead?.wait === false && usableThreadId != null) {
+            void this.#readAfterRun(usableThreadId);
           }
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) {
@@ -2858,6 +2904,7 @@ export class StreamOrchestrator<
           done = resolve;
         });
         const drops = this.#queueDrops;
+        this.#queueCreates += 1;
         try {
           // The server runs queued runs in the order their creates reach it.
           await turn;
@@ -2920,6 +2967,7 @@ export class StreamOrchestrator<
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         } finally {
+          this.#queueCreates -= 1;
           done();
         }
         return;
