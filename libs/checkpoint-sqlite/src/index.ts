@@ -394,7 +394,7 @@ CREATE TABLE IF NOT EXISTS writes (
 
     sql += "\nORDER BY checkpoint_id DESC";
 
-    if (limit) {
+    if (limit !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sql += ` LIMIT ${parseInt(limit as any, 10)}`; // parseInt here (with cast to make TS happy) to sanitize input, as limit may be user-provided
     }
