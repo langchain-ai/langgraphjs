@@ -3351,10 +3351,9 @@ export class StreamOrchestrator<
 
     if (status === "run_done") {
       const streamed = seen === "ended" || this.#liveRuns.has(runId);
-      this.#endRun(
-        runId,
-        streamed ? undefined : this.#reload(threadId, { quiet: true })
-      );
+      if (!streamed) {
+        this.#endRun(runId, this.#reload(threadId, { quiet: true }));
+      }
       return;
     }
     if (seen != null) return;
@@ -3393,6 +3392,7 @@ export class StreamOrchestrator<
    * answered interrupts still pending. After 10 s they show again anyway, so
    * a read that hangs doesn't hide an interrupt still pending for good. One
    * that another run has answered since stays hidden until that run ends.
+   * A run streamed here ends with its stream, not with the thread stream.
    */
   #endRun(runId: string, read?: Promise<void>): void {
     this.#threadRuns.set(runId, "ended");

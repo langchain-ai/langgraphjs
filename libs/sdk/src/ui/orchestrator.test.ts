@@ -8413,6 +8413,60 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("keeps what a joined refused answer named hidden until the thread is read again, when a throttled engine's thread stream ends the run first", async () => {
+      (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
+      let lookedUp!: (run: unknown) => void;
+      (client.runs.get as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          lookedUp = resolve;
+        })
+      );
+      const refused = deferred();
+      (client.runs.joinStream as Mock).mockImplementation(() => {
+        open()?.send(done("run-b", "3-0"));
+        return {
+          async *[Symbol.asyncIterator]() {
+            await refused.promise;
+            yield answeredElsewhere("int-1");
+          },
+        };
+      });
+      const orch = await watching({ throttle: true });
+      let read!: (state: unknown) => void;
+      (client.threads.getState as Mock).mockReturnValue(
+        new Promise((resolve) => {
+          read = resolve;
+        })
+      );
+
+      open()!.send(started("run-b", "1-0"), {
+        id: "2-0",
+        event: "interrupts",
+        data: { run_id: "run-b", answered: ["int-1"] },
+      });
+      await vi.waitFor(() => expect(orch.interrupts).toEqual([]));
+      lookedUp({ status: "pending" });
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-b",
+          expect.anything()
+        )
+      );
+      await vi.waitFor(() => expect(open()).toBeUndefined());
+      refused.resolve();
+      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+
+      expect(orch.error).toBeUndefined();
+      expect(orch.interrupts).toEqual([]);
+      read(createThreadState({ messages: [message("approved")] }));
+      await vi.waitFor(() =>
+        expect(orch.messages).toEqual([message("approved")])
+      );
+      expect(orch.interrupts).toEqual([]);
+      orch.dispose();
+    });
+
     it("keeps an interrupt a second run answers again hidden when the read after the first run lands", async () => {
       (client.threads.getState as Mock).mockResolvedValue(awaitingApproval);
       (client.runs.get as Mock).mockReturnValue(new Promise(() => {}));
