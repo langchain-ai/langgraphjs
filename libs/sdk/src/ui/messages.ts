@@ -103,21 +103,6 @@ export class MessageTupleManager {
 
   private replaying = new Set<string>();
 
-  /**
-   * A Python graph streams a model call under two ids when its provider names
-   * the reply in the first chunk only (OpenAI's Responses API): that empty
-   * chunk has the provider's id, the rest `lc_run--<run id>`. The saved
-   * message keeps the provider's id, so the rest are kept under it too.
-   */
-  private providerIds = new Map<string, string>();
-
-  /**
-   * Empty first chunks with a provider id that no `lc_run-` chunk joined yet.
-   * A model call joins one only when it is the only one of its task and
-   * provider, since calls a task makes at once can't be told apart.
-   */
-  private firstChunks = new Map<string, { task: string; provider: unknown }>();
-
   constructor() {
     this.chunks = {};
   }
@@ -135,10 +120,9 @@ export class MessageTupleManager {
     serialized: Message,
     metadata: Record<string, unknown> | undefined
   ): string | null {
-    const isChunk = serialized.type.endsWith("MessageChunk");
     // TODO: this is sometimes sent from the API
     // figure out how to prevent this or move this to LC.js
-    if (isChunk) {
+    if (serialized.type.endsWith("MessageChunk")) {
       // eslint-disable-next-line no-param-reassign
       serialized.type = serialized.type
         .slice(0, -"MessageChunk".length)
@@ -148,43 +132,14 @@ export class MessageTupleManager {
     const message = tryCoerceMessageLikeToChunk(serialized);
     const chunk = tryConvertToChunk(message);
 
-    const { id: sentId } = chunk ?? message;
-    if (!sentId) {
+    const { id } = chunk ?? message;
+    if (!id) {
       console.warn(
         "No message ID found for chunk, ignoring in state",
         serialized
       );
       return null;
     }
-
-    if (this.chunks[sentId] != null) {
-      // A later chunk under the same id: its provider names every chunk.
-      this.firstChunks.delete(sentId);
-    } else if (
-      isChunk &&
-      AIMessageChunk.isInstance(chunk) &&
-      !this.providerIds.has(sentId)
-    ) {
-      const task = String(metadata?.langgraph_checkpoint_ns ?? "");
-      const provider = chunk.response_metadata?.model_provider;
-      if (sentId.startsWith("lc_run-")) {
-        const open = [...this.firstChunks].filter(
-          ([, first]) => first.task === task && first.provider === provider
-        );
-        if (open.length === 1) {
-          const [[firstId]] = open;
-          this.providerIds.set(sentId, firstId);
-          this.firstChunks.delete(firstId);
-        }
-      } else if (
-        !sentId.startsWith("lc_") &&
-        chunk.content.length === 0 &&
-        !chunk.tool_call_chunks?.length
-      ) {
-        this.firstChunks.set(sentId, { task, provider });
-      }
-    }
-    const id = this.providerIds.get(sentId) ?? sentId;
 
     this.chunks[id] ??= {};
     if (this.replaying.delete(id)) delete this.chunks[id].chunk;
@@ -250,8 +205,6 @@ export class MessageTupleManager {
     this.staleIds.clear();
     this.chunks = {};
     this.replaying.clear();
-    this.providerIds.clear();
-    this.firstChunks.clear();
   }
 
   /**

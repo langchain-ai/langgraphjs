@@ -2933,40 +2933,25 @@ describe("StreamManager", () => {
 
   describe("a model call's chunks", () => {
     type State = { messages: Message[] };
-    const task = {
-      langgraph_checkpoint_ns: "model:e974c85b-a20f-c263-b648-91a213e4e55d",
-    };
-    const chunk = (provider: string) => (id: string, content: unknown) => ({
+    const chunk = (id: string, content: unknown) => ({
       event: "messages",
-      data: [
-        {
-          type: "AIMessageChunk",
-          id,
-          content,
-          response_metadata: { model_provider: provider },
-        },
-        task,
-      ],
+      data: [{ type: "AIMessageChunk", id, content }, {}],
     });
-    const fromOpenAI = chunk("openai");
-    const fromAnthropic = chunk("anthropic");
-    const openAIRun = "lc_run--01a2139a-8613-7c60-89d3-e3ad0dcc6d94";
     const anthropicRun = "lc_run--01a2139a-8a81-7cd1-8d55-97c957639a85";
-    // As a Python graph streams one reply of ChatOpenAI on the Responses API
-    // and one of ChatAnthropic.
+    // One reply of ChatOpenAI on the Responses API and one of ChatAnthropic,
+    // each streamed under one id.
     const openAI = [
-      fromOpenAI("resp_0274b1", []),
-      fromOpenAI(openAIRun, []),
-      fromOpenAI(openAIRun, [{ type: "text", text: "Hel", index: 0 }]),
-      fromOpenAI(openAIRun, [{ type: "text", text: "lo", index: 0 }]),
-      fromOpenAI(openAIRun, [{ type: "text", text: "", id: "msg_1", index: 0 }]),
-      fromOpenAI(openAIRun, []),
+      chunk("resp_0274b1", []),
+      chunk("resp_0274b1", [{ type: "text", text: "Hel", index: 0 }]),
+      chunk("resp_0274b1", [{ type: "text", text: "lo", index: 0 }]),
+      chunk("resp_0274b1", [{ type: "text", text: "", id: "msg_1", index: 0 }]),
+      chunk("resp_0274b1", []),
     ];
     const anthropic = [
-      fromAnthropic(anthropicRun, ""),
-      fromAnthropic(anthropicRun, "Hel"),
-      fromAnthropic(anthropicRun, "lo"),
-      fromAnthropic(anthropicRun, ""),
+      chunk(anthropicRun, ""),
+      chunk(anthropicRun, "Hel"),
+      chunk(anthropicRun, "lo"),
+      chunk(anthropicRun, ""),
     ];
     const human = { type: "human", id: "h1", content: "hi" } as Message;
     const savedOpenAI = {
@@ -3000,18 +2985,6 @@ describe("StreamManager", () => {
       manager = new StreamManager<State>(new MessageTupleManager(), {
         throttle: false,
       });
-    });
-
-    it("stream as one message under the id the first chunk carries", async () => {
-      await stream(openAI, { initialValues: { messages: [human] } });
-
-      expect(manager.values?.messages).toEqual([
-        human,
-        expect.objectContaining({
-          id: "resp_0274b1",
-          content: [expect.objectContaining({ type: "text", text: "Hello" })],
-        }),
-      ]);
     });
 
     const recordShown = (read: State) => {
@@ -3055,7 +3028,7 @@ describe("StreamManager", () => {
       const draft = { type: "ai", id: "a1", content: "draft" } as Message;
       const edited = {
         event: "messages",
-        data: [{ ...draft, content: "edited" }, task],
+        data: [{ ...draft, content: "edited" }, {}],
       };
 
       await stream([edited], {
@@ -3072,7 +3045,7 @@ describe("StreamManager", () => {
     it("build a read reply again when a replay removed it", async () => {
       const whole = (message: object) => ({
         event: "messages",
-        data: [message, task],
+        data: [message, {}],
       });
       const removeAll = whole({ type: "remove", id: "__remove_all__" });
 
