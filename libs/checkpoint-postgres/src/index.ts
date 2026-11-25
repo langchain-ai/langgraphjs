@@ -26,8 +26,11 @@ import {
   type SQL_STATEMENTS,
   type SQL_TYPES,
   MAX_BATCH_ROWS,
+  PRUNE_STRATEGIES,
+  type PruneStrategy,
   getDeltaStage1SQL,
   getDeltaStage2SQL,
+  getPruneSQLStatements,
   getSQLStatements,
   getTablesWithSchema,
 } from "./sql.js";
@@ -117,6 +120,25 @@ function tryAdvanceWalk(
   }
 }
 
+/** A channel version, as the checkpoints reference it and `checkpoint_blobs` stores it. */
+type BlobVersion = { channel: string; version: string };
+
+/** Blobs a deleted checkpoint used and no kept one does, by channel. */
+function garbageBlobs(
+  freed: BlobVersion[],
+  referenced: BlobVersion[]
+): Map<string, string[]> {
+  const kept = new Set(
+    referenced.map((r) => JSON.stringify([r.channel, r.version]))
+  );
+  const garbage = new Map<string, string[]>();
+  for (const { channel, version } of freed) {
+    if (kept.has(JSON.stringify([channel, version]))) continue;
+    garbage.set(channel, [...(garbage.get(channel) ?? []), version]);
+  }
+  return garbage;
+}
+
 /**
  * LangGraph checkpointer that uses a Postgres instance as the backing store.
  * Uses the [node-postgres](https://node-postgres.com/) package internally
@@ -163,6 +185,8 @@ export class PostgresSaver extends BaseCheckpointSaver {
 
   private readonly SQL_STATEMENTS: SQL_STATEMENTS;
 
+  private readonly PRUNE_SQL: ReturnType<typeof getPruneSQLStatements>;
+
   protected isSetup: boolean;
 
   constructor(
@@ -175,6 +199,7 @@ export class PostgresSaver extends BaseCheckpointSaver {
     this.isSetup = false;
     this.options = _ensureCompleteOptions(options);
     this.SQL_STATEMENTS = getSQLStatements(this.options.schema);
+    this.PRUNE_SQL = getPruneSQLStatements(this.options.schema);
   }
 
   /**
@@ -854,6 +879,180 @@ export class PostgresSaver extends BaseCheckpointSaver {
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Prune checkpoints for the given threads. Ported from langgraph (Python)'s
+   * `PostgresSaver.prune`.
+   *
+   * `"delete"` removes every checkpoint, write and blob of the threads, in one
+   * transaction.
+   *
+   * `"keep_latest"` (the default) keeps the latest checkpoint of each
+   * namespace (the one `getTuple` loads, plus its parent when it predates v4
+   * and has pending sends), with its pending writes and the blobs it
+   * references, and deletes the rest. A kept checkpoint whose parent it deletes
+   * is left with no parent. A subgraph call's namespace is deleted with the
+   * root checkpoint the call started from, except a `checkpointer: true`
+   * subgraph's, which keeps its latest checkpoint. Each thread is pruned in its
+   * own transaction, on one snapshot of it, so a run appending to the thread
+   * meanwhile is safe; forking or replaying from a checkpoint being deleted is
+   * not. A thread that fails because another transaction changed it leaves the
+   * threads before it pruned, and retrying is safe.
+   *
+   * `"keep_latest"` refuses threads that use a `DeltaChannel`, since it
+   * rebuilds the latest value from older checkpoints: if any requested thread
+   * does, nothing is pruned. A thread that starts using one before its turn in
+   * the batch is refused then, after the threads before it.
+   *
+   * @param threadIds - The thread IDs to prune.
+   * @param options.strategy - `"keep_latest"` (default) or `"delete"`.
+   * @throws {TypeError} If `threadIds` is a single string.
+   * @throws {Error} If `strategy` is unknown, if `strategy` is `"keep_latest"`
+   * and a thread uses a `DeltaChannel`, or if another transaction, such as a
+   * second prune, changes a thread's rows while `"keep_latest"` prunes it
+   * (Postgres serialization failure or deadlock). Retrying is safe.
+   */
+  async prune(
+    threadIds: string[],
+    options?: { strategy?: PruneStrategy }
+  ): Promise<void> {
+    const strategy = options?.strategy ?? "keep_latest";
+    if (typeof threadIds === "string") {
+      throw new TypeError(
+        "threadIds must be an array of thread IDs, not a string"
+      );
+    }
+    if (!PRUNE_STRATEGIES.includes(strategy)) {
+      throw new Error(`Unknown prune strategy: ${JSON.stringify(strategy)}`);
+    }
+    const ids = threadIds.map(String);
+    if (ids.length === 0) return;
+
+    if (strategy === "delete") {
+      await this._inTransaction(async (client) => {
+        for (const sql of this.PRUNE_SQL.DELETE_THREADS_SQL) {
+          await client.query(sql, [ids]);
+        }
+      });
+      return;
+    }
+
+    await this._refuseDeltaThreads(this.pool, ids);
+    for (const threadId of ids) {
+      // A snapshot of the thread: what a run saves meanwhile is neither seen
+      // nor deleted, whatever its checkpoint id.
+      await this._inTransaction(
+        (client) => this._keepLatest(client, threadId),
+        "REPEATABLE READ"
+      );
+    }
+  }
+
+  private async _inTransaction(
+    fn: (client: pg.PoolClient) => Promise<void>,
+    isolation?: "REPEATABLE READ"
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query(
+        isolation ? `BEGIN ISOLATION LEVEL ${isolation}` : "BEGIN"
+      );
+      await fn(client);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async _refuseDeltaThreads(
+    db: Pick<pg.Pool, "query">,
+    threadIds: string[]
+  ): Promise<void> {
+    const { rows } = await db.query<{ thread_id: string }>(
+      this.PRUNE_SQL.DELTA_THREADS_SQL,
+      [threadIds]
+    );
+    if (rows.length > 0) {
+      const delta = rows.map((row) => row.thread_id).sort();
+      throw new Error(
+        `keep_latest can't prune threads that use a DeltaChannel: ${delta.join(", ")}`
+      );
+    }
+  }
+
+  /** One thread's `keep_latest` statements, in its transaction. */
+  private async _keepLatest(
+    client: pg.PoolClient,
+    threadId: string
+  ): Promise<void> {
+    const sql = this.PRUNE_SQL;
+    const { rows: heads } = await client.query<{
+      checkpoint_ns: string;
+      head: string;
+      sends_parent: string | null;
+      root: string | null;
+      root_saved: boolean;
+    }>(sql.HEADS_SQL, [threadId]);
+    // Catches a thread that started using a DeltaChannel after the batch check.
+    await this._refuseDeltaThreads(client, [threadId]);
+
+    const kept = new Map<string, string[]>(
+      heads.map((h) => [
+        h.checkpoint_ns,
+        [h.head, h.sends_parent].filter((id): id is string => !!id),
+      ])
+    );
+    // A subgraph call's namespace has its task id after a ":", unlike a
+    // `checkpointer: true` subgraph's, whose state outlives each call. A call
+    // goes with the root checkpoint it started from, but only once that one is
+    // saved: runs save in the background, so a call can commit first.
+    const calls = new Set(
+      heads
+        .filter(
+          (h) =>
+            h.checkpoint_ns.includes(":") &&
+            h.root_saved &&
+            !(kept.get("") ?? []).includes(h.root as string)
+        )
+        .map((h) => h.checkpoint_ns)
+    );
+    if (calls.size > 0) {
+      for (const statement of sql.SUBGRAPH_CALLS_SQL) {
+        await client.query(statement, [threadId, [...calls]]);
+      }
+    }
+    for (const [ns, ids] of kept) {
+      if (calls.has(ns)) continue;
+      const { rows: unkept } = await client.query<{ checkpoint_id: string }>(
+        sql.UNKEPT_SQL,
+        [threadId, ns, ids]
+      );
+      if (unkept.length > 0) {
+        await client.query(sql.WRITES_SQL, [
+          threadId,
+          ns,
+          unkept.map((row) => row.checkpoint_id),
+        ]);
+      }
+      const { rows: freed } = await client.query<BlobVersion>(
+        sql.CHECKPOINTS_SQL,
+        [threadId, ns, ids]
+      );
+      await client.query(sql.PARENTS_SQL, [threadId, ns, ids, ids]);
+      if (freed.length > 0) {
+        const { rows: referenced } = await client.query<BlobVersion>(
+          sql.REFERENCED_BLOBS_SQL,
+          [threadId, ns]
+        );
+        for (const [channel, versions] of garbageBlobs(freed, referenced)) {
+          await client.query(sql.BLOBS_SQL, [threadId, ns, channel, versions]);
+        }
+      }
     }
   }
 
