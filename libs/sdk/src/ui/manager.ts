@@ -1153,7 +1153,6 @@ export class StreamManager<
         )
       ) {
         if (options.showsError?.(error) !== false) {
-          console.error(error);
           this.setState({ error });
         }
         await options.onError?.(error);

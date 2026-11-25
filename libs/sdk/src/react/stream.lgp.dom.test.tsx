@@ -308,7 +308,6 @@ describe("useStream (old engine) submit onError", () => {
   const boom = expect.objectContaining({ message: "boom" });
 
   it("calls the submit's onError and the hook's onError when a run fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const client = createClient();
     mockRun(client, [{ event: "error", data: { message: "boom" } }]);
     const hookOnError = vi.fn();
@@ -323,7 +322,6 @@ describe("useStream (old engine) submit onError", () => {
   });
 
   it("calls the submit's onError and the hook's onError when a custom transport run fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const transport = {
       stream: vi.fn(async () =>
         (async function* () {
@@ -523,7 +521,6 @@ describe("useStream (old engine) rejoin on mount", () => {
   });
 
   it("stays idle on a new thread before and after its first run fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const client = createClient();
     mockRun(client, [{ event: "error", data: { message: "boom" } }]);
     const view = await renderStream(client, { reconnectOnMount: true });
@@ -574,7 +571,6 @@ describe("useStream (old engine) rejoin on mount", () => {
   );
 
   it("does not retry a failed rejoin when the thread state reloads", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     const client = createClient();
     mockJoin(client, [{ event: "error", data: { message: "gone" } }]);
     window.sessionStorage.setItem("lg:stream:t1", "run-1");
