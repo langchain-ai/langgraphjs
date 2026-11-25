@@ -498,11 +498,11 @@ describe("ThreadStream (SSE shared stream)", () => {
     await thread.close();
   });
 
-  it("dispatches a single event to multiple subs with different filters", async () => {
+  it.each([{ namespaces: undefined }, { namespaces: [] }])("dispatches to wildcard and scoped subscribers ($namespaces)", async ({ namespaces }) => {
     const transport = new MockSseTransport();
     const thread = new ThreadStream(transport, { assistantId: "a" });
 
-    const wide = await thread.subscribe({ channels: ["messages"] });
+    const wide = await thread.subscribe({ channels: ["messages"], namespaces });
     const narrow = await thread.subscribe({
       channels: ["messages"],
       namespaces: [["agent_1"]],
@@ -526,10 +526,8 @@ describe("ThreadStream (SSE shared stream)", () => {
       )
     );
 
-    const got1 = await nextValue(wide);
-    const got2 = await nextValue(wide);
-    expect(got1).toMatchObject({ event_id: "evt_outside" });
-    expect(got2).toMatchObject({ event_id: "evt_inside" });
+    expect(await nextValue(wide)).toMatchObject({ event_id: "evt_outside" });
+    expect(await nextValue(wide)).toMatchObject({ event_id: "evt_inside" });
 
     const narrowed = await nextValue(narrow);
     expect(narrowed).toMatchObject({ event_id: "evt_inside" });
