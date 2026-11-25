@@ -742,6 +742,20 @@ export class StreamManager<
         this.messages.startReplay();
         this.subagentManager.startReplay();
       }
+      // A replay can resend the chunks of a message the page shows as it read
+      // it, not as it streamed it. That copy is complete, so while it is
+      // shown, those chunks would only restart it, from an empty first chunk.
+      const shownMessages = () =>
+        options.getMessages({ ...options.initialValues, ...this.values });
+      const readCopies = new Map<string, Message>();
+      if (options.isReplaying) {
+        const read = new Set(options.getMessages(options.initialValues));
+        for (const message of shownMessages()) {
+          if (message.id != null && read.has(message)) {
+            readCopies.set(message.id, message);
+          }
+        }
+      }
 
       const run = await action(abort.signal);
       // A run sends `metadata` once per attempt, so one after other events
@@ -764,6 +778,13 @@ export class StreamManager<
       const subagentMessageIds = new Set<string>();
 
       const applyMessage = (messageId: string, { updateOnly = false } = {}) => {
+        const readCopy = readCopies.get(messageId);
+        if (readCopy != null) {
+          // Once it is gone, as after a replayed removal of all messages, its
+          // chunks build it again.
+          if (shownMessages().includes(readCopy)) return;
+          readCopies.delete(messageId);
+        }
         const isFromSubagent = subagentMessageIds.has(messageId);
 
         this.setStreamValues((streamValues) => {
@@ -1119,6 +1140,8 @@ export class StreamManager<
             continue;
           }
 
+          // Before `add`, which renames a chunk's type.
+          const isChunk = serialized.type.endsWith("MessageChunk");
           const messageId = this.messages.add(serialized, metadata);
           if (!messageId) {
             console.warn(
@@ -1127,6 +1150,8 @@ export class StreamManager<
             continue;
           }
 
+          // A whole message, unlike a chunk, can change a read one.
+          if (!isChunk) readCopies.delete(messageId);
           if (isFromSubagent) subagentMessageIds.add(messageId);
           applyMessage(messageId);
         }

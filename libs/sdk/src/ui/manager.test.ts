@@ -2930,4 +2930,164 @@ describe("StreamManager", () => {
       ]);
     });
   });
+
+  describe("a model call's chunks", () => {
+    type State = { messages: Message[] };
+    const task = {
+      langgraph_checkpoint_ns: "model:e974c85b-a20f-c263-b648-91a213e4e55d",
+    };
+    const chunk = (provider: string) => (id: string, content: unknown) => ({
+      event: "messages",
+      data: [
+        {
+          type: "AIMessageChunk",
+          id,
+          content,
+          response_metadata: { model_provider: provider },
+        },
+        task,
+      ],
+    });
+    const fromOpenAI = chunk("openai");
+    const fromAnthropic = chunk("anthropic");
+    const openAIRun = "lc_run--01a2139a-8613-7c60-89d3-e3ad0dcc6d94";
+    const anthropicRun = "lc_run--01a2139a-8a81-7cd1-8d55-97c957639a85";
+    // As a Python graph streams one reply of ChatOpenAI on the Responses API
+    // and one of ChatAnthropic.
+    const openAI = [
+      fromOpenAI("resp_0274b1", []),
+      fromOpenAI(openAIRun, []),
+      fromOpenAI(openAIRun, [{ type: "text", text: "Hel", index: 0 }]),
+      fromOpenAI(openAIRun, [{ type: "text", text: "lo", index: 0 }]),
+      fromOpenAI(openAIRun, [{ type: "text", text: "", id: "msg_1", index: 0 }]),
+      fromOpenAI(openAIRun, []),
+    ];
+    const anthropic = [
+      fromAnthropic(anthropicRun, ""),
+      fromAnthropic(anthropicRun, "Hel"),
+      fromAnthropic(anthropicRun, "lo"),
+      fromAnthropic(anthropicRun, ""),
+    ];
+    const human = { type: "human", id: "h1", content: "hi" } as Message;
+    const savedOpenAI = {
+      type: "ai",
+      id: "resp_0274b1",
+      content: [{ type: "text", text: "Hello" }],
+    } as Message;
+    const savedAnthropic = {
+      type: "ai",
+      id: anthropicRun,
+      content: "Hello",
+    } as Message;
+    let manager: StreamManager<State>;
+
+    const stream = (
+      events: Array<{ event: string; data: unknown }>,
+      options: { initialValues: State; isReplaying?: boolean }
+    ) => {
+      const sent = structuredClone(events);
+      return manager.start(async () => createMockStream(sent) as never, {
+        getMessages: (state) => state.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+        ...options,
+      });
+    };
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    it("stream as one message under the id the first chunk carries", async () => {
+      await stream(openAI, { initialValues: { messages: [human] } });
+
+      expect(manager.values?.messages).toEqual([
+        human,
+        expect.objectContaining({
+          id: "resp_0274b1",
+          content: [expect.objectContaining({ type: "text", text: "Hello" })],
+        }),
+      ]);
+    });
+
+    const recordShown = (read: State) => {
+      const shown: Message[][] = [];
+      manager.subscribe(() =>
+        shown.push(manager.values?.messages ?? read.messages)
+      );
+      return shown;
+    };
+
+    it.each([
+      ["OpenAI", openAI, savedOpenAI],
+      ["Anthropic", anthropic, savedAnthropic],
+    ])(
+      "leave a read %s reply as it is each time a replay resends them",
+      async (_, events, saved) => {
+        const read = { messages: [human, saved] };
+        const shown = recordShown(read);
+
+        await stream(events, { initialValues: read, isReplaying: true });
+        await stream(events, { initialValues: read, isReplaying: true });
+
+        expect(shown.length).toBeGreaterThan(0);
+        expect(shown).toEqual(shown.map(() => read.messages));
+      }
+    );
+
+    it("leave a reply the page streamed as it is once it was read again", async () => {
+      await stream(openAI, { initialValues: { messages: [human] } });
+      manager.setStreamValues(null);
+      const read = { messages: [human, savedOpenAI] };
+      const shown = recordShown(read);
+
+      await stream(openAI, { initialValues: read, isReplaying: true });
+
+      expect(shown.length).toBeGreaterThan(0);
+      expect(shown).toEqual(shown.map(() => read.messages));
+    });
+
+    it("still let a whole message a replay sends change a read one", async () => {
+      const draft = { type: "ai", id: "a1", content: "draft" } as Message;
+      const edited = {
+        event: "messages",
+        data: [{ ...draft, content: "edited" }, task],
+      };
+
+      await stream([edited], {
+        initialValues: { messages: [human, draft] },
+        isReplaying: true,
+      });
+
+      expect(manager.values?.messages).toEqual([
+        human,
+        expect.objectContaining({ id: "a1", content: "edited" }),
+      ]);
+    });
+
+    it("build a read reply again when a replay removed it", async () => {
+      const whole = (message: object) => ({
+        event: "messages",
+        data: [message, task],
+      });
+      const removeAll = whole({ type: "remove", id: "__remove_all__" });
+
+      await stream([removeAll, whole(human), ...openAI], {
+        initialValues: { messages: [human, savedOpenAI] },
+        isReplaying: true,
+      });
+
+      expect(manager.values?.messages).toEqual([
+        expect.objectContaining({ id: "h1" }),
+        expect.objectContaining({
+          id: "resp_0274b1",
+          content: [expect.objectContaining({ type: "text", text: "Hello" })],
+        }),
+      ]);
+    });
+  });
 });
