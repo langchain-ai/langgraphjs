@@ -145,14 +145,17 @@ export class InMemorySaver extends MemorySaver {
             this.storage[threadId][oldNs][oldId];
 
           const newParentId = oldParentId?.replace(threadId, newThreadId);
-          const rawMetadata = textDecoder
-            .decode(metadata)
-            .replaceAll(threadId, newThreadId);
+          const parsedMetadata = JSON.parse(textDecoder.decode(metadata));
+          let copiedMetadata = metadata;
+          if (parsedMetadata.thread_id === threadId) {
+            parsedMetadata.thread_id = newThreadId;
+            copiedMetadata = textEncoder.encode(JSON.stringify(parsedMetadata));
+          }
 
           newThreadCheckpoints[newNs] ??= {};
           newThreadCheckpoints[newNs][newId] = [
             checkpoint,
-            textEncoder.encode(rawMetadata),
+            copiedMetadata,
             newParentId,
           ];
         }
