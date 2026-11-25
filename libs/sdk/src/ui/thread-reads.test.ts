@@ -5,8 +5,8 @@ import {
   hasPendingNodes,
   hasTaskErrors,
   hasTaskInterrupts,
-  planReadAfterRun,
   planStopRead,
+  runEndRead,
 } from "./thread-reads.js";
 
 const head = (extra: Record<string, unknown> = {}) =>
@@ -75,21 +75,51 @@ describe("thread state checks", () => {
   });
 });
 
-describe("planReadAfterRun", () => {
+describe("runEndRead", () => {
   it.each([
-    { shown: "no head", refetch: true, plan: { quiet: false } },
-    { shown: "a plain head", refetch: true, plan: { quiet: false } },
-    { shown: "a task interrupt", refetch: true, plan: { quiet: false } },
-    { shown: "no head", refetch: false, plan: undefined },
-    { shown: "a plain head", refetch: false, plan: undefined },
-    { shown: "a head without next or tasks", refetch: false, plan: undefined },
-    { shown: "a pending node", refetch: false, plan: { quiet: true } },
-    { shown: "a task interrupt", refetch: false, plan: { quiet: true } },
-    { shown: "a task error", refetch: false, plan: { quiet: true } },
+    { shown: "no head", refetch: true, values: true, read: "await" },
+    { shown: "a plain head", refetch: true, values: true, read: "await" },
+    { shown: "a task interrupt", refetch: true, values: true, read: "await" },
+    { shown: "a plain head", refetch: true, values: false, read: "await" },
+    { shown: "no head", refetch: false, values: true, read: "none" },
+    { shown: "a plain head", refetch: false, values: true, read: "none" },
+    {
+      shown: "a head without next or tasks",
+      refetch: false,
+      values: true,
+      read: "none",
+    },
+    { shown: "a pending node", refetch: false, values: true, read: "await-quiet" },
+    { shown: "a task interrupt", refetch: false, values: true, read: "await-quiet" },
+    { shown: "a task error", refetch: false, values: true, read: "await-quiet" },
+    { shown: "no head", refetch: false, values: false, read: "background" },
+    { shown: "a plain head", refetch: false, values: false, read: "background" },
+    { shown: "a pending node", refetch: false, values: false, read: "await-quiet" },
+    { shown: "a task interrupt", refetch: false, values: false, read: "await-quiet" },
+    { shown: "a task error", refetch: false, values: false, read: "await-quiet" },
   ] as const)(
-    "after a run on $shown (refetch: $refetch)",
-    ({ shown, refetch, plan }) => {
-      expect(planReadAfterRun(heads[shown], refetch)).toEqual(plan);
+    "after a run on $shown (refetch: $refetch, streamed values: $values)",
+    ({ shown, refetch, values, read }) => {
+      expect(runEndRead(heads[shown], { refetch, streamedValues: values })).toBe(
+        read
+      );
+    }
+  );
+
+  it.each([
+    { shown: "no head", values: false, read: "await-quiet" },
+    { shown: "a plain head", values: false, read: "await-quiet" },
+    { shown: "a plain head", values: true, read: "none" },
+  ] as const)(
+    "after a run on $shown with a run queued behind it (streamed values: $values)",
+    ({ shown, values, read }) => {
+      expect(
+        runEndRead(heads[shown], {
+          refetch: false,
+          streamedValues: values,
+          queued: true,
+        })
+      ).toBe(read);
     }
   );
 });
