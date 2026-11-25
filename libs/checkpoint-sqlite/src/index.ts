@@ -31,6 +31,7 @@ interface PendingWriteColumn {
   task_id: string;
   channel: string;
   type: string;
+  /** Hex-encoded bytes, so JSON aggregation never decodes a BLOB as UTF-8. */
   value: string;
   /** Present when the database has the `task_path` column; `""` for rows
    * written before it existed. Missing on pre-column databases read
@@ -108,7 +109,7 @@ function prepareSql(
             'task_id', pw.task_id,
             'channel', pw.channel,
             'type', pw.type,
-            'value', CAST(pw.value AS TEXT),
+            'value', hex(pw.value),
             'task_path', ${taskPath},
             'idx', pw.idx
           )
@@ -123,7 +124,7 @@ function prepareSql(
         json_group_array(
           json_object(
             'type', ps.type,
-            'value', CAST(ps.value AS TEXT)
+            'value', hex(ps.value)
           )
         )
       FROM writes as ps
@@ -275,7 +276,10 @@ CREATE TABLE IF NOT EXISTS writes (
         return [
           write.task_id,
           write.channel,
-          await this.serde.loadsTyped(write.type ?? "json", write.value ?? ""),
+          await this.serde.loadsTyped(
+            write.type ?? "json",
+            new Uint8Array(Buffer.from(write.value ?? "", "hex"))
+          ),
         ] as [string, string, unknown];
       })
     );
@@ -337,7 +341,7 @@ CREATE TABLE IF NOT EXISTS writes (
                 'task_id', pw.task_id,
                 'channel', pw.channel,
                 'type', pw.type,
-                'value', CAST(pw.value AS TEXT),
+                'value', hex(pw.value),
                 'task_path', ${this._hasTaskPath ? "pw.task_path" : "''"},
                 'idx', pw.idx
               )
@@ -352,7 +356,7 @@ CREATE TABLE IF NOT EXISTS writes (
             json_group_array(
               json_object(
                 'type', ps.type,
-                'value', CAST(ps.value AS TEXT)
+                'value', hex(ps.value)
               )
             )
           FROM writes as ps
@@ -424,7 +428,7 @@ CREATE TABLE IF NOT EXISTS writes (
               write.channel,
               await this.serde.loadsTyped(
                 write.type ?? "json",
-                write.value ?? ""
+                new Uint8Array(Buffer.from(write.value ?? "", "hex"))
               ),
             ] as [string, string, unknown];
           })
@@ -625,7 +629,7 @@ CREATE TABLE IF NOT EXISTS writes (
             json_group_array(
               json_object(
                 'type', ps.type,
-                'value', CAST(ps.value AS TEXT)
+                'value', hex(ps.value)
               )
             ) as pending_sends
           FROM writes as ps
@@ -643,7 +647,7 @@ CREATE TABLE IF NOT EXISTS writes (
     mutableCheckpoint.channel_values ??= {};
     mutableCheckpoint.channel_values[TASKS] = await Promise.all(
       JSON.parse(pending_sends).map(({ type, value }: PendingSendColumn) =>
-        this.serde.loadsTyped(type, value)
+        this.serde.loadsTyped(type, new Uint8Array(Buffer.from(value, "hex")))
       )
     );
 
