@@ -183,12 +183,18 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     // Store metadata fields at top-level for searching
     this.addSearchableMetadataFields(jsonDoc, metadata);
 
-    // Use Redis JSON commands
-    await this.client.json.set(key, "$", jsonDoc);
-
-    // Apply TTL if configured
-    if (this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
+    const ttl = this.ttlSeconds();
+    if (ttl !== undefined) {
+      // Persist the checkpoint document and set its TTL in a single
+      // MULTI/EXEC transaction: a separate EXPIRE leaves a crash window in
+      // which the key exists without a TTL (see RedisSaver.put).
+      const tx = this.client.multi();
+      tx.json.set(key, "$", jsonDoc);
+      tx.expire(key, ttl);
+      await tx.exec();
+    } else {
+      // Use Redis JSON commands
+      await this.client.json.set(key, "$", jsonDoc);
     }
 
     return {
@@ -460,14 +466,15 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       await this.client.del(oldWriteKeys);
     }
 
-    // Store new writes
+    // Collect new writes
     const writeKeys: string[] = [];
+    const writeDocs: Record<string, any>[] = [];
     for (let idx = 0; idx < writes.length; idx++) {
       const [channel, value] = writes[idx];
       const writeKey = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:${taskId}:${idx}`;
       writeKeys.push(writeKey);
 
-      const writeDoc = {
+      writeDocs.push({
         thread_id: threadId,
         checkpoint_ns: checkpointNs,
         checkpoint_id: checkpointId,
@@ -478,9 +485,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
         channel: channel,
         type: typeof value === "object" ? "json" : "string",
         value: value,
-      };
-
-      await this.client.json.set(writeKey, "$", writeDoc);
+      });
     }
 
     // Register write keys in sorted set for efficient retrieval
@@ -492,14 +497,29 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
       writeKeys.forEach((key, idx) => {
         zaddArgs[key] = idx;
       });
-      await this.client.zAdd(
-        zsetKey,
-        Object.entries(zaddArgs).map(([key, score]) => ({ score, value: key }))
-      );
+      const zaddMembers = Object.entries(zaddArgs).map(([key, score]) => ({
+        score,
+        value: key,
+      }));
 
-      // Apply TTL to write keys and zset if configured
-      if (this.ttlConfig?.defaultTTL) {
-        await this.applyTTL(...writeKeys, zsetKey);
+      const ttl = this.ttlSeconds();
+      if (ttl !== undefined) {
+        // Store the writes, register them in the zset and set every TTL in a
+        // single MULTI/EXEC transaction (see RedisSaver.put for the
+        // rationale).
+        const tx = this.client.multi();
+        for (let idx = 0; idx < writeKeys.length; idx++) {
+          tx.json.set(writeKeys[idx], "$", writeDocs[idx]);
+          tx.expire(writeKeys[idx], ttl);
+        }
+        tx.zAdd(zsetKey, zaddMembers);
+        tx.expire(zsetKey, ttl);
+        await tx.exec();
+      } else {
+        for (let idx = 0; idx < writeKeys.length; idx++) {
+          await this.client.json.set(writeKeys[idx], "$", writeDocs[idx]);
+        }
+        await this.client.zAdd(zsetKey, zaddMembers);
       }
     }
 
@@ -609,6 +629,13 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
         : undefined,
       pendingWrites,
     };
+  }
+
+  // TTL in whole seconds, or undefined when no default TTL is configured.
+  private ttlSeconds(): number | undefined {
+    if (!this.ttlConfig?.defaultTTL) return undefined;
+
+    return Math.floor(this.ttlConfig.defaultTTL * 60);
   }
 
   // Helper method to apply TTL to keys
