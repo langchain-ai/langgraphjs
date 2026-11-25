@@ -7488,6 +7488,41 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("a run joined from its loaded head lists the subagents the head started, and a panel joins its namespace", async () => {
+      withFlags(flags);
+      const [ask, delegate] = createSubagentStateValues().messages;
+      (client.threads.getState as Mock).mockResolvedValue(
+        createThreadState({ messages: [ask, delegate] })
+      );
+      listRuns([{ run_id: "run-9", kwargs: { stream_mode: ["lifecycle"], subgraphs: true } }]);
+      mockJoinStream([
+        {
+          event: "lifecycle|tools:ns-1",
+          data: { event: "started", tool_call_id: "task-1", namespace: ["tools:ns-1"] },
+        },
+      ]);
+      const orch = orchestrator({ scopedSubagents: true });
+      orch.initThreadId("t1");
+
+      await vi.waitFor(() =>
+        expect(orch.getSubagent("task-1")).toMatchObject({
+          status: "running",
+          namespace: ["tools:ns-1"],
+        })
+      );
+      const scope = orch.scopes.acquire((await orch.resolveSubagentNamespace("task-1"))!);
+
+      await vi.waitFor(() =>
+        expect(client.runs.joinStream).toHaveBeenCalledWith(
+          "t1",
+          "run-9",
+          expect.objectContaining({ streamNamespaces: ["tools:ns-1"] })
+        )
+      );
+      scope.release();
+      orch.dispose();
+    });
+
     it("leaves a reloaded subagent's history to its scope", async () => {
       withFlags(flags);
       const state = createThreadState(createSubagentStateValues());

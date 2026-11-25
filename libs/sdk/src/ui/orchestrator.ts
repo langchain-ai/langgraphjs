@@ -2351,6 +2351,18 @@ export class StreamOrchestrator<
             ? await this.#joinMode(tid, runId, runInfo, signal)
             : undefined;
         this.scopes.setRun(runId, mode);
+        // A filtered join from a checkpoint carries neither the message whose
+        // `task` calls started the subagents nor their own events, only their
+        // lifecycle, so the subagents come from the head.
+        if (
+          mode?.filtered &&
+          joinOptions?.checkpointId != null &&
+          !signal.aborted
+        ) {
+          this.stream.reconstructSubagents(
+            this.#getMessages(this.historyValues)
+          );
+        }
         const joined = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
