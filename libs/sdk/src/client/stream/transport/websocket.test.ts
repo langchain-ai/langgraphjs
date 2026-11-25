@@ -111,8 +111,8 @@ describe("ProtocolWebSocketTransportAdapter URL resolution", () => {
     );
   });
 
-  it("preserves custom stream paths under a proxied apiUrl", async () => {
-    const customStreamPath = `/threads/${THREAD_ID}/stream/events`;
+  it("preserves custom stream paths and their query under a proxied apiUrl", async () => {
+    const customStreamPath = `/threads/${THREAD_ID}/stream/events?region=us&tag=a%2Fb`;
     const { calls, webSocketFactory, sentinel } = createWebSocketUrlRecorder();
     const transport = new ProtocolWebSocketTransportAdapter({
       apiUrl: PROXIED_API_URL,
