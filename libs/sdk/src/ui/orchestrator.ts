@@ -251,14 +251,19 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
 const isUnprocessable = (error: unknown) =>
   (error as { status?: unknown } | null)?.status === 422;
 
+/** Strict resume refused the run's answer, before the run ran any step. */
+const isRefusal = (name: unknown) => name === "UnknownInterruptError";
+
 /**
  * Strict resume refused the run's answer: an interrupt it named was no longer
  * waiting, as when another tab answered it first. The run changed nothing,
- * and the head that offered the interrupt is out of date.
+ * and the head that offered the interrupt is out of date. The other
+ * refusals, an empty map or one value for several interrupts, are the
+ * caller's mistake.
  */
 const isStaleAnswer = (event: string, data: unknown) =>
   event === "error" &&
-  (data as { error?: unknown } | null)?.error === "UnknownInterruptError" &&
+  isRefusal((data as { error?: unknown } | null)?.error) &&
   (data as { reason?: unknown } | null)?.reason === "not_pending";
 
 /**
@@ -3500,14 +3505,15 @@ export class StreamOrchestrator<
     // Whether the server said how the run ended, not only that this client
     // stopped its stream or lost the connection while the run went on.
     let ended = true;
-    // A refused answer ran no step, so the subagents still open aren't its.
+    // No refused answer ran a step, stale or not, so the subagents still open
+    // aren't its.
     let refused = false;
     if (outcome === "aborted") {
       reason = "stopped";
       ended = false;
     } else if (outcome !== "success") {
       const { name } = outcome.error as { name?: unknown };
-      refused = name === "UnknownInterruptError";
+      refused = isRefusal(name);
       reason =
         name === "UserInterrupt" || name === "UserRollback"
           ? "stopped"

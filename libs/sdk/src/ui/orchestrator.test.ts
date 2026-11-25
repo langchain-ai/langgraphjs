@@ -7094,23 +7094,30 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
-    it("an answer refused as answered elsewhere leaves the subagents still open running", async () => {
-      lifecycleServer();
-      mockRunStream([withTask, started], { ended: Promise.resolve() });
-      const orch = orchestrator({ filterSubagentMessages: true });
-      orch.initThreadId("t1");
-      await orch.submit({ messages: [] });
-      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
-      expect(orch.getSubagent("call_1")?.status).toBe("running");
+    it.each(["not_pending", "ambiguous"])(
+      "an answer refused as %s leaves the subagents still open running",
+      async (reason) => {
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        lifecycleServer();
+        mockRunStream([withTask, started], { ended: Promise.resolve() });
+        const orch = orchestrator({ filterSubagentMessages: true });
+        orch.initThreadId("t1");
+        await orch.submit({ messages: [] });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        expect(orch.getSubagent("call_1")?.status).toBe("running");
 
-      mockRunStream([answeredElsewhere("i1")], { ended: Promise.resolve() });
-      await orch.respond("yes", { interruptId: "i1" });
-      await vi.waitFor(() => expect(orch.isLoading).toBe(false));
-      await flushMicrotasks();
+        const refusal = answeredElsewhere("i1");
+        mockRunStream([{ ...refusal, data: { ...refusal.data, reason } }], {
+          ended: Promise.resolve(),
+        });
+        await orch.respond("yes", { interruptId: "i1" });
+        await vi.waitFor(() => expect(orch.isLoading).toBe(false));
+        await flushMicrotasks();
 
-      expect(orch.getSubagent("call_1")?.status).toBe("running");
-      orch.dispose();
-    });
+        expect(orch.getSubagent("call_1")?.status).toBe("running");
+        orch.dispose();
+      }
+    );
 
     it("a run cancelled mid-subagent closes it with an error", async () => {
       lifecycleServer();

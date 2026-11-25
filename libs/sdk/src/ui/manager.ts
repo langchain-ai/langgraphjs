@@ -725,6 +725,8 @@ export class StreamManager<
       /**
        * Whether an error the stream ends with shows as its `error`. `onError`
        * gets it either way.
+       *
+       * @internal The engines' late answers.
        */
       showsError?: (error: unknown) => boolean;
     },
@@ -1214,6 +1216,8 @@ export class StreamManager<
       /**
        * Whether an error the stream ends with shows as its `error`. `onError`
        * gets it either way.
+       *
+       * @internal The engines' late answers.
        */
       showsError?: (error: unknown) => boolean;
     },
