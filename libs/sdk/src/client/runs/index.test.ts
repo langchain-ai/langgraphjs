@@ -210,3 +210,89 @@ describe("runs strictResume", () => {
     ).toEqual([true, true, true, undefined]);
   });
 });
+
+describe("runs.createBatch", () => {
+  it("serializes every run option to its snake_case field", async () => {
+    const fetchMock = createMockFetch();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([{ run_id: "run_1" }]),
+      text: () => Promise.resolve('[{"run_id":"run_1"}]'),
+      headers: new Headers({}),
+    });
+
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
+
+    await client.runs.createBatch([
+      {
+        assistantId: "agent",
+        input: { messages: [] },
+        config: { configurable: { thread_id: "thread_abc" } },
+        context: { source: "batch" },
+        metadata: { label: "review" },
+        checkpoint: {
+          checkpoint_ns: "",
+          checkpoint_id: "cp_1",
+          checkpoint_map: null,
+        },
+        checkpointId: "cp_1",
+        checkpointDuring: false,
+        durability: "sync",
+        interruptBefore: ["review"],
+        interruptAfter: ["finalize"],
+        multitaskStrategy: "interrupt",
+        onCompletion: "continue",
+        afterSeconds: 5,
+        ifNotExists: "create",
+        webhook: "https://example.com/hook",
+        strictResume: true,
+        streamMode: ["values"],
+        streamSubgraphs: true,
+        streamResumable: true,
+        feedbackKeys: ["feedback"],
+        command: { resume: "approved" },
+      },
+    ]);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(url).pathname).toBe("/runs/batch");
+    const body = JSON.parse(String(init?.body));
+    expect(body).toEqual([
+      {
+        assistant_id: "agent",
+        input: { messages: [] },
+        config: { configurable: { thread_id: "thread_abc" } },
+        context: { source: "batch" },
+        metadata: { label: "review" },
+        checkpoint: {
+          checkpoint_ns: "",
+          checkpoint_id: "cp_1",
+          checkpoint_map: null,
+        },
+        checkpoint_id: "cp_1",
+        checkpoint_during: false,
+        durability: "sync",
+        interrupt_before: ["review"],
+        interrupt_after: ["finalize"],
+        multitask_strategy: "interrupt",
+        on_completion: "continue",
+        after_seconds: 5,
+        if_not_exists: "create",
+        webhook: "https://example.com/hook",
+        strict_resume: true,
+        stream_mode: ["values"],
+        stream_subgraphs: true,
+        stream_resumable: true,
+        feedback_keys: ["feedback"],
+        command: { resume: "approved" },
+      },
+    ]);
+    expect(
+      Object.keys(body[0]).some((key) => /[a-z][A-Z]/.test(key))
+    ).toBe(false);
+  });
+});
