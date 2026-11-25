@@ -337,7 +337,7 @@ itOnAgentServer("an approval another hook answers goes away, and a late answer t
   expect(v1.lateAnswer, is("lateAnswerFails")).toMatch(/Unknown or already-consumed interrupt/);
   expect(v1.runs, is("lateAnswerFails")).toEqual(["success", "success"]);
   expect(v2.runs, is("lateAnswerFails")).toEqual(["success", "success", "error"]);
-  expect(v2.late.final.error, is("lateAnswerFails")).toMatch(/Unknown or already-consumed interrupt/);
+  expect(v2.late.final.error, is("lateAnswerFails")).toBeNull();
   for (const side of [v1, v2]) {
     expect(side.values).toEqual({ request: "send the report", decision: { approved: true }, completed: true });
   }

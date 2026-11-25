@@ -40,7 +40,7 @@ export const DIFFERENCES = {
   lateAnswerFails: {
     guide: "### A late answer fails",
     v1: "an answer to an interrupt no longer waiting starts no run: the Agent Server rejects it and respond() fails, the JS dev server ignores it",
-    v2: "it fails its run, on a server with strict resume",
+    v2: "it fails its run on a server with strict resume, and the page reads the thread instead of showing the error",
   },
   respondWithoutId: {
     guide: "### `respond()` with no id answers `interrupt`",

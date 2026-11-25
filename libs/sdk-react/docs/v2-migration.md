@@ -146,7 +146,7 @@ Use the [selector hooks](./selectors.md).
 ### A late answer fails
 
 - **1.x:** an answer to an interrupt that is no longer waiting (answered in another tab, or a wrong id) started no run. The Agent Server rejected it, and `respond()` failed with its error. The JS dev server ignored it.
-- **2.0:** `respond` and `respondAll` ask for strict answers by default. On a server that supports them (the version under [Before you upgrade](#before-you-upgrade), with a Python graph), such an answer fails its run with an `UnknownInterruptError` and leaves the thread as it was.
+- **2.0:** `respond` and `respondAll` ask for strict answers by default. On a server that supports them (the version under [Before you upgrade](#before-you-upgrade), with a Python graph), such an answer fails its run with an `UnknownInterruptError` and leaves the thread as it was. That error goes to `onError`, not to `error`, and the thread is read again, so the page shows what answered the interrupt.
 - **Back:** `respond(value, { strictResume: false })`.
 
 ### `respond()` with no id answers `interrupt`
