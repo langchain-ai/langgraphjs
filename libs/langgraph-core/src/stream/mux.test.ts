@@ -618,6 +618,25 @@ describe("StreamMux", () => {
     expect(mux.interrupts[0].interruptId).toBe("a");
     expect(mux.interrupts[1].interruptId).toBe("b");
   });
+
+  it("markInterrupted skips ids it has already recorded", () => {
+    const mux = new StreamMux();
+    mux.markInterrupted([{ interruptId: "a", payload: 1 }]);
+    mux.markInterrupted([
+      { interruptId: "a", payload: 1 },
+      { interruptId: "b", payload: 2 },
+    ]);
+
+    expect(mux.interrupts.map((i) => i.interruptId)).toEqual(["a", "b"]);
+  });
+
+  it("markInterrupted keeps every interrupt that has no id", () => {
+    const mux = new StreamMux();
+    mux.markInterrupted([{ interruptId: "", payload: 1 }]);
+    mux.markInterrupted([{ interruptId: "", payload: 2 }]);
+
+    expect(mux.interrupts).toHaveLength(2);
+  });
 });
 
 describe("pump", () => {
