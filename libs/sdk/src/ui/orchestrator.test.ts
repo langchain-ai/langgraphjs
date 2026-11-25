@@ -2058,7 +2058,6 @@ describe("StreamOrchestrator", () => {
       it.each(answeringRuns)(
         "still reads the head when an onFinish that takes no state throws, and the run ends as an error ($via)",
         async ({ run }) => {
-          vi.spyOn(console, "error").mockImplementation(() => undefined);
           const onError = vi.fn();
           serve(interrupted());
           const orch = await openThread({
@@ -3783,7 +3782,6 @@ describe("StreamOrchestrator runs", () => {
       { name: "an error event", events: [error("ValueError")], reason: "error" },
       { name: "a cancel", events: [error("UserInterrupt")], reason: "stopped" },
     ])("says $reason after $name", async ({ events, reason }) => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       mockRunStream(events, { ended: Promise.resolve() });
       const onRunEnd = vi.fn();
       const orch = orchestrator({ onRunEnd });
@@ -5393,7 +5391,6 @@ describe("StreamOrchestrator runs", () => {
     });
 
     it("a create the server refuses shows the error, and the next submit asks again", async () => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       const refused = Object.assign(
         new Error("HTTP 409: Thread already exists"),
         { status: 409 }
@@ -6017,7 +6014,6 @@ describe("StreamOrchestrator runs", () => {
     });
 
     it("hides an answered interrupt, and when the queued answer can't be sent, shows it again and rejects", async () => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       let reject!: (error: Error) => void;
       (client.runs.create as Mock).mockReturnValueOnce(
         new Promise((_resolve, fail) => {
@@ -6225,7 +6221,6 @@ describe("StreamOrchestrator runs", () => {
     ])(
       "still shows $error with reason $reason as the error",
       async ({ reason, error }) => {
-        vi.spyOn(console, "error").mockImplementation(() => undefined);
         const refusal = answeredElsewhere("i1");
         mockRunStream([{ ...refusal, data: { ...refusal.data, reason, error } }], {
           ended: Promise.resolve(),
@@ -6415,7 +6410,6 @@ describe("StreamOrchestrator runs", () => {
   });
 
   it("keeps a new thread's first input, marked failed, when its create fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     (client.threads.create as Mock).mockRejectedValueOnce(new Error("HTTP 500"));
     const orch = orchestrator();
 
@@ -6435,7 +6429,6 @@ describe("StreamOrchestrator runs", () => {
   ])(
     "a run that fails before sending values $name its input set, and keeps its message as failed",
     async ({ before }) => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       (client.threads.getState as Mock).mockResolvedValue(
         createThreadState({ messages: [], ...before })
       );
@@ -6461,7 +6454,6 @@ describe("StreamOrchestrator runs", () => {
   );
 
   it("a submit made while a new thread's create fails creates a thread itself", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
     let fail!: () => void;
     (client.threads.create as Mock).mockReturnValueOnce(
       new Promise((_, reject) => {
@@ -6831,7 +6823,6 @@ describe("StreamOrchestrator runs", () => {
     });
 
     it("an optimistic message is failed when its run fails before that, until a reload that shows it saved", async () => {
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       serveHistory({ t1: [step("c0", null, ["h1"])] });
       mockRunStream(
         [{ event: "error", data: { error: "ValueError", message: "boom" } }],
@@ -7097,7 +7088,6 @@ describe("StreamOrchestrator runs", () => {
     it.each(["not_pending", "ambiguous"])(
       "an answer refused as %s leaves the subagents still open running",
       async (reason) => {
-        vi.spyOn(console, "error").mockImplementation(() => undefined);
         lifecycleServer();
         mockRunStream([withTask, started], { ended: Promise.resolve() });
         const orch = orchestrator({ filterSubagentMessages: true });
@@ -7125,7 +7115,6 @@ describe("StreamOrchestrator runs", () => {
         [withTask, started, { event: "error", data: { error: "UserInterrupt", message: "" } }],
         { ended: Promise.resolve() }
       );
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       const orch = orchestrator({ filterSubagentMessages: true });
       orch.initThreadId("t1");
 
@@ -7142,7 +7131,6 @@ describe("StreamOrchestrator runs", () => {
       { name: "a dropped connection", drop: true },
     ])("$name leaves the run's subagents running", async ({ stop, drop }) => {
       lifecycleServer();
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
       (client.runs.stream as Mock).mockImplementation(
         (_threadId: string, _assistantId: string, payload: RunsStreamPayload) => ({
           async *[Symbol.asyncIterator]() {

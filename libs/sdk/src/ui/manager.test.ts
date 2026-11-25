@@ -1,4 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  onTestFinished,
+} from "vitest";
 import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 
 import { StreamManager } from "./manager.js";
@@ -1715,7 +1722,9 @@ describe("StreamManager", () => {
       ).toEqual([{ id: "int-A", value: "approve?" }]);
     });
 
-    it("should call onError when the stream action throws", async () => {
+    it("reports a stream action's throw in error and onError, without logging it", async () => {
+      const logged = vi.spyOn(console, "error");
+      onTestFinished(() => logged.mockRestore());
       const streamError = new Error("Stream failed");
       const action = async () => {
         throw streamError;
@@ -1733,7 +1742,9 @@ describe("StreamManager", () => {
         onError,
       });
 
+      expect(streamManager.error).toBe(streamError);
       expect(onError).toHaveBeenCalledWith(streamError);
+      expect(logged).not.toHaveBeenCalled();
       expect(onSuccess).not.toHaveBeenCalled();
     });
 
