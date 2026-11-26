@@ -285,20 +285,15 @@ export function mapSubagentNamespaces(
   return out;
 }
 
-/** Build a `getHistory` `before` cursor from a history entry. */
-function beforeCursor(entry: AnyCheckpoint): Config | undefined {
-  const checkpointId = entry.checkpoint?.checkpoint_id;
-  if (typeof checkpointId !== "string") return undefined;
-  return { configurable: { checkpoint_id: checkpointId } };
-}
-
 /**
  * Resolve execution namespaces for the given subagent `task` tool-call
  * ids from checkpoint history.
  *
- * Bounded and O(1) in calls: one `getHistory` page, plus at most one
- * `before`-cursor fallback page when the first leaves ids unresolved.
- * Never fans out per id.
+ * One `getHistory` page, plus one `before`-cursor fallback page when the
+ * first leaves ids unresolved. With `deep`, up to five more pages of 100
+ * follow: a finished subagent's Send can be hundreds of checkpoints back.
+ * The bound keeps a call that no Send answered, such as one a human
+ * rejected, to seven reads. Never fans out per id.
  *
  * @returns Map of `toolCallId` → single execution namespace segment
  *   (e.g. `tools:<uuid>`). Unresolved ids are omitted.
@@ -307,34 +302,39 @@ export async function resolveSubagentNamespaces<TStateType>(
   client: Client<TStateType>,
   threadId: string,
   toolCallIds: string[],
-  opts?: { limit?: number; messagesKey?: string; signal?: AbortSignal }
+  opts?: {
+    limit?: number;
+    deep?: boolean;
+    messagesKey?: string;
+    signal?: AbortSignal;
+  }
 ): Promise<Map<string, string>> {
   const targets = new Set(toolCallIds);
   if (targets.size === 0) return new Map();
 
   const limit = opts?.limit ?? 20;
-  const signal = opts?.signal;
+  const pages = opts?.deep ? 7 : 2;
   const matchOptions = { messagesKey: opts?.messagesKey };
-
-  const page1 = await getHistoryPage(client, threadId, {
-    limit,
-    select: DISCOVERY_HISTORY_SELECT,
-    signal,
-  });
-  const out = mapSubagentNamespaces(page1, targets, matchOptions);
-  if (out.size === targets.size || page1.length === 0) return out;
-
-  const before = beforeCursor(page1[page1.length - 1]);
-  if (before == null) return out;
-  const page2 = await getHistoryPage(client, threadId, {
-    limit,
-    before,
-    select: DISCOVERY_HISTORY_SELECT,
-    signal,
-  });
-  // Page 2 is older, so the two pages form one newest-first history: a
-  // Send near the end of page 1 can find its AIMessage on page 2.
-  return mapSubagentNamespaces([...page1, ...page2], targets, matchOptions);
+  // Each page is older, so the pages form one newest-first history: a Send
+  // near the end of a page can find its AIMessage on the next.
+  const history: AnyCheckpoint[] = [];
+  let out = new Map<string, string>();
+  let before: string | null | undefined;
+  for (let page = 1; page <= pages; page += 1) {
+    const entries = await getHistoryPage(client, threadId, {
+      limit: page <= 2 ? limit : 100,
+      ...(before != null && {
+        before: { configurable: { checkpoint_id: before } },
+      }),
+      select: DISCOVERY_HISTORY_SELECT,
+      signal: opts?.signal,
+    });
+    history.push(...entries);
+    out = mapSubagentNamespaces(history, targets, matchOptions);
+    before = entries.at(-1)?.checkpoint?.checkpoint_id;
+    if (out.size === targets.size || typeof before !== "string") break;
+  }
+  return out;
 }
 
 /**
