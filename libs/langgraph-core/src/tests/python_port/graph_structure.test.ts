@@ -23,7 +23,7 @@ import { task, entrypoint } from "../../web.js";
 import { interrupt } from "../../interrupt.js";
 import { gatherIterator } from "../../utils.js";
 import { FakeTracer } from "../utils.js";
-import { Pregel, Channel } from "../../pregel/index.js";
+import { Channel, RawPregel } from "../raw_pregel.js";
 import { Topic } from "../../channels/topic.js";
 import { LastValue } from "../../channels/last_value.js";
 
@@ -766,7 +766,7 @@ describe("Graph Structure Tests (Python port)", () => {
       .pipe(add10Each)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
         chainThree,
@@ -807,7 +807,7 @@ describe("Graph Structure Tests (Python port)", () => {
     const addOne = vi.fn((x: number): number => x + 1);
     const add10Each = vi.fn((x: number[]): number[] => x.map((y) => y + 10));
 
-    const innerApp = new Pregel({
+    const innerApp = new RawPregel({
       nodes: {
         one: Channel.subscribeTo("input")
           .pipe(addOne)
@@ -834,7 +834,7 @@ describe("Graph Structure Tests (Python port)", () => {
       .pipe((x: number[]) => x.reduce((a, b) => a + b, 0))
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: {
         one,
         two,
@@ -883,7 +883,7 @@ describe("Graph Structure Tests (Python port)", () => {
       .pipe(addOne)
       .pipe(Channel.writeTo(["output"]));
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         input: new LastValue<number>(),
@@ -914,7 +914,7 @@ describe("Graph Structure Tests (Python port)", () => {
       .pipe(Channel.writeTo(["between"]));
     const two = Channel.subscribeTo("between").pipe(addOne);
 
-    const app = new Pregel({
+    const app = new RawPregel({
       nodes: { one, two },
       channels: {
         input: new LastValue<number>(),
