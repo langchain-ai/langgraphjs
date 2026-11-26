@@ -83,6 +83,9 @@ export function isGraphDrained(e?: unknown): e is GraphDrained {
 }
 
 export class GraphInterrupt extends GraphBubbleUp {
+  // Tracers read this to report the run as interrupted, not errored.
+  readonly ls_run_status = "interrupted";
+
   interrupts: Interrupt[];
 
   constructor(interrupts?: Interrupt[], fields?: BaseLangGraphErrorFields) {
@@ -162,6 +165,9 @@ export function isNodeError(e?: unknown): e is NodeError {
 }
 
 export class ParentCommand extends GraphBubbleUp {
+  // Tracers read this to report the run as interrupted, not errored.
+  readonly ls_run_status = "interrupted";
+
   command: Command;
 
   constructor(command: Command) {
