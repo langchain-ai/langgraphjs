@@ -134,7 +134,9 @@ function garbageBlobs(
   const garbage = new Map<string, string[]>();
   for (const { channel, version } of freed) {
     if (kept.has(JSON.stringify([channel, version]))) continue;
-    garbage.set(channel, [...(garbage.get(channel) ?? []), version]);
+    const versions = garbage.get(channel);
+    if (versions) versions.push(version);
+    else garbage.set(channel, [version]);
   }
   return garbage;
 }
