@@ -1,5 +1,15 @@
 # @langchain/react
 
+## 2.0.0-rc.5
+
+### Patch Changes
+
+- [#3446](https://github.com/langchain-ai/langgraphjs/pull/3446) [`ab0d6fa`](https://github.com/langchain-ai/langgraphjs/commit/ab0d6fac15aed95bd683e4783282f6b7af8bb118) Thanks [@eliornl](https://github.com/eliornl)! - A tool call with no result shows as `"incomplete"` once no run can answer it: after its run stopped or failed, while its run waits on an interrupt, and while a later turn runs. It shows as `"running"` while a run streams its turn, while a thread load hasn't ruled out a run still going, including a thread `ThreadCacheProvider` shows at once, and while the page runs it as a headless tool. A subagent's tool calls show as `"running"` only while the main conversation's `task` call that started it, or the subagent it's nested in, does. Tool calls keep their identity when only whether a run is streaming changes.
+
+- [#3448](https://github.com/langchain-ai/langgraphjs/pull/3448) [`0b7dd5c`](https://github.com/langchain-ai/langgraphjs/commit/0b7dd5c5d359c7809c4539be203043fe46384600) Thanks [@eliornl](https://github.com/eliornl)! - A subagent in `stream.subagents` with no result shows the new status `"incomplete"` once no run streams that could give it one: on a loaded thread whose run ended before the subagent returned, while a later turn runs, while its run waits on an interrupt, and after `stop({ cancel: false })`. It showed `"running"` for good. A subagent with no result takes its `task` tool call's status, so a run that resumes it makes it `"running"` again, and a later read of the thread that has its result makes it `"complete"`.
+- Updated dependencies [[`bd70d74`](https://github.com/langchain-ai/langgraphjs/commit/bd70d744515453c60eab28b69eccaa006a75d121), [`8aaaba5`](https://github.com/langchain-ai/langgraphjs/commit/8aaaba57761e16f801c588db6571c9cdf72141ad), [`990d7d9`](https://github.com/langchain-ai/langgraphjs/commit/990d7d93cae32fe90f38051d31fb4009c35d6c82), [`a252d59`](https://github.com/langchain-ai/langgraphjs/commit/a252d5959165eb7f531aad86288f05b5962a9497), [`a098b8b`](https://github.com/langchain-ai/langgraphjs/commit/a098b8b848244dec79df01a8b535589e55f30672), [`15ca3a5`](https://github.com/langchain-ai/langgraphjs/commit/15ca3a546469fa62f6e3c983003243bf021a0c88), [`ddb726b`](https://github.com/langchain-ai/langgraphjs/commit/ddb726b0a7f26f8163a95aeee53a96f26cd96357), [`7ce8d73`](https://github.com/langchain-ai/langgraphjs/commit/7ce8d73bc4069facb1b5311dd7dcf01dd498c2ac), [`e2b8923`](https://github.com/langchain-ai/langgraphjs/commit/e2b892377b9702cbec9f2df62d408a63b07d565f)]:
+  - @langchain/langgraph-sdk@1.18.0-rc.5
+
 ## 2.0.0-rc.4
 
 ### Patch Changes
