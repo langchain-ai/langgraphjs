@@ -161,4 +161,74 @@ describe("InMemoryCache", () => {
       expect(await cache.set([])).toBeUndefined();
     });
   });
+
+  describe("namespace encoding and prototype safety", () => {
+    it("should isolate namespaces whose segments contain commas", async () => {
+      const single: [string[], string] = [["tenant,region"], "k"];
+      const split: [string[], string] = [["tenant", "region"], "k"];
+
+      await cache.set([
+        { key: single, value: "single", ttl: 1000 },
+        { key: split, value: "split", ttl: 1000 },
+      ]);
+
+      expect(await cache.get([single])).toEqual([
+        { key: single, value: "single" },
+      ]);
+      expect(await cache.get([split])).toEqual([{ key: split, value: "split" }]);
+    });
+
+    it("should isolate an empty namespace from a single empty-string segment", async () => {
+      const empty: [string[], string] = [[], "k"];
+      const blank: [string[], string] = [[""], "k"];
+
+      await cache.set([
+        { key: empty, value: "empty", ttl: 1000 },
+        { key: blank, value: "blank", ttl: 1000 },
+      ]);
+
+      expect(await cache.get([empty])).toEqual([
+        { key: empty, value: "empty" },
+      ]);
+      expect(await cache.get([blank])).toEqual([{ key: blank, value: "blank" }]);
+    });
+
+    it("should not let clear on one comma-containing namespace delete the other", async () => {
+      const single: [string[], string] = [["tenant,region"], "k"];
+      const split: [string[], string] = [["tenant", "region"], "k"];
+
+      await cache.set([
+        { key: single, value: "single", ttl: 1000 },
+        { key: split, value: "split", ttl: 1000 },
+      ]);
+      await cache.clear([["tenant,region"]]);
+
+      expect(await cache.get([single])).toEqual([]);
+      expect(await cache.get([split])).toEqual([{ key: split, value: "split" }]);
+    });
+
+    it("should not let clear on an empty namespace delete a blank-segment namespace", async () => {
+      const empty: [string[], string] = [[], "k"];
+      const blank: [string[], string] = [[""], "k"];
+
+      await cache.set([
+        { key: empty, value: "empty", ttl: 1000 },
+        { key: blank, value: "blank", ttl: 1000 },
+      ]);
+      await cache.clear([[]]);
+
+      expect(await cache.get([empty])).toEqual([]);
+      expect(await cache.get([blank])).toEqual([{ key: blank, value: "blank" }]);
+    });
+
+    it("should treat prototype property names as cache misses rather than throwing", async () => {
+      await cache.set([
+        { key: [["test"], "seed"], value: "seed", ttl: 1000 },
+      ]);
+
+      for (const prototypeKey of ["toString", "__proto__", "constructor"]) {
+        expect(await cache.get([[["test"], prototypeKey]])).toEqual([]);
+      }
+    });
+  });
 });

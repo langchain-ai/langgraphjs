@@ -9,7 +9,7 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
         exp: number | null;
       };
     };
-  } = {};
+  } = Object.create(null);
 
   async get(keys: CacheFullKey[]): Promise<{ key: CacheFullKey; value: V }[]> {
     if (!keys.length) return [];
@@ -19,9 +19,15 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
         keys.map(
           async (fullKey): Promise<{ key: CacheFullKey; value: V }[]> => {
             const [namespace, key] = fullKey;
-            const strNamespace = namespace.join(",");
+            const strNamespace = JSON.stringify(namespace);
 
-            if (strNamespace in this.cache && key in this.cache[strNamespace]) {
+            if (
+              Object.prototype.hasOwnProperty.call(this.cache, strNamespace) &&
+              Object.prototype.hasOwnProperty.call(
+                this.cache[strNamespace],
+                key
+              )
+            ) {
               const cached = this.cache[strNamespace][key];
               if (cached.exp == null || now < cached.exp) {
                 const value = await this.serde.loadsTyped(
@@ -47,24 +53,28 @@ export class InMemoryCache<V = unknown> extends BaseCache<V> {
     const now = Date.now();
     for (const { key: fullKey, value, ttl } of pairs) {
       const [namespace, key] = fullKey;
-      const strNamespace = namespace.join(",");
+      const strNamespace = JSON.stringify(namespace);
       const [enc, val] = await this.serde.dumpsTyped(value);
       const exp = ttl != null ? ttl * 1000 + now : null;
 
-      this.cache[strNamespace] ??= {};
+      if (!Object.prototype.hasOwnProperty.call(this.cache, strNamespace)) {
+        this.cache[strNamespace] = Object.create(null);
+      }
       this.cache[strNamespace][key] = { enc, val, exp };
     }
   }
 
   async clear(namespaces: CacheNamespace[]): Promise<void> {
     if (!namespaces.length) {
-      this.cache = {};
+      this.cache = Object.create(null);
       return;
     }
 
     for (const namespace of namespaces) {
-      const strNamespace = namespace.join(",");
-      if (strNamespace in this.cache) delete this.cache[strNamespace];
+      const strNamespace = JSON.stringify(namespace);
+      if (Object.prototype.hasOwnProperty.call(this.cache, strNamespace)) {
+        delete this.cache[strNamespace];
+      }
     }
   }
 }
