@@ -570,6 +570,60 @@ describe("resolveSubagentNamespaces", () => {
     await resolveSubagentNamespaces(client, "t1", ["task-1", "task-2", "task-3"]);
     expect(getHistory).toHaveBeenCalledTimes(1);
   });
+
+  it("with deep, reads older pages of 100 until a Send answers the call", async () => {
+    const getHistory = vi
+      .fn()
+      .mockResolvedValueOnce([entry("cp-1", [])])
+      .mockResolvedValueOnce([entry("cp-2", [])])
+      .mockResolvedValueOnce([entry("cp-3", [])])
+      .mockResolvedValueOnce([directMappingState("task-1", "tools", "uuid-1")]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    const map = await resolveSubagentNamespaces(client, "t1", ["task-1"], {
+      deep: true,
+    });
+
+    expect(map.get("task-1")).toBe("tools:uuid-1");
+    expect(
+      getHistory.mock.calls.map(([, { limit, before }]) => [
+        limit,
+        before?.configurable.checkpoint_id,
+      ])
+    ).toEqual([
+      [20, undefined],
+      [20, "cp-1"],
+      [100, "cp-2"],
+      [100, "cp-3"],
+    ]);
+  });
+
+  it("with deep, stops at the history's end", async () => {
+    const getHistory = vi
+      .fn()
+      .mockResolvedValueOnce([entry("cp-1", [])])
+      .mockResolvedValueOnce([entry("cp-2", [])])
+      .mockResolvedValueOnce([]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    await resolveSubagentNamespaces(client, "t1", ["never-resolves"], {
+      deep: true,
+    });
+
+    expect(getHistory).toHaveBeenCalledTimes(3);
+  });
+
+  it("with deep, gives up after seven pages", async () => {
+    let page = 0;
+    const getHistory = vi.fn(async () => [entry(`cp-${(page += 1)}`, [])]);
+    const client = { threads: { getHistory } } as unknown as Client;
+
+    await resolveSubagentNamespaces(client, "t1", ["never-resolves"], {
+      deep: true,
+    });
+
+    expect(getHistory).toHaveBeenCalledTimes(7);
+  });
 });
 
 describe("collectSubgraphHostNamespaces", () => {
