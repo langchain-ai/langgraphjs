@@ -100,7 +100,7 @@ await stream.respond(
 
 ## Late answers
 
-An answer to an interrupt that is no longer waiting, because another tab answered it or the id is wrong, fails its run with an `UnknownInterruptError` and leaves the thread as it was. That needs a server that checks answers (Agent Server 0.19 or later, with a Python graph). Pass `strictResume: false` to have the server ignore such an answer instead.
+An answer to an interrupt that is no longer waiting, because another tab answered it or the id is wrong, fails its run with an `UnknownInterruptError` and leaves the thread as it was. That error goes to `onError`, not to `error`. The thread is read again instead, so the page shows what answered the interrupt, and shows the interrupt again only if it is still waiting. That needs a server that checks answers (Agent Server 0.19 or later, with a Python graph). Pass `strictResume: false` to have the server ignore such an answer instead.
 
 ## Breakpoints
 

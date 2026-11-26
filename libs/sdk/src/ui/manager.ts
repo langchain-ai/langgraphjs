@@ -349,16 +349,16 @@ export class StreamManager<
    * - Page refresh (when stream has already completed)
    * - Loading thread history
    * - Navigating between threads
+   * - Reading a thread again, after runs this page didn't stream
+   *
+   * A subagent already tracked is only ended, when it has no result yet, with
+   * its tool message's result or error. See
+   * `SubagentManager.reconstructFromMessages`.
    *
    * @param messages - Array of messages from thread history
-   * @param options - Optional configuration
-   * @param options.skipIfPopulated - If true, skip reconstruction if subagents already exist
    */
-  reconstructSubagents(
-    messages: Message[],
-    options?: { skipIfPopulated?: boolean }
-  ): void {
-    this.subagentManager.reconstructFromMessages(messages, options);
+  reconstructSubagents(messages: Message[]): void {
+    this.subagentManager.reconstructFromMessages(messages);
   }
 
   /**
@@ -721,6 +721,14 @@ export class StreamManager<
 
       /** Called with each event, before it is applied. */
       onEvent?: (event: string, data: unknown) => void;
+
+      /**
+       * Whether an error the stream ends with shows as its `error`. `onError`
+       * gets it either way.
+       *
+       * @internal The engines' late answers.
+       */
+      showsError?: (error: unknown) => boolean;
     },
     abort = new AbortController()
   ) => {
@@ -733,6 +741,20 @@ export class StreamManager<
       if (options.isReplaying) {
         this.messages.startReplay();
         this.subagentManager.startReplay();
+      }
+      // A replay can resend the chunks of a message the page shows as it read
+      // it, not as it streamed it. That copy is complete, so while it is
+      // shown, those chunks would only restart it, from an empty first chunk.
+      const shownMessages = () =>
+        options.getMessages({ ...options.initialValues, ...this.values });
+      const readCopies = new Map<string, Message>();
+      if (options.isReplaying) {
+        const read = new Set(options.getMessages(options.initialValues));
+        for (const message of shownMessages()) {
+          if (message.id != null && read.has(message)) {
+            readCopies.set(message.id, message);
+          }
+        }
       }
 
       const run = await action(abort.signal);
@@ -756,6 +778,13 @@ export class StreamManager<
       const subagentMessageIds = new Set<string>();
 
       const applyMessage = (messageId: string, { updateOnly = false } = {}) => {
+        const readCopy = readCopies.get(messageId);
+        if (readCopy != null) {
+          // Once it is gone, as after a replayed removal of all messages, its
+          // chunks build it again.
+          if (shownMessages().includes(readCopy)) return;
+          readCopies.delete(messageId);
+        }
         const isFromSubagent = subagentMessageIds.has(messageId);
 
         this.setStreamValues((streamValues) => {
@@ -1111,6 +1140,8 @@ export class StreamManager<
             continue;
           }
 
+          // Before `add`, which renames a chunk's type.
+          const isChunk = serialized.type.endsWith("MessageChunk");
           const messageId = this.messages.add(serialized, metadata);
           if (!messageId) {
             console.warn(
@@ -1119,6 +1150,8 @@ export class StreamManager<
             continue;
           }
 
+          // A whole message, unlike a chunk, can change a read one.
+          if (!isChunk) readCopies.delete(messageId);
           if (isFromSubagent) subagentMessageIds.add(messageId);
           applyMessage(messageId);
         }
@@ -1144,8 +1177,9 @@ export class StreamManager<
           (error.name === "AbortError" || error.name === "TimeoutError")
         )
       ) {
-        console.error(error);
-        this.setState({ error });
+        if (options.showsError?.(error) !== false) {
+          this.setState({ error });
+        }
         await options.onError?.(error);
       }
     } finally {
@@ -1202,6 +1236,14 @@ export class StreamManager<
 
       /** Called with each event, before it is applied. */
       onEvent?: (event: string, data: unknown) => void;
+
+      /**
+       * Whether an error the stream ends with shows as its `error`. `onError`
+       * gets it either way.
+       *
+       * @internal The engines' late answers.
+       */
+      showsError?: (error: unknown) => boolean;
     },
     startOptions?: {
       /**

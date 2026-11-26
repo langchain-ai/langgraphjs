@@ -20,8 +20,8 @@ import {
 import {
   applyStopRead,
   type HistoryReadOptions,
-  planReadAfterRun,
   planStopRead,
+  runEndRead,
 } from "../ui/thread-reads.js";
 import { StreamError } from "../ui/errors.js";
 import { getBranchContext } from "../ui/branching.js";
@@ -431,8 +431,7 @@ export function useStreamLGP<
 
   useEffect(() => {
     if (shouldReconstructSubagents) {
-      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
-      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+      stream.reconstructSubagents(historyMessages);
       // Fetch internal messages for each subagent from their subgraph checkpoints.
       // These messages are not in the main thread state but are persisted in the
       // checkpointer under a subgraph-specific checkpoint_ns (e.g. tools:call_abc123).
@@ -552,13 +551,13 @@ export function useStreamLGP<
     refetch: boolean,
     callbackMeta: RunCallbackMeta | undefined
   ) => {
-    const read = planReadAfterRun(latestThreadHeadRef.current, refetch);
-    if (read) {
+    const read = runEndRead(latestThreadHeadRef.current, { refetch });
+    if (read !== "none") {
       let newHistory: ThreadState<StateType>[] | null | undefined;
       try {
         newHistory =
-          read.quiet && options.thread == null
-            ? await builtInHistory.read(id, read)
+          read !== "await" && options.thread == null
+            ? await builtInHistory.read(id, { quiet: true })
             : await history.mutate(id);
       } catch {
         // The run still succeeded; the screen keeps what it shows.

@@ -69,6 +69,39 @@ describe("seedToolCallsFromMessages", () => {
       ]);
     }
   });
+
+  it("marks calls up to newTurnAfter incomplete and keeps later ones running", () => {
+    const messages = [
+      new AIMessage({
+        id: "a1",
+        content: "",
+        tool_calls: [{ id: "call-1", name: "search", args: {} }],
+      }),
+      new AIMessage({
+        id: "a2",
+        content: "",
+        tool_calls: [{ id: "call-2", name: "search", args: {} }],
+      }),
+    ];
+
+    expect(
+      seedToolCallsFromMessages([], messages.slice(0, 1), {
+        newTurnAfter: "a1",
+      })
+    ).toMatchObject([{ callId: "call-1", status: "incomplete" }]);
+    expect(
+      seedToolCallsFromMessages([], messages, { newTurnAfter: "a1" })
+    ).toMatchObject([
+      { callId: "call-1", status: "incomplete" },
+      { callId: "call-2", status: "running" },
+    ]);
+    expect(
+      seedToolCallsFromMessages([], messages.slice(1), {
+        newTurnAfter: "a1",
+      }),
+      "an id no message has changes nothing"
+    ).toMatchObject([{ callId: "call-2", status: "running" }]);
+  });
 });
 
 describe("reconcileToolCallsFromMessages", () => {

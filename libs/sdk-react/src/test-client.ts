@@ -24,15 +24,18 @@ export function fakeServer(threads: Record<string, Values> = {}) {
   const history = new Map<string, Values>();
   const threadHistory = new Map<string, unknown[]>();
   const next = new Map<string, string[]>();
+  const tasks = new Map<string, unknown[]>();
   const running = new Map<string, string>();
+  const created = new Set<string>();
   const runs: FakeRun[] = [];
   const calls: string[] = [];
   let ids = 0;
+  let lookups = Promise.resolve();
 
   const threadState = (threadId: string) => ({
     values: state.get(threadId),
     next: next.get(threadId) ?? [],
-    tasks: [],
+    tasks: tasks.get(threadId) ?? [],
     checkpoint: {
       thread_id: threadId,
       checkpoint_ns: "",
@@ -44,8 +47,11 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     parent_checkpoint: null,
   });
 
-  function startRun(threadId: string, payload: Record<string, unknown>) {
-    const runId = `run-${(ids += 1)}`;
+  function startRun(
+    threadId: string,
+    payload: Record<string, unknown>,
+    runId = `run-${(ids += 1)}`
+  ) {
     const queued: Array<{ event: string; data: unknown }> = [];
     let wake = () => {};
     let done = false;
@@ -124,18 +130,24 @@ export function fakeServer(threads: Record<string, Values> = {}) {
         _assistantId: string,
         payload: Record<string, unknown>
       ) => startRun(threadId, payload),
-      joinStream: (threadId: string, runId: string) => {
+      joinStream: (
+        threadId: string,
+        runId: string,
+        payload: Record<string, unknown>
+      ) => {
         calls.push(`joinStream ${threadId} ${runId}`);
-        return (async function* () {})();
+        return created.has(runId)
+          ? startRun(threadId, payload, runId)
+          : (async function* () {})();
       },
       async create(threadId: string) {
         calls.push(`create run ${threadId}`);
-        return {
-          run_id: `run-${(ids += 1)}`,
-          created_at: new Date().toISOString(),
-        };
+        const runId = `run-${(ids += 1)}`;
+        created.add(runId);
+        return { run_id: runId, created_at: new Date().toISOString() };
       },
       list: async (threadId: string, options?: { status?: string }) => {
+        if (options?.status === "running") await lookups;
         const runId = running.get(threadId);
         return options?.status === "running" && runId != null
           ? [{ run_id: runId }]
@@ -162,6 +174,9 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     /** A custom transport that starts the same runs, and reads no thread. */
     transport,
     calls,
+    /** A thread's saved values, by thread id. */
+    state,
+    /** The runs streamed, a run queued with `runs.create` once it's joined. */
     runs,
     /** Values a subgraph's history read returns, by namespace. */
     history,
@@ -169,6 +184,16 @@ export function fakeServer(threads: Record<string, Values> = {}) {
     threadHistory,
     /** A thread's pending nodes, by thread id. */
     next,
+    /** A thread's pending tasks, such as ones an interrupt waits in, by thread id. */
+    tasks,
+    /** Holds the lookups for running runs until the function it returns is called. */
+    holdLookups() {
+      let release!: () => void;
+      lookups = new Promise((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     /** The id of a thread's running run, which a thread load finds, by thread id. */
     running,
   };

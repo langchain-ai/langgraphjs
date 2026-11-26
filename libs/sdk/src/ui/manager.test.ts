@@ -1,4 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  onTestFinished,
+} from "vitest";
 import type { BaseMessage as CoreBaseMessage } from "@langchain/core/messages";
 
 import { StreamManager } from "./manager.js";
@@ -1715,7 +1722,9 @@ describe("StreamManager", () => {
       ).toEqual([{ id: "int-A", value: "approve?" }]);
     });
 
-    it("should call onError when the stream action throws", async () => {
+    it("reports a stream action's throw in error and onError, without logging it", async () => {
+      const logged = vi.spyOn(console, "error");
+      onTestFinished(() => logged.mockRestore());
       const streamError = new Error("Stream failed");
       const action = async () => {
         throw streamError;
@@ -1733,7 +1742,9 @@ describe("StreamManager", () => {
         onError,
       });
 
+      expect(streamManager.error).toBe(streamError);
       expect(onError).toHaveBeenCalledWith(streamError);
+      expect(logged).not.toHaveBeenCalled();
       expect(onSuccess).not.toHaveBeenCalled();
     });
 
@@ -1896,6 +1907,113 @@ describe("StreamManager", () => {
         expect(typeof (msg as CoreBaseMessage).getType).toBe("undefined");
         expect(msg.type).toBeDefined();
       }
+    });
+
+    describe("messages read again", () => {
+      const unanswered = historyMessages.slice(0, 1);
+
+      it("ends a streamed subagent with its tool message, keeping its messages and bound namespace", () => {
+        const mgr = createSubagentManager();
+        mgr.reconstructFromMessages(unanswered);
+        mgr.bindNamespace("call_1", ["tools:live"]);
+        mgr.addMessageToSubagent("live", {
+          type: "ai",
+          id: "sub-ai-1",
+          content: "Researching...",
+        });
+        mgr.updateSubagentValues("live", { topic: "AI trends" });
+
+        mgr.reconstructFromMessages([
+          ...unanswered,
+          {
+            type: "tool",
+            id: "tool-1",
+            content: "Done researching",
+            tool_call_id: "call_1",
+            artifact: { checkpoint_ns: "tools:stamped" },
+          },
+        ]);
+
+        const subagent = mgr.getSubagent("call_1");
+        expect(subagent).toMatchObject({
+          status: "complete",
+          result: "Done researching",
+          namespace: ["tools:live"],
+          values: { topic: "AI trends" },
+        });
+        expect(subagent?.messages.map((message) => message.id)).toEqual([
+          "sub-ai-1",
+        ]);
+      });
+
+      it("shows the result of a subagent that was closed when its run ended without one", () => {
+        const mgr = createSubagentManager();
+        mgr.reconstructFromMessages(unanswered);
+        mgr.closeOpenSubagents("The run ended: error");
+
+        mgr.reconstructFromMessages(historyMessages);
+
+        expect(mgr.getSubagent("call_1")).toMatchObject({
+          status: "complete",
+          result: "Done researching",
+          error: null,
+        });
+      });
+
+      it.each(["success", "error"] as const)(
+        "keeps the result a fork's run streamed when an older read holds a first answer with status %s",
+        (status) => {
+          const mgr = createSubagentManager();
+          mgr.reconstructFromMessages(unanswered);
+          mgr.processToolMessage("call_1", "From the fork");
+
+          mgr.reconstructFromMessages([
+            ...unanswered,
+            {
+              type: "tool",
+              id: "tool-1",
+              content: "First answer",
+              tool_call_id: "call_1",
+              status,
+            },
+          ]);
+
+          expect(mgr.getSubagent("call_1")).toMatchObject({
+            status: "complete",
+            result: "From the fork",
+          });
+        }
+      );
+
+      it.each(["success", "error"] as const)(
+        "changes nothing and notifies no one when a subagent already shows its %s tool message",
+        (status) => {
+          const answered = [
+            ...unanswered,
+            {
+              type: "tool" as const,
+              id: "tool-1",
+              content: "Done researching",
+              tool_call_id: "call_1",
+              status,
+            },
+          ];
+          const onSubagentChange = vi.fn();
+          const mgr = new SubagentManager({ onSubagentChange });
+          mgr.reconstructFromMessages(answered);
+          const before = mgr.getSubagent("call_1");
+          onSubagentChange.mockClear();
+
+          mgr.reconstructFromMessages(answered);
+          mgr.reconstructFromMessages(unanswered);
+
+          expect(onSubagentChange).not.toHaveBeenCalled();
+          expect(mgr.getSubagent("call_1")).toMatchObject({
+            status: status === "error" ? "error" : "complete",
+            completedAt: before?.completedAt,
+          });
+        }
+      );
     });
   });
 
@@ -2820,6 +2938,139 @@ describe("StreamManager", () => {
       expect(streamManager.values?.messages).toEqual([
         finished,
         expect.objectContaining({ id: "again", content: "Hello" }),
+      ]);
+    });
+  });
+
+  describe("a model call's chunks", () => {
+    type State = { messages: Message[] };
+    const chunk = (id: string, content: unknown) => ({
+      event: "messages",
+      data: [{ type: "AIMessageChunk", id, content }, {}],
+    });
+    const anthropicRun = "lc_run--01a2139a-8a81-7cd1-8d55-97c957639a85";
+    // One reply of ChatOpenAI on the Responses API and one of ChatAnthropic,
+    // each streamed under one id.
+    const openAI = [
+      chunk("resp_0274b1", []),
+      chunk("resp_0274b1", [{ type: "text", text: "Hel", index: 0 }]),
+      chunk("resp_0274b1", [{ type: "text", text: "lo", index: 0 }]),
+      chunk("resp_0274b1", [{ type: "text", text: "", id: "msg_1", index: 0 }]),
+      chunk("resp_0274b1", []),
+    ];
+    const anthropic = [
+      chunk(anthropicRun, ""),
+      chunk(anthropicRun, "Hel"),
+      chunk(anthropicRun, "lo"),
+      chunk(anthropicRun, ""),
+    ];
+    const human = { type: "human", id: "h1", content: "hi" } as Message;
+    const savedOpenAI = {
+      type: "ai",
+      id: "resp_0274b1",
+      content: [{ type: "text", text: "Hello" }],
+    } as Message;
+    const savedAnthropic = {
+      type: "ai",
+      id: anthropicRun,
+      content: "Hello",
+    } as Message;
+    let manager: StreamManager<State>;
+
+    const stream = (
+      events: Array<{ event: string; data: unknown }>,
+      options: { initialValues: State; isReplaying?: boolean }
+    ) => {
+      const sent = structuredClone(events);
+      return manager.start(async () => createMockStream(sent) as never, {
+        getMessages: (state) => state.messages ?? [],
+        setMessages: (current, messages) => ({ ...current, messages }),
+        callbacks: {},
+        onSuccess: () => undefined,
+        onError: vi.fn(),
+        ...options,
+      });
+    };
+
+    beforeEach(() => {
+      manager = new StreamManager<State>(new MessageTupleManager(), {
+        throttle: false,
+      });
+    });
+
+    const recordShown = (read: State) => {
+      const shown: Message[][] = [];
+      manager.subscribe(() =>
+        shown.push(manager.values?.messages ?? read.messages)
+      );
+      return shown;
+    };
+
+    it.each([
+      ["OpenAI", openAI, savedOpenAI],
+      ["Anthropic", anthropic, savedAnthropic],
+    ])(
+      "leave a read %s reply as it is each time a replay resends them",
+      async (_, events, saved) => {
+        const read = { messages: [human, saved] };
+        const shown = recordShown(read);
+
+        await stream(events, { initialValues: read, isReplaying: true });
+        await stream(events, { initialValues: read, isReplaying: true });
+
+        expect(shown.length).toBeGreaterThan(0);
+        expect(shown).toEqual(shown.map(() => read.messages));
+      }
+    );
+
+    it("leave a reply the page streamed as it is once it was read again", async () => {
+      await stream(openAI, { initialValues: { messages: [human] } });
+      manager.setStreamValues(null);
+      const read = { messages: [human, savedOpenAI] };
+      const shown = recordShown(read);
+
+      await stream(openAI, { initialValues: read, isReplaying: true });
+
+      expect(shown.length).toBeGreaterThan(0);
+      expect(shown).toEqual(shown.map(() => read.messages));
+    });
+
+    it("still let a whole message a replay sends change a read one", async () => {
+      const draft = { type: "ai", id: "a1", content: "draft" } as Message;
+      const edited = {
+        event: "messages",
+        data: [{ ...draft, content: "edited" }, {}],
+      };
+
+      await stream([edited], {
+        initialValues: { messages: [human, draft] },
+        isReplaying: true,
+      });
+
+      expect(manager.values?.messages).toEqual([
+        human,
+        expect.objectContaining({ id: "a1", content: "edited" }),
+      ]);
+    });
+
+    it("build a read reply again when a replay removed it", async () => {
+      const whole = (message: object) => ({
+        event: "messages",
+        data: [message, {}],
+      });
+      const removeAll = whole({ type: "remove", id: "__remove_all__" });
+
+      await stream([removeAll, whole(human), ...openAI], {
+        initialValues: { messages: [human, savedOpenAI] },
+        isReplaying: true,
+      });
+
+      expect(manager.values?.messages).toEqual([
+        expect.objectContaining({ id: "h1" }),
+        expect.objectContaining({
+          id: "resp_0274b1",
+          content: [expect.objectContaining({ type: "text", text: "Hello" })],
+        }),
       ]);
     });
   });

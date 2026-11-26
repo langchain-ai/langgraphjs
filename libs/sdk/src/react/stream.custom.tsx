@@ -185,8 +185,7 @@ export function useStreamCustom<
 
   useEffect(() => {
     if (shouldReconstructSubagents) {
-      // skipIfPopulated: true ensures we don't overwrite subagents from active streaming
-      stream.reconstructSubagents(historyMessages, { skipIfPopulated: true });
+      stream.reconstructSubagents(historyMessages);
     }
     // We intentionally only run this when shouldReconstructSubagents changes
     // to avoid unnecessary reconstructions during streaming

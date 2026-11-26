@@ -57,8 +57,9 @@ import {
   hasPendingNodes,
   hasTaskInterrupts,
   type HistoryReadOptions,
-  planReadAfterRun,
   planStopRead,
+  runEndRead,
+  type RunEndRead,
 } from "./thread-reads.js";
 import { getToolCallsWithResults } from "../utils/tools.js";
 import {
@@ -74,7 +75,10 @@ import {
   type MessageMetadataMap,
 } from "./message-metadata-tracker.js";
 import type { StreamStore } from "./store.js";
-import { flushPendingHeadlessToolInterrupts } from "../headless-tools.js";
+import {
+  flushPendingHeadlessToolInterrupts,
+  isHeadlessToolInterrupt,
+} from "../headless-tools.js";
 import { followThread } from "./thread-watcher.js";
 import type {
   UseStreamThread,
@@ -246,6 +250,42 @@ function warnInterim(client: Client, info: ServerInfo | undefined): void {
 
 const isUnprocessable = (error: unknown) =>
   (error as { status?: unknown } | null)?.status === 422;
+
+/** Strict resume refused the run's answer, before the run ran any step. */
+const isRefusal = (name: unknown) => name === "UnknownInterruptError";
+
+/**
+ * Strict resume refused the run's answer: an interrupt it named was no longer
+ * waiting, as when another tab answered it first. The run changed nothing,
+ * and the head that offered the interrupt is out of date. The other
+ * refusals, an empty map or one value for several interrupts, are the
+ * caller's mistake.
+ */
+const isStaleAnswer = (event: string, data: unknown) =>
+  event === "error" &&
+  isRefusal((data as { error?: unknown } | null)?.error) &&
+  (data as { reason?: unknown } | null)?.reason === "not_pending";
+
+/**
+ * Settles when `read` does, or after 10 s if it hangs, and never rejects, so
+ * a read that never lands can't hide an interrupt still pending for good.
+ */
+function readOrTimeout(read: Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, 10_000);
+  });
+  const done = () => clearTimeout(timer);
+  return Promise.race([read, timedOut]).then(done, done);
+}
+
+function inputMessageIds(input: unknown, messagesKey: string): Set<string> {
+  const messages = (input as Record<string, unknown>)[messagesKey];
+  const ids = (Array.isArray(messages) ? messages : [messages]).map(
+    (message) => (message as { id?: unknown } | null)?.id
+  );
+  return new Set(ids.filter((id): id is string => typeof id === "string"));
+}
 
 /**
  * Streams `first`, or `retry` when `first` is refused with a 422 before any
@@ -531,6 +571,9 @@ export class StreamOrchestrator<
   /** Bumped when the queue is emptied, which drops the submits still waiting to join it. */
   #queueDrops = 0;
 
+  /** Submits queued on the server whose run isn't created yet. */
+  #queueCreates = 0;
+
   /** Settles once the last run streamed here has called `onRunEnd`. */
   #runEnd: Promise<void> = Promise.resolve();
 
@@ -573,6 +616,15 @@ export class StreamOrchestrator<
   #disposed = false;
 
   #handledHeadlessToolInterruptIds = new Set<string>();
+
+  /**
+   * Headless tool calls the page runs, until the run that resumes them, with
+   * `command`, starts.
+   */
+  #headlessRuns = new Set<{
+    threadId: string | undefined;
+    command?: unknown;
+  }>();
 
   readonly #channels = new ChannelListeners();
 
@@ -625,6 +677,14 @@ export class StreamOrchestrator<
    * as the list returned them.
    */
   #listedRuns = new Map<string, Run>();
+
+  /** The input queued runs were sent with, its messages with ids. */
+  #queuedInputs = new WeakMap<object, unknown>();
+
+  #newTurnAfter: string | undefined;
+
+  /** A run that begins a new turn waits for its thread's load. */
+  #turnAwaitsLoad = false;
 
   #onVisibilityChange = () => {
     const closed = this.#watch == null;
@@ -841,6 +901,7 @@ export class StreamOrchestrator<
     this.#interruptNamespaces.clear();
     this.#threadRuns.clear();
     this.#answeredBy.clear();
+    this.#newTurnAfter = undefined;
     this.#watchCursor = {};
     this.#metadata.reset();
     this.#forkRead?.abort();
@@ -1204,7 +1265,14 @@ export class StreamOrchestrator<
       }
       const data = readOptions.map?.(fetched) ?? fetched;
       // The thread switched during the read; its own fetch fills the history.
-      if (tid !== this.#threadId) return data;
+      // A read after a run is stale once another run has begun, which may
+      // already have read a newer head.
+      if (
+        tid !== this.#threadId ||
+        (readOptions.afterRun && runStarts !== this.#runStarts)
+      ) {
+        return data;
+      }
       this.#threadFound(tid);
       this.#history = {
         data,
@@ -1221,8 +1289,11 @@ export class StreamOrchestrator<
       }
       // Subagents are rebuilt from the messages once they're loaded. A
       // binding asks when the load or the message count changes, and for a
-      // thread shown from the cache neither may change as the read lands.
-      if (cached != null) this.reconstructSubagentsIfNeeded();
+      // thread shown from the cache, or read after a run that already
+      // ended, neither may change as the read lands.
+      if (cached != null || readOptions.afterRun) {
+        this.reconstructSubagentsIfNeeded();
+      }
       readOptions.onRead?.(data);
       this.#notify();
       return data;
@@ -1272,42 +1343,105 @@ export class StreamOrchestrator<
   }
 
   /**
-   * Called when a run succeeds. Returns null when the head was read, which
-   * clears the run's streamed values so the head shows.
+   * Sets {@link newTurnAfter} for the run starting now: a run with `input`
+   * begins a new turn after the last message shown. A joined run may have
+   * saved that input already, which only the ids of its messages tell.
+   */
+  #startTurn(input: unknown, joined: boolean): void {
+    const after = this.#lastMessageBefore(input, joined);
+    if (after === this.#newTurnAfter) return;
+    this.#newTurnAfter = after;
+    // The run's start already notified, with the last run's value.
+    this.#notify();
+  }
+
+  #lastMessageBefore(input: unknown, joined: boolean): string | undefined {
+    if (input == null) return undefined;
+    const shown = this.#getMessages(this.values);
+    if (joined) {
+      const ids = inputMessageIds(input, this.#accessors.getMessagesKey());
+      if (ids.size === 0 || shown.some(({ id }) => id != null && ids.has(id))) {
+        return undefined;
+      }
+    }
+    return shown.at(-1)?.id ?? undefined;
+  }
+
+  /**
+   * Calls an `onFinish` that takes no state. What it throws comes back, to
+   * throw once the read after the run is done: the run still ends as an
+   * error, and the read still shows the head.
+   */
+  #finishWithoutState(
+    callbackMeta: RunCallbackMeta | undefined
+  ): { error: unknown } | undefined {
+    const { onFinish } = this.#options;
+    if (onFinish == null || onFinishRequiresThreadState(onFinish)) {
+      return undefined;
+    }
+    try {
+      onFinish(undefined as unknown as ThreadState<StateType>, callbackMeta);
+      return undefined;
+    } catch (error) {
+      return { error };
+    }
+  }
+
+  /** The read after a run that succeeded. */
+  #planEndRead(refetch: boolean, streamedValues: boolean): RunEndRead {
+    return runEndRead(this.branchContext.threadHead, {
+      refetch,
+      streamedValues,
+      queued: this.pendingRuns.size > 0 || this.#queueCreates > 0,
+    });
+  }
+
+  /**
+   * Makes the read after a run that waits for it, and calls an `onFinish`
+   * that takes the state with the head. Returns null when the head was read,
+   * which clears the run's streamed values so the head shows.
    */
   async #finishRun(
     threadId: string | undefined,
-    refetch: boolean,
-    callbackMeta: RunCallbackMeta | undefined,
-    streamedValues: boolean
+    read: RunEndRead,
+    callbackMeta: RunCallbackMeta | undefined
   ): Promise<null | undefined> {
-    const read = planReadAfterRun(
-      this.branchContext.threadHead,
-      refetch,
-      streamedValues
-    );
-    if (read && threadId) {
-      const lastHead = (
-        await this.#mutate(threadId, { ...read, afterRun: true })
-      )?.at(0);
-      if (lastHead) {
-        // The read can land after a thread switch, and a resume goes to the
-        // current thread.
-        if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
-        this.#options.onFinish?.(lastHead, callbackMeta);
-        return null;
-      }
+    if ((read !== "await" && read !== "await-quiet") || !threadId) {
+      return undefined;
     }
-    if (
-      this.#options.onFinish != null &&
-      !onFinishRequiresThreadState(this.#options.onFinish)
-    ) {
-      this.#options.onFinish(
-        undefined as unknown as ThreadState<StateType>,
-        callbackMeta
-      );
+    const lastHead = (
+      await this.#mutate(threadId, {
+        quiet: read === "await-quiet",
+        afterRun: true,
+      })
+    )?.at(0);
+    if (lastHead == null) return undefined;
+    // The read can land after a thread switch, and a resume goes to the
+    // current thread.
+    if (threadId === this.#threadId) this.#flushHeadToolCalls(lastHead);
+    const { onFinish } = this.#options;
+    if (onFinishRequiresThreadState(onFinish)) {
+      onFinish?.(lastHead, callbackMeta);
     }
-    return undefined;
+    return null;
+  }
+
+  /**
+   * Reads the head after a run whose read goes in the background, and shows
+   * it in place of what the run streamed, unless a stop has changed that
+   * since. A run begun or a thread switched to meanwhile keeps what shows.
+   */
+  #readInBackground(threadId: string): void {
+    const shown = this.stream.values;
+    void this.#mutate(threadId, {
+      quiet: true,
+      afterRun: true,
+      onRead: (states) => {
+        if (states.length > 0 && this.stream.values === shown) {
+          this.stream.setStreamValues(null);
+        }
+      },
+    });
   }
 
   /**
@@ -1434,6 +1568,45 @@ export class StreamOrchestrator<
   }
 
   /**
+   * Whether a run may still be going on the head shown: a thread load hasn't
+   * ruled one out yet, or the head came from the `threadCache`. Its
+   * interrupts stay hidden meanwhile.
+   */
+  get headUnconfirmed(): boolean {
+    return this.#unconfirmedHead();
+  }
+
+  /**
+   * Whether the page runs headless tools whose results resume the thread's
+   * run, from when it takes their calls, or a load holds them for
+   * {@link activate}, until that run starts. It and {@link isLoading} are
+   * never both false in between.
+   */
+  get runsHeadlessTools(): boolean {
+    const held = (this.#options.tools?.length && this.#heldTools?.tasks) || [];
+    return (
+      [...this.#headlessRuns].some(
+        ({ threadId }) => threadId === this.#threadId
+      ) ||
+      held.some((task) =>
+        task.interrupts?.some(({ value }) => isHeadlessToolInterrupt(value))
+      )
+    );
+  }
+
+  /**
+   * The id of the last message shown when the streaming run started a new
+   * turn, if that turn's input didn't show then. The run can't answer a tool
+   * call up to there.
+   */
+  get newTurnAfter(): string | undefined {
+    if (!this.stream.isLoading) return undefined;
+    return this.#turnAwaitsLoad
+      ? (this.#getMessages(this.values).at(-1)?.id ?? undefined)
+      : this.#newTurnAfter;
+  }
+
+  /**
    * The messages array extracted from the current {@link values} using the
    * configured messages key.
    */
@@ -1520,19 +1693,35 @@ export class StreamOrchestrator<
   }
 
   #visible<T>(interrupts: Interrupt<T>[]): Interrupt<T>[] {
-    if (this.#answered.size === 0 && this.#interruptNamespaces.size === 0) {
-      return interrupts;
-    }
     return interrupts.flatMap((interrupt) => {
       if (interrupt.id == null) return [interrupt];
       if (this.#answered.has(interrupt.id)) return [];
-      const namespace = this.#interruptNamespaces.get(interrupt.id);
+      const namespace =
+        this.#interruptNamespaces.get(interrupt.id) ??
+        this.#subagentNamespaceOf(interrupt.id);
       return [
         namespace == null || interrupt.namespace != null
           ? interrupt
           : { ...interrupt, namespace },
       ];
     });
+  }
+
+  /**
+   * A subagent that runs inside a tool call isn't a subgraph task, so the
+   * thread's state lists its interrupts under that tool's task, with no
+   * checkpoint namespace.
+   */
+  #subagentNamespaceOf(interruptId: string): string[] | undefined {
+    const task = this.branchContext.threadHead?.tasks?.find((candidate) =>
+      candidate.interrupts?.some(({ id }) => id === interruptId)
+    );
+    if (task == null) return undefined;
+    const taskNamespace = `${task.name}:${task.id}`;
+    for (const subagent of this.stream.getSubagents().values()) {
+      if (subagent.namespace[0] === taskNamespace) return [taskNamespace];
+    }
+    return undefined;
   }
 
   /**
@@ -1854,7 +2043,7 @@ export class StreamOrchestrator<
 
     if (!should) return null;
 
-    this.stream.reconstructSubagents(hvMessages, { skipIfPopulated: true });
+    this.stream.reconstructSubagents(hvMessages);
 
     const tid = this.#threadId;
     // Scopes read a subagent's history when its panel opens.
@@ -2106,7 +2295,8 @@ export class StreamOrchestrator<
     >[2],
     own: boolean,
     runInfo?: Run,
-    queuedHere = false
+    queuedHere = false,
+    input: unknown = runInfo?.kwargs?.input
   ): Promise<void> {
     type UpdateType = GetUpdateType<Bag, StateType>;
     type CustomType = GetCustomEventType<Bag>;
@@ -2143,6 +2333,9 @@ export class StreamOrchestrator<
     const watch: RunWatch = {};
     let outcome: RunOutcome = "aborted";
     let sentValues = false;
+    let endRead: RunEndRead = "none";
+    let staleAnswer = false;
+    let staleRead: Promise<void> | undefined;
 
     let releaseStream: (() => void) | undefined;
     let countedStarting = true;
@@ -2158,6 +2351,7 @@ export class StreamOrchestrator<
       async (signal: AbortSignal) => {
         clearStarting();
         this.#runStarted(tid);
+        this.#startTurn(input, true);
         run.signal = signal;
         releaseStream = holdStream();
         if (own) this.#streamingRunId = runId;
@@ -2173,6 +2367,18 @@ export class StreamOrchestrator<
             ? await this.#joinMode(tid, runId, runInfo, signal)
             : undefined;
         this.scopes.setRun(runId, mode);
+        // A filtered join from a checkpoint carries neither the message whose
+        // `task` calls started the subagents nor their own events, only their
+        // lifecycle, so the subagents come from the head.
+        if (
+          mode?.filtered &&
+          joinOptions?.checkpointId != null &&
+          !signal.aborted
+        ) {
+          this.stream.reconstructSubagents(
+            this.#getMessages(this.historyValues)
+          );
+        }
         const joined = client.runs.joinStream(tid, runId, {
           signal,
           lastEventId,
@@ -2200,12 +2406,12 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           this.#runMetadataStorage?.removeItem(`lg:stream:${tid}`);
-          return this.#finishRun(
-            tid,
-            shouldRefetchJoin,
-            callbackMeta,
-            sentValues
-          );
+          // Before the plan, so a run it queues counts as queued.
+          const failed = this.#finishWithoutState(callbackMeta);
+          endRead = this.#planEndRead(shouldRefetchJoin, sentValues);
+          const shown = await this.#finishRun(tid, endRead, callbackMeta);
+          if (failed != null) throw failed.error;
+          return shown;
         },
         onError: (error) => {
           outcome = { error };
@@ -2214,18 +2420,24 @@ export class StreamOrchestrator<
         onFinish: () => {
           this.#threadIdStreaming = null;
           releaseStream?.();
+          // Before onRunEnd, whose changes to what shows the head it reads
+          // must not replace.
+          if (endRead === "background") this.#readInBackground(tid);
           this.scopes.endRun(runId);
           if (this.#streamingRunId === runId) this.#streamingRunId = undefined;
-          this.#endRun(runId);
+          if (staleAnswer) staleRead = this.#reload(tid, { quiet: true });
+          this.#endRun(runId, staleRead);
           this.#runEnd = this.#reportRunEnd(tid, runId, watch, outcome);
           this.#drainQueue();
         },
         isReplaying: lastEventId === "-1",
         onEvent: (event, data) => {
           if (event === "values") sentValues = true;
+          if (isStaleAnswer(event, data)) staleAnswer = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
         },
+        showsError: () => !staleAnswer,
       },
       { stillWanted: () => !this.#disposed && this.#threadId === tid }
     );
@@ -2237,6 +2449,8 @@ export class StreamOrchestrator<
       clearStarting();
       if (this.#liveRuns.get(runId) === run) this.#liveRuns.delete(runId);
     }
+    // The queue shows a queued answer's interrupts again once this resolves.
+    if (staleRead != null) await readOrTimeout(staleRead);
   }
 
   /**
@@ -2319,6 +2533,8 @@ export class StreamOrchestrator<
     let shownKeys: OptimisticKeySnapshot[] = [];
     let asksValues = true;
     let sentValues = false;
+    let endRead: RunEndRead = "none";
+    let staleAnswer = false;
     const stopRun = new AbortController();
 
     let releaseStream: (() => void) | undefined;
@@ -2329,11 +2545,21 @@ export class StreamOrchestrator<
         this.#stopOwnRun = stopRun;
         usableThreadId = this.#threadId;
         this.#runStarted(usableThreadId);
+        const command = submitOptions?.command;
+        for (const batch of command == null ? [] : this.#headlessRuns) {
+          if (batch.command === command) this.#headlessRuns.delete(batch);
+        }
+        const turnInput = submitOptions?.command == null ? values : null;
         // Only the thread's load tells whether it exists yet.
-        if (usableThreadId && this.#history.isLoading) await this.#hydration;
+        if (usableThreadId && this.#history.isLoading) {
+          this.#turnAwaitsLoad = turnInput != null;
+          await this.#hydration;
+          this.#turnAwaitsLoad = false;
+        }
         // A stop or thread switch came meanwhile, so its input must not show.
         if (signal.aborted) return (async function* () {})();
 
+        this.#startTurn(turnInput, false);
         // Before any thread create, so a new chat's input shows at once.
         this.stream.setStreamValues(() => {
           const current = { ...this.historyValues, ...this.stream.values };
@@ -2498,12 +2724,16 @@ export class StreamOrchestrator<
         onSuccess: async () => {
           outcome = "success";
           if (rejoinKey) this.#runMetadataStorage?.removeItem(rejoinKey);
-          return this.#finishRun(
+          // Before the plan, so a run it queues counts as queued.
+          const failed = this.#finishWithoutState(callbackMeta);
+          endRead = this.#planEndRead(shouldRefetch, sentValues);
+          const shown = await this.#finishRun(
             usableThreadId,
-            shouldRefetch,
-            callbackMeta,
-            sentValues
+            endRead,
+            callbackMeta
           );
+          if (failed != null) throw failed.error;
+          return shown;
         },
         onError: (error) => {
           outcome = { error };
@@ -2514,7 +2744,13 @@ export class StreamOrchestrator<
           this.#threadIdStreaming = null;
           releaseStream?.();
           settleOwnRun();
-          this.#unhide(submitOptions?.command);
+          if (staleAnswer && usableThreadId != null) {
+            void readOrTimeout(
+              this.#reload(usableThreadId, { quiet: true })
+            ).then(() => this.#unhide(submitOptions?.command));
+          } else {
+            this.#unhide(submitOptions?.command);
+          }
           // A run that ends before its values hold a message almost always
           // ended before saving its input.
           this.#metadata.resolvePending(
@@ -2527,6 +2763,11 @@ export class StreamOrchestrator<
             this.stream.setStreamValues(
               (values) => values && restoreKeys(values, shownKeys)
             );
+          }
+          // After the keys go back, so the head it reads replaces them, and
+          // before onRunEnd, whose changes to what shows it must not replace.
+          if (endRead === "background" && usableThreadId != null) {
+            this.#readInBackground(usableThreadId);
           }
           if (this.#stopOwnRun === stopRun) this.#stopOwnRun = undefined;
           if (runId == null) {
@@ -2550,6 +2791,7 @@ export class StreamOrchestrator<
           // named it.
           responded = true;
           settleOwnRun();
+          if (isStaleAnswer(event, data)) staleAnswer = true;
           this.#watchEvent(watch, event, data);
           this.#channels.emit(event, data, watch.paused);
           if (event === "values") sentValues = true;
@@ -2568,6 +2810,7 @@ export class StreamOrchestrator<
             unsent.clear();
           }
         },
+        showsError: () => !staleAnswer,
       },
       {
         abortPrevious:
@@ -2676,7 +2919,8 @@ export class StreamOrchestrator<
                 undefined,
                 true,
                 listed,
-                listed == null
+                listed == null,
+                this.#queuedInputs.get(next)
               ).finally(() => this.#unhide(next.options?.command));
         void sent.finally(() => {
           this.#submitting = false;
@@ -2752,6 +2996,7 @@ export class StreamOrchestrator<
           done = resolve;
         });
         const drops = this.#queueDrops;
+        this.#queueCreates += 1;
         try {
           // The server runs queued runs in the order their creates reach it.
           await turn;
@@ -2805,6 +3050,7 @@ export class StreamOrchestrator<
             void this.#dropQueued(usableThreadId, [entry]);
             return;
           }
+          this.#queuedInputs.set(entry, input);
           this.pendingRuns.add(entry);
           // The run before it may have ended while it waited.
           this.#drainQueue();
@@ -2813,6 +3059,7 @@ export class StreamOrchestrator<
           this.#options.onError?.(error, undefined);
           submitOptions?.onError?.(error, undefined);
         } finally {
+          this.#queueCreates -= 1;
           done();
         }
         return;
@@ -2866,8 +3113,10 @@ export class StreamOrchestrator<
    * interrupting it. The answered interrupts are hidden until that run
    * ends. Resolves once the run is created or queued, and rejects when it
    * can't be sent. Unless `strictResume` is `false`, an answer to an
-   * interrupt that is no longer waiting fails its run instead of running
-   * the step again, and the interrupt shows again.
+   * interrupt that is no longer waiting, as when another tab answered it
+   * first, fails its run instead of running the step again. That failure
+   * goes to `onError` but not to `error`, and the thread is read again
+   * before the answered interrupts can show again.
    */
   async respondAll(
     responses: Record<string, unknown>,
@@ -3130,10 +3379,9 @@ export class StreamOrchestrator<
 
     if (status === "run_done") {
       const streamed = seen === "ended" || this.#liveRuns.has(runId);
-      this.#endRun(
-        runId,
-        streamed ? undefined : this.#reload(threadId, { quiet: true })
-      );
+      if (!streamed) {
+        this.#endRun(runId, this.#reload(threadId, { quiet: true }));
+      }
       return;
     }
     if (seen != null) return;
@@ -3172,6 +3420,7 @@ export class StreamOrchestrator<
    * answered interrupts still pending. After 10 s they show again anyway, so
    * a read that hangs doesn't hide an interrupt still pending for good. One
    * that another run has answered since stays hidden until that run ends.
+   * A run streamed here ends with its stream, not with the thread stream.
    */
   #endRun(runId: string, read?: Promise<void>): void {
     this.#threadRuns.set(runId, "ended");
@@ -3187,13 +3436,7 @@ export class StreamOrchestrator<
       unhide();
       return;
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, 10_000);
-    });
-    void Promise.race([read, timedOut])
-      .then(unhide, unhide)
-      .finally(() => clearTimeout(timer));
+    void readOrTimeout(read).then(unhide);
   }
 
   /**
@@ -3290,11 +3533,15 @@ export class StreamOrchestrator<
     // Whether the server said how the run ended, not only that this client
     // stopped its stream or lost the connection while the run went on.
     let ended = true;
+    // No refused answer ran a step, stale or not, so the subagents still open
+    // aren't its.
+    let refused = false;
     if (outcome === "aborted") {
       reason = "stopped";
       ended = false;
     } else if (outcome !== "success") {
       const { name } = outcome.error as { name?: unknown };
+      refused = isRefusal(name);
       reason =
         name === "UserInterrupt" || name === "UserRollback"
           ? "stopped"
@@ -3327,6 +3574,7 @@ export class StreamOrchestrator<
     // Subagents the run left open take its word, unless another stream began.
     if (
       ended &&
+      !refused &&
       (reason === "error" || reason === "stopped") &&
       this.stream.epoch === epoch
     ) {
@@ -3347,6 +3595,9 @@ export class StreamOrchestrator<
     values: Record<string, unknown> | null | undefined
   ): void {
     const threadId = this.#threadId;
+    const batch: { threadId: string | undefined; command?: unknown } = {
+      threadId,
+    };
     flushPendingHeadlessToolInterrupts(
       values,
       this.#options.tools,
@@ -3354,12 +3605,18 @@ export class StreamOrchestrator<
       {
         onTool: this.#options.onTool,
         defer: (run) => {
+          this.#headlessRuns.add(batch);
+          this.#notify();
           void Promise.resolve().then(run);
         },
         resumeSubmit: (command) => {
           // submit() resumes the current thread. The call stays pending on its
           // own thread and runs again when that thread is read.
-          if (threadId !== this.#threadId) return;
+          if (threadId !== this.#threadId) {
+            this.#headlessRuns.delete(batch);
+            return;
+          }
+          batch.command = command;
           void this.submit(null as unknown as StateType, {
             multitaskStrategy: "interrupt",
             command,

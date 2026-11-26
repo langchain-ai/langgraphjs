@@ -9,6 +9,7 @@ import type {
 import {
   STREAM_CONTROLLER,
   bindingOf,
+  mayAnswer,
   toolCallsOf,
   type AnyStream,
   type ToolCalls,
@@ -100,15 +101,20 @@ function placeholderSubagent(
 
 /**
  * What identifies a target's scope, `undefined` for the main conversation. A
- * placeholder's key changes with its subagent's status, so a lookup that found
- * nothing while it ran is made again once it ends.
+ * placeholder's key changes when its subagent ends, so a lookup that found
+ * nothing while it ran is made again then. `"incomplete"` keeps the key of
+ * `"running"`: a pause or a resume would otherwise empty its view and look it
+ * up again.
  */
 export function scopeKeyOf(
   stream: StreamLike,
   target: SelectorTarget
 ): string | undefined {
   const subagent = placeholderSubagent(stream, target);
-  if (subagent != null) return `subagent:${subagent.id}:${subagent.status}`;
+  if (subagent != null) {
+    const { id, status } = subagent;
+    return `subagent:${id}:${status === "incomplete" ? "running" : status}`;
+  }
   const namespace = namespaceOf(target);
   return namespace.length === 0 ? undefined : namespace.join("|");
 }
@@ -131,6 +137,31 @@ export async function resolveNamespace(
   return subagent == null
     ? namespaceOf(target)
     : engineOf(stream).resolveSubagentNamespace(subagent.id);
+}
+
+/**
+ * Whether a run may still answer the tool calls at `namespace`. A subagent's
+ * only while the main conversation's `task` call that started it, or the
+ * subagent it's nested in, is running: the subagent at the namespace's first
+ * `tools:` segment. Until that subagent's namespace is known, or when its
+ * `task` call isn't in the main conversation, the thread's.
+ */
+function scopeRunning(
+  engine: StreamEngine,
+  namespace: readonly string[]
+): boolean {
+  const stream = bindingOf(engine).getSnapshot() as AnyStream;
+  const end = namespace.findIndex((segment) => segment.startsWith("tools:"));
+  const key = namespace.slice(0, end + 1).join("|");
+  const subagent =
+    end < 0
+      ? undefined
+      : [...stream.subagents.values()].find(
+          (candidate) => candidate.namespace.join("|") === key
+        );
+  const task =
+    subagent && stream.toolCalls.find((call) => call.callId === subagent.id);
+  return task == null ? mayAnswer(engine) : task.status === "running";
 }
 
 function rootScope(engine: StreamEngine): ScopeHandle {
@@ -174,37 +205,63 @@ export function subscribeScope(
   let unsubscribe: (() => void) | undefined;
   let released = false;
   let cache:
-    | { snapshot: ScopeSnapshot; toolCalls: ToolCalls; view: ScopeView }
+    | {
+        snapshot: ScopeSnapshot;
+        running: boolean;
+        toolCalls: ToolCalls;
+        view: ScopeView;
+      }
     | undefined;
 
   void resolveNamespace(stream, target).then((resolved) => {
     if (released || resolved == null) return;
     namespace = resolved;
     scope = engine.scopes.acquire(resolved);
-    unsubscribe = scope.subscribe(() => {
+    const notify = () => {
       for (const listener of listeners) listener();
+    };
+    const unsubscribeScope = scope.subscribe(notify);
+    // The scope's own state doesn't change when a run starts or ends.
+    let wasRunning = scopeRunning(engine, namespace);
+    const unsubscribeEngine = engine.subscribe(() => {
+      const running = scopeRunning(engine, namespace);
+      if (running === wasRunning) return;
+      wasRunning = running;
+      notify();
     });
-    for (const listener of listeners) listener();
+    unsubscribe = () => {
+      unsubscribeScope();
+      unsubscribeEngine();
+    };
+    notify();
   });
 
   return {
     getSnapshot() {
       const snapshot = scope?.getSnapshot();
       if (snapshot == null) return EMPTY_VIEW;
-      if (cache?.snapshot !== snapshot) {
+      const running = scopeRunning(engine, namespace);
+      if (cache?.snapshot !== snapshot || cache.running !== running) {
         const toolCalls = toolCallsOf(
           snapshot.messages,
           namespace,
+          running,
+          undefined,
           cache?.toolCalls
         );
         cache = {
           snapshot,
+          running,
           toolCalls,
-          view: {
-            messages: snapshot.messages,
-            toolCalls: toolCalls.toolCalls,
-            values: snapshot.values,
-          },
+          view:
+            cache?.snapshot === snapshot &&
+            cache.toolCalls.toolCalls === toolCalls.toolCalls
+              ? cache.view
+              : {
+                  messages: snapshot.messages,
+                  toolCalls: toolCalls.toolCalls,
+                  values: snapshot.values,
+                },
         };
       }
       return cache.view;

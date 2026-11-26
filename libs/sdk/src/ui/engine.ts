@@ -32,6 +32,24 @@ export interface StreamEngine<
   readonly interrupts: Interrupt<GetInterruptType<Bag>>[];
   readonly subagents: Map<string, SubagentStreamInterface>;
   readonly isLoading: boolean;
+  /**
+   * Whether a run may still be going on the head shown: a thread load hasn't
+   * ruled one out yet, or the head came from a thread cache. Its interrupts
+   * stay hidden meanwhile.
+   */
+  readonly headUnconfirmed: boolean;
+  /**
+   * Whether the page runs headless tools whose results resume the thread's
+   * run, from when it takes their calls until that run starts. It and
+   * {@link isLoading} are never both false in between.
+   */
+  readonly runsHeadlessTools: boolean;
+  /**
+   * The id of the last message shown when the streaming run started a new
+   * turn, if that turn's input didn't show then. The run can't answer a tool
+   * call up to there.
+   */
+  readonly newTurnAfter: string | undefined;
   readonly isThreadLoading: boolean;
   readonly error: unknown;
   /** Settles once the latest thread load is done. */
