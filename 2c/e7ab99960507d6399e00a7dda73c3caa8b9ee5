@@ -1,0 +1,33 @@
+.changeset/interrupt-errors-ls-run-status.md
+  s_076eb94aadeff4::t_b016e65ea435d1 1-5
+libs/langgraph-core/src/errors.ts
+  s_076eb94aadeff4::t_e87ec3d2d9f8a5 86-88
+  s_076eb94aadeff4::t_469248f42ae408 168-170
+libs/langgraph-core/src/tests/errors.test.ts
+  s_076eb94aadeff4::t_449559da11113a 10-17,20-26
+  s_fb01d1eec9acc1::t_51ad0c198e074e 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ce7ab99960507d6399e00a7dda73c3caa8b9ee5",
+  "prompts": {},
+  "sessions": {
+    "s_076eb94aadeff4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bceafbf3-6f2d-42b4-8202-e75c3b7e1d12",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Kiewan Villatel <kiewan@langchain.dev>"
+    },
+    "s_fb01d1eec9acc1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3155af97-de2e-4342-a418-3652ba9b2cb2",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Kiewan Villatel <kiewan@langchain.dev>"
+    }
+  }
+}
