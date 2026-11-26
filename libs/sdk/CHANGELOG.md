@@ -1,5 +1,11 @@
 # @langchain/langgraph-sdk
 
+## 1.18.0-rc.6
+
+### Patch Changes
+
+- [#3472](https://github.com/langchain-ai/langgraphjs/pull/3472) [`35c98c9`](https://github.com/langchain-ai/langgraphjs/commit/35c98c9225bb635ecd373b668657bff1c3e0bba1) Thanks [@eliornl](https://github.com/eliornl)! - `StreamOrchestrator` now finds a finished subagent's namespace up to 540 checkpoints back in the thread's history, when the subagent's tool message doesn't record it (`artifact.checkpoint_ns`). It read only the newest 40, so after a page reload `useMessages(stream, subagent)` in `@langchain/react` showed only the subagent's task and result, not its own steps, once a later turn or a few more model calls of an agent with middleware had followed it. It now reads up to five more pages of 100.
+
 ## 1.18.0-rc.5
 
 ### Minor Changes
