@@ -87,6 +87,12 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   readonly #endedRunIds = new Set<string>();
 
   #handled = 0;
+  #pendingSettle: (() => void) | undefined;
+
+  /** Flush the pending terminal transition synchronously. */
+  flush(): void {
+    this.#pendingSettle?.();
+  }
 
   /** Notified once `isLoading` actually settles to `false` on a terminal event. */
   readonly #onSettled: (() => void) | undefined;
@@ -143,6 +149,8 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
   reset(): void {
     this.#lastTerminalLifecycleSeq = -1;
     this.#endedRunIds.clear();
+    this.#pendingSettle = undefined;
+    this.#handled += 1;
   }
 
   /**
@@ -196,7 +204,9 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
       // terminal was scheduled (answered HITL interrupt, back-to-back
       // runs, or history replay of interrupted → running), or a newer
       // terminal whose own reset will settle the flag.
-      setTimeout(() => {
+      const settle = () => {
+        if (this.#pendingSettle !== settle) return;
+        this.#pendingSettle = undefined;
         if (this.#isDisposed()) return;
         if (this.#handled > handled) return;
         const wasLoading = this.#store.getSnapshot().isLoading;
@@ -204,7 +214,9 @@ export class LifecycleLoadingTracker<T extends LoadingSnapshot> {
           s.isLoading ? { ...s, isLoading: false } : s
         );
         if (wasLoading) this.#onSettled?.();
-      }, 0);
+      };
+      this.#pendingSettle = settle;
+      setTimeout(settle, 0);
     }
   }
 }

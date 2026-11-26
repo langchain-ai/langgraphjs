@@ -162,3 +162,6 @@ export type {
 // here so application code doesn't need a direct dependency on
 // `@langchain/protocol`.
 export type { Channel, Event } from "@langchain/protocol";
+
+export { StreamDevtoolsSession } from "./devtools.js";
+export type { StreamDevtoolsRecord } from "./devtools.js";
