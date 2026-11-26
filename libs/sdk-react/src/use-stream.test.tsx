@@ -1258,6 +1258,30 @@ it("shows a subagent whose run waits on an interrupt as incomplete, and running 
     .toBe("running");
 });
 
+it("gives an interrupt raised in a subagent the subagent's namespace, also through getThread()", async () => {
+  const server = fakeServer({ t1: { messages: [human("h1", "research it")] } });
+  const { result, messages } = await startSubagent(server);
+  server.runs[0].send("lifecycle|tools:task-1", {
+    event: "started",
+    namespace: ["tools:task-1"],
+    tool_call_id: "call-1",
+  });
+  await expect
+    .poll(() => result.current.subagents.get("call-1")?.namespace)
+    .toEqual(["tools:task-1"]);
+
+  pause(server, server.runs[0], messages, { id: "int-1", value: "search?" });
+  await expect.poll(() => result.current.isLoading).toBe(false);
+  await result.current.hydrate();
+
+  expect(result.current.interrupts.map(({ namespace }) => namespace)).toEqual([
+    ["tools:task-1"],
+  ]);
+  expect(result.current.getThread()?.interrupts).toEqual([
+    { interruptId: "int-1", namespace: ["tools:task-1"], payload: "search?" },
+  ]);
+});
+
 it("shows a subagent as incomplete once the page stops streaming its run without cancelling it, also while a new turn runs", async () => {
   const server = fakeServer({ t1: { messages: [human("h1", "research it")] } });
   const { result, messages } = await startSubagent(server);

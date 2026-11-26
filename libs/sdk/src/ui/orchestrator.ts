@@ -1693,19 +1693,35 @@ export class StreamOrchestrator<
   }
 
   #visible<T>(interrupts: Interrupt<T>[]): Interrupt<T>[] {
-    if (this.#answered.size === 0 && this.#interruptNamespaces.size === 0) {
-      return interrupts;
-    }
     return interrupts.flatMap((interrupt) => {
       if (interrupt.id == null) return [interrupt];
       if (this.#answered.has(interrupt.id)) return [];
-      const namespace = this.#interruptNamespaces.get(interrupt.id);
+      const namespace =
+        this.#interruptNamespaces.get(interrupt.id) ??
+        this.#subagentNamespaceOf(interrupt.id);
       return [
         namespace == null || interrupt.namespace != null
           ? interrupt
           : { ...interrupt, namespace },
       ];
     });
+  }
+
+  /**
+   * A subagent that runs inside a tool call isn't a subgraph task, so the
+   * thread's state lists its interrupts under that tool's task, with no
+   * checkpoint namespace.
+   */
+  #subagentNamespaceOf(interruptId: string): string[] | undefined {
+    const task = this.branchContext.threadHead?.tasks?.find((candidate) =>
+      candidate.interrupts?.some(({ id }) => id === interruptId)
+    );
+    if (task == null) return undefined;
+    const taskNamespace = `${task.name}:${task.id}`;
+    for (const subagent of this.stream.getSubagents().values()) {
+      if (subagent.namespace[0] === taskNamespace) return [taskNamespace];
+    }
+    return undefined;
   }
 
   /**
