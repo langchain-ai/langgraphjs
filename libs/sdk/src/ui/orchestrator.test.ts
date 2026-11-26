@@ -7718,6 +7718,64 @@ describe("StreamOrchestrator runs", () => {
       orch.dispose();
     });
 
+    it("shows a reloaded subagent's own messages when its task is 45 checkpoints back and its tool message has no stamp", async () => {
+      withFlags(flags);
+      const values = createSubagentStateValues();
+      const toolMessage = values.messages[2];
+      (client.threads.getState as Mock).mockResolvedValue(createThreadState(values));
+      const history = Array.from({ length: 60 }, (_, i) => ({
+        checkpoint: { checkpoint_id: `cp-${i}` },
+        tasks:
+          i === 45
+            ? [
+                {
+                  id: "pregel-1",
+                  name: "tools",
+                  path: ["__pregel_push", 0, false],
+                  result: { messages: [toolMessage] },
+                },
+              ]
+            : [],
+      }));
+      (client.threads.getHistory as Mock).mockImplementation(
+        async (
+          _threadId: string,
+          options: {
+            limit: number;
+            before?: { configurable: { checkpoint_id: string } };
+            checkpoint?: { checkpoint_ns: string };
+          }
+        ) => {
+          if (options.checkpoint?.checkpoint_ns === "tools:pregel-1") {
+            return [
+              createThreadState({
+                messages: [{ id: "s1", content: "sized the tires", type: "ai" }],
+              }),
+            ];
+          }
+          const start =
+            history.findIndex(
+              ({ checkpoint }) => checkpoint.checkpoint_id === options.before?.configurable.checkpoint_id
+            ) + 1;
+          return history.slice(start, start + options.limit);
+        }
+      );
+      const orch = orchestrator({ filterSubagentMessages: true, scopedSubagents: true });
+      orch.initThreadId("t1");
+      await orch.hydrationPromise;
+      orch.reconstructSubagentsIfNeeded();
+
+      const namespace = await orch.resolveSubagentNamespace("task-1");
+      expect(namespace).toEqual(["tools:pregel-1"]);
+      const scope = orch.scopes.acquire(namespace!);
+
+      await vi.waitFor(() =>
+        expect(scope.getSnapshot().messages.map((m) => m.content)).toEqual(["sized the tires"])
+      );
+      scope.release();
+      orch.dispose();
+    });
+
     describe("a lookup of a subagent its run hasn't started yet", () => {
       const withTask = {
         event: "updates",

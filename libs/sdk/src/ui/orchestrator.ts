@@ -2072,10 +2072,11 @@ export class StreamOrchestrator<
    * while it streams, else the one its `task` tool message records
    * (`artifact.checkpoint_ns`), else a match in the thread's lean history. A
    * subagent with no tool message yet is running or paused, so the newest two
-   * history entries hold its call and its task. One that the run streaming
-   * now hasn't started yet is looked up again once the run starts it, or
-   * ends. The subagent keeps the namespace found. Callers that ask at the
-   * same time share one lookup.
+   * history entries hold its call and its task. A finished one's task can be
+   * hundreds of entries back, so up to 540 are read. One that the run
+   * streaming now hasn't started yet is looked up again once the run starts
+   * it, or ends. The subagent keeps the namespace found. Callers that ask at
+   * the same time share one lookup.
    *
    * @param toolCallId - The tool call ID that started the subagent.
    * @returns Its namespace, or `undefined` if none was found.
@@ -2116,6 +2117,7 @@ export class StreamOrchestrator<
               {
                 messagesKey: this.#accessors.getMessagesKey(),
                 limit: toolMessage == null ? 2 : undefined,
+                deep: toolMessage != null,
               }
             ).catch(() => undefined)
           )?.get(toolCallId);
