@@ -971,6 +971,11 @@ describe("runs", () => {
 
     let runs = await client.runs.list(thread.thread_id);
     expect(runs.length).toBe(2);
+    const secondPage = await client.runs.list(thread.thread_id, {
+      offset: 1,
+      limit: 1,
+    });
+    expect(secondPage.map((run) => run.run_id)).toEqual([runs[1].run_id]);
 
     runs = await client.runs.list(thread.thread_id, { status: "pending" });
     expect(runs.length).toBe(1);
