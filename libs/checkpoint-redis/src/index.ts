@@ -16,7 +16,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
-import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import {
+  assertSafeKeyComponent,
+  escapeRediSearchTagValue,
+  isMissingIndexError,
+} from "./utils.js";
 import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 // Type for Redis client - supports both standalone and cluster
@@ -91,6 +95,8 @@ interface CheckpointDocument {
 export class RedisSaver extends BaseCheckpointSaver {
   private client: RedisClientType;
   private ttlConfig?: TTLConfig;
+  // Set once the indexes are created; cleared to create them again
+  private indexesReady?: Promise<void>;
 
   constructor(client: RedisClientType, ttlConfig?: TTLConfig) {
     super();
@@ -245,9 +251,63 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
     // If newVersions is undefined, keep all channel_values as-is (for backward compatibility)
 
-    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering)
+    // Check if writes already exist for this checkpoint (handles putWrites-before-put ordering).
+    // Sent alongside the blob writes below; the document needs it, the blobs don't.
     const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
-    const writesExist = await this.client.exists(zsetKey);
+    const writesExistPromise = this.client.exists(zsetKey);
+    const blobWrites: Promise<unknown>[] = [];
+
+    // The newVersions filter above strips unchanged channels from the checkpoint document.
+    // Persist each changed channel as a separate blob so loadCheckpointWithWrites()
+    // can reconstruct the full channel_values from blobs written by earlier nodes.
+    if (newVersions !== undefined && checkpoint.channel_values) {
+      const channelValues = checkpoint.channel_values;
+      // Write the changed-channel blobs in parallel.
+      for (const [channel, version] of Object.entries(newVersions)) {
+        if (!(channel in channelValues)) {
+          continue;
+        }
+
+        const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
+        blobWrites.push(
+          this.client.json.set(blobKey, "$", {
+            thread_id: threadId,
+            checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
+            checkpoint_id: checkpointId,
+            channel,
+            version: version.toString(),
+            type: "json",
+            value: channelValues[channel],
+          } as any)
+        );
+      }
+
+      // Refresh the TTL of every blob this checkpoint depends on — the whole
+      // channel_versions set, not just the newVersions subset just written.
+      // Channels carried over from earlier nodes live in their own blob keys with
+      // an older TTL; without this they could expire while the freshly-written
+      // checkpoint is still alive, dropping reconstructed channels on later reads.
+      // EXPIRE on a missing key is a no-op, so already-gone carry-overs are
+      // skipped. Write-side refresh — correct independent of refreshOnRead.
+      // Commands sent in the same tick go out in order on the key's
+      // connection, so each blob's EXPIRE runs after its JSON.SET.
+      if (this.ttlConfig?.defaultTTL && checkpoint.channel_versions) {
+        const referencedBlobKeys = Object.entries(
+          checkpoint.channel_versions
+        ).map(
+          ([channel, version]) =>
+            `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`
+        );
+        if (referencedBlobKeys.length > 0) {
+          blobWrites.push(this.applyTTL(...referencedBlobKeys));
+        }
+      }
+    }
+
+    const [writesExist] = await Promise.all([
+      writesExistPromise,
+      ...blobWrites,
+    ]);
 
     // Structure matching Python implementation
     const jsonDoc: CheckpointDocument = {
@@ -265,57 +325,12 @@ export class RedisSaver extends BaseCheckpointSaver {
     // Store metadata fields at top-level for searching
     this.addSearchableMetadataFields(jsonDoc, metadata);
 
-    // The newVersions filter above strips unchanged channels from the checkpoint document.
-    // Persist each changed channel as a separate blob so loadCheckpointWithWrites()
-    // can reconstruct the full channel_values from blobs written by earlier nodes.
-    if (newVersions !== undefined && checkpoint.channel_values) {
-      const channelValues = checkpoint.channel_values;
-      // Write the changed-channel blobs in parallel.
-      await Promise.all(
-        Object.entries(newVersions)
-          .filter(([channel]) => channel in channelValues)
-          .map(([channel, version]) => {
-            const blobKey = `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`;
-            const blobDoc = {
-              thread_id: threadId,
-              checkpoint_ns: checkpointNs === "" ? "__empty__" : checkpointNs,
-              checkpoint_id: checkpointId,
-              channel,
-              version: version.toString(),
-              type: "json",
-              value: channelValues[channel],
-            };
-            return this.client.json.set(blobKey, "$", blobDoc as any);
-          })
-      );
-
-      // Refresh the TTL of every blob this checkpoint depends on — the whole
-      // channel_versions set, not just the newVersions subset just written.
-      // Channels carried over from earlier nodes live in their own blob keys with
-      // an older TTL; without this they could expire while the freshly-written
-      // checkpoint is still alive, dropping reconstructed channels on later reads.
-      // EXPIRE on a missing key is a no-op, so already-gone carry-overs are
-      // skipped. Write-side refresh — correct independent of refreshOnRead.
-      if (this.ttlConfig?.defaultTTL && checkpoint.channel_versions) {
-        const referencedBlobKeys = Object.entries(
-          checkpoint.channel_versions
-        ).map(
-          ([channel, version]) =>
-            `checkpoint_blob:${threadId}:${checkpointNs}:${channel}:${version}`
-        );
-        if (referencedBlobKeys.length > 0) {
-          await this.applyTTL(...referencedBlobKeys);
-        }
-      }
-    }
-
-    // Use Redis JSON commands
-    await this.client.json.set(key, "$", jsonDoc as any);
-
-    // Apply TTL if configured
-    if (this.ttlConfig?.defaultTTL) {
-      await this.applyTTL(key);
-    }
+    // Use Redis JSON commands; the EXPIRE goes out right behind the JSON.SET.
+    // applyTTL is a no-op when no TTL is configured.
+    await Promise.all([
+      this.client.json.set(key, "$", jsonDoc as any),
+      this.applyTTL(key),
+    ]);
 
     return {
       configurable: {
@@ -518,8 +533,10 @@ export class RedisSaver extends BaseCheckpointSaver {
         // Search succeeded, return without falling through
         return;
       } catch (error: any) {
-        if (error.message?.includes("no such index")) {
-          // Index doesn't exist yet, fall through to regular listing
+        if (isMissingIndexError(error)) {
+          // Index doesn't exist yet, fall through to regular listing, and
+          // have the next call create the indexes again
+          this.indexesReady = undefined;
         } else {
           throw error;
         }
@@ -727,6 +744,8 @@ export class RedisSaver extends BaseCheckpointSaver {
 
     // Collect write keys for sorted set tracking
     const writeKeys: string[] = [];
+    // Every command below goes out in one batch instead of one await each
+    const commands: Promise<unknown>[] = [];
 
     // Use high-resolution timestamp to ensure unique ordering across putWrites calls
     const baseTimestamp = performance.now() * 1000; // Microsecond precision
@@ -771,15 +790,17 @@ export class RedisSaver extends BaseCheckpointSaver {
       };
 
       if (allSpecial) {
-        await this.client.json.set(writeKey, "$", writeDoc as never);
+        commands.push(this.client.json.set(writeKey, "$", writeDoc as never));
       } else {
         // Equivalent of SQL `INSERT OR IGNORE`: only set when the key is
         // absent. `node-redis` exposes this as the `NX` modifier on
         // `JSON.SET`. The return value is the string "OK" on insert and
         // `null` on no-op, both of which are fine to discard here.
-        await this.client.json.set(writeKey, "$", writeDoc as never, {
-          NX: true,
-        });
+        commands.push(
+          this.client.json.set(writeKey, "$", writeDoc as never, {
+            NX: true,
+          })
+        );
       }
     }
 
@@ -792,31 +813,32 @@ export class RedisSaver extends BaseCheckpointSaver {
       writeKeys.forEach((key, idx) => {
         zaddArgs[key] = baseTimestamp + idx;
       });
-      await this.client.zAdd(
-        zsetKey,
-        Object.entries(zaddArgs).map(([key, score]) => ({ score, value: key }))
+      commands.push(
+        this.client.zAdd(
+          zsetKey,
+          Object.entries(zaddArgs).map(([key, score]) => ({
+            score,
+            value: key,
+          }))
+        )
       );
 
-      // Apply TTL to write keys and zset if configured
-      if (this.ttlConfig?.defaultTTL) {
-        // Apply TTL to write keys and zset
-        await this.applyTTL(...writeKeys, zsetKey);
-      }
+      // Apply TTL to write keys and zset if configured. Each EXPIRE goes out
+      // after its key's write on the same connection, so it finds the key.
+      commands.push(this.applyTTL(...writeKeys, zsetKey));
     }
 
-    // Update checkpoint to indicate it has writes
+    await Promise.all(commands);
+
+    // Update checkpoint to indicate it has writes, once the writes are stored.
+    // Only the has_writes field is set, so a concurrent put() of the rest of
+    // the document isn't overwritten. JSON.SET at a non-root path errors on a
+    // missing key; XX makes it a no-op instead, so a checkpoint that doesn't
+    // exist yet is skipped (put() checks the writes zset when it's stored).
     const checkpointKey = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
-    const checkpointExists = await this.client.exists(checkpointKey);
-    if (checkpointExists) {
-      // Get the current document and update it
-      const currentDoc = (await this.client.json.get(
-        checkpointKey
-      )) as CheckpointDocument | null;
-      if (currentDoc) {
-        currentDoc.has_writes = "true";
-        await this.client.json.set(checkpointKey, "$", currentDoc as any);
-      }
-    }
+    await this.client.json.set(checkpointKey, "$.has_writes", "true", {
+      XX: true,
+    });
   }
 
   async deleteThread(threadId: string): Promise<void> {
@@ -1147,8 +1169,18 @@ export class RedisSaver extends BaseCheckpointSaver {
     }
   }
 
-  private async ensureIndexes(): Promise<void> {
-    // Runs before every write, so send all the commands at once: one round trip.
+  // Runs before every write, so the indexes are created once per saver, not
+  // once per call. A search that finds the index missing (Redis restarted
+  // without persistence, FLUSHALL, FT.DROPINDEX) clears indexesReady, and the
+  // next call creates them again.
+  private ensureIndexes(): Promise<void> {
+    this.indexesReady ??= this.createIndexes();
+    return this.indexesReady;
+  }
+
+  private async createIndexes(): Promise<void> {
+    let created = true;
+    // Send all the commands at once: one round trip.
     await Promise.all(
       SCHEMAS.map(async (schema) => {
         try {
@@ -1164,10 +1196,15 @@ export class RedisSaver extends BaseCheckpointSaver {
               `Failed to create index ${schema.index}:`,
               error.message
             );
+            created = false;
           }
         }
       })
     );
+    // Try again on the next call rather than never
+    if (!created) {
+      this.indexesReady = undefined;
+    }
   }
 }
 
