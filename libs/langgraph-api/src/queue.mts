@@ -10,6 +10,7 @@ import {
   type StreamTaskResult,
   streamState,
 } from "./stream.mjs";
+import { getCancelAction } from "./utils/cancellation.mjs";
 import { logError, logger } from "./logging.mjs";
 import { isUnknownInterruptError, serializeError } from "./utils/serde.mjs";
 import { callWebhook } from "./webhook.mjs";
@@ -97,9 +98,7 @@ const worker = async (
     };
   };
 
-  const isCancelled = () =>
-    signal.aborted &&
-    (signal.reason === "interrupt" || signal.reason === "rollback");
+  const isCancelled = () => getCancelAction(signal) != null;
 
   // The run, or its thread, can be deleted while it runs: a final write that
   // fails because its record is gone has nothing left to update.
@@ -177,7 +176,7 @@ const worker = async (
 
     if (isCancelled()) {
       checkpoint = undefined;
-      if (signal.reason === "rollback") {
+      if (getCancelAction(signal) === "rollback") {
         status = "rollback";
         if (temporary) await publishEnd(status);
         await unlessGone(
