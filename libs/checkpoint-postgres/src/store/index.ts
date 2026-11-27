@@ -321,14 +321,21 @@ export class PostgresStore extends BaseStore {
   ): Promise<string[][]> {
     const { matchConditions, maxDepth, limit = 100, offset = 0 } = operation;
 
+    const params: unknown[] = [];
+    const namespaceColumn =
+      maxDepth === undefined ? "namespace_path" : "namespace";
+    const namespaceExpression =
+      maxDepth === undefined
+        ? "namespace_path"
+        : "(string_to_array(namespace_path, ':'))[1:$1] AS namespace";
+    if (maxDepth !== undefined) params.push(maxDepth);
     let sqlQuery = `
-      SELECT DISTINCT namespace_path
+      SELECT DISTINCT ${namespaceExpression}
       FROM "${this.core.schema}".store
     `;
 
-    const params: unknown[] = [];
     const conditions: string[] = [];
-    let paramIndex = 1;
+    let paramIndex = params.length + 1;
 
     // Add match conditions
     if (matchConditions && matchConditions.length > 0) {
@@ -349,21 +356,16 @@ export class PostgresStore extends BaseStore {
       sqlQuery += ` WHERE ${conditions.join(" AND ")}`;
     }
 
-    sqlQuery += ` ORDER BY namespace_path LIMIT $${paramIndex} OFFSET $${
+    sqlQuery += ` ORDER BY ${namespaceColumn} LIMIT $${paramIndex} OFFSET $${
       paramIndex + 1
     }`;
     params.push(limit, offset);
 
     const result = await client.query(sqlQuery, params);
 
-    let namespaces = result.rows.map((row) => row.namespace_path.split(":"));
-
-    // Apply maxDepth filter if specified
-    if (maxDepth !== undefined) {
-      namespaces = namespaces.filter((ns) => ns.length <= maxDepth);
-    }
-
-    return namespaces;
+    return result.rows.map((row) =>
+      maxDepth === undefined ? row.namespace_path.split(":") : row.namespace
+    );
   }
 
   /**
