@@ -131,8 +131,8 @@ describe("RedisSaver.loadPendingWrites — undefined values", () => {
   it("restores a missing write value as undefined instead of parsing it as JSON", async () => {
     const checkpointDoc = makeCheckpointDocWithUndefinedPendingWrite();
     const client = {
-      keys: async (pattern: string) => {
-        if (pattern === "checkpoint_write:t::c:*") {
+      zRange: async (key: string) => {
+        if (key === "write_keys_zset:t::c") {
           return ["checkpoint_write:t::c:task_A:0"];
         }
         return [];

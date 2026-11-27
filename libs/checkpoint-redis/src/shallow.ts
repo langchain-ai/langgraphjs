@@ -12,7 +12,11 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient } from "redis";
-import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import {
+  assertSafeKeyComponent,
+  escapeRediSearchTagValue,
+  isMissingIndexError,
+} from "./utils.js";
 import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
 
 export interface TTLConfig {
@@ -367,7 +371,7 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
           yieldCount++;
         }
       } catch (error: any) {
-        if (error.message?.includes("no such index")) {
+        if (isMissingIndexError(error)) {
           // Index doesn't exist yet, fall back to scanning all shallow checkpoints
           const pattern = `checkpoint:*:*:shallow`;
           const keys = await this.client.keys(pattern);
@@ -654,11 +658,12 @@ export class ShallowRedisSaver extends BaseCheckpointSaver {
     // `BaseCheckpointSaver`), instead of the sorted-set's per-call index
     // order. Documents written before `task_path` existed have none and sort
     // first, by `task_id`.
-    const writeDocs: any[] = [];
-    for (const writeKey of writeKeys) {
-      const writeDoc = await this.client.json.get(writeKey);
-      if (writeDoc) writeDocs.push(writeDoc);
-    }
+    // Fetch in parallel: node-redis pipelines the commands into one round
+    // trip, and unlike JSON.MGET they may span cluster hash slots.
+    const fetched = await Promise.all(
+      writeKeys.map((writeKey: string) => this.client.json.get(writeKey))
+    );
+    const writeDocs = fetched.filter((writeDoc) => writeDoc);
     // Compute each document's key once, then sort on the cached keys.
     const keyed = writeDocs.map((doc: any) => ({
       key: writesSortKey(doc.task_path ?? "", doc.task_id, doc.idx ?? 0),
