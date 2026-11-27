@@ -46,6 +46,24 @@ describe("messagesStateReducer", () => {
     expect(result).toEqual(expected);
   });
 
+  it("should treat an empty string id as missing", () => {
+    // An empty id is not an identity: two messages with id="" must both survive
+    // a single write instead of the second replacing the first.
+    const right = [
+      new AIMessage({ content: "first turn", id: "" }),
+      new AIMessage({ content: "second turn", id: "" }),
+    ];
+
+    const result = messagesStateReducer([], right) as AIMessage[];
+
+    expect(result.map((message) => message.content)).toEqual([
+      "first turn",
+      "second turn",
+    ]);
+    expect(result.every((message) => Boolean(message.id))).toBe(true);
+    expect(new Set(result.map((message) => message.id)).size).toBe(2);
+  });
+
   it("should assign missing IDs", () => {
     const left = [new HumanMessage({ content: "Hello" })];
     const right = [new AIMessage({ content: "Hi there!" })];
