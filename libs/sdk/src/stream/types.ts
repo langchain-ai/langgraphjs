@@ -27,6 +27,7 @@ import type {
 import type { Channel, Event, Goto } from "@langchain/protocol";
 import { DEFAULT_MESSAGES_KEY } from "../ui/constants.js";
 import type { StreamStore } from "../ui/store.js";
+import type { StreamDevtoolsSession } from "./devtools.js";
 
 export {
   DEFAULT_IDLE_RECONNECT,
@@ -380,6 +381,8 @@ export interface RootSnapshot<
 export interface StreamControllerOptions<
   StateType extends object = Record<string, unknown>,
 > {
+  /** Opt-in received-event recording and isolated root-state replay. */
+  devtools?: StreamDevtoolsSession;
   /** Assistant the thread is bound to for its lifetime. */
   assistantId: string;
   /** Client used to construct `ThreadStream`s. */

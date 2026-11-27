@@ -104,6 +104,8 @@ import type {
   StreamSubmitOptions,
 } from "./types.js";
 
+import type { StreamDevtoolsRecord } from "./devtools.js";
+
 function isAbortLikeError(error: unknown): boolean {
   if (error == null || typeof error !== "object") return false;
   const maybeError = error as { name?: unknown; message?: unknown };
@@ -260,6 +262,8 @@ export class StreamController<
   readonly queueStore: StreamStore<SubmissionQueueSnapshot<StateType>>;
   readonly registry: ChannelRegistry;
 
+  #playback = false;
+  #devtoolsCheckpoint: CheckpointEnvelope | undefined;
   readonly #options: StreamControllerOptions<StateType>;
   readonly #messagesKey: string;
   readonly #subagents = new SubagentDiscovery();
@@ -452,6 +456,97 @@ export class StreamController<
     (thread: ThreadStream | undefined) => void
   >();
 
+  #assertLiveCommand(): void {
+    if (this.#playback || this.#options.devtools?.getSnapshot() === "replay") {
+      throw new Error("Stream commands are disabled during devtools replay");
+    }
+  }
+
+  #recordBaseline(): void {
+    if (!this.#options.devtools) return;
+    this.#rootMessages.flush();
+    const {
+      messages,
+      interrupt: _interrupt,
+      error: _error,
+      ...snapshot
+    } = this.rootStore.getSnapshot();
+    const serialized = serializeUpdateMessages({ messages }, "messages") as {
+      messages: Message[];
+    };
+    this.#options.devtools.record(this, {
+      version: 1,
+      type: "baseline",
+      messagesKey: this.#messagesKey,
+      snapshot: {
+        ...snapshot,
+        values: serializeUpdateMessages(
+          snapshot.values as Record<string, unknown>,
+          this.#messagesKey
+        ) as Record<string, unknown>,
+        messages: serialized.messages,
+      },
+      checkpointTime: this.#hydratedCheckpointTime,
+      checkpoint: this.#devtoolsCheckpoint,
+    });
+  }
+
+  /** @internal */
+  applyDevtoolsRecord(record: StreamDevtoolsRecord): void {
+    if (!this.#playback)
+      throw new Error("Records can only be applied to a replay controller");
+    if (record.version !== 1)
+      throw new Error("Unsupported stream recording version");
+    if (record.type === "event") {
+      if (record.source === "root") this.#onRootEvent(record.event);
+      else this.#onWildcardEvent(record.event);
+      return;
+    }
+    if (record.messagesKey !== this.#messagesKey)
+      throw new Error("Recording messagesKey does not match stream");
+    this.#rootMessages.reset();
+    this.#rootToolAssembler = new ToolCallAssembler();
+    this.#lifecycleLoading.reset();
+    this.#messageMetadata.reset();
+    this.#hydratedCheckpointTime = record.checkpointTime;
+    this.#hydratedActiveInterruptIds = null;
+    this.#resolvedInterrupts.clear();
+    const messages = ensureMessageInstances(record.snapshot.messages);
+    const values = { ...record.snapshot.values } as StateType;
+    const serializedMessages = (values as Record<string, unknown>)[
+      this.#messagesKey
+    ];
+    if (Array.isArray(serializedMessages)) {
+      (values as Record<string, unknown>)[this.#messagesKey] =
+        ensureMessageInstances(serializedMessages);
+    }
+    this.rootStore.setValue({
+      ...record.snapshot,
+      values,
+      messages,
+      interrupts: record.snapshot.interrupts as Interrupt<InterruptType>[],
+      interrupt: record.snapshot.interrupts[0] as
+        | Interrupt<InterruptType>
+        | undefined,
+      error: undefined,
+    });
+    this.#rootMessages.applyValues(values, messages, {
+      step: record.checkpoint?.step,
+      checkpointId: record.checkpoint?.id,
+    });
+    if (record.checkpointTime != null)
+      this.#rootMessages.sealMessageIds(
+        messages.flatMap((m) => (m.id == null ? [] : [m.id]))
+      );
+    this.#rootMessages.flush();
+  }
+
+  /** @internal */
+  flushDevtools(): void {
+    this.#rootMessages.flush();
+    this.#lifecycleLoading.flush();
+  }
+
   /**
    * Create a controller around a LangGraph client and optional initial thread.
    *
@@ -488,7 +583,9 @@ export class StreamController<
       isDisposed: () => this.#disposed,
       // `#submitter` is assigned just below; this callback only ever
       // fires later (async), by which point construction has finished.
-      onSettled: () => this.#submitter.scheduleQueueDrainOnObservedIdle(),
+      onSettled: () => {
+        if (!this.#playback) this.#submitter.scheduleQueueDrainOnObservedIdle();
+      },
       // `submit()` settles `isLoading` itself, so skipping a pending
       // event here can't leave the flag stuck.
       ignore: (event) => this.#submittedRunMatch(event) != null,
@@ -581,6 +678,20 @@ export class StreamController<
      * effect to drive the hydrate we'd deadlock. Firing here makes
      * the promise settle independently of the component lifecycle.
      */
+    options.devtools?.attach(this, () => {
+      const replay = new StreamController({
+        ...options,
+        threadId: null,
+        initialValues: undefined,
+        devtools: undefined,
+        onCreated: undefined,
+        onCompleted: undefined,
+        onThreadId: undefined,
+      });
+      replay.#playback = true;
+      return replay as unknown as StreamController;
+    });
+    this.#recordBaseline();
     if (this.#currentThreadId != null) {
       void this.hydrate(this.#currentThreadId);
     } else {
@@ -681,7 +792,7 @@ export class StreamController<
    * @param threadId - Optional replacement thread id; `null` clears the active thread.
    */
   async hydrate(threadId?: string | null): Promise<void> {
-    if (this.#disposed) return;
+    if (this.#disposed || this.#playback) return;
     const target = threadId === undefined ? this.#currentThreadId : threadId;
     const changed = target !== this.#currentThreadId;
     this.#currentThreadId = target ?? null;
@@ -725,6 +836,7 @@ export class StreamController<
     if (this.#currentThreadId == null) {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
       this.#resolveHydration();
+      this.#recordBaseline();
       return;
     }
 
@@ -737,6 +849,7 @@ export class StreamController<
     if (this.#selfCreatedThreadIds.has(this.#currentThreadId)) {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
       this.#resolveHydration();
+      this.#recordBaseline();
       return;
     }
 
@@ -943,6 +1056,7 @@ export class StreamController<
       }
     } finally {
       this.rootStore.setState((s) => ({ ...s, isThreadLoading: false }));
+      this.#recordBaseline();
       if (hydrationError != null) {
         this.#rejectHydration(hydrationError);
       } else {
@@ -1318,6 +1432,7 @@ export class StreamController<
     input: unknown,
     options?: StreamSubmitOptions<StateType, ConfigurableType>
   ): Promise<void> {
+    this.#assertLiveCommand();
     await this.#submitter.submit(input, options);
   }
 
@@ -1328,6 +1443,7 @@ export class StreamController<
    * running (join/rejoin).
    */
   async stop(options?: StreamStopOptions): Promise<void> {
+    this.#assertLiveCommand();
     const shouldCancel = options?.cancel ?? true;
     if (shouldCancel) {
       const resumed = this.#resumedRun;
@@ -1500,6 +1616,7 @@ export class StreamController<
     response: unknown,
     options?: StreamRespondOptions<ConfigurableType>
   ): Promise<void> {
+    this.#assertLiveCommand();
     if (this.#disposed || this.#thread == null) {
       throw new Error("No active thread to respond to.");
     }
@@ -1624,6 +1741,7 @@ export class StreamController<
     responsesById: Record<string, unknown>,
     options?: StreamRespondAllOptions<ConfigurableType>
   ): Promise<void> {
+    this.#assertLiveCommand();
     if (this.#disposed || this.#thread == null) {
       throw new Error("No active thread to respond to.");
     }
@@ -1694,6 +1812,7 @@ export class StreamController<
    * Dispose the active thread, subscriptions, registry entries, and listeners.
    */
   async dispose(): Promise<void> {
+    this.#options.devtools?.detach(this);
     if (this.#disposed) return;
     this.#cancelPendingDispose();
     this.#disposed = true;
@@ -1948,6 +2067,7 @@ export class StreamController<
     // will repopulate it from that thread's `state.tasks[].interrupts`.
     this.#hydratedActiveInterruptIds = null;
     this.#hydratedCheckpointTime = undefined;
+    this.#devtoolsCheckpoint = undefined;
     this.#interruptReplayThroughSeq = undefined;
     this.#awaitingRunBoundary = undefined;
     this.#rootRunStartSeqs.clear();
@@ -2188,6 +2308,18 @@ export class StreamController<
    * @param event - Raw protocol event observed by the thread-wide listener.
    */
   #onWildcardEvent(event: Event): void {
+    this.#options.devtools?.record(this, {
+      version: 1,
+      type: "event",
+      source: "wildcard",
+      event,
+    });
+    if (this.#playback) {
+      this.#lifecycleLoading.handle(event);
+      this.#recordInterrupt(event);
+      this.#forgetAnsweredInterrupts(event);
+      return;
+    }
     try {
       this.#subagents.push(event);
     } catch {
@@ -2342,6 +2474,13 @@ export class StreamController<
    * @param event - Event yielded by the root subscription.
    */
   #onRootEvent(event: Event): void {
+    if (this.#playback) this.#lifecycleLoading.handle(event);
+    this.#options.devtools?.record(this, {
+      version: 1,
+      type: "event",
+      source: "root",
+      event,
+    });
     try {
       this.#subagents.push(event);
     } catch {
@@ -2359,7 +2498,7 @@ export class StreamController<
      * pump's narrow scope (depth 1 at root) so projections that
      * short-circuit via the bus stay bounded.
      */
-    if (this.#rootEventListeners.size > 0) {
+    if (!this.#playback && this.#rootEventListeners.size > 0) {
       for (const listener of this.#rootEventListeners) {
         try {
           listener(event);
@@ -2671,6 +2810,7 @@ export class StreamController<
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
       return;
     }
+    this.#devtoolsCheckpoint = checkpoint;
     const state = this.#pickStateKeys(raw as Record<string, unknown>);
     // A root `values` snapshot landed: optimistic non-message keys are
     // now reconciled against server truth (see #settleOptimistic).
@@ -2737,6 +2877,12 @@ export class StreamController<
    * root content pump. Store-level dedup keeps the user-facing list stable.
    */
   #recordInterrupt(event: Event): void {
+    if (
+      this.#playback &&
+      this.#hydratedCheckpointTime != null &&
+      event.params.timestamp < this.#hydratedCheckpointTime
+    )
+      return;
     if (event.method !== "input.requested") return;
     const data = event.params.data as {
       interrupt_id?: string;

@@ -18,6 +18,9 @@ interrupts, media, and subagents.
 
 ## Streaming features
 
+- [`devtools.md`](./devtools.md) describes opt-in received-event recording and
+  isolated root-state replay, including the proof of concept's fidelity limits.
+
 - [`selectors.md`](./selectors.md) covers companion selector hooks for reading
   root or scoped stream data.
 - [`submission-queue.md`](./submission-queue.md) explains multitask strategies,

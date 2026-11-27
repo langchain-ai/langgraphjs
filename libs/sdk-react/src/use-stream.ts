@@ -29,6 +29,7 @@ import {
   type RootSnapshot,
   type RunCompletedInfo,
   type RunExecutionInfo,
+  type StreamDevtoolsSession,
   type StreamRespondAllOptions,
   type StreamRespondOptions,
   type StreamStopOptions,
@@ -41,8 +42,13 @@ import {
   type WidenUpdateMessages,
 } from "@langchain/langgraph-sdk/stream";
 
+const subscribeWithoutDevtools = () => () => undefined;
+const getDevtoolsRevision = () => 0;
+
 /** Options `@langchain/react` adds to both transport branches. */
 interface StateKeysOptions<StateType extends object> {
+  /** Opt-in received-event recording and isolated root-state replay. */
+  devtools?: StreamDevtoolsSession;
   /**
    * The `values` keys your UI reads. When set, opening a thread asks the
    * server for only these keys plus the messages key ({@link messagesKey},
@@ -605,7 +611,12 @@ export function useStream<
   // Recreated only when its identity inputs change; the previous
   // instance is disposed by the `activate()` effect when `controller`
   // changes.
-  const controllerDeps = [client, assistantId, transport] as const;
+  const controllerDeps = [
+    client,
+    assistantId,
+    transport,
+    options.devtools,
+  ] as const;
   const controllerRef = useRef<{
     deps: typeof controllerDeps;
     controller: StreamController<StateType, InterruptType, ConfigurableType>;
@@ -622,6 +633,7 @@ export function useStream<
         ConfigurableType
       >({
         assistantId,
+        devtools: options.devtools,
         // Cast: the runtime `Client` is state-shape agnostic, but the
         // controller declares `client: Client<StateType>` so its own
         // typings line up. Tightening `submit`'s `input` parameter to
@@ -654,6 +666,13 @@ export function useStream<
     };
   }
   const controller = controllerRef.current.controller;
+  const devtoolsRevision = useSyncExternalStore(
+    options.devtools?.subscribe ?? subscribeWithoutDevtools,
+    options.devtools?.getRevision ?? getDevtoolsRevision,
+    options.devtools?.getRevision ?? getDevtoolsRevision
+  );
+  const displayController = options.devtools?.display(controller) ?? controller;
+  const isReplaying = options.devtools?.getSnapshot() === "replay";
 
   // Rehydrate on threadId change. The initial hydrate is fired
   // synchronously inside the controller constructor so Suspense
@@ -730,7 +749,7 @@ export function useStream<
     () => controller.rootStore.getSnapshot().interrupts
   );
   useEffect(() => {
-    if (!tools?.length) return;
+    if (isReplaying || !tools?.length) return;
     const valuesBag = rootValuesForTools as unknown as Record<string, unknown>;
     const protocolInterrupts = rootInterruptsForTools as unknown as Interrupt[];
     const valuesInterrupts = Array.isArray(valuesBag?.__interrupt__)
@@ -752,27 +771,34 @@ export function useStream<
           applyHeadlessToolResumeCommand(controller, command),
       }
     );
-  }, [controller, tools, onTool, rootValuesForTools, rootInterruptsForTools]);
+  }, [
+    controller,
+    tools,
+    onTool,
+    rootValuesForTools,
+    rootInterruptsForTools,
+    isReplaying,
+  ]);
 
   const root = useSyncExternalStore<RootSnapshot<StateType, InterruptType>>(
-    controller.rootStore.subscribe,
-    controller.rootStore.getSnapshot,
-    controller.rootStore.getSnapshot
+    displayController.rootStore.subscribe,
+    displayController.rootStore.getSnapshot,
+    displayController.rootStore.getSnapshot
   );
   const subagents = useSyncExternalStore<SubagentMap>(
-    controller.subagentStore.subscribe,
-    controller.subagentStore.getSnapshot,
-    controller.subagentStore.getSnapshot
+    displayController.subagentStore.subscribe,
+    displayController.subagentStore.getSnapshot,
+    displayController.subagentStore.getSnapshot
   );
   const subgraphs = useSyncExternalStore<SubgraphMap>(
-    controller.subgraphStore.subscribe,
-    controller.subgraphStore.getSnapshot,
-    controller.subgraphStore.getSnapshot
+    displayController.subgraphStore.subscribe,
+    displayController.subgraphStore.getSnapshot,
+    displayController.subgraphStore.getSnapshot
   );
   const subgraphsByNode = useSyncExternalStore<SubgraphByNodeMap>(
-    controller.subgraphByNodeStore.subscribe,
-    controller.subgraphByNodeStore.getSnapshot,
-    controller.subgraphByNodeStore.getSnapshot
+    displayController.subgraphByNodeStore.subscribe,
+    displayController.subgraphByNodeStore.getSnapshot,
+    displayController.subgraphByNodeStore.getSnapshot
   );
 
   return useMemo<UseStreamReturn<T, InterruptType, ConfigurableType>>(() => {
@@ -787,7 +813,7 @@ export function useStream<
       interrupt: userFacingInterrupts[0],
       isLoading: root.isLoading,
       isThreadLoading: root.isThreadLoading,
-      hydrationPromise: controller.hydrationPromise,
+      hydrationPromise: displayController.hydrationPromise,
       error: root.error,
       threadId: root.threadId,
       subagents: subagents as UseStreamReturn<
@@ -797,23 +823,26 @@ export function useStream<
       >["subagents"],
       subgraphs,
       subgraphsByNode,
-      submit: (input, submitOptions) => controller.submit(input, submitOptions),
-      stop: (options) => controller.stop(options),
-      disconnect: () => controller.disconnect(),
-      respond: (response, options) => controller.respond(response, options),
+      submit: (input, submitOptions) =>
+        displayController.submit(input, submitOptions),
+      stop: (options) => displayController.stop(options),
+      disconnect: () => displayController.disconnect(),
+      respond: (response, options) =>
+        displayController.respond(response, options),
       respondAll: (responsesById, options) =>
-        controller.respondAll(responsesById, options),
-      getThread: () => controller.getThread(),
+        displayController.respondAll(responsesById, options),
+      getThread: () => displayController.getThread(),
       client,
       assistantId,
-      [STREAM_CONTROLLER]: controller,
+      [STREAM_CONTROLLER]: displayController,
     } as UseStreamReturn<T, InterruptType, ConfigurableType>;
   }, [
     root,
     subagents,
     subgraphs,
     subgraphsByNode,
-    controller,
+    displayController,
+    devtoolsRevision,
     client,
     assistantId,
   ]);
