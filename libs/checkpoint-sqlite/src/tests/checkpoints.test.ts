@@ -4,6 +4,7 @@ import {
   CheckpointTuple,
   emptyCheckpoint,
   INTERRUPT,
+  MemorySaver,
   RESUME,
   TASKS,
   uuid6,
@@ -359,5 +360,42 @@ describe("SqliteSaver", () => {
     expect(
       checkpointTuples[0].checkpoint.channel_versions[TASKS]
     ).toBeDefined();
+  });
+
+  it("should respect limit: 0 in list() as an empty page", async () => {
+    const config: RunnableConfig = { configurable: { thread_id: "1" } };
+    const metadata = { source: "update", step: -1, parents: {} } as Parameters<
+      SqliteSaver["put"]
+    >[2];
+
+    const sqliteSaver = SqliteSaver.fromConnString(":memory:");
+    const memorySaver = new MemorySaver();
+
+    for (const saver of [sqliteSaver, memorySaver]) {
+      await saver.put(config, checkpoint1, metadata);
+      await saver.put(config, checkpoint2, metadata);
+    }
+
+    const collect = async (
+      saver: SqliteSaver | MemorySaver,
+      options?: Parameters<SqliteSaver["list"]>[1]
+    ) => {
+      const tuples: CheckpointTuple[] = [];
+      for await (const tuple of saver.list(config, options)) {
+        tuples.push(tuple);
+      }
+      return tuples;
+    };
+
+    // A zero limit must yield an empty page rather than the whole history.
+    expect(await collect(sqliteSaver, { limit: 0 })).toEqual([]);
+    // Differential: MemorySaver already treats limit <= 0 as an empty page.
+    expect(await collect(sqliteSaver, { limit: 0 })).toEqual(
+      await collect(memorySaver, { limit: 0 })
+    );
+
+    // Neighboring limit values keep their existing behavior.
+    expect(await collect(sqliteSaver, { limit: 1 })).toHaveLength(1);
+    expect(await collect(sqliteSaver)).toHaveLength(2);
   });
 });
