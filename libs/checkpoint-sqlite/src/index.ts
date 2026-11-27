@@ -602,6 +602,7 @@ CREATE TABLE IF NOT EXISTS writes (
   }
 
   async deleteThread(threadId: string) {
+    this.setup();
     const transaction = this.db.transaction(() => {
       this.db
         .prepare(`DELETE FROM checkpoints WHERE thread_id = ?`)

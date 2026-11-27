@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import Database from "better-sqlite3";
 import {
   Checkpoint,
   CheckpointTuple,
@@ -288,6 +289,21 @@ describe("SqliteSaver", () => {
     expect(
       await saver.getTuple({ configurable: { thread_id: "2" } })
     ).toBeDefined();
+  });
+
+  it("should delete a thread on a fresh database as a no-op", async () => {
+    // A brand-new saver has never run setup(), so the schema does not exist
+    // yet. deleteThread() must set up the schema and be a no-op here instead
+    // of throwing "no such table: checkpoints".
+    const saver = new SqliteSaver(new Database(":memory:"));
+
+    await expect(saver.deleteThread("missing")).resolves.toBeUndefined();
+
+    const tuples: CheckpointTuple[] = [];
+    for await (const tuple of saver.list({ configurable: {} })) {
+      tuples.push(tuple);
+    }
+    expect(tuples).toEqual([]);
   });
 
   it("pending sends migration", async () => {
