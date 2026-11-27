@@ -53,7 +53,7 @@ overrides:
   brace-expansion@>=4: '>=5.0.12 <6'
   yaml@>=2 <2.8.3: '>=2.8.3'
   protobufjs@<8: '>=7.6.3 <8'
-  basic-ftp: '>=6.2.1 <7'
+  basic-ftp: '>=6.2.4 <7'
   esbuild@>=0.27.3 <0.28.1: '>=0.28.1 <0.29'
   vite@>=7 <8: '>=7.3.2'
   vite@>=8 <8.3.3: '>=8.3.3 <9'
@@ -7800,8 +7800,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@6.2.3:
-    resolution: {integrity: sha512-T7GYtQ2eKJUN5YORG7A8u2WfB9JMN0a4/wl3MI64qq2qTRfa3FXzoNq0DDojZDkDyStcL+TkfKsz4JHEZx5kGQ==}
+  basic-ftp@6.2.4:
+    resolution: {integrity: sha512-6ACKOQxSlv5xka4i03ujfncNr9qp5yZNK3u0+yUFTAU4HfG5AeztCC9+R1I9dm8oq+1vt4RZ7cIRTBrdHqL2mw==}
     engines: {node: '>=10.0.0'}
 
   bcrypt-pbkdf@1.0.2:
@@ -18307,7 +18307,7 @@ snapshots:
   baseline-browser-mapping@2.11.38:
     optional: true
 
-  basic-ftp@6.2.3: {}
+  basic-ftp@6.2.4: {}
 
   bcrypt-pbkdf@1.0.2:
     dependencies:
@@ -19866,7 +19866,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 6.2.3
+      basic-ftp: 6.2.4
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3
     transitivePeerDependencies:
