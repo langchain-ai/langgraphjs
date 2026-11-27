@@ -1,0 +1,13 @@
+{
+  "name": "@examples/browser-cdn",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test:cdn": "node --test smoke.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.1"
+  }
+}
