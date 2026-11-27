@@ -324,6 +324,7 @@ export function messagesProjection(
             if (event.method === "messages") {
               applyEvent(event as MessagesEvent);
             } else if (event.method === "values") {
+              if (event.params.namespace.length > ns.length) return;
               applyValuesEvent(event as ValuesEvent);
             }
           },
