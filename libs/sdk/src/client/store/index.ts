@@ -54,7 +54,7 @@ export class StoreClient extends BaseClient {
       ttl: options?.ttl,
     };
 
-    return this.fetch<void>("/store/items", {
+    return this.request<void>("/store/items", {
       method: "PUT",
       json: payload,
       signal: options?.signal,
@@ -94,7 +94,7 @@ export class StoreClient extends BaseClient {
       params.refresh_ttl = options.refreshTtl;
     }
 
-    const response = await this.fetch<APIItem>("/store/items", {
+    const response = await this.request<APIItem>("/store/items", {
       params,
       signal: options?.signal,
     });
@@ -128,7 +128,7 @@ export class StoreClient extends BaseClient {
       }
     });
 
-    return this.fetch<void>("/store/items", {
+    return this.request<void>("/store/items", {
       method: "DELETE",
       json: { namespace, key },
       signal: options?.signal,
@@ -162,7 +162,7 @@ export class StoreClient extends BaseClient {
       refresh_ttl: options?.refreshTtl,
     };
 
-    const response = await this.fetch<APISearchItemsResponse>(
+    const response = await this.request<APISearchItemsResponse>(
       "/store/items/search",
       {
         method: "POST",
@@ -201,7 +201,7 @@ export class StoreClient extends BaseClient {
       offset: options?.offset ?? 0,
     };
 
-    return this.fetch<ListNamespaceResponse>("/store/namespaces", {
+    return this.request<ListNamespaceResponse>("/store/namespaces", {
       method: "POST",
       json: payload,
       signal: options?.signal,

@@ -44,7 +44,7 @@ export class CronsClient extends BaseClient {
       end_time: payload?.endTime,
       on_run_completed: payload?.onRunCompleted,
     };
-    return this.fetch<CronCreateForThreadResponse>(
+    return this.request<CronCreateForThreadResponse>(
       `/threads/${encodePathSegment(threadId)}/runs/crons`,
       {
         method: "POST",
@@ -85,7 +85,7 @@ export class CronsClient extends BaseClient {
       stream_resumable: payload?.streamResumable,
       end_time: payload?.endTime,
     };
-    return this.fetch<CronCreateResponse>(`/runs/crons`, {
+    return this.request<CronCreateResponse>(`/runs/crons`, {
       method: "POST",
       json,
       signal: payload?.signal,
@@ -121,7 +121,7 @@ export class CronsClient extends BaseClient {
       durability: payload?.durability,
     };
 
-    return this.fetch<Cron>(`/runs/crons/${encodePathSegment(cronId)}`, {
+    return this.request<Cron>(`/runs/crons/${encodePathSegment(cronId)}`, {
       method: "PATCH",
       json,
       signal: payload?.signal,
@@ -138,7 +138,7 @@ export class CronsClient extends BaseClient {
     cronId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    await this.fetch<void>(`/runs/crons/${encodePathSegment(cronId)}`, {
+    await this.request<void>(`/runs/crons/${encodePathSegment(cronId)}`, {
       method: "DELETE",
       signal: options?.signal,
     });
@@ -163,7 +163,7 @@ export class CronsClient extends BaseClient {
     metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<Cron[]> {
-    return this.fetch<Cron[]>("/runs/crons/search", {
+    return this.request<Cron[]>("/runs/crons/search", {
       method: "POST",
       json: {
         assistant_id: query?.assistantId ?? undefined,
@@ -195,7 +195,7 @@ export class CronsClient extends BaseClient {
     metadata?: Metadata;
     signal?: AbortSignal;
   }): Promise<number> {
-    return this.fetch<number>(`/runs/crons/count`, {
+    return this.request<number>(`/runs/crons/count`, {
       method: "POST",
       json: {
         assistant_id: query?.assistantId ?? undefined,

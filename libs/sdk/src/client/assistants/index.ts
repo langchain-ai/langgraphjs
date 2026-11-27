@@ -25,7 +25,7 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(
+    return this.request<Assistant>(
       `/assistants/${encodePathSegment(assistantId)}`,
       {
         signal: options?.signal,
@@ -43,7 +43,7 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { xray?: boolean | number; signal?: AbortSignal }
   ): Promise<AssistantGraph> {
-    return this.fetch<AssistantGraph>(
+    return this.request<AssistantGraph>(
       `/assistants/${encodePathSegment(assistantId)}/graph`,
       {
         params: { xray: options?.xray },
@@ -61,7 +61,7 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal }
   ): Promise<GraphSchema> {
-    return this.fetch<GraphSchema>(
+    return this.request<GraphSchema>(
       `/assistants/${encodePathSegment(assistantId)}/schemas`,
       {
         signal: options?.signal,
@@ -85,12 +85,12 @@ export class AssistantsClient extends BaseClient {
     }
   ): Promise<Subgraphs> {
     if (options?.namespace) {
-      return this.fetch<Subgraphs>(
+      return this.request<Subgraphs>(
         `/assistants/${encodePathSegment(assistantId)}/subgraphs/${encodePathSegment(options.namespace)}`,
         { params: { recurse: options?.recurse }, signal: options?.signal }
       );
     }
-    return this.fetch<Subgraphs>(
+    return this.request<Subgraphs>(
       `/assistants/${encodePathSegment(assistantId)}/subgraphs`,
       {
         params: { recurse: options?.recurse },
@@ -115,7 +115,7 @@ export class AssistantsClient extends BaseClient {
     description?: string;
     signal?: AbortSignal;
   }): Promise<Assistant> {
-    return this.fetch<Assistant>("/assistants", {
+    return this.request<Assistant>("/assistants", {
       method: "POST",
       json: {
         graph_id: payload.graphId,
@@ -149,7 +149,7 @@ export class AssistantsClient extends BaseClient {
       signal?: AbortSignal;
     }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(
+    return this.request<Assistant>(
       `/assistants/${encodePathSegment(assistantId)}`,
       {
         method: "PATCH",
@@ -176,7 +176,7 @@ export class AssistantsClient extends BaseClient {
     assistantId: string,
     options?: { signal?: AbortSignal; deleteThreads?: boolean }
   ): Promise<void> {
-    return this.fetch<void>(`/assistants/${encodePathSegment(assistantId)}`, {
+    return this.request<void>(`/assistants/${encodePathSegment(assistantId)}`, {
       method: "DELETE",
       params: { delete_threads: options?.deleteThreads ?? false },
       signal: options?.signal,
@@ -236,7 +236,7 @@ export class AssistantsClient extends BaseClient {
       sort_order: query?.sortOrder ?? undefined,
       select: query?.select ?? undefined,
     };
-    const [assistants, response] = await this.fetch<Assistant[]>(
+    const [assistants, response] = await this.request<Assistant[]>(
       "/assistants/search",
       {
         method: "POST",
@@ -268,7 +268,7 @@ export class AssistantsClient extends BaseClient {
     name?: string;
     signal?: AbortSignal;
   }): Promise<number> {
-    return this.fetch<number>(`/assistants/count`, {
+    return this.request<number>(`/assistants/count`, {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
@@ -294,7 +294,7 @@ export class AssistantsClient extends BaseClient {
       signal?: AbortSignal;
     }
   ): Promise<AssistantVersion[]> {
-    return this.fetch<AssistantVersion[]>(
+    return this.request<AssistantVersion[]>(
       `/assistants/${encodePathSegment(assistantId)}/versions`,
       {
         method: "POST",
@@ -320,7 +320,7 @@ export class AssistantsClient extends BaseClient {
     version: number,
     options?: { signal?: AbortSignal }
   ): Promise<Assistant> {
-    return this.fetch<Assistant>(
+    return this.request<Assistant>(
       `/assistants/${encodePathSegment(assistantId)}/latest`,
       {
         method: "POST",

@@ -41,7 +41,7 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal; include?: string[] }
   ): Promise<Thread<ValuesType>> {
-    return this.fetch<Thread<ValuesType>>(
+    return this.request<Thread<ValuesType>>(
       `/threads/${encodePathSegment(threadId)}`,
       {
         params: {
@@ -74,7 +74,7 @@ export class ThreadsClient<
         ? { ttl: payload.ttl, strategy: "delete" as const }
         : payload?.ttl;
 
-    return this.fetch<Thread<TStateType>>(`/threads`, {
+    return this.request<Thread<TStateType>>(`/threads`, {
       method: "POST",
       json: {
         metadata: {
@@ -105,7 +105,7 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal }
   ): Promise<Thread<TStateType>> {
-    return this.fetch<Thread<TStateType>>(
+    return this.request<Thread<TStateType>>(
       `/threads/${encodePathSegment(threadId)}/copy`,
       {
         method: "POST",
@@ -162,7 +162,7 @@ export class ThreadsClient<
         ? { ttl: payload.ttl, strategy: "delete" as const }
         : payload?.ttl;
 
-    return this.fetch<Thread | void>(
+    return this.request<Thread | void>(
       `/threads/${encodePathSegment(threadId)}`,
       {
         method: "PATCH",
@@ -184,7 +184,7 @@ export class ThreadsClient<
     threadId: string,
     options?: { signal?: AbortSignal }
   ): Promise<void> {
-    return this.fetch<void>(`/threads/${encodePathSegment(threadId)}`, {
+    return this.request<void>(`/threads/${encodePathSegment(threadId)}`, {
       method: "DELETE",
       signal: options?.signal,
     });
@@ -208,7 +208,7 @@ export class ThreadsClient<
       signal?: AbortSignal;
     }
   ): Promise<{ pruned_count: number }> {
-    return this.fetch<{ pruned_count: number }>("/threads/prune", {
+    return this.request<{ pruned_count: number }>("/threads/prune", {
       method: "POST",
       json: {
         thread_ids: threadIds,
@@ -237,7 +237,7 @@ export class ThreadsClient<
     extract?: Record<string, string>;
     signal?: AbortSignal;
   }): Promise<Thread<ValuesType>[]> {
-    return this.fetch<Thread<ValuesType>[]>("/threads/search", {
+    return this.request<Thread<ValuesType>[]>("/threads/search", {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
@@ -269,7 +269,7 @@ export class ThreadsClient<
     status?: ThreadStatus;
     signal?: AbortSignal;
   }): Promise<number> {
-    return this.fetch<number>(`/threads/count`, {
+    return this.request<number>(`/threads/count`, {
       method: "POST",
       json: {
         metadata: query?.metadata ?? undefined,
@@ -309,7 +309,7 @@ export class ThreadsClient<
   ): Promise<ThreadState<ValuesType>> {
     if (checkpoint != null) {
       if (typeof checkpoint !== "string") {
-        return this.fetch<ThreadState<ValuesType>>(
+        return this.request<ThreadState<ValuesType>>(
           `/threads/${encodePathSegment(threadId)}/state/checkpoint`,
           {
             method: "POST",
@@ -324,7 +324,7 @@ export class ThreadsClient<
       }
 
       // deprecated
-      return this.fetch<ThreadState<ValuesType>>(
+      return this.request<ThreadState<ValuesType>>(
         `/threads/${encodePathSegment(threadId)}/state/${encodePathSegment(checkpoint)}`,
         {
           params: { subgraphs: options?.subgraphs, select: options?.select },
@@ -333,7 +333,7 @@ export class ThreadsClient<
       );
     }
 
-    return this.fetch<ThreadState<ValuesType>>(
+    return this.request<ThreadState<ValuesType>>(
       `/threads/${encodePathSegment(threadId)}/state`,
       {
         params: { subgraphs: options?.subgraphs, select: options?.select },
@@ -362,7 +362,7 @@ export class ThreadsClient<
       signal?: AbortSignal;
     }
   ): Promise<Pick<Config, "configurable">> {
-    return this.fetch<Pick<Config, "configurable">>(
+    return this.request<Pick<Config, "configurable">>(
       `/threads/${encodePathSegment(threadId)}/state`,
       {
         method: "POST",
@@ -401,7 +401,7 @@ export class ThreadsClient<
       threadId = threadIdOrConfig;
     }
 
-    return this.fetch<void>(`/threads/${encodePathSegment(threadId)}/state`, {
+    return this.request<void>(`/threads/${encodePathSegment(threadId)}/state`, {
       method: "PATCH",
       json: { metadata },
       signal: options?.signal,
@@ -429,7 +429,7 @@ export class ThreadsClient<
       signal?: AbortSignal;
     }
   ): Promise<ThreadState<ValuesType>[]> {
-    return this.fetch<ThreadState<ValuesType>[]>(
+    return this.request<ThreadState<ValuesType>[]>(
       `/threads/${encodePathSegment(threadId)}/history`,
       {
         method: "POST",
