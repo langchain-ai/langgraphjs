@@ -39,7 +39,12 @@ import {
   isDeltaWritesVersioned,
 } from "../channels/base.js";
 import type { DeltaChannel } from "../channels/delta.js";
-import { isMessagesDeltaReducer } from "../graph/messages_reducer.js";
+import type { BinaryOperatorAggregate } from "../channels/binop.js";
+import {
+  inputMessageId,
+  isMessagesDeltaReducer,
+  messagesStateReducer,
+} from "../graph/messages_reducer.js";
 import { advanceDeltaCounters, checkpointSuperseded } from "./checkpoint.js";
 import type {
   Call,
@@ -135,6 +140,8 @@ import type {
 const INPUT_DONE = Symbol.for("INPUT_DONE");
 const INPUT_RESUMING = Symbol.for("INPUT_RESUMING");
 const DEFAULT_LOOP_LIMIT = 25;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Give the messages written to DeltaChannels stable ids, and return the writes
@@ -178,6 +185,91 @@ export function ensureDeltaMessageIds<W extends [PropertyKey, unknown]>(
   return deltaWrites;
 }
 
+function ensureInputMessageIds<W extends [PropertyKey, unknown]>(
+  channels: Record<string, BaseChannel>,
+  writes: W[],
+  runId: string
+): void {
+  for (let i = 0; i < writes.length; i += 1) {
+    const [channelName, value] = writes[i];
+    let newValue: unknown;
+    if (channelName === START) {
+      // A StateGraph's input is one write to START, keyed by channel.
+      if (typeof value !== "object" || value === null || Array.isArray(value))
+        continue;
+      const entries = Object.entries(value);
+      const mapped = entries.map(([key, item]) => [
+        key,
+        channelInputWithIds(channels, key, item, runId),
+      ]);
+      newValue = mapped.every(([, item], j) => item === entries[j][1])
+        ? value
+        : { ...value, ...Object.fromEntries(mapped) };
+    } else {
+      newValue = channelInputWithIds(
+        channels,
+        String(channelName),
+        value,
+        runId
+      );
+    }
+    if (newValue !== value) writes[i] = [channelName, newValue] as W;
+  }
+}
+
+function channelInputWithIds(
+  channels: Record<string, BaseChannel>,
+  channelName: string,
+  value: unknown,
+  runId: string
+): unknown {
+  const channel = channels[channelName];
+  const makesMessages =
+    (isDeltaChannel(channel) &&
+      isMessagesDeltaReducer((channel as DeltaChannel<unknown>).reducer)) ||
+    (channel?.lc_graph_name === "BinaryOperatorAggregate" &&
+      (channel as BinaryOperatorAggregate<unknown>).operator ===
+        messagesStateReducer);
+  if (!makesMessages) return value;
+  const idAt = (index: number) => inputMessageId(runId, channelName, index);
+  const [isOverwrite, overwriteValue] = _getOverwriteValue<unknown>(value);
+  if (isOverwrite) {
+    if (!Array.isArray(overwriteValue)) return value;
+    const items = mapItems(overwriteValue, (item, index) =>
+      inputMessageWithId(item, idAt(index), false)
+    );
+    return items === overwriteValue ? value : new Overwrite(items);
+  }
+  if (Array.isArray(value)) {
+    return mapItems(value, (item, index) =>
+      inputMessageWithId(item, idAt(index), true)
+    );
+  }
+  return inputMessageWithId(value, idAt(0), true);
+}
+
+function inputMessageWithId(
+  item: unknown,
+  id: string,
+  keepPlain: boolean
+): unknown {
+  if (BaseMessage.isInstance(item)) {
+    if (item.id == null) setMessageId(item, id);
+    return item;
+  }
+  let message: BaseMessage;
+  try {
+    message = coerceMessageLikeToMessage(item as BaseMessageLike);
+  } catch {
+    return item;
+  }
+  if (keepPlain && isPlainObject(item)) {
+    return message.id == null ? { ...item, id } : item;
+  }
+  if (message.id == null) setMessageId(message, id);
+  return message;
+}
+
 function withMessageIds(value: unknown): unknown {
   const [isOverwrite, overwriteValue] = _getOverwriteValue<unknown>(value);
   if (!isOverwrite) {
@@ -190,7 +282,10 @@ function withMessageIds(value: unknown): unknown {
   return items === overwriteValue ? value : new Overwrite(items);
 }
 
-function mapItems(items: unknown[], fn: (item: unknown) => unknown): unknown[] {
+function mapItems(
+  items: unknown[],
+  fn: (item: unknown, index: number) => unknown
+): unknown[] {
   const mapped = items.map(fn);
   return mapped.every((item, i) => item === items[i]) ? items : mapped;
 }
@@ -241,8 +336,8 @@ function stampMessageIds(value: unknown): void {
   if (isOverwrite) stampMessageIds(overwriteValue);
 }
 
-function setMessageId(message: BaseMessage): void {
-  message.id = uuidv4();
+function setMessageId(message: BaseMessage, id: string = uuidv4()): void {
+  message.id = id;
   if (message.lc_kwargs != null) message.lc_kwargs.id = message.id;
 }
 
@@ -1869,6 +1964,18 @@ export class PregelLoop {
       if (inputWrites.length > 0) {
         // Before the input is applied, so this run reads the message ids that
         // are saved with it.
+        const runId = this.config.metadata?.run_id;
+        if (
+          !this.isNested &&
+          typeof runId === "string" &&
+          UUID_PATTERN.test(runId)
+        ) {
+          ensureInputMessageIds(
+            this.channels,
+            inputWrites as PendingWrite[],
+            runId
+          );
+        }
         const deltaInput = ensureDeltaMessageIds(
           this.channels,
           inputWrites as PendingWrite[]

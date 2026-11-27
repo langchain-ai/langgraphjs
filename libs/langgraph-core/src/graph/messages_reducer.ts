@@ -12,6 +12,7 @@ import {
   ToolMessage,
 } from "@langchain/core/messages";
 import { v4 } from "@langchain/core/utils/uuid";
+import { uuid5 } from "@langchain/langgraph-checkpoint";
 
 /**
  * Special value that signifies the intent to remove all previous messages in the state reducer.
@@ -281,4 +282,19 @@ export function isMessagesDeltaReducer(reducer: unknown): boolean {
     (reducer as unknown as Record<symbol, unknown>)[MESSAGES_DELTA_REDUCER] ===
       true
   );
+}
+
+/**
+ * The id LangGraph gives an input message that has none, in a run with a run
+ * id: a UUIDv5 of `input:{channel}:{index}` in the run id's namespace, where
+ * `index` is the message's position in that channel's input (0 for a single
+ * message). LangGraph Python derives the same id, so a server can compute
+ * which messages a run's input added.
+ */
+export function inputMessageId(
+  runId: string,
+  channel: string,
+  index: number
+): string {
+  return uuid5(`input:${channel}:${index}`, runId);
 }

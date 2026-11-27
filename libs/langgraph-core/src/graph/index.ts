@@ -30,6 +30,7 @@ export { MessageGraph, pushMessage } from "./message.js";
 export {
   messagesStateReducer,
   messagesDeltaReducer,
+  inputMessageId,
   REMOVE_ALL_MESSAGES,
   type Messages,
 } from "./messages_reducer.js";
