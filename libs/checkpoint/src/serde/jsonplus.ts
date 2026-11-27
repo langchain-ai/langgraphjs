@@ -129,6 +129,21 @@ function reviveConstructorRecord(
     return new Uint8Array(record.args[0]);
   }
 
+  if (hasConstructorId(record, "BigInt") && hasNoMethod(record)) {
+    // Only a plain base-10 integer string is a valid persisted BigInt. Anything
+    // else is malformed data and stays inert: `BigInt()` would otherwise coerce
+    // strings such as "", "0x10" or " 1 ".
+    if (
+      !Array.isArray(record.args) ||
+      record.args.length !== 1 ||
+      typeof record.args[0] !== "string" ||
+      !/^-?\d+$/.test(record.args[0])
+    ) {
+      return undefined;
+    }
+    return BigInt(record.args[0]);
+  }
+
   return undefined;
 }
 
@@ -219,6 +234,10 @@ function _default(obj: any): any {
     };
   } else if (obj instanceof Uint8Array) {
     return _encodeConstructorArgs(Uint8Array, "from", [Array.from(obj)]);
+  } else if (typeof obj === "bigint") {
+    // `JSON.stringify` throws on a bigint, and `stringify` turns that into an
+    // error string for the whole payload instead of rethrowing.
+    return _encodeConstructorArgs(BigInt, undefined, [obj.toString()]);
   } else {
     return obj;
   }
