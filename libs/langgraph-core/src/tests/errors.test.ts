@@ -7,7 +7,23 @@ import {
   START,
   StateGraph,
 } from "../web.js";
+import {
+  GraphBubbleUp,
+  GraphDrained,
+  GraphInterrupt,
+  NodeInterrupt,
+  ParentCommand,
+} from "../errors.js";
+import { Command } from "../constants.js";
 import { MemorySaverAssertImmutable } from "./utils.js";
+
+it("interrupt-like errors carry ls_run_status = interrupted", () => {
+  expect(new GraphInterrupt().ls_run_status).toBe("interrupted");
+  expect(new NodeInterrupt("x").ls_run_status).toBe("interrupted");
+  expect(new ParentCommand(new Command({})).ls_run_status).toBe("interrupted");
+  expect(new GraphDrained()).not.toHaveProperty("ls_run_status");
+  expect(new GraphBubbleUp()).not.toHaveProperty("ls_run_status");
+});
 
 it("StateGraph concurrent state value update fails", async () => {
   const StateAnnotation = Annotation.Root({
