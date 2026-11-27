@@ -859,8 +859,7 @@ export class RemoteGraph<
           typeof node.data === "string" ? node.data : (node.data?.name ?? ""),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: (node.data as any) ?? {},
-        metadata:
-          typeof node.data !== "string" ? (node.data?.metadata ?? {}) : {},
+        metadata: (node.metadata as DrawableNode["metadata"]) ?? {},
       };
     }
     return nodesMap;
