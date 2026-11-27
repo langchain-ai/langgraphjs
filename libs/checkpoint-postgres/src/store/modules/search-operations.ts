@@ -243,7 +243,7 @@ export class SearchOperations {
         value: row.value,
         createdAt: row.created_at || new Date(),
         updatedAt: row.updated_at || new Date(),
-        score: row.score || undefined,
+        score: row.score == null ? undefined : Number(row.score),
       }));
 
       // Refresh TTL for returned items if requested
