@@ -207,10 +207,17 @@ export class PostgresStore extends BaseStore {
     await this.runStoreMigrations();
     this.isSetup = true;
 
-    // Start TTL sweeper if configured
-    if (this.core.ttlConfig?.sweepIntervalMinutes) {
-      this.ttlManager.start();
-    }
+    this.startTtlSweeper();
+  }
+
+  /**
+   * Start the TTL sweeper when TTL is configured.
+   * Uses the documented 60-minute default when no interval is specified.
+   */
+  private startTtlSweeper(): void {
+    const ttlConfig = this.core.ttlConfig;
+    if (!ttlConfig) return;
+    this.ttlManager.start(ttlConfig.sweepIntervalMinutes || 60);
   }
 
   /**
@@ -367,12 +374,17 @@ export class PostgresStore extends BaseStore {
   }
 
   /**
-   * Start the store. Calls setup() if ensureTables is true.
+   * Start the store. Runs setup() when ensureTables is true and always starts
+   * the TTL sweeper when TTL is configured, without running migrations when
+   * ensureTables is false.
    */
   async start(): Promise<void> {
     if (this.ensureTables && !this.isSetup) {
       await this.setup();
+      return;
     }
+
+    this.startTtlSweeper();
   }
 
   /**

@@ -8,11 +8,10 @@ export class TTLManager {
 
   constructor(private core: DatabaseCore) {}
 
-  start(): void {
+  start(intervalMinutes: number = 60): void {
     if (this.sweepInterval) return; // Already running
 
-    const intervalMs =
-      (this.core.ttlConfig?.sweepIntervalMinutes || 60) * 60 * 1000;
+    const intervalMs = intervalMinutes * 60 * 1000;
     this.sweepInterval = setInterval(() => {
       this.sweepExpiredItems().catch((error) => {
         console.error("Error during TTL sweep:", error);
