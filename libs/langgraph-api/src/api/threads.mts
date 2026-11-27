@@ -40,6 +40,8 @@ api.post(
     // Search Threads
     const payload = c.req.valid("json");
     const result: unknown[] = [];
+    const limit = payload.limit ?? 10;
+    const offset = payload.offset ?? 0;
 
     let total = 0;
     for await (const item of threads().search(
@@ -48,8 +50,8 @@ api.post(
         values: payload.values,
         metadata: payload.metadata,
         ids: payload.ids,
-        limit: payload.limit ?? 10,
-        offset: payload.offset ?? 0,
+        limit,
+        offset,
         sort_by: payload.sort_by ?? "created_at",
         sort_order: payload.sort_order ?? "desc",
         select: payload.select as ThreadSelectField[],
@@ -68,9 +70,11 @@ api.post(
         total = item.total;
       }
     }
-    const nextOffset = (payload.offset ?? 0) + total;
+    if (result.length === limit) {
+      c.res.headers.set("X-Pagination-Next", String(offset + result.length));
+    }
+    const nextOffset = offset + total;
     if (total === payload.limit) {
-      c.res.headers.set("X-Pagination-Next", nextOffset.toString());
       c.res.headers.set("X-Pagination-Total", (nextOffset + 1).toString());
     } else {
       c.res.headers.set("X-Pagination-Total", nextOffset.toString());

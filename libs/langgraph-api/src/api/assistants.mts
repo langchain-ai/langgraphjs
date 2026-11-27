@@ -76,6 +76,8 @@ api.post(
     // Search Assistants
     const payload = c.req.valid("json");
     const result: unknown[] = [];
+    const limit = payload.limit ?? 10;
+    const offset = payload.offset ?? 0;
 
     let total = 0;
     for await (const item of assistants().search(
@@ -83,8 +85,8 @@ api.post(
         graph_id: payload.graph_id,
         name: payload.name,
         metadata: payload.metadata,
-        limit: payload.limit ?? 10,
-        offset: payload.offset ?? 0,
+        limit,
+        offset,
         sort_by: payload.sort_by,
         sort_order: payload.sort_order,
         select: payload.select as AssistantSelectField[],
@@ -102,20 +104,13 @@ api.post(
         total = item.total;
       }
     }
+    if (result.length === limit) {
+      c.res.headers.set("X-Pagination-Next", String(offset + result.length));
+    }
     if (total === payload.limit) {
-      c.res.headers.set(
-        "X-Pagination-Next",
-        ((payload.offset ?? 0) + total).toString()
-      );
-      c.res.headers.set(
-        "X-Pagination-Total",
-        ((payload.offset ?? 0) + total + 1).toString()
-      );
+      c.res.headers.set("X-Pagination-Total", (offset + total + 1).toString());
     } else {
-      c.res.headers.set(
-        "X-Pagination-Total",
-        ((payload.offset ?? 0) + total).toString()
-      );
+      c.res.headers.set("X-Pagination-Total", (offset + total).toString());
     }
     return c.json(result);
   }
