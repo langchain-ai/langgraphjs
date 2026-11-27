@@ -1,5 +1,11 @@
 # @langchain/langgraph
 
+## 1.7.6
+
+### Patch Changes
+
+- [#3443](https://github.com/langchain-ai/langgraphjs/pull/3443) [`61aad39`](https://github.com/langchain-ai/langgraphjs/commit/61aad39ef67051aa04cacd57b75a60538c5fd72d) Thanks [@sera-wi](https://github.com/sera-wi)! - A message object written to a messages `DeltaChannel` with `id: ""` now gets an id, as plain objects and strings already did. Before, two such messages in one write collapsed into one.
+
 ## 1.7.5
 
 ### Patch Changes

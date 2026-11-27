@@ -1,5 +1,9 @@
 # @langchain/langgraph-ui
 
+## 1.8.2
+
+No changes in this release.
+
 ## 1.8.1
 
 ### Patch Changes
