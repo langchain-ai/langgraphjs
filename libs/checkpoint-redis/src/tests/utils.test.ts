@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   assertSafeKeyComponent,
   escapeRediSearchTagValue,
+  isMissingIndexError,
 } from "../utils.js";
 
 describe("escapeRediSearchTagValue", () => {
@@ -193,5 +194,26 @@ describe("assertSafeKeyComponent", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       assertSafeKeyComponent("task_id", { $gt: "" } as any)
     ).toThrow(/"task_id"/);
+  });
+});
+
+describe("isMissingIndexError", () => {
+  it("recognizes the missing-index reply of each Redis version", () => {
+    // Redis Stack 7.x
+    expect(isMissingIndexError(new Error("No such index checkpoints"))).toBe(
+      true
+    );
+    // Redis 8
+    expect(
+      isMissingIndexError(new Error("Index not found: checkpoints"))
+    ).toBe(true);
+  });
+
+  it("rejects other errors and non-errors", () => {
+    expect(isMissingIndexError(new Error("Syntax error at offset 3"))).toBe(
+      false
+    );
+    expect(isMissingIndexError(undefined)).toBe(false);
+    expect(isMissingIndexError("no such index")).toBe(false);
   });
 });

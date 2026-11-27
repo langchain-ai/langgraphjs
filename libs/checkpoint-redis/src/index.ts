@@ -16,8 +16,17 @@ import {
 } from "@langchain/langgraph-checkpoint";
 import { RunnableConfig } from "@langchain/core/runnables";
 import { createClient, createCluster } from "redis";
-import { assertSafeKeyComponent, escapeRediSearchTagValue } from "./utils.js";
+import {
+  assertSafeKeyComponent,
+  escapeRediSearchTagValue,
+  isMissingIndexError,
+} from "./utils.js";
 import { WRITE_KEYS_ZSET_PREFIX } from "./constants.js";
+
+// How many of a namespace's checkpoints getTuple reads from the index to find
+// the latest one. Ties under case folding are the only reason to read more
+// than one.
+const LATEST_CHECKPOINT_SEARCH_SIZE = 20;
 
 // Type for Redis client - supports both standalone and cluster
 export type RedisClientType =
@@ -164,18 +173,15 @@ export class RedisSaver extends BaseCheckpointSaver {
       key = `checkpoint:${threadId}:${checkpointNs}:${checkpointId}`;
       jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
     } else {
-      // Get latest checkpoint - need to search
-      const pattern = `checkpoint:${threadId}:${checkpointNs}:*`;
-      // Use keys for simplicity - scan would be better for large datasets
-      const keys = await (this.client as any).keys(pattern);
-
-      if (keys.length === 0) {
+      // Get latest checkpoint
+      const latestKey = await this.getLatestCheckpointKey(
+        threadId,
+        checkpointNs
+      );
+      if (latestKey === undefined) {
         return undefined;
       }
-
-      // Sort by key to get latest
-      keys.sort();
-      key = keys[keys.length - 1];
+      key = latestKey;
       jsonDoc = (await this.client.json.get(key)) as CheckpointDocument | null;
     }
 
@@ -518,7 +524,7 @@ export class RedisSaver extends BaseCheckpointSaver {
         // Search succeeded, return without falling through
         return;
       } catch (error: any) {
-        if (error.message?.includes("no such index")) {
+        if (isMissingIndexError(error)) {
           // Index doesn't exist yet, fall through to regular listing
         } else {
           throw error;
@@ -870,6 +876,85 @@ export class RedisSaver extends BaseCheckpointSaver {
   //   return checkpoint;
   // }
 
+  /**
+   * Key of the checkpoint with the highest `checkpoint_id` in the thread's
+   * namespace, or undefined when it has none. Looked up in the `checkpoints`
+   * index: KEYS walks every key in the database, not just this thread's, and
+   * blocks Redis while it does, so its cost grows with all threads' data.
+   */
+  private async getLatestCheckpointKey(
+    threadId: string,
+    checkpointNs: string
+  ): Promise<string | undefined> {
+    // put() stores the root namespace as "__empty__" for RediSearch
+    const indexedNs = checkpointNs === "" ? "__empty__" : checkpointNs;
+    const query = `@thread_id:{${escapeRediSearchTagValue(
+      threadId
+    )}} @checkpoint_ns:{${escapeRediSearchTagValue(indexedNs)}}`;
+
+    let results;
+    try {
+      results = await this.client.ft.search("checkpoints", query, {
+        SORTBY: {
+          BY: "checkpoint_id",
+          DIRECTION: "DESC",
+        },
+        LIMIT: {
+          from: 0,
+          size: LATEST_CHECKPOINT_SEARCH_SIZE,
+        },
+        RETURN: ["thread_id", "checkpoint_ns", "checkpoint_id"],
+      });
+    } catch (error) {
+      // Index doesn't exist yet: nothing was ever put through a saver here,
+      // or it was dropped. Scan the keys instead.
+      if (isMissingIndexError(error)) {
+        return this.getLatestCheckpointKeyByScan(threadId, checkpointNs);
+      }
+      throw error;
+    }
+
+    const checkpointIds: string[] = [];
+    for (const { value } of results.documents) {
+      // TAG matching ignores case, so the query also matches e.g. thread
+      // "Abc" for "abc". Another thread's checkpoints may then have filled
+      // the page, so scan the keys, which match exactly.
+      if (value.thread_id !== threadId || value.checkpoint_ns !== indexedNs) {
+        return this.getLatestCheckpointKeyByScan(threadId, checkpointNs);
+      }
+      checkpointIds.push(value.checkpoint_id as string);
+    }
+    if (checkpointIds.length === 0) {
+      return undefined;
+    }
+
+    // SORTBY folds the case of TAG values; pick the highest id with the same
+    // string comparison the key scan uses.
+    checkpointIds.sort();
+
+    return `checkpoint:${threadId}:${checkpointNs}:${
+      checkpointIds[checkpointIds.length - 1]
+    }`;
+  }
+
+  // Fallback for getLatestCheckpointKey when the index can't answer
+  private async getLatestCheckpointKeyByScan(
+    threadId: string,
+    checkpointNs: string
+  ): Promise<string | undefined> {
+    const pattern = `checkpoint:${threadId}:${checkpointNs}:*`;
+    // Use keys for simplicity - scan would be better for large datasets
+    const keys = await (this.client as any).keys(pattern);
+
+    if (keys.length === 0) {
+      return undefined;
+    }
+
+    // Sort by key to get latest
+    keys.sort();
+    return keys[keys.length - 1];
+  }
+
   // Helper method to load pending writes
   private async loadPendingWrites(
     threadId: string,
@@ -881,20 +966,22 @@ export class RedisSaver extends BaseCheckpointSaver {
     assertSafeKeyComponent("thread_id", threadId);
     assertSafeKeyComponent("checkpoint_ns", checkpointNs, { allowEmpty: true });
     assertSafeKeyComponent("checkpoint_id", checkpointId);
-    // Search for all write documents for this checkpoint
-    const pattern = `checkpoint_write:${threadId}:${checkpointNs}:${checkpointId}:*`;
-    const writeKeys = await (this.client as any).keys(pattern);
+    // putWrites() has registered every write key of the checkpoint in this
+    // sorted set since the first release, and gives the set a TTL no shorter
+    // than the keys', so it lists them without a KEYS scan of the database.
+    const zsetKey = `${WRITE_KEYS_ZSET_PREFIX}:${threadId}:${checkpointNs}:${checkpointId}`;
+    const writeKeys = await this.client.zRange(zsetKey, 0, -1);
 
-    if (writeKeys.length === 0) {
+    // Fetch in parallel: node-redis pipelines the commands into one round
+    // trip, and unlike JSON.MGET they may span cluster hash slots.
+    const fetched = await Promise.all(
+      writeKeys.map((writeKey) => this.client.json.get(writeKey))
+    );
+    // Skip keys that expired after the set listed them.
+    const writeDocuments: any[] = fetched.filter((writeDoc) => writeDoc);
+
+    if (writeDocuments.length === 0) {
       return undefined;
-    }
-
-    const writeDocuments: any[] = [];
-    for (const writeKey of writeKeys) {
-      const writeDoc = (await this.client.json.get(writeKey)) as any;
-      if (writeDoc) {
-        writeDocuments.push(writeDoc);
-      }
     }
 
     // Order by `writesSortKey` — `(task_path, task_id, idx)` — the order live

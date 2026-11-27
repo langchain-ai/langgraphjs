@@ -22,6 +22,19 @@ export function escapeRediSearchTagValue(value: string): string {
 }
 
 /**
+ * Whether `error` is RediSearch reporting that an index doesn't exist. The
+ * wording differs by version: Redis Stack 7.x replies "No such index <name>",
+ * Redis 8 replies "Index not found: <name>".
+ */
+export function isMissingIndexError(error: unknown): boolean {
+  const message = (error as { message?: unknown } | null)?.message;
+  return (
+    typeof message === "string" &&
+    /no such index|index not found/i.test(message)
+  );
+}
+
+/**
  * Characters that are interpreted as wildcards or escapes by Redis pattern
  * commands (KEYS, SCAN MATCH, PSUBSCRIBE, etc.). Embedding any of these in a
  * caller-controlled key component allows pattern injection: a `thread_id` of
