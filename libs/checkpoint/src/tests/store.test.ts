@@ -131,6 +131,57 @@ describe("AsyncBatchedStore", () => {
   });
 });
 
+describe("AsyncBatchedStore.put index forwarding", () => {
+  class Recorder extends BaseStore {
+    readonly operations: Operation[] = [];
+
+    async batch<Op extends Operation[]>(
+      ops: Op
+    ): Promise<OperationResults<Op>> {
+      this.operations.push(...ops);
+      return [] as unknown as OperationResults<Op>;
+    }
+  }
+
+  it("forwards the index argument from the BaseStore.put signature", async () => {
+    const recorder = new Recorder();
+    const store = new AsyncBatchedStore(recorder);
+    store.start();
+    try {
+      await (store as BaseStore).put(
+        ["docs"],
+        "k",
+        { text: "hello" },
+        ["text"]
+      );
+      expect(recorder.operations).toEqual([
+        {
+          namespace: ["docs"],
+          key: "k",
+          value: { text: "hello" },
+          index: ["text"],
+        },
+      ]);
+    } finally {
+      await store.stop();
+    }
+  });
+
+  it("keeps index undefined when the argument is omitted", async () => {
+    const recorder = new Recorder();
+    const store = new AsyncBatchedStore(recorder);
+    store.start();
+    try {
+      await (store as BaseStore).put(["docs"], "k", { text: "hello" });
+      expect(recorder.operations).toEqual([
+        { namespace: ["docs"], key: "k", value: { text: "hello" } },
+      ]);
+    } finally {
+      await store.stop();
+    }
+  });
+});
+
 describe("BaseStore", () => {
   class TestStore extends BaseStore {
     async batch<Op extends Operation[]>(
