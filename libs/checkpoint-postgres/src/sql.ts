@@ -167,6 +167,142 @@ export const getSQLStatements = (schema: string): SQL_STATEMENTS => {
   };
 };
 
+/** What `PostgresSaver.prune` can do to a thread. */
+export const PRUNE_STRATEGIES = ["keep_latest", "delete"] as const;
+
+export type PruneStrategy = (typeof PRUNE_STRATEGIES)[number];
+
+/**
+ * The statements of `PostgresSaver.prune`, ported from langgraph (Python)'s
+ * `PRUNE_*_SQL`.
+ *
+ * None of them joins two sets of a thread's rows: a join is planned from
+ * per-thread row estimates, which are worst for the few huge threads worth
+ * pruning, and can go quadratic. They look rows up by primary key instead
+ * (`LATERAL ... LIMIT 1`, `= ANY`).
+ */
+export const getPruneSQLStatements = (schema: string) => {
+  const SCHEMA_TABLES = getTablesWithSchema(schema);
+  return {
+    /** `$1`: the thread ids. */
+    DELETE_THREADS_SQL: [
+      `DELETE FROM ${SCHEMA_TABLES.checkpoints} WHERE thread_id = ANY($1)`,
+      `DELETE FROM ${SCHEMA_TABLES.checkpoint_blobs} WHERE thread_id = ANY($1)`,
+      `DELETE FROM ${SCHEMA_TABLES.checkpoint_writes} WHERE thread_id = ANY($1)`,
+    ],
+
+    /**
+     * `$1`: the thread ids. A `DeltaChannel` leaves update counters in
+     * checkpoint metadata, or a snapshot: an inline `true` marker with a blob
+     * behind it, which a plain `true` value never has. LangGraph.js inlines no
+     * values, but marks the threads its `DeltaChannel` graphs start with
+     * `delta_writes_versioned`.
+     */
+    DELTA_THREADS_SQL: `SELECT thread_id FROM ${SCHEMA_TABLES.checkpoints}
+  WHERE thread_id = ANY($1) AND (
+    metadata ? 'counters_since_delta_snapshot'
+    OR metadata ? 'delta_writes_versioned'
+  )
+  UNION
+  SELECT c.thread_id
+  FROM ${SCHEMA_TABLES.checkpoints} c
+  CROSS JOIN LATERAL jsonb_each(c.checkpoint -> 'channel_values') AS v
+  CROSS JOIN LATERAL (
+    SELECT 1 FROM ${SCHEMA_TABLES.checkpoint_blobs} b
+    WHERE b.thread_id = c.thread_id
+    AND b.checkpoint_ns = c.checkpoint_ns
+    AND b.channel = v.key
+    AND b.version = c.checkpoint -> 'channel_versions' ->> v.key
+    LIMIT 1
+  ) AS snapshot
+  WHERE c.thread_id = ANY($1) AND v.value = 'true'::jsonb`,
+
+    /**
+     * `$1`: the thread id. Per namespace: the latest checkpoint, the parent it
+     * reads its pending sends from when it predates v4, and the root graph's
+     * checkpoint its subgraph call started from, with whether that one is saved.
+     */
+    HEADS_SQL: `SELECT
+    h.checkpoint_ns,
+    h.checkpoint_id AS head,
+    CASE WHEN (c.checkpoint ->> 'v')::int < 4 AND EXISTS (
+      SELECT 1 FROM ${SCHEMA_TABLES.checkpoint_writes} w
+      WHERE w.thread_id = $1
+      AND w.checkpoint_ns = h.checkpoint_ns
+      AND w.checkpoint_id = c.parent_checkpoint_id
+      AND w.channel = '${TASKS}'
+    ) THEN c.parent_checkpoint_id END AS sends_parent,
+    c.metadata -> 'parents' ->> '' AS root,
+    EXISTS (
+      SELECT 1 FROM ${SCHEMA_TABLES.checkpoints} r
+      WHERE r.thread_id = $1 AND r.checkpoint_ns = ''
+      AND r.checkpoint_id = c.metadata -> 'parents' ->> ''
+    ) AS root_saved
+  FROM (
+    SELECT DISTINCT ON (checkpoint_ns) checkpoint_ns, checkpoint_id
+    FROM ${SCHEMA_TABLES.checkpoints}
+    WHERE thread_id = $1
+    ORDER BY checkpoint_ns DESC, checkpoint_id DESC
+  ) AS h
+  CROSS JOIN LATERAL (
+    SELECT checkpoint, parent_checkpoint_id, metadata FROM ${SCHEMA_TABLES.checkpoints}
+    WHERE thread_id = $1
+    AND checkpoint_ns = h.checkpoint_ns
+    AND checkpoint_id = h.checkpoint_id
+  ) AS c`,
+
+    /** `$1`: the thread id, `$2`: the namespace, `$3`: the checkpoint ids to keep. */
+    UNKEPT_SQL: `SELECT checkpoint_id FROM ${SCHEMA_TABLES.checkpoints}
+  WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id <> ALL($3)`,
+
+    /**
+     * `$1`: the thread id, `$2`: the namespace, `$3`: the checkpoint ids deleted.
+     * A run saves a superstep's writes in the background, where they can commit
+     * before their checkpoint does, so they go by the checkpoints deleted.
+     */
+    WRITES_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_writes}
+  WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id = ANY($3)`,
+
+    /**
+     * `$1`: the thread id, `$2`: the namespace, `$3`: the checkpoint ids to
+     * keep. Returns the channel versions the deleted checkpoints used.
+     */
+    CHECKPOINTS_SQL: `WITH deleted AS (
+    DELETE FROM ${SCHEMA_TABLES.checkpoints}
+    WHERE thread_id = $1 AND checkpoint_ns = $2 AND checkpoint_id <> ALL($3)
+    RETURNING checkpoint -> 'channel_versions' AS versions
+  )
+  SELECT DISTINCT v.key AS channel, v.value AS version
+  FROM deleted
+  CROSS JOIN LATERAL jsonb_each_text(deleted.versions) AS v`,
+
+    /**
+     * `$1`: the thread id, `$2`: the namespace, `$3`: the checkpoint ids kept,
+     * `$4`: the same ids, to compare each parent against.
+     */
+    PARENTS_SQL: `UPDATE ${SCHEMA_TABLES.checkpoints} SET parent_checkpoint_id = NULL
+  WHERE thread_id = $1 AND checkpoint_ns = $2
+  AND checkpoint_id = ANY($3) AND parent_checkpoint_id <> ALL($4)`,
+
+    /** `$1`: the thread id, `$2`: the namespace. */
+    REFERENCED_BLOBS_SQL: `SELECT DISTINCT v.key AS channel, v.value AS version
+  FROM ${SCHEMA_TABLES.checkpoints} c
+  CROSS JOIN LATERAL jsonb_each_text(c.checkpoint -> 'channel_versions') AS v
+  WHERE c.thread_id = $1 AND c.checkpoint_ns = $2`,
+
+    /** `$1`: the thread id, `$2`: the namespace, `$3`: the channel, `$4`: the versions. */
+    BLOBS_SQL: `DELETE FROM ${SCHEMA_TABLES.checkpoint_blobs}
+  WHERE thread_id = $1 AND checkpoint_ns = $2 AND channel = $3 AND version = ANY($4)`,
+
+    /** `$1`: the thread id, `$2`: the namespaces of the subgraph calls. */
+    SUBGRAPH_CALLS_SQL: [
+      `DELETE FROM ${SCHEMA_TABLES.checkpoints} WHERE thread_id = $1 AND checkpoint_ns = ANY($2)`,
+      `DELETE FROM ${SCHEMA_TABLES.checkpoint_writes} WHERE thread_id = $1 AND checkpoint_ns = ANY($2)`,
+      `DELETE FROM ${SCHEMA_TABLES.checkpoint_blobs} WHERE thread_id = $1 AND checkpoint_ns = ANY($2)`,
+    ],
+  };
+};
+
 export type DeltaStage1Row = {
   checkpoint_id: string;
   parent_checkpoint_id: string | null;
