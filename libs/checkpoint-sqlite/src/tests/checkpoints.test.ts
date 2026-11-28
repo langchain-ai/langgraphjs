@@ -290,6 +290,99 @@ describe("SqliteSaver", () => {
     ).toBeDefined();
   });
 
+  it.each([1, 3, 4])(
+    "isolates pending sends by namespace for checkpoint version %i",
+    async (version) => {
+      const saver = SqliteSaver.fromConnString(":memory:");
+      try {
+        // A copied legacy history can retain IDs in another namespace.
+        const parent = { ...emptyCheckpoint(), v: version };
+        const child = { ...emptyCheckpoint(), v: version };
+        const namespaces = ["", "subgraph"];
+
+        for (const namespace of namespaces) {
+          const parentConfig = await saver.put(
+            {
+              configurable: {
+                thread_id: "thread-1",
+                checkpoint_ns: namespace,
+              },
+            },
+            parent,
+            { source: "loop", parents: {}, step: 0 }
+          );
+          await saver.putWrites(
+            parentConfig,
+            [[TASKS, `send-${namespace}`]],
+            "task-1"
+          );
+          await saver.put(
+            parentConfig,
+            {
+              ...child,
+              channel_values:
+                version < 4 ? {} : { [TASKS]: [`stored-${namespace}`] },
+            },
+            { source: "loop", parents: {}, step: 1 }
+          );
+        }
+
+        for (const namespace of namespaces) {
+          const config = {
+            configurable: {
+              thread_id: "thread-1",
+              checkpoint_ns: namespace,
+              checkpoint_id: child.id,
+            },
+          };
+          const expected = [
+            version < 4 ? `send-${namespace}` : `stored-${namespace}`,
+          ];
+          const tuple = await saver.getTuple(config);
+          expect(tuple?.checkpoint.channel_values[TASKS]).toEqual(expected);
+
+          const tuples = [];
+          for await (const item of saver.list({
+            configurable: {
+              thread_id: "thread-1",
+              checkpoint_ns: namespace,
+            },
+          })) {
+            tuples.push(item);
+          }
+          expect(
+            tuples.find((item) => item.checkpoint.id === child.id)?.checkpoint
+              .channel_values[TASKS]
+          ).toEqual(expected);
+        }
+
+        const defaultNamespace = await saver.getTuple({
+          configurable: { thread_id: "thread-1", checkpoint_id: child.id },
+        });
+        expect(defaultNamespace?.checkpoint.channel_values[TASKS]).toEqual([
+          version < 4 ? "send-" : "stored-",
+        ]);
+
+        const history: CheckpointTuple[] = [];
+        for await (const item of saver.list({
+          configurable: { thread_id: "thread-1" },
+        })) {
+          history.push(item);
+        }
+        const children = history.filter((item) => item.checkpoint.id === child.id);
+        expect(children).toHaveLength(namespaces.length);
+        for (const item of children) {
+          const namespace = item.config.configurable?.checkpoint_ns;
+          expect(item.checkpoint.channel_values[TASKS]).toEqual([
+            version < 4 ? `send-${namespace}` : `stored-${namespace}`,
+          ]);
+        }
+      } finally {
+        saver.db.close();
+      }
+    }
+  );
+
   it("pending sends migration", async () => {
     const saver = SqliteSaver.fromConnString(":memory:");
 
