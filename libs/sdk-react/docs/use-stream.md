@@ -8,6 +8,7 @@ The root hook of `@langchain/react` v1. Mount it once per thread. It owns the th
   - [Common options](#common-options)
   - [Agent Server branch (`AgentServerOptions`)](#agent-server-branch-agentserveroptions)
   - [Custom-adapter branch (`CustomAdapterOptions`)](#custom-adapter-branch-customadapteroptions)
+  - [Loading only some state keys](#loading-only-some-state-keys)
 - [Return values](#return-values)
 - [`submit()` options](#submit-options)
 - [Stopping a run and responding to interrupts](#stopping-a-run-and-responding-to-interrupts)
@@ -32,6 +33,7 @@ The option bag is a discriminated union on `transport`:
 | `threadId`      | `string \| null`                                                                          | Bind to an existing thread. Pass `null` to start a new thread on next submit; changing the value hydrates and resubscribes. |
 | `initialValues` | `StateType`                                                                               | Initial state values used until the first `values` event lands.                                                             |
 | `messagesKey`   | `string`                                                                                  | State key holding the message array. Defaults to `"messages"`.                                                              |
+| `stateKeys`     | `readonly (keyof StateType & string)[]`                                                   | The `values` keys your UI reads. Opening a thread loads only these plus the messages key (always included), and `stream.values` holds only those keys, also while runs stream. Unset loads the full state. See [Loading only some state keys](#loading-only-some-state-keys). |
 | `onThreadId`    | `(id: string) => void`                                                                    | Fires when the server mints a new thread id.                                                                                |
 | `onCreated`     | `(info: { runId: string }) => void`                                                       | Convenience callback fired when this hook's run is accepted by the server.                                                  |
 | `onCompleted`   | `(info: { runId?: string; reason: "success" \| "error" \| "interrupt" \| "stopped" }) => void` | Convenience callback fired when a run's active streaming phase ends. `runId` may be omitted for re-attached in-flight runs. |
@@ -58,6 +60,24 @@ The option bag is a discriminated union on `transport`:
 | `transport` | `AgentServerAdapter` | Adapter instance. Replaces the built-in transport stack entirely. |
 
 Passing `apiUrl` / `apiKey` / `fetch` / `webSocketFactory` on the custom-adapter branch is a compile-time error.
+
+### Loading only some state keys
+
+By default, opening a thread loads its whole state. When your UI reads only a few `values` keys, list them in `stateKeys`:
+
+```tsx
+const stream = useStream<typeof agent>({
+  assistantId: "agent",
+  threadId,
+  stateKeys: ["todos"],
+});
+```
+
+- The thread-state read sends `select` for `values.todos` and `values.messages`, plus the fields `useStream` needs itself (checkpoint, pending tasks and interrupts, `next`, creation time, step). The messages key (`messagesKey`) is always included; `stateKeys: []` loads only messages.
+- `stream.values` contains only `todos` and `messages`, after loading and while a run streams.
+- A server that doesn't support `select` on `GET /threads/{thread_id}/state` returns the full state. `stream.values` is narrowed the same way, so only the payload size differs.
+- A custom adapter's `getState` receives `{ select }`; it may forward it or ignore it. `HttpAgentServerAdapter` forwards it.
+- `stateKeys` is read once, when the hook is created, so an inline array is fine.
 
 ## Return values
 

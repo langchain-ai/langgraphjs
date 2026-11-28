@@ -10,7 +10,6 @@ import {
   getInteropZodObjectShape,
   type InteropZodObject,
   interopParse,
-  interopZodObjectPartial,
   isInteropZodObject,
 } from "@langchain/core/utils/types";
 import type {
@@ -78,6 +77,7 @@ import type {
   RetryPolicy,
   TimeoutPolicy,
 } from "../pregel/utils/index.js";
+import type { TracePolicy } from "@langchain/core/tracers/tracer_langchain";
 import { coerceTimeoutPolicy } from "../pregel/utils/index.js";
 import { isPregelLike } from "../pregel/utils/subgraph.js";
 import { LastValueAfterFinish } from "../channels/last_value.js";
@@ -201,6 +201,7 @@ export type StateGraphNodeSpec<RunInput, RunOutput> = NodeSpec<
 > &
   NodePolicies & {
     input?: StateDefinition;
+    tracePolicy?: TracePolicy;
   };
 
 /**
@@ -222,6 +223,8 @@ export type StateGraphAddNodeOptions<
   Update = unknown,
 > = {
   input?: InputSchema;
+  /** Shape what `LangChainTracer` sends to LangSmith for this node's own run (see `@langchain/core`'s `TracePolicy`). */
+  tracePolicy?: TracePolicy;
   /**
    * Optional node-level error handler. Runs only after this node's
    * {@link RetryPolicy} is exhausted. Receives a {@link NodeError} with the
@@ -1221,6 +1224,7 @@ export class StateGraph<
         retryPolicy: options?.retryPolicy,
         cachePolicy,
         timeout: coerceTimeoutPolicy(options?.timeout),
+        tracePolicy: options?.tracePolicy,
         metadata: options?.metadata,
         input: inputSpec ?? this._schemaDefinition,
         subgraphs: isPregelLike(runnable)
@@ -1821,12 +1825,14 @@ export class CompiledStateGraph<
         const schemaUpdates = updates.filter(([k]) => schemaKeys.has(k));
         if (schemaUpdates.length === 0) return updates;
 
-        const updateSchema = interopZodObjectPartial(
-          this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
-            withReducerSchema: true,
-          })
+        const updateSchema = this._metaRegistry.getExtendedChannelSchemas(
+          schemaDef,
+          { withReducerSchema: true, asPartial: true }
         );
-        const valueSchema = interopZodObjectPartial(schemaDef);
+        const valueSchema = this._metaRegistry.getExtendedChannelSchemas(
+          schemaDef,
+          { asPartial: true }
+        );
         return updates.map(([k, v]) => {
           if (!schemaKeys.has(k)) return [k, v];
 
@@ -1910,6 +1916,7 @@ export class CompiledStateGraph<
               : _getUpdates,
           trace: false,
           recurse: false,
+          bindContext: false,
         }),
       },
     ];
@@ -1957,6 +1964,7 @@ export class CompiledStateGraph<
         retryPolicy: node?.retryPolicy,
         cachePolicy,
         timeout: node?.timeout,
+        tracePolicy: node?.tracePolicy,
         subgraphs: node?.subgraphs,
         ends: node?.ends,
         isErrorHandler: node?.isErrorHandler,
@@ -2088,7 +2096,10 @@ export class CompiledStateGraph<
       if (isInteropZodObject(inputDef)) return apply(inputDef);
       if (inputDef === PartialStateSchema) {
         if (isInteropZodObject(schemaDef)) {
-          return interopZodObjectPartial(apply(schemaDef)!);
+          return this._metaRegistry.getExtendedChannelSchemas(schemaDef, {
+            withReducerSchema: true,
+            asPartial: true,
+          });
         }
         return undefined;
       }
@@ -2180,6 +2191,7 @@ function _getControlBranch() {
     tags: [TAG_HIDDEN],
     trace: false,
     recurse: false,
+    bindContext: false,
     name: "<control_branch>",
   });
   return new Branch({

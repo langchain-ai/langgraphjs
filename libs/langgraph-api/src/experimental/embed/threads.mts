@@ -6,7 +6,7 @@ import { RunnableConfig } from "@langchain/core/runnables";
 
 import * as schemas from "../../schemas.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
-import { stateSnapshotToThreadState } from "../../state.mjs";
+import { selectThreadState, stateSnapshotToThreadState } from "../../state.mjs";
 
 import type { EmbedRouteContext } from "./types.mjs";
 
@@ -226,7 +226,8 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
     zValidator("json", schemas.ThreadHistoryRequest),
     async (c) => {
       const { thread_id } = c.req.valid("param");
-      const { limit, before, metadata, checkpoint } = c.req.valid("json");
+      const { limit, before, metadata, checkpoint, select } =
+        c.req.valid("json");
 
       const thread = await context.threads.get(thread_id);
       const graphId = thread?.metadata?.graph_id as string | undefined | null;
@@ -246,7 +247,9 @@ export function registerThreadRoutes(api: Hono, context: EmbedRouteContext) {
         before: beforeConfig,
         filter: metadata,
       })) {
-        result.push(stateSnapshotToThreadState(state));
+        result.push(
+          selectThreadState(stateSnapshotToThreadState(state), select)
+        );
       }
       return jsonExtra(c, result);
     }

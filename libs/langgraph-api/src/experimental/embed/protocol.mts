@@ -12,10 +12,11 @@ import { serialiseAsDict } from "../../utils/serde.mjs";
 import { jsonExtra } from "../../utils/hono.mjs";
 import { RunProtocolSession } from "../../protocol/session/index.mjs";
 import { PROTOCOL_STREAM_RUN_KEY } from "../../protocol/constants.mjs";
+import { isKeyedByInterruptId } from "../../command.mjs";
 import {
-  isKeyedByInterruptId,
+  forkCheckpointId,
   matchesSinkFilter,
-  normalizeMultitaskStrategy,
+  multitaskStrategyFromRunStart,
   DEFAULT_MULTITASK_STRATEGY,
 } from "../../protocol/service.mjs";
 import type {
@@ -58,6 +59,28 @@ const parseSocketPayload = async (event: MessageEvent): Promise<string> => {
   }
   return String(event.data);
 };
+
+/**
+ * Writes a thread's buffered events in order, including ones pushed while a
+ * write awaits. A run that drops the buffer swaps in a new array, and the
+ * replay moves to it from the start: the live path skips this sink until the
+ * replay ends, so stopping early would lose the new run's first events.
+ */
+export async function replayQueuedEvents(
+  thread: Pick<EmbedThread, "queuedEvents">,
+  write: (event: ProtocolEvent) => Promise<void>
+) {
+  let events = thread.queuedEvents;
+  let cursor = 0;
+  while (cursor < events.length || events !== thread.queuedEvents) {
+    if (events !== thread.queuedEvents) {
+      events = thread.queuedEvents;
+      cursor = 0;
+      continue;
+    }
+    await write(events[cursor++]);
+  }
+}
 
 /**
  * Register thread-centric v2 protocol routes on an embed server Hono app.
@@ -192,8 +215,13 @@ export function registerProtocolRoutes(
         message: `Thread ${thread.threadId} is bound to assistant ${thread.assistantId}; cannot run ${assistantId}.`,
       });
     }
+    const forkFrom = forkCheckpointId(params.config);
+    // A fork starts a new run from its checkpoint whatever the thread's
+    // latest one waits on, so only a plain run.start can resume.
     const pendingInterrupts =
-      params.input != null ? await pendingInterruptCount(thread) : 0;
+      params.input != null && forkFrom == null
+        ? await pendingInterruptCount(thread)
+        : 0;
     // One answer can't say which of several pending interrupts it is for:
     // LangGraph fails the run, or picks one when they share a subgraph task.
     // While a run is in flight the count can still change, so it keeps
@@ -247,23 +275,6 @@ export function registerProtocolRoutes(
       });
     }
 
-    // Fork/time-travel replays from `config.configurable.checkpoint_id`
-    // — the single legacy-compliant fork field. The SDK folds its
-    // `forkFrom` convenience option into this field client-side, so the
-    // server reads it from there rather than a top-level `forkFrom`.
-    // `createStubRun` only reliably forwards a fork target via the
-    // top-level `checkpoint_id`, so lift it out of `configurable` below.
-    const forkCheckpointId = (() => {
-      const configurable =
-        isRecord(params.config) && isRecord(params.config.configurable)
-          ? params.config.configurable
-          : undefined;
-      const checkpointId = configurable?.checkpoint_id;
-      return typeof checkpointId === "string" && checkpointId.length > 0
-        ? checkpointId
-        : undefined;
-    })();
-
     // Resume only when the thread actually has a pending `interrupt()`.
     // A cancelled run also ends with status "interrupted" but has no
     // pending interrupt to consume the resume value, so folding the
@@ -272,10 +283,13 @@ export function registerProtocolRoutes(
     // the checkpoint that applies the input to state).
     const isResume = pendingInterrupts > 0;
 
-    if (isResume) {
-      // Drop stale lifecycle events from the paused run so late-attaching
-      // sinks do not replay `lifecycle.interrupted` after resume.
-      thread.queuedEvents.length = 0;
+    if ((isResume || forkFrom != null) && !runInFlight) {
+      // Drop the previous run's buffered events so late-attaching sinks
+      // replay neither a paused run's `lifecycle.interrupted` nor the
+      // branch a fork moved away from. A run still going would keep
+      // adding events, so its buffer stays whole. A new array, so a sink
+      // still replaying moves to it.
+      thread.queuedEvents = [];
     }
 
     const run = createStubRun(thread.threadId, {
@@ -290,19 +304,10 @@ export function registerProtocolRoutes(
             : {}),
         },
       },
-      // `createStubRun` promotes the top-level `checkpoint_id` into
-      // `config.configurable.checkpoint_id` after merging (and, in
-      // fact, *replaces* any inline configurable the caller passed),
-      // so this is the only reliable way to reach the engine with a
-      // fork target.
-      ...(forkCheckpointId != null && !isResume
-        ? { checkpoint_id: forkCheckpointId }
-        : {}),
-      // Honor the caller's `multitaskStrategy`, falling back to `enqueue`
-      // to match the non-embed protocol-v2 server and the Python default.
+      // Honor the caller's strategy, falling back to `enqueue` to match
+      // the non-embed protocol-v2 server and the Python default.
       multitask_strategy:
-        normalizeMultitaskStrategy(params.multitaskStrategy) ??
-        DEFAULT_MULTITASK_STRATEGY,
+        multitaskStrategyFromRunStart(params) ?? DEFAULT_MULTITASK_STRATEGY,
       metadata: Object.keys(runMetadata).length > 0 ? runMetadata : undefined,
       stream_mode: DEFAULT_PROTOCOL_STREAM_MODES,
       stream_subgraphs: true,
@@ -419,8 +424,9 @@ export function registerProtocolRoutes(
     // Drop the previous run's buffered events so that a sink attaching
     // *after* this resume does not replay stale terminal lifecycle
     // events (e.g. `lifecycle.interrupted`) from the paused run. Any
-    // sink that was already receiving live events is unaffected.
-    thread.queuedEvents.length = 0;
+    // sink that was already receiving live events is unaffected. A new
+    // array, so a sink still replaying moves to it.
+    thread.queuedEvents = [];
 
     const protocolSession = attachRunSession(thread, run);
     await protocolSession.start();
@@ -555,13 +561,9 @@ export function registerProtocolRoutes(
         };
         thread.eventSinks.set(sinkId, sink);
         try {
-          let cursor = 0;
-          while (cursor < thread.queuedEvents.length) {
-            const event = thread.queuedEvents[cursor++];
-            if (matchesSinkFilter(filter, event)) {
-              await writeSse(event);
-            }
-          }
+          await replayQueuedEvents(thread, async (event) => {
+            if (matchesSinkFilter(filter, event)) await writeSse(event);
+          });
         } finally {
           sink.pendingReplay = false;
         }
@@ -608,10 +610,7 @@ export function registerProtocolRoutes(
             };
             thread.eventSinks.set(sinkId, sink);
             try {
-              let cursor = 0;
-              while (cursor < thread.queuedEvents.length) {
-                await writeWs(thread.queuedEvents[cursor++]);
-              }
+              await replayQueuedEvents(thread, writeWs);
             } finally {
               sink.pendingReplay = false;
             }

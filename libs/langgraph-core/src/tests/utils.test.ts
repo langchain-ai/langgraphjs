@@ -3,7 +3,15 @@ import { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { MemorySaverAssertImmutable } from "./utils.js";
 import { gatherIterator } from "../utils.js";
 import { Annotation, StateGraph } from "../graph/index.js";
-import { Command, entrypoint, getCurrentTaskInput, task } from "../web.js";
+import {
+  Command,
+  entrypoint,
+  getConfig,
+  getCurrentTaskInput,
+  Send,
+  START,
+  task,
+} from "../web.js";
 
 export function runUtilsTests(
   createCheckpointer: () => BaseCheckpointSaver | Promise<BaseCheckpointSaver>,
@@ -348,6 +356,41 @@ export function runUtilsTests(
           );
         }
       );
+    });
+  });
+
+  describe("getConfig", () => {
+    it("returns the running task's config in nodes, edge functions and Send targets", async () => {
+      const seen: Record<string, unknown> = {};
+      const State = Annotation.Root({
+        items: Annotation<string[]>({
+          reducer: (a, b) => a.concat(b),
+          default: () => [],
+        }),
+      });
+      const graph = new StateGraph(State)
+        .addNode("plan", () => {
+          seen.plan = getConfig().metadata?.langgraph_node;
+          return { items: ["plan"] };
+        })
+        .addNode("work", () => {
+          seen.work = getConfig().metadata?.langgraph_node;
+          return { items: ["work"] };
+        })
+        .addEdge(START, "plan")
+        .addConditionalEdges(
+          "plan",
+          () => {
+            seen.edge = getConfig().metadata?.langgraph_node;
+            return [new Send("work", {})];
+          },
+          ["work"]
+        )
+        .compile({ checkpointer: await createCheckpointer() });
+
+      await graph.invoke({ items: [] }, { configurable: { thread_id: "1" } });
+
+      expect(seen).toEqual({ plan: "plan", edge: "plan", work: "work" });
     });
   });
 }

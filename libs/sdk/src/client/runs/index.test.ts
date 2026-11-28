@@ -95,6 +95,50 @@ describe("runs.cancelMany", () => {
   });
 });
 
+describe("runs.cancel", () => {
+  function mockCancel() {
+    const fetchMock = createMockFetch();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 202,
+      json: () => Promise.resolve(undefined),
+      text: () => Promise.resolve(""),
+      headers: new Headers({}),
+    });
+    return fetchMock;
+  }
+
+  it("sends the reason as a query param", async () => {
+    const fetchMock = mockCancel();
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
+
+    await client.runs.cancel("thread_abc", "run_1", false, "interrupt", {
+      reason: "taken",
+    });
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.pathname).toBe("/threads/thread_abc/runs/run_1/cancel");
+    expect(url.searchParams.get("reason")).toBe("taken");
+    expect(url.searchParams.get("action")).toBe("interrupt");
+  });
+
+  it("sends no reason when none is set", async () => {
+    const fetchMock = mockCancel();
+    const client = new Client({
+      apiKey: "test-api-key",
+      callerOptions: { fetch: fetchMock },
+    });
+
+    await client.runs.cancel("thread_abc", "run_1");
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.searchParams.has("reason")).toBe(false);
+  });
+});
+
 describe("runs.list", () => {
   function parseFetchCall(fetchMock: MockFetch) {
     const [url] = fetchMock.mock.calls[0];
@@ -128,5 +172,41 @@ describe("runs.list", () => {
       "multitask_strategy",
     ]);
     expect(url.searchParams.get("status")).toBe("pending");
+  });
+});
+
+describe("runs strictResume", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends strict_resume from create, wait and stream only when set", async () => {
+    const fetchMock = vi.fn(async (url: string | URL) =>
+      String(url).endsWith("/runs/stream")
+        ? new Response("event: end\ndata: {}\n\n", {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : new Response("{}", {
+            headers: { "content-type": "application/json" },
+          })
+    ) as unknown as MockFetch;
+    overrideFetchImplementation(fetchMock);
+    const client = new Client({ apiKey: "test-api-key" });
+
+    await client.runs.create("thread_abc", "agent", { strictResume: true });
+    await client.runs.wait("thread_abc", "agent", { strictResume: true });
+    const chunks = [];
+    for await (const chunk of client.runs.stream("thread_abc", "agent", {
+      strictResume: true,
+    })) {
+      chunks.push(chunk);
+    }
+    await client.runs.create("thread_abc", "agent");
+
+    expect(
+      fetchMock.mock.calls.map(
+        ([, init]) => JSON.parse(String(init?.body)).strict_resume
+      )
+    ).toEqual([true, true, true, undefined]);
   });
 });

@@ -347,6 +347,28 @@ export interface Run {
 
   /** Strategy to handle concurrent runs on the same thread */
   multitask_strategy: Optional<MultitaskStrategy>;
+
+  /** Why the run was cancelled. `null` or absent if it was not. */
+  cancel_reason?: string | null;
+
+  /**
+   * What the run was created with, such as its `input`, `config` and
+   * `stream_mode`.
+   */
+  kwargs?: Record<string, unknown>;
+}
+
+/** What the server reports about itself at `GET /info`. */
+export interface ServerInfo {
+  version?: string;
+  /**
+   * The features the server supports, such as `stream_namespaces`,
+   * `stream_lifecycle` and `strict_resume`. Servers that predate a feature
+   * leave its flag out, and a server with the feature turned off reports
+   * `false`.
+   */
+  flags?: Record<string, boolean>;
+  [key: string]: unknown;
 }
 
 export type Checkpoint = {
@@ -447,6 +469,21 @@ export type ThreadSelectField =
   | "values"
   | "interrupts";
 
+/**
+ * Field to include in a thread state response. `values.<key>` returns a
+ * single state key (e.g. `values.messages`).
+ */
+export type ThreadStateSelectField =
+  | "values"
+  | "next"
+  | "tasks"
+  | "checkpoint"
+  | "metadata"
+  | "created_at"
+  | "parent_checkpoint"
+  | "interrupts"
+  | `values.${string}`;
+
 export type RunSelectField =
   | "run_id"
   | "thread_id"
@@ -456,7 +493,8 @@ export type RunSelectField =
   | "status"
   | "metadata"
   | "kwargs"
-  | "multitask_strategy";
+  | "multitask_strategy"
+  | "cancel_reason";
 
 export type CronSelectField =
   | "cron_id"

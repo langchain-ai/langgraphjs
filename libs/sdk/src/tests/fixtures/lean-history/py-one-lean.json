@@ -1,0 +1,277 @@
+[
+  {
+    "tasks": [
+      {
+        "id": "e6c3941f-75ce-0b34-b25d-d8b0c5f09cbb",
+        "name": "tools",
+        "path": [
+          "__pregel_push",
+          0,
+          false
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "research result",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "tool",
+              "name": "task",
+              "id": "8351f65c-2e91-4557-93bc-3e3f132c5d24",
+              "tool_call_id": "call_r",
+              "artifact": null,
+              "status": "success"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ee7a5155-8064-ce55-9fa7-4fb7f0a4b5b5",
+        "name": "tools",
+        "path": [
+          "__pregel_push",
+          1,
+          false
+        ],
+        "error": null,
+        "interrupts": [
+          {
+            "id": "4ddf4528a0ed39d18e6b72061d35f1bb",
+            "value": "tone?"
+          }
+        ],
+        "checkpoint": null,
+        "state": null,
+        "result": null
+      }
+    ],
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-4bf9-6d40-8003-8636d81a31cd",
+      "thread_id": "01a1b03d-70fe-747d-a221-df762ce09b1c",
+      "checkpoint_ns": ""
+    }
+  },
+  {
+    "tasks": [
+      {
+        "id": "a6ec33ae-5d22-4ba1-1ff4-0f730657e2b9",
+        "name": "HumanInTheLoopMiddleware.after_model",
+        "path": [
+          "__pregel_pull",
+          "HumanInTheLoopMiddleware.after_model"
+        ],
+        "error": null,
+        "interrupts": [
+          {
+            "id": "7e7345e958d0125e2ff2d62604474548",
+            "value": {
+              "action_requests": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "description": "Tool execution requires approval\n\nTool: search\nArgs: {'query': 'x'}"
+                }
+              ],
+              "review_configs": [
+                {
+                  "action_name": "search",
+                  "allowed_decisions": [
+                    "approve",
+                    "edit",
+                    "reject",
+                    "respond"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "ai",
+              "name": null,
+              "id": "lc_run--01a1b03d-74d3-75e3-acf0-2c04d97897c2-0",
+              "tool_calls": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "id": "call_s",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "RESEARCHER: research x",
+                    "subagent_type": "researcher"
+                  },
+                  "id": "call_r",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "WRITER: write about x",
+                    "subagent_type": "writer"
+                  },
+                  "id": "call_w",
+                  "type": "tool_call"
+                }
+              ],
+              "invalid_tool_calls": [],
+              "usage_metadata": null
+            },
+            {
+              "content": "User rejected the tool call for `search` with reason: no search",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "tool",
+              "name": "search",
+              "id": "24034268-5176-44dc-87ed-922c12a03400",
+              "tool_call_id": "call_s",
+              "artifact": null,
+              "status": "error"
+            }
+          ],
+          "hitl_edited_tool_calls": {}
+        }
+      }
+    ],
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-4252-6a80-8002-192ef03ef0df",
+      "thread_id": "01a1b03d-70fe-747d-a221-df762ce09b1c",
+      "checkpoint_ns": ""
+    }
+  },
+  {
+    "tasks": [
+      {
+        "id": "bbbc6559-1351-27d0-cd44-bb0b467f80ad",
+        "name": "model",
+        "path": [
+          "__pregel_pull",
+          "model"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "ai",
+              "name": null,
+              "id": "lc_run--01a1b03d-74d3-75e3-acf0-2c04d97897c2-0",
+              "tool_calls": [
+                {
+                  "name": "search",
+                  "args": {
+                    "query": "x"
+                  },
+                  "id": "call_s",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "RESEARCHER: research x",
+                    "subagent_type": "researcher"
+                  },
+                  "id": "call_r",
+                  "type": "tool_call"
+                },
+                {
+                  "name": "task",
+                  "args": {
+                    "description": "WRITER: write about x",
+                    "subagent_type": "writer"
+                  },
+                  "id": "call_w",
+                  "type": "tool_call"
+                }
+              ],
+              "invalid_tool_calls": [],
+              "usage_metadata": null
+            }
+          ]
+        }
+      }
+    ],
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-422e-6e64-8001-40eda981437a",
+      "thread_id": "01a1b03d-70fe-747d-a221-df762ce09b1c",
+      "checkpoint_ns": ""
+    }
+  },
+  {
+    "tasks": [
+      {
+        "id": "6d3cea28-18c5-e7af-b8eb-0953912542d9",
+        "name": "PatchToolCallsMiddleware.before_agent",
+        "path": [
+          "__pregel_pull",
+          "PatchToolCallsMiddleware.before_agent"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {}
+      }
+    ],
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-4229-6540-8000-2a28373fa40b",
+      "thread_id": "01a1b03d-70fe-747d-a221-df762ce09b1c",
+      "checkpoint_ns": ""
+    }
+  },
+  {
+    "tasks": [
+      {
+        "id": "92511a46-28a3-24be-fe14-66b760b9f63f",
+        "name": "__start__",
+        "path": [
+          "__pregel_pull",
+          "__start__"
+        ],
+        "error": null,
+        "interrupts": [],
+        "checkpoint": null,
+        "state": null,
+        "result": {
+          "messages": [
+            {
+              "content": "go one ",
+              "additional_kwargs": {},
+              "response_metadata": {},
+              "type": "human",
+              "name": null,
+              "id": "7fc586ac-cfac-4e32-af22-990233ec0d7f"
+            }
+          ]
+        }
+      }
+    ],
+    "checkpoint": {
+      "checkpoint_id": "1f1d9c67-4220-6936-bfff-1b66356bdaa4",
+      "thread_id": "01a1b03d-70fe-747d-a221-df762ce09b1c",
+      "checkpoint_ns": ""
+    }
+  }
+]

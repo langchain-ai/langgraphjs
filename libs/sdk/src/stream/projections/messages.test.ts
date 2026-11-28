@@ -3,7 +3,7 @@ import type { Channel, Event } from "@langchain/protocol";
 import type { AIMessageChunk, BaseMessage } from "@langchain/core/messages";
 
 import { ChannelRegistry } from "../channel-registry.js";
-import { StreamStore } from "../store.js";
+import { StreamStore } from "../../ui/store.js";
 import type { RootEventBus, ThreadStream } from "../types.js";
 import { messagesProjection } from "./messages.js";
 

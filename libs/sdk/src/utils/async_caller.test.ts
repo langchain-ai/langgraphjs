@@ -244,6 +244,112 @@ describe("AsyncCaller", () => {
     });
   });
 
+  describe("retry policy by HTTP method", () => {
+    const unavailable = () =>
+      new Response("unavailable", { status: 503, statusText: "Unavailable" });
+    const ok = () => new Response("{}", { status: 200 });
+    // Node's fetch (undici) rejects with the socket error on `cause`.
+    const fetchFailed = (code: string) =>
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error(`connect ${code}`), { code }),
+      });
+
+    async function settle<T>(promise: Promise<T>) {
+      const result = promise.catch((error) => error);
+      await vi.runAllTimersAsync();
+      return result;
+    }
+
+    it.each(["POST", "PATCH", "post"])(
+      "does not retry a %s that got a 5xx",
+      async (method) => {
+        vi.useFakeTimers();
+        const fetch = vi.fn(() => Promise.resolve(unavailable()));
+        const caller = new AsyncCaller({ maxRetries: 2, fetch });
+
+        const error = await settle(
+          caller.fetch("http://example.com/runs", { method })
+        );
+
+        expect(error).toMatchObject({ status: 503 });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each([undefined, "GET", "HEAD", "OPTIONS", "PUT", "DELETE"])(
+      "retries a %s that got a 5xx",
+      async (method) => {
+        vi.useFakeTimers();
+        const fetch = vi
+          .fn()
+          .mockResolvedValueOnce(unavailable())
+          .mockResolvedValueOnce(ok());
+        const caller = new AsyncCaller({ maxRetries: 2, fetch });
+
+        const response = await settle(
+          caller.fetch("http://example.com/runs", { method })
+        );
+
+        expect(response.status).toBe(200);
+        expect(fetch).toHaveBeenCalledTimes(2);
+      }
+    );
+
+    it("reads the method of a Request input", async () => {
+      vi.useFakeTimers();
+      const fetch = vi.fn(() => Promise.resolve(unavailable()));
+      const caller = new AsyncCaller({ maxRetries: 2, fetch });
+
+      await settle(
+        caller.fetch(new Request("http://example.com/runs", { method: "POST" }))
+      );
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries a POST whose connection was refused", async () => {
+      vi.useFakeTimers();
+      const fetch = vi
+        .fn()
+        .mockRejectedValueOnce(fetchFailed("ECONNREFUSED"))
+        .mockResolvedValueOnce(ok());
+      const caller = new AsyncCaller({ maxRetries: 2, fetch });
+
+      const response = await settle(
+        caller.fetch("http://example.com/runs", { method: "POST" })
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not retry a POST whose connection failed after it was sent", async () => {
+      vi.useFakeTimers();
+      const fetch = vi.fn(() => Promise.reject(fetchFailed("ECONNRESET")));
+      const caller = new AsyncCaller({ maxRetries: 2, fetch });
+
+      const error = await settle(
+        caller.fetch("http://example.com/runs", { method: "POST" })
+      );
+
+      expect(error).toMatchObject({ name: "ConnectionError" });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("applies the method passed to callWithOptions", async () => {
+      vi.useFakeTimers();
+      const callable = vi.fn(() => Promise.reject(unavailable()));
+      const caller = new AsyncCaller({ maxRetries: 2 });
+
+      const error = await settle(
+        caller.callWithOptions({ method: "POST" }, callable)
+      );
+
+      expect(error).toMatchObject({ status: 503 });
+      expect(callable).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("onFailedResponseHook", () => {
     it("should call onFailedResponseHook when provided and request fails with response", async () => {
       const onFailedResponseHook = vi.fn(() => Promise.resolve(false));

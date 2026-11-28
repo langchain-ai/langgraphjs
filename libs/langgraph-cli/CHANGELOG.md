@@ -1,5 +1,63 @@
 # @langchain/langgraph-cli
 
+## 1.8.1
+
+### Patch Changes
+
+- [#2744](https://github.com/langchain-ai/langgraphjs/pull/2744) [`7257a24`](https://github.com/langchain-ai/langgraphjs/commit/7257a24f7106ca8b8f5e14da6d1d72197077d6a7) Thanks [@wario2k](https://github.com/wario2k)! - fix(langgraph-api): preserve additional_kwargs in protocol state normalizer
+  
+  Forward non-empty `additional_kwargs` on values snapshot messages so
+  server-authored message metadata (e.g. committed attachment paths) reaches
+  live subscribers.
+- Updated dependencies [[`63ad546`](https://github.com/langchain-ai/langgraphjs/commit/63ad546c18de8a26037c2170374cdab91e845347), [`7257a24`](https://github.com/langchain-ai/langgraphjs/commit/7257a24f7106ca8b8f5e14da6d1d72197077d6a7)]:
+  - @langchain/langgraph-api@1.8.1
+
+## 1.8.0
+
+### Minor Changes
+
+- [#3366](https://github.com/langchain-ai/langgraphjs/pull/3366) [`fa426b2`](https://github.com/langchain-ai/langgraphjs/commit/fa426b293b6ecccbf62b4f262475777b4bf86673) Thanks [@syachamaneni-lc](https://github.com/syachamaneni-lc)! - `langgraphjs deploy` and its `list`, `revisions list`, `logs` and `delete` subcommands work on LangSmith BYOC data planes with only an API key. The CLI finds the key's workspace through the LangSmith API, sends requests to that workspace's data plane, and links status pages to the LangSmith UI. On a data plane, it checks before creating anything that CLI builds (and, for `prod`, dedicated deployments) are supported. `--host-url` now defaults to the discovered host and still overrides it. The CLI only sends the API key to an `https` data plane, and sends the workspace an org-scoped key is asked for to that workspace's data plane.
+
+### Patch Changes
+
+- Updated dependencies [[`9586aca`](https://github.com/langchain-ai/langgraphjs/commit/9586aca0b579a232ade5b36ac6861de1aaf81a26)]:
+  - @langchain/langgraph-api@1.8.0
+
+## 1.7.2
+
+### Patch Changes
+
+- Updated dependencies [[`6dd190c`](https://github.com/langchain-ai/langgraphjs/commit/6dd190c558f9dc4012cdf6aaf142788ae7dbc444)]:
+  - @langchain/langgraph-api@1.7.2
+
+## 1.7.1
+
+### Patch Changes
+
+- Updated dependencies [[`904126c`](https://github.com/langchain-ai/langgraphjs/commit/904126cef1dcc758ac7dd13d330f8595deeed65b), [`c5ad00f`](https://github.com/langchain-ai/langgraphjs/commit/c5ad00f399d4f815376c88d4ef3e9bcd6fe81c54)]:
+  - @langchain/langgraph-api@1.7.1
+
+## 1.7.0
+
+### Patch Changes
+
+- Updated dependencies [[`badfe38`](https://github.com/langchain-ai/langgraphjs/commit/badfe38413720fe2bf21b81dd52cd6e74f86d845), [`397e93e`](https://github.com/langchain-ai/langgraphjs/commit/397e93e0d2b47c3d9ed914c7937b92c9fd95d532), [`6fb340e`](https://github.com/langchain-ai/langgraphjs/commit/6fb340e306e33f95cdb2d2a0a7eaebcc154152f1), [`ffe9e60`](https://github.com/langchain-ai/langgraphjs/commit/ffe9e60a5d3fdabbcbd6c814b18cf3d9fc01a34b), [`184ce74`](https://github.com/langchain-ai/langgraphjs/commit/184ce74a7aac02c2337fb4909da547b7ef39912a), [`5d1ceb0`](https://github.com/langchain-ai/langgraphjs/commit/5d1ceb0016cf8a5304c75554c99d3d79f81470ac), [`bdec328`](https://github.com/langchain-ai/langgraphjs/commit/bdec328a80439ce1d3974b10aa9e7b7f297da1b1), [`95ce066`](https://github.com/langchain-ai/langgraphjs/commit/95ce066af5a71c7ad114ccc538fd02dae300561a)]:
+  - @langchain/langgraph-api@1.7.0
+
+## 1.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e), [`024c902`](https://github.com/langchain-ai/langgraphjs/commit/024c902ef59dea82d4e121e1ecb882f370326cf0), [`881a734`](https://github.com/langchain-ai/langgraphjs/commit/881a7347fc510770b450ac8c70bef5e1bdacdd57), [`b82c080`](https://github.com/langchain-ai/langgraphjs/commit/b82c080d43ae71d45ec776f55d45e6ace67c2c9e), [`ceefe05`](https://github.com/langchain-ai/langgraphjs/commit/ceefe0575f49a7fdfbfc60d33eb5ece5f3de3bad), [`b2c3d0b`](https://github.com/langchain-ai/langgraphjs/commit/b2c3d0b2a7cfe6e9e8a4944840d75835ee9ae4ee)]:
+  - @langchain/langgraph-api@1.6.0
+
+## 1.5.8
+
+### Patch Changes
+
+- Updated dependencies [[`478fffd`](https://github.com/langchain-ai/langgraphjs/commit/478fffdaf6dfcdd1c2fd0e977f53d2fcd8af8af3)]:
+  - @langchain/langgraph-api@1.5.8
+
 ## 1.5.7
 
 ### Patch Changes

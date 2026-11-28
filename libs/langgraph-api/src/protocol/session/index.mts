@@ -1,13 +1,13 @@
 import { inferChannel, isSupportedChannel } from "@langchain/langgraph/stream";
 import { v7 as uuid7 } from "@langchain/core/utils/uuid";
 
-import type { AuthContext } from "../../auth/index.mjs";
 import type { Run } from "../../storage/types.mjs";
 import { serialiseAsDict, serializeError } from "../../utils/serde.mjs";
 import type {
   AgentResult,
   AgentTreeNode,
   CustomData,
+  InputAnsweredData,
   Namespace,
   ProtocolCommand,
   ProtocolCommandByMethod,
@@ -43,6 +43,14 @@ import {
   toNamespaceKey,
 } from "./namespace.mjs";
 import { normalizeProtocolStatePayload } from "./state-normalizers.mjs";
+
+/**
+ * The subscription channel of an event. The app's own @langchain/langgraph
+ * supplies `inferChannel`, and versions the dev server still supports don't
+ * map `input.answered`.
+ */
+export const eventChannel = (event: ProtocolEvent) =>
+  event.method === "input.answered" ? "input" : inferChannel(event);
 
 /**
  * Normalizes one LangGraph run into protocol events and manages per-run
@@ -103,7 +111,6 @@ export class RunProtocolSession {
   constructor(options: {
     runId: string;
     threadId?: string;
-    auth?: AuthContext;
     initialRun: Run;
     getRun: () => Promise<Run | null>;
     getThreadState?: () => Promise<{
@@ -373,6 +380,10 @@ export class RunProtocolSession {
    */
   private async handleSourceEvent(event: SourceStreamEvent) {
     if (event.event === "metadata") return;
+    if (event.event === "interrupts") {
+      await this.emitInputAnswered(event.data);
+      return;
+    }
 
     if (event.event === "error") {
       // Core's `LifecycleTransformer.fail()` has already cascaded
@@ -380,11 +391,20 @@ export class RunProtocolSession {
       // the root lifecycle, so emit only the root here.
       this.terminalLifecycleEmitted = true;
       this.setNamespaceInfo([], "failed", { graphName: this.rootGraphName });
+      // The queue publishes the error already serialized.
+      const {
+        error: name,
+        message,
+        ...details
+      } = isRecord(event.data) && typeof event.data.message === "string"
+        ? (event.data as { error?: unknown; message: string })
+        : serializeError(event.data);
       await this.pushEvent(
         this.createEvent("lifecycle", [], {
           event: "failed",
           graph_name: this.rootGraphName,
-          error: serializeError(event.data).message,
+          error: message,
+          ...(name === "UnknownInterruptError" ? details : {}),
         })
       );
       return;
@@ -693,20 +713,25 @@ export class RunProtocolSession {
     namespace: Namespace,
     data: ProtocolEventDataMap["tasks"]
   ): ProtocolEventByMethod<"tasks">;
+  private createEvent(
+    method: "input.answered",
+    namespace: Namespace,
+    data: InputAnsweredData
+  ): Extract<ProtocolEvent, { method: "input.answered" }>;
 
   /**
    * Creates a protocol event with sequencing and payload normalization applied.
    *
-   * @param method - Event channel to emit.
+   * @param method - Event channel to emit, or `input.answered`.
    * @param namespace - Namespace associated with the event.
    * @param data - Event payload.
    * @param node - Optional node name for updates and messages.
    * @returns A fully-formed protocol event.
    */
   private createEvent(
-    method: SupportedChannel,
+    method: SupportedChannel | "input.answered",
     namespace: Namespace,
-    data: ProtocolEventDataMap[SupportedChannel],
+    data: ProtocolEventDataMap[SupportedChannel] | InputAnsweredData,
     node?: string
   ): ProtocolEvent {
     this.nextSeq += 1;
@@ -766,7 +791,7 @@ export class RunProtocolSession {
   ): boolean {
     // `inferChannel` resolves named custom channels to `custom:<name>`; a bare
     // `custom` subscription still matches via the prefix check below.
-    const channel = inferChannel(event);
+    const channel = eventChannel(event);
     if (channel == null) return false;
 
     const channelMatched =
@@ -792,6 +817,20 @@ export class RunProtocolSession {
 
   private hasStatePayload(value: unknown) {
     return !isRecord(value) || Object.keys(value).length > 0;
+  }
+
+  private async emitInputAnswered(data: unknown) {
+    const answered =
+      isRecord(data) && Array.isArray(data.answered)
+        ? data.answered.filter((id): id is string => typeof id === "string")
+        : [];
+    if (answered.length === 0) return;
+    for (const interruptId of answered) {
+      this.pendingInterruptIds.delete(interruptId);
+    }
+    await this.pushEvent(
+      this.createEvent("input.answered", [], { interrupt_ids: answered })
+    );
   }
 
   private async emitInputRequestedEvents(

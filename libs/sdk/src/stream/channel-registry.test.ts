@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Channel } from "@langchain/protocol";
 
 import { ChannelRegistry } from "./channel-registry.js";
-import { StreamStore } from "./store.js";
+import { StreamStore } from "../ui/store.js";
 import type {
   ProjectionRuntime,
   ProjectionSpec,

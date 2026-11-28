@@ -1,5 +1,11 @@
 import type { Message } from "./types.messages.js";
-import type { Interrupt, Metadata, Config, ThreadTask } from "./schema.js";
+import type {
+  Interrupt,
+  Metadata,
+  Config,
+  RunStatus,
+  ThreadTask,
+} from "./schema.js";
 /**
 import type { SubgraphCheckpointsStreamEvent } from "./types.stream.subgraph.js";
  * Stream modes
@@ -10,6 +16,7 @@ import type { SubgraphCheckpointsStreamEvent } from "./types.stream.subgraph.js"
  * - "events": Stream events occurring during execution.
  * - "debug": Stream detailed debug information.
  * - "custom": Stream custom events.
+ * - "lifecycle": Stream an event when each subgraph starts and ends.
  */
 export type StreamMode =
   | "values"
@@ -21,7 +28,8 @@ export type StreamMode =
   | "checkpoints"
   | "custom"
   | "messages-tuple"
-  | "tools";
+  | "tools"
+  | "lifecycle";
 
 export type ThreadStreamMode = "run_modes" | "lifecycle" | "state_update";
 
@@ -85,6 +93,19 @@ export type ErrorStreamEvent = {
 
 /** @internal */
 export type SubgraphErrorStreamEvent = AsSubgraph<ErrorStreamEvent>;
+
+/**
+ * Last event of a run stream, with the run's final status. Its data is `null`
+ * from servers that send it without one.
+ */
+export type EndStreamEvent = {
+  id?: string;
+  event: "end";
+  data: {
+    run_id: string;
+    status: Exclude<RunStatus, "pending" | "running"> | "rollback";
+  } | null;
+};
 
 /**
  * Stream event with updates to the state after each step.
@@ -291,6 +312,22 @@ export type ToolProgress = {
 /** @internal */
 export type SubgraphToolsStreamEvent = AsSubgraph<ToolsStreamEvent>;
 
+/**
+ * Stream event sent when a subgraph starts or ends, named after the subgraph's
+ * namespace. `tool_call_id` is the id of the tool call that started it, if one
+ * did.
+ */
+export type LifecycleStreamEvent = {
+  id?: string;
+  event: `lifecycle|${string}`;
+  data: {
+    event: "started" | "completed" | "failed" | "interrupted";
+    namespace: string[];
+    tool_call_id?: string;
+    error?: { error: string; message: string };
+  };
+};
+
 type GetStreamModeMap<
   TStreamMode extends StreamMode | StreamMode[],
   TStateType = unknown,
@@ -308,8 +345,10 @@ type GetStreamModeMap<
       checkpoints: CheckpointsStreamEvent<TStateType>;
       events: EventsStreamEvent;
       tools: ToolsStreamEvent;
+      lifecycle: LifecycleStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | ErrorStreamEvent
+  | EndStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
 
@@ -330,8 +369,10 @@ type GetSubgraphsStreamModeMap<
       tasks: SubgraphTasksStreamEvent<TStateType, TUpdateType>;
       checkpoints: SubgraphCheckpointsStreamEvent<TStateType>;
       tools: SubgraphToolsStreamEvent;
+      lifecycle: LifecycleStreamEvent;
     }[TStreamMode extends StreamMode[] ? TStreamMode[number] : TStreamMode]
   | SubgraphErrorStreamEvent
+  | EndStreamEvent
   | MetadataStreamEvent
   | FeedbackStreamEvent;
 

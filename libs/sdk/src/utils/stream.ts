@@ -3,6 +3,8 @@ import { isSSEControlPart } from "./sse.js";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   reconnectDelayMs,
+  type ConnectedInfo,
+  type ReconnectInfo,
 } from "./reconnect.js";
 
 // in this case don't quite match.
@@ -26,11 +28,46 @@ export interface StreamWithRetryOptions {
   /**
    * Callback invoked when a reconnection attempt is made.
    */
-  onReconnect?: (options: {
-    attempt: number;
-    lastEventId?: string;
-    cause: unknown;
-  }) => void;
+  onReconnect?: (options: ReconnectInfo & { lastEventId?: string }) => void;
+
+  /**
+   * Delay in milliseconds before reconnection attempt `attempt` (from 1).
+   * Defaults to exponential backoff with jitter.
+   */
+  reconnectDelayMs?: (attempt: number) => number;
+
+  /**
+   * Called each time a connection opens, before its events are read. `kind`
+   * is `"initial"` for the first request and `"reconnected"` after a drop,
+   * and `attempt` counts the reconnection attempts since the last event.
+   */
+  onConnected?: (info: ConnectedInfo) => void | Promise<void>;
+
+  /**
+   * Called when the stream ends without an error and a reconnect path is
+   * known. A proxy timeout or a server restart can end the response cleanly
+   * while the run goes on, so resolving `true` reconnects. A rejection is
+   * handled like a dropped connection.
+   */
+  isRunActive?: (reconnectPath: string) => Promise<boolean>;
+
+  /**
+   * Where to reconnect when no response carried a readable `Location`
+   * header. Read when a reconnect or a run check is due.
+   */
+  fallbackReconnectPath?: () => string | undefined;
+}
+
+export interface StreamReconnectOptions extends Pick<
+  StreamWithRetryOptions,
+  "reconnectDelayMs" | "onReconnect" | "onConnected"
+> {
+  /**
+   * Reconnection attempts in a row without an event before the stream
+   * throws. Defaults to {@link DEFAULT_MAX_RECONNECT_ATTEMPTS}. With `0`, a
+   * dropped stream throws instead of reconnecting.
+   */
+  maxReconnectAttempts?: number;
 }
 
 /**
@@ -251,6 +288,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
       if (options.signal?.aborted) return;
 
       // Make request - initial if no reconnect path, reconnect otherwise
+      const kind = reconnectPath ? "reconnected" : "initial";
       const { response, stream } = await makeRequest(
         reconnectPath ? { lastEventId, reconnectPath } : undefined
       );
@@ -269,6 +307,8 @@ export async function* streamWithRetry<T extends { id?: string }>(
         );
       }
 
+      await options.onConnected?.({ kind, attempt });
+
       reader = stream.getReader();
 
       try {
@@ -281,10 +321,7 @@ export async function* streamWithRetry<T extends { id?: string }>(
 
           const { done, value } = await reader.read();
 
-          if (done) {
-            // Stream completed successfully
-            break;
-          }
+          if (done) break;
 
           // Track last event ID for reconnection
           if (value.id !== undefined) {
@@ -296,9 +333,15 @@ export async function* streamWithRetry<T extends { id?: string }>(
           yield value;
         }
 
-        // Stream completed successfully, exit retry loop
-        break;
+        reconnectPath ??= options.fallbackReconnectPath?.();
+        if (!reconnectPath || !(await options.isRunActive?.(reconnectPath))) {
+          break;
+        }
+        shouldRetry = true;
+        lastError = new Error("Stream closed before the run finished");
       } catch (error) {
+        lastError = error;
+        reconnectPath ??= options.fallbackReconnectPath?.();
         // Error during streaming - attempt reconnect if we have a location header
         if (reconnectPath && !options.signal?.aborted) {
           shouldRetry = true;
@@ -331,15 +374,28 @@ export async function* streamWithRetry<T extends { id?: string }>(
         throw new MaxReconnectAttemptsError(maxRetries, lastError);
       }
 
-      // Notify about reconnection attempt
-      options.onReconnect?.({ attempt, lastEventId, cause: lastError });
+      const delay =
+        options.reconnectDelayMs?.(attempt) ?? reconnectDelayMs(attempt);
 
-      // Exponential backoff with jitter (shared with protocol transports).
-      const delay = reconnectDelayMs(attempt);
-
-      await new Promise((resolve) => {
-        setTimeout(resolve, delay);
+      options.onReconnect?.({
+        attempt,
+        lastEventId,
+        cause: lastError,
+        delayMs: delay,
       });
+
+      if (!options.signal?.aborted) {
+        await new Promise<void>((resolve) => {
+          const { signal } = options;
+          const timer = setTimeout(done, delay);
+          signal?.addEventListener("abort", done);
+          function done() {
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", done);
+            resolve();
+          }
+        });
+      }
 
       continue;
     }

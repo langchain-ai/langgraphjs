@@ -145,6 +145,10 @@ export class IterableReadableStreamWithAbortSignal<
           });
         }
       },
+      cancel(reason?: unknown) {
+        ac.abort(reason);
+        return reader.cancel(reason);
+      },
     });
     this._abortController = ac;
     this._innerReader = reader;
