@@ -185,7 +185,10 @@ function useThreadHistory<StateType extends Record<string, unknown>>(
       return;
     }
 
-    void fetcher(threadId, limit);
+    // The rejection is already recorded in state and surfaced through
+    // onError inside the fetcher, so swallow it here: rethrowing would be an
+    // unhandled rejection in every browser for this fire-and-forget load.
+    void fetcher(threadId, limit).catch(() => {});
     // The `threadId` and `limit` arguments are already present in `key`
     // Thus we don't need to include them in the dependency array
     // eslint-disable-next-line react-hooks/exhaustive-deps
