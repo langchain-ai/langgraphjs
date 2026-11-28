@@ -103,10 +103,11 @@ export function updateStateDeltaPlan(
 export async function checkpointSuperseded(
   saver: BaseCheckpointSaver,
   config: RunnableConfig,
-  saved: CheckpointTuple
+  saved: CheckpointTuple,
+  getTuple = (lookupConfig: RunnableConfig) => saver.getTuple(lookupConfig)
 ): Promise<boolean> {
   if (!config.configurable?.checkpoint_id) return false;
-  const latest = await saver.getTuple({
+  const latest = await getTuple({
     ...config,
     configurable: { ...config.configurable, checkpoint_id: undefined },
   });

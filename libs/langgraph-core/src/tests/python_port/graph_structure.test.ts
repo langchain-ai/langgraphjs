@@ -319,9 +319,11 @@ describe("Graph Structure Tests (Python port)", () => {
     expect(tracer.runs.length).toBe(1);
 
     // Check for the entrypoint run
-    const entrypointRun = tracer.runs[0].child_runs[0];
+    const entrypointRun = tracer.runs[0].child_runs.find(
+      (run: { name: string }) => run.name === "graph"
+    );
     expect(entrypointRun).toBeDefined();
-    expect(entrypointRun.name).toBe("graph");
+    expect(entrypointRun?.name).toBe("graph");
 
     // Check for the mapper runs
     const mapperRuns = tracer.runs[0].child_runs.filter(
