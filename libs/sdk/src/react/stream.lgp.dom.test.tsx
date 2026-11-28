@@ -370,6 +370,39 @@ describe("useStream (old engine) thread load", () => {
     expect(view.current.error).toBeInstanceOf(Error);
     expect((view.current.error as Error).message).toBe("boom");
   });
+
+  it("a history load that fails is reported once and does not reject", async () => {
+    // The read records its failure in `history.error` and reports it through `onError`.
+    // The effect that starts the read has nowhere to throw the returned promise, so a
+    // rejection travels on as an unhandled promise rejection: the app sees the error it
+    // already handled and the browser reports a second, uncaught one.
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const onError = vi.fn();
+      const client = createClient();
+      client.threads.getState.mockResolvedValue(threadState({ messages: [] }));
+      client.threads.getHistory.mockRejectedValue(new Error("offline"));
+
+      const view = await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory: true,
+        onError,
+      });
+      await settle();
+      // Node reports an unhandled rejection a turn after the promise settles.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      expect((view.current.error as Error).message).toBe("offline");
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
 });
 
 describe("useStream (old engine) rejoin on mount", () => {
