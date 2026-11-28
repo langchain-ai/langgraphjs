@@ -1811,3 +1811,34 @@ describe("useStream (old engine) stop before the run id arrives", () => {
     }
   );
 });
+
+describe("useStream history load failure", () => {
+  it("reports through onError without an unhandled promise rejection", async () => {
+    const client = createClient();
+    const failure = new TypeError("Failed to fetch");
+    client.threads.getState.mockResolvedValue(threadState({ messages: [] }));
+    client.threads.getHistory.mockRejectedValue(failure);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      event.preventDefault();
+      unhandled.push(event.reason);
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
+    try {
+      const onError = vi.fn();
+      await renderStream(client, {
+        threadId: "t1",
+        fetchStateHistory: true,
+        onError,
+      });
+      await settle();
+      await settle();
+
+      expect(onError).toHaveBeenCalled();
+      expect(unhandled).toEqual([]);
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    }
+  });
+});
