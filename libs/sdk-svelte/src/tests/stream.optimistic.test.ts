@@ -62,10 +62,12 @@ it("reconciles the server echo by id without duplicating the message", async () 
     .toHaveTextContent("Plan accepted.");
 });
 
-it("keeps the optimistic message and marks it failed when the run errors", async () => {
+it("marks an unacknowledged message failed when dispatch rejects", async () => {
+  // A node error can arrive after the server has echoed the input, making
+  // its status `sent`. Reject dispatch before any echo to test `failed`.
   const screen = await render(OptimisticStream, {
     apiUrl: serverUrl,
-    assistantId: "errorAgent",
+    assistantId: "missing_graph",
   });
 
   await screen.getByTestId("submit").click();
